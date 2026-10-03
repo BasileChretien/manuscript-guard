@@ -245,6 +245,14 @@ check is not a pass. Where what the gate threw is the project's own error about 
 reads, a review record that is not UTF-8 for one, the finding carries that sentence, which
 names the file, and does not call it a bug.
 
+And one for the manuscript itself: `manuscript-unreadable`, for a manuscript file whose text
+cannot be had, because it is not UTF-8 or the system will not open it. Each gate that reads
+the manuscript stops at such a file, so it is reported once for each file, at the file and
+the line, with the gates that did not run. The other gates report as usual. It fails at
+every stage too. Outside `check`, a command that reads the manuscript says the same sentence
+and exits 2. The dry run of a review panel is the one that does not: it decodes the files
+itself, names the file and exits 2, with neither the byte and the line nor the encoding.
+
 **Tables and figures are generated from results, never hand-authored.** Tables are emitted
 by code from `results.json`; figure scripts may read `results.json` and nothing else. This
 closes the hole that, in the predecessor project, let a wrong count reach Table 1 and
@@ -1210,8 +1218,86 @@ have a starter panel that assumes no field, so a first run needs only the list o
 It is shown before anything is sent and left in the panel file to be edited. A second
 starter panel shares nobody with the first.
 
-This is being built in steps. The provider layer and the dry run came first; sending, and
-G11 reading several readings of one remit, follow.
+**Sending needs a yes, and the yes is asked after the statement.** `review --run` prints
+what the dry run prints, then asks, and takes only the word `yes`. Where nobody is there to
+ask, in a script or under an agent, it sends nothing unless `--yes` was given. Everything
+that can be known beforehand is checked before the question: a key that is not set, or is
+set to something that is not a key, stops the run with nothing sent to any provider, because
+half a panel sent for a reason that could have been said in advance is a manuscript already
+disclosed and a round to finish. So does a record that could not be filed whatever the
+reply: a record lists the files that were read, its schema takes no `..` in a file's name,
+and with a manuscript file called `appendix..v2.md` every call was made and every reply
+refused. The tool's own part of each record is now tried against the schema first. When
+every reading of the round is on file there is nothing to send, and no yes is needed to
+send nothing. Ctrl+C at the question is a no.
+
+**A run can be stopped.** Ctrl+C after the yes stops the sending: no call is begun after
+it. A call already made cannot be recalled, so it is waited for and its reply filed, and
+the command says how many calls were not sent. The first version handed each provider
+its calls as one task and waited for all of them, so an author who changed their mind
+could only kill the process.
+
+**The panel is written before the first call.** It names every reader that is about to be
+asked, so a run that is interrupted, or in which a provider fails, leaves a round G11 sees
+as incomplete: each reading that did not arrive is a `reading-missing`. A round with no
+panel gets the starter panel the author was shown; a panel that exists keeps every word of
+its own and gains the readers. Running the command again asks only for the readings that
+are missing, and the ones on file are not asked for, paid for or replaced a second time.
+If the panel no longer names a reviewer the statement named, because it was edited while
+the question waited, nothing is sent.
+
+**The command does not call a round read while its panel waits for a reader.** A run asks
+the models listed now. The panel may name others: a model taken out of `review.models`
+after a provider failed, or one that `--one-each` dealt to another reviewer this time.
+The first version said every reading of the round was on file, or that two of two were
+filed, and exited 0, with G11 still reporting `reading-missing`. It now lists the readers
+the panel is waiting for, says how each is released, and exits 1.
+
+**A reading is filed whole or not at all.** A reply becomes a record only after it came
+back finished, parsed, fitted the reply schema, and the record built from it fitted the
+review schema and read back from YAML as it was written. That last check is made by
+making the trip: YAML writes U+0085 as it is and reads it back as a line break, so a
+finding reached its record with a word boundary the model did not write, and a reply
+that does not survive is refused rather than filed changed. The record is written under
+a temporary name and linked into place. A link
+refuses a name that is taken, where a move replaces what is there: somebody can file a
+record by hand between the look for one and the move, and a record is not re-stamped, by a
+run any more than by `review --record`. Every word of the review in the record is the
+model's. The tool adds who read, when, the digests of what was sent, and the numbering of
+the findings; it writes no `resolution`.
+
+**What the record says of the call** is under `provenance`: the provider, the model asked
+for, the host, the SHA-256 of the request body, the token counts, and the version of this
+tool. The request body never holds the key, so its digest can be compared with the dry
+run's. Two more fields are the provider's own words, the response id and the name it gives
+the model it served, and they go into a file that is committed. Each is filed only when it
+is one printable line of at most 200 characters with no four characters of a key in a row;
+otherwise the record does without it. A review that holds twelve characters of a key in a
+row, or the whole of a key of eight to twelve, is not filed at all. A model is never sent the key and cannot repeat it, but a gateway
+between could put it in a reply, and the rule is that no key reaches a file.
+
+**A reply that is refused is kept to read and counted nowhere.** It goes to
+`review/round-N/refused/` as text, with a line saying why and that it is not a review
+record. No gate looks there. The author paid for the reply and may want to see what the
+model said; it cannot become a record, and it goes when that reading is filed. The key, or
+any four characters of it in a row, is taken out first.
+
+**One provider failing does not undo the others.** Providers are asked side by side, each
+one call at a time. The readings that arrive are filed, the command exits 1, and it says
+how many of how many were filed and that the round is incomplete.
+
+**Two writers of one panel take turns.** A run writes the panel, and so does every
+`review --record --reading`, which an agent may call for six readers at once. Each read the
+panel, added its reader and wrote it back, and six at once left a panel naming two, three
+or five of the six, with the other readings unread by the gate and only a warning to say
+so. A panel is now held, through a lock file beside it made by exclusive create, while it
+is read and written. A writer waits up to thirty seconds for it and then refuses in words
+that name the file; a lock older than two minutes is taken for one its writer left behind.
+A folder that cannot be written to makes no lock and leaves none to wait for: that is
+refused after two seconds, where the first version tried again without a pause and
+without an end.
+The record itself is written by exclusive create, so two calls for one reader cannot both
+succeed.
 
 ## The submission pack writes nothing twice
 
@@ -4084,6 +4170,54 @@ Closed since, and why each mattered:
   run counts the calls and gives the bytes of the largest request at four characters a
   token. Tokenisers differ by model and prices change, so neither is built in; a model that
   reasons before answering is billed for output the reply never shows.
+- **`--yes` is whoever typed it.** The tool cannot tell an author's `--yes` from an
+  agent's. Sending the manuscript is the author's decision, and under an agent that rests
+  on the agent asking: the `review-panel` skill tells it to show the dry run and wait for
+  the author's word, and nothing in the command can hold it to that.
+- **A call that has been made cannot be recalled.** Ctrl+C stops further calls; the ones
+  in flight, one for each provider at most, have left the machine, and the command waits
+  for them, up to the ten minutes a call may take. A call a provider had asked to be
+  tried again is not tried again after the stop. A second Ctrl+C ends the command with
+  a traceback, and the process still stays until the calls in flight come back, and
+  files their replies.
+- **A refused reply is not asked for again by the run that got it.** The reply was paid
+  for, the reason is printed, and the text is kept to read; asking again is running the
+  command again, which is the author's call and asks only for what is missing. A model that
+  answers the same way every time is taken out of `review.models` and out of the panel's
+  `readers` by hand.
+- **Part of a key shorter than twelve characters can reach a record, and a key shorter
+  than eight is not looked for.** A review is refused for twelve of a key's characters in
+  a row, not four as in a printed message. A key begins with its vendor's prefix, and at
+  four every review that said `project` was refused for a key beginning `sk-proj-`. A
+  server on the same machine is given a word for a key: `test` refused every review,
+  since a record has a field called `rejection_tests`, and at eight `sk-no-key-required`
+  refused each review that said `required`. What a provider says of itself is held to
+  four, and a printed message has every run of four taken out.
+- **The panel's lock is a file, and a file can be left behind.** A writer that dies holding
+  it stops the others for up to two minutes, after which the lock is taken as abandoned;
+  the message names the file to delete sooner. Two writers that both find an abandoned lock
+  at the same instant can each remove it, and the slower one may remove the faster one's
+  new lock, after which both write the panel. It needs a crash and two writers within the
+  same few milliseconds, and it costs what the lock was added to prevent: a reader missing
+  from the panel, which `reading-unnamed` reports.
+- **On a file system with no hard links a record is not written through a temporary
+  file.** It is created exclusively, so an existing record is still never replaced, but a
+  write that is cut short can leave part of a record, which G11 then reports as unreadable.
+- **A provider is asked one call at a time and there is no pacing beyond that.** A rate
+  limit is waited out twice, as the provider's `Retry-After` says, and then the reading is
+  left missing for the next run.
+- **A panel that gains a reviewer or a reader is written again from its data.** Every field
+  is kept and the YAML is laid out afresh, so a comment typed into a panel file is lost the
+  next time `review --record` or `review --run` adds to it. The panel's `rationale` and each
+  reviewer's `why` are fields, and are where its reasons belong.
+- **A run asks the models listed now, not the readers the panel named before.** Take a
+  model out of `review.models` after a run and its missing readings stay `reading-missing`
+  until its name is taken out of the panel's `readers` as well. The command lists those
+  readers and exits 1 for as long as the panel names them; it does not ask them, and it
+  does not take them out.
+- **A reply holding U+0085 is refused, not filed.** YAML reads that character back as a
+  line break, so the record would not say what the model said. A model that writes one is
+  rare; the reply is kept under `refused/` to read.
 - **Submission is the only severity that depends on how the tool was invoked.** It is a
   small inconsistency, accepted because blocking every draft build on a complete two-round
   review would make G11 something to switch off. Severities that depend on the *data* are
@@ -4259,7 +4393,8 @@ Closed since, and why each mattered:
   fault of the tool would then stop every command that names a `.docx` in that project, with
   a message its author can do nothing with. Two things are refused that were not. A
   `paper.yaml` that holds `[]`, `0` or `false` was read as no settings, with the schema's
-  findings for everything missing, and is now a list or a number like any other. And a
+  findings for everything missing, and is now refused like any other list, number or yes or
+  no. And a
   folder under `paths` that only a gate asks for, given as a number, was a schema finding
   beside a `gate-errored` one and now stops the check before any gate. The write guard did
   change, by one name. It asks `paper.yaml` where the results are kept, and it caught the
@@ -4271,16 +4406,77 @@ Closed since, and why each mattered:
   `gate-errored` finding. Where what the gate raised is this error, the finding now carries
   its sentence with no class name in front, under a hint that no longer begins with a bug in
   the tool: a review record in UTF-16 read "UnicodeDecodeError: 'utf-8' codec can't decode
-  byte 0xff in position 0" and named no file. Still open, and each fails at every stage, so
-  none is a pass. A manuscript file that is not UTF-8 is read by the gates themselves, so
-  the finding there still reads that way and names no file, and `explain` and `render` end
-  in a traceback on one. The same wording stays for a file a gate reads by another route: a
-  figure's `.guard.yaml`, `methods.lock`. A key of `paper.yaml` that only a gate reads, in
-  the wrong shape (`terms: 5`, `review: [1]`), is a `gate-errored` finding worded as a fault
-  of the tool, beside the schema's own finding, which names the key; `explain` and `bind`
-  end in a traceback on `terms: 5`. And a results fragment with the mark of UTF-8 in front,
+  byte 0xff in position 0" and named no file. A manuscript file that is not UTF-8 was not
+  covered by that, since the gates read it themselves: `check` gave seven `gate-errored`
+  findings for one file, one for each gate that read it, none naming it, and `explain`,
+  `render`, `bind`, `methods`, `sync-bib` and a build with `--skip-checks` ended in a
+  traceback. Closed the same day, by the author's decision. Every gate that reads the
+  manuscript's text, and each of those commands, goes through the reader the project's
+  files use, so those commands say the sentence and exit 2. `check` reports one finding for each such file,
+  `manuscript-unreadable`, at the file and the line, and its hint names the gates that stopped
+  there. It does not stop before the gates, as it does for a project file: the gates that
+  do not read the manuscript still report, `--json` carries the finding, and the line drawn
+  above holds, that a file read before any gate stops the check and a file a gate reads is
+  a finding. Seven findings that each named the file would have been the smaller change,
+  and they take seven of the eight lines the submission guard shows. Every manuscript file
+  is read once before the gates, since a gate stops at the first file it cannot read: left
+  to the gates, a second file went unnamed until the first was put right. A gate that meets
+  such a file does not go on to the files it can read, because a word count, or the list of
+  results nothing quotes, taken from part of the manuscript is wrong in ways that would be
+  findings of their own. The file is refused and not read in the encoding it seems to be
+  in, for the reason given above. What is read of a file that is UTF-8 has not changed:
+  line endings are folded as they were, and a mark at the top of the file stays in the
+  text. Three readers are left as they were. G11 reads the file's bytes for the digest and
+  still runs, so at submission the records of the earlier text are reported stale beside
+  the finding. The note after an edit reads with the bytes it cannot decode replaced,
+  since it is a note and gives no verdict. And the dry run of a review panel, `review --run
+  --dry-run`, which came with #128, decodes the files it would send by itself: it says
+  "manuscript/main.md is not UTF-8, so it cannot be sent as text" and exits 2, which names
+  the file and gives neither the byte and the line nor the encoding.
+  A key of `paper.yaml` that only a gate reads, in a shape the schema refuses (`terms: 5`,
+  `review: [1]`, `conventions: abc`, `reporting_guideline: 5`), was a `gate-errored`
+  finding worded as a fault of the tool, "G2 could not run: TypeError: 'int' object is not
+  iterable", beside the schema's own finding, which names the key; `explain` and `bind`
+  ended in a traceback on `terms: 5`. Closed with it, by the same decision: a gate reads of
+  such a key what the schema accepts, of a list or of the settings under `review` the
+  entries it accepts, and runs as if the rest were not set. The schema's finding fails at
+  every stage, so no project passes that failed. For what exempts, that is the stricter
+  reading: an entry of `conventions` or `terms` that is not read exempts nothing, so until
+  the key is put right the numbers it accounted for are reported as unbound beside the
+  schema's finding. For `rounds_required` it is the default, two, and that can be fewer
+  than was meant: `"3"` in quotes was read as three. `review` on its own does not print the
+  schema's findings, so there the command answers for two rounds; `check` fails on the
+  schema's finding either way. The rounds asked for are still read beside a mistyped key
+  under `review`. A convention whose pattern is not a regular expression is text to the
+  schema, and raised where the classifier is built ("G2 could not run: error: unterminated
+  character set at position 0"). It is now a finding that names the entry, under the
+  schema's code, and the entry is not read. It is made where the project is loaded, before
+  any gate, so whatever the compiler raises is caught: the review found a pattern,
+  `(?a)(?u)x`, whose error was not the compiler's own, and which ended every command in a
+  traceback and the hooks in silence. One entry that was read is no longer: a convention
+  with an `id`. The classifier names the rule by it and the schema has never allowed it, so
+  a project that wrote one failed already. A test here wrote one. The build reads
+  `keywords` with no gate in front of it under `--skip-checks`. It raised on `keywords: 5`,
+  and printed one word, where a list is expected, letter by letter; neither is printed now.
+  An entry of the list that is not text is printed as it was, `2019` for one, which YAML
+  reads as a number, and so are keywords typed with colons where the dashes belong, which
+  YAML reads as settings: a build that was asked not to check prints what was typed.
+  Still open, and each fails at every stage, so none is a pass. A file a gate reads by
+  another route keeps the older wording: a figure's `.guard.yaml`, `methods.lock`. So does a
+  folder under `manuscript/` named like a source, `notes.md`: the gates that read text name
+  it, but G11 reads bytes for the digest and reports "PermissionError", and `review` ends
+  in a traceback on it, as before, with or without the dry run of a panel. And a
+  results fragment with the mark of UTF-8 in front,
   which Notepad's "UTF-8 with BOM" writes, is refused in the parser's words ("Unexpected
-  UTF-8 BOM (decode using utf-8-sig)"), where YAML with that mark is read.
+  UTF-8 BOM (decode using utf-8-sig)"), where YAML with that mark is read. Two more are of
+  the hooks, in a project whose `paper.yaml` parses and is refused for the shape of one
+  entry under `paths`, and were found in the review of #134. The write guard does not know
+  a folder that another entry moves: with `results: output` beside a `figures:` left empty,
+  an edit under `output/` goes through. It was refused before an entry in the wrong shape
+  stopped the whole file being read: the guard now keeps to the usual names there. `check`
+  exits 2 until the entry is put right, and G1 reports the edit after that. And the note
+  after an edit says nothing in such a project, where it named the unbound number. Both
+  were known when #134 merged, and neither is closed.
 - **Where the hooks run, an agent cannot run `check --submission` in a project that fails
   it.** The submission guard matches `--submission` anywhere in a shell command, so it holds
   `manuscript-guard check --submission`, `review --submission` and `respond --submission` to

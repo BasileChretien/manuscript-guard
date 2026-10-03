@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from manuscript_guard.contracts._schema import read_structured, validate
+from manuscript_guard.contracts._schema import read_structured, read_text, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
@@ -123,7 +123,7 @@ def _claimed_in_prose(project: Project, declared: set[str]) -> Report:
         # Masked, so a claim inside an HTML comment or a code block does not count. A
         # comment reaches no document, and an author explaining a guideline in a note to
         # themselves is not claiming to have followed it.
-        text = mask(path.read_text(encoding="utf-8"))
+        text = mask(read_text(path))
         for sentence in _SENTENCE.finditer(text):
             said = sentence.group(0)
             if not _CLAIMING.search(said):
@@ -159,7 +159,7 @@ def check_reporting(project: Project) -> Report:
     report = claims
     complete = 0
     manuscript = "\n\n".join(
-        p.read_text(encoding="utf-8") for p in source_files(project.path("manuscript"))
+        read_text(p) for p in source_files(project.path("manuscript"))
     )
     known_headings = {h.lower() for h in headings(manuscript)}
 

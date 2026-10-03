@@ -4,7 +4,13 @@ Everything else in the package depends on these and on nothing else, so a projec
 validates here is guaranteed to be readable by every gate.
 """
 
-from manuscript_guard.contracts._schema import ContractError, read_structured, validate
+from manuscript_guard.contracts._schema import (
+    ContractError,
+    Unreadable,
+    read_structured,
+    read_text,
+    validate,
+)
 from manuscript_guard.contracts.literature import (
     ABSTRACT_ONLY,
     FULL_TEXT,
@@ -28,12 +34,14 @@ __all__ = [
     "Literature",
     "Project",
     "Results",
+    "Unreadable",
     "Value",
     "find_root",
     "load_literature",
     "load_project",
     "load_results",
     "read_structured",
+    "read_text",
     "validate",
 ]
 

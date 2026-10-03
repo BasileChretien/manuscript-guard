@@ -33,6 +33,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import NamedTuple
 
+from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.docxtext import Block, spaced
 from manuscript_guard.roundtrip import (
     Alignment,
@@ -1107,7 +1108,7 @@ def _held_in_place(
         known.items(), key=lambda item: (str(item[1][0]), item[1][2])
     ):
         if path not in texts:
-            texts[path] = path.read_text(encoding="utf-8")
+            texts[path] = read_text(path)
         if name not in rendered:
             found[name] = "hidden"
             if path in before and not texts[path][before[path][1] : start].strip():
@@ -1190,7 +1191,7 @@ def _sections(known: dict, held: Collection[str] = ()) -> dict[str, tuple[Path, 
         known.items(), key=lambda item: (str(item[1][0]), item[1][2])
     ):
         if path not in texts:
-            texts[path] = path.read_text(encoding="utf-8")
+            texts[path] = read_text(path)
             section[path] = 0
         elif (
             name in held
@@ -2308,7 +2309,7 @@ def _unidentified(known: dict, plan: Plan) -> dict[str, str]:
         edits = _edits(known, plan, occupants)
         if not edits:
             continue
-        raw = path.read_text(encoding="utf-8")
+        raw = read_text(path)
         had = {start for _index, _body, start in marked_blocks(raw)}
         text = _spliced(raw, edits)
         marked = {start: body for _index, body, start in marked_blocks(text)}
@@ -2426,7 +2427,7 @@ def apply_plan(known: dict, plan: Plan) -> list[Path]:
         edits = _edits(known, plan, occupants)
         if not edits:
             continue
-        text = _spliced(path.read_text(encoding="utf-8"), edits)
+        text = _spliced(read_text(path), edits)
         path.write_text(text, encoding="utf-8", newline="\n")
         written.append(path)
     return written

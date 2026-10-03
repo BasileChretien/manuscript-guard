@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.gates.numbers import _hint_for, source_files
@@ -67,7 +68,7 @@ def unbound(project: Project, namespace: dict[str, Value]) -> list[Unbound]:
 
     found: list[Unbound] = []
     for path in source_files(project.path("manuscript")):
-        text = path.read_text(encoding="utf-8")
+        text = read_text(path)
         headings = heading_index(text)
         notes = footnote_index(text)
         scan = classifier.scan(text)
@@ -184,7 +185,7 @@ def apply(items: list[Unbound]) -> tuple[list[tuple[Unbound, str]], list[Unbound
             by_file.setdefault(item.path, []).append(item)
 
     for path, entries in by_file.items():
-        text = path.read_text(encoding="utf-8")
+        text = read_text(path)
         for item in sorted(entries, key=lambda i: i.start, reverse=True):
             binding = f"{{{{{item.certain}}}}}"
             text = f"{text[: item.start]}{binding}{text[item.end :]}"

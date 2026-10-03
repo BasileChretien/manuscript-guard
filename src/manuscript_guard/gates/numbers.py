@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.literature import Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
@@ -117,7 +118,7 @@ def check_numbers(
 
     for path in source_files(project.path("manuscript")):
         totals["files"] += 1
-        text = path.read_text(encoding="utf-8")
+        text = read_text(path)
         loose = 0
         headings = heading_index(text)
         notes = footnote_index(text)

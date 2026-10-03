@@ -6,11 +6,20 @@ they work from anywhere inside the tree, the way git does.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-from manuscript_guard.contracts._schema import ContractError, read_structured, validate
-from manuscript_guard.findings import Report, merge_all
+from jsonschema import Draft202012Validator
+
+from manuscript_guard.contracts._schema import (
+    ContractError,
+    load_schema,
+    read_structured,
+    validate,
+)
+from manuscript_guard.findings import Finding, Report, merge_all
 
 PAPER_FILE = "paper.yaml"
 AUTHORS_FILE = "authors.yaml"
@@ -35,6 +44,43 @@ class Project:
         configured = self.paper.get("paths", {}).get(which, DEFAULT_PATHS[which])
         return self.root / configured
 
+    def setting(self, key: str) -> Any:
+        """What a gate reads of one key of `paper.yaml`: its value as far as the schema
+        accepts it. Of a list, and of settings under a key, the entries the schema accepts;
+        of anything else, the value or None.
+
+        The schema reports a wrong shape as a finding that names the key and fails at every
+        stage, and the gate that read the value raised on it all the same: `terms: 5` was
+        also "G2 could not run: TypeError: 'int' object is not iterable", under a hint that
+        begins with a bug in the tool. So a gate reads only what the schema let through and
+        runs as if the rest were not set. An entry of `conventions` or `terms` that is not
+        read exempts nothing, so that reading is the stricter one. A `rounds_required` that
+        is not read is the default, which can be fewer rounds than was meant: `"3"` in
+        quotes was read as three. The schema's finding stands in either case.
+
+        Entry by entry, because one mistake should not take what is right with it: a
+        convention written correctly beside one that is not, or the rounds a paper asks for
+        beside a mistyped key.
+        """
+        if key not in self.paper:
+            return None
+        return _accepted(load_schema("paper")["properties"][key], self.paper[key])
+
+    @property
+    def keywords(self) -> tuple[str, ...]:
+        """The keywords as the build prints them: each entry of the list as text. Of
+        settings, their names, which is what colons typed where the dashes belong make of
+        a list. None where `keywords` is one value.
+
+        Not through `setting`. A build under `--skip-checks` prints what the author typed,
+        and `2019`, which YAML reads as a number, was printed before: it must not leave the
+        document without a word. Nor must three keywords written with colons. What changes
+        is what raised or was garbled: `keywords: 5` ended the build in `TypeError`, and
+        one word where a list is expected was printed letter by letter.
+        """
+        value = self.paper.get("keywords")
+        return tuple(str(entry) for entry in value) if isinstance(value, (list, dict)) else ()
+
     @property
     def english_variant(self) -> str:
         return self.paper.get("english_variant", "en-GB")
@@ -45,15 +91,21 @@ class Project:
 
     @property
     def reporting_guidelines(self) -> tuple[str, ...]:
-        return tuple(self.paper.get("reporting_guideline", ()))
+        return tuple(self.setting("reporting_guideline") or ())
 
     @property
     def extra_conventions(self) -> tuple[dict, ...]:
-        return tuple(self.paper.get("conventions", ()))
+        """The conventions a classifier can be built from: those the schema accepts, less
+        any whose pattern does not compile, which `load_project` reports."""
+        return tuple(
+            entry
+            for entry in self.setting("conventions") or ()
+            if _not_a_pattern(entry["pattern"]) is None
+        )
 
     @property
     def extra_terms(self) -> tuple[str, ...]:
-        return tuple(self.paper.get("terms", ()))
+        return tuple(self.setting("terms") or ())
 
     @property
     def known_abbreviations(self) -> tuple[str, ...]:
@@ -62,6 +114,67 @@ class Project:
         language = self.paper.get("language")
         listed = language.get("known_abbreviations") if isinstance(language, dict) else None
         return tuple(str(entry) for entry in listed) if isinstance(listed, list) else ()
+
+
+def _accepted(schema: dict, value: Any) -> Any:
+    """`value` as far as `schema` accepts it; see `Project.setting`."""
+    kind = schema.get("type")
+    if kind == "array":
+        if not isinstance(value, list):
+            return None
+        accepts = Draft202012Validator(schema["items"]).is_valid
+        return [entry for entry in value if accepts(entry)]
+    if kind == "object":
+        if not isinstance(value, dict):
+            return None
+        known = schema.get("properties", {})
+        return {
+            name: entry
+            for name, entry in value.items()
+            if name in known and Draft202012Validator(known[name]).is_valid(entry)
+        }
+    return value if Draft202012Validator(schema).is_valid(value) else None
+
+
+def _not_a_pattern(pattern: str) -> str | None:
+    """Why a convention's pattern cannot be compiled, or None where it can."""
+    try:
+        re.compile(pattern, re.MULTILINE)
+    except Exception as exc:  # noqa: BLE001 - whatever the compiler raises is about the pattern
+        # Not only its own error. `(?a)(?u)x` is a `ValueError`, a repeat too large an
+        # `OverflowError`. This runs where the project is loaded, before any gate, so one
+        # that got past ended every command in a traceback and the hooks in silence.
+        return str(exc)
+    return None
+
+
+def _patterns(paper: dict, path: Path) -> Report:
+    """A finding for each convention whose pattern is not a regular expression.
+
+    The schema can only say that a pattern is text. One that does not compile raised where
+    the classifier was built, so it was "G2 could not run: error: unterminated character set
+    at position 0" with no entry named, and a traceback from `explain` and `bind`. Said
+    here, under the schema's code, which fails at every stage, and the entry is not read.
+    """
+    conventions = paper.get("conventions")
+    findings = []
+    for index, entry in enumerate(conventions if isinstance(conventions, list) else ()):
+        pattern = entry.get("pattern") if isinstance(entry, dict) else None
+        why = _not_a_pattern(pattern) if isinstance(pattern, str) else None
+        if why is None:  # it compiles, or it is not text, which is the schema's to report
+            continue
+        findings.append(
+            Finding(
+                gate="G0",
+                code="schema-violation",
+                message=f"conventions/{index}/pattern: {pattern!r} is not a regular "
+                f"expression: {why}",
+                path=path,
+                hint="a pattern is a Python regular expression; a bracket meant as a "
+                "character is written with a backslash before it",
+            )
+        )
+    return Report(tuple(findings))
 
 
 def find_root(start: Path) -> Path:
@@ -139,6 +252,7 @@ def load_project(start: Path | None = None) -> tuple[Project, Report]:
     paper_path = root / PAPER_FILE
     paper = _settings(read_structured(paper_path), paper_path)
     reports.append(validate(paper, "paper", paper_path))
+    reports.append(_patterns(paper, paper_path))
 
     authors_path = root / AUTHORS_FILE
     authors = read_structured(authors_path)

@@ -367,9 +367,9 @@ def test_a_projects_own_allowlist_is_reported_not_silent(project: Path) -> None:
     """
     paper = project / "paper.yaml"
     document = yaml.safe_load(paper.read_text(encoding="utf-8"))
-    document["conventions"] = [
-        {"id": "house-style", "why": "house style", "pattern": r"\d+(?:[.,]\d+)*"}
-    ]
+    # No `id`: the schema allows a pattern, a reason and a date, and an entry it refuses is
+    # not read. The rule is named for its pattern.
+    document["conventions"] = [{"why": "house style", "pattern": r"\d+(?:[.,]\d+)*"}]
     paper.write_text(
         yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )
@@ -379,9 +379,59 @@ def test_a_projects_own_allowlist_is_reported_not_silent(project: Path) -> None:
     )
 
     report = gate_report(project)
+    assert "schema-violation" not in codes(report)
     assert report.counts["atoms_project_exempt"] == 3
     finding = next(f for f in report.findings if f.code == "project-exemption")
-    assert "project:house-style" in finding.message
+    assert r"project:\d+(?:[.,]\d+)*" in finding.message
+
+
+@pytest.mark.parametrize(
+    "conventions",
+    [
+        pytest.param(r"\d+", id="a pattern where a list is expected"),
+        pytest.param([r"\d+"], id="a list of patterns with no reason"),
+        pytest.param([{"pattern": r"\d+"}], id="an entry with no reason"),
+        pytest.param([{"pattern": r"\d+", "why": ""}], id="an entry with an empty reason"),
+        pytest.param(
+            [{"pattern": r"(?a)(?u)\d+", "why": "pasted"}], id="a pattern that does not compile"
+        ),
+    ],
+)
+def test_a_convention_the_schema_refuses_exempts_nothing(project: Path, conventions) -> None:
+    """A `conventions:` in the wrong shape is not read, so the gate runs where it raised. What
+    it must not do is read part of it: a pattern with no reason is not an exemption."""
+    from manuscript_guard.cli import _run_gates
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["conventions"] = conventions
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    main_md(project).write_text(
+        main_md(project).read_text(encoding="utf-8") + "\n\nLoose 4321 here.\n", encoding="utf-8"
+    )
+
+    report, _project, _chosen, _deferred = _run_gates(project)
+    assert {"schema-violation", "unclassified-number"} <= codes(report)
+    assert "gate-errored" not in codes(report)
+    assert report.counts["atoms_project_exempt"] == 0
+
+
+def test_a_number_typed_into_a_file_that_is_not_utf8_is_not_a_pass(project: Path) -> None:
+    """G2 cannot read the file, so it cannot report the number in it. The run fails all the
+    same at every stage, on a finding that names the file, and nothing is built from it."""
+    from manuscript_guard.cli import _run_gates, main
+    from manuscript_guard.policy import STAGES
+
+    path = main_md(project)
+    path.write_bytes(path.read_bytes() + b"\nThe caf\xe9 saw 4321 patients.\n")
+
+    for stage in STAGES:
+        report, _project, _chosen, _deferred = _run_gates(project, stage=stage)
+        assert "manuscript-unreadable" in codes(report), stage
+        assert "gate-errored" not in codes(report), stage
+    assert main(["build", str(project), "--offline"]) == 1
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 2
+    assert not list((project / "build").rglob("*.docx"))
 
 
 @pytest.mark.parametrize(
@@ -8042,3 +8092,168 @@ def test_a_definition_whose_brackets_were_deleted_is_caught(project: Path) -> No
     assert language_findings(project) == [
         ("abbreviation-undefined", line_of(tidied, ABBREVIATED))
     ]
+
+
+# --------------------------------------------------------------------------------------
+# A round read by models through `review --run`. What a run files is a set of records like
+# any other. What it must not do is leave a round that passes a submission with less than
+# was asked for: a provider that was down, a reply that was not a review, a finding nobody
+# answered. No test here opens a connection; the transport answers from the test.
+# --------------------------------------------------------------------------------------
+
+_RAN = json.dumps(
+    {
+        "verdict": "minor-revision",
+        "summary": "The estimator is stated and the estimate can be reconstructed.",
+        "rejection_tests": [
+            {
+                "test": "The estimate cannot be reconstructed from what is reported.",
+                "holds": False,
+                "evidence": "The two-by-two table is in the Results.",
+            }
+        ],
+        "findings": [{"severity": "minor", "where": "Abstract", "finding": "Say synthetic."}],
+    }
+)
+
+
+def _served(text: str, finish: str = "stop"):
+    from manuscript_guard.panel.client import HttpResponse
+
+    body = {
+        "id": "chatcmpl-1",
+        "model": "model-as-served",
+        "choices": [{"message": {"role": "assistant", "content": text}, "finish_reason": finish}],
+        "usage": {"prompt_tokens": 100, "completion_tokens": 50},
+    }
+    return HttpResponse(200, {}, json.dumps(body).encode())
+
+
+def _with(**changed) -> str:
+    said = json.loads(_RAN)
+    said.update(changed)
+    return json.dumps(said)
+
+
+def _down():
+    from manuscript_guard.panel.client import HttpResponse
+
+    return HttpResponse(500, {}, b'{"message": "internal error"}')
+
+
+def _no_answer():
+    from manuscript_guard.panel.client import TransportError
+
+    raise TransportError("timeout", "no answer within 600 s")
+
+
+_MAJOR = [{"severity": "major", "finding": "The conclusion does not follow from the estimate."}]
+_ANSWERED = [{**_MAJOR[0], "resolution": "Already addressed in the Discussion."}]
+
+#: What the second provider does, and the failure a submission must then show.
+_RUNS_THAT_FALL_SHORT = {
+    "a provider is down": (_down, "reading-missing"),
+    "a provider does not answer in time": (_no_answer, "reading-missing"),
+    "a model answers in prose": (lambda: _served("The paper is fine."), "reading-missing"),
+    "a reply is cut short": (lambda: _served(_RAN, "length"), "reading-missing"),
+    "a reply is cut short and still parses": (
+        lambda: _served(_with(findings=[]), "length"),
+        "reading-missing",
+    ),
+    "a model declines": (lambda: _served(_RAN, "content_filter"), "reading-missing"),
+    "a model gives a verdict of its own": (
+        lambda: _served(_with(verdict="accept")),
+        "reading-missing",
+    ),
+    "a model leaves the verdict out": (
+        lambda: _served(json.dumps({k: v for k, v in json.loads(_RAN).items() if k != "verdict"})),
+        "reading-missing",
+    ),
+    "a model answers its own major finding": (
+        lambda: _served(_with(findings=_ANSWERED)),
+        "reading-missing",
+    ),
+    "a model says who read and when": (
+        lambda: _served(_with(reviewed_by="A. Statistician", reviewed_on="2026-01-01")),
+        "reading-missing",
+    ),
+    "a model wraps the review in words": (
+        lambda: _served("Here is my review." + chr(10) + _RAN),
+        "reading-missing",
+    ),
+    "a reply holds a character a record would not keep as written": (
+        lambda: _served(_with(summary="The estimator is stated." + chr(0x85) + "It is the ROR.")),
+        "reading-missing",
+    ),
+    "a model raises a major finding": (
+        lambda: _served(_with(verdict="major-revision", findings=_MAJOR)),
+        "open-major-finding",
+    ),
+}
+
+
+def _run_round_two(root: Path, monkeypatch, second=None) -> int:
+    """Round two of the example, read by two models as well as by hand. `second` is what
+    the second provider does with each request; the first always files a clean reading."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    def transport(request, timeout):
+        if second is not None and "api.mistral.ai" in request.url:
+            return second()
+        return _served(_RAN)
+
+    monkeypatch.setattr(client, "default_transport", transport)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-0123456789ABCDEF")
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-mistral-0123456789ABCDEF")
+    paper = root / "paper.yaml"
+    paper.write_bytes(
+        paper.read_bytes()
+        + (chr(10) + "review:" + chr(10) + "  models: [openai/model-a, mistral/model-b]").encode()
+        + chr(10).encode()
+    )
+    return main(["review", str(root), "--run", "--round", "2", "--yes"])
+
+
+def test_a_round_two_models_read_through_a_run_passes_a_submission(
+    project: Path, monkeypatch
+) -> None:
+    """The baseline. Everything in the next test is meaningless if this fails."""
+    assert _run_round_two(project, monkeypatch) == 0
+    assert not _review_failures(project)
+    assert len(list(_round_two(project).glob("*.*.yaml"))) == 4
+
+
+@pytest.mark.parametrize("name", sorted(_RUNS_THAT_FALL_SHORT))
+def test_a_run_that_falls_short_fails_a_submission(project: Path, monkeypatch, name: str) -> None:
+    second, expected = _RUNS_THAT_FALL_SHORT[name]
+    code = _run_round_two(project, monkeypatch, second)
+    assert expected in _review_failures(project)
+    if expected == "reading-missing":
+        assert code == 1, "and the command itself says the round is not complete"
+        assert not list(_round_two(project).glob("*.mistral-model-b.yaml"))
+        assert len(list(_round_two(project).glob("*.openai-model-a.yaml"))) == 2
+
+
+def test_a_run_nobody_agreed_to_changes_nothing(project: Path, monkeypatch) -> None:
+    """Under a test nobody is there to be asked. Without `--yes`, nothing is sent, and the
+    project is left byte for byte as it was: no panel gains a reader it then waits for."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    sent: list = []
+    monkeypatch.setattr(client, "default_transport", lambda request, timeout: sent.append(1))
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-0123456789ABCDEF")
+    paper = project / "paper.yaml"
+    paper.write_bytes(
+        paper.read_bytes()
+        + (chr(10) + "review:" + chr(10) + "  models: [openai/model-a]" + chr(10)).encode()
+    )
+    before = {
+        path: path.read_bytes() for path in sorted(project.rglob("*")) if path.is_file()
+    }
+    assert main(["review", str(project), "--run", "--round", "2"]) == 2
+    assert sent == []
+    after = {path: path.read_bytes() for path in sorted(project.rglob("*")) if path.is_file()}
+    assert after == before
+    assert not _review_failures(project)

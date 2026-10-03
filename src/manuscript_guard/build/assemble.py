@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results, Table
 from manuscript_guard.contracts.values import Value
@@ -216,7 +217,7 @@ def check_shapes(project: Project) -> Report:
     """`refused_shapes` for every source file, so `check` refuses what the build would."""
     report = Report()
     for path in source_files(project.path("manuscript")):
-        report = report.with_findings(*refused_shapes(path, path.read_text(encoding="utf-8")))
+        report = report.with_findings(*refused_shapes(path, read_text(path)))
     return report
 
 
@@ -238,7 +239,7 @@ def assemble(
         from manuscript_guard.roundtrip import tag
 
         relative = path.relative_to(project.path("manuscript")).as_posix()
-        source = path.read_text(encoding="utf-8")
+        source = read_text(path)
         report = report.with_findings(*refused_shapes(path, source))
         # Built anyway, the header printed as text: the identifier in front of it hid it
         # from pandoc, which would have refused the file. `--skip-checks` does not reach this.

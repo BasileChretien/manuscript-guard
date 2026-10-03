@@ -428,9 +428,9 @@ def _readings(
                     "for, so it is not read or counted",
                     path=path,
                     hint=f"if it is a reading, add its reader to {name}'s `readers` in "
-                    f"{panel_path(project, number).name} "
-                    f"(`manuscript-guard review --record {name} --reading <reader>` does "
-                    "that when it files one). If it is a copy or a note, keep it outside "
+                    f"{panel_path(project, number).name} by hand: `manuscript-guard review "
+                    "--record` names a reader when it files the reading, and does not write "
+                    "over a file that is there. If it is a copy or a note, keep it outside "
                     "the round",
                 )
             )
@@ -505,7 +505,10 @@ def _superseded(round_: _Round, latest: int) -> Report:
 
 
 def rounds_required(project: Project) -> int:
-    return int(project.paper.get("review", {}).get("rounds_required", DEFAULT_ROUNDS_REQUIRED))
+    # `setting`, so a `review:` the schema refuses is the schema's finding and not a crash
+    # here: `review: [1]` has no `get`, and `rounds_required: two` is no number.
+    review = project.setting("review") or {}
+    return int(review.get("rounds_required", DEFAULT_ROUNDS_REQUIRED))
 
 
 def check_review(project: Project, *, submission: bool = False) -> Report:

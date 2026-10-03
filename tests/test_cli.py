@@ -331,11 +331,14 @@ def test_build_refuses_while_a_gate_fails(project: Path) -> None:
 FRONT_MATTER = {
     "a keyword with quotation marks": ("keywords", 'say "hi" there', "hi"),
     "a keyword with TeX in it": ("keywords", r"$\alpha$-synuclein", "synuclein"),
-    "a keyword with a backslash": ("keywords", r"TNF\alpha signalling", "signalling"),
+    "a keyword with a backslash": ("keywords", r"5\% of TNF signalling", "signalling"),
     "a list of keywords with TeX in it": ("keywords", [r"$\alpha$-synuclein", "signal"], "signal"),
-    "a title with both": ("title", r'The "weekend effect" in TNF\alpha signalling', "weekend"),
-    "a short title with both": ("short_title", r'"Weekend" and TNF\alpha', "Weekend"),
+    "a title with both": ("title", r'The "weekend effect" in TNF$\alpha$ signalling', "weekend"),
+    "a short title with both": ("short_title", r'"Weekend" and TNF$\alpha$', "Weekend"),
 }
+# Three of these rows held `TNF\alpha` outside dollar signs until that became a finding and
+# a refusal of the build's (`TEX_OUTSIDE` below): the document was readable, and printed
+# without the `\alpha`.
 
 
 @needs_pandoc
@@ -529,6 +532,146 @@ def test_import_takes_back_a_document_built_before_the_lost_letter_was_refused(
         assert run("build", str(project), "--offline") == 0
     sent = project / "build" / "manuscript.docx"
     capsys.readouterr()
+
+    assert run("import", str(sent), str(project)) == 0
+    assert "nothing came back" in capsys.readouterr().out
+
+
+#: TeX outside dollar signs in what the build prints of `paper.yaml`: what replaces which
+#: line of the example's, the place `check` names and the command it names there. Pandoc
+#: reads each value as Markdown and the Word writer keeps TeX only as maths, so each passed
+#: `check` and a checked build and was printed without the command, and without the number
+#: after it where there is one.
+TEX_OUTSIDE = {
+    "a title": (
+        "title: ",
+        "title: 'IFN-" + chr(92) + "gamma release assays in hepatic injury'",
+        "title",
+        chr(92) + "gamma",
+    ),
+    "a short title with a number after the command": (
+        "short_title: ",
+        "short_title: 'Injury at 12 " + chr(92) + "pm 3 months'",
+        "short_title",
+        chr(92) + "pm",
+    ),
+    "a keyword": (
+        "  - pharmacovigilance",
+        "  - TNF" + chr(92) + "alpha signalling",
+        "keywords/0",
+        chr(92) + "alpha",
+    ),
+}
+
+
+def _with_line(project: Path, starts: str, written: str) -> None:
+    """The example's `paper.yaml` with the one line that starts with `starts` replaced."""
+    paper = project / "paper.yaml"
+    lines = paper.read_text(encoding="utf-8").split(chr(10))
+    (at,) = [index for index, line in enumerate(lines) if line.startswith(starts)]
+    lines[at] = written
+    paper.write_text(chr(10).join(lines), encoding="utf-8")
+
+
+@pytest.mark.parametrize("stage", ["design", "drafting", "submission"])
+@pytest.mark.parametrize("case", list(TEX_OUTSIDE))
+def test_tex_outside_dollar_signs_is_refused_by_check_at_every_stage_and_by_the_build(
+    case: str, stage: str, project: Path, capsys
+) -> None:
+    starts, written, where, command = TEX_OUTSIDE[case]
+    _with_line(project, starts, written)
+    paper = project / "paper.yaml"
+    paper.write_text(
+        paper.read_text(encoding="utf-8") + chr(10) + f"stage: {stage}" + chr(10),
+        encoding="utf-8",
+    )
+    # A keyword is printed in the document's properties only, where maths is written as
+    # its TeX, so there the remedy is the character itself.
+    remedy = (
+        "type the character it stands for" if where.startswith("keywords")
+        else f"write `${command}$`"
+    )
+    says = (
+        f"`{command}` stands outside dollar signs, and the document is printed without it; "
+        f"{remedy}"
+    )
+
+    assert run("check", str(project)) == 1
+    assert f"{where}: {says}" in capsys.readouterr().out
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 2
+    said = capsys.readouterr().err
+    assert "paper.yaml" in said
+    assert f"`{where.split('/')[0]}`: {says}" in said
+    assert "between dollar signs" in said
+    assert "Traceback" not in said
+    assert not list((project / "build").glob("*.docx"))
+
+
+@needs_pandoc
+def test_the_same_title_with_its_tex_between_dollar_signs_builds_with_the_letter(
+    project: Path,
+) -> None:
+    import zipfile
+
+    _with_line(project, "title: ", "title: 'IFN-$" + chr(92) + "gamma$ release assays'")
+
+    assert run("check", str(project)) == 0
+    assert run("build", str(project), "--offline") == 0
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as docx:
+        body = docx.read("word/document.xml").decode("utf-8")
+    assert chr(0x3B3) in body, "the gamma, as the maths Word shows"
+
+
+@needs_pandoc
+def test_a_keyword_with_maths_is_printed_as_its_tex_and_one_with_the_character_as_typed(
+    project: Path,
+) -> None:
+    """Why the finding tells a keyword to hold the character: a keyword is printed in the
+    document's properties only, and pandoc writes maths there as its TeX."""
+    import re
+    import zipfile
+
+    alpha = chr(0x3B1)
+    _with_line(project, "  - pharmacovigilance", "  - TNF$" + chr(92) + "alpha$ signalling")
+    _with_line(project, "  - disproportionality", "  - TNF" + alpha + " inhibitors")
+
+    assert run("check", str(project)) == 0
+    assert run("build", str(project), "--offline") == 0
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as docx:
+        properties = docx.read("docProps/core.xml").decode("utf-8")
+        body = docx.read("word/document.xml").decode("utf-8")
+    keywords = re.search("<cp:keywords>(.*?)</cp:keywords>", properties, re.S)
+    assert keywords is not None
+    assert keywords[1].split(", ")[:2] == [
+        "TNF" + chr(92) + "alpha signalling",
+        "TNF" + alpha + " inhibitors",
+    ]
+    assert "signalling" not in body, "the text of the document prints no keyword"
+
+
+@needs_pandoc
+def test_import_takes_back_a_document_built_before_tex_outside_dollar_signs_was_refused(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """As for a lost letter: `import` builds the source again to compare the returned
+    document with, and a refusal newer than the document is not import's to enforce. The
+    title was printed without its `\\gamma` when the document went out, and builds so again."""
+    from manuscript_guard.build import document
+    from manuscript_guard.contracts import project as contract
+
+    _with_line(project, "title: ", "title: 'IFN-" + chr(92) + "gamma release assays'")
+
+    with monkeypatch.context() as before:  # as the tool was before the refusal
+        before.setattr(document, "outside_maths", lambda text, **how: None)
+        before.setattr(contract, "outside_maths", lambda text, **how: None)
+        assert run("build", str(project), "--offline") == 0
+    sent = project / "build" / "manuscript.docx"
+    capsys.readouterr()
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 2, "refused now"
+    capsys.readouterr()
+    assert sent.is_file(), "and the document that went out is still there"
 
     assert run("import", str(sent), str(project)) == 0
     assert "nothing came back" in capsys.readouterr().out

@@ -379,10 +379,16 @@ def refused_path(project: Project, plan: Plan, call: Call) -> Path:
     return round_dir(project, plan.round) / REFUSED_DIR / f"{call.filename}.txt"
 
 
+#: Held while the `refused/` folder is written to or tidied away. Providers are asked side
+#: by side: one provider's reading was filed, and the folder, empty, taken away, between the
+#: moment another made the folder and the moment it wrote its refused reply there, which
+#: was lost.
+_REFUSED_FOLDER = threading.Lock()
+
+
 def _keep(project: Project, plan: Plan, call: Call, why: str, text: str, today: date) -> Path:
     """Keep a refused reply where the author can read it and no gate will."""
     path = refused_path(project, plan, call)
-    path.parent.mkdir(parents=True, exist_ok=True)
     note = (
         f"This is not a review record. It is the reply {call.model.reader} gave when asked "
         f"to read {call.reviewer}'s remit\nin round {plan.round} on {today.isoformat()}, "
@@ -390,17 +396,20 @@ def _keep(project: Project, plan: Plan, call: Call, why: str, text: str, today: 
         "Nothing here is counted by any check. Delete it when you have read it.\n"
         f"{'-' * 72}\n{text}\n"
     )
-    # A reply can hold half of a surrogate pair, which no file can: it is kept as `?`.
-    path.write_bytes(note.encode("utf-8", errors="replace"))
+    with _REFUSED_FOLDER:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # A reply can hold half of a surrogate pair, which no file can: it is kept as `?`.
+        path.write_bytes(note.encode("utf-8", errors="replace"))
     return path
 
 
 def _forget(project: Project, plan: Plan, call: Call) -> None:
     """A reading that is now filed has no refused reply worth keeping."""
     path = refused_path(project, plan, call)
-    path.unlink(missing_ok=True)
-    if path.parent.is_dir() and not any(path.parent.iterdir()):
-        path.parent.rmdir()
+    with _REFUSED_FOLDER:
+        path.unlink(missing_ok=True)
+        if path.parent.is_dir() and not any(path.parent.iterdir()):
+            path.parent.rmdir()
 
 
 def _clean(text: str, keys: list[str]) -> str:

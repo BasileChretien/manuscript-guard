@@ -1246,3 +1246,41 @@ def test_the_question_for_a_model_ollama_runs_here_names_only_this_machine(
     monkeypatch.setattr("builtins.input", lambda prompt="": asked.append(prompt) or "no")
     assert run(project) == 2
     assert "localhost:11434" in asked[0] and "Ollama's servers" not in asked[0]
+
+
+def test_a_refused_reply_is_kept_while_another_reading_is_filed_at_the_same_moment(
+    unreviewed: Path, providers: Providers, monkeypatch
+) -> None:
+    """Providers are asked side by side. One's reading was filed and the `refused/` folder,
+    empty, was taken away, between the moment the other made that folder and the moment it
+    wrote its refused reply into it: the reply was lost, and a run kept three of four. Seen
+    in CI on macOS. The two are now one at a time."""
+    import threading
+    from datetime import date
+
+    from manuscript_guard.panel import run as running
+    from manuscript_guard.panel.plan import make_plan
+
+    project = loaded(unreviewed)
+    plan = make_plan(project)
+    refused, filed = plan.calls[0], plan.calls[1]
+    real_write = Path.write_bytes
+    forgotten = threading.Event()
+
+    def forget() -> None:
+        running._forget(project, plan, filed)
+        forgotten.set()
+
+    def written_while_another_forgets(self, data):
+        if self.parent.name == running.REFUSED_DIR and not forgotten.is_set():
+            other = threading.Thread(target=forget)
+            other.start()
+            # Long enough for the other to take the folder away, if nothing stops it.
+            other.join(0.5)
+        return real_write(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", written_while_another_forgets)
+    kept = running._keep(project, plan, refused, "it was prose", "the reply", date(2026, 1, 1))
+    assert forgotten.wait(10)
+    monkeypatch.undo()
+    assert kept.read_text(encoding="utf-8").rstrip().endswith("the reply")

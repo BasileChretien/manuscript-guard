@@ -1304,7 +1304,10 @@ panel's lock. One version asked whether a reviewer was on the panel before askin
 the lock, so that a refusal would leave no folder behind; a writer rewriting the panel
 empties the file first, and a reading for a reviewer who was on it was refused, about
 three times in a thousand calls made at once. That question is now asked early only
-where there was no `review/` when it looked, and so no panel for it to read.
+where there was no `review/` when it looked. A writer can still make `review/` and a
+panel between that look and the read. A refusal from it is then the one the call would
+have had if it had come first, so it is never a wrong one; a panel that names the
+reviewer lets the call go on to the lock.
 The record itself is written by exclusive create, so two calls for one reader cannot both
 succeed.
 
@@ -4210,16 +4213,19 @@ Closed since, and why each mattered:
   since a record has a field called `rejection_tests`, and at eight `sk-no-key-required`
   refused each review that said `required`. What a provider says of itself is held to
   four, and a printed message has every run of four taken out.
-- **Some readers of a panel do not hold its lock.** A writer rewriting a panel empties
-  the file before filling it, and a reader in that instant finds it empty. `review
-  --record` holds the lock of its own round's panel, but a reviewer called without a
-  remit has it looked up in the earlier rounds' panels, which are read without theirs:
-  with round one's panel being rewritten at that moment, the call is refused for want of
-  a remit, in words, and run again it files. `review --run` builds its plan from the
-  panel before it takes the lock, and a panel read empty there stops the run with "not a
-  valid panel, so nothing is sent". G11 and `check` read panels with no lock at all, and
-  can report an emptied one as malformed until the writer finishes. Each needs two writes
-  at the same instant, and none writes anything wrong.
+- **Some readers of a panel do not hold its lock.** A writer rewriting a panel empties the
+  file before filling it, and a reader in that instant finds it empty. `review --record`
+  holds the lock of its own round's panel, but a reviewer who is not on it yet and is
+  called without a remit has it looked up in the earlier rounds' panels, which are read
+  without theirs, the latest that names the reviewer first. With that panel being
+  rewritten at that moment, the call is refused for want of a remit, in words, and run
+  again it files; but if an older panel names the reviewer too, the call files at once
+  with that older round's remit, which the new panel then carries without a word. `review
+  --run` builds its plan from the panel before it takes the lock, and a panel read empty
+  there stops the run with "not a valid panel, so nothing is sent". G11 and `check` read
+  panels with no lock at all, and can report an emptied one as malformed until the writer
+  finishes. Each needs two writes at the same instant, and only the older remit is written
+  down.
 - **The panel's lock is a file, and a file can be left behind.** A writer that dies holding
   it stops the others for up to two minutes, after which the lock is taken as abandoned;
   the message names the file to delete sooner. Two writers that both find an abandoned lock
@@ -4230,6 +4236,12 @@ Closed since, and why each mattered:
 - **On a file system with no hard links a record is not written through a temporary
   file.** It is created exclusively, so an existing record is still never replaced, but a
   write that is cut short can leave part of a record, which G11 then reports as unreadable.
+- **Two runs of one round at once are not prevented.** Each asks for every reading that
+  is not on file, so each missing one is paid for twice. A record is never replaced: the
+  second reply for a reading is refused as one that already exists, and kept under
+  `refused/` to read. The lock that keeps one run's threads from taking that folder away
+  from each other is the process's own; between two processes the write is tried again
+  once in a folder made again.
 - **A provider is asked one call at a time and there is no pacing beyond that.** A rate
   limit is waited out twice, as the provider's `Retry-After` says, and then the reading is
   left missing for the next run.

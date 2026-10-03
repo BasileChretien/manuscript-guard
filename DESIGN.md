@@ -1301,7 +1301,12 @@ is read and written. A writer waits up to thirty seconds for it and then refuses
 that name the file; a lock older than two minutes is taken for one its writer left behind.
 A folder that cannot be written to makes no lock and leaves none to wait for: that is
 refused after two seconds, where the first version tried again without a pause and
-without an end.
+without an end. `review --record` reads its own round's panel only while it holds that
+panel's lock. One version asked whether a reviewer was on the panel before asking for
+the lock, so that a refusal would leave no folder behind; a writer rewriting the panel
+empties the file first, and a reading for a reviewer who was on it was refused, about
+three times in a thousand calls made at once. That question is now asked early only
+where there was no `review/` when it looked, and so no panel for it to read.
 The record itself is written by exclusive create, so two calls for one reader cannot both
 succeed.
 
@@ -3421,6 +3426,19 @@ of whoever is running it.
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
+- **The figure-caption style reads one convention and nothing else.** The paragraph after a
+  figure is set in `Figure Caption` (10 pt against 12 pt) when its text opens "Figure 1.",
+  "Figure 4:" or "Figure S1."; the stop or colon has to come right after the number, so that
+  prose resuming under a figure ("Figure 1 shows ...", "Figure 2.5-fold higher ...") is left
+  as prose. A no-break space between the word and the number is read as a space. The cost: a
+  caption written "Fig. 1.", "Figure one." or with a chapter-style number ("Figure 1.1."), a
+  caption separated from its figure by a comment, and a caption under an image that shares its
+  paragraph with other text are all left at body size. A figure that carries pandoc's own caption
+  (`![caption](path)`) keeps `Image Caption`, which the reference document does not size
+  either, and a caption inside a block quotation takes `Figure Caption` in place of
+  `Block Text` and so loses the quotation's indent. The style is added to the author's own
+  `reference.docx` from pandoc's user data directory when there is one, and skipped when that
+  file already defines `FigureCaption`; table captions are untouched.
 - **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and
@@ -4201,6 +4219,16 @@ Closed since, and why each mattered:
   since a record has a field called `rejection_tests`, and at eight `sk-no-key-required`
   refused each review that said `required`. What a provider says of itself is held to
   four, and a printed message has every run of four taken out.
+- **Some readers of a panel do not hold its lock.** A writer rewriting a panel empties
+  the file before filling it, and a reader in that instant finds it empty. `review
+  --record` holds the lock of its own round's panel, but a reviewer called without a
+  remit has it looked up in the earlier rounds' panels, which are read without theirs:
+  with round one's panel being rewritten at that moment, the call is refused for want of
+  a remit, in words, and run again it files. `review --run` builds its plan from the
+  panel before it takes the lock, and a panel read empty there stops the run with "not a
+  valid panel, so nothing is sent". G11 and `check` read panels with no lock at all, and
+  can report an emptied one as malformed until the writer finishes. Each needs two writes
+  at the same instant, and none writes anything wrong.
 - **The panel's lock is a file, and a file can be left behind.** A writer that dies holding
   it stops the others for up to two minutes, after which the lock is taken as abandoned;
   the message names the file to delete sooner. Two writers that both find an abandoned lock

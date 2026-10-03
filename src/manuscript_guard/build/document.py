@@ -23,11 +23,13 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from manuscript_guard.build.styles import reference_with
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.findings import WARN, Finding, Report
 
@@ -57,6 +59,10 @@ OFFLINE = "offline"
 # field and document preferences Word's Zotero plugin needs, which zotero.lua writes for
 # LibreOffice only. See the file's header.
 ZOTERO_WORD_LUA = Path(__file__).with_name("zotero_word.lua")
+
+# Also ours, run on every docx build: the paragraph after a figure is styled as its caption,
+# so a reader can see where the caption ends. See the file's header and `build/styles.py`.
+FIGURE_CAPTION_LUA = Path(__file__).with_name("figure_caption.lua")
 ZOTERO_STYLES = "http://www.zotero.org/styles/"
 
 
@@ -93,8 +99,8 @@ def abbreviations() -> frozenset[str]:
     not treat as an abbreviation would come back plain. The build passes no `--data-dir`; if
     it ever does, this must read that directory too.
     """
-    found = re.search(r"^User data directory:\s*(.+?)\s*$", _pandoc_says("--version"), re.M)
-    own = Path(found.group(1)) / "abbreviations" if found else None
+    directory = user_data_dir()
+    own = directory / "abbreviations" if directory is not None else None
     if own is not None and own.is_file():
         # Bytes, not text: read as text, a lone carriage return already ended a line.
         text = own.read_bytes().decode("utf-8")
@@ -107,10 +113,24 @@ def abbreviations() -> frozenset[str]:
     return frozenset(line for line in lines if line)
 
 
-def _pandoc_says(*args: str) -> str:
+def user_data_dir(exe: str | None = None) -> Path | None:
+    """Pandoc's user data directory, as pandoc itself reports it.
+
+    Asking pandoc is what makes this right on every platform and under XDG_DATA_HOME, and
+    `_pandoc_says` reads the answer as UTF-8, which is what pandoc prints: read through the
+    console code page instead, a Windows account named Zoë comes back as ZoÃ« and the
+    directory is silently not found. The build passes no `--data-dir`; if it ever does, this
+    must read that directory too.
+    """
+    printed = _pandoc_says("--version", exe=exe)
+    found = re.search(r"^User data directory:\s*(.+?)\s*$", printed, re.M)
+    return Path(found.group(1)) if found else None
+
+
+def _pandoc_says(*args: str, exe: str | None = None) -> str:
     """What pandoc prints for `args`."""
     finished = subprocess.run(
-        [pandoc(), *args], capture_output=True, text=True, encoding="utf-8"
+        [exe or pandoc(), *args], capture_output=True, text=True, encoding="utf-8"
     )
     if finished.returncode != 0:
         raise BuildError(f"pandoc {' '.join(args)} failed:\n{finished.stderr.strip()}")
@@ -277,12 +297,18 @@ def build_document(
     csl: Path | None = None,
     output: Path | None = None,
     reference_doc: Path | None = None,
+    stamp: bool = True,
     prologue: str = "",
     epilogue: str = "",
     supplementary: bool = False,
     verify_reading: bool = True,
 ) -> BuildResult:
-    """Make the document. `verify_reading` asks pandoc first whether it reads the sources
+    """Make the document.
+
+    `stamp` writes the record of which text the document was built from, and there must be
+    exactly one document carrying it: the annotated copy passes `stamp=False`.
+
+    `verify_reading` asks pandoc first whether it reads the sources
     as the gates do (`reading.misreading`). Two builds go without: `import`, rebuilding a
     document already sent in order to compare the returned one with it, since refusing
     there stranded a document a co-author was holding; and the annotated copy, which is for
@@ -359,8 +385,27 @@ def build_document(
             "the document is not built; `check` cannot see this, and the build asks pandoc."
         )
     command = [pandoc(), "--standalone", str(source.resolve()), "-o", str(output.resolve())]
-    if reference_doc is not None:
-        command += [f"--reference-doc={reference_doc.resolve()}"]
+    # The caller's reference document (the annotated build adds its highlight styles to one),
+    # or one generated here for the figure-caption style alone.
+    # A generated reference document of this build's own, removed when pandoc has read it.
+    # One shared name meant two builds of a project at once - or a build and an `import`,
+    # which builds twice - truncated the file the other was reading, or deleted it: pandoc
+    # read half a .docx ("not enough bytes") or the unlink raised. `roundtrip._put` keeps its
+    # intermediates apart for the same reason. Nothing is left behind either way.
+    generated: Path | None = None
+    if reference_doc is None:
+        cache = build_dir / ".cache"
+        cache.mkdir(parents=True, exist_ok=True)
+        handle, named = tempfile.mkstemp(prefix="reference-", suffix=".docx", dir=cache)
+        os.close(handle)
+        generated = Path(named)
+        reference = reference_with(pandoc(), generated)
+    else:
+        reference = reference_doc
+    command += [
+        f"--reference-doc={reference.resolve()}",
+        f"--lua-filter={FIGURE_CAPTION_LUA.resolve()}",
+    ]
     report = Report()
 
     if mode == LIVE:
@@ -378,7 +423,13 @@ def build_document(
         if csl is not None:
             command += [f"--csl={relative_to_root(project, csl.resolve())}"]
 
-    finished = subprocess.run(command, capture_output=True, text=True, cwd=root)
+    try:
+        finished = subprocess.run(command, capture_output=True, text=True, cwd=root)
+    finally:
+        # Pandoc has read it, or has failed: either way this build's copy goes, so nothing
+        # accumulates in the cache and no other build can read a file this one is writing.
+        if generated is not None:
+            generated.unlink(missing_ok=True)
     if finished.returncode != 0:
         raise BuildError(f"pandoc failed:\n{finished.stderr.strip()}")
     if finished.stderr.strip():
@@ -397,7 +448,7 @@ def build_document(
         report = report.merge(_verify_live_fields(output))
     # Not the annotated copy: the stamp is what `check` reads to decide whether the
     # document a co-author opens is current, and there must be exactly one such document.
-    if reference_doc is None:
+    if stamp:
         _stamp_source(project, output)
         # And inside the file, where it can survive being emailed. The sidecar answers
         # "is my build current"; this answers "which text were these edits made against",

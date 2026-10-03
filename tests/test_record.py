@@ -540,8 +540,11 @@ def test_a_lock_left_behind_that_cannot_be_removed_is_refused_in_words(
     os.utime(lock, (LONG_AGO, LONG_AGO))
     real = Path.unlink
 
+    tried: list[str] = []
+
     def held(self, *args, **how):
         if self.name.endswith(".lock"):
+            tried.append(self.name)
             raise PermissionError(13, "in use", str(self))
         return real(self, *args, **how)
 
@@ -550,6 +553,9 @@ def test_a_lock_left_behind_that_cannot_be_removed_is_refused_in_words(
     with pytest.raises(RecordError, match="panel-1.yaml.lock"):
         write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x")
     assert lock.exists()
+    # The wait ends when this test says, not at thirty seconds: about seven tries in a
+    # third of a second, and six hundred in thirty. Counted, so that no clock is read.
+    assert 1 <= len(tried) < 100, len(tried)
 
 
 def test_a_record_that_is_refused_leaves_no_folder_behind(unreviewed: Path) -> None:
@@ -641,3 +647,53 @@ def test_six_records_refused_at_the_same_moment_are_each_refused_in_words(
         assert process.returncode == 2, said
         assert "--remit" in said and "Traceback" not in said
     assert not (unreviewed / "review").exists()
+
+
+def test_a_reviewer_on_the_panel_is_not_refused_while_the_panel_is_being_rewritten(
+    unreviewed: Path, monkeypatch
+) -> None:
+    """A writer that holds the panel empties the file and then fills it. A second writer
+    read it in that instant, before asking for the lock, found no reviewers, and refused a
+    reading for a reviewer who is on the panel: `'statistics' is not on any panel before
+    round 1. Pass --remit`. Six readings filed at once lost one that way, now and then.
+    Found by the final check of the run; the panel is read under its lock again."""
+    import threading
+    import time
+
+    from manuscript_guard import record
+
+    write_review(loaded(unreviewed), "statistics", verdict="pass", remit="the analysis")
+    project = loaded(unreviewed)
+    panel = unreviewed / "review" / "panel-1.yaml"
+    whole = panel.read_bytes()
+    said: list[str] = []
+    waiting = threading.Event()
+    takes: list[int] = []
+    real_take = record._take
+
+    def take(lock, panel_file):
+        takes.append(1)
+        if len(takes) == 2:
+            waiting.set()
+        return real_take(lock, panel_file)
+
+    monkeypatch.setattr(record, "_take", take)
+
+    def second() -> None:
+        try:
+            write_review(project, "statistics", verdict="pass", reading="reader-1")
+            said.append("filed")
+        except BaseException as exc:  # noqa: BLE001 - the test reports whatever it was
+            said.append(f"{type(exc).__name__}: {exc}")
+
+    thread = threading.Thread(target=second)
+    with record.panel_lock(panel):
+        panel.write_bytes(b"")
+        thread.start()
+        # Until the second writer is waiting for the lock, or has given up.
+        while thread.is_alive() and not waiting.is_set():
+            time.sleep(0.01)
+        panel.write_bytes(whole)
+    thread.join(60)
+    assert said == ["filed"], said
+    assert read_structured(panel)["reviewers"][0]["readers"] == ["reader-1"]

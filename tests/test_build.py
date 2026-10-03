@@ -272,3 +272,280 @@ def test_gates_and_build_agree_on_the_example(project: Path) -> None:
     assembled, report = assemble(proj, namespace, results)
     assert report.ok
     assert build_document(proj, assembled, mode=OFFLINE).output.exists()
+
+
+# ---------------------------------------------------------------- figure captions
+
+
+def _styles(path: Path) -> str:
+    return zipfile.ZipFile(path).read("word/styles.xml").decode("utf-8", "replace")
+
+
+def _paragraphs(path: Path) -> list[str]:
+    import re
+
+    xml = zipfile.ZipFile(path).read("word/document.xml").decode("utf-8", "replace")
+    return re.findall(r"<w:p[ >].*?</w:p>", xml, re.DOTALL)
+
+
+def _captioned(project: Path) -> Path:
+    """The example, cut down to a figure with a caption and two ordinary paragraphs."""
+    (project / "manuscript" / "main.md").write_text(
+        "# Results\n\nOrdinary prose before the figure.\n\n{{figure.forest}}\n\n"
+        "**Figure 1.** What the figure shows, at length.\n\n"
+        "Figure 1 is discussed in this paragraph, which is not a caption.\n",
+        encoding="utf-8",
+    )
+    proj, namespace, results, _lit = loaded(project)
+    assembled, report = assemble(proj, namespace, results)
+    assert report.ok, report.render(project)
+    return build_document(proj, assembled, mode=OFFLINE).output
+
+
+@needs_pandoc
+def test_the_caption_after_a_figure_is_styled_smaller(project: Path) -> None:
+    """A caption set in the body font leaves a reader nothing to tell caption from text."""
+    import re
+
+    output = _captioned(project)
+    styles = _styles(output)
+    assert 'w:styleId="FigureCaption"' in styles, "the style must be defined in the document"
+    caption = re.search(r'<w:style [^>]*w:styleId="FigureCaption".*?</w:style>', styles, re.DOTALL)
+    assert caption is not None
+    size = re.search(r'<w:sz w:val="(\d+)"', caption.group(0))
+    assert size is not None, "a caption style that sets no size is not smaller than anything"
+    default = re.search(r"<w:docDefaults>.*?<w:sz w:val=\"(\d+)\"", styles, re.DOTALL)
+    assert default is not None
+    assert int(size.group(1)) < int(default.group(1)), "the caption must be the smaller size"
+
+    styled = [p for p in _paragraphs(output) if 'w:val="FigureCaption"' in p]
+    assert len(styled) == 1, "exactly the one caption"
+    assert "What the figure shows" in "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", styled[0]))
+
+
+@needs_pandoc
+def test_a_paragraph_that_follows_no_figure_is_not_a_caption(project: Path) -> None:
+    """The rule is position, not the word "Figure": prose that mentions a figure is prose."""
+    import re
+
+    output = _captioned(project)
+    for paragraph in _paragraphs(output):
+        text = "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", paragraph))
+        if "is discussed in this paragraph" in text or "prose before the figure" in text:
+            assert 'w:val="FigureCaption"' not in paragraph
+
+
+@needs_pandoc
+def test_the_ordinary_build_still_records_its_source(project: Path) -> None:
+    """The build now always hands pandoc a reference document, and the stamp that tells a
+    co-author's document from a current one must not be what distinguishes the two builds."""
+    from manuscript_guard.build.document import SOURCE_STAMP
+
+    output = _captioned(project)
+    assert output.with_name(output.name + SOURCE_STAMP).is_file()
+
+
+@needs_pandoc
+def test_prose_directly_after_a_figure_is_not_set_as_its_caption(project: Path) -> None:
+    """The argument resumes under a figure as often as a caption opens there."""
+    import re
+
+    (project / "manuscript" / "main.md").write_text(
+        "# Results\n\nOrdinary prose before the figure.\n\n{{figure.forest}}\n\n"
+        "Figure 1 shows the estimate with its interval, and this sentence is the argument "
+        "resuming, not a caption.\n",
+        encoding="utf-8",
+    )
+    proj, namespace, results, _lit = loaded(project)
+    assembled, report = assemble(proj, namespace, results)
+    assert report.ok, report.render(project)
+    output = build_document(proj, assembled, mode=OFFLINE).output
+    found = [
+        p
+        for p in _paragraphs(output)
+        if "the argument resuming" in "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", p))
+    ]
+    assert len(found) == 1
+    assert 'w:val="FigureCaption"' not in found[0], "prose was set in the caption style"
+
+
+@needs_pandoc
+def test_a_fold_change_under_a_figure_is_not_a_caption(project: Path) -> None:
+    """"Figure 2.5-fold higher ..." opens with a figure number only if the stop is not read."""
+    import re
+
+    (project / "manuscript" / "main.md").write_text(
+        "# Results\n\n{{figure.forest}}\n\nFigure 2.5-fold higher than the comparator, which "
+        "is a sentence about a ratio.\n",
+        encoding="utf-8",
+    )
+    proj, namespace, results, _lit = loaded(project)
+    assembled, report = assemble(proj, namespace, results)
+    assert report.ok, report.render(project)
+    output = build_document(proj, assembled, mode=OFFLINE).output
+    found = [
+        p
+        for p in _paragraphs(output)
+        if "a sentence about a ratio" in "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", p))
+    ]
+    assert len(found) == 1
+    assert 'w:val="FigureCaption"' not in found[0]
+
+
+@needs_pandoc
+def test_the_authors_own_reference_document_still_styles_the_build(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Passing --reference-doc tells pandoc to ignore the author's own one, so the build has
+    to start from it. It is the only way this toolkit lets anyone set the typography."""
+    import subprocess
+
+    home = tmp_path / "data-home"
+    (home / "pandoc").mkdir(parents=True)
+    default = subprocess.run(
+        ["pandoc", "--print-default-data-file", "reference.docx"], capture_output=True, check=True
+    ).stdout
+    scratch = tmp_path / "default.docx"
+    scratch.write_bytes(default)
+    house = (
+        '<w:style w:type="paragraph" w:customStyle="1" w:styleId="HouseStyle">'
+        '<w:name w:val="House Style"/><w:basedOn w:val="Normal"/></w:style>'
+    )
+    with (
+        zipfile.ZipFile(scratch) as zin,
+        zipfile.ZipFile(home / "pandoc" / "reference.docx", "w", zipfile.ZIP_DEFLATED) as zout,
+    ):
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/styles.xml":
+                data = data.decode("utf-8").replace("</w:styles>", house + "</w:styles>").encode()
+            zout.writestr(item, data)
+    monkeypatch.setenv("XDG_DATA_HOME", str(home))
+
+    proj, namespace, results, _lit = loaded(project)
+    assembled, report = assemble(proj, namespace, results)
+    assert report.ok
+    output = build_document(proj, assembled, mode=OFFLINE).output
+    assert "HouseStyle" in _styles(output), "the author's reference document was not used"
+    assert 'w:styleId="FigureCaption"' in _styles(output), "and the caption style with it"
+
+
+@needs_pandoc
+def test_an_authors_own_caption_style_is_not_overridden(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two definitions of one style id is not a document, and theirs is the one to keep."""
+    import re
+    import subprocess
+
+    home = tmp_path / "data-home"
+    (home / "pandoc").mkdir(parents=True)
+    default = subprocess.run(
+        ["pandoc", "--print-default-data-file", "reference.docx"], capture_output=True, check=True
+    ).stdout
+    scratch = tmp_path / "default.docx"
+    scratch.write_bytes(default)
+    theirs = (
+        '<w:style w:type="paragraph" w:customStyle="1" w:styleId="FigureCaption">'
+        '<w:name w:val="Figure Caption"/><w:basedOn w:val="Normal"/>'
+        '<w:rPr><w:sz w:val="18"/></w:rPr></w:style>'
+    )
+    with (
+        zipfile.ZipFile(scratch) as zin,
+        zipfile.ZipFile(home / "pandoc" / "reference.docx", "w", zipfile.ZIP_DEFLATED) as zout,
+    ):
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/styles.xml":
+                data = data.decode("utf-8").replace("</w:styles>", theirs + "</w:styles>").encode()
+            zout.writestr(item, data)
+    monkeypatch.setenv("XDG_DATA_HOME", str(home))
+
+    output = _captioned(project)
+    styles = _styles(output)
+    assert styles.count('w:styleId="FigureCaption"') == 1, "one definition, not two"
+    defined = re.search(r'<w:style [^>]*w:styleId="FigureCaption".*?</w:style>', styles, re.DOTALL)
+    assert defined is not None
+    assert '<w:sz w:val="18"/>' in defined.group(0).replace(" />", "/>"), "theirs, at 9 pt"
+
+
+@needs_pandoc
+def test_a_build_that_brings_a_reference_document_is_still_stamped(project: Path) -> None:
+    """`stamp` and "has a reference document" are now two different questions, and the stamp
+    is what tells a co-author's document from a current one."""
+    from manuscript_guard.build.document import SOURCE_STAMP, pandoc
+    from manuscript_guard.build.styles import reference_with
+
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    reference = reference_with(pandoc(), project / "build" / ".cache" / "brought-in.docx")
+
+    kept = build_document(proj, assembled, mode=OFFLINE, reference_doc=reference)
+    assert kept.output.with_name(kept.output.name + SOURCE_STAMP).is_file()
+
+    unstamped = project / "build" / "unstamped.docx"
+    built = build_document(proj, assembled, mode=OFFLINE, output=unstamped, stamp=False)
+    assert not built.output.with_name(built.output.name + SOURCE_STAMP).exists()
+
+
+@needs_pandoc
+@pytest.mark.parametrize("name", ["data home", "Zoë"])
+def test_the_authors_reference_document_is_found_wherever_their_home_is(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """Pandoc prints the path in UTF-8. Read through the console code page, a home directory
+    spelt with any other letter came back mojibake, the file was not found, and the build
+    went quietly back to pandoc's default."""
+    import io
+    import subprocess
+
+    home = tmp_path / name
+    (home / "pandoc").mkdir(parents=True)
+    default = subprocess.run(
+        ["pandoc", "--print-default-data-file", "reference.docx"], capture_output=True, check=True
+    ).stdout
+    house = (
+        b'<w:style w:type="paragraph" w:styleId="HouseStyle">'
+        b'<w:name w:val="House Style"/></w:style>'
+    )
+    with (
+        zipfile.ZipFile(io.BytesIO(default)) as zin,
+        zipfile.ZipFile(home / "pandoc" / "reference.docx", "w") as zout,
+    ):
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/styles.xml":
+                data = data.replace(b"</w:styles>", house + b"</w:styles>")
+            zout.writestr(item, data)
+    monkeypatch.setenv("XDG_DATA_HOME", str(home))
+
+    proj, namespace, results, _lit = loaded(project)
+    assembled, report = assemble(proj, namespace, results)
+    assert report.ok
+    output = build_document(proj, assembled, mode=OFFLINE).output
+    assert b"HouseStyle" in zipfile.ZipFile(output).read("word/styles.xml")
+
+
+@needs_pandoc
+def test_two_builds_of_one_project_at_once_do_not_collide(project: Path) -> None:
+    """The generated reference document used to have one name per project, so a second build
+    truncated the file the first was reading, or deleted it: pandoc read half a .docx, or the
+    unlink raised. `import` builds twice, and an agent runs tool calls in parallel."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+
+    def build(n: int) -> Path:
+        return build_document(
+            proj, assembled, mode=OFFLINE, output=project / "build" / f"at-once-{n}.docx"
+        ).output
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        outputs = [done.result() for done in [pool.submit(build, n) for n in range(4)]]
+
+    for output in outputs:
+        assert output.is_file() and output.stat().st_size > 5000
+        assert 'w:styleId="FigureCaption"' in _styles(output)
+    left = list((project / "build" / ".cache").glob("reference-*"))
+    assert left == [], f"the cache kept {[p.name for p in left]}"

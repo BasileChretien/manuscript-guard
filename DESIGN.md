@@ -4569,7 +4569,17 @@ Closed since, and why each mattered:
   still come back; `check` and the next build refuse the title all the same. And `init`
   types the title it is given into `paper.yaml` as a JSON string, where it typed
   quotation marks around it as it stood: a backslash in it was an escape the author never
-  wrote, and a quotation mark in it left a project that could not be read. A value is
+  wrote, and a quotation mark in it left a project that could not be read. The header it
+  types into `manuscript/main.md` cannot take that form: the build reads that title by
+  taking what stands after `title:` and stripping the quotation marks around it, to compare
+  it with `paper.yaml`'s. So the header holds the title between the quotation marks under
+  which pandoc and that reading both give it back as it is: double ones, as always, for an
+  ordinary title; single ones for a title holding a backslash or a double quotation mark;
+  and where neither does, a title holding both kinds for one, the header is left out and
+  `paper.yaml`'s is the only title. Before that, such a title left a new project that
+  failed `check` on a header the author had not typed. A tab or a line break in a title
+  given to `init` is written as a space, which is what the build prints for each: as its
+  escape, a tab before a letter was reported as a letter lost. A value is
   read from its own opening quotation mark, and of a key written twice the one YAML keeps
   is read: a comment after an anchor was taken for the value, and both of two titles for
   the title. These came from the review of the change.

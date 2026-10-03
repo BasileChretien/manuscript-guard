@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import yaml
+
 from manuscript_guard.contracts.project import one_line
 
 PAPER = """\
@@ -97,11 +99,7 @@ entries: []
 """
 
 MANUSCRIPT = """\
----
-title: "{title}"
----
-
-# Introduction
+{header}# Introduction
 
 <!--
 Write here. Any number you quote must be a binding: {{{{results.some_key}}}} for something
@@ -255,10 +253,41 @@ _FILES = {
 _DIRS = ("analysis", "results", "literature/sources", "figures", "review", "build")
 
 
+def _header(title: str) -> str:
+    """The header `manuscript/main.md` opens with: the title, where the header can hold it.
+
+    Two readers take the title from it. Pandoc reads the block as YAML, and refuses the
+    manuscript where it cannot. The build takes what stands after `title:` and strips the
+    quotation marks around it (`strip_front_matter`), and warns where that is not
+    `paper.yaml`'s title. Between double quotation marks, as the title was always typed, a
+    `"` ended it and a backslash began an escape: a title with TeX or a quotation in it left
+    a new project that failed `check` on the header `init` had typed. So the title stands
+    between the quotation marks under which both readers give it back as it is, double ones
+    first, so that an ordinary title is typed as it always was. Where neither kind does, a
+    title holding both for one, the header is left out: `paper.yaml` holds the title the
+    document prints, and the header's was only ever compared with it.
+    """
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    for mark in ('"', "'"):
+        block = f"---\ntitle: {mark}{title}{mark}\n---\n\n"
+        try:
+            read = yaml.safe_load(f"title: {mark}{title}{mark}")
+        except yaml.YAMLError:
+            continue
+        if read == {"title": title} and strip_front_matter(block + "text")[1] == title:
+            return block
+    return ""
+
+
 def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
     """Create the project layout. Existing files are never overwritten."""
     root = Path(root).resolve()
     created: list[Path] = []
+    # On one line, and a tab as a space: what the build prints for each. Written into
+    # `paper.yaml` as its escape, a tab before a letter is what `check` reports as a letter
+    # lost, in a file the author did not type.
+    title = one_line(title).replace("\t", " ")
 
     for name in _DIRS:
         (root / name).mkdir(parents=True, exist_ok=True)
@@ -271,12 +300,14 @@ def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
         # The title is typed into `paper.yaml` as a JSON string, whose escapes are YAML's:
         # between quotation marks typed around it as it stood, a backslash in it began an
         # escape, which `check` refuses and the author never wrote, and a quotation mark
-        # ended it. The manuscript's own header keeps the title as typed, since its title
-        # is read by a plain split of the line and compared with this one.
-        quoted = json.dumps(one_line(title), ensure_ascii=False)
-        path.write_text(
-            template.format(title=title, quoted=quoted), encoding="utf-8", newline="\n"
+        # ended it. The manuscript's own header cannot take that form, since its title is
+        # read by a plain split of the line: see `_header`.
+        written = template.format(
+            title=title,
+            quoted=json.dumps(title, ensure_ascii=False),
+            header=_header(title),
         )
+        path.write_text(written, encoding="utf-8", newline="\n")
         created.append(path)
 
     keep = root / "results" / ".gitkeep"

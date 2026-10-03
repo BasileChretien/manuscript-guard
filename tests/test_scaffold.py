@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from manuscript_guard.contracts import load_namespace, load_project
 from manuscript_guard.findings import merge_all
 from manuscript_guard.scaffold import init_project
@@ -263,3 +265,81 @@ def test_init_writes_a_title_that_is_read_as_it_was_typed(tmp_path: Path) -> Non
     project, report = load_project(root)
     assert project.paper["title"] == title
     assert not [f for f in report.failures if f.message.startswith("title")]
+
+
+#: Titles `init --title` may be given. Each left a new project that failed `check`, on the
+#: header `init` itself typed into `manuscript/main.md` or, for the tab, on `paper.yaml`.
+AWKWARD_TITLES = {
+    "a quotation mark": 'A "quoted" title',
+    "TeX that YAML does not read": "Effect of $" + chr(92) + "delta$ on outcomes",
+    "a closing backslash": "Outcomes of Foo" + chr(92),
+    "TeX and a closing quotation mark": "Effect of $" + chr(92) + 'nu$ on "survival"',
+    "an apostrophe, a quotation mark and TeX": "Crohn's " + '"disease" and $' + chr(92) + "mu$",
+    "a tab": "Alpha" + chr(9) + "beta",
+    "a line break": "First part" + chr(10) + "second part",
+}
+
+
+@pytest.mark.parametrize("case", list(AWKWARD_TITLES))
+def test_init_with_an_awkward_title_gives_a_project_that_passes_check(
+    case: str, tmp_path: Path, capsys
+) -> None:
+    """From the command to `check` on what it made. A tab and a line break in a title are
+    written as a space, which is what the build prints for each."""
+    from manuscript_guard.cli import _run_gates, main
+
+    title = AWKWARD_TITLES[case]
+    root = tmp_path / "paper"
+    assert main(["init", str(root), "--title", title]) == 0
+    assert main(["check", str(root)]) == 0, capsys.readouterr().out
+
+    report, project, _chosen, _deferred = _run_gates(root)
+    assert project.paper["title"] == " ".join(title.replace(chr(9), " ").split(chr(10)))
+    assert not {f.code for f in report.findings} & {"schema-violation", "front-matter-unreadable"}
+    # The header's title is what the build compares with paper.yaml's, and warns of.
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    header = strip_front_matter((root / "manuscript" / "main.md").read_text(encoding="utf-8"))[1]
+    assert header in ("", project.paper["title"])
+
+
+#: How the manuscript's own header holds each: between double quotation marks as it always
+#: did where that reads back as the title, between single ones where a backslash or a
+#: double quotation mark would not, and not at all where neither does.
+HEADER = {
+    "Untitled manuscript": 'title: "Untitled manuscript"',
+    # Three hyphens, a dash as TeX writes it, are also what closes the header.
+    "Outcomes---a cohort": 'title: "Outcomes---a cohort"',
+    "Crohn's disease: a cohort": "title: " + '"' + "Crohn's disease: a cohort" + '"',
+    'A "quoted" title': "title: 'A " + '"quoted"' + " title'",
+    "Effect of $" + chr(92) + "delta$ on outcomes": (
+        "title: 'Effect of $" + chr(92) + "delta$ on outcomes'"
+    ),
+    "Crohn's " + '"disease"': None,
+    'Outcomes of "Foo"': None,
+}
+
+
+@pytest.mark.parametrize("title", list(HEADER))
+def test_the_manuscripts_header_holds_the_title_where_it_reads_back_as_typed(
+    title: str, tmp_path: Path
+) -> None:
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    root = tmp_path / "paper"
+    init_project(root, title=title)
+    text = (root / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+    if HEADER[title] is None:
+        assert text.startswith("# Introduction"), "no header, so paper.yaml's is the only title"
+        return
+    header = "---" + chr(10) + HEADER[title] + chr(10) + "---" + chr(10) * 2
+    assert text.startswith(header + "# Introduction")
+    assert strip_front_matter(text)[1] == title
+
+
+def test_an_ordinary_title_is_typed_into_paper_yaml_as_it_always_was(tmp_path: Path) -> None:
+    root = tmp_path / "paper"
+    init_project(root, title="Crohn's disease: a cohort")
+    lines = (root / "paper.yaml").read_text(encoding="utf-8").splitlines()
+    assert lines[1] == 'title: "Crohn' + "'" + 's disease: a cohort"'

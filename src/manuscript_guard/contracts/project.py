@@ -156,11 +156,24 @@ def _not_a_pattern(pattern: str) -> str | None:
     return None
 
 
+#: What YAML and pandoc read as the end of a line, and nothing else: a line split takes
+#: the vertical tab, the form feed and three separators for one too. Those are control
+#: characters, which YAML makes of `\v` and `\f` between double quotation marks, the
+#: start of TeX's `\varepsilon` and `\frac`: folded into a space, the letter after
+#: each was lost from the document, and nothing was refused.
+LINE_BREAK = re.compile(r"\r\n|[\r\n\x85\u2028\u2029]")
+
+
+def one_line(text: str) -> str:
+    """`text` with its lines folded into one, as YAML folded them between quotation marks."""
+    return " ".join(LINE_BREAK.split(text))
+
+
 def control_character(text: str) -> str | None:
     """The first character of `text` that no document can carry, once its lines are folded
-    into one as the build folds them: a control character other than a tab. None where
-    there is none."""
-    for character in " ".join(text.splitlines()):
+    into one as the build folds them (`one_line`): a control character other than a tab.
+    None where there is none."""
+    for character in one_line(text):
         if character != "\t" and unicodedata.category(character) == "Cc":
             return character
     return None

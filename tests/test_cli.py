@@ -379,8 +379,23 @@ YAML_ESCAPES = {
         'title: "Effects of \\alpha-blockers on hepatic injury"\n'
         'old_title: "Reporting of hepatic injury',
         "title",
+        "U+0007",
     ),
-    "a keyword": ("  - pharmacovigilance\n", '  - "$\\alpha$-synuclein"\n', "keywords/0"),
+    "a keyword": (
+        "  - pharmacovigilance\n",
+        '  - "$\\alpha$-synuclein"\n',
+        "keywords/0",
+        "U+0007",
+    ),
+    # `\v` is U+000B, which a line split took for the end of a line: folded into a
+    # space, the letter after it was lost and nothing was refused.
+    "a title with \\varepsilon": (
+        'title: "Reporting of hepatic injury',
+        'title: "The $\\varepsilon$ coefficient"\n'
+        'old_title: "Reporting of hepatic injury',
+        "title",
+        "U+000B",
+    ),
 }
 
 
@@ -388,22 +403,22 @@ YAML_ESCAPES = {
 def test_a_control_character_from_a_yaml_escape_is_refused_by_check_and_the_build(
     case: str, project: Path, capsys
 ) -> None:
-    old, new, where = YAML_ESCAPES[case]
+    old, new, where, character = YAML_ESCAPES[case]
     paper = project / "paper.yaml"
     text = paper.read_text(encoding="utf-8")
     assert text.count(old) == 1
     text = text.replace(old, new, 1)
-    if case == "a title":  # the old title moved under a name YAML ignores: drop it
+    if new.startswith("title"):  # the old title moved under a name YAML ignores: drop it
         text = "\n".join(line for line in text.splitlines() if not line.startswith("old_title"))
     paper.write_text(text + "\n", encoding="utf-8")
 
     assert run("check", str(project)) == 1
-    assert f"{where}: holds the control character U+0007" in capsys.readouterr().out
+    assert f"{where}: holds the control character {character}" in capsys.readouterr().out
 
     assert run("build", str(project), "--offline", "--skip-checks") == 2
     said = capsys.readouterr().err
     assert "paper.yaml" in said
-    assert "U+0007" in said
+    assert character in said
     assert "Traceback" not in said
     assert not list((project / "build").glob("*.docx"))
 

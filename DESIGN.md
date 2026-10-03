@@ -4514,7 +4514,12 @@ Closed since, and why each mattered:
   at the key and by the build in a sentence. One comes from an escape in `paper.yaml`
   itself: `"\alpha-blockers"` between double quotation marks is U+0007 and `lpha-blockers`.
   Pandoc had refused it in the hand-written header, and written as JSON's escape it reached
-  the document. Both were found in the second round of the review.
+  the document. Both were found in the second round of the review. The check of that fix
+  found that a line split also takes the vertical tab, the form feed and three
+  separators for the end of a line, which YAML does not: `\v` and `\f` begin TeX's
+  `\varepsilon` and `\frac`, and folded into a space they lost the letter after them
+  through `check` and the build. Only what YAML reads as the end of a line is folded, and
+  any other control character is refused.
   Whether a keyword should be printed as typed, with its asterisks and backslashes, rather
   than read as Markdown, is not decided; it would differ only in the document's properties.
   Still open, and each fails at every stage, so none is a pass. A file a gate reads by

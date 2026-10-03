@@ -31,7 +31,7 @@ from pathlib import Path
 
 from manuscript_guard.build.styles import reference_with
 from manuscript_guard.contracts._schema import read_text
-from manuscript_guard.contracts.project import PAPER_FILE, control_character
+from manuscript_guard.contracts.project import PAPER_FILE, control_character, one_line
 from manuscript_guard.findings import WARN, Finding, Report
 
 GATE = "BUILD"
@@ -252,11 +252,12 @@ def _yaml_text(project, key: str, value: object) -> str:
 
     The lines are folded into one first, as YAML folded them between hand-written quotation
     marks: a title holding a blank line was two paragraphs to pandoc, and the Word writer
-    left it out. And a control character is refused, as pandoc refused it before: one comes
+    left it out. Only what YAML reads as the end of a line is folded (`one_line`). And any
+    other control character is refused, as pandoc refused it before: one comes
     from an escape in `paper.yaml` itself, `"\\alpha"` between double quotation marks, and
     written as JSON's escape it reached the document. `check` reports it first.
     """
-    text = " ".join(str(value).splitlines())
+    text = one_line(str(value))
     character = control_character(text)
     if character is not None:
         raise BuildError(

@@ -500,6 +500,12 @@ CONTROL = {
     "short title": ('short_title: "\\alpha-blockers"\n', "short_title", "U+0007"),
     "keyword": ('keywords:\n  - plain\n  - "\\escape"\n', "keywords/1", "U+001B"),
     "one keyword": ('keywords: "\\alpha"\n', "keywords", "U+0007"),
+    # Control characters a line split takes for the end of a line, which YAML and pandoc
+    # do not: `\v` and `\f` begin TeX's `\varepsilon` and `\frac`.
+    "vertical tab": ('short_title: "The $\\varepsilon$ coefficient"\n', "short_title", "U+000B"),
+    "form feed": ('keywords: ["$\\frac{a}{b}$"]\n', "keywords/0", "U+000C"),
+    "file separator": ('keywords: ["before\\x1cafter"]\n', "keywords/0", "U+001C"),
+    "record separator": ('short_title: "before\\x1eafter"\n', "short_title", "U+001E"),
 }
 
 
@@ -521,7 +527,12 @@ def test_a_control_character_in_what_the_document_prints_is_a_finding(
 
 
 def test_a_title_over_several_lines_is_no_finding(tmp_path: Path) -> None:
-    written = 'short_title: "First\nsecond"\nkeywords: ["a\tb"]\n'
+    """YAML's own line breaks are folded by the build, not refused: a line feed, YAML's
+    `\\N`, `\\L` and `\\P` (U+0085, U+2028, U+2029), and a tab is a tab."""
+    written = (
+        'short_title: "First\nsecond\\Nthird\\Lfourth\\Pfifth"\n'
+        'keywords: ["a\tb"]\n'
+    )
     _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
     assert report.failures == ()
 

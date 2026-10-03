@@ -382,7 +382,8 @@ def refused_path(project: Project, plan: Plan, call: Call) -> Path:
 #: Held while the `refused/` folder is written to or tidied away. Providers are asked side
 #: by side: one provider's reading was filed, and the folder, empty, taken away, between the
 #: moment another made the folder and the moment it wrote its refused reply there, which
-#: was lost.
+#: was lost. The lock is this process's; another run of the same round can still take the
+#: folder away, so the write is tried once more in a folder made again.
 _REFUSED_FOLDER = threading.Lock()
 
 
@@ -396,10 +397,15 @@ def _keep(project: Project, plan: Plan, call: Call, why: str, text: str, today: 
         "Nothing here is counted by any check. Delete it when you have read it.\n"
         f"{'-' * 72}\n{text}\n"
     )
+    # A reply can hold half of a surrogate pair, which no file can: it is kept as `?`.
+    data = note.encode("utf-8", errors="replace")
     with _REFUSED_FOLDER:
         path.parent.mkdir(parents=True, exist_ok=True)
-        # A reply can hold half of a surrogate pair, which no file can: it is kept as `?`.
-        path.write_bytes(note.encode("utf-8", errors="replace"))
+        try:
+            path.write_bytes(data)
+        except FileNotFoundError:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
     return path
 
 

@@ -1284,3 +1284,33 @@ def test_a_refused_reply_is_kept_while_another_reading_is_filed_at_the_same_mome
     assert forgotten.wait(10)
     monkeypatch.undo()
     assert kept.read_text(encoding="utf-8").rstrip().endswith("the reply")
+
+
+def test_a_refused_reply_is_kept_when_another_process_takes_the_folder_away(
+    unreviewed: Path, providers: Providers, monkeypatch
+) -> None:
+    """The lock is one process's. Another `review --run` of the same round can take the
+    empty `refused/` folder away between this one making it and writing into it, and no
+    lock of this process stops that. The write is tried again, in a folder made again."""
+    from datetime import date
+
+    from manuscript_guard.panel import run as running
+    from manuscript_guard.panel.plan import make_plan
+
+    project = loaded(unreviewed)
+    plan = make_plan(project)
+    real_write = Path.write_bytes
+    taken: list[Path] = []
+
+    def taken_away_first(self, data):
+        if self.parent.name == running.REFUSED_DIR and not taken:
+            taken.append(self.parent)
+            self.parent.rmdir()
+        return real_write(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", taken_away_first)
+    call = plan.calls[0]
+    kept = running._keep(project, plan, call, "it was prose", "the reply", date(2026, 1, 1))
+    monkeypatch.undo()
+    assert taken, "the folder was taken away once"
+    assert kept.read_text(encoding="utf-8").rstrip().endswith("the reply")

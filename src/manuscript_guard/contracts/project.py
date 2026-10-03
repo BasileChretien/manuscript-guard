@@ -70,15 +70,18 @@ class Project:
     def keywords(self) -> tuple[str, ...]:
         """The keywords as the build prints them: each entry of the list as text. Of
         settings, their names, which is what colons typed where the dashes belong make of
-        a list. None where `keywords` is one value.
+        a list. One word typed where a list is expected is that one keyword. None where
+        `keywords` is a number, a yes or no, or nothing.
 
         Not through `setting`. A build under `--skip-checks` prints what the author typed,
         and `2019`, which YAML reads as a number, was printed before: it must not leave the
-        document without a word. Nor must three keywords written with colons. What changes
-        is what raised or was garbled: `keywords: 5` ended the build in `TypeError`, and
-        one word where a list is expected was printed letter by letter.
+        document without a word. Nor must three keywords written with colons, nor one word
+        written without a dash, which was printed letter by letter. What a number raised,
+        `TypeError` for `keywords: 5`, is not printed.
         """
         value = self.paper.get("keywords")
+        if isinstance(value, str):
+            return (value,)
         return tuple(str(entry) for entry in value) if isinstance(value, (list, dict)) else ()
 
     @property

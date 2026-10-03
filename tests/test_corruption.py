@@ -358,18 +358,27 @@ def test_a_display_edited_away_from_its_value_is_caught(project: Path) -> None:
     assert "no-display" in codes(gate_report(project))
 
 
-def test_a_projects_own_allowlist_is_reported_not_silent(project: Path) -> None:
+@pytest.mark.parametrize(
+    ("named", "cited"),
+    [("house-style", "project:house-style"), (None, r"project:\d+(?:[.,]\d+)*")],
+    ids=["named", "unnamed"],
+)
+def test_a_projects_own_allowlist_is_reported_not_silent(
+    project: Path, named: str | None, cited: str
+) -> None:
     """`conventions:` and `terms:` are self-service on purpose. Invisible is not on purpose.
 
     A pattern of `\\d+` with a `why` of "house style" is schema-legal and disables G2, and
     the run read exactly like one that had exempted nothing. Every run now says how many
-    numbers the project accounted for with its own rules, and which rules did it.
+    numbers the project accounted for with its own rules, and which rules did it: by the
+    name the author gave the rule (`id`), or by the start of its pattern.
     """
     paper = project / "paper.yaml"
     document = yaml.safe_load(paper.read_text(encoding="utf-8"))
-    # No `id`: the schema allows a pattern, a reason and a date, and an entry it refuses is
-    # not read. The rule is named for its pattern.
-    document["conventions"] = [{"why": "house style", "pattern": r"\d+(?:[.,]\d+)*"}]
+    convention = {"why": "house style", "pattern": r"\d+(?:[.,]\d+)*"}
+    if named:
+        convention["id"] = named
+    document["conventions"] = [convention]
     paper.write_text(
         yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )
@@ -382,7 +391,7 @@ def test_a_projects_own_allowlist_is_reported_not_silent(project: Path) -> None:
     assert "schema-violation" not in codes(report)
     assert report.counts["atoms_project_exempt"] == 3
     finding = next(f for f in report.findings if f.code == "project-exemption")
-    assert r"project:\d+(?:[.,]\d+)*" in finding.message
+    assert cited in finding.message
 
 
 @pytest.mark.parametrize(

@@ -454,13 +454,54 @@ def test_rounds_required_is_read_beside_an_entry_the_schema_refuses(tmp_path: Pa
     assert rounds_required(project) == 5
 
 
+def test_a_convention_can_be_named_and_the_classifier_cites_that_name(tmp_path: Path) -> None:
+    """`id` names a convention. The classifier has always named the rule by it, and the
+    schema refused it, so a project that named one failed with nothing else wrong; from
+    #135 the entry was not read at all. The schema allows it now (Basile, 2026-10-03)."""
+    from manuscript_guard.classify import Classifier
+
+    written = (
+        "conventions:\n"
+        "  - id: half-normal\n"
+        "    pattern: half-normal\n"
+        "    why: a name\n"
+        "  - pattern: half-life\n"
+        "    why: a name\n"
+    )
+    project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    assert report.failures == ()
+    assert project.extra_conventions[0] == {
+        "id": "half-normal",
+        "pattern": "half-normal",
+        "why": "a name",
+    }
+    named = Classifier.load(project.extra_conventions, project.extra_terms).conventions
+    ids = {rule.id for rule in named if rule.id.startswith("project:")}
+    assert ids == {"project:half-normal", "project:half-life"}, "without a name, its pattern"
+
+
+@pytest.mark.parametrize("name", ["5", "''", "[half-normal]"])
+def test_a_name_that_is_not_text_is_the_schemas_to_report(name: str, tmp_path: Path) -> None:
+    """A name the schema refuses is its finding, at the entry, and the entry is not read: a
+    convention with a name in the wrong shape exempts nothing until it is put right."""
+    written = f"conventions:\n  - id: {name}\n    pattern: half-normal\n    why: a name\n"
+    project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    assert [f.code for f in report.failures] == ["schema-violation"]
+    assert report.failures[0].message.startswith("conventions/0/id: ")
+    assert project.extra_conventions == ()
+
+
 @pytest.mark.parametrize(
     ("keywords", "printed"),
     [
         (5, None),
         (2.5, None),
         (True, None),
-        ("pharmacovigilance", None),
+        # One word typed where a list is expected, which YAML reads as text.
+        ("pharmacovigilance", ["pharmacovigilance"]),
+        ("R", ["R"]),
         ([5, "signal"], ["5", "signal"]),
         (["pharmacovigilance", 2019], ["pharmacovigilance", "2019"]),
         ([False, "cGMP"], ["False", "cGMP"]),
@@ -475,8 +516,10 @@ def test_keywords_in_the_wrong_shape_do_not_stop_a_build_and_none_is_dropped_fro
     keywords: object, printed: list[str] | None, project: Path
 ) -> None:
     """`keywords: 5` ended a build with `--skip-checks`, and the title page of the pack, in
-    `TypeError: 'int' object is not iterable`: the one key the build reads as a list. One
-    word where a list is expected was printed letter by letter. Neither is printed now.
+    `TypeError: 'int' object is not iterable`: the one key the build reads as a list. A
+    number is not printed now. One word where a list is expected was printed letter by
+    letter, then for a while not at all, which lost it from the document; it is printed
+    whole, as the one keyword it is (Basile, 2026-10-03).
 
     An entry of a list that is not text is printed as it was: `2019`, which YAML reads as a
     number, reached an unchecked document and must not leave it without a word."""

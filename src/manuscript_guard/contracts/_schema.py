@@ -104,8 +104,10 @@ def read_text(path: Path) -> str:
 
     The gates and the commands that read the manuscript's text come through here as well
     as the structured files, so a source saved in a code page is refused in the same
-    sentence by `explain`, `render` and the build, and by each gate. The review panel's
-    prompt has a reader of its own (`panel/prompt.py`), and says less.
+    sentence by `explain`, `render` and the build, and by each gate. Three readers go round
+    it: the review panel's prompt decodes the files itself (`panel/prompt.py`) and says
+    less, `review` reads only their bytes for the digest, and the note after an edit
+    replaces what it cannot decode.
     """
     try:
         data = path.read_bytes()

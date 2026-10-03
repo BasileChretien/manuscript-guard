@@ -324,6 +324,29 @@ def test_build_refuses_while_a_gate_fails(project: Path) -> None:
 
 
 @needs_pandoc
+@pytest.mark.parametrize("word", ["pharmacovigilance", "R"])
+def test_an_unchecked_build_prints_one_keyword_typed_without_a_dash_whole(
+    word: str, project: Path
+) -> None:
+    """`keywords: pharmacovigilance`, one word where a list is expected, which the schema
+    refuses. A build that was asked not to check prints what was typed, and this word is
+    the one keyword: it was printed letter by letter, then not at all."""
+    import zipfile
+
+    import yaml
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["keywords"] = word
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 0
+    with zipfile.ZipFile(project / "build" / "manuscript.UNCHECKED.docx") as docx:
+        properties = docx.read("docProps/core.xml").decode("utf-8")
+    assert f"<cp:keywords>{word}</cp:keywords>" in properties
+
+
+@needs_pandoc
 def test_build_skip_checks_builds_under_a_name_that_says_so(project: Path, capsys) -> None:
     """An unchecked build must not be able to pass for a checked one.
 

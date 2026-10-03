@@ -4569,7 +4569,28 @@ Closed since, and why each mattered:
   still come back; `check` and the next build refuse the title all the same. And `init`
   types the title it is given into `paper.yaml` as a JSON string, where it typed
   quotation marks around it as it stood: a backslash in it was an escape the author never
-  wrote, and a quotation mark in it left a project that could not be read. A value is
+  wrote, and a quotation mark in it left a project that could not be read. The header it
+  types into `manuscript/main.md` cannot take that form: the build reads that title by
+  taking what stands after `title:` and stripping the quotation marks around it, to compare
+  it with `paper.yaml`'s. So the header holds the title between the quotation marks under
+  which pandoc and that reading both give it back as it is: double ones, as always, for an
+  ordinary title; single ones for a title holding a backslash or a double quotation mark;
+  and where neither does, the header is left out and
+  `paper.yaml`'s is the only title. That is a title holding both kinds, and one that
+  begins or ends with a quotation mark of either kind, `the patients'` for one, since the
+  build's reading strips every one of them at either end; for those the header had read
+  as another title, and the build warned of two. Before that, a title with TeX or a
+  quotation in it left a new project that failed `check` on a header the author had not
+  typed. What `init` does not do is keep TeX that stands outside `$`: `IFN-\gamma` goes
+  into both files as given, passes `check`, and is printed `IFN-`, as any title is where
+  its backslash is a backslash. The header `init` typed used to fail on most such titles,
+  which hid that. Whether TeX outside `$` in a title should be a finding is not decided.
+  A title holding a character no file can carry is refused before anything is made: a
+  lone surrogate, which Python makes of an argument that is not in the terminal's
+  encoding, ended `init` in a traceback and left an empty `paper.yaml` that a second
+  `init` kept. A tab or a line break in a title
+  given to `init` is written as a space, which is what the build prints for each: as its
+  escape, a tab before a letter was reported as a letter lost. A value is
   read from its own opening quotation mark, and of a key written twice the one YAML keeps
   is read: a comment after an anchor was taken for the value, and both of two titles for
   the title. These came from the review of the change.

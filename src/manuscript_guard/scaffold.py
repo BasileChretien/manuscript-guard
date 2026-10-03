@@ -14,7 +14,12 @@ from pathlib import Path
 import yaml
 
 from manuscript_guard.contracts._schema import ContractError
-from manuscript_guard.contracts.project import named, one_line, unprintable_character
+from manuscript_guard.contracts.project import (
+    named,
+    one_line,
+    outside_maths,
+    unprintable_character,
+)
 
 PAPER = """\
 schema: manuscript-guard/paper/1
@@ -294,13 +299,21 @@ def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
     # Refused before anything is made. A lone surrogate is what Python makes of an argument
     # that is not in the terminal's encoding, and it cannot be written as UTF-8: the first
     # file was left empty, the command ended in a traceback, and a second `init` kept the
-    # empty `paper.yaml`, since it writes over nothing.
+    # empty `paper.yaml`, since it writes over nothing. A control character and the two
+    # code points that are no character can be written, into a project `check` then fails
+    # or cannot read.
     character = unprintable_character(title)
     if character is not None:
         raise ContractError(
-            f"the title holds {named(character)}, which no file or document can carry, so "
+            f"the title holds {named(character)}, which no document can carry, so "
             "nothing was made; give the title again without it"
         )
+    # So is TeX the document would be printed without, in the words of the finding `check`
+    # would make of it: the title is typed into two files here, and a project made with it
+    # opened on that finding in both.
+    said = outside_maths(title)
+    if said is not None:
+        raise ContractError(f"the title cannot be printed whole, so nothing was made: {said}")
 
     for name in _DIRS:
         (root / name).mkdir(parents=True, exist_ok=True)

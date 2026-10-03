@@ -759,6 +759,156 @@ def test_a_title_over_several_lines_is_no_finding(tmp_path: Path) -> None:
     assert report.failures == ()
 
 
+#: A backslash and a line feed, written so that no tool between the author of a test and
+#: this file can halve the one or read either as the start of an escape.
+BACKSLASH = chr(92)
+LF = chr(10)
+
+#: `paper.yaml` as raw text, with TeX that stands outside dollar signs in what the build
+#: prints. Pandoc reads a title as Markdown and keeps TeX only as maths: `IFN-\gamma
+#: release assays` passed `check` and a checked build and was printed `IFN-release assays`,
+#: and `12 \pm 3 months` was printed without its `3`. Where the finding is, and what it
+#: says.
+TEX_OUTSIDE = {
+    "a title between single quotation marks": (
+        "title: 'IFN-" + BACKSLASH + "gamma release assays'" + LF,
+        "title",
+        "`" + BACKSLASH + "gamma` stands outside dollar signs",
+    ),
+    "a title with no quotation marks": (
+        "title: IFN-" + BACKSLASH + "gamma release assays" + LF,
+        "title",
+        "`" + BACKSLASH + "gamma` stands outside dollar signs",
+    ),
+    "a title between double ones, the backslash doubled": (
+        'title: "IFN-' + BACKSLASH * 2 + 'gamma release assays"' + LF,
+        "title",
+        "`" + BACKSLASH + "gamma` stands outside dollar signs",
+    ),
+    "a short title with a number after the command": (
+        "short_title: 'Outcomes at 12 " + BACKSLASH + "pm 3 months'" + LF,
+        "short_title",
+        "`" + BACKSLASH + "pm` stands outside dollar signs",
+    ),
+    "a keyword": (
+        "keywords:" + LF + "  - plain" + LF + "  - 'TNF" + BACKSLASH + "alpha signalling'" + LF,
+        "keywords/1",
+        "`" + BACKSLASH + "alpha` stands outside dollar signs",
+    ),
+    "one keyword": (
+        "keywords: 'TNF" + BACKSLASH + "alpha'" + LF,
+        "keywords",
+        "`" + BACKSLASH + "alpha` stands outside dollar signs",
+    ),
+    "a block": (
+        "short_title: |" + LF + "  A " + BACKSLASH + "textit{in vivo} study" + LF,
+        "short_title",
+        "`" + BACKSLASH + "textit` stands outside dollar signs",
+    ),
+    "a title over two lines, the dollar signs on the first": (
+        "short_title: 'The $x$" + LF + "  and " + BACKSLASH + "gamma'" + LF,
+        "short_title",
+        "`" + BACKSLASH + "gamma` stands outside dollar signs",
+    ),
+    # Past a sign that can hold a dollar sign which opens nothing, maths is not read.
+    "maths after a bracket": (
+        "short_title: '[18F]FDG and TGF-$" + BACKSLASH + "beta$'" + LF,
+        "short_title",
+        "`" + BACKSLASH + "beta` stands after a `[`",
+    ),
+    "code around the dollar signs": (
+        "short_title: '`$` " + BACKSLASH + "gamma `$`'" + LF,
+        "short_title",
+        "`" + BACKSLASH + "gamma` stands after a backtick",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(TEX_OUTSIDE))
+def test_tex_outside_dollar_signs_in_what_the_document_prints_is_a_finding_at_the_key(
+    case: str, tmp_path: Path
+) -> None:
+    written, where, says = TEX_OUTSIDE[case]
+    paper = PAPER if where != "title" else PAPER.replace('title: "A study"' + LF, "")
+    _project, report = load_project(a_project(tmp_path / "paper", paper + written))
+
+    # One keyword where a list is expected is also the schema's finding for its shape.
+    found = [f for f in report.failures if " stands " in f.message]
+    assert [f.code for f in found] == ["schema-violation"]
+    (finding,) = found
+    assert finding.gate == "G0"
+    assert finding.message.startswith(f"{where}: {says}")
+    assert "between dollar signs" in finding.hint
+
+
+def test_the_finding_says_what_the_document_loses_and_what_to_write(tmp_path: Path) -> None:
+    written = "short_title: 'IFN-" + BACKSLASH + "gamma release assays'" + LF
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = report.failures
+    gamma = BACKSLASH + "gamma"
+    assert finding.message == (
+        f"short_title: `{gamma}` stands outside dollar signs, and the document is printed "
+        f"without it; write `${gamma}$`"
+    )
+    # A command takes what follows it as TeX would, a number for one; and not every
+    # backslash was meant as TeX.
+    assert "the number" in finding.hint
+    assert "`*in vivo*`" in finding.hint
+
+
+def test_past_a_sign_the_finding_says_how_to_have_the_maths_read(tmp_path: Path) -> None:
+    """`[18F]FDG and TGF-$\\beta$` is printed whole, and reported all the same: a bracket can
+    hold a dollar sign that opens no maths, in a link's address for one, and the rule reads
+    no maths past it. The finding must not say the TeX stands outside dollar signs, which
+    it does not; it says what to write so that the maths is read."""
+    written = "short_title: '[18F]FDG and TGF-$" + BACKSLASH + "beta$'" + LF
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = report.failures
+    assert "outside dollar signs" not in finding.message
+    assert "may be printed without it" in finding.message
+    assert "put a backslash before" in finding.message
+
+    escaped = written.replace("[18F]", BACKSLASH + "[18F" + BACKSLASH + "]")
+    _project, report = load_project(a_project(tmp_path / "mended", PAPER + escaped))
+    assert report.failures == ()
+
+
+#: The same where nothing is lost, and so nothing is found: TeX between dollar signs, a
+#: backslash that is no TeX, and a backslash in what the build does not print.
+TEX_KEPT = {
+    "maths": "short_title: 'IFN-$" + BACKSLASH + "gamma$ release assays'" + LF,
+    "maths between double quotation marks, the backslash doubled": (
+        'short_title: "IFN-$' + BACKSLASH * 2 + 'gamma$ release"' + LF
+    ),
+    "maths in a keyword": "keywords: ['$" + BACKSLASH + "alpha$-synuclein', plain]" + LF,
+    "a doubled backslash, printed as one": (
+        "short_title: 'The command " + BACKSLASH * 2 + "gamma'" + LF
+    ),
+    "escaped signs": "short_title: 'Up 5" + BACKSLASH + "% in A" + BACKSLASH + "&B'" + LF,
+    "a subscript before maths": (
+        "short_title: 'HbA~1c~ and TGF-$" + BACKSLASH + "beta$'" + LF
+    ),
+    "a key the build does not print": (
+        "target_journal: 'the" + BACKSLASH + "gamma journal'" + LF
+    ),
+    "a convention's pattern": (
+        "conventions:" + LF
+        + "  - pattern: '" + BACKSLASH + "bICD-10" + BACKSLASH + "b'" + LF
+        + "    why: the name of a classification" + LF
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(TEX_KEPT))
+def test_tex_between_dollar_signs_and_a_backslash_that_is_no_tex_are_no_finding(
+    case: str, tmp_path: Path
+) -> None:
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + TEX_KEPT[case]))
+    assert report.failures == ()
+
+
 @pytest.mark.parametrize(
     ("keywords", "printed"),
     [

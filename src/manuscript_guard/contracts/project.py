@@ -24,6 +24,7 @@ from manuscript_guard.contracts._schema import (
     validate,
 )
 from manuscript_guard.findings import Finding, Report, merge_all
+from manuscript_guard.text.tex import tex_outside_maths
 
 PAPER_FILE = "paper.yaml"
 AUTHORS_FILE = "authors.yaml"
@@ -383,6 +384,76 @@ def _unprintable(paper: dict, path: Path) -> Report:
     return Report(tuple(findings))
 
 
+#: What a finding calls each sign past which no maths is read (`text.tex`).
+_SIGN = {
+    "`": "a backtick",
+    "<": "a `<`",
+    "[": "a `[`",
+    "@": "an `@`",
+    "~": "a `~`",
+    "^": "a `^`",
+}
+
+#: What to know about TeX in a title or a keyword, for a finding's hint and the build's
+#: refusal. Not every backslash before a letter was meant as TeX: the last three are for
+#: italics, a character and a path.
+KEEP_THE_TEX = (
+    "pandoc keeps TeX only as maths, between dollar signs, and outside them it leaves out "
+    "the command with the number or the braces that follow it; for italics write "
+    "`*in vivo*`, a character can be typed as itself, and a backslash meant as one is "
+    "written twice, between single quotation marks"
+)
+
+
+def outside_maths(text: str) -> str | None:
+    """What a finding says of TeX in `text` that the document would be printed without, or
+    None where there is none, once its lines are folded into one as the build folds them.
+
+    Pandoc reads a title, a short title and a keyword as Markdown, and the Word writer
+    keeps TeX only as maths: `IFN-\\gamma release assays` passed `check` and a checked build
+    and was printed `IFN-release assays`. A command takes what follows it as TeX would, so
+    `12 \\pm 3 months` is printed without its `3`.
+
+    Past a sign that can hold a dollar sign which opens no maths, the rule reads none
+    (`text.tex`), and reports TeX that pandoc may well keep. The sentence then says so, and
+    how to have the maths read: "outside dollar signs" would be false of `[18F]FDG and
+    TGF-$\\beta$`.
+    """
+    found = tex_outside_maths(one_line(text))
+    if found is None:
+        return None
+    if not found.after:
+        return (
+            f"`{found.command}` stands outside dollar signs, and the document is printed "
+            f"without it; write `${found.command}$`"
+        )
+    return (
+        f"`{found.command}` stands after {_SIGN[found.after]}, past which this check reads "
+        "no maths, so the document may be printed without it; where the sign is only itself "
+        "put a backslash before it, or type the character the command stands for"
+    )
+
+
+def _tex_outside_maths(paper: dict, path: Path) -> Report:
+    """A finding for each title or keyword holding TeX the document would be printed
+    without (`outside_maths`), under the schema's code, which fails at every stage."""
+    findings = []
+    for where, text in _printed_settings(paper):
+        said = outside_maths(text)
+        if said is None:
+            continue
+        findings.append(
+            Finding(
+                gate="G0",
+                code="schema-violation",
+                message=f"{where}: {said}",
+                path=path,
+                hint=KEEP_THE_TEX,
+            )
+        )
+    return Report(tuple(findings))
+
+
 def _not_a_name(name: str) -> str | None:
     """Why a convention's `id` names nothing a report can cite, or None where it does."""
     if not name.strip():
@@ -516,6 +587,7 @@ def load_project(start: Path | None = None) -> tuple[Project, Report]:
     reports.append(_unusable_conventions(paper, paper_path))
     reports.append(_unprintable(paper, paper_path))
     reports.append(_lost_letters(paper_path))
+    reports.append(_tex_outside_maths(paper, paper_path))
 
     authors_path = root / AUTHORS_FILE
     authors = read_structured(authors_path)

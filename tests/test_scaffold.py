@@ -268,7 +268,9 @@ def test_init_writes_a_title_that_is_read_as_it_was_typed(tmp_path: Path) -> Non
 
 
 #: Titles `init --title` may be given. Each left a new project that failed `check`, on the
-#: header `init` itself typed into `manuscript/main.md` or, for the tab, on `paper.yaml`.
+#: header `init` itself typed into `manuscript/main.md` or, for the tab, on `paper.yaml`;
+#: all but the line break, where `check` passed and the build warned of two titles, the
+#: header's being the first line only.
 AWKWARD_TITLES = {
     "a quotation mark": 'A "quoted" title',
     "TeX that YAML does not read": "Effect of $" + chr(92) + "delta$ on outcomes",
@@ -301,6 +303,8 @@ def test_init_with_an_awkward_title_gives_a_project_that_passes_check(
 
     header = strip_front_matter((root / "manuscript" / "main.md").read_text(encoding="utf-8"))[1]
     assert header in ("", project.paper["title"])
+    readme = (root / "README.md").read_text(encoding="utf-8").splitlines()
+    assert readme[0] == "# " + project.paper["title"], "the heading was broken over two lines"
 
 
 #: How the manuscript's own header holds each: between double quotation marks as it always
@@ -317,6 +321,12 @@ HEADER = {
     ),
     "Crohn's " + '"disease"': None,
     'Outcomes of "Foo"': None,
+    # The build's reading strips every quotation mark at either end, so one of either kind
+    # there cannot be read back. The header typed for these read `the patients`, and the
+    # build warned of two titles.
+    '"Quoted" at the start': None,
+    "the patients'": None,
+    "'Tis the season": None,
 }
 
 
@@ -332,6 +342,9 @@ def test_the_manuscripts_header_holds_the_title_where_it_reads_back_as_typed(
 
     if HEADER[title] is None:
         assert text.startswith("# Introduction"), "no header, so paper.yaml's is the only title"
+        init_project(tmp_path / "usual")
+        usual = (tmp_path / "usual" / "manuscript" / "main.md").read_text(encoding="utf-8")
+        assert text == usual.split(chr(10), 4)[4], "and what follows the header is unchanged"
         return
     header = "---" + chr(10) + HEADER[title] + chr(10) + "---" + chr(10) * 2
     assert text.startswith(header + "# Introduction")
@@ -343,3 +356,31 @@ def test_an_ordinary_title_is_typed_into_paper_yaml_as_it_always_was(tmp_path: P
     init_project(root, title="Crohn's disease: a cohort")
     lines = (root / "paper.yaml").read_text(encoding="utf-8").splitlines()
     assert lines[1] == 'title: "Crohn' + "'" + 's disease: a cohort"'
+
+
+#: Characters no file or document can carry. The first is what Python makes of an argument
+#: that is not in the terminal's encoding: a lone surrogate, which cannot be written as UTF-8.
+NOT_A_TITLE = {
+    "a lone surrogate": chr(0xDCE9),
+    "another": chr(0xD800),
+    "a control character": chr(7),
+    "a non-character": chr(0xFFFF),
+}
+
+
+@pytest.mark.parametrize("case", list(NOT_A_TITLE))
+def test_init_refuses_a_title_no_file_can_hold_before_it_makes_anything(
+    case: str, tmp_path: Path, capsys
+) -> None:
+    """On a surrogate `init` ended in a traceback with the folders made and `paper.yaml`
+    empty, and a second `init` with a good title kept that empty file, since it writes over
+    nothing: the project could not be read. On the others it made a project `check` failed
+    or could not read."""
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "paper"
+    assert main(["init", str(root), "--title", "Caf" + NOT_A_TITLE[case] + " study"]) == 2
+    said = capsys.readouterr().err
+    assert "Traceback" not in said
+    assert "the title" in said
+    assert not root.exists(), "nothing was made"

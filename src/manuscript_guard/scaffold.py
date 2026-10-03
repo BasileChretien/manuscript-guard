@@ -13,7 +13,8 @@ from pathlib import Path
 
 import yaml
 
-from manuscript_guard.contracts.project import one_line
+from manuscript_guard.contracts._schema import ContractError
+from manuscript_guard.contracts.project import named, one_line, unprintable_character
 
 PAPER = """\
 schema: manuscript-guard/paper/1
@@ -263,9 +264,11 @@ def _header(title: str) -> str:
     `"` ended it and a backslash began an escape: a title with TeX or a quotation in it left
     a new project that failed `check` on the header `init` had typed. So the title stands
     between the quotation marks under which both readers give it back as it is, double ones
-    first, so that an ordinary title is typed as it always was. Where neither kind does, a
-    title holding both for one, the header is left out: `paper.yaml` holds the title the
-    document prints, and the header's was only ever compared with it.
+    first, so that an ordinary title is typed as it always was. Where neither kind does,
+    the header is left out: `paper.yaml` holds the title the document prints, and the
+    header's was only ever compared with it. That is a title holding both kinds, and one
+    that begins or ends with a quotation mark of either kind, `the patients'` for one,
+    since the build's reading strips every one of them at either end.
     """
     from manuscript_guard.build.assemble import strip_front_matter
 
@@ -288,6 +291,16 @@ def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
     # `paper.yaml` as its escape, a tab before a letter is what `check` reports as a letter
     # lost, in a file the author did not type.
     title = one_line(title).replace("\t", " ")
+    # Refused before anything is made. A lone surrogate is what Python makes of an argument
+    # that is not in the terminal's encoding, and it cannot be written as UTF-8: the first
+    # file was left empty, the command ended in a traceback, and a second `init` kept the
+    # empty `paper.yaml`, since it writes over nothing.
+    character = unprintable_character(title)
+    if character is not None:
+        raise ContractError(
+            f"the title holds {named(character)}, which no file or document can carry, so "
+            "nothing was made; give the title again without it"
+        )
 
     for name in _DIRS:
         (root / name).mkdir(parents=True, exist_ok=True)

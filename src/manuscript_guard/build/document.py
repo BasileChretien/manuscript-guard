@@ -18,6 +18,7 @@ cannot go stale: nothing is ever carried across by hand, so there is nothing to 
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import shutil
@@ -218,23 +219,43 @@ def _word_lines(project) -> list[str]:
     return lines
 
 
+def _yaml_text(value: object) -> str:
+    """`value` as a double-quoted YAML string that pandoc reads back as the same text.
+
+    The title, the short title and the keywords were written between double quotation marks
+    by hand. A `"` in one ended the string, and pandoc refused the header; a backslash began
+    an escape, so `$\\alpha$` became the control character 7 and the document carried it in
+    its properties, which Word will not open. A valid `paper.yaml` passed `check` and built
+    that document. JSON's escapes are YAML's, and the three characters YAML may read as the
+    end of a line are written as escapes too.
+    """
+    text = json.dumps(str(value), ensure_ascii=False)
+    for code in (0x85, 0x2028, 0x2029):
+        text = text.replace(chr(code), chr(92) + f"u{code:04x}")
+    return text
+
+
 def _front_matter(project, *, supplementary: bool = False, live: bool = False) -> str:
-    """A YAML header carrying the title and the Zotero settings the filter reads."""
+    """A YAML header carrying the title and the Zotero settings the filter reads.
+
+    What the author wrote is read by pandoc as Markdown, as the text is: `*E. coli*` is in
+    italics, and TeX outside `$` is dropped.
+    """
     paper = project.paper
-    title = str(paper.get("title", "")).replace(chr(34), chr(39))
+    title = str(paper.get("title", ""))
     if supplementary:
         title = f"Supplementary material for: {title}"
-    lines = ["---", f'title: "{title}"']
+    lines = ["---", f"title: {_yaml_text(title)}"]
     # The short title and keywords belong to the paper. A supplement carrying the paper's
     # running head reads, in a journal's system, as a second copy of the paper.
     short = None if supplementary else paper.get("short_title")
     if short:
-        lines.append(f'subtitle: "{short}"')
+        lines.append(f"subtitle: {_yaml_text(short)}")
     # `keywords: 5` raised here under `--skip-checks`, and one word where a list is expected
     # was printed letter by letter; see `Project.keywords`.
     keywords = None if supplementary else project.keywords
     if keywords:
-        lines.append("keywords: [" + ", ".join(f'"{k}"' for k in keywords) + "]")
+        lines.append("keywords: [" + ", ".join(_yaml_text(k) for k in keywords) + "]")
     lines += [
         "lang: " + ("en-GB" if project.english_variant == "en-GB" else "en-US"),
         "zotero:",

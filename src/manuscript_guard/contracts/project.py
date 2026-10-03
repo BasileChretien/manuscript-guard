@@ -81,7 +81,9 @@ class Project:
         """
         value = self.paper.get("keywords")
         if isinstance(value, str):
-            return (value,)
+            # Text with nothing in it is no keyword: the title page printed "Keywords."
+            # with nothing after it.
+            return (value,) if value.strip() else ()
         return tuple(str(entry) for entry in value) if isinstance(value, (list, dict)) else ()
 
     @property
@@ -99,11 +101,13 @@ class Project:
     @property
     def extra_conventions(self) -> tuple[dict, ...]:
         """The conventions a classifier can be built from: those the schema accepts, less
-        any whose pattern does not compile, which `load_project` reports."""
+        any whose pattern does not compile or whose name names nothing, which
+        `load_project` reports."""
         return tuple(
             entry
             for entry in self.setting("conventions") or ()
             if _not_a_pattern(entry["pattern"]) is None
+            and ("id" not in entry or _not_a_name(entry["id"]) is None)
         )
 
     @property
@@ -151,32 +155,58 @@ def _not_a_pattern(pattern: str) -> str | None:
     return None
 
 
-def _patterns(paper: dict, path: Path) -> Report:
-    """A finding for each convention whose pattern is not a regular expression.
+def _not_a_name(name: str) -> str | None:
+    """Why a convention's `id` names nothing a report can cite, or None where it does."""
+    if not name.strip():
+        return "it holds nothing but spaces"
+    if name.splitlines()[0] != name:
+        return "it runs over more than one line"
+    return None
+
+
+def _unusable_conventions(paper: dict, path: Path) -> Report:
+    """A finding for each convention whose pattern is not a regular expression, or whose
+    name names nothing.
 
     The schema can only say that a pattern is text. One that does not compile raised where
     the classifier was built, so it was "G2 could not run: error: unterminated character set
-    at position 0" with no entry named, and a traceback from `explain` and `bind`. Said
-    here, under the schema's code, which fails at every stage, and the entry is not read.
+    at position 0" with no entry named, and a traceback from `explain` and `bind`. And a
+    name of spaces was cited as `project:   `, one over two lines split the row `explain`
+    prints and the report's count. Said here, under the schema's code, which fails at every
+    stage, and the entry is not read.
     """
     conventions = paper.get("conventions")
     findings = []
     for index, entry in enumerate(conventions if isinstance(conventions, list) else ()):
-        pattern = entry.get("pattern") if isinstance(entry, dict) else None
-        why = _not_a_pattern(pattern) if isinstance(pattern, str) else None
-        if why is None:  # it compiles, or it is not text, which is the schema's to report
+        if not isinstance(entry, dict):  # the schema's to report
             continue
-        findings.append(
-            Finding(
-                gate="G0",
-                code="schema-violation",
-                message=f"conventions/{index}/pattern: {pattern!r} is not a regular "
-                f"expression: {why}",
-                path=path,
-                hint="a pattern is a Python regular expression; a bracket meant as a "
-                "character is written with a backslash before it",
+        pattern, name = entry.get("pattern"), entry.get("id")
+        # Not text: the schema's to report.
+        why = _not_a_pattern(pattern) if isinstance(pattern, str) else None
+        if why is not None:
+            findings.append(
+                Finding(
+                    gate="G0",
+                    code="schema-violation",
+                    message=f"conventions/{index}/pattern: {pattern!r} is not a regular "
+                    f"expression: {why}",
+                    path=path,
+                    hint="a pattern is a Python regular expression; a bracket meant as a "
+                    "character is written with a backslash before it",
+                )
             )
-        )
+        why = _not_a_name(name) if isinstance(name, str) and name else None
+        if why is not None:
+            findings.append(
+                Finding(
+                    gate="G0",
+                    code="schema-violation",
+                    message=f"conventions/{index}/id: {name!r} is not a name: {why}",
+                    path=path,
+                    hint="the report and `explain` cite the convention by its name, as "
+                    "`project:<id>`; give it a word or two on one line, or leave it out",
+                )
+            )
     return Report(tuple(findings))
 
 
@@ -255,7 +285,7 @@ def load_project(start: Path | None = None) -> tuple[Project, Report]:
     paper_path = root / PAPER_FILE
     paper = _settings(read_structured(paper_path), paper_path)
     reports.append(validate(paper, "paper", paper_path))
-    reports.append(_patterns(paper, paper_path))
+    reports.append(_unusable_conventions(paper, paper_path))
 
     authors_path = root / AUTHORS_FILE
     authors = read_structured(authors_path)

@@ -481,7 +481,7 @@ def test_a_convention_can_be_named_and_the_classifier_cites_that_name(tmp_path: 
     assert ids == {"project:half-normal", "project:half-life"}, "without a name, its pattern"
 
 
-@pytest.mark.parametrize("name", ["5", "''", "[half-normal]"])
+@pytest.mark.parametrize("name", ["5", "''", "[half-normal]", "'   '", '"first\\nsecond"'])
 def test_a_name_that_is_not_text_is_the_schemas_to_report(name: str, tmp_path: Path) -> None:
     """A name the schema refuses is its finding, at the entry, and the entry is not read: a
     convention with a name in the wrong shape exempts nothing until it is put right."""
@@ -502,6 +502,9 @@ def test_a_name_that_is_not_text_is_the_schemas_to_report(name: str, tmp_path: P
         # One word typed where a list is expected, which YAML reads as text.
         ("pharmacovigilance", ["pharmacovigilance"]),
         ("R", ["R"]),
+        # Text with nothing in it is no keyword: "**Keywords.**" with nothing after it.
+        ("", None),
+        ("   ", None),
         ([5, "signal"], ["5", "signal"]),
         (["pharmacovigilance", 2019], ["pharmacovigilance", "2019"]),
         ([False, "cGMP"], ["False", "cGMP"]),

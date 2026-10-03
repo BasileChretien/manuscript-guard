@@ -323,6 +323,51 @@ def test_build_refuses_while_a_gate_fails(project: Path) -> None:
     assert run("build", str(project), "--offline") == 1
 
 
+#: What `paper.yaml` can say that the front matter of the build must carry as text: a
+#: double quotation mark, a backslash, TeX. Each was written between double quotation marks
+#: into YAML by hand, so `"` ended the string and the build stopped, and `\a` became the
+#: control character 7, which made a .docx Word refuses to open. A word that survives
+#: pandoc's reading of each as Markdown, as it reads the text.
+FRONT_MATTER = {
+    "a keyword with quotation marks": ("keywords", 'say "hi" there', "hi"),
+    "a keyword with TeX in it": ("keywords", r"$\alpha$-synuclein", "synuclein"),
+    "a keyword with a backslash": ("keywords", r"TNF\alpha signalling", "signalling"),
+    "a list of keywords with TeX in it": ("keywords", [r"$\alpha$-synuclein", "signal"], "signal"),
+    "a title with both": ("title", r'The "weekend effect" in TNF\alpha signalling', "weekend"),
+    "a short title with both": ("short_title", r'"Weekend" and TNF\alpha', "Weekend"),
+}
+
+
+@needs_pandoc
+@pytest.mark.parametrize("case", list(FRONT_MATTER))
+def test_the_front_matter_carries_quotes_and_backslashes_into_a_readable_document(
+    case: str, project: Path
+) -> None:
+    """A list of keywords, a title and a short title the schema accepts went through `check`
+    and a checked build with the document unreadable: a false pass. One keyword typed
+    without a dash took the same road in an unchecked build. The document must be one Word
+    can open: its XML parses."""
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    import yaml
+
+    key, value, survives = FRONT_MATTER[case]
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document[key] = value
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 0
+    built = next((project / "build").glob("manuscript*.docx"))
+    with zipfile.ZipFile(built) as docx:
+        for member in ("docProps/core.xml", "word/document.xml"):
+            ET.fromstring(docx.read(member))  # raises on a control character
+        properties = docx.read("docProps/core.xml").decode("utf-8")
+        body = docx.read("word/document.xml").decode("utf-8")
+    assert survives in (properties if key == "keywords" else body)
+
+
 @needs_pandoc
 @pytest.mark.parametrize("word", ["pharmacovigilance", "R"])
 def test_an_unchecked_build_prints_one_keyword_typed_without_a_dash_whole(

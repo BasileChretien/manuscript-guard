@@ -425,6 +425,48 @@ def test_a_convention_the_schema_refuses_exempts_nothing(project: Path, conventi
     assert report.counts["atoms_project_exempt"] == 0
 
 
+@pytest.mark.parametrize(
+    "conventions",
+    [
+        pytest.param(
+            [
+                {"id": "house", "pattern": "7 spare kits", "why": "kept by every site"},
+                {"id": "house", "pattern": "13 spare forms", "why": "kept by every site"},
+            ],
+            id="named alike",
+        ),
+        pytest.param(
+            [
+                {"pattern": "(?i)(?:each site kept )?7 spare kits", "why": "kept by every site"},
+                {"pattern": "(?i)(?:each site kept )?13 spare forms", "why": "kept by every site"},
+            ],
+            id="patterns that begin alike",
+        ),
+    ],
+)
+def test_conventions_under_one_name_each_exempt_their_own_number(
+    project: Path, conventions
+) -> None:
+    """A rule's matches were kept under its name, so a second convention under the same
+    name, an `id` given twice or two patterns whose first 24 characters agree, replaced the
+    first one's: the number the first was written for failed as unbound."""
+    from manuscript_guard.cli import _run_gates
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["conventions"] = conventions
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    main_md(project).write_text(
+        main_md(project).read_text(encoding="utf-8")
+        + "\n\nEach site kept 7 spare kits and 13 spare forms.\n",
+        encoding="utf-8",
+    )
+
+    report, _project, _chosen, _deferred = _run_gates(project)
+    assert "unclassified-number" not in codes(report), report.render(project)
+    assert report.counts["atoms_project_exempt"] == 2
+
+
 def test_a_number_typed_into_a_file_that_is_not_utf8_is_not_a_pass(project: Path) -> None:
     """G2 cannot read the file, so it cannot report the number in it. The run fails all the
     same at every stage, on a finding that names the file, and nothing is built from it."""

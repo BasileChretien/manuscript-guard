@@ -3534,8 +3534,12 @@ Added by the adversarial review, verified and **not** fixed:
   (a warning past a quarter of the numbers in the manuscript). Self-service and silent are
   different things, and only the first was intended. A convention may be given a name,
   `id`, by which that report and `explain` cite it, as `project:<id>`; without one it is
-  cited by the first 24 characters of its pattern (Basile, 2026-10-03). Two conventions
-  given one name are counted under it together, as two whose patterns begin alike are.
+  cited by the first 24 characters of its pattern (Basile, 2026-10-03). A name is text on
+  one line with something in it besides spaces; another is the schema's finding, and the
+  convention is not read. Two conventions given one name each exempt what they match and
+  are counted under it together, as two whose patterns begin alike are. Before the review
+  of #153 the second one's matches replaced the first's, under either kind of shared name,
+  and a number the first was written for failed as unbound.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
@@ -4466,7 +4470,18 @@ Closed since, and why each mattered:
   then for a day not at all; it is printed whole, as the one keyword (Basile, 2026-10-03).
   An entry of the list that is not text is printed as it was, `2019` for one, which YAML
   reads as a number, and so are keywords typed with colons where the dashes belong, which
-  YAML reads as settings: a build that was asked not to check prints what was typed.
+  YAML reads as settings: a build that was asked not to check prints what was typed. What
+  it prints, pandoc reads as Markdown, as it reads the text: `*E. coli*` is set in italics
+  in a title and loses its asterisks in the document's properties, and
+  TeX outside `$`, `TNF\alpha`, is dropped. The review of #153 found that the title, the
+  short title and the keywords were written into the build's YAML header by hand, between
+  double quotation marks. A `"` in one ended the string and the build stopped, and a
+  backslash began an escape: `$\alpha$-synuclein` became the control character 7, which the
+  document carried in its properties and Word would not open. A keyword or a title the
+  schema accepts did this through `check` and a checked build, which made it a false pass,
+  older than #135. They are written as JSON strings now, whose escapes are YAML's.
+  Whether a keyword should be printed as typed, with its asterisks and backslashes, rather
+  than read as Markdown, is not decided; it would differ only in the document's properties.
   Still open, and each fails at every stage, so none is a pass. A file a gate reads by
   another route keeps the older wording: a figure's `.guard.yaml`, `methods.lock`. So does a
   folder under `manuscript/` named like a source, `notes.md`: the gates that read text name

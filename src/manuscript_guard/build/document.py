@@ -31,7 +31,13 @@ from pathlib import Path
 
 from manuscript_guard.build.styles import reference_with
 from manuscript_guard.contracts._schema import read_text
-from manuscript_guard.contracts.project import PAPER_FILE, control_character, one_line
+from manuscript_guard.contracts.project import (
+    PAPER_FILE,
+    advice,
+    named,
+    one_line,
+    unprintable_character,
+)
 from manuscript_guard.findings import WARN, Finding, Report
 
 GATE = "BUILD"
@@ -252,19 +258,20 @@ def _yaml_text(project, key: str, value: object) -> str:
 
     The lines are folded into one first, as YAML folded them between hand-written quotation
     marks: a title holding a blank line was two paragraphs to pandoc, and the Word writer
-    left it out. Only what YAML reads as the end of a line is folded (`one_line`). And any
-    other control character is refused, as pandoc refused it before: one comes
-    from an escape in `paper.yaml` itself, `"\\alpha"` between double quotation marks, and
-    written as JSON's escape it reached the document. `check` reports it first.
+    left it out. Only what YAML reads as the end of a line is folded (`one_line`), and the
+    tab is kept. Any other control character is refused, as pandoc refused it before: one
+    comes from an escape in `paper.yaml` itself, `"\\alpha"` between double quotation marks,
+    and written as JSON's escape it reached the document. So are a surrogate and the two
+    code points that are no character, which an escape makes too (`named`): a surrogate
+    cannot be written as UTF-8, and the build ended in a traceback. `check` reports each
+    first.
     """
     text = one_line(str(value))
-    character = control_character(text)
+    character = unprintable_character(text)
     if character is not None:
         raise BuildError(
-            f"{project.root / PAPER_FILE}: `{key}` holds the control character "
-            f"U+{ord(character):04X}, which no document can carry. Between double quotation "
-            "marks YAML reads a backslash as the start of an escape, `\\a` as U+0007; write "
-            "the value between single quotation marks, where a backslash is a backslash."
+            f"{project.root / PAPER_FILE}: `{key}` holds {named(character)}, which no "
+            f"document can carry: {advice(character)}."
         )
     return json.dumps(text, ensure_ascii=False)
 

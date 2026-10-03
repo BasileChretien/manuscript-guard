@@ -4530,8 +4530,15 @@ Closed since, and why each mattered:
   found that a line split also takes the vertical tab, the form feed and three
   separators for the end of a line, which YAML does not: `\v` and `\f` begin TeX's
   `\varepsilon` and `\frac`, and folded into a space they lost the letter after them
-  through `check` and the build. Only what YAML reads as the end of a line is folded, and
-  any other control character is refused.
+  through `check` and the build. Only what YAML reads as the end of a line is folded, the
+  tab is kept, and any other control character is refused. So are a surrogate, half of a
+  pair that two `\u` escapes make where they are written as JSON writes a character past
+  U+FFFF, and U+FFFE and U+FFFF, which are no character: `check` passed them, the build
+  ended in a traceback on a surrogate, which cannot be written as UTF-8, and in pandoc's
+  words on the other two. And the break a value closes with is taken off, not folded: a
+  block ends with one, and as a space it stood after `al.`, where pandoc reads a space as
+  a no-break space, so a title written as a block was printed with one after it. These
+  came from the last check of #153.
   Whether a keyword should be printed as typed, with its asterisks and backslashes, rather
   than read as Markdown, is not decided; it would differ only in the document's properties.
   Still open, and each fails at every stage, so none is a pass. A file a gate reads by

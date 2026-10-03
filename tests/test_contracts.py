@@ -493,6 +493,106 @@ def test_a_name_that_is_not_text_is_the_schemas_to_report(name: str, tmp_path: P
     assert project.extra_conventions == ()
 
 
+#: What the build folds into a space, and nothing else: the ends of a line as YAML reads
+#: them. No test held the last two: taken out of the fold, every test passed.
+FOLDED = {
+    "line feed": chr(0x0A),
+    "carriage return": chr(0x0D),
+    "carriage return and line feed": chr(0x0D) + chr(0x0A),
+    "next line": chr(0x85),
+    "line separator": chr(0x2028),
+    "paragraph separator": chr(0x2029),
+}
+
+
+@pytest.mark.parametrize("name", list(FOLDED))
+def test_each_end_of_a_line_is_folded_into_a_space_and_is_no_finding(name: str) -> None:
+    from manuscript_guard.contracts.project import one_line, unprintable_character
+
+    text = f"First{FOLDED[name]}second"
+    assert one_line(text) == "First second"
+    assert unprintable_character(text) is None
+
+
+def test_a_tab_is_kept_and_is_no_finding() -> None:
+    from manuscript_guard.contracts.project import one_line, unprintable_character
+
+    text = "a" + chr(9) + "b"
+    assert one_line(text) == text
+    assert unprintable_character(text) is None
+
+
+@pytest.mark.parametrize("name", list(FOLDED))
+@pytest.mark.parametrize("times", [1, 2])
+def test_the_break_that_closes_a_value_is_taken_off_and_not_made_a_space(
+    name: str, times: int
+) -> None:
+    """A block ends with one. Folded into a space it stood after `al.`, where pandoc reads a
+    space as a no-break space and printed one after the title, and after a closing
+    backslash, which made the space a no-break one."""
+    from manuscript_guard.contracts.project import one_line
+
+    assert one_line("Smith et al." + FOLDED[name] * times) == "Smith et al."
+    assert one_line(FOLDED[name] + "Smith et al.") == " Smith et al.", "only the closing one"
+
+
+#: A character that is not a control character and that no document can carry either: half
+#: of a pair, which two `\\u` escapes written as JSON writes them make, and the two code
+#: points that are no character. What `check` calls each.
+NOT_CARRIED = {
+    "half of a pair": (chr(0xD83D), "the surrogate U+D83D"),
+    "the other half": (chr(0xDE00), "the surrogate U+DE00"),
+    "U+FFFE": (chr(0xFFFE), "the non-character U+FFFE"),
+    "U+FFFF": (chr(0xFFFF), "the non-character U+FFFF"),
+    "a control character": (chr(7), "the control character U+0007"),
+}
+
+
+@pytest.mark.parametrize("name", list(NOT_CARRIED))
+def test_a_character_no_document_can_carry_is_named_for_what_it_is(name: str) -> None:
+    from manuscript_guard.contracts.project import named, unprintable_character
+
+    character, called = NOT_CARRIED[name]
+    assert unprintable_character(f"a{character}b") == character
+    assert named(character) == called
+
+
+@pytest.mark.parametrize(
+    "character", [chr(0x1F600), chr(0xE000), chr(0xFFFD), chr(0xA0), chr(0xD7FF), "é", "中"]
+)
+def test_a_character_a_document_can_carry_is_no_finding(character: str) -> None:
+    from manuscript_guard.contracts.project import unprintable_character
+
+    assert unprintable_character(f"a{character}b") is None
+
+
+#: The same through `paper.yaml`, where an escape between double quotation marks makes each.
+#: The first passed `check`, and the build stopped in pandoc's words about a file the author
+#: never wrote; the second passed `check` too, and the build ended in a traceback.
+ESCAPED = {
+    "a non-character": ('title: "a\\uFFFFb"' + chr(10), "title", "the non-character U+FFFF"),
+    "a pair written as JSON writes it": (
+        'short_title: "\\ud83d\\ude00 smile"' + chr(10),
+        "short_title",
+        "the surrogate U+D83D",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(ESCAPED))
+def test_an_escape_that_makes_no_character_is_a_finding_at_the_key(
+    case: str, tmp_path: Path
+) -> None:
+    written, where, called = ESCAPED[case]
+    paper = PAPER if where != "title" else PAPER.replace('title: "A study"' + chr(10), "")
+    _project, report = load_project(a_project(tmp_path / "paper", paper + written))
+
+    found = [f for f in report.failures if "no document can carry" in f.message]
+    assert [(f.code, f.message.split(",")[0]) for f in found] == [
+        ("schema-violation", f"{where}: holds {called}")
+    ]
+
+
 #: Each written between double quotation marks, as YAML reads them: `\a` is U+0007, `\e`
 #: U+001B. The place `check` names and the character it names there.
 CONTROL = {

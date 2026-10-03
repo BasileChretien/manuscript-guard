@@ -164,19 +164,62 @@ def _not_a_pattern(pattern: str) -> str | None:
 LINE_BREAK = re.compile(r"\r\n|[\r\n\x85\u2028\u2029]")
 
 
+#: The break, or breaks, a value closes with: a block always has one.
+_CLOSING_BREAK = re.compile("(?:" + LINE_BREAK.pattern + r")+\Z")
+
+
 def one_line(text: str) -> str:
-    """`text` with its lines folded into one, as YAML folded them between quotation marks."""
-    return " ".join(LINE_BREAK.split(text))
+    """`text` with its lines folded into one, as YAML folded them between quotation marks.
+
+    The break a value closes with is taken off, not folded. A block ends with one, and as
+    a space it stood after `al.` and `vs.`, where pandoc reads a space as a no-break space:
+    a title written as a block was printed with one after it. After a closing backslash it
+    became one too.
+    """
+    return " ".join(LINE_BREAK.split(_CLOSING_BREAK.sub("", text)))
 
 
-def control_character(text: str) -> str | None:
-    """The first character of `text` that no document can carry, once its lines are folded
-    into one as the build folds them (`one_line`): a control character other than a tab.
-    None where there is none."""
-    for character in one_line(text):
-        if character != "\t" and unicodedata.category(character) == "Cc":
-            return character
-    return None
+def named(character: str) -> str | None:
+    """What a finding calls a character no document can carry, or None where one can.
+
+    It is what YAML calls not printable and XML no character, so pandoc refuses a header
+    that holds one, or Word the document: a control character other than a tab; a
+    surrogate, half of a pair, which two escapes make where they are written as JSON writes
+    a character past U+FFFF; and U+FFFE and U+FFFF, which are no character.
+    """
+    code = ord(character)
+    if character != "\t" and unicodedata.category(character) == "Cc":
+        kind = "the control character"
+    elif 0xD800 <= code <= 0xDFFF:
+        kind = "the surrogate"
+    elif code in (0xFFFE, 0xFFFF):
+        kind = "the non-character"
+    else:
+        return None
+    return f"{kind} U+{code:04X}"
+
+
+def advice(character: str) -> str:
+    """How to write what was meant, for a character `named` names."""
+    code = ord(character)
+    if 0xD800 <= code <= 0xDFFF:
+        return (
+            "a character past U+FFFF is itself in YAML, or one `\\U` escape of eight digits; "
+            "two `\\u` escapes, as JSON writes it, are read as two halves"
+        )
+    if code in (0xFFFE, 0xFFFF):
+        return "it is no character; take the escape out"
+    return (
+        "between double quotation marks YAML reads a backslash as the start of an escape, "
+        "`\\a` as U+0007; write the value between single quotation marks, where a backslash "
+        "is a backslash"
+    )
+
+
+def unprintable_character(text: str) -> str | None:
+    """The first character of `text` that no document can carry (`named`), once its lines
+    are folded into one as the build folds them (`one_line`). None where there is none."""
+    return next((character for character in one_line(text) if named(character)), None)
 
 
 def _printed_settings(paper: dict) -> list[tuple[str, str]]:
@@ -198,23 +241,23 @@ def _unprintable(paper: dict, path: Path) -> Report:
     Between double quotation marks YAML reads a backslash as the start of an escape, so
     `"\\alpha-blockers"` is the control character U+0007 and then `lpha-blockers`. The build
     wrote it into the document's properties, and Word would not open the document; `check`
-    and a checked build had both passed it.
+    and a checked build had both passed it. An escape can also make a character that is no
+    control character and that no document can carry either (`named`): `check` passed those,
+    pandoc refused one in its own words about a file of the build's, and on a surrogate the
+    build ended in a traceback, since it cannot be written as UTF-8.
     """
     findings = []
     for where, text in _printed_settings(paper):
-        character = control_character(text)
+        character = unprintable_character(text)
         if character is None:
             continue
         findings.append(
             Finding(
                 gate="G0",
                 code="schema-violation",
-                message=f"{where}: holds the control character U+{ord(character):04X}, which "
-                "no document can carry",
+                message=f"{where}: holds {named(character)}, which no document can carry",
                 path=path,
-                hint="between double quotation marks YAML reads a backslash as the start of "
-                "an escape, `\\a` as U+0007; write the value between single quotation marks, "
-                "where a backslash is a backslash",
+                hint=advice(character),
             )
         )
     return Report(tuple(findings))

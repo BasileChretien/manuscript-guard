@@ -22,6 +22,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -97,8 +98,8 @@ def abbreviations() -> frozenset[str]:
     not treat as an abbreviation would come back plain. The build passes no `--data-dir`; if
     it ever does, this must read that directory too.
     """
-    found = re.search(r"^User data directory:\s*(.+?)\s*$", _pandoc_says("--version"), re.M)
-    own = Path(found.group(1)) / "abbreviations" if found else None
+    directory = user_data_dir()
+    own = directory / "abbreviations" if directory is not None else None
     if own is not None and own.is_file():
         # Bytes, not text: read as text, a lone carriage return already ended a line.
         text = own.read_bytes().decode("utf-8")
@@ -111,10 +112,24 @@ def abbreviations() -> frozenset[str]:
     return frozenset(line for line in lines if line)
 
 
-def _pandoc_says(*args: str) -> str:
+def user_data_dir(exe: str | None = None) -> Path | None:
+    """Pandoc's user data directory, as pandoc itself reports it.
+
+    Asking pandoc is what makes this right on every platform and under XDG_DATA_HOME, and
+    `_pandoc_says` reads the answer as UTF-8, which is what pandoc prints: read through the
+    console code page instead, a Windows account named Zoë comes back as ZoÃ« and the
+    directory is silently not found. The build passes no `--data-dir`; if it ever does, this
+    must read that directory too.
+    """
+    printed = _pandoc_says("--version", exe=exe)
+    found = re.search(r"^User data directory:\s*(.+?)\s*$", printed, re.M)
+    return Path(found.group(1)) if found else None
+
+
+def _pandoc_says(*args: str, exe: str | None = None) -> str:
     """What pandoc prints for `args`."""
     finished = subprocess.run(
-        [pandoc(), *args], capture_output=True, text=True, encoding="utf-8"
+        [exe or pandoc(), *args], capture_output=True, text=True, encoding="utf-8"
     )
     if finished.returncode != 0:
         raise BuildError(f"pandoc {' '.join(args)} failed:\n{finished.stderr.strip()}")
@@ -351,10 +366,21 @@ def build_document(
     command = [pandoc(), "--standalone", str(source.resolve()), "-o", str(output.resolve())]
     # The caller's reference document (the annotated build adds its highlight styles to one),
     # or one generated here for the figure-caption style alone.
-    # One generated file for every build that does not bring its own, rather than one per
-    # output: its content does not depend on the document, and `import`, which builds twice
-    # into a temporary folder, was leaving two of them in the project's cache.
-    reference = reference_doc or reference_with(pandoc(), build_dir / ".cache" / "reference.docx")
+    # A generated reference document of this build's own, removed when pandoc has read it.
+    # One shared name meant two builds of a project at once - or a build and an `import`,
+    # which builds twice - truncated the file the other was reading, or deleted it: pandoc
+    # read half a .docx ("not enough bytes") or the unlink raised. `roundtrip._put` keeps its
+    # intermediates apart for the same reason. Nothing is left behind either way.
+    generated: Path | None = None
+    if reference_doc is None:
+        cache = build_dir / ".cache"
+        cache.mkdir(parents=True, exist_ok=True)
+        handle, named = tempfile.mkstemp(prefix="reference-", suffix=".docx", dir=cache)
+        os.close(handle)
+        generated = Path(named)
+        reference = reference_with(pandoc(), generated)
+    else:
+        reference = reference_doc
     command += [
         f"--reference-doc={reference.resolve()}",
         f"--lua-filter={FIGURE_CAPTION_LUA.resolve()}",
@@ -376,7 +402,13 @@ def build_document(
         if csl is not None:
             command += [f"--csl={relative_to_root(project, csl.resolve())}"]
 
-    finished = subprocess.run(command, capture_output=True, text=True, cwd=root)
+    try:
+        finished = subprocess.run(command, capture_output=True, text=True, cwd=root)
+    finally:
+        # Pandoc has read it, or has failed: either way this build's copy goes, so nothing
+        # accumulates in the cache and no other build can read a file this one is writing.
+        if generated is not None:
+            generated.unlink(missing_ok=True)
     if finished.returncode != 0:
         raise BuildError(f"pandoc failed:\n{finished.stderr.strip()}")
     if finished.stderr.strip():

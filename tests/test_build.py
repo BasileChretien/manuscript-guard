@@ -486,3 +486,66 @@ def test_a_build_that_brings_a_reference_document_is_still_stamped(project: Path
     unstamped = project / "build" / "unstamped.docx"
     built = build_document(proj, assembled, mode=OFFLINE, output=unstamped, stamp=False)
     assert not built.output.with_name(built.output.name + SOURCE_STAMP).exists()
+
+
+@needs_pandoc
+@pytest.mark.parametrize("name", ["data home", "Zoë"])
+def test_the_authors_reference_document_is_found_wherever_their_home_is(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """Pandoc prints the path in UTF-8. Read through the console code page, a home directory
+    spelt with any other letter came back mojibake, the file was not found, and the build
+    went quietly back to pandoc's default."""
+    import io
+    import subprocess
+
+    home = tmp_path / name
+    (home / "pandoc").mkdir(parents=True)
+    default = subprocess.run(
+        ["pandoc", "--print-default-data-file", "reference.docx"], capture_output=True, check=True
+    ).stdout
+    house = (
+        b'<w:style w:type="paragraph" w:styleId="HouseStyle">'
+        b'<w:name w:val="House Style"/></w:style>'
+    )
+    with (
+        zipfile.ZipFile(io.BytesIO(default)) as zin,
+        zipfile.ZipFile(home / "pandoc" / "reference.docx", "w") as zout,
+    ):
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/styles.xml":
+                data = data.replace(b"</w:styles>", house + b"</w:styles>")
+            zout.writestr(item, data)
+    monkeypatch.setenv("XDG_DATA_HOME", str(home))
+
+    proj, namespace, results, _lit = loaded(project)
+    assembled, report = assemble(proj, namespace, results)
+    assert report.ok
+    output = build_document(proj, assembled, mode=OFFLINE).output
+    assert b"HouseStyle" in zipfile.ZipFile(output).read("word/styles.xml")
+
+
+@needs_pandoc
+def test_two_builds_of_one_project_at_once_do_not_collide(project: Path) -> None:
+    """The generated reference document used to have one name per project, so a second build
+    truncated the file the first was reading, or deleted it: pandoc read half a .docx, or the
+    unlink raised. `import` builds twice, and an agent runs tool calls in parallel."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+
+    def build(n: int) -> Path:
+        return build_document(
+            proj, assembled, mode=OFFLINE, output=project / "build" / f"at-once-{n}.docx"
+        ).output
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        outputs = [done.result() for done in [pool.submit(build, n) for n in range(4)]]
+
+    for output in outputs:
+        assert output.is_file() and output.stat().st_size > 5000
+        assert 'w:styleId="FigureCaption"' in _styles(output)
+    left = list((project / "build" / ".cache").glob("reference-*"))
+    assert left == [], f"the cache kept {[p.name for p in left]}"

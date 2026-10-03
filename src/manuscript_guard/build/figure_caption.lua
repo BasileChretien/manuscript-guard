@@ -23,6 +23,9 @@ generates (`build/styles.py`); nothing here chooses a size.
 
 local STYLE = 'Figure Caption'
 
+-- Whitespace, plus the two bytes U+00A0 is in UTF-8: a Lua pattern class matches bytes.
+local SPACE_CLASS = '[%s\194\160]'
+
 -- Whitespace, and the empty span a marked build puts in front of a paragraph as its
 -- identifier: nothing a reader sees.
 local function ignorable(inline)
@@ -58,7 +61,9 @@ local function is_caption(block)
   -- The trailing space lets one pattern cover a caption that is only "Figure 1." as well as
   -- one that goes on, and the %s after the stop is what keeps "Figure 2.5-fold" out.
   local text = pandoc.utils.stringify(block) .. ' '
-  return text:match('^Figure%s+S?%d+[%.:]%s') ~= nil
+  -- SPACE_CLASS, not %s: Lua patterns know nothing of U+00A0, and a caption pasted from Word
+  -- or typeset by pandoc after an abbreviation has a no-break space where a space was typed.
+  return text:match('^Figure' .. SPACE_CLASS .. '+S?%d+[%.:]' .. SPACE_CLASS) ~= nil
 end
 
 function Blocks(blocks)

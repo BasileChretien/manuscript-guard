@@ -18,7 +18,6 @@ exists, and to pandoc's built-in default when it does not.
 
 from __future__ import annotations
 
-import re
 import subprocess
 import zipfile
 from pathlib import Path
@@ -46,29 +45,44 @@ _CAPTION_STYLE = (
 )
 
 
-#: `pandoc --version` prints "User data directory: ..."; older pandoc printed "Default user
-#: data directory: ...". Asking pandoc is the only way that is right on every platform and
-#: that honours XDG_DATA_HOME, PANDOC_USER_DATA_DIR and whatever else it decides to read.
-_DATA_DIR = re.compile(r"^.*user data directory:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
-
-
 def user_reference(pandoc: str) -> Path | None:
     """The author's own `reference.docx`, from pandoc's user data directory, if it is there.
 
     This is the file pandoc would have used had the build passed no `--reference-doc`; a
     build that passes one has to start from it or it silently drops the author's typography.
+
+    The directory comes from `document.user_data_dir`, which asks pandoc and reads the answer
+    as UTF-8 — the same line `abbreviations()` reads, and for the same reason: pandoc prints
+    the path in UTF-8, and decoding it with the console's code page loses any home directory
+    that is not spelt in it. XDG_DATA_HOME is honoured because pandoc honours it.
     """
+    from manuscript_guard.build.document import BuildError, user_data_dir
+
     try:
-        printed = subprocess.run(
-            [pandoc, "--version"], capture_output=True, check=True, text=True
-        ).stdout
-    except (OSError, subprocess.CalledProcessError):
+        directory = user_data_dir(pandoc)
+    except (OSError, BuildError):
+        # A pandoc that cannot say where its data lives is not a reason to stop: the build
+        # is about to run it, and that is where its failure belongs.
         return None
-    found = _DATA_DIR.search(printed or "")
-    if found is None:
+    if directory is None:
         return None
-    candidate = Path(found.group(1)) / "reference.docx"
+    candidate = directory / "reference.docx"
     return candidate if candidate.is_file() else None
+
+
+def _opened(copy: Path, theirs: Path | None) -> zipfile.ZipFile:
+    """`copy` as a .docx, or a build error naming the file that is not one.
+
+    An author's `reference.docx` that is not a .docx is their file, not a bug here, and a
+    `BadZipFile` traceback says neither which file nor what to do about it.
+    """
+    from manuscript_guard.build.document import BuildError
+
+    try:
+        return zipfile.ZipFile(copy)
+    except zipfile.BadZipFile as exc:
+        whose = f"the reference document {theirs}" if theirs else "pandoc's reference document"
+        raise BuildError(f"{whose} cannot be read as a .docx: {exc}") from exc
 
 
 def reference_with(pandoc: str, target: Path, extra: str = "") -> Path:
@@ -93,7 +107,7 @@ def reference_with(pandoc: str, target: Path, extra: str = "") -> Path:
         )
     try:
         with (
-            zipfile.ZipFile(scratch) as zin,
+            _opened(scratch, theirs) as zin,
             zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zout,
         ):
             for item in zin.infolist():

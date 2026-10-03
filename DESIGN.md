@@ -3419,9 +3419,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   figure is set in `Figure Caption` (10 pt against 12 pt) when its text opens "Figure 1.",
   "Figure 4:" or "Figure S1."; the stop or colon has to come right after the number, so that
   prose resuming under a figure ("Figure 1 shows ...", "Figure 2.5-fold higher ...") is left
-  as prose. The cost: a caption written "Fig. 1." or "Figure one.", a caption separated from
-  its figure by a comment, and a caption under an image that shares its paragraph with other
-  text are all left at body size. A figure that carries pandoc's own caption
+  as prose. A no-break space between the word and the number is read as a space. The cost: a
+  caption written "Fig. 1.", "Figure one." or with a chapter-style number ("Figure 1.1."), a
+  caption separated from its figure by a comment, and a caption under an image that shares its
+  paragraph with other text are all left at body size. A figure that carries pandoc's own caption
   (`![caption](path)`) keeps `Image Caption`, which the reference document does not size
   either, and a caption inside a block quotation takes `Figure Caption` in place of
   `Block Text` and so loses the quotation's indent. The style is added to the author's own

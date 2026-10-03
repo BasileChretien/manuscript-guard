@@ -4158,6 +4158,13 @@ Closed since, and why each mattered:
   machine on a laboratory network is refused, with or without a key, because the manuscript
   would cross that network unencrypted. Putting it behind https, or tunnelling it to
   localhost, is the way through.
+- **A server on this machine that passes requests on is recognised only by Ollama's names.**
+  A model whose name ends in `-cloud` or `:cloud` at an address on this machine is said to
+  leave it through Ollama's servers, in the statement, the question and `review --providers`.
+  Anything else at such an address is said to stay unless the server there passes it on:
+  a cloud model Ollama names some other way, a proxy, a tunnel, or a llama.cpp or vLLM
+  server that forwards what it receives, none of which the address or the name shows. A
+  local server's model whose own name happens to end in `-cloud` is warned of needlessly.
 - **The size of a request is an estimate and no price is shown.** The statement before a
   run counts the calls and gives the bytes of the largest request at four characters a
   token. Tokenisers differ by model and prices change, so neither is built in; a model that

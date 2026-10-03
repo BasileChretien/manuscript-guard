@@ -330,19 +330,32 @@ def passed_on(model: Model) -> bool:
     return model.provider.local and model.name.lower().endswith(PASSED_ON)
 
 
+def passed_on_calls(plan: Plan, provider) -> list[Call]:
+    """The calls of this plan to `provider` that are known to leave this machine from there.
+
+    Counted from the calls about to be made, not the models listed: a cloud model whose
+    readings are on file, or that `--one-each` dealt no reviewer, sends nothing.
+    """
+    return [
+        call for call in plan.calls if call.model.provider == provider and passed_on(call.model)
+    ]
+
+
 def _where(plan: Plan, provider) -> str:
     """Where a provider's calls go, as far as this tool can know it."""
     if not provider.local:
         return "a third party"
-    sent_on = [
-        model.name for model in plan.models if model.provider == provider and passed_on(model)
-    ]
-    if sent_on:
-        return (
-            f"this machine, whose Ollama server passes {', '.join(sent_on)} on to Ollama's "
-            "servers: that leaves this machine"
-        )
-    return "this machine; nothing leaves it unless the server there passes it on"
+    calls = [call for call in plan.calls if call.model.provider == provider]
+    leaving = passed_on_calls(plan, provider)
+    if not leaving:
+        return "this machine; nothing leaves it unless the server there passes it on"
+    names = ", ".join(dict.fromkeys(call.model.name for call in leaving))
+    if len(leaving) == len(calls):
+        return f"all {len(calls)} leave this machine through Ollama's servers ({names})"
+    return (
+        f"{len(leaving)} of these {len(calls)} calls ({names}) leave this machine through "
+        "Ollama's servers; the rest stay unless the server here passes them on"
+    )
 
 
 def _plural(count: int, word: str) -> str:

@@ -572,7 +572,27 @@ def test_an_ollama_cloud_model_is_not_said_to_stay_on_this_machine(
     assert "nothing leaves it" not in out
     assert "Ollama's servers" in out and model in out
     where = next(line for line in out.splitlines() if "localhost:11434" in line)
-    assert "leaves this machine" in where
+    assert "2 of these 4 calls" in where and "leave this machine through Ollama's servers" in where
+    assert "the rest stay" in where, "the calls to the model Ollama runs here are told apart"
+
+
+def test_calls_that_all_go_to_ollama_s_servers_are_said_to_leave(
+    project: Path, capsys, no_network
+) -> None:
+    configure(project, "ollama/gpt-oss:120b-cloud")
+    assert main(["review", str(project), "--run", "--dry-run", "--round", "2"]) == 0
+    where = next(line for line in capsys.readouterr().out.splitlines() if "localhost:11434" in line)
+    assert "all 2 leave this machine through Ollama's servers" in where
+    assert "stay" not in where
+
+
+def test_a_cloud_model_no_call_goes_to_is_not_named(project: Path, capsys, no_network) -> None:
+    """The row was built from the models listed, not from the calls about to be made, so it
+    warned of a cloud model that `--one-each` had dealt no reviewer."""
+    configure(project, "ollama/model-l", "openai/model-a", "ollama/gpt-oss:120b-cloud")
+    assert main(["review", str(project), "--run", "--dry-run", "--round", "2", "--one-each"]) == 0
+    where = next(line for line in capsys.readouterr().out.splitlines() if "localhost:11434" in line)
+    assert "gpt-oss" not in where and "unless" in where
 
 
 def test_a_model_on_this_machine_is_said_to_stay_there_only_if_its_server_keeps_it(
@@ -584,6 +604,18 @@ def test_a_model_on_this_machine_is_said_to_stay_there_only_if_its_server_keeps_
     assert main(["review", str(project), "--run", "--dry-run", "--round", "2"]) == 0
     where = next(line for line in capsys.readouterr().out.splitlines() if "localhost:11434" in line)
     assert "this machine" in where and "unless" in where
+
+
+def test_the_provider_list_says_a_cloud_model_leaves_this_machine(
+    project: Path, capsys, no_network
+) -> None:
+    configure(project, "ollama/gpt-oss:120b-cloud", "ollama/model-l")
+    assert main(["review", str(project), "--providers"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    cloud = next(line for line in lines if "ollama/gpt-oss:120b-cloud" in line)
+    here = next(line for line in lines if "ollama/model-l" in line)
+    assert "leaves this machine through Ollama's servers" in cloud
+    assert "Ollama's servers" not in here
 
 
 def test_a_run_nobody_agreed_to_sends_nothing(

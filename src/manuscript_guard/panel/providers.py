@@ -64,7 +64,8 @@ class Provider:
 
     @property
     def local(self) -> bool:
-        """Whether a call stays on this machine."""
+        """Whether the address is on this machine. A server there may still pass a request
+        on, as Ollama's server does for its cloud models: see `plan.passed_on`."""
         return urlsplit(self.base_url).hostname in LOOPBACK
 
 
@@ -113,7 +114,8 @@ PRESETS: dict[str, Provider] = {
             "GEMINI_API_KEY",
             max_tokens_field=None,
         ),
-        # A model run on this machine: no key, and the manuscript goes nowhere.
+        # Ollama on this machine: no key. A model it runs here keeps the manuscript here; its
+        # cloud models, served at the same address, are sent on to Ollama's servers.
         _preset("ollama", "http://localhost:11434/v1", None, json_mode=True),
         _preset("anthropic", "https://api.anthropic.com/v1", "ANTHROPIC_API_KEY", api=ANTHROPIC),
     )

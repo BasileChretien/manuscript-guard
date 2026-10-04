@@ -22,6 +22,7 @@ from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import (
     abstract_in_header,
+    is_supplementary,
     source_files,
     unreadable_header,
 )
@@ -221,9 +222,23 @@ def title_findings(project: Project, path: Path, declared: str) -> tuple[Finding
     printed is the one meant. `declared` is `strip_front_matter`'s reading of the header,
     which takes the first `title:` line as it stands; DESIGN.md's Known gaps lists the
     headers it reads otherwise than YAML does.
+
+    A supplementary file is told something else. A title of its own is an ordinary thing
+    to type there and is not meant to be the paper's, so making the two agree is advice
+    nobody should take; what the author needs to hear is that the title is printed nowhere.
     """
     if not declared or declared == str(project.paper.get("title", "")):
         return ()
+    if is_supplementary(project.path("manuscript"), path):
+        hint = (
+            "nothing prints this title: the supplement's is made from paper.yaml's; "
+            "delete the title from its header"
+        )
+    else:
+        hint = (
+            "paper.yaml is the one the document and the submission pack use; "
+            "delete the title from the manuscript or make them agree"
+        )
     return (
         Finding(
             gate=GATE,
@@ -232,8 +247,7 @@ def title_findings(project: Project, path: Path, declared: str) -> tuple[Finding
             message=f"{path.name} declares a different title from paper.yaml",
             path=path,
             context=declared[:120],
-            hint="paper.yaml is the one the document and the submission pack use; "
-            "delete the title from the manuscript or make them agree",
+            hint=hint,
         ),
     )
 

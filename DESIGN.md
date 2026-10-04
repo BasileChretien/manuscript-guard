@@ -3509,20 +3509,30 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   (`two-titles`).
 - **The title in a manuscript's header is read by line, not as YAML.** The comparison with
   `paper.yaml` (`two-titles`) takes what stands after the first `title:` in the block, at
-  any depth, less the quotation marks at either end, and sets it beside `paper.yaml`'s title
-  as YAML gives that one. So it warns of two titles that agree where the header's has a
-  comment after it, an apostrophe doubled between single quotation marks
-  (`'Crohn''s disease'`), a quotation mark escaped between double ones, or a folded or
-  literal block (`title: >`); where an author's `title: Dr` stands above it; and where
-  `paper.yaml`'s own title is a folded block, whose closing line break YAML keeps. And it
-  says nothing of two that differ where the header's title runs on to a second line, is
-  written `title :` or `"title":`, or is written twice, of which YAML keeps the last. `init`
-  types no header that the two readings take differently. It is a warning, the document
-  prints `paper.yaml`'s title in each of these, and deleting the title from the header ends
-  it. A supplementary file's own title is compared with the paper's as well, and warned of:
-  nothing prints it, since the supplement's title is made from the paper's. Reading the
-  header's title as YAML, as its abstract is read, is a change of its own (Basile,
-  2026-10-04).
+  any depth and on that line alone, less every quotation mark and apostrophe at either
+  end, and sets it beside `paper.yaml`'s title as YAML gives that one. So it warns of two
+  titles that agree where the header's has:
+  - a comment after it;
+  - an apostrophe doubled between single quotation marks (`'Crohn''s disease'`);
+  - a quotation mark or a backslash escaped between double ones. `init` types a title with
+    TeX into `paper.yaml` that way (`"IFN-$\\gamma$ release assays"`), so an author who
+    makes the two agree by copying that line into the header keeps the warning;
+  - a quotation mark or an apostrophe of its own at either end, quoted or not
+    (`"Rethinking the 'obesity paradox'"`, `A study of "frailty"`);
+  - a second line it runs on to, or a folded or literal block (`title: >`);
+  - an author's `title: Dr` above it, or no title of its own under such an author;
+
+  and where `paper.yaml`'s own title is a folded block, whose closing line break YAML
+  keeps. And it says nothing of two that differ where the header's title begins on the
+  line under its key, is written `title :` or `"title":`, is written twice, of which YAML
+  keeps the last, or differs from `paper.yaml`'s only past its first line or by a mark at
+  either end (`the patients'` beside `the patients`). `init` types no header that the two
+  readings take differently. It is a warning, the document prints `paper.yaml`'s title in
+  each of these, and deleting the title from the header ends it. A supplementary file's
+  own title is compared with the paper's as well, and warned of: nothing prints it, since
+  the supplement's title is made from the paper's. Its hint says that, and does not say to
+  make the two agree. Reading the header's title as YAML, as its abstract is read, is a
+  change of its own (Basile, 2026-10-04).
 - **A front matter is composed twice, at 15 to 20 seconds a megabyte each time.** PyYAML's
   pure-Python composer is linear but slow: once to decide the block is front matter, once
   to look for an abstract in it, each cached for the rest of the process. With half a

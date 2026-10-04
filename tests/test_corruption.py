@@ -8099,13 +8099,17 @@ def test_a_title_changed_in_paper_yaml_alone_is_a_warning_of_check(
 
 
 def test_one_title_is_not_a_finding_of_check(project: Path) -> None:
-    """The baseline: the example as shipped, whose two titles agree, and a header with no
-    title in it, which declares nothing."""
+    """The baseline: the example as shipped, whose two titles agree; a header that holds
+    another key and no title; and a file with no header. Neither of these declares one."""
     from manuscript_guard.cli import _run_gates
 
     assert two_titles(_run_gates(project)[0]) == []
-    retitled(project)
+    was = retitled(project)
     text = main_md(project).read_text(encoding="utf-8")
+    line = 'title: "' + was + '"'
+    main_md(project).write_text(text.replace(line, "lang: en-GB", 1), encoding="utf-8")
+    assert main_md(project).read_text(encoding="utf-8").startswith("---\nlang: en-GB\n---\n")
+    assert two_titles(_run_gates(project)[0]) == []
     main_md(project).write_text(text.split("---\n", 2)[2].lstrip("\n"), encoding="utf-8")
     assert two_titles(_run_gates(project)[0]) == []
 
@@ -8151,6 +8155,7 @@ def test_build_says_the_two_titles_differ_and_builds(
     said = capsys.readouterr().out
     assert said.count(TWO_TITLES) == 1
     assert "[WARN] BUILD" in said
+    assert "assembled_files" not in said, "the counts say nothing beside a warning"
     assert said.index(TWO_TITLES) < said.index("built ")
     assert _printed_title(project / "build" / "manuscript.docx") == OTHER_TITLE
 
@@ -8204,12 +8209,15 @@ def test_submit_says_the_two_titles_differ_and_assembles_the_pack(
 
 _AS_INIT_TYPES_IT = 'title: "A cohort study"'
 _APOSTROPHE = chr(39)
-_ESCAPED_MARK = chr(92) + '"'
+_BACKSLASH = chr(92)
+_ESCAPED_MARK = _BACKSLASH + '"'
+_GAMMA = 'title: "IFN-$' + _BACKSLASH * 2 + 'gamma$ release assays"'
+_OBESITY = 'title: "Rethinking the ' + _APOSTROPHE + "obesity paradox" + _APOSTROPHE + '"'
 
 #: The header's title is read by line and not as YAML, which DESIGN.md's Known gaps tells.
 #: Held here so that its account stays true. Each case is one the line reading gets wrong:
-#: the header, the title as paper.yaml types it, and whether the two agree as YAML reads
-#: them. Where they agree a warning is made, and where they differ none is.
+#: the header, the title as paper.yaml types it, and whether a warning is made. Where one is
+#: made, the header declares paper.yaml's title or none; where none is, it declares another.
 READ_BY_LINE = {
     "a comment after the title": (
         "title: A cohort study  # working title", _AS_INIT_TYPES_IT, True
@@ -8224,19 +8232,46 @@ READ_BY_LINE = {
         "title: " + _APOSTROPHE + 'A "quoted" title' + _APOSTROPHE,
         True,
     ),
+    "a backslash doubled between double quotation marks, as init types paper.yaml's": (
+        _GAMMA, _GAMMA, True
+    ),
+    "a quoted title that ends with a phrase between the other marks": (
+        _OBESITY, _OBESITY, True
+    ),
+    "a plain title that ends with a quotation mark": (
+        'title: A study of "frailty"',
+        "title: " + _APOSTROPHE + 'A study of "frailty"' + _APOSTROPHE,
+        True,
+    ),
     "a folded block": (
         "title: >\n  A cohort study\n  of two lines",
         'title: "A cohort study of two lines"',
         True,
     ),
+    "a long title wrapped on to a second line": (
+        'title: "A cohort study of adults\n  in primary care"',
+        'title: "A cohort study of adults in primary care"',
+        True,
+    ),
     "an author's title above it": (
         "author:\n  - name: A\n    title: Dr\ntitle: A cohort study", _AS_INIT_TYPES_IT, True
+    ),
+    "an author's title and none of the header's own": (
+        "author:\n  - name: A\n    title: Dr", _AS_INIT_TYPES_IT, True
     ),
     "a folded block in paper.yaml": (
         "title: A cohort study", "title: >\n  A cohort study", True
     ),
-    "a title that runs on to a second line": (
+    "a title whose first line is paper.yaml's and that runs on to a second": (
         "title: A cohort study\n  of two lines", _AS_INIT_TYPES_IT, False
+    ),
+    "a title that begins on the line under the key": (
+        "title:\n  Another", _AS_INIT_TYPES_IT, False
+    ),
+    "a plain title that ends with an apostrophe paper.yaml's does not have": (
+        "title: What matters to the patients" + _APOSTROPHE,
+        "title: What matters to the patients",
+        False,
     ),
     "a space before the colon": ("title : Another", _AS_INIT_TYPES_IT, False),
     "a key between quotation marks": ('"title": Another', _AS_INIT_TYPES_IT, False),
@@ -8266,26 +8301,36 @@ def _with_header(root: Path, header: str, typed: str = _AS_INIT_TYPES_IT):
 def test_the_header_s_title_is_read_by_line_and_not_as_yaml(case: str, tmp_path: Path) -> None:
     from manuscript_guard.build.assemble import check_shapes
 
-    header, typed, agree = READ_BY_LINE[case]
+    header, typed, warned = READ_BY_LINE[case]
     project = _with_header(tmp_path / "paper", header, typed)
-    declared = " ".join(str(yaml.safe_load(header)["title"]).split())
-    assert (declared == " ".join(str(project.paper["title"]).split())) is agree
-    assert bool(two_titles(check_shapes(project))) is agree, "the limit DESIGN.md records"
+    # What a reading of both files as YAML would say: another title declared, or not.
+    declared = yaml.safe_load(header).get("title")
+    another = declared is not None and (
+        " ".join(str(declared).split()) != " ".join(str(project.paper["title"]).split())
+    )
+    assert warned is not another, "every case here is one the line reading gets wrong"
+    assert bool(two_titles(check_shapes(project))) is warned, "the limit DESIGN.md records"
 
 
 def test_a_supplementary_file_s_own_title_is_compared_with_the_paper_s(tmp_path: Path) -> None:
-    """Nothing prints it: the supplement's title is made from the paper's."""
+    """Nothing prints it: the supplement's title is made from the paper's. The hint says
+    that, and does not say to make the two agree, which nobody should do there."""
     from manuscript_guard.build.assemble import check_shapes
 
-    project = _with_header(tmp_path / "paper", _AS_INIT_TYPES_IT)
+    project = _with_header(tmp_path / "paper", "title: Another")
     supplement = tmp_path / "paper" / "manuscript" / "supplementary" / "S1.md"
     supplement.parent.mkdir()
     supplement.write_text(
         "---\ntitle: Supplementary methods\n---\n\n# Supplementary methods\n\nText.\n",
         encoding="utf-8",
     )
-    (found,) = two_titles(check_shapes(project))
+    paper, found = sorted(two_titles(check_shapes(project)), key=lambda f: f.path.name == "S1.md")
     assert (found.path, found.context) == (supplement, "Supplementary methods")
+    assert found.message == "S1.md declares a different title from paper.yaml"
+    assert "nothing prints" in found.hint and "delete the title from its header" in found.hint
+    assert "agree" not in found.hint
+    assert paper.path == main_md(tmp_path / "paper")
+    assert "make them agree" in paper.hint, "the paper's own file keeps the hint it had"
 
 
 # --------------------------------------------------------------------------------------

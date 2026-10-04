@@ -3537,6 +3537,21 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   `test_robustness.py`, and 24 without the second reading. The C composer is 40 times
   faster and overflows its stack on deep nesting, which is why the pure-Python one is
   used.
+- **The search for a merged abstract or title is not linear, and runs on every block.**
+  It follows merge keys, and each mapping that merges a list goes through the list again,
+  so many mappings merging one long list cost the one times the other. Since the abstract
+  and the title are taken from the one composing, the search runs on every block that is
+  composed, a block in the body included, where `main` only composed those. A block built
+  for it, 2,400 mappings merging one list of 24,000 items, 148 KB, takes 18 seconds in the
+  body, against 1.6 before, and as long in the header, against 13. Nothing fails, and no
+  manuscript has such a block. Going through a merged list once was tried in #168 and
+  taken back: marked when the mapping that merged it was read, a list was passed over by a
+  mapping reached first, under an earlier merge key, the search took a later mapping's
+  abstract, and an abstract pandoc prints went unrefused by `check` and the build. The
+  header that showed it is among the abstract's spellings in `tests/test_corruption.py`
+  (`_MET_TWICE`). Putting the list itself on the stack, to be gone through where its
+  members stood, keeps the order on the texts it was tried on, and is a change for a pull
+  request of its own.
 - **A YAML block later in a file is read as prose.** Pandoc takes any `---` block that
   follows a blank line and holds a YAML mapping for metadata, wherever it sits, and prints
   none of it. The gates recognise only the block that opens a file, so a later one is read:
@@ -3791,11 +3806,7 @@ Closed since, and why each mattered:
   The abstract had a second composing of its own, and the title was at first read from
   that: a header nested just as deep as the first composing could take, about 480 levels,
   then raised `RecursionError` out of the second, one call further down the stack, and
-  `import` ended in a traceback where it had answered (the review of #168). The search
-  for a merged abstract or title runs on every block that is composed now, a block in the
-  body included, so it goes through a merged list once: pushed again by each mapping that
-  merged it, a list of 24,000 items merged by 2,400 mappings took 18 seconds where
-  composing takes under two. The two
+  `import` ended in a traceback where it had answered (the review of #168). The two
   titles are compared with their spaces, tabs and line breaks folded, and the warning
   names the line of the header's title. Pandoc is asked for the title it keeps from each header of the
   table that holds this (`AS_YAML_READS_IT` in `tests/test_corruption.py`), and agrees on

@@ -314,10 +314,7 @@ def _entry(root, name: str):
 
     Pandoc honours merge keys: `<<: *base` takes the abstract `base` holds, or its title.
     A mapping's own key wins over a merged one, and an earlier merged mapping over a later
-    one, searched depth first. Each mapping is visited once, however many aliases reach it,
-    and each merged list gone through once: nothing refers to a list it is part of, since
-    an anchor exists only once its node is finished, so when a list is met again every
-    mapping in it has been visited already.
+    one, searched depth first. Each mapping is visited once, however many aliases reach it.
 
     Keys are known by their text, as pandoc knows them. PyYAML tags only a plain `<<` as a
     merge, so `"<<": *base` was passed over while pandoc merged it and printed the abstract,
@@ -338,15 +335,8 @@ def _entry(root, name: str):
             return own[-1]  # pandoc, like PyYAML, keeps the last of a duplicated key
         merged = []
         for key, value in scalar_keys:
-            if key.value != "<<":
-                continue
-            if not isinstance(value, yaml.SequenceNode):
-                merged.append(value)
-            elif id(value) not in seen:
-                # A list is gone through once, like a mapping. Pushed again by each mapping
-                # that merges it, a long one merged by many cost the one times the other.
-                seen.add(id(value))
-                merged += value.value
+            if key.value == "<<":
+                merged += value.value if isinstance(value, yaml.SequenceNode) else [value]
         pending += reversed(merged)
     return None
 

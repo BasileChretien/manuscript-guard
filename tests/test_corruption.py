@@ -1639,6 +1639,10 @@ SENTINEL = "Zebrafish marmalade sentinel phrase."
         "abstract: >-\n  Zebrafish marmalade\n  sentinel phrase.\n",
         f"abstract: {SENTINEL}\n",
         f'"abstract": {SENTINEL}\n',
+        # Merged in through a list that is met twice: under the first of two merge keys,
+        # by a mapping that merges it, and as the second. See `_MET_TWICE` further down.
+        f"l: &l [{{abstract: {SENTINEL}}}]\ny: &y {{abstract: ~}}\nm2: &m2 {{<<: *l}}\n"
+        "a: &a {<<: [*m2, *y]}\n<<: *a\n<<: *l\n",
     ],
 )
 def test_an_abstract_in_the_front_matter_is_refused(project: Path, abstract: str, capsys) -> None:
@@ -1682,6 +1686,18 @@ def test_a_supplements_front_matter_abstract_is_refused(project: Path) -> None:
     assert refused(assemble(projekt, namespace, results)[1]) == [("BUILD", "appendix.md", 2)]
 
 
+#: A header whose root has two merge keys. Under the first, `a` merges `m2` and then `y`,
+#: and `m2` merges the list `l`, which the second key names as well. Pandoc takes the
+#: abstract of the list's member, since `m2` stands before `y`. A search that goes through
+#: a merged list once, and marks it when the mapping that merges it is read, has marked `l`
+#: at the root before `m2` is reached, passes over it there, and takes `y`'s: tried for
+#: speed in #168, it left an abstract pandoc prints unrefused, and was taken back.
+_MET_TWICE = (
+    "l: &l [{{abstract: {first}}}]\ny: &y {{abstract: {second}}}\nm2: &m2 {{<<: *l}}\n"
+    "a: &a {{<<: [*m2, *y]}}\n<<: *a\n<<: *l\n"
+)
+
+
 def _abstract_line(front: str) -> int | None:
     from manuscript_guard.text.masking import front_matter_abstract
 
@@ -1712,6 +1728,7 @@ def _abstract_line(front: str) -> int | None:
         (f'base: &b {{abstract: {SENTINEL}}}\n"<<": *b\n', 2),
         (f"base: &b {{abstract: {SENTINEL}}}\n'<<': *b\n", 2),
         (f"!!merge abstract: {SENTINEL}\n", 2),
+        (_MET_TWICE.format(first=SENTINEL, second="~"), 2),
         # PyYAML counts U+2028 as a line break, and the file does not.
         (f'title: "Hepatic{chr(0x2028)}injury"\nabstract: {SENTINEL}\n', 3),
         # Pandoc prints the text whatever the tag says, and a quoted "null" is the word.
@@ -1741,6 +1758,8 @@ def test_every_spelling_of_a_front_matter_abstract_is_found(front: str, line: in
         f"meta:\n  abstract: {SENTINEL}\n",
         # The first of two merge keys wins, quoted or not, and its abstract is empty.
         f'e: &e {{abstract: ""}}\nf: &f {{abstract: {SENTINEL}}}\n"<<": *e\n<<: *f\n',
+        # The list's member is null and stands before the text, which is not the abstract.
+        _MET_TWICE.format(first="~", second=SENTINEL),
     ],
 )
 def test_a_front_matter_abstract_pandoc_prints_nothing_for_is_not_refused(front: str) -> None:
@@ -8478,27 +8497,6 @@ def test_a_header_too_deep_to_compose_declares_nothing_and_stays_in_the_body(mon
     assert masking.front_matter_abstract(text) is None
     assert masking.front_matter_title(text) is None
     assert strip_front_matter(text) == (text, "")
-
-
-def test_mappings_merging_one_long_list_are_searched_in_linear_time(assert_linear) -> None:
-    """The abstract and the title are looked for in every block that is composed, blocks
-    in the body included, and the search follows merge keys. Each mapping that merged a
-    list pushed every item of it again: 2,400 mappings merging one list of 24,000 items,
-    148 KB, took 18 seconds in the body where composing takes under two (the review of
-    #168). A merged list is gone through once."""
-    from manuscript_guard.text import masking
-
-    def block(mappings: int) -> str:
-        items = ", ".join(["x"] * (mappings * 10))
-        merging = [f"m{n}: &m{n} {{<<: *big}}" for n in range(mappings)]
-        merged = ", ".join(f"*m{n}" for n in range(mappings))
-        return "\n".join([f"big: &big [{items}]", *merging, f"<<: [{merged}]"]) + "\n"
-
-    def read(yaml_text: str) -> None:
-        # Not from the cache: the same block is timed several times.
-        assert masking._composed.__wrapped__(yaml_text)[:3] == (True, "", 0)
-
-    assert_linear(block, read, 300, "a block of mappings that merge one list, by mapping")
 
 
 def _nested_header(depth: int) -> str:

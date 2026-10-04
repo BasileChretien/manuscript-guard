@@ -269,8 +269,8 @@ def test_init_writes_a_title_that_is_read_as_it_was_typed(tmp_path: Path) -> Non
 
 #: Titles `init --title` may be given. Each left a new project that failed `check`, on the
 #: header `init` itself typed into `manuscript/main.md` or, for the tab, on `paper.yaml`;
-#: all but the line break, where `check` passed and the build warned of two titles, the
-#: header's being the first line only.
+#: all but the line break, where `check` passed with two titles that no command spoke of,
+#: the header's being the first line only.
 AWKWARD_TITLES = {
     "a quotation mark": 'A "quoted" title',
     "TeX that YAML does not read": "Effect of $" + chr(92) + "delta$ on outcomes",
@@ -324,7 +324,7 @@ HEADER = {
     # The build's reading strips every quotation mark at either end, so one of either kind
     # there cannot be read back. The header typed for the first was not YAML, as for the
     # two above; the one typed for each of the others read without its apostrophe, `the
-    # patients`, and the build warned of two titles.
+    # patients`: two titles, which no command spoke of then.
     '"Quoted" at the start': None,
     "the patients'": None,
     "'Tis the season": None,

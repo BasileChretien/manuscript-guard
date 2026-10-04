@@ -1552,6 +1552,18 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
     return 0
 
 
+def _print_assembly_warnings(report: Report, project) -> None:
+    """Print what assembling found where it refused nothing: a warning, `two-titles`.
+
+    `build` and `submit` printed assembling's report only when that held a failure, so a
+    warning on its own was made and shown to nobody. Before the document is made, so that
+    it is said whether or not pandoc then builds one. Without the counts, which say nothing
+    beside a warning.
+    """
+    if report.findings:
+        print(Report(report.findings).render(project.root))
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     """Produce the .docx. Gates run first unless the author insists otherwise.
 
@@ -1572,6 +1584,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     if not assemble_report.ok:
         print(assemble_report.render(project.root))
         return 1
+    _print_assembly_warnings(assemble_report, project)
 
     if getattr(args, "annotated", False):
         # Wrapped like the ordinary build. Without this a pandoc failure - Zotero down
@@ -1681,6 +1694,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
     if not assemble_report.ok:
         print(assemble_report.render(project.root))
         return 1
+    _print_assembly_warnings(assemble_report, project)
 
     document = args.document
     if document is None:

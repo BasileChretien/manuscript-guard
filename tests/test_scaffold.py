@@ -322,8 +322,9 @@ HEADER = {
     "Crohn's " + '"disease"': None,
     'Outcomes of "Foo"': None,
     # The build's reading strips every quotation mark at either end, so one of either kind
-    # there cannot be read back. The header typed for these read `the patients`, and the
-    # build warned of two titles.
+    # there cannot be read back. The header typed for the first was not YAML, as for the
+    # two above; the one typed for each of the others read without its apostrophe, `the
+    # patients`, and the build warned of two titles.
     '"Quoted" at the start': None,
     "the patients'": None,
     "'Tis the season": None,
@@ -358,8 +359,9 @@ def test_an_ordinary_title_is_typed_into_paper_yaml_as_it_always_was(tmp_path: P
     assert lines[1] == 'title: "Crohn' + "'" + 's disease: a cohort"'
 
 
-#: Characters no file or document can carry. The first is what Python makes of an argument
-#: that is not in the terminal's encoding: a lone surrogate, which cannot be written as UTF-8.
+#: Characters no document can carry. The first is what Python makes of an argument that is
+#: not in the terminal's encoding: a lone surrogate, which no file can carry either, since
+#: it cannot be written as UTF-8.
 NOT_A_TITLE = {
     "a lone surrogate": chr(0xDCE9),
     "another": chr(0xD800),
@@ -383,4 +385,59 @@ def test_init_refuses_a_title_no_file_can_hold_before_it_makes_anything(
     said = capsys.readouterr().err
     assert "Traceback" not in said
     assert "the title" in said
+    assert "which no document can carry" in said
+    assert "no file" not in said, "a control character is one a file can carry"
     assert not root.exists(), "nothing was made"
+
+
+#: Titles with TeX the document would be printed without, and what `init` says of each.
+TEX_IN_A_TITLE = {
+    "outside dollar signs": (
+        "IFN-" + chr(92) + "gamma release assays",
+        "`" + chr(92) + "gamma` stands outside dollar signs",
+    ),
+    "before a number": (
+        "Outcomes at 12 " + chr(92) + "pm 3 months",
+        "`" + chr(92) + "pm` stands outside dollar signs",
+    ),
+    "past a bracket": (
+        "[18F]FDG and TGF-$" + chr(92) + "beta$",
+        "`" + chr(92) + "beta` stands after a `[`",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(TEX_IN_A_TITLE))
+def test_init_refuses_a_title_whose_tex_check_would_fail(
+    case: str, tmp_path: Path, capsys
+) -> None:
+    """`init --title "IFN-\\gamma release assays"` made a project whose title `check`
+    passed and the build printed `IFN-release assays`. `check` fails that title now. It
+    reports it once, at `paper.yaml`, but `init` types the title into the manuscript's
+    header too, so a project made with it would open on a finding with the title to mend
+    in two files. The title is refused before anything is made, in the finding's words and
+    with its hint. The refusal does not say the title cannot be printed whole: past a sign
+    pandoc may well print it whole, and the finding says "may"."""
+    from manuscript_guard.cli import main
+
+    title, says = TEX_IN_A_TITLE[case]
+    root = tmp_path / "paper"
+    assert main(["init", str(root), "--title", title]) == 2
+    said = capsys.readouterr().err
+    assert "Traceback" not in said
+    assert says in said
+    assert "nothing was made" in said
+    assert "cannot be printed whole" not in said
+    assert "for italics write `*in vivo*`" in said, "the hint, which has the other remedies"
+    assert not root.exists()
+
+
+def test_init_takes_a_title_with_its_tex_between_dollar_signs(tmp_path: Path, capsys) -> None:
+    from manuscript_guard.cli import main
+
+    title = "IFN-$" + chr(92) + "gamma$ release assays"
+    root = tmp_path / "paper"
+    assert main(["init", str(root), "--title", title]) == 0
+    assert main(["check", str(root)]) == 0, capsys.readouterr().out
+    project, _report = load_project(root)
+    assert project.paper["title"] == title

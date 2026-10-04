@@ -24,6 +24,7 @@ from manuscript_guard.contracts._schema import (
     validate,
 )
 from manuscript_guard.findings import Finding, Report, merge_all
+from manuscript_guard.text.tex import Tex, tex_outside_maths
 
 PAPER_FILE = "paper.yaml"
 AUTHORS_FILE = "authors.yaml"
@@ -383,6 +384,149 @@ def _unprintable(paper: dict, path: Path) -> Report:
     return Report(tuple(findings))
 
 
+#: What a finding calls each sign past which no maths is read (`text.tex`).
+_SIGN = {
+    "`": "a backtick",
+    "<": "a `<`",
+    "[": "a `[`",
+    "@": "an `@`",
+    "~": "a `~`",
+    "^": "a `^`",
+}
+
+#: What to know about TeX in a title or a keyword, for a finding's hint and the build's
+#: refusal. Not every backslash before a letter was meant as TeX, and not every dollar sign
+#: as maths: the rest is for italics, a superscript, a character, money and a path.
+KEEP_THE_TEX = (
+    "pandoc keeps TeX only as maths, between dollar signs, and outside them it leaves out "
+    "the command with the number or the braces that follow it; for italics write "
+    "`*in vivo*`, for a superscript `^18^`, a character can be typed as itself, write "
+    "`\\$` for a dollar sign that is only one, and a backslash meant as one is written "
+    "twice, between single quotation marks"
+)
+
+#: For a dollar sign that was no maths: what every such sentence ends on.
+_MONEY = "write `\\$` for a dollar sign that is only one"
+#: Why a `$` before a command opened no maths (`Tex.unread`): what a finding says of the
+#: command, and what to do about it. The next `$` may be the one meant to close the maths
+#: or a dollar amount further on, and the sentence does not say which.
+_UNREAD = {
+    "digit": (
+        "stands after a `$` that opens no maths, since a digit follows the next `$`",
+        f"put the digit inside the dollar signs or a space before it, or {_MONEY}",
+    ),
+    "space": (
+        "stands after a `$` that opens no maths, since a space stands before the next `$`",
+        f"close the maths before that space, or {_MONEY}",
+    ),
+    "open": (
+        "stands after a `$` that opens no maths, since no `$` follows to close it",
+        f"close the maths with a `$`, or {_MONEY}",
+    ),
+    "paired": (
+        "stands after a `$` that closes maths an earlier `$` opens, so it is outside that "
+        "maths",
+        f"{_MONEY}, or open maths for the command",
+    ),
+}
+#: The remedy for a keyword, whatever stands around the command.
+_AS_TEXT = "write it as text and not as maths"
+_KEYWORD = (
+    f"{_AS_TEXT}, the character itself for a letter or a sign, since a keyword is printed "
+    "in the document's properties only, where maths is written as its TeX"
+)
+
+
+def _past_a_sign(found: Tex, keyword: bool) -> str:
+    """The sentence for a command past a sign after which no maths is read: pandoc may
+    well print it, so it says "may", and its remedies are the ones that hold there. With
+    the sign escaped the maths is read, which is no use to a keyword; and a command with
+    braces stands for no character."""
+    remedies = [] if keyword else ["where the sign is only itself put a backslash before it"]
+    if not found.braces:
+        remedies.append("type the character the command stands for")
+    elif keyword:
+        remedies.append(_AS_TEXT)
+    return (
+        f"`{found.command}` stands after {_SIGN[found.after]}, past which this check reads "
+        f"no maths, so the document may be printed without it; {', or '.join(remedies)}"
+    )
+
+
+def outside_maths(text: str, *, keyword: bool = False) -> str | None:
+    """What a finding says of TeX in `text` that the document would be printed without, or
+    None where there is none, once its lines are folded into one as the build folds them.
+    `keyword` is for a keyword, whose remedy is another.
+
+    Pandoc reads a title, a short title and a keyword as Markdown, and the Word writer
+    keeps TeX only as maths: `IFN-\\gamma release assays` passed `check` and a checked build
+    and was printed `IFN-release assays`. A command takes what follows it as TeX would, so
+    `12 \\pm 3 months` is printed without its `3`.
+
+    The sentence has to be true of the value it is printed for, and its remedy has to work.
+    Two rounds of review found ways neither held, each a kind of sentence now:
+
+    - Past a sign that can hold a dollar sign which opens no maths, the rule reads none
+      (`text.tex`), and reports TeX that pandoc may well keep: "outside dollar signs" would
+      be false of `[18F]FDG and TGF-$\\beta$`. It names the sign and says "may".
+    - A command can stand after a `$` that opens no maths: `TGF-$\\beta$1` is printed
+      `TGF-$$1`, for the digit after the next `$`. It says why, since "write `$\\beta$`" is
+      what the author wrote. That holds for every command up to that `$`, the second in
+      `$p \\leq$0.05` too.
+    - Where braces follow the command, dollar signs around the command alone are no
+      remedy: `$\\textit${in vivo}` is printed as typed. It gives none, and the hint has
+      the ones that work. Where none follow, a path for one, it says "if it is maths".
+    - A character reference in a subscript or a superscript is reported as one, since it
+      is no command.
+    """
+    found = tex_outside_maths(one_line(text))
+    if found is None:
+        return None
+    command = f"`{found.command}`"
+    if found.reference:
+        return (
+            f"{command} is a character reference in a subscript or a superscript, where "
+            "pandoc resolves it and reads the result again, so it can make TeX that the "
+            "document is printed without; type the character itself"
+        )
+    if found.after:
+        return _past_a_sign(found, keyword)
+    if found.unread:
+        how, remedy = _UNREAD[found.unread]
+        said = f"{command} {how}, and the document is printed without it"
+    elif found.braces:
+        said = (
+            f"{command} stands outside dollar signs, and the document is printed without it "
+            "and what its braces hold"
+        )
+        remedy = ""
+    else:
+        said = f"{command} stands outside dollar signs, and the document is printed without it"
+        remedy = f"if it is maths, write `${found.command}$`"
+    remedy = _KEYWORD if keyword else remedy
+    return f"{said}; {remedy}" if remedy else said
+
+
+def _tex_outside_maths(paper: dict, path: Path) -> Report:
+    """A finding for each title or keyword holding TeX the document would be printed
+    without (`outside_maths`), under the schema's code, which fails at every stage."""
+    findings = []
+    for where, text in _printed_settings(paper):
+        said = outside_maths(text, keyword=where.startswith("keywords"))
+        if said is None:
+            continue
+        findings.append(
+            Finding(
+                gate="G0",
+                code="schema-violation",
+                message=f"{where}: {said}",
+                path=path,
+                hint=KEEP_THE_TEX,
+            )
+        )
+    return Report(tuple(findings))
+
+
 def _not_a_name(name: str) -> str | None:
     """Why a convention's `id` names nothing a report can cite, or None where it does."""
     if not name.strip():
@@ -516,6 +660,7 @@ def load_project(start: Path | None = None) -> tuple[Project, Report]:
     reports.append(_unusable_conventions(paper, paper_path))
     reports.append(_unprintable(paper, paper_path))
     reports.append(_lost_letters(paper_path))
+    reports.append(_tex_outside_maths(paper, paper_path))
 
     authors_path = root / AUTHORS_FILE
     authors = read_structured(authors_path)

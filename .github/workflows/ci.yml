@@ -25,6 +25,9 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python: ["3.10", "3.13"]
     runs-on: ${{ matrix.os }}
+    # A suite that stalls would hold its runner for GitHub's own six hours. The slowest
+    # healthy job, on Windows, takes about 47 minutes, so twice that is a stall.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

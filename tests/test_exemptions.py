@@ -50,6 +50,7 @@ EXTERNAL = re.compile(r"(?i)pandoc|Rscript|\bR is not\b|Zotero|jsonlite|digest")
 IN_SOURCE = {
     "project-conventions": r"extra_conventions",
     "project-terms": r"extra_terms",
+    "unit-exponent": r"_UNIT_EXPONENT",
     "value-label": r'"label"|label: bool',
     "value-unquoted": r"quoted: bool|\"quoted\"",
     "audit-only-rule": r"audit_only",

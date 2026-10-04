@@ -36,6 +36,21 @@ exemptions:
     why: A project names a term containing digits that is not a measurement.
     grants: The atom is accepted anywhere it appears.
     abuse: tests/test_corruption.py::test_a_projects_own_allowlist_is_reported_not_silent
+    note: >-
+      A name is matched with pandoc's subscript and superscript signs taken out, so a
+      declared `CO2` accepts `CO~2~` as well. The terms still have to account for every
+      digit of the atom: tests/test_corruption.py::test_a_number_written_with_script_signs_is_still_reported
+      types a count hard against a name.
+
+  - id: unit-exponent
+    why: An exponent on a unit, typed with pandoc's superscript signs, is typography as the superscript character is.
+    grants: One digit, with a sign or none, between carets directly after one to three letters is not read as a number.
+    abuse: tests/test_corruption.py::test_a_number_written_with_script_signs_is_still_reported
+    note: >-
+      Nothing is declared: the shape is the claim. A count of more than one digit, a power
+      of ten and an exponent on a longer word are still numbers. One digit after a word of
+      one to three letters that is no unit, a citation's number typed as `it^2^`, is not
+      read, as `it` with the superscript character is not.
 
   - id: value-label
     why: A string value is a name or a period rather than a measurement.

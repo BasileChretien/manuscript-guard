@@ -7490,7 +7490,7 @@ def test_the_annotated_copy_keeps_inline_markup_around_numbers(project: Path) ->
     text = source.read_text(encoding="utf-8")
     added = (
         "\n# Change in HbA~1c~ from baseline\n\n"
-        "The CO~2~ level was read over a 3 m^2^ area, with the `x2` variable.\n"
+        "The CO~2~ level was read over a 3 m^2^ area in 10^6^ cells, with the `x2` variable.\n"
     )
     source.write_text(text + added, encoding="utf-8")
     assert main(["build", str(project), "--offline", "--annotated", "--skip-checks"]) == 0
@@ -7517,7 +7517,11 @@ def test_the_annotated_copy_keeps_inline_markup_around_numbers(project: Path) ->
     marked = _marked_texts(heading) + _marked_texts(paragraph)
     assert any('"1c"' in m for m in marked), marked
     assert any('"3"' in m for m in marked), marked
-    assert sum('"2"' in m for m in marked) == 2, marked
+    # The 2 of `CO~2~` is marked. The 2 of `m^2^` is an exponent on a unit, which is no
+    # number, as the 2 of `m²` is none: it carries no mark and is a superscript still, the
+    # paragraph reading as it did. A number in a superscript, the 6 of `10^6^`, is marked.
+    assert sum('"2"' in m for m in marked) == 1, marked
+    assert any('"6"' in m and "Superscript" in m for m in marked), marked
     assert {"t": "Code", "c": [["", [], []], "x2"]} in paragraph["c"]
     appendix = annotated[annotated.index("# Appendix") :]
     assert "x2" in appendix and "code" in appendix
@@ -8895,3 +8899,38 @@ def test_import_takes_back_a_document_built_before_tex_in_the_text_was_refused(
 
     assert main(["import", str(sent), str(project)]) == 0
     assert "nothing came back" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------------------
+# A number written with pandoc's subscript and superscript signs
+# --------------------------------------------------------------------------------------
+
+#: The example's first bound number typed by hand, in each shape the signs allow. A name is
+#: matched against the terms with its `~` and `^` taken out, and an exponent on a unit is
+#: read as `m²` is, as typography: neither may take a number with it.
+_TYPED_WITH_SIGNS = {
+    "between the signs of a superscript": "^{n}^ reports",
+    "with a subscript after it": "{n}~total~ reports",
+    "as an exponent on a letter": "n^{n}^ reports",
+    "as an exponent on a unit": "m^{n}^ reports",
+    "hard against a built-in name": "HbA~1c~{n} reports",
+    "as a power of ten": "4 × 10^3^ reports",
+}
+
+
+@pytest.mark.parametrize("case", list(_TYPED_WITH_SIGNS))
+def test_a_number_written_with_script_signs_is_still_reported(project: Path, case: str) -> None:
+    """`HbA~1c~` is matched as `HbA1c` and `kg/m^2^` is read as `kg/m²`. A count typed by
+    hand in the same signs is an unbound number like any other."""
+    count = load_namespace(load_project(project)[0])[0]["results.cohort.n_reports"].display
+    typed = _TYPED_WITH_SIGNS[case].format(n=count)
+    _results_with(project, _HELD.replace("{{results.cohort.n_reports}} reports", typed))
+
+    report = gate_report(project)
+
+    assert not report.ok
+    wanted = "10^3^" if "10^3^" in typed else count
+    assert any(
+        failure.code == "unclassified-number" and wanted in failure.message
+        for failure in report.failures
+    ), [failure.message for failure in report.failures]

@@ -150,6 +150,10 @@ There are four ways out, and usually it is the first:
    `project:maf-threshold`, and without it by the start of the pattern.
 
    A name that contains digits, such as a gene or a product code, goes under `terms:`.
+   A name typed with a subscript or a superscript is declared without the signs:
+   `terms: [CO2]` covers `CO~2~` as well as `CO2`, and `HbA~1c~` needs nothing, since
+   `HbA1c` is built in. An exponent on a unit, `kg/m^2^` or `s^-1^`, is read as `m²` is
+   and needs nothing either; `10^6^` is a number.
 
    If `p < 0.05` is reported although it is in the Methods, look above it for a line that
    starts with `#`, or sits over a line of `-` or `=`, inside a paragraph, a list item or a

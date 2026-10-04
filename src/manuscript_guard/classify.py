@@ -190,6 +190,9 @@ class Classifier:
         this file has already had several times.
         """
         matched = _terms_covering(atom.text, self.terms)
+        if matched is None and unsigned(atom.text) != atom.text:
+            # `HbA~1c~` is `HbA1c` with a subscript, and `CO~2~` a declared `CO2`.
+            matched = _terms_covering(unsigned(atom.text), self.terms)
         if matched is not None:
             return Verdict(TERM, rule="terms", detail=", ".join(matched))
         if scan is None:
@@ -435,6 +438,22 @@ def _scan(rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False) -
         ends[rule.id] = until
         reach[rule.id] = upto
     return Scan(starts, reach)
+
+
+#: The signs pandoc prints a subscript and a superscript between: `HbA~1c~`, `Ca^2+^`.
+_SCRIPT_SIGNS = str.maketrans("", "", "~^")
+
+
+def unsigned(text: str) -> str:
+    """`text` with pandoc's subscript and superscript signs taken out, which is how a name
+    is matched against the terms: `HbA~1c~` as `HbA1c`, `CO~2~` as a declared `CO2`.
+
+    An atom is cut at the punctuation round it, so `CO~2~` is `CO~2` here and its signs do
+    not pair: every one is taken out. No term matched it, built in or declared, and an
+    author had to declare `CO~2`, sign and all, or type the subscript character. A number
+    is no nearer a term for it: the terms still have to account for every digit, so
+    `HbA~1c~7.2` is reported for its 7.2 and `412~patients~` for its 412."""
+    return text.translate(_SCRIPT_SIGNS)
 
 
 def _terms_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:

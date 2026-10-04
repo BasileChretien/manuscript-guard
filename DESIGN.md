@@ -3577,6 +3577,32 @@ Added by the adversarial review, verified and **not** fixed:
   read. Vulgar fractions and enclosed digits now are. Number words are left alone on
   purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and
   a rule that flags them is a rule that gets the gate switched off.
+- **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
+  number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
+  term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did
+  not cover `CO~2~`, and `kg/m^2^` was reported where `kg/m²` never was. What passed was
+  `terms: ['CO~2']`, sign and all, or the character itself (found 2026-10-04). Now a
+  name is matched against the terms, built in and declared, with
+  its `~` and `^` taken out, and the hint of a name that is not declared says how to
+  declare it, `terms: [CO2]`. And an exponent on a unit is read as the superscript
+  character is, as typography: one digit, with a sign or none, between carets directly
+  after one to three letters, which takes in `m^2^`, `mm^3^`, `s^-1^`, `R^2^` and `χ^2^`.
+  `10^6^` stays a number, as `10⁶` does by its `10`. There is no list of formulae or of
+  units: the terms are the list for names, and the shape is the rule for exponents
+  (Basile, 2026-10-04).
+  Where it stops. The terms have to account for every digit, as before, so a count typed
+  hard against a name (`HbA~1c~7.2`), between the signs (`^412^`) or before a subscript
+  (`412~patients~`) is reported, and the hint of an atom that opens with a digit says
+  nothing of terms. A term is still found anywhere in an atom, so `H~2~O` is accepted by
+  the built-in `h2`, as `H2O` was. An exponent of two digits or more, and one on a word of
+  four letters or more, is a number: `year^-1^` and `mmHg^-1^` are reported, and are typed
+  with the superscript characters or declared. That is narrower than what is read for the
+  characters themselves, on purpose: `shown^12^` is a citation's number typed by hand, and
+  the caret is how it is typed. One digit after a word of one to three letters that is no
+  unit, `it^2^`, is not read, as `it²` is not. The conventions still read the text with
+  its signs in: an ordinal typed `2^nd^` matches no rule. Listed in
+  `tests/data/exemptions.yaml` as `unit-exponent`, with the test that types a count in
+  each of those shapes.
 - **`conventions:` and `terms:` in `paper.yaml` are self-service.** A pattern of `\d+` with a
   `why` of "house style" disables G2, and `terms:` needs no justification at all. The gate
   is a tool for an author who wants it, not a control over one who does not — so this stays.

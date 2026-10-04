@@ -8281,6 +8281,16 @@ READ_BY_LINE = {
 }
 
 
+def test_init_types_a_title_with_tex_as_the_row_says(tmp_path: Path) -> None:
+    """The row named for `init`, and DESIGN.md's sentence, say how `init` types such a
+    title into paper.yaml. Held here, so that neither goes on saying it if that changes."""
+    from manuscript_guard.scaffold import init_project
+
+    init_project(tmp_path / "paper", title="IFN-$" + _BACKSLASH + "gamma$ release assays")
+    lines = (tmp_path / "paper" / "paper.yaml").read_text(encoding="utf-8").splitlines()
+    assert lines[1] == _GAMMA
+
+
 def _with_header(root: Path, header: str, typed: str = _AS_INIT_TYPES_IT):
     """A new project titled `typed` in paper.yaml, its manuscript opening with `header`."""
     from manuscript_guard.scaffold import init_project

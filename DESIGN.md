@@ -3525,8 +3525,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   and where `paper.yaml`'s own title is a folded block, whose closing line break YAML
   keeps. And it says nothing of two that differ where the header's title begins on the
   line under its key, is written `title :` or `"title":`, is written twice, of which YAML
-  keeps the last, or differs from `paper.yaml`'s only past its first line or by a mark at
-  either end (`the patients'` beside `the patients`). `init` types no header that the two
+  keeps the last, has `paper.yaml`'s title as its first line and runs on to a second, or
+  differs from it only by a mark of its own at either end (`the patients'` beside
+  `the patients`). `init` types no header that the two
   readings take differently. It is a warning, the document prints `paper.yaml`'s title in
   each of these, and deleting the title from the header ends it. A supplementary file's
   own title is compared with the paper's as well, and warned of: nothing prints it, since

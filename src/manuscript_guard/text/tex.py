@@ -40,10 +40,15 @@ braces, an `\\end` with no `\\begin`); so is one in a value pandoc reads as code
 a tab before it; a backslash before a code point that is no letter in any Unicode yet is
 an escape to pandoc; and so is one before a letter that Python's Unicode has and pandoc's
 has not yet.
+
+The end of the module is for TeX that pandoc has read as TeX already, in the manuscript's
+text, where the build asks it: which of that is nothing but layout commands, and which
+is a macro's definition (`layout_only`, `only_definitions`).
 """
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from typing import NamedTuple
 
@@ -281,3 +286,130 @@ def tex_outside_maths(line: str) -> Tex | None:
                 return _past(line[script_read_to:], character)
         index += 1
     return None
+
+
+#: Layout commands. Each prints no word in LaTeX either and does nothing in a Word document,
+#: so TeX that is nothing but these loses nothing: the build warns of it and makes the
+#: document. This is a list and no more than a list: a command that is not on it is refused
+#: with the rest, `\centering` for one. The first kind takes nothing after it, the second a
+#: number from 0 to 4 in brackets, the third a length in braces, which is never printed.
+_BREAKS = (
+    "newpage",
+    "clearpage",
+    "cleardoublepage",
+    "bigskip",
+    "medskip",
+    "smallskip",
+    "vfill",
+    "hfill",
+    "noindent",
+)
+_NUMBERED_BREAKS = ("pagebreak", "nopagebreak", "linebreak", "nolinebreak")
+_LENGTHS = ("vspace", "hspace")
+# A length: a number with a unit, a command, or a number of times a command, with what it
+# may stretch and shrink by. Whatever stood between the braces was taken for one, and
+# `We enrolled \hspace{412} patients` was warned of and printed without its number.
+_UNIT = r"(?:pt|pc|in|bp|cm|mm|dd|cc|sp|em|ex|mu|fil{1,3}|\\[A-Za-z@]+)"
+_LENGTH = rf"[-+]?(?:\d+\.?\d*|\.\d+)?[ ]*{_UNIT}"
+_GLUE = rf"[ ]*{_LENGTH}(?:[ ]+(?:plus|minus)[ ]+{_LENGTH})*[ ]*"
+# One layout command. Nothing may follow one of the first two kinds but space or another
+# piece: pandoc reads `\newpage[412]` and `\newpage{412 patients}` as one piece of TeX,
+# and folds digits that open the next line into a command that takes no braces, `\newpage`
+# over `412`. So what is read is read to its end, and a piece that holds anything else is
+# no layout.
+_LAYOUT = re.compile(
+    r"\\(?:"
+    rf"(?:{'|'.join(_BREAKS)})"
+    rf"|(?:{'|'.join(_NUMBERED_BREAKS)})(?:\[[0-4]\])?"
+    rf"|(?:{'|'.join(_LENGTHS)})\*?\{{{_GLUE}\}}"
+    r")(?![A-Za-z@])"
+)
+# A macro's definition. It is raw TeX to pandoc and prints nothing, and pandoc applies it in
+# maths. Marked `{=latex}` it is no longer applied, and `$\RR$` stays `\RR`, which Word cannot
+# show: so a definition passes, since refusing it would leave no way to write one.
+_DEFINER = re.compile(r"\\(?:(?:re)?newcommand|providecommand|DeclareMathOperator)\*?\s*")
+_DEFINED = re.compile(r"\{\\[A-Za-z@]+\}|\\[A-Za-z@]+")
+_ARGUMENTS = re.compile(r"(?:\s*\[[^\]\n]*\]){0,2}\s*")
+_DEF = re.compile(r"\\def\s*\\[A-Za-z@]+[^{}\n]*")
+_WHITE = re.compile(r"\s*")
+
+
+def _braces_end(text: str, at: int) -> int | None:
+    """Past the `}` that closes the `{` at `at`, a brace after a backslash being no brace;
+    None where `at` holds no `{` or it is never closed."""
+    if at >= len(text) or text[at] != "{":
+        return None
+    depth, index = 0, at
+    while index < len(text):
+        character = text[index]
+        if character == "\\":
+            index += 2
+            continue
+        depth += (character == "{") - (character == "}")
+        index += 1
+        if depth == 0:
+            return index
+    return None
+
+
+def _definition_end(raw: str, at: int) -> int | None:
+    """Past the macro definition that opens at `at`, or None where none does."""
+    opened = _DEFINER.match(raw, at)
+    if opened is not None:
+        name = _DEFINED.match(raw, opened.end())
+        if name is None:
+            return None
+        return _braces_end(raw, _ARGUMENTS.match(raw, name.end()).end())
+    opened = _DEF.match(raw, at)
+    return None if opened is None else _braces_end(raw, opened.end())
+
+
+def only_definitions(raw: str) -> bool:
+    """Is `raw` macro definitions from end to end, and nothing else?"""
+    at = _WHITE.match(raw).end()
+    count = 0
+    while at < len(raw):
+        end = _definition_end(raw, at)
+        if end is None:
+            return False
+        at = _WHITE.match(raw, end).end()
+        count += 1
+    return count > 0
+
+
+def _pieces(raw: str) -> list[str] | None:
+    """What `raw` is made of, each piece "definition" or "layout", read from end to end;
+    None where it holds anything that is neither."""
+    at = _WHITE.match(raw).end()
+    pieces = []
+    while at < len(raw):
+        end = _definition_end(raw, at)
+        if end is not None:
+            pieces.append("definition")
+        else:
+            command = _LAYOUT.match(raw, at)
+            if command is None:
+                return None
+            end = command.end()
+            pieces.append("layout")
+        at = _WHITE.match(raw, end).end()
+    return pieces
+
+
+def layout_only(raw: str) -> bool:
+    """Is `raw` nothing but layout commands from the list above?"""
+    pieces = _pieces(raw)
+    return bool(pieces) and set(pieces) == {"layout"}
+
+
+def tex_kind(raw: str) -> str:
+    """What a piece of TeX is to the build: `definitions` where it is macro definitions
+    from end to end, `layout` where it is those and layout commands or layout commands
+    alone, and empty where it holds anything else, which the document would lose.
+
+    Pandoc reads a definition directly over a page break as one piece. Each is let pass on
+    its own, and the two together were refused."""
+    pieces = _pieces(raw)
+    if not pieces:
+        return ""
+    return "layout" if "layout" in pieces else "definitions"

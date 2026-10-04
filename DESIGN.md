@@ -4699,8 +4699,13 @@ Closed since, and why each mattered:
   `$\textit${in vivo}` is printed as typed. Where none follow it says "if it is
   maths", since a path is none. A keyword is told to write it as text, the character
   itself for a letter: it is printed in the document's properties only, where pandoc
-  writes maths as its TeX. And a reference in a subscript is told to be the character
-  it stands for.
+  writes maths as its TeX. And an `&` that a `;` follows, where a subscript or a
+  superscript can hold it, is told that it may be a character reference, and to be the
+  character it stands for or, where it stands after the script, to stand after a
+  space (before the `&` of `x^&alpha;^` a space would end the superscript, and pandoc
+  print its carets): the rule does not read it to see
+  whether it is one, and `R^2^&RMSE; model fit` holds none (the last check of the
+  change found it told "is a character reference in a subscript or a superscript").
   What the finding does not reach: the other text of a project that a document prints,
   the names in `authors.yaml` for one; the title page of a pack made with
   `submit --skip-checks --document`; a pandoc that reads a line otherwise than the one
@@ -4710,12 +4715,70 @@ Closed since, and why each mattered:
   and which is reported only where it holds a backslash before a letter; and a
   backslash before a sign, which is the sign: `10\,mg` is printed `10,mg`
   where TeX's thin space was meant, in a title and in the text alike.
-  Nor the manuscript's text, which is still open and is a false pass: `\approx
-  {{results.cohort.n_reports}}` in the example's Results passes `check` and the build,
-  and the document is printed without the number (found 2026-10-03). Decided the same
-  day: the build will refuse raw TeX in pandoc's own reading of the text, which it asks
-  for already, a block marked `{=latex}` let pass; then `check` gets a rule for the text
-  that fails from `drafting` on and may only over-report. Each is its own change.
+  Nor the manuscript's text, which was a false pass: `\approx
+  {{results.cohort.n_reports}}` in the example's Results passed `check` and the build,
+  and the document was printed without the number (found 2026-10-03). Every gate had
+  counted the number as printed. The build refuses it since (Basile, the same day). It
+  asks pandoc how it reads the text before it makes the document, with the values put
+  in, so what pandoc reads there as TeX outside maths is in hand and exact, wherever it
+  stands: a citation's brackets too, where pandoc keeps what stands before and after
+  the key apart from the rest and the first version did not look (the review of the
+  change moved the sentence there, and the number was lost again). The refusal names
+  the first piece and counts the rest. It holds at every stage and under
+  `--skip-checks`, and the document from the build before is removed with it, as for a
+  misread heading. `check` reads the sources and still passes such a text: its rule is
+  the next change, failing from `drafting` on and over-reporting only.
+  What the build lets pass: maths, code and a comment, which are no TeX to pandoc; TeX
+  the author marked as raw for LaTeX, `{=latex}`, which pandoc labels `latex` where it
+  labels unmarked TeX `tex`; and a macro's definition (`\newcommand`, `\renewcommand`,
+  `\providecommand`, `\def`, `\DeclareMathOperator`, each with its braces), which
+  prints nothing and which pandoc applies in maths. Marked `{=latex}` a definition is
+  no longer applied, and `$\RR$` stays `\RR`, so the build's remedy for one is not the
+  mark. The macro used outside maths is refused. What the refusal says to do is a code
+  span marked `{=latex}`, and not a block: a block so marked passes the build, and G2
+  fails any raw block from `drafting` on (`raw-block`), as it did before this change.
+  TeX that is nothing but layout commands is a warning and the document is made
+  (Basile, 2026-10-03): it prints no word in LaTeX either, a manuscript holding one
+  built before the refusal, and the round trip and its skill speak of a bare
+  `\newpage` as an ordinary thing. The warning says it does nothing in a Word document,
+  marked or not, and gives the page break as a code span of Word's own in a paragraph
+  of its own, `` `<w:r><w:br w:type="page"/></w:r>`{=openxml} ``, which passes `check`
+  and breaks the page. The commands are a list, kept in one place (`text/tex.py`), and
+  no more than a list:
+  `\newpage`, `\clearpage`, `\cleardoublepage`, `\bigskip`, `\medskip`,
+  `\smallskip`, `\vfill`, `\hfill` and `\noindent`; `\pagebreak`,
+  `\nopagebreak`, `\linebreak` and `\nolinebreak`, with a number from 0 to 4 in
+  brackets or none; `\vspace` and `\hspace` with a length in braces, a number with a
+  unit or a command, `\hspace{412}` being no length and refused. A definition and a
+  layout command that pandoc reads as one piece, one directly over the other, are a
+  warning too. A layout command that is not on the list is refused: `\centering`,
+  `\raggedright`, `\par`, `\quad`, `\newline`, `\label{...}`, `\FloatBarrier`,
+  `\newpage*`, `\pagebreak [4]` with a space before its bracket, and a length given
+  by a command with braces of its own, `\vspace{\stretch{1}}`. So is one that takes
+  something with it: pandoc folds digits that open the next line into a command that
+  takes no braces, so `\newpage` over `412 reports` is TeX that holds the 412, and
+  `\newpage[412]` and `\newpage{412 patients}` are each one piece of TeX. Up to
+  twenty kinds are each warned of, and the rest are counted.
+  What the refusal does not reach, and where it is wrong about what it refuses:
+  a build that does not ask pandoc for its reading, which is `import`'s build of a
+  document that was sent, so that one sent before the refusal can still come back, and
+  the annotated copy. TeX marked `{=tex}`, which pandoc labels as it labels unmarked
+  TeX, and which is refused, where `{=latex}` passes. A definition in a form that is
+  not read, which pandoc applies and the build refuses: `\let`, `\gdef`,
+  `\global\def`, `\newenvironment`, `\DeclareRobustCommand`, and a
+  `\newcommand` whose body has no braces or whose name is spaced in its braces; the
+  refusal says to write it as a `\newcommand` with its braces, and does not say to
+  mark it. A macro that leaves out the text it is given and comes to a layout command
+  or to a definition, `\newcommand{\brk}[1]{\newpage}` and `\brk{412}`, which
+  is warned of or passed, and loses the 412. The place named, which is a line of the
+  source where the piece's first line or its command first stands, and not always
+  where pandoc read it as TeX: the same command in maths or in a code span above is
+  found first, and a macro's expansion is found in its definition; TeX that only the
+  text as built holds is said to be put there by a value or a table, with the file's
+  name and no line. And G2, which reads the sources and holds every digit to being
+  bound, fails `\vspace{1em}` and the `[2]` of a definition with two arguments from
+  `drafting` on, as it did before, so a length with a digit in it is warned of only
+  before that stage or under `--skip-checks`.
   Whether a keyword should be printed as typed, with its asterisks and backslashes, rather
   than read as Markdown, is not decided; it would differ only in the document's properties.
   Still open, and each fails at every stage, so none is a pass. A file a gate reads by

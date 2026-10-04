@@ -100,6 +100,65 @@ def pandoc() -> str:
     return found
 
 
+#: A page break for a Word document, as a code span in a paragraph of its own: what the
+#: warning about a layout command says to write. A code span and not a block: G2 fails a
+#: raw block from `drafting` on, and the paragraph around the span is the one Word needs.
+_PAGE_BREAK = '`<w:r><w:br w:type="page"/></w:r>`{=openxml}'
+#: How many kinds of layout command are each warned of. Each is looked for in the text, so
+#: without a limit the warnings took time with the square of their number.
+_KINDS_NAMED = 20
+
+
+def _does_nothing(
+    inert: list[str], read: list[tuple[str, str]], built: list[str], output: Path
+) -> Report:
+    """A warning for each layout command pandoc reads as TeX in the text, with where the
+    first of its kind stands (`reading.misreading` fills `inert`).
+
+    `\\newpage` loses no word, so the document is made, and a manuscript that held one
+    before TeX in the text was refused still builds. But Word shows nothing for it, marked
+    `{=latex}` or not, and an author who typed it for a page break has none."""
+    from manuscript_guard.build.reading import place
+
+    kinds: dict[str, int] = {}
+    for raw in inert:
+        kinds[raw.strip()] = kinds.get(raw.strip(), 0) + 1
+    hint = (
+        f"for a page break in Word, write {_PAGE_BREAK} in a paragraph of its own; a command "
+        "that is there for a PDF made elsewhere can stand in a code span marked `{=latex}`, "
+        "and is then not warned of"
+    )
+    findings = [
+        Finding(
+            gate=GATE,
+            code="tex-does-nothing",
+            severity=WARN,
+            message=(
+                f"`{' '.join(raw.split())}`{place(raw, read, built)} does nothing in a Word "
+                "document" + (f", nor do {times - 1} more like it" if times > 1 else "")
+            ),
+            path=output,
+            hint=hint,
+        )
+        for raw, times in list(kinds.items())[:_KINDS_NAMED]
+    ]
+    if len(kinds) > _KINDS_NAMED:
+        findings.append(
+            Finding(
+                gate=GATE,
+                code="tex-does-nothing",
+                severity=WARN,
+                message=(
+                    f"{len(kinds) - _KINDS_NAMED} more kinds of layout command do nothing in "
+                    "a Word document either"
+                ),
+                path=output,
+                hint=hint,
+            )
+        )
+    return Report(tuple(findings))
+
+
 def abbreviations() -> frozenset[str]:
     """The words pandoc's smart typesetting puts a no-break space after, as a build reads them.
 
@@ -365,7 +424,9 @@ def build_document(
     exactly one document carrying it: the annotated copy passes `stamp=False`.
 
     `verify_reading` asks pandoc first whether it reads the sources
-    as the gates do (`reading.misreading`). Two builds go without: `import`, rebuilding a
+    as the gates do (`reading.misreading`), and whether it reads TeX in the text that the
+    Word writer would leave out, which is refused, or TeX that is only layout, which is
+    warned of. Two builds go without: `import`, rebuilding a
     document already sent in order to compare the returned one with it, since refusing
     there stranded a document a co-author was holding; and the annotated copy, which is for
     the author to read, not to send, and whose marks `annotate` has pandoc check as it
@@ -426,8 +487,9 @@ def build_document(
         ("the build's epilogue", epilogue),
     ]
     built = [prologue, *(a.text for a in ordered), epilogue]
+    inert: list[str] = []
     differs = (
-        misreading(header + body, header, read, pandoc(), root, built=built)
+        misreading(header + body, header, read, pandoc(), root, built=built, inert=inert)
         if verify_reading
         else None
     )
@@ -464,7 +526,7 @@ def build_document(
         f"--reference-doc={reference.resolve()}",
         f"--lua-filter={FIGURE_CAPTION_LUA.resolve()}",
     ]
-    report = Report()
+    report = _does_nothing(inert, read, built, output)
 
     if mode == LIVE:
         command += [f"--lua-filter={ensure_zotero_lua(build_dir / '.cache').resolve()}"]

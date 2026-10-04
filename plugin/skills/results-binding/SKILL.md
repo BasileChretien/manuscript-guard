@@ -154,7 +154,8 @@ There are four ways out, and usually it is the first:
    A name that contains digits, such as a gene or a product code, goes under `terms:`.
    A name typed with a subscript or a superscript is declared without the signs:
    `terms: [CO2]` covers `CO~2~` as well as `CO2`, and `HbA~1c~` needs nothing, since
-   `HbA1c` is built in. An exponent on a unit, `kg/m^2^` or `s^-1^`, is read as `m²` is
+   `HbA1c` is built in. An isotope is declared by its mass and its element, `terms: [18F]`
+   for `^18^F-FDG`. An exponent on a unit, `kg/m^2^` or `s^-1^`, is read as `m²` is
    and needs nothing either; `10^6^` is a number. A tilde that nothing closes is no
    subscript: `pH~2` is a number after "about", and is bound or written out.
 

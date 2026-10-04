@@ -80,6 +80,27 @@ NAMES = {
         "Uptake of ^18^F-FDG was measured, with ^131^I and ^14^C as tracers.",
         ("18F", "131I", "14C"),
     ),
+    "anions, declared": (
+        "Neither sulfate (SO~4~^2-^) nor phosphate (PO~4~^3-^) was reported.",
+        ("SO42-", "PO43-"),
+    ),
+    "a symbol with a subscript and an exponent, declared": (
+        "An adjusted R~adj~^2^ and an effect size η~p~^2^ were not reported.",
+        ("Radj2", "ηp2"),
+    ),
+    "a unit with an exponent on a longer word, declared": (
+        "A rate in year^-1^ and in mmHg^-1^.",
+        ("year-1", "mmHg-1"),
+    ),
+    "an isotope with its mass after the element, declared": (
+        "Labelled with I^131^ or F^18^-FDG.",
+        ("I131", "F18"),
+    ),
+    # Two names with nothing between: the second opens a word once the first is gone.
+    "two built-in names with nothing between, either way round": (
+        "A PaO~2~FiO~2~ ratio, or FiO~2~PaO~2~.",
+        (),
+    ),
     "a term twice with a sign between": ("A ratio H~2~/H~2~ and B~12~-B~12~.", ()),
     "a term twice with nothing between": ("A dimer H~2~H~2~ was seen.", ()),
 }
@@ -140,19 +161,6 @@ NOT_NAMES = {
         ["nivolumab^6^", "pembrolizumab^12^"],
     ),
     "a subscript after a word a term ends": ("At week~2~ and month~2~.", (), ["week~2", "month~2"]),
-    # Digits alone in a superscript are a citation's number or an exponent, and no part of
-    # a name: after a word that is the whole of a term's letters they made the term, and
-    # `hepatitis B^12^` passed as vitamin B12.
-    "a citation's number after a word that is a term's letters": (
-        "In hepatitis B^12^, in CD^19^ cells and in BRCA^1^ carriers.",
-        (),
-        ["B^12^", "CD^19^", "BRCA^1^"],
-    ),
-    "the same after a built-in name and a logarithm": (
-        "A PaCO^2^ and a log^10^ scale.",
-        (),
-        ["PaCO^2^", "log^10^"],
-    ),
     "a citation's number after a name with a subscript": (
         "End-tidal CO~2~^3^ was recorded.",
         ("CO2",),
@@ -166,6 +174,24 @@ NOT_NAMES = {
 def test_what_no_term_covers_is_still_reported(case: str) -> None:
     text, terms, reported = NOT_NAMES[case]
     assert unbound(text, terms) == reported
+
+
+#: Pinned, and in DESIGN.md's Known gaps: read as names, and none. Digits in a superscript
+#: after a word that is the whole of a term's letters make the term, so a citation's
+#: number typed there passes. Leaving digits alone in a superscript in their signs was
+#: tried, and it took declared names with it: an anion, `SO~4~^2-^` as `SO42-`, and a
+#: symbol with a subscript and an exponent, `R~adj~^2^` as `Radj2`.
+LIMITS = [
+    "In hepatitis B^12^, in CD^19^ cells and in BRCA^1^ carriers.",
+    "A PaCO^2^ and a log^10^ scale.",
+    "A value ^b^12 was given.",
+    "A lag of h~2/d~3 was seen.",
+]
+
+
+@pytest.mark.parametrize("text", LIMITS)
+def test_what_is_read_as_a_name_and_is_none(text: str) -> None:
+    assert unbound(text) == []
 
 
 def test_a_name_matched_without_its_signs_is_counted_as_the_projects_own() -> None:
@@ -247,6 +273,22 @@ def test_a_number_written_with_the_signs_is_still_one(case: str) -> None:
     assert unbound(text) == found
 
 
+def test_the_order_of_the_terms_does_not_decide_what_two_names_side_by_side_are() -> None:
+    """Terms of one length came in the order of a set, which changes from one run to the
+    next, and a term directly after another counted only where that one had been taken
+    out before it: `PaO~2~FiO~2~` was two terms on one run and an unbound number on the
+    next."""
+    from manuscript_guard.classify import _names_covering
+
+    for terms in (("pao2", "fio2"), ("fio2", "pao2")):
+        assert _names_covering("pao2fio2", terms) is not None, terms
+        assert _names_covering("fio2pao2", terms) is not None, terms
+    assert _names_covering("frisk1", ("k1", "risk")) is None, "terms inside a word"
+
+    loaded = Classifier.load(extra_terms=("CO2", "N2O")).terms
+    assert list(loaded) == sorted(loaded, key=lambda term: (-len(term), term))
+
+
 def test_a_long_atom_of_names_takes_time_in_proportion(assert_linear) -> None:
     """A term that opens a word many times in one atom was taken out one occurrence at a
     time, each making the text anew: 800,000 characters of `h~2~/` took seven seconds."""
@@ -260,6 +302,9 @@ def test_a_long_atom_of_names_takes_time_in_proportion(assert_linear) -> None:
     assert_linear(
         lambda n: "PaO~2~/FiO~2~/" * n, judged, 1000, "two terms many times in an atom"
     )
+    # With nothing between, each stands directly after the one before: counted only on a
+    # later pass, one more of them was taken out each time the terms were gone through.
+    assert_linear(lambda n: "h~2~" * n, judged, 2000, "one term many times, nothing between")
 
 
 def test_many_exponents_on_one_line_take_time_in_proportion(assert_linear) -> None:
@@ -359,9 +404,12 @@ DECLARED_AS = {
     "As shown^12^ before.": None,
     "A rate in year^-1^.": None,
     "Dissolution at pH~2 was tested.": None,
-    "End-tidal CO~2~^3^ was recorded.": None,
     "In hepatitis B^12^ it rose.": None,
     "Uptake of ^68^Ga-DOTATATE was measured.": None,
+    "An adjusted R~adj~^2^ was not reported.": "`terms: [Radj2]`",
+    "Sulfate, SO~4~^2-^, was not measured.": "`terms: [SO42-]`",
+    # A limit: the same shape with a citation's number is told the same.
+    "End-tidal CO~2~^3^ was recorded.": "`terms: [CO23]`",
 }
 
 

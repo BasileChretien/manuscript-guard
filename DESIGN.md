@@ -3621,31 +3621,39 @@ Added by the adversarial review, verified and **not** fixed:
   superscripts, and it is no word with digits alone in a superscript (`shown^12^`,
   `year^-1^`). A term is still found anywhere in an atom as it is written, so `H2O` is
   accepted by the built-in `h2`, as before, and so is `H~2~O`, where `h2` opens the word.
-  A symbol with a subscript that makes a term is that term: `b~1~`, `d~2~`, `k~2~`.
-  Digits alone in a superscript after a word are never part of a name: after a word that
-  is the whole of a term's letters they made the term, and a citation's number typed as
-  `hepatitis B^12^` passed as vitamin B12 (found by the second round of the review).
-  Before a letter they are an isotope's mass and part of the name, so a declared `18F`
-  covers `^18^F-FDG`. An
+  A symbol with a subscript that makes a term is that term: `b~1~`, `d~2~`, `k~2~`. An
   exponent of two digits or more, and one on a word of four letters or more, is a number:
   `year^-1^` and `mmHg^-1^` are reported, and are typed with the superscript characters or
-  declared. That is narrower than what is read for the characters themselves, on purpose:
+  declared without their signs, `terms: [year-1]`. That is narrower than what is read for
+  the characters themselves, on purpose:
   `shown^12^` is a citation's number typed by hand, and the caret is how it is typed. One
   digit after a word of one to three letters that is no unit, `it^2^`, `OR^3^`, `mg^7^`,
   is not read, as `it²` is not: a citation's number typed there is missed, and so is one
-  after such a word in italics, `*et al*^3^`. Two shapes are read as names that are none,
-  each with a lone letter that is a term's own: a superscript letter before a number,
-  `^b^12`, which is read as `b12`, where `12^b^` is reported; and two tildes that pandoc
-  reads as one subscript, `h~2/d~3`, which is read as `h2` and `d3`. Neither is how a
-  result is written. The
+  after such a word in italics, `*et al*^3^`. Three shapes are read as names that are
+  none. Digits in a superscript after a word that is the whole of a term's letters make
+  the term, so a citation's number typed as `hepatitis B^12^` passes as vitamin B12,
+  and `CD^19^` as CD19. A superscript letter before a number, `^b^12`, is read as `b12`,
+  where `12^b^` is reported. And two tildes that pandoc reads as one subscript,
+  `h~2/d~3`, are read as `h2` and `d3`. None is how a result is written. Leaving digits
+  alone in a superscript in their signs was tried for the first, and it took declared
+  names with it, which the review of that change found: an anion, `SO~4~^2-^` declared
+  `SO42-`, a symbol with a subscript and an exponent, `R~adj~^2^` declared `Radj2`, and
+  `year^-1^` declared `year-1`; so a name's superscripts are taken out whatever they
+  hold. An isotope is declared by its mass and its element, `terms: [68Ga]` for
+  `^68^Ga-DOTATATE`, and its hint does not say so: what opens with a digit is told
+  nothing of terms, since a count typed between the signs opens the same way. And two
+  names typed with nothing between, `PaO~2~FiO~2~`, are two terms: the terms are gone
+  through again once one is taken out, where one pass made of them two terms or an
+  unbound number by the order of the terms, which changed from one run to the next. The
   conventions still read the text with its signs in: `75th percentile` is a convention
   and `75^th^ percentile` is none, and under Methods `I² > 50%` is one where `I^2^ > 50%`
   leaves the 50% reported. Both allowances hold wherever the tokenizer and the classifier
   are used, and not only in a manuscript's text: in a figure's text, in `audit` and in a
   string value the analysis emits, where `^` and `~` are only characters, `m^2^` is no
-  number either. A declared `CO2` covers `CO~2~` in a figure's text; `audit` and the
-  emitter read the built-in terms and not the project's, as before, so there `CO~2~` is
-  reported and `HbA~1c~` is not. Listed in
+  number either. A declared `CO2` covers `CO~2~` in a figure's text and in a table the
+  analysis emits; `audit` and a string value the analysis emits are read with the
+  built-in terms and not the project's, as before, so there `CO~2~` is reported and
+  `HbA~1c~` is not. Listed in
   `tests/data/exemptions.yaml` as `unit-exponent`, with the test that types a number in
   each of those shapes.
 - **`conventions:` and `terms:` in `paper.yaml` are self-service.** A pattern of `\d+` with a

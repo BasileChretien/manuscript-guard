@@ -255,6 +255,22 @@ decodes the files itself, names the file and exits 2, with neither the byte and 
 the encoding. `review` reads only the bytes, for the digest, and the note after an edit reads
 the text with the bytes it cannot decode replaced; neither says anything of the encoding.
 
+And two that `check` takes from the build, under `BUILD`, without making a document. One is
+the shapes the build would refuse, read from the sources. The other is TeX in the text that
+the Word writer would leave out, `tex-in-the-text`. For that one `check` runs pandoc, once
+for the paper and once for its supplement, on the text the build would hand it, and reports
+what the build refuses, in the build's sentence, at the file and the line. It fails from
+`drafting` on, and the build's warning of a layout command, `tex-does-nothing`, comes with
+it. Like the reading of a PDF, this finding depends on a program outside the package, and
+on its version, as the build does: a pandoc that reads a line otherwise than the one CI
+pins reports otherwise, in `check` and in the build alike. Where pandoc is not on PATH,
+`check` does not judge TeX in the text. Its exit code is that of a pass, and it says so
+once, in a note: `tex-not-judged`, whose severity is `info` and whose code is its own, with
+the count `documents_read_for_tex` at 0. Every other gate runs as usual. `check` gives
+pandoc ten seconds for each document and then stops it: a document pandoc has not read by
+then, one it cannot read, and a pandoc that cannot be run are each that same note, for that
+document.
+
 **Tables and figures are generated from results, never hand-authored.** Tables are emitted
 by code from `results.json`; figure scripts may read `results.json` and nothing else. This
 closes the hole that, in the predecessor project, let a wrong count reach Table 1 and
@@ -4764,11 +4780,40 @@ Closed since, and why each mattered:
   in, so what pandoc reads there as TeX outside maths is in hand and exact, wherever it
   stands: a citation's brackets too, where pandoc keeps what stands before and after
   the key apart from the rest and the first version did not look (the review of the
-  change moved the sentence there, and the number was lost again). The refusal names
+  change moved the sentence there, and the number was lost again), and the description
+  of an image that stands in a figure's caption, which was passed over with the
+  figure's own image, whose description is the caption a second time. The refusal names
   the first piece and counts the rest. It holds at every stage and under
   `--skip-checks`, and the document from the build before is removed with it, as for a
-  misread heading. `check` reads the sources and still passes such a text: its rule is
-  the next change, failing from `drafting` on and over-reporting only.
+  misread heading. `check` read the sources and still passed such a text. A rule that
+  reads the sources could only over-report: what pandoc takes for TeX turns on
+  citations, brackets, `<`, line breaks and the values put in. So `check` asks pandoc
+  too (Basile, 2026-10-04), where pandoc is on PATH: one run for the paper and one for
+  its supplement, on the text the build would hand it, under the header of an offline
+  build. What it reports is what the build refuses, in the build's sentence, as
+  `tex-in-the-text`, failing from `drafting` on, and the build's warning of a layout
+  command with it, each at the file and the line the sentence names. Pieces that read
+  the same are one finding, at the first place, which counts the others, so that every
+  kind is named in one run; twenty kinds are named and the rest counted, as for the
+  warning. The build's refusal now says that `check` reports it too.
+  What `check` does not reach here. Without pandoc on PATH it judges none of this and
+  passes, with one note (`tex-not-judged`, severity `info`, and
+  `documents_read_for_tex` at 0): a run in CI with no pandoc passes a text the build
+  would refuse, and the build cannot run there either. Before `drafting` the finding is
+  listed and does not fail, where the build refuses at every stage. A text pandoc
+  cannot read, or one nested too deep for its reading to be walked, is a note too, and
+  the build says the rest. So is a pandoc on PATH that cannot be run, and an answer
+  from it that is no JSON. It costs `check` two runs of pandoc, about a fifth of a
+  second on the example, and at most ten seconds each: pandoc takes about three times
+  as long for each level of brackets nested in brackets, a quarter of a second at six
+  deep and thirteen at ten, and the first version of the rule waited for it without
+  limit, so that `check` did not come back on a line of brackets (found by the review of
+  the change, on the suite's own prose: `check` had never waited on another program).
+  Past ten seconds pandoc is stopped and that document is not judged, which is said
+  in a note; pandoc reads 164,000 words of ordinary prose in two. The build gives
+  pandoc no limit, as before, and on such a text it waits as long as pandoc takes. And
+  the finding
+  is pandoc's reading, so it changes with pandoc's version, as the build's refusal does.
   What the build lets pass: maths, code and a comment, which are no TeX to pandoc; TeX
   the author marked as raw for LaTeX, `{=latex}`, which pandoc labels `latex` where it
   labels unmarked TeX `tex`; and a macro's definition (`\newcommand`, `\renewcommand`,
@@ -4789,13 +4834,29 @@ Closed since, and why each mattered:
   `\newpage`, `\clearpage`, `\cleardoublepage`, `\bigskip`, `\medskip`,
   `\smallskip`, `\vfill`, `\hfill` and `\noindent`; `\pagebreak`,
   `\nopagebreak`, `\linebreak` and `\nolinebreak`, with a number from 0 to 4 in
-  brackets or none; `\vspace` and `\hspace` with a length in braces, a number with a
-  unit or a command, `\hspace{412}` being no length and refused. A definition and a
+  brackets or none; `\vspace` and `\hspace` with a length in braces. A length is a
+  number with a unit (`pt`, `pc`, `in`, `bp`, `cm`, `mm`, `dd`, `cc`, `sp`, `em`, `ex`,
+  `mu`), one of thirteen commands that are lengths (`\baselineskip`,
+  `\bigskipamount`, `\columnwidth`, `\fill`, `\linewidth`, `\medskipamount`,
+  `\paperheight`, `\paperwidth`, `\parindent`, `\parskip`, `\smallskipamount`,
+  `\textheight`, `\textwidth`) or a number of times one, with a sign before it or
+  none (`\vspace{-\baselineskip}`), and after it what it
+  stretches by and shrinks by, `plus` and `minus`, once each and in that order.
+  `\hspace{412}` is no length and is refused. So is `\hspace{412\patients}`: a
+  number before any command passed for a length at first, and `We enrolled
+  \hspace{ {{results.n}}\patients} patients` passed `check`, was warned of, and was
+  printed without its number (found by the review of the change). A definition and a
   layout command that pandoc reads as one piece, one directly over the other, are a
-  warning too. A layout command that is not on the list is refused: `\centering`,
+  warning too, which names the layout command and not the definition. A layout
+  command that is not on the list is refused: `\centering`,
   `\raggedright`, `\par`, `\quad`, `\newline`, `\label{...}`, `\FloatBarrier`,
-  `\newpage*`, `\pagebreak [4]` with a space before its bracket, and a length given
-  by a command with braces of its own, `\vspace{\stretch{1}}`. So is one that takes
+  `\newpage*`, `\pagebreak [4]` with a space before its bracket, and a length that
+  LaTeX takes and that is not in the form above: one given by a command with braces
+  of its own, `\vspace{\stretch{1}}`, or by a length command that is not among the
+  thirteen, `\vspace{\topsep}`; `\vspace{1,5cm}` with a comma for the point,
+  `\vspace{1EM}` in capitals, `\vspace{- 1em}` with a space after the sign,
+  `\vspace{1em plus1pt}` with none after `plus`, `\vspace{1 true cm}` and
+  `\vspace{\dimexpr 1em\relax}`. So is one that takes
   something with it: pandoc folds digits that open the next line into a command that
   takes no braces, so `\newpage` over `412 reports` is TeX that holds the 412, and
   `\newpage[412]` and `\newpage{412 patients}` are each one piece of TeX. Up to
@@ -4806,15 +4867,23 @@ Closed since, and why each mattered:
   the annotated copy. TeX marked `{=tex}`, which pandoc labels as it labels unmarked
   TeX, and which is refused, where `{=latex}` passes. A definition in a form that is
   not read, which pandoc applies and the build refuses: `\let`, `\gdef`,
-  `\global\def`, `\newenvironment`, `\DeclareRobustCommand`, and a
+  `\global\def`, `\DeclareRobustCommand`, and a
   `\newcommand` whose body has no braces or whose name is spaced in its braces; the
   refusal says to write it as a `\newcommand` with its braces, and does not say to
-  mark it. A macro that leaves out the text it is given and comes to a layout command
+  mark it. It says so only of a piece that opens with such a definition: a definition
+  that is read, with a number under it that the piece takes, was told to be written as
+  it already was. And `\newenvironment`, which is refused as well and which no
+  `\newcommand` can be, is told what any TeX is told. A macro that leaves out the text it is given and comes to a layout command
   or to a definition, `\newcommand{\brk}[1]{\newpage}` and `\brk{412}`, which
-  is warned of or passed, and loses the 412. The place named, which is a line of the
-  source where the piece's first line or its command first stands, and not always
-  where pandoc read it as TeX: the same command in maths or in a code span above is
-  found first, and a macro's expansion is found in its definition; TeX that only the
+  is warned of or passed, and loses the 412. The place named, which is not always
+  where pandoc read the piece as TeX. The piece is looked for in the text as built,
+  where it stands with its value, and the line is that of the same occurrence of its
+  command in the file: `\approx` before a bound number is found where it stands, and
+  not at a `$\approx$` further up, where the first version sent the author. But a
+  piece that reads the same as text in maths or in a code span above it, a bare
+  `\gamma` under a `$\gamma$`, is found at the first; a command the file's own header
+  holds, which the build takes off, is counted from below the header; and a macro's
+  expansion is found in its definition. TeX that only the
   text as built holds is said to be put there by a value or a table, with the file's
   name and no line. And G2, which reads the sources and holds every digit to being
   bound, fails `\vspace{1em}` and the `[2]` of a definition with two arguments from

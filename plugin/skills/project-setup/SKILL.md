@@ -28,7 +28,7 @@ the tool says which when you reach it:
 
 | | Needed for |
 |---|---|
-| pandoc | `build` and `submit`. Every gate runs without it |
+| pandoc | `build` and `submit`, and what `check` says of TeX in the text. Every other check runs without it |
 | Zotero with Better BibTeX | live citation fields in the .docx, `sync-bib`, checking that citation keys are pinned |
 | poppler (`pdftotext`) or pypdf | reading PDF sources and PDF figures |
 | R with `jsonlite` and `digest` | only if the analysis is in R |

@@ -151,6 +151,19 @@ LEFT_OUT = {
         None,
         f"{B}gamma",
     ),
+    # An image in a paragraph is no figure, and its own text is read. Inside a figure
+    # every image's text was passed over, not only the figure's own, which the caption
+    # holds: an image in a caption lost the TeX of its description unseen.
+    "in the text of an image in a paragraph": (
+        f"As ![the IFN-{B}gamma assay](figures/forest.svg) shows, it rose.",
+        None,
+        f"{B}gamma",
+    ),
+    "in the text of an image in a figure's caption": (
+        f"![Outer ![inner IFN-{B}gamma text](figures/forest.svg) words](figures/forest.svg)",
+        None,
+        f"{B}gamma",
+    ),
     "in a definition": (f"Term{N}:   IFN-{B}gamma release", None, f"{B}gamma"),
     "in a line block": (f"| IFN-{B}gamma release{N}| a second line", None, f"{B}gamma"),
     "in a subscript": (f"x~a{B}gamma~ y", None, f"{B}gamma"),
@@ -237,6 +250,21 @@ def test_a_macro_that_comes_to_nothing_is_named_as_one() -> None:
     assert "``" not in said
     assert "a macro" in said
     assert "prologue" not in said
+    assert "(main.md" not in said, "nothing is looked for, so no line is named"
+
+
+def test_a_piece_no_text_holds_is_said_to_be_found_nowhere() -> None:
+    from manuscript_guard.build.reading import _tex_left_out
+
+    said = _tex_left_out([f"{B}gamma "], [("main.md", "No such letters.")], ["Nor here."])
+    assert said is not None
+    assert "(not found as written in a source: a macro or a value makes it)" in said
+
+
+def test_the_refusal_says_what_to_do_with_text_that_is_no_tex() -> None:
+    said = refusal(f"Saved under C:{B}Users{B}name.")
+    assert said is not None
+    assert "goes in a code span or has its backslash doubled" in said
 
 
 def test_one_command_in_a_figures_caption_is_counted_once() -> None:
@@ -261,13 +289,29 @@ def test_a_definition_in_a_form_that_is_not_read_is_told_how_to_be_written() -> 
         f"{B}let{B}a{B}alpha",
         f"{B}gdef{B}x{{y}}",
         f"{B}DeclareRobustCommand{{{B}z}}{{w}}",
-        f"{B}newenvironment{{foo}}{{start}}{{end}}",
         f"{B}newcommand{{{B}x}}{B}alpha",
     ):
         said = refusal(definition + N + N + "Text.")
         assert said is not None, definition
         assert f"`{B}newcommand{{" in said, said
         assert "{=latex}" not in said, said
+
+
+def test_a_definition_that_is_read_is_not_told_to_be_written_as_it_is() -> None:
+    """A read definition directly over a page break directly over a line that opens with a
+    number is one piece to pandoc, which is refused for the number. It was told that it
+    "opens as a macro's definition, in a form that is not read here", and to be a
+    `\\newcommand` with its braces, which it is. So was a read definition over
+    `\\centering`, and an environment, which no `\\newcommand` can be."""
+    for piece in (
+        f"{B}newcommand{{{B}RR}}{{{B}mathbb{{R}}}}{N}{B}newpage{N}4000 reports were found.",
+        f"{B}newcommand{{{B}x}}{{y}}{N}{B}centering",
+        f"{B}newenvironment{{foo}}{{start}}{{end}}",
+    ):
+        said = refusal(piece + N + N + "Text.")
+        assert said is not None, piece
+        assert "in a form that is not read" not in said, said
+        assert "between dollar signs" in said, said
 
 
 def test_the_refusal_says_how_many_more_there_are() -> None:
@@ -368,9 +412,10 @@ INERT = {
     ),
     # One piece of TeX to pandoc, which was refused: the definition is let pass on its own
     # and so is the page break.
+    # The warning names the page break and not the definition, which does something.
     "a definition directly over a page break": (
         f"{B}newcommand{{{B}x}}{{y}}{N}{B}newpage{N}{N}We write ${B}x$.",
-        [f"{B}newcommand{{{B}x}}{{y}}{N}{B}newpage"],
+        [f"{B}newpage"],
     ),
 }
 
@@ -395,10 +440,10 @@ def test_a_layout_command_beside_tex_that_loses_words_does_not_stop_the_refusal(
 def test_the_warning_counts_the_rest_of_a_kind_and_names_where_the_first_stands() -> None:
     """Its count was not held by any test, nor its place, and its hint named a block,
     which `check` fails from `drafting` on: the page break is given as a code span."""
-    from manuscript_guard.build.document import _does_nothing
+    from manuscript_guard.build.document import does_nothing
 
     source = ABOVE + (f"{B}newpage" + N + N + "Words." + N + N) * 3
-    report = _does_nothing(
+    report = does_nothing(
         [f"{B}newpage"] * 3, [("main.md", source)], [source], Path("manuscript.docx")
     )
     (finding,) = report.findings
@@ -414,11 +459,11 @@ def test_the_warning_counts_the_rest_of_a_kind_and_names_where_the_first_stands(
 def test_many_kinds_of_layout_command_are_twenty_warnings_and_a_count() -> None:
     """Each kind was looked for in the whole text, so the warnings took time with the
     square of the number of kinds: 40,000 took 19 seconds. Twenty are named."""
-    from manuscript_guard.build.document import _does_nothing
+    from manuscript_guard.build.document import does_nothing
 
     kinds = [f"{B}vspace{{{number}pt}}" for number in range(1, 31)]
     source = N.join(kinds)
-    report = _does_nothing(kinds, [("main.md", source)], [source], Path("manuscript.docx"))
+    report = does_nothing(kinds, [("main.md", source)], [source], Path("manuscript.docx"))
     assert len(report.findings) == 21
     assert report.findings[-1].message.startswith("10 more kinds of layout command")
 

@@ -306,12 +306,43 @@ _BREAKS = (
 )
 _NUMBERED_BREAKS = ("pagebreak", "nopagebreak", "linebreak", "nolinebreak")
 _LENGTHS = ("vspace", "hspace")
-# A length: a number with a unit, a command, or a number of times a command, with what it
-# may stretch and shrink by. Whatever stood between the braces was taken for one, and
-# `We enrolled \hspace{412} patients` was warned of and printed without its number.
-_UNIT = r"(?:pt|pc|in|bp|cm|mm|dd|cc|sp|em|ex|mu|fil{1,3}|\\[A-Za-z@]+)"
-_LENGTH = rf"[-+]?(?:\d+\.?\d*|\.\d+)?[ ]*{_UNIT}"
-_GLUE = rf"[ ]*{_LENGTH}(?:[ ]+(?:plus|minus)[ ]+{_LENGTH})*[ ]*"
+# A length: a number with a unit, a command that is a length, or a number of times one,
+# and after it what it may stretch by and shrink by, once each. Three versions read more
+# than that. Whatever stood between the braces was taken for a length, and
+# `We enrolled \hspace{412} patients` was warned of and printed without its number. Then a
+# number before any command was, `\hspace{412\patients}`, and a unit alone. And the number
+# was digits, an optional point, digits, so that without a point the two runs shared the
+# same digits: one that no unit follows was read every way, and twice the digits took four
+# times as long. A sign stands before the number or, where there is none, before the
+# command: read only before a digit, `\vspace{-\baselineskip}`, which is how a negative
+# space is written, was refused. This is a list too: `1,5cm`, `1EM`, `1 true cm` and
+# `\dimexpr` are lengths to LaTeX and none here, and the command they stand in is then
+# refused with the rest.
+_SIGN = r"[-+]?"
+_UNSIGNED = r"(?:\d+(?:\.\d*)?|\.\d+)"
+_NUMBER = rf"{_SIGN}{_UNSIGNED}"
+_UNIT = r"(?:pt|pc|in|bp|cm|mm|dd|cc|sp|em|ex|mu)"
+_LENGTH_COMMANDS = (
+    "baselineskip",
+    "bigskipamount",
+    "columnwidth",
+    "fill",
+    "linewidth",
+    "medskipamount",
+    "paperheight",
+    "paperwidth",
+    "parindent",
+    "parskip",
+    "smallskipamount",
+    "textheight",
+    "textwidth",
+)
+_LENGTH = (
+    rf"(?:{_NUMBER}[ ]*{_UNIT}"
+    rf"|{_SIGN}(?:{_UNSIGNED}[ ]*)?\\(?:{'|'.join(_LENGTH_COMMANDS)}))"
+)
+_STRETCH = rf"(?:{_LENGTH}|{_NUMBER}[ ]*fil{{1,3}})"
+_GLUE = rf"[ ]*{_LENGTH}(?:[ ]+plus[ ]+{_STRETCH})?(?:[ ]+minus[ ]+{_STRETCH})?[ ]*"
 # One layout command. Nothing may follow one of the first two kinds but space or another
 # piece: pandoc reads `\newpage[412]` and `\newpage{412 patients}` as one piece of TeX,
 # and folds digits that open the next line into a command that takes no braces, `\newpage`
@@ -377,21 +408,20 @@ def only_definitions(raw: str) -> bool:
     return count > 0
 
 
-def _pieces(raw: str) -> list[str] | None:
-    """What `raw` is made of, each piece "definition" or "layout", read from end to end;
-    None where it holds anything that is neither."""
+def _pieces(raw: str) -> list[tuple[str, str]] | None:
+    """What `raw` is made of, read from end to end: each piece with its kind, "definition"
+    or "layout". None where it holds anything that is neither."""
     at = _WHITE.match(raw).end()
     pieces = []
     while at < len(raw):
         end = _definition_end(raw, at)
-        if end is not None:
-            pieces.append("definition")
-        else:
+        kind = "definition"
+        if end is None:
             command = _LAYOUT.match(raw, at)
             if command is None:
                 return None
-            end = command.end()
-            pieces.append("layout")
+            end, kind = command.end(), "layout"
+        pieces.append((kind, raw[at:end]))
         at = _WHITE.match(raw, end).end()
     return pieces
 
@@ -399,7 +429,7 @@ def _pieces(raw: str) -> list[str] | None:
 def layout_only(raw: str) -> bool:
     """Is `raw` nothing but layout commands from the list above?"""
     pieces = _pieces(raw)
-    return bool(pieces) and set(pieces) == {"layout"}
+    return bool(pieces) and all(kind == "layout" for kind, _text in pieces)
 
 
 def tex_kind(raw: str) -> str:
@@ -412,4 +442,37 @@ def tex_kind(raw: str) -> str:
     pieces = _pieces(raw)
     if not pieces:
         return ""
-    return "layout" if "layout" in pieces else "definitions"
+    return "layout" if any(kind == "layout" for kind, _text in pieces) else "definitions"
+
+
+def layout_part(raw: str) -> str:
+    """The layout commands of `raw` where `tex_kind` calls it `layout`, and empty otherwise:
+    the piece as it is written where it holds nothing else, and its layout commands on one
+    line where definitions stand among them. It is what a warning names: a definition in
+    the same piece does something, and named with the page break under it, it was said to
+    do nothing in a Word document."""
+    pieces = _pieces(raw)
+    if not pieces:
+        return ""
+    layout = [text for kind, text in pieces if kind == "layout"]
+    return raw.strip() if len(layout) == len(pieces) else " ".join(layout)
+
+
+#: What opens a macro's definition in any form, the forms that are not read among them.
+_DEFINES = re.compile(
+    r"\\(?:let|[gex]?def|global|long|DeclareRobustCommand|(?:re)?newcommand|"
+    r"providecommand|DeclareMathOperator)(?![A-Za-z@])"
+)
+
+
+def unread_definition(raw: str) -> bool:
+    """Does `raw` open as a macro's definition in a form that is not read here?
+
+    Pandoc applies `\\let`, `\\gdef` and a `\\newcommand` with no braces round its body as
+    it applies the forms `only_definitions` reads, and the build refuses them. What it says
+    of one is to write it as a `\\newcommand` with its braces, and that is said only of a
+    piece whose opening definition is itself not read: a read one with something lost
+    beside it was told so too, and is written so already. An environment is not said it:
+    no `\\newcommand` can be one."""
+    at = _WHITE.match(raw).end()
+    return _DEFINES.match(raw, at) is not None and _definition_end(raw, at) is None

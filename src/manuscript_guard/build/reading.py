@@ -461,11 +461,14 @@ def located(
     built holds it, a value or a table put it there, and the line is None. None where
     nothing holds it, which is what a macro makes.
 
-    The text as built is looked in first, since it holds the piece as pandoc read it, with
-    its value: the piece's command is then the one in the file that as many of the same
-    command stand before, below the file's own header, which the build takes off. Looked
-    for by its command alone, `\\approx` before a bound number was found at a `$\\approx$`
-    further up, which is right as it is written, and the author was sent there.
+    A piece that a file holds as it was read is where it first stands there, below the
+    file's own header, which the build takes off. Otherwise the text as built is looked
+    in, since it holds the piece as pandoc read it, with its value: the piece's command is
+    then the one in the file that as many of the same command stand before. Looked for by
+    its command alone, `\\approx` before a bound number was found at a `$\\approx$` further
+    up, which is right as it is written, and the author was sent there. And counted in the
+    text as built alone, a value or a table above the piece that holds the command too put
+    the count one out, for a piece typed in the file as it is read.
 
     It is where the text stands, and pandoc may have read it as TeX further down: the same
     piece in maths or in a code span above is found first, and a macro's expansion is
@@ -475,6 +478,10 @@ def located(
         return None
     command = _COMMAND.match(first)
     key = command[0] if command else first
+    for index, (_name, source) in enumerate(sources):
+        at = source.find(first, front_matter_end(source))
+        if at != -1:
+            return index, source.count(chr(10), 0, at) + 1
     for index, ((_name, source), text) in enumerate(zip(sources, built, strict=True)):
         at = text.find(first)
         if at == -1:

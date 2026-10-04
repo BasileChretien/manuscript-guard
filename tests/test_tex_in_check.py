@@ -29,6 +29,8 @@ LEFT_OUT = (
     "which the Word writer leaves out of the document with whatever the command takes after it"
 )
 needs_pandoc = pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+#: How deep the brackets are nested that pandoc is too slow on: see the test of the limit.
+DEEP = 10
 
 
 def main_md(project: Path) -> Path:
@@ -106,7 +108,10 @@ def test_tex_in_the_text_fails_check_in_the_builds_sentence_at_its_line(
     said = capsys.readouterr().err
     assert f"{finding['message']}. {finding['hint']}" in said, said
     assert "`check` cannot see this" not in said, "it sees this one"
-    assert "`check` reports it too, and fails for it from `drafting` on." in said
+    assert said.rstrip().endswith(
+        "`check` reports it too where pandoc reads the text in the time `check` gives it, "
+        "and fails for it from `drafting` on."
+    ), said
 
 
 @needs_pandoc
@@ -254,6 +259,37 @@ LOCATED = {
         f"---{N}title: 'IFN-${B}gamma$'{N}---{N}{N}Release of IFN-{B}gamma was measured.",
         f"Release of IFN-{B}gamma was measured.",
         (0, 5),
+    ),
+    # The command is counted in the text as built, and a value or a table above the piece
+    # that holds it too put the count one out: a piece typed in the file was said to be put
+    # there by a value, or was found at the next of its command. A piece the file holds
+    # once as it is read is where it stands.
+    "one typed in the file, under a value that holds the command": (
+        f"{B}approx 12",
+        f"{{{{results.a}}}} named it.{N}{N}We saw {B}approx 12 of them.",
+        f"{B}approx 426 named it.{N}{N}We saw {B}approx 12 of them.",
+        (0, 3),
+    ),
+    "one typed in the file, under a table that holds the command": (
+        f"{B}pm 3",
+        f"{{{{table.t}}}}{N}{N}The mean was 12 {B}pm 3 months.{N}{N}Later 14 {B}pm 2 too.",
+        f"| 5 {B}pm 1 |{N}{N}The mean was 12 {B}pm 3 months.{N}{N}Later 14 {B}pm 2 too.",
+        (0, 3),
+    ),
+    # Pinned, and in DESIGN.md's Known gaps: where the piece has a value of its own, it is
+    # the count in the text as built that finds it, and a value above that holds the
+    # command puts that count one out.
+    "one with a value of its own, under a value that holds the command": (
+        f"{B}approx 12",
+        f"{{{{results.a}}}} named it.{N}{N}We saw {B}approx {{{{results.n}}}} of them.",
+        f"{B}approx 426 named it.{N}{N}We saw {B}approx 12 of them.",
+        (0, None),
+    ),
+    "one typed twice, at the first": (
+        f"{B}textit{{in vivo}}",
+        f"One line.{N}Seen {B}textit{{in vivo}} here.{N}And {B}textit{{in vivo}} there.",
+        f"One line.{N}Seen {B}textit{{in vivo}} here.{N}And {B}textit{{in vivo}} there.",
+        (0, 2),
     ),
     "one nothing holds": (f"{B}gamma", "No such letters.", "Nor here.", None),
 }
@@ -501,16 +537,20 @@ def test_check_does_not_wait_for_pandoc_past_its_limit(
     """Pandoc takes about three times as long for each level of brackets nested in
     brackets: a quarter of a second at six, thirteen seconds at ten, and at fourteen far
     longer than anyone waits. `check` ran it with no limit, where it had never waited on
-    another program, and the suite's own check of prose someone might write did not end."""
+    another program, and the suite's own check of prose someone might write did not end.
+
+    The line here is ten deep and the limit one second. Fourteen deep, a `check` that
+    ignored the limit would not have failed this test: it would have stalled it for the
+    better part of an hour, with pandoc past ten gigabytes."""
     from manuscript_guard.build import tex_check
 
     monkeypatch.setattr(tex_check, "READ_SECONDS", 1.0)
     source = main_md(project)
     written = source.read_bytes().decode("utf-8")
-    nested = "[" * 14 + "see the note" + "]" * 14
+    nested = "[" * DEEP + "see the note" + "]" * DEEP
     source.write_bytes((written + N + nested + N).encode("utf-8"))
 
-    # No clock is read: left to finish, pandoc would be minutes, and there would be no note.
+    # No clock is read: left to finish, pandoc would come back, and there would be no note.
     code, report = checked(project, capsys)
 
     assert code == 0, report
@@ -524,10 +564,18 @@ def test_check_does_not_wait_for_pandoc_past_its_limit(
     assert report["counts"]["documents_read_for_tex"] == 1, "the supplement was read"
 
 
+def test_the_line_that_test_is_made_of_is_one_pandoc_comes_back_from() -> None:
+    """Ten deep is a quarter of a minute to pandoc, under load a minute: long past the one
+    second the test gives it, and short enough to fail a test rather than hold a runner."""
+    assert DEEP == 10
+
+
 def test_check_waits_ten_seconds_for_each_document() -> None:
     """Pandoc reads the example in a tenth of a second and its text two hundred times over,
-    164,000 words, in two: ten is past any manuscript and short of a wait that looks like
-    a hang."""
+    164,000 words, in two: ten is far past a manuscript of prose and short of a wait that
+    looks like a hang. Tables are what come near it: forty of three hundred rows and eight
+    columns took pandoc four seconds, and ten with a phrase in each cell, 3.6 MB. A
+    supplement of that size is not judged here."""
     from manuscript_guard.build import tex_check
 
     assert tex_check.READ_SECONDS == 10.0
@@ -590,6 +638,10 @@ def test_a_pandoc_that_cannot_be_started_is_a_note_and_no_crash(
     assert len(notes) == 2, "the paper and its supplement"
     assert all(note["severity"] == "info" for note in notes)
     assert "pandoc could not be run on the manuscript" in notes[0]["message"]
+    # The build says it in a traceback, and the note said that it "says what is wrong".
+    assert notes[0]["message"].endswith(
+        "so TeX in it is not judged here: the build needs pandoc too"
+    )
     assert report["counts"]["documents_read_for_tex"] == 0
 
 

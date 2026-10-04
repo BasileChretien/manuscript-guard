@@ -548,11 +548,14 @@ def build_document(
                     stale.unlink()
         if isinstance(differs, TexLeftOut):
             # The one misreading `check` asks pandoc about too (`tex_check`). The build
-            # comes to it where the check was skipped and where the finding is not yet due.
+            # comes to it where the check was skipped, where the finding is not yet due, and
+            # where pandoc took longer over the text than `check` waits: said without that
+            # condition, the sentence was false of a text `check` had just passed.
             raise MisreadError(
                 f"pandoc reads {differs}. The gates that read the sources counted it as "
-                "printed, so the document is not built; `check` reports it too, and fails "
-                "for it from `drafting` on."
+                "printed, so the document is not built; `check` reports it too where "
+                "pandoc reads the text in the time `check` gives it, and fails for it from "
+                "`drafting` on."
             )
         raise MisreadError(
             f"pandoc reads {differs}. The gates judged the sources as they read them, so "

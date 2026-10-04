@@ -4769,8 +4769,13 @@ Closed since, and why each mattered:
   limit, so that `check` did not come back on a line of brackets (found by the review of
   the change, on the suite's own prose: `check` had never waited on another program).
   Past ten seconds pandoc is stopped and that document is not judged, which is said
-  in a note; pandoc reads 164,000 words of ordinary prose in two. The build gives
-  pandoc no limit, as before, and on such a text it waits as long as pandoc takes. And
+  in a note; pandoc reads 164,000 words of ordinary prose in two. Tables are what
+  come near the limit: forty of three hundred rows and eight columns took pandoc four
+  seconds, and ten with a phrase in each cell (3.6 MB), so a supplement of that size
+  is not judged by `check` and gets the note. The build gives
+  pandoc no limit, as before, and on such a text it waits as long as pandoc takes; its
+  refusal says that `check` reports the same where pandoc reads the text in the time
+  `check` gives it. And
   the finding
   is pandoc's reading, so it changes with pandoc's version, as the build's refusal does.
   What the build lets pass: maths, code and a comment, which are no TeX to pandoc; TeX
@@ -4835,13 +4840,17 @@ Closed since, and why each mattered:
   `\newcommand` can be, is told what any TeX is told. A macro that leaves out the text it is given and comes to a layout command
   or to a definition, `\newcommand{\brk}[1]{\newpage}` and `\brk{412}`, which
   is warned of or passed, and loses the 412. The place named, which is not always
-  where pandoc read the piece as TeX. The piece is looked for in the text as built,
+  where pandoc read the piece as TeX. A piece a file holds as it was read is where it
+  first stands there. Any other is looked for in the text as built,
   where it stands with its value, and the line is that of the same occurrence of its
   command in the file: `\approx` before a bound number is found where it stands, and
   not at a `$\approx$` further up, where the first version sent the author. But a
   piece that reads the same as text in maths or in a code span above it, a bare
   `\gamma` under a `$\gamma$`, is found at the first; a command the file's own header
-  holds, which the build takes off, is counted from below the header; and a macro's
+  holds, which the build takes off, is counted from below the header; a value or an
+  emitted table that holds the piece's command, above a piece that has a value of its
+  own, puts the count one out, and the piece is found at the next of its command or
+  said to be put there by a value; and a macro's
   expansion is found in its definition. TeX that only the
   text as built holds is said to be put there by a value or a table, with the file's
   name and no line. And G2, which reads the sources and holds every digit to being

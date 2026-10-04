@@ -30,9 +30,11 @@ from manuscript_guard.text.comments import unclear_comment_lines
 from manuscript_guard.text.fences import unclear_fence_lines
 from manuscript_guard.text.masking import (
     FRONTMATTER,
+    folded,
     front_matter_abstract,
     front_matter_end,
     front_matter_problem,
+    front_matter_title,
 )
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import rules_opening_blocks
@@ -100,17 +102,14 @@ def strip_front_matter(text: str) -> tuple[str, str]:
     the stray line reads as a harmless duplicate.
 
     The block is found by the pattern the gates mask it with, so the build and the gates
-    agree on where the front matter ends.
+    agree on where the front matter ends. The title is the one YAML reads there
+    (`front_matter_title`), on one line, and empty where the header declares none.
     """
     found = FRONTMATTER.match(text)
     if not found:
         return text, ""
-    declared = ""
-    for line in found.group("yaml").splitlines():
-        if line.strip().startswith("title:"):
-            declared = line.split(":", 1)[1].strip().strip("\"'")
-            break
-    return text[found.end():].lstrip("\n"), declared
+    declared = front_matter_title(text)
+    return text[found.end():].lstrip("\n"), declared[1] if declared else ""
 
 
 def rule_findings(path: Path, text: str) -> tuple[Finding, ...]:
@@ -214,20 +213,25 @@ def refused_shapes(path: Path, text: str) -> tuple[Finding, ...]:
     )
 
 
-def title_findings(project: Project, path: Path, declared: str) -> tuple[Finding, ...]:
+def title_findings(project: Project, path: Path, text: str) -> tuple[Finding, ...]:
     """A warning where the title a source file's own header declares is not paper.yaml's.
 
     The document and the submission pack take paper.yaml's, so nothing wrong is printed, and
     the header goes on saying what the paper was called before. A warning, since the title
-    printed is the one meant. `declared` is `strip_front_matter`'s reading of the header,
-    which takes the first `title:` line as it stands; DESIGN.md's Known gaps lists the
-    headers it reads otherwise than YAML does.
+    printed is the one meant. The header's title is the one YAML reads in `text`
+    (`front_matter_title`), and the two are set side by side with the white space of each
+    folded: a title is wrapped in one file and not in the other, and a folded block ends
+    with a line break that YAML keeps.
 
     A supplementary file is told something else. A title of its own is an ordinary thing
     to type there and is not meant to be the paper's, so making the two agree is advice
     nobody should take; what the author needs to hear is that the title is printed nowhere.
     """
-    if not declared or declared == str(project.paper.get("title", "")):
+    found = front_matter_title(text)
+    if found is None:
+        return ()
+    line, declared = found
+    if declared == folded(str(project.paper.get("title", ""))):
         return ()
     if is_supplementary(project.path("manuscript"), path):
         hint = (
@@ -246,6 +250,7 @@ def title_findings(project: Project, path: Path, declared: str) -> tuple[Finding
             severity=WARN,
             message=f"{path.name} declares a different title from paper.yaml",
             path=path,
+            line=line,
             context=declared[:120],
             hint=hint,
         ),
@@ -260,8 +265,7 @@ def check_shapes(project: Project) -> Report:
     for path in source_files(project.path("manuscript")):
         text = read_text(path)
         report = report.with_findings(
-            *refused_shapes(path, text),
-            *title_findings(project, path, strip_front_matter(text)[1]),
+            *refused_shapes(path, text), *title_findings(project, path, text)
         )
     return report
 
@@ -296,8 +300,8 @@ def assemble(
         abstract = front_matter_abstract(source)
         if abstract is not None:
             report = report.with_findings(abstract_in_header(path, *abstract, GATE))
-        raw, declared = strip_front_matter(source)
-        report = report.with_findings(*title_findings(project, path, declared))
+        report = report.with_findings(*title_findings(project, path, source))
+        raw, _declared = strip_front_matter(source)
         text = tag(raw, relative, mark=mark)
         placeholders, _ = parse(text)
         rendered = text

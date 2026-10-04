@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from manuscript_guard.contracts import load_namespace, load_project
 from manuscript_guard.findings import merge_all
@@ -308,7 +309,7 @@ def test_init_with_an_awkward_title_gives_a_project_that_passes_check(
 
 
 #: How the manuscript's own header holds each: between double quotation marks as it always
-#: did where that reads back as the title, between single ones where a backslash or a
+#: did where YAML reads that back as the title, between single ones where a backslash or a
 #: double quotation mark would not, and not at all where neither does.
 HEADER = {
     "Untitled manuscript": 'title: "Untitled manuscript"',
@@ -319,15 +320,20 @@ HEADER = {
     "Effect of $" + chr(92) + "delta$ on outcomes": (
         "title: 'Effect of $" + chr(92) + "delta$ on outcomes'"
     ),
+    # Neither kind of mark gives these back: both kinds in the title, or a backslash, which
+    # double marks read as an escape, and an apostrophe, which ends single ones.
     "Crohn's " + '"disease"': None,
-    'Outcomes of "Foo"': None,
-    # The build's reading strips every quotation mark at either end, so one of either kind
-    # there cannot be read back. The header typed for the first was not YAML, as for the
-    # two above; the one typed for each of the others read without its apostrophe, `the
-    # patients`: two titles, which no command spoke of then.
-    '"Quoted" at the start': None,
-    "the patients'": None,
-    "'Tis the season": None,
+    "TNF-$" + chr(92) + "alpha$ inhibitors in Crohn's disease": None,
+    # A mark of the title's own at either end. While the build read the header by line and
+    # stripped every quotation mark at either end, none of these could be read back, and
+    # the header was left out: typed, it read `the patients`, two titles. Read as YAML,
+    # each is held by the other kind of mark.
+    'Outcomes of "Foo"': "title: '" + 'Outcomes of "Foo"' + "'",
+    '"Quoted" at the start': "title: '" + '"Quoted" at the start' + "'",
+    "the patients'": "title: " + '"' + "the patients'" + '"',
+    "'Tis the season": "title: " + '"' + "'Tis the season" + '"',
+    # White space the comparison folds: the header holds the title as it was given.
+    "A  cohort study": 'title: "A  cohort study"',
 }
 
 
@@ -336,6 +342,7 @@ def test_the_manuscripts_header_holds_the_title_where_it_reads_back_as_typed(
     title: str, tmp_path: Path
 ) -> None:
     from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text.masking import folded
 
     root = tmp_path / "paper"
     init_project(root, title=title)
@@ -349,7 +356,9 @@ def test_the_manuscripts_header_holds_the_title_where_it_reads_back_as_typed(
         return
     header = "---" + chr(10) + HEADER[title] + chr(10) + "---" + chr(10) * 2
     assert text.startswith(header + "# Introduction")
-    assert strip_front_matter(text)[1] == title
+    # The build's reading of it, which is YAML's with the white space folded.
+    assert strip_front_matter(text)[1] == folded(title)
+    assert yaml.safe_load(HEADER[title]) == {"title": title}
 
 
 def test_an_ordinary_title_is_typed_into_paper_yaml_as_it_always_was(tmp_path: Path) -> None:

@@ -563,7 +563,8 @@ up for the author to read, whose marks the annotator has pandoc check as it make
 **The header comes from `paper.yaml`, and a manuscript's front matter prints nothing.** The
 build strips every source file's YAML block and writes a header of its own with the title,
 short title and keywords from `paper.yaml`. A `title:` in the manuscript is compared with
-that one and a disagreement warned about (`two-titles`). An `abstract:` there is refused,
+that one and a disagreement warned about (`two-titles`): by `check` at every stage, and by
+`build` and `submit` before the document is made. An `abstract:` there is refused,
 by G2 and by the build alike (`front-matter-abstract`), as a block pandoc cannot read is
 (`front-matter-unreadable`). G2 reads it, because pandoc prints one, and until 2026-09-26
 the build dropped it without a word: the abstract was checked, then left out of the
@@ -3506,6 +3507,33 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   but the text itself is dropped without a word. Only the abstract is refused
   (`front-matter-abstract`), and only the title is compared with `paper.yaml`
   (`two-titles`).
+- **The title in a manuscript's header is read by line, not as YAML.** The comparison with
+  `paper.yaml` (`two-titles`) takes what stands after the first `title:` in the block, at
+  any depth and on that line alone, less every quotation mark and apostrophe at either
+  end, and sets it beside `paper.yaml`'s title as YAML gives that one. So it warns of two
+  titles that agree where the header's has:
+  - a comment after it;
+  - an apostrophe doubled between single quotation marks (`'Crohn''s disease'`);
+  - a quotation mark or a backslash escaped between double ones. `init` types a title with
+    TeX into `paper.yaml` that way (`"IFN-$\\gamma$ release assays"`), so an author who
+    makes the two agree by copying that line into the header keeps the warning;
+  - a quotation mark or an apostrophe of its own at either end, quoted or not
+    (`"Rethinking the 'obesity paradox'"`, `A study of "frailty"`);
+  - a second line it runs on to, or a folded or literal block (`title: >`);
+  - an author's `title: Dr` above it, or no title of its own under such an author;
+
+  and where `paper.yaml`'s own title is a folded block, whose closing line break YAML
+  keeps. And it says nothing of two that differ where the header's title begins on the
+  line under its key, is written `title :` or `"title":`, is written twice, of which YAML
+  keeps the last, has `paper.yaml`'s title as its first line and runs on to a second, or
+  differs from it only by a mark of its own at either end (`the patients'` beside
+  `the patients`). `init` types no header that the two
+  readings take differently. It is a warning, the document prints `paper.yaml`'s title in
+  each of these, and deleting the title from the header ends it. A supplementary file's
+  own title is compared with the paper's as well, and warned of: nothing prints it, since
+  the supplement's title is made from the paper's. Its hint says that, and does not say to
+  make the two agree. Reading the header's title as YAML, as its abstract is read, is a
+  change of its own (Basile, 2026-10-04).
 - **A front matter is composed twice, at 15 to 20 seconds a megabyte each time.** PyYAML's
   pure-Python composer is linear but slow: once to decide the block is front matter, once
   to look for an abstract in it, each cached for the rest of the process. With half a
@@ -3750,6 +3778,19 @@ Added by the adversarial review, verified and **not** fixed:
 
 Closed since, and why each mattered:
 
+- **The warning of two titles was shown by no command.** Assembling compares the title in a
+  manuscript file's header with `paper.yaml`'s and makes a warning where they differ
+  (`two-titles`). `build` and `submit` printed what assembling found only when that held a
+  failure, and `check` does not assemble, so the warning was made and nobody was told: with
+  the title changed in `paper.yaml` and the header left as it was, `check` listed nothing
+  and `build` printed the name of the document. That document carried `paper.yaml`'s title,
+  the one meant, so nothing wrong was printed, while this file said the build warned. Found
+  in the work on #162. `check` now gives the warning at every stage, from the gate that
+  already refuses what assembling would refuse; the stage decides which failures are due,
+  and a warning is not one. `build` and `submit` print what assembling warns of, once and
+  before the document is made (Basile, 2026-10-04). `import` rebuilds a document already
+  sent and says nothing of it, as before. How the header's title is read is as it was; its
+  limits are above.
 - **An abbreviated `--submission` was not seen by the submission guard.** argparse reads any
   prefix of an option that names one option only, so `manuscript-guard build --subm` was a
   submission build and `review --subm` a review at submission standard, and the guard's

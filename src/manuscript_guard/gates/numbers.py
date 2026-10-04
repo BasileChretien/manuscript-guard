@@ -11,10 +11,11 @@ part of the gate rather than a footnote in its output.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
-from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.classify import UNCLASSIFIED, Classifier, declarable
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.literature import Literature
 from manuscript_guard.contracts.project import Project
@@ -376,8 +377,9 @@ def _paper_yaml_prose(project: Project, classifier: Classifier) -> Report:
                         message=f"{atom.text!r} in paper.yaml `{key}` is not bound to any source",
                         path=project.root / "paper.yaml",
                         context=text[:160],
-                        hint="the build writes this into the document's front matter, where "
-                        "pandoc renders it; bind it or reword the title",
+                        hint=_how_to_declare(atom)
+                        + "bind it or reword the title: the build writes this into the "
+                        "document's front matter, where pandoc renders it",
                     )
                 )
     return report
@@ -679,6 +681,29 @@ _DURATION = re.compile(
 )
 
 
+#: A name that YAML reads as it is written, between the brackets of `terms: [...]`.
+_PLAIN_NAME = re.compile(r"[\w+./-]+")
+
+
+def _how_to_declare(atom) -> str:
+    """What to say first of an unbound atom where it reads as a name written with a
+    subscript or a superscript (`classify.declarable`): how to declare it. Empty where it
+    reads as anything else.
+
+    A name is matched against the terms with its signs taken out, so that is how it is
+    declared, and `CO~2~` reported without a word of it left the author to find out that
+    `terms: ['CO~2']` worked.
+    """
+    name = declarable(atom)
+    if name is None:
+        return ""
+    shown = name if _PLAIN_NAME.fullmatch(name) else json.dumps(name, ensure_ascii=False)
+    return (
+        "if this is a name and not a number, declare it in paper.yaml without its subscript "
+        f"and superscript signs, `terms: [{shown}]`; otherwise "
+    )
+
+
 def _hint_for(atom) -> str:
     """A hint that names the thing the author is looking at.
 
@@ -686,8 +711,11 @@ def _hint_for(atom) -> str:
     none of them: an author who has just written a study period does not think of a date as
     a result, so the generic hint reads as the tool not understanding the sentence. Dates
     and design parameters are the two that come up in every observational paper, and both
-    have a specific answer.
+    have a specific answer. So has a name written with a subscript: how it is declared.
     """
+    declare = _how_to_declare(atom)
+    if declare:
+        return declare + _GENERIC_HINT
     window = atom.window
     if _DATE.search(window):
         return (

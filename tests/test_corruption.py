@@ -8044,6 +8044,251 @@ def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project
 
 
 # --------------------------------------------------------------------------------------
+# Two titles. Assembling compares the title in a manuscript file's own header with
+# paper.yaml's and makes a warning where they differ. No command showed it: `build` and
+# `submit` printed what assembling found only when that held a failure, and `check` did not
+# ask. The document carries paper.yaml's title, so nothing wrong was printed. The author was
+# never told that the header said otherwise.
+# --------------------------------------------------------------------------------------
+
+OTHER_TITLE = "Another title"
+TWO_TITLES = "main.md declares a different title from paper.yaml"
+
+
+def retitled(root: Path) -> str:
+    """The example with its title changed in paper.yaml and not in the manuscript's header,
+    which is how the two come apart. Returns the title the header still declares."""
+    paper = root / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    was = yaml.safe_load(text)["title"]
+    line = 'title: "' + was + '"'
+    assert line in text, "the fixture changed under this test"
+    paper.write_text(text.replace(line, "title: '" + OTHER_TITLE + "'", 1), encoding="utf-8")
+    assert line in main_md(root).read_text(encoding="utf-8")
+    return was
+
+
+def two_titles(report) -> list:
+    return [f for f in report.findings if f.code == "two-titles"]
+
+
+@pytest.mark.parametrize(
+    "stage", ["design", "analysis", "drafting", "internal-review", "submission"]
+)
+def test_a_title_changed_in_paper_yaml_alone_is_a_warning_of_check(
+    stage: str, project: Path
+) -> None:
+    """At every stage: the stage decides which failures are due, and a warning is not one."""
+    from manuscript_guard.build.assemble import assemble
+    from manuscript_guard.cli import _run_gates
+
+    before = {f.code for f in _run_gates(project, stage=stage)[0].failures}
+    was = retitled(project)
+
+    report = _run_gates(project, stage=stage)[0]
+    (found,) = two_titles(report)
+    assert found.severity == "warn"
+    assert found.path == main_md(project)
+    assert found.context == was[:120]
+    assert "paper.yaml is the one the document and the submission pack use" in found.hint
+    assert {f.code for f in report.failures} == before, "a warning, and it fails nothing"
+    # What `check` says is what the build's own assembling says.
+    loaded = load_project(project)[0]
+    namespace, results, _literature, _load = load_namespace(loaded)
+    assert two_titles(assemble(loaded, namespace, results)[1]) == [found]
+
+
+def test_one_title_is_not_a_finding_of_check(project: Path) -> None:
+    """The baseline: the example as shipped, whose two titles agree, and a header with no
+    title in it, which declares nothing."""
+    from manuscript_guard.cli import _run_gates
+
+    assert two_titles(_run_gates(project)[0]) == []
+    retitled(project)
+    text = main_md(project).read_text(encoding="utf-8")
+    main_md(project).write_text(text.split("---\n", 2)[2].lstrip("\n"), encoding="utf-8")
+    assert two_titles(_run_gates(project)[0]) == []
+
+
+def test_check_prints_the_two_titles_and_still_passes(project: Path, capsys) -> None:
+    from manuscript_guard.cli import main
+
+    assert main(["check", str(project)]) == 0
+    assert TWO_TITLES not in capsys.readouterr().out
+    was = retitled(project)
+
+    assert main(["check", str(project)]) == 0
+    said = capsys.readouterr().out
+    assert said.count(TWO_TITLES) == 1
+    assert "> " + was[:120] in said
+    assert "0 failing" in said
+
+    assert main(["check", str(project), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    (found,) = [f for f in payload["findings"] if f["code"] == "two-titles"]
+    assert (found["severity"], found["gate"]) == ("warn", "BUILD")
+
+
+def _printed_title(document: Path) -> str:
+    with zipfile.ZipFile(document) as docx:
+        properties = docx.read("docProps/core.xml").decode("utf-8")
+    return re.search("<dc:title>(.*?)</dc:title>", properties, re.S).group(1)
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize("flags", [(), ("--skip-checks",)], ids=["checked", "unchecked"])
+def test_build_says_the_two_titles_differ_and_builds(
+    flags: tuple[str, ...], project: Path, capsys
+) -> None:
+    """Said once, before the document is made, and the document is paper.yaml's."""
+    from manuscript_guard.cli import main
+
+    retitled(project)
+    assert main(["build", str(project), "--offline", *flags]) == 0
+    said = capsys.readouterr().out
+    assert said.count(TWO_TITLES) == 1
+    assert "[WARN] BUILD" in said
+    assert said.index(TWO_TITLES) < said.index("built ")
+    assert _printed_title(project / "build" / "manuscript.docx") == OTHER_TITLE
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_build_says_nothing_of_titles_that_agree(project: Path, capsys) -> None:
+    """The baseline: a build with nothing to say prints the documents it made, and no more."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    said = capsys.readouterr().out
+    assert TWO_TITLES not in said
+    assert [line[:6] for line in said.splitlines()] == ["built ", "built "]
+
+
+def test_a_build_the_check_refuses_says_the_two_titles_differ_once(
+    project: Path, capsys
+) -> None:
+    """The check's own report carries the warning, and nothing is assembled after it."""
+    from manuscript_guard.cli import main
+
+    retitled(project)
+    with main_md(project).open("a", encoding="utf-8") as handle:
+        handle.write("\nA further 4321 reports were excluded.\n")
+    assert main(["build", str(project), "--offline"]) == 1
+    said = capsys.readouterr().out
+    assert "not building" in said
+    assert said.count(TWO_TITLES) == 1
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_submit_says_the_two_titles_differ_and_assembles_the_pack(
+    project: Path, capsys
+) -> None:
+    """`submit` writes the title page from paper.yaml: the command where a header nobody
+    kept up matters most was as silent as `build`."""
+    from manuscript_guard.cli import main
+
+    retitled(project)
+    assert main(["submit", str(project), "--offline", "--skip-checks"]) == 0
+    said = capsys.readouterr().out
+    assert said.count(TWO_TITLES) == 1
+    assert said.index(TWO_TITLES) < said.index("submission pack:")
+    page = (project / "build" / "submission" / "title-page.md").read_text(encoding="utf-8")
+    assert OTHER_TITLE in page
+
+
+_AS_INIT_TYPES_IT = 'title: "A cohort study"'
+_APOSTROPHE = chr(39)
+_ESCAPED_MARK = chr(92) + '"'
+
+#: The header's title is read by line and not as YAML, which DESIGN.md's Known gaps tells.
+#: Held here so that its account stays true. Each case is one the line reading gets wrong:
+#: the header, the title as paper.yaml types it, and whether the two agree as YAML reads
+#: them. Where they agree a warning is made, and where they differ none is.
+READ_BY_LINE = {
+    "a comment after the title": (
+        "title: A cohort study  # working title", _AS_INIT_TYPES_IT, True
+    ),
+    "an apostrophe doubled between single quotation marks": (
+        "title: " + _APOSTROPHE + "Crohn" + _APOSTROPHE * 2 + "s disease" + _APOSTROPHE,
+        'title: "Crohn' + _APOSTROPHE + 's disease"',
+        True,
+    ),
+    "a quotation mark escaped between double ones": (
+        'title: "A ' + _ESCAPED_MARK + "quoted" + _ESCAPED_MARK + ' title"',
+        "title: " + _APOSTROPHE + 'A "quoted" title' + _APOSTROPHE,
+        True,
+    ),
+    "a folded block": (
+        "title: >\n  A cohort study\n  of two lines",
+        'title: "A cohort study of two lines"',
+        True,
+    ),
+    "an author's title above it": (
+        "author:\n  - name: A\n    title: Dr\ntitle: A cohort study", _AS_INIT_TYPES_IT, True
+    ),
+    "a folded block in paper.yaml": (
+        "title: A cohort study", "title: >\n  A cohort study", True
+    ),
+    "a title that runs on to a second line": (
+        "title: A cohort study\n  of two lines", _AS_INIT_TYPES_IT, False
+    ),
+    "a space before the colon": ("title : Another", _AS_INIT_TYPES_IT, False),
+    "a key between quotation marks": ('"title": Another', _AS_INIT_TYPES_IT, False),
+    "a title written twice": (
+        "title: A cohort study\ntitle: Another", _AS_INIT_TYPES_IT, False
+    ),
+}
+
+
+def _with_header(root: Path, header: str, typed: str = _AS_INIT_TYPES_IT):
+    """A new project titled `typed` in paper.yaml, its manuscript opening with `header`."""
+    from manuscript_guard.scaffold import init_project
+
+    init_project(root, title="A cohort study")
+    paper = root / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    assert _AS_INIT_TYPES_IT in text, "what `init` types changed under this test"
+    paper.write_text(text.replace(_AS_INIT_TYPES_IT, typed, 1), encoding="utf-8")
+    body = main_md(root).read_text(encoding="utf-8").split("---\n", 2)[2]
+    main_md(root).write_text("---\n" + header + "\n---\n" + body, encoding="utf-8")
+    project, report = load_project(root)
+    assert not [f for f in report.failures if f.path == paper], "paper.yaml is still read"
+    return project
+
+
+@pytest.mark.parametrize("case", list(READ_BY_LINE))
+def test_the_header_s_title_is_read_by_line_and_not_as_yaml(case: str, tmp_path: Path) -> None:
+    from manuscript_guard.build.assemble import check_shapes
+
+    header, typed, agree = READ_BY_LINE[case]
+    project = _with_header(tmp_path / "paper", header, typed)
+    declared = " ".join(str(yaml.safe_load(header)["title"]).split())
+    assert (declared == " ".join(str(project.paper["title"]).split())) is agree
+    assert bool(two_titles(check_shapes(project))) is agree, "the limit DESIGN.md records"
+
+
+def test_a_supplementary_file_s_own_title_is_compared_with_the_paper_s(tmp_path: Path) -> None:
+    """Nothing prints it: the supplement's title is made from the paper's."""
+    from manuscript_guard.build.assemble import check_shapes
+
+    project = _with_header(tmp_path / "paper", _AS_INIT_TYPES_IT)
+    supplement = tmp_path / "paper" / "manuscript" / "supplementary" / "S1.md"
+    supplement.parent.mkdir()
+    supplement.write_text(
+        "---\ntitle: Supplementary methods\n---\n\n# Supplementary methods\n\nText.\n",
+        encoding="utf-8",
+    )
+    (found,) = two_titles(check_shapes(project))
+    assert (found.path, found.context) == (supplement, "Supplementary methods")
+
+
+# --------------------------------------------------------------------------------------
 # G14: an abbreviation is defined once, before it is used. Each test below makes one of the
 # edits a hurried revision makes, and the gate has to report that edit and no other.
 # --------------------------------------------------------------------------------------

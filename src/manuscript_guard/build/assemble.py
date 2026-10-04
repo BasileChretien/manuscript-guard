@@ -213,11 +213,42 @@ def refused_shapes(path: Path, text: str) -> tuple[Finding, ...]:
     )
 
 
+def title_findings(project: Project, path: Path, declared: str) -> tuple[Finding, ...]:
+    """A warning where the title a source file's own header declares is not paper.yaml's.
+
+    The document and the submission pack take paper.yaml's, so nothing wrong is printed, and
+    the header goes on saying what the paper was called before. A warning, since the title
+    printed is the one meant. `declared` is `strip_front_matter`'s reading of the header,
+    which takes the first `title:` line as it stands; DESIGN.md's Known gaps lists the
+    headers it reads otherwise than YAML does.
+    """
+    if not declared or declared == str(project.paper.get("title", "")):
+        return ()
+    return (
+        Finding(
+            gate=GATE,
+            code="two-titles",
+            severity=WARN,
+            message=f"{path.name} declares a different title from paper.yaml",
+            path=path,
+            context=declared[:120],
+            hint="paper.yaml is the one the document and the submission pack use; "
+            "delete the title from the manuscript or make them agree",
+        ),
+    )
+
+
 def check_shapes(project: Project) -> Report:
-    """`refused_shapes` for every source file, so `check` refuses what the build would."""
+    """What assembling would find in each source file without the results: `refused_shapes`,
+    so `check` refuses what the build would, and `title_findings`, so it warns of what the
+    build warns of."""
     report = Report()
     for path in source_files(project.path("manuscript")):
-        report = report.with_findings(*refused_shapes(path, read_text(path)))
+        text = read_text(path)
+        report = report.with_findings(
+            *refused_shapes(path, text),
+            *title_findings(project, path, strip_front_matter(text)[1]),
+        )
     return report
 
 
@@ -252,19 +283,7 @@ def assemble(
         if abstract is not None:
             report = report.with_findings(abstract_in_header(path, *abstract, GATE))
         raw, declared = strip_front_matter(source)
-        if declared and declared != str(project.paper.get("title", "")):
-            report = report.with_findings(
-                Finding(
-                    gate=GATE,
-                    code="two-titles",
-                    severity=WARN,
-                    message=f"{path.name} declares a different title from paper.yaml",
-                    path=path,
-                    context=declared[:120],
-                    hint="paper.yaml is the one the document and the submission pack use; "
-                    "delete the title from the manuscript or make them agree",
-                )
-            )
+        report = report.with_findings(*title_findings(project, path, declared))
         text = tag(raw, relative, mark=mark)
         placeholders, _ = parse(text)
         rendered = text

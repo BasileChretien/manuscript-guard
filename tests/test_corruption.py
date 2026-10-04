@@ -8049,6 +8049,9 @@ def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project
 # `submit` printed what assembling found only when that held a failure, and `check` did not
 # ask. The document carries paper.yaml's title, so nothing wrong was printed. The author was
 # never told that the header said otherwise.
+#
+# Shown, the warning was wrong wherever the header's title was not one plain line: it was
+# read by line, not as YAML. The table further down is of headers and what each declares.
 # --------------------------------------------------------------------------------------
 
 OTHER_TITLE = "Another title"
@@ -8088,7 +8091,7 @@ def test_a_title_changed_in_paper_yaml_alone_is_a_warning_of_check(
     report = _run_gates(project, stage=stage)[0]
     (found,) = two_titles(report)
     assert found.severity == "warn"
-    assert found.path == main_md(project)
+    assert (found.path, found.line) == (main_md(project), 2), "at the header's own title"
     assert found.context == was[:120]
     assert "paper.yaml is the one the document and the submission pack use" in found.hint
     assert {f.code for f in report.failures} == before, "a warning, and it fails nothing"
@@ -8214,76 +8217,117 @@ _ESCAPED_MARK = _BACKSLASH + '"'
 _GAMMA = 'title: "IFN-$' + _BACKSLASH * 2 + 'gamma$ release assays"'
 _OBESITY = 'title: "Rethinking the ' + _APOSTROPHE + "obesity paradox" + _APOSTROPHE + '"'
 
-#: The header's title is read by line and not as YAML, which DESIGN.md's Known gaps tells.
-#: Held here so that its account stays true. Each case is one the line reading gets wrong:
-#: the header, the title as paper.yaml types it, and whether a warning is made. Where one is
-#: made, the header declares paper.yaml's title or none; where none is, it declares another.
-READ_BY_LINE = {
+#: The header's title is read as YAML reads it, and compared with paper.yaml's with the
+#: white space of each folded. Each case is a header, the title as paper.yaml types it, and
+#: whether the header declares another title, which is when a warning is made. The first
+#: seventeen are the ones a reading by line got wrong, each the other way round, while the
+#: warning was shown and before the header was read as YAML (#165).
+AS_YAML_READS_IT = {
     "a comment after the title": (
-        "title: A cohort study  # working title", _AS_INIT_TYPES_IT, True
+        "title: A cohort study  # working title", _AS_INIT_TYPES_IT, False
     ),
     "an apostrophe doubled between single quotation marks": (
         "title: " + _APOSTROPHE + "Crohn" + _APOSTROPHE * 2 + "s disease" + _APOSTROPHE,
         'title: "Crohn' + _APOSTROPHE + 's disease"',
-        True,
+        False,
     ),
     "a quotation mark escaped between double ones": (
         'title: "A ' + _ESCAPED_MARK + "quoted" + _ESCAPED_MARK + ' title"',
         "title: " + _APOSTROPHE + 'A "quoted" title' + _APOSTROPHE,
-        True,
+        False,
     ),
     "a backslash doubled between double quotation marks, as init types paper.yaml's": (
-        _GAMMA, _GAMMA, True
+        _GAMMA, _GAMMA, False
     ),
     "a quoted title that ends with a phrase between the other marks": (
-        _OBESITY, _OBESITY, True
+        _OBESITY, _OBESITY, False
     ),
     "a plain title that ends with a quotation mark": (
         'title: A study of "frailty"',
         "title: " + _APOSTROPHE + 'A study of "frailty"' + _APOSTROPHE,
-        True,
+        False,
     ),
     "a folded block": (
         "title: >\n  A cohort study\n  of two lines",
         'title: "A cohort study of two lines"',
-        True,
+        False,
     ),
     "a long title wrapped on to a second line": (
         'title: "A cohort study of adults\n  in primary care"',
         'title: "A cohort study of adults in primary care"',
-        True,
+        False,
     ),
     "an author's title above it": (
-        "author:\n  - name: A\n    title: Dr\ntitle: A cohort study", _AS_INIT_TYPES_IT, True
+        "author:\n  - name: A\n    title: Dr\ntitle: A cohort study", _AS_INIT_TYPES_IT, False
     ),
     "an author's title and none of the header's own": (
-        "author:\n  - name: A\n    title: Dr", _AS_INIT_TYPES_IT, True
+        "author:\n  - name: A\n    title: Dr", _AS_INIT_TYPES_IT, False
     ),
     "a folded block in paper.yaml": (
-        "title: A cohort study", "title: >\n  A cohort study", True
+        "title: A cohort study", "title: >\n  A cohort study", False
     ),
     "a title whose first line is paper.yaml's and that runs on to a second": (
-        "title: A cohort study\n  of two lines", _AS_INIT_TYPES_IT, False
+        "title: A cohort study\n  of two lines", _AS_INIT_TYPES_IT, True
     ),
     "a title that begins on the line under the key": (
-        "title:\n  Another", _AS_INIT_TYPES_IT, False
+        "title:\n  Another", _AS_INIT_TYPES_IT, True
     ),
     "a plain title that ends with an apostrophe paper.yaml's does not have": (
         "title: What matters to the patients" + _APOSTROPHE,
         "title: What matters to the patients",
-        False,
+        True,
     ),
-    "a space before the colon": ("title : Another", _AS_INIT_TYPES_IT, False),
-    "a key between quotation marks": ('"title": Another', _AS_INIT_TYPES_IT, False),
+    "a space before the colon": ("title : Another", _AS_INIT_TYPES_IT, True),
+    "a key between quotation marks": ('"title": Another', _AS_INIT_TYPES_IT, True),
     "a title written twice": (
-        "title: A cohort study\ntitle: Another", _AS_INIT_TYPES_IT, False
+        "title: A cohort study\ntitle: Another", _AS_INIT_TYPES_IT, True
+    ),
+    # What a reading by line gave rightly, and the YAML one must still.
+    "another title": ("title: Another", _AS_INIT_TYPES_IT, True),
+    "another title under an author's": (
+        "author:\n  - name: A\n    title: Dr\ntitle: Another", _AS_INIT_TYPES_IT, True
+    ),
+    "no title": ("lang: en-GB", _AS_INIT_TYPES_IT, False),
+    "a title with nothing after it": ("title:", _AS_INIT_TYPES_IT, False),
+    "an empty title": ('title: ""', _AS_INIT_TYPES_IT, False),
+    # What YAML has besides.
+    "a null title": ("title: ~", _AS_INIT_TYPES_IT, False),
+    "a literal block": ("title: |\n  A cohort study", _AS_INIT_TYPES_IT, False),
+    "a tab after the key, which pandoc expands": (
+        "title:" + chr(9) + "A cohort study", _AS_INIT_TYPES_IT, False
+    ),
+    "two spaces where paper.yaml has one": (
+        "title: A  cohort study", _AS_INIT_TYPES_IT, False
+    ),
+    "an anchor on the title": ("title: &t A cohort study", _AS_INIT_TYPES_IT, False),
+    "the same title through a merge key": (
+        "base: &b {title: A cohort study}\n<<: *b", _AS_INIT_TYPES_IT, False
+    ),
+    "another title through a merge key": (
+        "base: &b {title: Another}\n<<: *b", _AS_INIT_TYPES_IT, True
+    ),
+    "a title of its own over a merged one": (
+        "base: &b {title: Another}\n<<: *b\ntitle: A cohort study", _AS_INIT_TYPES_IT, False
+    ),
+    "a list for a title": ("title: [A cohort study, Another]", _AS_INIT_TYPES_IT, True),
+    # A no-break space is a character to pandoc, and prints as one.
+    "a no-break space where paper.yaml has a space": (
+        "title: A" + chr(0xA0) + "cohort study", _AS_INIT_TYPES_IT, True
+    ),
+    # Compared as typed, not as Markdown: pandoc prints these two alike.
+    "the same words marked up another way": (
+        "title: A *cohort* study", 'title: "A _cohort_ study"', True
     ),
 }
 
+#: Where the comparison says "another title" and pandoc would print the two alike: the
+#: limit DESIGN.md's Known gaps records.
+ALIKE_TO_PANDOC = {"the same words marked up another way"}
+
 
 def test_init_types_a_title_with_tex_as_the_row_says(tmp_path: Path) -> None:
-    """The row named for `init`, and DESIGN.md's sentence, say how `init` types such a
-    title into paper.yaml. Held here, so that neither goes on saying it if that changes."""
+    """The row named for `init` says how `init` types such a title into paper.yaml. Held
+    here, so that the row does not go on saying it if that changes."""
     from manuscript_guard.scaffold import init_project
 
     init_project(tmp_path / "paper", title="IFN-$" + _BACKSLASH + "gamma$ release assays")
@@ -8307,19 +8351,74 @@ def _with_header(root: Path, header: str, typed: str = _AS_INIT_TYPES_IT):
     return project
 
 
-@pytest.mark.parametrize("case", list(READ_BY_LINE))
-def test_the_header_s_title_is_read_by_line_and_not_as_yaml(case: str, tmp_path: Path) -> None:
+def _folded(value) -> str:
+    """On one line, as the comparison folds a title: spaces, tabs and line breaks, and not a
+    no-break space."""
+    return re.sub("[ " + chr(9) + chr(10) + chr(13) + "]+", " ", str(value)).strip(" ")
+
+
+@pytest.mark.parametrize("case", list(AS_YAML_READS_IT))
+def test_the_header_s_title_is_read_as_yaml_reads_it(case: str, tmp_path: Path) -> None:
     from manuscript_guard.build.assemble import check_shapes
 
-    header, typed, warned = READ_BY_LINE[case]
+    header, typed, warned = AS_YAML_READS_IT[case]
     project = _with_header(tmp_path / "paper", header, typed)
-    # What a reading of both files as YAML would say: another title declared, or not.
-    declared = yaml.safe_load(header).get("title")
-    another = declared is not None and (
-        " ".join(str(declared).split()) != " ".join(str(project.paper["title"]).split())
+    # The table against YAML itself: the header declares another title, or it does not.
+    declared = yaml.safe_load(header.expandtabs(4)).get("title")
+    another = declared not in (None, "") and _folded(declared) != _folded(project.paper["title"])
+    assert warned is another, "the table says what YAML says"
+
+    found = two_titles(check_shapes(project))
+    assert bool(found) is warned
+    if warned:
+        # A title that is no text is shown as its line stands in the file.
+        shown = header if isinstance(declared, list) else _folded(declared)
+        assert [f.context for f in found] == [shown]
+
+
+def _title_to_pandoc(block: str):
+    """The title pandoc keeps from a header, as it would print it; None where it keeps none."""
+    import subprocess
+
+    done = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=("---\n" + block + "\n---\n\nText.\n").encode("utf-8"),
+        capture_output=True,
+        check=True,
     )
-    assert warned is not another, "every case here is one the line reading gets wrong"
-    assert bool(two_titles(check_shapes(project))) is warned, "the limit DESIGN.md records"
+    title = json.loads(done.stdout)["meta"].get("title")
+    if title in (None, {"t": "MetaInlines", "c": []}, {"t": "MetaString", "c": ""}):
+        return None
+    # A block is a paragraph to pandoc and a quoted title a line: the same words printed.
+    if title["t"] == "MetaBlocks" and [block["t"] for block in title["c"]] in (["Para"], ["Plain"]):
+        return {"t": "MetaInlines", "c": title["c"][0]["c"]}
+    return title
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_pandoc_takes_from_each_header_the_title_the_table_says() -> None:
+    """The table is checked against PyYAML where it is used; this asks pandoc, which reads
+    the manuscript. For each row it keeps a title from the header that is not the one it
+    keeps from paper.yaml's line exactly where the table says a warning is made, but for
+    the rows named as alike to it."""
+    differently = set()
+    for case, (header, typed, warned) in AS_YAML_READS_IT.items():
+        declared = _title_to_pandoc(header)
+        another = declared is not None and declared != _title_to_pandoc(typed)
+        if another is not warned:
+            differently.add(case)
+    assert differently == ALIKE_TO_PANDOC
+
+
+def test_the_warning_of_two_titles_names_the_line_of_the_header_s_title(tmp_path: Path) -> None:
+    from manuscript_guard.build.assemble import check_shapes
+
+    header = "author:\n  - name: A\n    title: Dr\ntitle: Another"
+    project = _with_header(tmp_path / "paper", header)
+    (found,) = two_titles(check_shapes(project))
+    assert (found.line, found.context) == (5, "Another")
 
 
 def test_a_supplementary_file_s_own_title_is_compared_with_the_paper_s(tmp_path: Path) -> None:

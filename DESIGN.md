@@ -564,7 +564,9 @@ up for the author to read, whose marks the annotator has pandoc check as it make
 build strips every source file's YAML block and writes a header of its own with the title,
 short title and keywords from `paper.yaml`. A `title:` in the manuscript is compared with
 that one and a disagreement warned about (`two-titles`): by `check` at every stage, and by
-`build` and `submit` before the document is made. An `abstract:` there is refused,
+`build` and `submit` before the document is made. It is read there as YAML reads it, and
+the two are compared with their spaces and line breaks folded. An `abstract:` there is
+refused,
 by G2 and by the build alike (`front-matter-abstract`), as a block pandoc cannot read is
 (`front-matter-unreadable`). G2 reads it, because pandoc prints one, and until 2026-09-26
 the build dropped it without a word: the abstract was checked, then left out of the
@@ -3507,40 +3509,25 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   but the text itself is dropped without a word. Only the abstract is refused
   (`front-matter-abstract`), and only the title is compared with `paper.yaml`
   (`two-titles`).
-- **The title in a manuscript's header is read by line, not as YAML.** The comparison with
-  `paper.yaml` (`two-titles`) takes what stands after the first `title:` in the block, at
-  any depth and on that line alone, less every quotation mark and apostrophe at either
-  end, and sets it beside `paper.yaml`'s title as YAML gives that one. So it warns of two
-  titles that agree where the header's has:
-  - a comment after it;
-  - an apostrophe doubled between single quotation marks (`'Crohn''s disease'`);
-  - a quotation mark or a backslash escaped between double ones. `init` types a title with
-    TeX into `paper.yaml` that way (`"IFN-$\\gamma$ release assays"`), so an author who
-    makes the two agree by copying that line into the header keeps the warning;
-  - a quotation mark or an apostrophe of its own at either end, quoted or not
-    (`"Rethinking the 'obesity paradox'"`, `A study of "frailty"`);
-  - a second line it runs on to, or a folded or literal block (`title: >`);
-  - an author's `title: Dr` above it, or no title of its own under such an author;
-
-  and where `paper.yaml`'s own title is a folded block, whose closing line break YAML
-  keeps. And it says nothing of two that differ where the header's title begins on the
-  line under its key, is written `title :` or `"title":`, is written twice, of which YAML
-  keeps the last, has `paper.yaml`'s title as its first line and runs on to a second, or
-  differs from it only by a mark of its own at either end (`the patients'` beside
-  `the patients`). `init` types no header that the two
-  readings take differently. It is a warning, the document prints `paper.yaml`'s title in
-  each of these, and deleting the title from the header ends it. A supplementary file's
-  own title is compared with the paper's as well, and warned of: nothing prints it, since
-  the supplement's title is made from the paper's. Its hint says that, and does not say to
-  make the two agree. Reading the header's title as YAML, as its abstract is read, is a
-  change of its own (Basile, 2026-10-04).
+- **The two titles are compared as typed, not as pandoc prints them.** The title in a
+  manuscript's header is read as YAML reads it and set beside `paper.yaml`'s with the
+  spaces, tabs and line breaks of each folded (`two-titles`). Pandoc then reads a title as
+  Markdown, and two that it prints alike are still two to the comparison: `A *cohort*
+  study` beside `A _cohort_ study`, a straight quotation mark beside a curly one, three
+  hyphens beside a dash. A title that is a list or a mapping is warned of whatever it
+  holds, and shown as its key's line. A supplementary file's own title is compared with
+  the paper's as well, and warned of: nothing prints it, since the supplement's title is
+  made from the paper's. Its hint says that, and does not say to make the two agree. It is
+  a warning, the document prints `paper.yaml`'s title in each of these, and deleting the
+  title from the header ends it.
 - **A front matter is composed twice, at 15 to 20 seconds a megabyte each time.** PyYAML's
   pure-Python composer is linear but slow: once to decide the block is front matter, once
-  to look for an abstract in it, each cached for the rest of the process. With half a
-  megabyte of front matter, which only a deliberately hostile manuscript has, `check` on
-  the example took 30 seconds against the 20-second budget of `test_robustness.py`, and
-  24 without the second reading. The C composer is 40 times faster and overflows its stack
-  on deep nesting, which is why the pure-Python one is used.
+  to look for an abstract and a title in it, each cached for the rest of the process. With
+  half a megabyte of front matter, which only a deliberately hostile manuscript has,
+  `check` on the example took 30 seconds against the 20-second budget of
+  `test_robustness.py`, and 24 without the second reading. The C composer is 40 times
+  faster and overflows its stack on deep nesting, which is why the pure-Python one is
+  used.
 - **A YAML block later in a file is read as prose.** Pandoc takes any `---` block that
   follows a blank line and holds a YAML mapping for metadata, wherever it sits, and prints
   none of it. The gates recognise only the block that opens a file, so a later one is read:
@@ -3778,6 +3765,28 @@ Added by the adversarial review, verified and **not** fixed:
 
 Closed since, and why each mattered:
 
+- **The header's title was read by line, and the warning of two titles was wrong on any
+  header but the plainest.** Nobody saw the warning until #165. Shown, it took what stands
+  after the first `title:` in the block, at any depth and on that line alone, less every
+  quotation mark and apostrophe at either end. So it warned of two titles that agreed where
+  the header's had a comment after it, an apostrophe doubled between single quotation marks
+  (`'Crohn''s disease'`), a quotation mark or a backslash escaped between double ones, a
+  mark of its own at either end, a second line or a folded block, or an author's
+  `title: Dr` above it; and where `paper.yaml`'s own was a folded block, whose closing line
+  break YAML keeps. An author who made the two agree by copying `paper.yaml`'s line, as
+  `init` types it for a title with TeX (`"IFN-$\\gamma$ release assays"`), kept the
+  warning. And it said nothing of two that differed where the header's title began under
+  its key, was written `title :` or `"title":`, or was written twice. The header's title
+  is now read as its abstract is, and
+  from the same composing of the block, so the block is not read a third time: by the key
+  pandoc knows, its own or merged in, and the last of one written twice. The two titles are
+  compared with their spaces, tabs and line breaks folded, and the warning names the line
+  of the header's title. Pandoc is asked for the title it keeps from each header of the
+  table that holds this (`AS_YAML_READS_IT` in `tests/test_corruption.py`), and agrees on
+  every row but the one Known gaps names. `init` types a header for more titles as a
+  consequence (Basile, 2026-10-04): one that begins or ends with a quotation mark or an
+  apostrophe, `the patients'`, is held between the other kind, and only a title holding
+  both kinds is left without a header.
 - **The warning of two titles was shown by no command.** Assembling compares the title in a
   manuscript file's header with `paper.yaml`'s and makes a warning where they differ
   (`two-titles`). `build` and `submit` printed what assembling found only when that held a
@@ -3789,8 +3798,8 @@ Closed since, and why each mattered:
   already refuses what assembling would refuse; the stage decides which failures are due,
   and a warning is not one. `build` and `submit` print what assembling warns of, once and
   before the document is made (Basile, 2026-10-04). `import` rebuilds a document already
-  sent and says nothing of it, as before. How the header's title is read is as it was; its
-  limits are above.
+  sent and says nothing of it, as before. How the header's title was read was left as it
+  was then; the entry above is what became of it.
 - **An abbreviated `--submission` was not seen by the submission guard.** argparse reads any
   prefix of an option that names one option only, so `manuscript-guard build --subm` was a
   submission build and `review --subm` a review at submission standard, and the guard's
@@ -4621,7 +4630,9 @@ Closed since, and why each mattered:
   `paper.yaml`'s is the only title. That is a title holding both kinds, and one that
   begins or ends with a quotation mark of either kind, `the patients'` for one, since the
   build's reading strips every one of them at either end; for one that begins or ends
-  with an apostrophe the header had read as another title.
+  with an apostrophe the header had read as another title. That reading is gone since:
+  the header's title is read as YAML, and only a title holding both kinds of mark is
+  left without a header (the first entry of this list).
   Before that, a title with TeX or a
   quotation in it left a new project that failed `check` on a header the author had not
   typed. TeX that stands outside `$` was the next thing found: `IFN-\gamma release

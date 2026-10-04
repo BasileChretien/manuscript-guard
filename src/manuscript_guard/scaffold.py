@@ -264,19 +264,22 @@ def _header(title: str) -> str:
     """The header `manuscript/main.md` opens with: the title, where the header can hold it.
 
     Two readers take the title from it. Pandoc reads the block as YAML, and refuses the
-    manuscript where it cannot. The build takes what stands after `title:` and strips the
-    quotation marks around it (`strip_front_matter`), and warns where that is not
-    `paper.yaml`'s title. Between double quotation marks, as the title was always typed, a
-    `"` ended it and a backslash began an escape: a title with TeX or a quotation in it left
-    a new project that failed `check` on the header `init` had typed. So the title stands
-    between the quotation marks under which both readers give it back as it is, double ones
-    first, so that an ordinary title is typed as it always was. Where neither kind does,
-    the header is left out: `paper.yaml` holds the title the document prints, and the
-    header's was only ever compared with it. That is a title holding both kinds, and one
-    that begins or ends with a quotation mark of either kind, `the patients'` for one,
-    since the build's reading strips every one of them at either end.
+    manuscript where it cannot. The build reads the title there as YAML too
+    (`strip_front_matter`), and `check` and the build warn where that is not `paper.yaml`'s
+    title. Between double quotation marks, as the title was always typed, a `"` ended it
+    and a backslash began an escape: a title with TeX or a quotation in it left a new
+    project that failed `check` on the header `init` had typed. So the title stands between
+    the quotation marks under which YAML gives it back as it is, double ones first, so that
+    an ordinary title is typed as it always was. Where neither kind does, the header is
+    left out: `paper.yaml` holds the title the document prints, and the header's was only
+    ever compared with it. That is a title holding both kinds of mark.
+
+    While the build read the header by line and stripped every quotation mark at either
+    end, a title that begins or ends with one, `the patients'`, got no header either. It
+    gets one now, between the other kind of mark (Basile, 2026-10-04).
     """
     from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text.masking import folded
 
     for mark in ('"', "'"):
         block = f"---\ntitle: {mark}{title}{mark}\n---\n\n"
@@ -284,7 +287,8 @@ def _header(title: str) -> str:
             read = yaml.safe_load(f"title: {mark}{title}{mark}")
         except yaml.YAMLError:
             continue
-        if read == {"title": title} and strip_front_matter(block + "text")[1] == title:
+        # The build's reading folds white space, as the comparison with paper.yaml does.
+        if read == {"title": title} and strip_front_matter(block + "text")[1] == folded(title):
             return block
     return ""
 

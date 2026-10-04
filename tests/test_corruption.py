@@ -8314,6 +8314,15 @@ AS_YAML_READS_IT = {
     "a no-break space where paper.yaml has a space": (
         "title: A" + chr(0xA0) + "cohort study", _AS_INIT_TYPES_IT, True
     ),
+    "a no-break space after the title": (
+        "title: A cohort study" + chr(0xA0), _AS_INIT_TYPES_IT, True
+    ),
+    # A line break YAML keeps inside the title, which only the folding takes away.
+    "a literal block over two lines": (
+        "title: |" + chr(10) + "  A cohort" + chr(10) + "  study", _AS_INIT_TYPES_IT, False
+    ),
+    # Pandoc knows the key by its case.
+    "a key with a capital": ("Title: Another", _AS_INIT_TYPES_IT, False),
     # Compared as typed, not as Markdown: pandoc prints these two alike.
     "the same words marked up another way": (
         "title: A *cohort* study", 'title: "A _cohort_ study"', True
@@ -8391,7 +8400,11 @@ def _title_to_pandoc(block: str):
         return None
     # A block is a paragraph to pandoc and a quoted title a line: the same words printed.
     if title["t"] == "MetaBlocks" and [block["t"] for block in title["c"]] in (["Para"], ["Plain"]):
-        return {"t": "MetaInlines", "c": title["c"][0]["c"]}
+        title = {"t": "MetaInlines", "c": title["c"][0]["c"]}
+    if title["t"] == "MetaInlines":
+        # A line break inside a paragraph is printed as a space.
+        spaced = [{"t": "Space"} if item == {"t": "SoftBreak"} else item for item in title["c"]]
+        title = {"t": "MetaInlines", "c": spaced}
     return title
 
 
@@ -8410,6 +8423,93 @@ def test_pandoc_takes_from_each_header_the_title_the_table_says() -> None:
         if another is not warned:
             differently.add(case)
     assert differently == ALIKE_TO_PANDOC
+
+
+def test_a_header_is_composed_once_for_its_place_its_abstract_and_its_title(monkeypatch) -> None:
+    """Composing is the slow part, and each further one is a further place to fail: a
+    second one can raise where the first did not, being further down the stack. The
+    abstract was read from a second composing, and the title at first with it."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text import masking
+
+    calls = []
+    composing = yaml.compose_all
+
+    def once(*args, **kwargs):
+        calls.append(1)
+        if len(calls) > 1:
+            raise RecursionError("maximum recursion depth exceeded")
+        return composing(*args, **kwargs)
+
+    monkeypatch.setattr(yaml, "compose_all", once)
+    # A header no other test reads, so that nothing here is answered from a cache.
+    text = "---\ntitle: Composed once for the title\nabstract: An abstract.\n---\n\nText.\n"
+    assert masking.FRONTMATTER.match(text) is not None
+    assert masking.front_matter_problem(text) is None
+    assert masking.front_matter_abstract(text) == (3, "An abstract.")
+    assert masking.front_matter_title(text) == (2, "Composed once for the title")
+    assert strip_front_matter(text) == ("Text.\n", "Composed once for the title")
+    assert len(calls) == 1
+
+
+def test_a_header_too_deep_to_compose_declares_nothing_and_stays_in_the_body(monkeypatch) -> None:
+    """What the first composing cannot take is no front matter: left in the body, where
+    pandoc refuses it, with no abstract and no title read from it."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text import masking
+
+    def too_deep(*args, **kwargs):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    monkeypatch.setattr(yaml, "compose_all", too_deep)
+    text = "---\ntitle: Too deep to compose\nabstract: An abstract.\n---\n\nText.\n"
+    assert masking.FRONTMATTER.match(text) is None
+    assert masking.front_matter_abstract(text) is None
+    assert masking.front_matter_title(text) is None
+    assert strip_front_matter(text) == (text, "")
+
+
+def _nested_header(depth: int) -> str:
+    """A header whose `nest` key holds mappings `depth` deep, each one space further in."""
+    lines = [" " * (level + 1) + "k:" for level in range(depth)]
+    return "\n".join(["---", "title: A cohort study", "nest:", *lines]) + " v\n---\n\nText.\n"
+
+
+def _stripped_from(frames: int, text: str) -> tuple[str, str]:
+    """`strip_front_matter(text)` from `frames` calls further down the stack: where Python's
+    limit falls depends on how deep the caller stands, and callers differ."""
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    if frames:
+        return _stripped_from(frames - 1, text)
+    return strip_front_matter(text)
+
+
+@pytest.mark.parametrize("frames", [0, 1])
+def test_a_header_nested_as_deep_as_it_can_be_composed_ends_nothing_in_a_traceback(
+    frames: int,
+) -> None:
+    """A header too deep to compose is left in the body, for pandoc to refuse. Read a
+    second time for its title, one call further down, a header the first composing had
+    just managed raised `RecursionError` out of `strip_front_matter`, and `import` ended
+    in a traceback where main answered (the review of #168)."""
+    from manuscript_guard.text import masking
+
+    raised, stripped, left = [], [], []
+    for depth in range(440, 500):
+        for cached in vars(masking).values():
+            if callable(getattr(cached, "cache_clear", None)):
+                cached.cache_clear()
+        try:
+            body, _title = _stripped_from(frames, _nested_header(depth))
+        except RecursionError:
+            raised.append(depth)
+            continue
+        (stripped if body == "Text.\n" else left).append(depth)
+    # Where the limit falls is the interpreter's and the caller's: on this machine the
+    # range holds both sides of it. The two tests above hold the same with no limit to find.
+    assert stripped or left
+    assert raised == [], f"RecursionError at nesting {raised}"
 
 
 def test_the_warning_of_two_titles_names_the_line_of_the_header_s_title(tmp_path: Path) -> None:

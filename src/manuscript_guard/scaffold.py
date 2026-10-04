@@ -272,7 +272,8 @@ def _header(title: str) -> str:
     the quotation marks under which YAML gives it back as it is, double ones first, so that
     an ordinary title is typed as it always was. Where neither kind does, the header is
     left out: `paper.yaml` holds the title the document prints, and the header's was only
-    ever compared with it. That is a title holding both kinds of mark.
+    ever compared with it. That is a title holding both kinds of mark, or a backslash,
+    which double ones read as an escape, and an apostrophe, which ends single ones.
 
     While the build read the header by line and stripped every quotation mark at either
     end, a title that begins or ends with one, `the patients'`, got no header either. It
@@ -335,8 +336,8 @@ def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
         # The title is typed into `paper.yaml` as a JSON string, whose escapes are YAML's:
         # between quotation marks typed around it as it stood, a backslash in it began an
         # escape, which `check` refuses and the author never wrote, and a quotation mark
-        # ended it. The manuscript's own header cannot take that form, since its title is
-        # read by a plain split of the line: see `_header`.
+        # ended it. The manuscript's own header keeps the title as it stands, between the
+        # quotation marks that give it back: see `_header`.
         written = template.format(
             title=title,
             quoted=json.dumps(title, ensure_ascii=False),

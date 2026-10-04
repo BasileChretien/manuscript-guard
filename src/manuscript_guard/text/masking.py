@@ -104,9 +104,26 @@ def _loader():
     return PandocLoader
 
 
-@lru_cache(maxsize=256)
 def _read_yaml(yaml_text: str) -> tuple[bool, str, int]:
-    """Whether pandoc keeps this YAML as metadata, and why and where it cannot read it.
+    """Whether pandoc keeps this YAML as metadata, and why and where it cannot read it: the
+    first three of what `_composed` reads."""
+    return _composed(yaml_text)[:3]
+
+
+@lru_cache(maxsize=256)
+def _composed(
+    yaml_text: str,
+) -> tuple[bool, str, int, tuple[int, str] | None, tuple[int, str] | None]:
+    """Everything read from one composing of this YAML: whether pandoc keeps it as
+    metadata, why and where it cannot read it, and the abstract and the title it would
+    take from it (`_taken`).
+
+    Composed once. The abstract used to be read from a second composing, under no `except`
+    and a call further down the stack than the first, and the title was at first read from
+    that one too. `strip_front_matter` then composed where it never had, and a header
+    nested just as deep as the first composing could take raised `RecursionError` out of
+    the second: `import` ended in a traceback (the review of #168). What cannot be composed
+    here is not composed again.
 
     Read as pandoc reads it: between a `---` and a `...` of its own, so a `---` line inside
     starts another document, and every document is read. It is metadata when the first
@@ -122,27 +139,48 @@ def _read_yaml(yaml_text: str) -> tuple[bool, str, int]:
     import yaml
 
     if _nesting(yaml_text) > _YAML_DEPTH:
-        return False, "", 0
+        return False, "", 0, None, None
     wrapped = "---\n" + yaml_text.expandtabs(4) + "...\n"
     try:
         documents = list(yaml.compose_all(wrapped, Loader=_loader()))
     except yaml.MarkedYAMLError as exc:
-        return (False, *_failed_at(exc, wrapped))
+        return (False, *_failed_at(exc, wrapped), None, None)
     except yaml.reader.ReaderError as exc:
         where = wrapped.count("\n", 0, exc.position) - 1
         # PyYAML keeps the character as its code point, an int.
         code = exc.character if isinstance(exc.character, int) else ord(exc.character)
-        return False, f"unacceptable character #x{code:04x}: {exc.reason}", max(where, 0)
+        reason = f"unacceptable character #x{code:04x}: {exc.reason}"
+        return False, reason, max(where, 0), None, None
     except RecursionError:
         # Too deep to compose, like the nesting refused above; see Known gaps.
-        return False, "", 0
+        return False, "", 0, None, None
     if not documents:
-        return True, "", 0
+        return True, "", 0, None, None
     first = documents[0]
     if isinstance(first, yaml.MappingNode):
-        return True, "", 0
+        return True, "", 0, _taken(first, "abstract", wrapped), _taken(first, "title", wrapped)
     empty = isinstance(first, yaml.ScalarNode) and first.tag == "tag:yaml.org,2002:null"
-    return empty and len(documents) == 1, "", 0
+    return empty and len(documents) == 1, "", 0, None, None
+
+
+def _taken(root, name: str, wrapped: str) -> tuple[int, str] | None:
+    """The abstract or the title pandoc would take from a composed mapping: its line
+    inside the YAML, counted from 0, and its text as YAML reads it, which is empty for a
+    list or a mapping. None where it is not there, or pandoc prints nothing for it.
+
+    Never constructed: constructing expands `<<` merge keys, doubling the work with each
+    line of a merge bomb, and nothing here needs the values.
+    """
+    import yaml
+
+    found = _entry(root, name)
+    if found is None or not _prints(found[1]):
+        return None
+    key, value = found
+    # Counted at `\n` from the key's position, as the file's lines are; line 0 of the
+    # wrapped text is the `---` put in front of the YAML.
+    line = wrapped.count("\n", 0, key.start_mark.index) - 1
+    return line, value.value if isinstance(value, yaml.ScalarNode) else ""
 
 
 def _failed_at(exc, wrapped: str) -> tuple[str, int]:
@@ -246,9 +284,11 @@ _BLANKS = re.compile(r"[ \t\r\n]+")
 
 def folded(text: str) -> str:
     """`text` on one line: each run of spaces, tabs and line breaks one space, and none at
-    either end. That is what pandoc makes of them in a title, so a title wrapped in one
-    file and not in the other, or closed by the line break a block keeps, is the same
-    title. A no-break space is a character to pandoc and is left as one."""
+    either end. That is what pandoc makes of them in a title of one paragraph, so a
+    title wrapped in one file and not in the other, or closed by the line break a block
+    keeps, is the same title. A no-break space is a character to pandoc and is left as
+    one. A blank line and a hard break are folded too, which pandoc keeps apart; DESIGN.md's
+    Known gaps has what else the comparison does not see."""
     return _BLANKS.sub(" ", text).strip(" ")
 
 
@@ -258,45 +298,11 @@ def _placed(text: str, which: int) -> tuple[int, str] | None:
     opening = FRONTMATTER.match(text)
     if opening is None:
         return None
-    found = _abstract_and_title(opening.group("yaml"))[which]
+    found = _composed(opening.group("yaml"))[3 + which]
     if found is None:
         return None
     line, value = found
     return text.count("\n", 0, opening.start("yaml")) + 1 + line, value
-
-
-@lru_cache(maxsize=256)
-def _abstract_and_title(
-    yaml_text: str,
-) -> tuple[tuple[int, str] | None, tuple[int, str] | None]:
-    """The abstract and the title pandoc would take from this front matter: for each, its
-    line inside the YAML, counted from 0, and its text as YAML reads it; None for one that
-    is not there, or that pandoc prints nothing for. The text is empty for a list or a
-    mapping.
-
-    Composed as `_read_yaml` composes it, which has already succeeded when FRONTMATTER
-    matched. Never constructed: constructing expands `<<` merge keys, doubling the work with
-    each line of a merge bomb, and nothing here needs the values. Both from one composing,
-    which is the slow part: the title was added to the abstract's, not read on its own.
-    """
-    import yaml
-
-    wrapped = "---\n" + yaml_text.expandtabs(4) + "...\n"
-    documents = list(yaml.compose_all(wrapped, Loader=_loader()))
-    if not documents or not isinstance(documents[0], yaml.MappingNode):
-        return None, None
-
-    def placed(name: str) -> tuple[int, str] | None:
-        found = _entry(documents[0], name)
-        if found is None or not _prints(found[1]):
-            return None
-        key, value = found
-        # Counted at `\n` from the key's position, as the file's lines are; line 0 of the
-        # wrapped text is the `---` put in front of the YAML.
-        line = wrapped.count("\n", 0, key.start_mark.index) - 1
-        return line, value.value if isinstance(value, yaml.ScalarNode) else ""
-
-    return placed("abstract"), placed("title")
 
 
 _NULL = "tag:yaml.org,2002:null"
@@ -336,7 +342,7 @@ def _entry(root, name: str):
 
 
 def _prints(node) -> bool:
-    """Whether pandoc prints anything for an abstract composed as `node`."""
+    """Whether pandoc prints anything for an abstract or a title composed as `node`."""
     import yaml
 
     if isinstance(node, yaml.ScalarNode):

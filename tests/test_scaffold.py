@@ -320,8 +320,10 @@ HEADER = {
     "Effect of $" + chr(92) + "delta$ on outcomes": (
         "title: 'Effect of $" + chr(92) + "delta$ on outcomes'"
     ),
-    # Both kinds of mark, so neither holds it.
+    # Neither kind of mark gives these back: both kinds in the title, or a backslash, which
+    # double marks read as an escape, and an apostrophe, which ends single ones.
     "Crohn's " + '"disease"': None,
+    "TNF-$" + chr(92) + "alpha$ inhibitors in Crohn's disease": None,
     # A mark of the title's own at either end. While the build read the header by line and
     # stripped every quotation mark at either end, none of these could be read back, and
     # the header was left out: typed, it read `the patients`, two titles. Read as YAML,
@@ -340,6 +342,7 @@ def test_the_manuscripts_header_holds_the_title_where_it_reads_back_as_typed(
     title: str, tmp_path: Path
 ) -> None:
     from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text.masking import folded
 
     root = tmp_path / "paper"
     init_project(root, title=title)
@@ -354,7 +357,7 @@ def test_the_manuscripts_header_holds_the_title_where_it_reads_back_as_typed(
     header = "---" + chr(10) + HEADER[title] + chr(10) + "---" + chr(10) * 2
     assert text.startswith(header + "# Introduction")
     # The build's reading of it, which is YAML's with the white space folded.
-    assert strip_front_matter(text)[1] == " ".join(title.split())
+    assert strip_front_matter(text)[1] == folded(title)
     assert yaml.safe_load(HEADER[title]) == {"title": title}
 
 

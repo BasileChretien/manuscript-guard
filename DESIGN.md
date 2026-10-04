@@ -3514,17 +3514,26 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   spaces, tabs and line breaks of each folded (`two-titles`). Pandoc then reads a title as
   Markdown, and two that it prints alike are still two to the comparison: `A *cohort*
   study` beside `A _cohort_ study`, a straight quotation mark beside a curly one, three
-  hyphens beside a dash. A title that is a list or a mapping is warned of whatever it
-  holds, and shown as its key's line. A supplementary file's own title is compared with
+  hyphens beside a dash. So are two that differ by a no-break space, one pasted after the
+  header's title for instance, where the warning shows a title that looks the same as
+  `paper.yaml`'s; and a line separator or a next-line character in `paper.yaml`'s title,
+  which the build folds for the document and the comparison does not. The other way, the
+  comparison says nothing where pandoc would hold the two apart: a blank line or a hard
+  break inside a block title, which the folding takes for a space, and a plain `yes` or
+  `1.0`, a boolean and a number to pandoc and text here. A title that is a list or a
+  mapping is warned of whatever it holds, and shown as its key's line; an empty one, and a
+  title of nothing but a no-break space, is read as no title. A supplementary file's own
+  title is compared with
   the paper's as well, and warned of: nothing prints it, since the supplement's title is
   made from the paper's. Its hint says that, and does not say to make the two agree. It is
   a warning, the document prints `paper.yaml`'s title in each of these, and deleting the
   title from the header ends it.
-- **A front matter is composed twice, at 15 to 20 seconds a megabyte each time.** PyYAML's
-  pure-Python composer is linear but slow: once to decide the block is front matter, once
-  to look for an abstract and a title in it, each cached for the rest of the process. With
-  half a megabyte of front matter, which only a deliberately hostile manuscript has,
-  `check` on the example took 30 seconds against the 20-second budget of
+- **A front matter is composed at 15 to 20 seconds a megabyte.** PyYAML's pure-Python
+  composer is linear but slow. The block is composed once, cached for the rest of the
+  process: to decide that it is front matter, and for the abstract and the title in it.
+  Until the title was read as YAML it was composed twice, the second time for the
+  abstract, and with half a megabyte of front matter, which only a deliberately hostile
+  manuscript has, `check` on the example took 30 seconds against the 20-second budget of
   `test_robustness.py`, and 24 without the second reading. The C composer is 40 times
   faster and overflows its stack on deep nesting, which is why the pure-Python one is
   used.
@@ -3777,16 +3786,20 @@ Closed since, and why each mattered:
   `init` types it for a title with TeX (`"IFN-$\\gamma$ release assays"`), kept the
   warning. And it said nothing of two that differed where the header's title began under
   its key, was written `title :` or `"title":`, or was written twice. The header's title
-  is now read as its abstract is, and
-  from the same composing of the block, so the block is not read a third time: by the key
-  pandoc knows, its own or merged in, and the last of one written twice. The two titles are
-  compared with their spaces, tabs and line breaks folded, and the warning names the line
-  of the header's title. Pandoc is asked for the title it keeps from each header of the
+  is now read as its abstract is: by the key pandoc knows, its own or merged in, and the
+  last of one written twice. Both are taken from the one composing that finds the header.
+  The abstract had a second composing of its own, and the title was at first read from
+  that: a header nested just as deep as the first composing could take, about 480 levels,
+  then raised `RecursionError` out of the second, one call further down the stack, and
+  `import` ended in a traceback where it had answered (the review of #168). The two
+  titles are compared with their spaces, tabs and line breaks folded, and the warning
+  names the line of the header's title. Pandoc is asked for the title it keeps from each header of the
   table that holds this (`AS_YAML_READS_IT` in `tests/test_corruption.py`), and agrees on
   every row but the one Known gaps names. `init` types a header for more titles as a
   consequence (Basile, 2026-10-04): one that begins or ends with a quotation mark or an
-  apostrophe, `the patients'`, is held between the other kind, and only a title holding
-  both kinds is left without a header.
+  apostrophe, `the patients'`, is held between the other kind. A title that neither kind
+  gives back is still left without a header: one holding both kinds, or a backslash and
+  an apostrophe, `TNF-$\alpha$ inhibitors in Crohn's disease`.
 - **The warning of two titles was shown by no command.** Assembling compares the title in a
   manuscript file's header with `paper.yaml`'s and makes a warning where they differ
   (`two-titles`). `build` and `submit` printed what assembling found only when that held a
@@ -4631,8 +4644,9 @@ Closed since, and why each mattered:
   begins or ends with a quotation mark of either kind, `the patients'` for one, since the
   build's reading strips every one of them at either end; for one that begins or ends
   with an apostrophe the header had read as another title. That reading is gone since:
-  the header's title is read as YAML, and only a title holding both kinds of mark is
-  left without a header (the first entry of this list).
+  the header's title is read as YAML, and a title is left without a header only where
+  neither kind of mark gives it back (the entry "The header's title was read by line",
+  above).
   Before that, a title with TeX or a
   quotation in it left a new project that failed `check` on a header the author had not
   typed. TeX that stands outside `$` was the next thing found: `IFN-\gamma release

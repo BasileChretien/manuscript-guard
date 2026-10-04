@@ -447,10 +447,10 @@ def _scan(rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False) -
 #: space and no sign inside. `HbA~1c~`, `Ca^2+^`.
 _SUBSCRIPT = re.compile(r"~([^\s~]+)~")
 _SUPERSCRIPT = re.compile(r"\^([^\s^]+)\^")
-#: Digits alone in a superscript, with a sign before them or none: a citation's number
-#: typed by hand (`shown^12^`, `shown^3-5^`) or an exponent (`year^-1^`), and no part of a
-#: name. An ion's charge has its sign after the digit, `Ca^2+^`, and an isotope's mass a
-#: letter, `^99m^Tc`: each is part of one.
+#: Digits alone in a superscript, with a sign before them or none. After a word they are
+#: a citation's number typed by hand (`shown^12^`, `shown^3-5^`) or an exponent
+#: (`year^-1^`), and no part of a name. An ion's charge has its sign after the digit,
+#: `Ca^2+^`, and is part of one.
 _DIGITS_ALONE = re.compile(r"[-+−]?\d[\d,–-]*")
 
 
@@ -464,10 +464,12 @@ def _with_its_closing_sign(atom: Atom) -> str:
 def _without_scripts(text: str, *, keep: bool) -> str:
     """`text` without the signs of the subscripts and superscripts that can be part of a
     name, and with what they hold (`keep`) or without it. Digits alone in a superscript
-    are left as they stand, signs and all."""
+    are left as they stand, signs and all, unless a letter follows them directly: that is
+    an isotope's mass before its element, `^18^F`, and part of the name."""
 
     def superscript(found: re.Match[str]) -> str:
-        if _DIGITS_ALONE.fullmatch(found[1]):
+        after = found.string[found.end() : found.end() + 1]
+        if _DIGITS_ALONE.fullmatch(found[1]) and not after.isalpha():
             return found[0]
         return found[1] if keep else ""
 
@@ -488,9 +490,12 @@ def unsigned(atom: Atom) -> str | None:
     letters before it: `pH~2` was `ph2`, which holds the built-in term `h2`, so a pH, an
     effect of `HR~2` and a rise of `increased~2-fold` were accepted as terms.
 
-    And digits alone in a superscript stay as they are written. Taken for part of a name,
-    a citation's number after a word that is the whole of a term's letters made the term:
-    `hepatitis B^12^` passed as vitamin B12, and `CD^19^` as CD19."""
+    And digits alone in a superscript stay as they are written, where no letter follows
+    them. Taken for part of a name, a citation's number after a word that is the whole of
+    a term's letters made the term: `hepatitis B^12^` passed as vitamin B12, and `CD^19^`
+    as CD19. Before a letter they are an isotope's mass and are taken out with the rest,
+    so that a declared `18F` covers `^18^F-FDG`: left in there too, every isotope written
+    so was reported, which the change before this one had put right."""
     text = _with_its_closing_sign(atom)
     bare = _without_scripts(text, keep=True)
     return None if bare == text else bare

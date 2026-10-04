@@ -3622,9 +3622,11 @@ Added by the adversarial review, verified and **not** fixed:
   `year^-1^`). A term is still found anywhere in an atom as it is written, so `H2O` is
   accepted by the built-in `h2`, as before, and so is `H~2~O`, where `h2` opens the word.
   A symbol with a subscript that makes a term is that term: `b~1~`, `d~2~`, `k~2~`.
-  Digits alone in a superscript are never part of a name: after a word that is the whole
-  of a term's letters they made the term, and a citation's number typed as `hepatitis
-  B^12^` passed as vitamin B12 (found by the second round of the review). An
+  Digits alone in a superscript after a word are never part of a name: after a word that
+  is the whole of a term's letters they made the term, and a citation's number typed as
+  `hepatitis B^12^` passed as vitamin B12 (found by the second round of the review).
+  Before a letter they are an isotope's mass and part of the name, so a declared `18F`
+  covers `^18^F-FDG`. An
   exponent of two digits or more, and one on a word of four letters or more, is a number:
   `year^-1^` and `mmHg^-1^` are reported, and are typed with the superscript characters or
   declared. That is narrower than what is read for the characters themselves, on purpose:

@@ -73,6 +73,13 @@ NAMES = {
     ),
     "a built-in name in emphasis and in brackets": ("**HbA~1c~** (*HbA~1c~*) was used.", ()),
     "a symbol with a subscript that is a term": ("Vitamin B~12~ was given.", ()),
+    # An isotope's mass stands in a superscript before its element's letter. Digits alone
+    # in a superscript after a word are a citation's number and no part of a name; before
+    # a letter they are part of one.
+    "isotopes, declared": (
+        "Uptake of ^18^F-FDG was measured, with ^131^I and ^14^C as tracers.",
+        ("18F", "131I", "14C"),
+    ),
     "a term twice with a sign between": ("A ratio H~2~/H~2~ and B~12~-B~12~.", ()),
     "a term twice with nothing between": ("A dimer H~2~H~2~ was seen.", ()),
 }
@@ -354,6 +361,7 @@ DECLARED_AS = {
     "Dissolution at pH~2 was tested.": None,
     "End-tidal CO~2~^3^ was recorded.": None,
     "In hepatitis B^12^ it rose.": None,
+    "Uptake of ^68^Ga-DOTATATE was measured.": None,
 }
 
 

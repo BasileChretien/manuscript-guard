@@ -4636,7 +4636,9 @@ Closed since, and why each mattered:
   value, in maths, in code, or doubled (`[18F]FDG and TGF-$\beta$` is one); from a `~`
   or a `^` to the next space the same holds, and to the end of the value where that
   stretch holds a `$`; a character reference in such a stretch, `x^&alpha;^` for one,
-  which pandoc prints; a command pandoc cannot read as TeX, which it prints as typed, a
+  which pandoc prints, and with it any `&` there that a `;` follows, since it is not
+  read to see whether it is one; a command pandoc cannot read as TeX, which it prints
+  as typed, a
   brace after it never closed, a `%` between its braces, `\end` with no `\begin`; one in
   a value pandoc reads as code, `>` and a tab before it; a backslash before a code
   point that is no letter in any Unicode yet; and one before a letter that Python's

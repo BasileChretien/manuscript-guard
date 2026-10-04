@@ -199,6 +199,12 @@ OVER = {
     "two references for backslashes in a superscript": ("^&bsol;&bsol;gamma^", "&bsol;", "^"),
     "a reference for an ampersand in a superscript": ("x^&amp;bsol;gamma^", "&amp;", "^"),
     "a reference for a Greek letter in a superscript": ("x^&alpha;^", "&alpha;", "^"),
+    # It is not read to see whether it is a reference at all.
+    "an ampersand that a semicolon follows in a subscript's stretch": (
+        "H~2~O&CO;x",
+        "&CO;",
+        "~",
+    ),
 }
 
 
@@ -266,6 +272,7 @@ UNREAD = {
     "after a letter, nothing closing": (f"IFN-$x{G} release assays", "open"),
     "far after a dollar sign that nothing closes": (f"costs $5 and {G}", "open"),
     "past the dollar sign that would have closed, and after maths": (f"$a $b$ x {G}", ""),
+    "past the dollar sign a digit follows, and after maths": (f"$a$5x$ {G}", ""),
     # No dollar sign that was tried stands before these.
     "an escaped dollar sign before the command": (f"{B}${G}{B}$", ""),
     "a space after the opening dollar sign": (f"x$ {G} $y", ""),
@@ -394,6 +401,7 @@ LONG = {
     "ampersands in a superscript": lambda n: "^" + "a&b" * n,
     "references past a bracket": lambda n: "[" + "&bsol; " * n,
     "superscripts past a bracket": lambda n: "[" + "^a& " * n,
+    "circumflexes past a bracket": lambda n: "[" + "^" * n,
 }
 
 

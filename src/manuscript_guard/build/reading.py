@@ -53,6 +53,7 @@ from manuscript_guard.text.fences import Fence, commented_listings, fenced_spans
 from manuscript_guard.text.masking import front_matter_end
 from manuscript_guard.text.placeholders import PLACEHOLDER
 from manuscript_guard.text.sections import heading_index, scannable
+from manuscript_guard.text.tex import tex_kind
 
 # Containers whose headings are quoted or set apart, not the document's own.
 _NESTED = frozenset({"BlockQuote", "Note", "Figure"})
@@ -437,6 +438,130 @@ def _listing_misread(
     return None
 
 
+#: A command, at the start of what pandoc read as a piece of TeX.
+_COMMAND = re.compile(r"\\[A-Za-z@]+")
+#: What opens a macro's definition, in any form, the forms the build does not read among
+#: them (`text.tex` reads `\newcommand` and four more, each with its braces).
+_DEFINES = re.compile(
+    r"\\(?:let|[gex]?def|global|long|(?:re)?newenvironment|DeclareRobustCommand|"
+    r"(?:re)?newcommand|providecommand|DeclareMathOperator)(?![A-Za-z@])"
+)
+
+
+def place(raw: str, sources: list[tuple[str, str]], built: list[str]) -> str:
+    """Where to look for `raw`, a piece of TeX as pandoc read it: " (name:line)", a line of
+    the first of `sources` that holds it, as the file is written.
+
+    The line was counted in the text as built, where the front matter is taken off and the
+    tables are put in: the example's Results sentence was named four lines above where it
+    stands. What is looked for is the piece's first line, and failing that its command,
+    since the piece itself is often in no source: the number after `\\approx` is a value
+    put in, and pandoc takes the `> ` off each line of a quotation. Where only the text as
+    built holds it, a value or a table put it there, and that is said with the file's
+    name. Empty where nothing holds it, which is what a macro makes.
+
+    It is where the text stands, and pandoc may have read it as TeX further down: the same
+    command in maths or in a code span above is found first, and a macro's expansion is
+    found in its definition."""
+    first = raw.strip().split("\n", 1)[0].strip()
+    if not first:
+        return ""
+    command = _COMMAND.match(first)
+    for wanted in dict.fromkeys((first, command[0] if command else first)):
+        for name, text in sources:
+            at = text.find(wanted)
+            if at != -1:
+                return f" ({name}:{text.count(chr(10), 0, at) + 1})"
+    for (name, _text), text in zip(sources, built, strict=True):
+        if first in text:
+            return f" ({name}, where a value or a table puts it)"
+    return ""
+
+
+def _everything(tree: object) -> Iterator[dict]:
+    """Every element of pandoc's reading in document order, whatever key holds it.
+
+    `_nodes` goes inside an element by its content only, which is where every block and
+    inline is but one: a citation holds what stands before and after its key under names
+    of their own, and TeX there was not seen. A figure holds its caption twice, as the
+    caption and as the image's own text, and the second is passed over. Without recursion,
+    as `_nodes` is."""
+    stack: list[tuple[object, bool]] = [(tree, False)]
+    while stack:
+        item, in_figure = stack.pop()
+        if isinstance(item, list):
+            stack.extend((child, in_figure) for child in reversed(item))
+        elif isinstance(item, dict):
+            kind = item.get("t")
+            if kind is not None:
+                yield item
+            if kind == "Image" and in_figure:
+                continue
+            stack.extend(
+                (child, in_figure or kind == "Figure") for child in reversed(item.values())
+            )
+
+
+def _raw_tex(blocks: list) -> tuple[list[str], list[str]]:
+    """The TeX pandoc reads in the text outside maths, which the Word writer leaves out of
+    the document: what loses something, and what is nothing but layout commands, with or
+    without definitions beside them. A piece that is only a macro's definitions is in
+    neither. TeX the author marked as raw for another format, `{=latex}`, is not read here
+    at all: pandoc labels that `latex` and this `tex`, as it does TeX marked `{=tex}`,
+    which is therefore taken for unmarked."""
+    lost, layout = [], []
+    for node in _everything(blocks):
+        if node["t"] not in ("RawBlock", "RawInline") or node["c"][0] != "tex":
+            continue
+        raw = node["c"][1]
+        kind = tex_kind(raw)
+        if kind != "definitions":
+            (layout if kind == "layout" else lost).append(raw)
+    return lost, layout
+
+
+def _tex_left_out(lost: list[str], sources: list[tuple[str, str]], built: list[str]) -> str | None:
+    """A phrase to follow "pandoc reads" for TeX that loses something, or None for none.
+
+    Pandoc reads a backslash before a letter as TeX and takes with it what TeX would: the
+    number after `\\approx`, the words in the braces of `\\textit`, everything from `\\begin`
+    to its `\\end`. The Word writer leaves all of it out. `\\approx {{results.n}}` passed
+    every gate, each of which had counted the number as printed, and the build, and the
+    document was printed without the number.
+
+    What it says to do holds through `check`: a code span marked `{=latex}`, where a block
+    so marked is failed by G2 from `drafting` on. And it does not say that of a definition
+    in a form that is not read, since marked, pandoc no longer applies it."""
+    if not lost:
+        return None
+    first = lost[0].strip()
+    lines = first.split("\n")
+    if not first:
+        shown = "a macro that leaves nothing of the text it takes"
+    else:
+        shown = f"`{lines[0]}`" if len(lines) == 1 else f"`{lines[0]}` to `{lines[-1]}`"
+    where = place(first, sources, built)
+    if first and not where:
+        where = " (not found as written in a source: a macro or a value makes it)"
+    more = f", and {len(lost) - 1} more after it" if len(lost) > 1 else ""
+    if _DEFINES.match(first):
+        remedy = (
+            "It opens as a macro's definition, in a form that is not read here: write it as "
+            "`\\newcommand{\\name}{...}`, with its braces, which pandoc applies in maths and "
+            "the build lets pass"
+        )
+    else:
+        remedy = (
+            "Maths is kept between dollar signs; text that is no TeX, a path or a pattern, "
+            "goes in a code span or has its backslash doubled; and TeX that is meant for a "
+            "PDF only goes in a code span marked `{=latex}`"
+        )
+    return (
+        f"as TeX {shown}{where}{more}, which the Word writer leaves out of the document "
+        f"with whatever the command takes after it. {remedy}"
+    )
+
+
 def misreading(
     source: str,
     header: str,
@@ -445,15 +570,20 @@ def misreading(
     cwd: Path,
     *,
     built: list[str] | None = None,
+    inert: list[str] | None = None,
 ) -> str | None:
     """What pandoc reads in `source`, the text the build hands it, otherwise than the gates
     read `sources`, each file's name and text as it is on disk, and anything the build adds,
     in order: a phrase to follow "pandoc reads". `built` is each of those texts as the
     build puts it in `source`, values in; without it, the sources are taken as built. None
     when they agree, and when pandoc cannot read `source` at all, which the build's own run
-    of pandoc then reports."""
+    of pandoc then reports.
+
+    TeX outside maths is part of it: the gates count what it takes as printed, and the Word
+    writer leaves it out (`_tex_left_out`). TeX that is nothing but layout commands loses
+    nothing, and is put in `inert`, where one is given, for the build to warn of."""
     try:
-        return _compared(source, header, sources, pandoc, cwd, built)
+        return _compared(source, header, sources, pandoc, cwd, built, inert)
     except RecursionError:
         # Python's JSON reader recurses, and two thousand nested divs overflow it. Not
         # compared is not agreed: the build stops.
@@ -470,6 +600,7 @@ def _compared(
     pandoc: str,
     cwd: Path,
     built: list[str] | None,
+    inert: list[str] | None,
 ) -> str | None:
     """`misreading`, which see."""
     made = built if built is not None else [text for _name, text in sources]
@@ -527,8 +658,14 @@ def _compared(
         )
         for number, (where, level, title) in enumerate(found)
     ]
-    return (
+    differs = (
         _first_difference(read, _headers(whole["blocks"]))
         or _listing_misread(listed["blocks"], source, fences, sources, made, mark)
         or (moved if fences and _without_marks(listed, mark) != json.dumps(whole) else None)
     )
+    if differs is not None:
+        return differs
+    lost, layout = _raw_tex(whole["blocks"])
+    if inert is not None:
+        inert.extend(layout)
+    return _tex_left_out(lost, sources, made)

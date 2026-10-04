@@ -8383,3 +8383,215 @@ def test_what_the_document_was_printed_as_is_what_the_table_says(case: str) -> N
         for inline in inlines
     )
     assert words == printed
+
+
+# --------------------------------------------------------------------------------------
+# TeX in the text that the Word writer leaves out, and a bound number with it
+# --------------------------------------------------------------------------------------
+
+_HELD = "The database contained {{results.cohort.n_reports}} reports, of which"
+#: The page break the warning gives: a code span of Word's own, in a paragraph of its own.
+_PAGE_BREAK = '`<w:r><w:br w:type="page"/></w:r>`{=openxml}'
+_NEEDS_PANDOC = pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+
+
+def _results_with(project: Path, sentence: str) -> str:
+    """The example's Results with the sentence that holds its first bound number replaced,
+    and that number as the document prints it."""
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    assert text.count(_HELD) == 1
+    source.write_text(text.replace(_HELD, sentence), encoding="utf-8")
+    return load_namespace(load_project(project)[0])[0]["results.cohort.n_reports"].display
+
+
+def _printed(document: Path) -> str:
+    """The words of a built document, paragraph by paragraph."""
+    with zipfile.ZipFile(document) as docx:
+        body = docx.read("word/document.xml").decode("utf-8")
+    return chr(10).join(_shown(p) for p in re.findall(r"<w:p[ >].*?</w:p>", body, re.DOTALL))
+
+
+@_NEEDS_PANDOC
+def test_a_bound_number_under_a_page_break_is_not_lost_through_check_and_the_build(
+    project: Path, capsys
+) -> None:
+    """Pandoc folds digits that open a line into a command above it that takes no braces:
+    `\\newpage` over `{{results.cohort.n_reports}} reports were in the database` is the
+    TeX `\\newpage` and the number, and the paragraph is printed from ` reports` on.
+    Every gate had counted the number as printed. A page break alone loses no word and
+    only does nothing in Word; this one takes a number with it, and the build refuses."""
+    from manuscript_guard.cli import main
+
+    count = _results_with(
+        project,
+        chr(92) + "newpage" + chr(10)
+        + "{{results.cohort.n_reports}} reports were in the database, of which",
+    )
+    assert gate_report(project).ok, "the gates read the sources, where the number is bound"
+    capsys.readouterr()
+
+    assert main(["build", str(project), "--offline"]) == 1
+    said = capsys.readouterr().err
+    assert f"pandoc reads as TeX `{chr(92)}newpage` to `{count}`" in said, said
+    assert "main.md:" in said
+    assert not (project / "build" / "manuscript.docx").exists()
+
+
+@_NEEDS_PANDOC
+def test_a_bound_number_after_a_tex_command_is_not_lost_through_check_and_the_build(
+    project: Path, capsys
+) -> None:
+    """`The database contained \\approx {{results.cohort.n_reports}} reports` passed
+    `check` and the build, and the document read "The database contained  reports": pandoc
+    takes the number for the command's argument, and the Word writer leaves the TeX out.
+    `check` reads the sources and still passes; the build asks pandoc, and refuses."""
+    from manuscript_guard.cli import main
+
+    count = _results_with(
+        project, _HELD.replace("contained ", "contained " + chr(92) + "approx ")
+    )
+    assert gate_report(project).ok, "the gates read the sources, where the number is bound"
+    capsys.readouterr()
+
+    source = main_md(project).read_text(encoding="utf-8")
+    line = source[: source.index(chr(92) + "approx")].count(chr(10)) + 1
+
+    assert main(["build", str(project), "--offline"]) == 1
+    said = capsys.readouterr().err
+    # The line of the file, where the build's own text has no front matter and holds the
+    # tables: it was named four lines up.
+    assert f"pandoc reads as TeX `{chr(92)}approx {count}` (main.md:{line})" in said, said
+    assert "the Word writer leaves" in said
+    assert "code span marked `{=latex}`" in said
+    assert "a block" not in said, "check fails a raw block from drafting on"
+    assert not (project / "build" / "manuscript.docx").exists()
+    assert main(["submit", str(project), "--offline", "--skip-checks"]) == 1
+
+
+@_NEEDS_PANDOC
+def test_the_same_sentence_with_its_sign_as_maths_is_built_with_the_number(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    count = _results_with(
+        project, _HELD.replace("contained ", "contained $" + chr(92) + "approx$ ")
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    assert f"{count} reports, of which" in _printed(project / "build" / "manuscript.docx")
+
+
+@_NEEDS_PANDOC
+def test_a_page_break_alone_builds_and_the_build_says_it_does_nothing_in_word(
+    project: Path, capsys
+) -> None:
+    """A bare page break built before the refusal and loses no word, so it still builds:
+    the build warns that Word shows nothing for it, and says how a page break is written."""
+    from manuscript_guard.cli import main
+
+    count = _results_with(project, chr(92) + "newpage" + chr(10) + chr(10) + _HELD)
+    capsys.readouterr()
+
+    assert main(["build", str(project), "--offline"]) == 0
+    said = capsys.readouterr().out
+    assert f"`{chr(92)}newpage`" in said and "does nothing in a Word document" in said, said
+    assert _PAGE_BREAK in said, "how a page break is written for Word"
+    assert f"The database contained {count} reports" in _printed(
+        project / "build" / "manuscript.docx"
+    )
+
+
+@_NEEDS_PANDOC
+def test_the_page_break_the_warning_gives_passes_check_and_breaks_the_page(
+    project: Path, capsys
+) -> None:
+    """The warning named a block marked `{=openxml}`, and so did the refusal for
+    `{=latex}`. G2 fails a raw block from `drafting` on, so an author who followed either
+    was stopped by `check`. As a code span it passes, and Word gets its page break."""
+    from manuscript_guard.cli import main
+
+    _results_with(project, _PAGE_BREAK + chr(10) + chr(10) + _HELD)
+    assert main(["check", str(project)]) == 0, capsys.readouterr().out
+    assert main(["build", str(project), "--offline"]) == 0
+    assert "does nothing" not in capsys.readouterr().out
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as docx:
+        body = docx.read("word/document.xml").decode("utf-8")
+    assert body.count('<w:br w:type="page"') == 1
+
+
+@_NEEDS_PANDOC
+def test_a_bound_number_in_a_citations_brackets_is_not_lost_through_check_and_the_build(
+    project: Path, capsys
+) -> None:
+    """The same sentence inside a citation's brackets: `[of \\approx
+    {{results.cohort.n_reports}} reports, see @key]` passed `check` and the build, and the
+    document read "(of  reports, see Fictional and Fictional 2021)". Pandoc keeps what
+    stands before and after the key apart from the rest of its reading, and the build did
+    not look there."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    cited = "[@fictionalHepaticCohort2021], and a disproportionality"
+    assert text.count(cited) == 1
+    source.write_text(
+        text.replace(
+            cited,
+            "[of " + chr(92) + "approx {{results.cohort.n_reports}} reports, see "
+            "@fictionalHepaticCohort2021], and a disproportionality",
+        ),
+        encoding="utf-8",
+    )
+    count = load_namespace(load_project(project)[0])[0]["results.cohort.n_reports"].display
+    assert gate_report(project).ok, "the gates read the sources, where the number is bound"
+    capsys.readouterr()
+
+    assert main(["build", str(project), "--offline"]) == 1
+    said = capsys.readouterr().err
+    assert f"pandoc reads as TeX `{chr(92)}approx {count}`" in said, said
+    assert not (project / "build" / "manuscript.docx").exists()
+
+
+@_NEEDS_PANDOC
+def test_tex_in_the_supplement_stops_the_build_and_leaves_no_old_copy(
+    project: Path, capsys
+) -> None:
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    old = project / "build" / "supplementary.docx"
+    assert old.exists()
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    text = supplement.read_text(encoding="utf-8")
+    supplement.write_text(
+        f"{text}{chr(10)}Codes were matched {chr(92)}textit{{a priori}} only.{chr(10)}", "utf-8"
+    )
+    capsys.readouterr()
+
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    said = capsys.readouterr().err
+    assert "the supplement is not built" in said
+    assert f"`{chr(92)}textit{{a priori}}`" in said
+    assert "S1_code_lists.md:" in said
+    assert not old.exists()
+
+
+@_NEEDS_PANDOC
+def test_import_takes_back_a_document_built_before_tex_in_the_text_was_refused(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """`import` builds the source again to compare the returned document with, and makes
+    that build without asking pandoc how it reads the text. A document sent with its TeX
+    left out, before the build refused it, still comes back."""
+    from manuscript_guard.build import reading
+    from manuscript_guard.cli import main
+
+    _results_with(project, _HELD.replace("contained ", "contained " + chr(92) + "approx "))
+    with monkeypatch.context() as before:  # as the build was before the refusal
+        before.setattr(reading, "_tex_left_out", lambda *args: None)
+        assert main(["build", str(project), "--offline"]) == 0
+    sent = project / "build" / "manuscript.docx"
+    assert "The database contained  reports" in _printed(sent)
+    capsys.readouterr()
+
+    assert main(["import", str(sent), str(project)]) == 0
+    assert "nothing came back" in capsys.readouterr().out

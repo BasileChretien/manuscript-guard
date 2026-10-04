@@ -83,6 +83,10 @@ The database held {{results.cohort.n_reports}} reports. The reporting odds ratio
   checked against the real numbering. Number them by hand and look.
 - Text inside HTML comments is ignored and never reaches the document. A number inside a
   fenced code block is judged as code, and a number in a string literal there is a claim.
+- A sign beside a binding is typed as itself (`≈`, `±`, `≤`) or as maths between dollar
+  signs (`$\approx$`). Outside dollar signs a TeX command is left out of the document
+  with the number after it: `\approx {{results.cohort.n_reports}}` prints neither.
+  `check` passes it and `build` refuses it.
 - `manuscript/supplementary/` is checked the same way and built as its own document.
 
 ## 3. Tables and figures come from results

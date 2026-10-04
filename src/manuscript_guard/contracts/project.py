@@ -476,8 +476,11 @@ def outside_maths(text: str, *, keyword: bool = False) -> str | None:
     - Where braces follow the command, dollar signs around the command alone are no
       remedy: `$\\textit${in vivo}` is printed as typed. It gives none, and the hint has
       the ones that work. Where none follow, a path for one, it says "if it is maths".
-    - A character reference in a subscript or a superscript is reported as one, since it
-      is no command.
+    - An `&` that a `;` follows, where a subscript or a superscript can hold it, is
+      reported as what may be a character reference: the rule does not read it to see
+      whether it is one, and `R^2^&RMSE; model fit` was told that `&RMSE;` is a reference
+      in a superscript, where it is neither. A space before the `&` mends that one, and
+      would undo the superscript of `x^&alpha;^`, so it is named for an `&` after the script.
     """
     found = tex_outside_maths(one_line(text))
     if found is None:
@@ -485,9 +488,10 @@ def outside_maths(text: str, *, keyword: bool = False) -> str | None:
     command = f"`{found.command}`"
     if found.reference:
         return (
-            f"{command} is a character reference in a subscript or a superscript, where "
-            "pandoc resolves it and reads the result again, so it can make TeX that the "
-            "document is printed without; type the character itself"
+            f"{command} may be a character reference where a subscript or a superscript can "
+            "hold it: pandoc resolves one there and reads the result again, so it can make "
+            "TeX that the document is printed without; type the character itself, or, where "
+            "it stands after the script, put a space before the `&`"
         )
     if found.after:
         return _past_a_sign(found, keyword)

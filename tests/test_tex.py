@@ -20,7 +20,13 @@ import subprocess
 
 import pytest
 
-from manuscript_guard.text.tex import Tex, tex_outside_maths
+from manuscript_guard.text.tex import (
+    Tex,
+    layout_only,
+    only_definitions,
+    tex_kind,
+    tex_outside_maths,
+)
 
 PANDOC = shutil.which("pandoc")
 needs_pandoc = pytest.mark.skipif(PANDOC is None, reason="pandoc is not installed")
@@ -88,6 +94,7 @@ PAST_A_SIGN = {
     "a doubled backslash in a subscript": (f"~a{B}{G}~", G, "~"),
     "a doubled backslash in a superscript": (f"x^{B}{G};^", G, "^"),
     "an escaped space in a subscript": (f"~a{B} {B}{G}~", G, "~"),
+    "a command after a reference in a subscript": (f"x~a&nbsp;{B}{G}~", G, "~"),
 }
 
 #: A character reference in what a subscript or a superscript can hold. Pandoc resolves the
@@ -130,6 +137,11 @@ REFERENCE = {
     "a carriage return after a doubled backslash": (f"~{B}{B}&#13;x~", "&#13;", "~"),
     "a carriage return in hexadecimal": (f"x~{B}{B}&#xd;gamma~ y", "&#xd;", "~"),
     "a carriage return past a bracket": (f"[a] x^{B}{B}&#13;gamma^", "&#13;", "^"),
+    # No row held a subscript past a sign, or a reference in the second script there: read
+    # for a superscript only, or for the first script only, the rule passed these two and
+    # every test passed with it.
+    "in a subscript past a bracket": ("[a] x~&bsol;gamma~ y", "&bsol;", "~"),
+    "in the second script past a bracket": ("[a] x^2^ y^&bsol;gamma^", "&bsol;", "^"),
 }
 
 #: Lines pandoc drops nothing from, and the rule reports nothing in.
@@ -412,3 +424,150 @@ def test_a_long_line_takes_time_in_proportion(case: str, assert_linear) -> None:
     at the start of a session with it."""
     assert tex_outside_maths(LONG[case](50)) is None
     assert_linear(LONG[case], tex_outside_maths, 2000, case)
+
+
+#: TeX that is nothing but layout commands: it prints no word in LaTeX either, so the build
+#: warns of it and makes the document.
+LAYOUT = [
+    f"{B}newpage",
+    f"{B}clearpage{B}newpage",
+    f"{B}pagebreak[4]",
+    f"{B}vspace{{1em}}",
+    f"{B}vspace*{{2cm}}",
+    f"{B}hspace{{{B}fill}}",
+    f"{B}bigskip{chr(10)}{B}noindent",
+    f" {B}hfill ",
+    f"{B}hspace{{0.5{B}textwidth}}",
+    f"{B}vspace{{-1ex}}",
+    f"{B}vspace{{ 12 pt }}",
+    f"{B}vspace{{1em plus 2pt minus 1pt}}",
+    f"{B}vspace{{.5cm}}",
+]
+
+#: TeX that holds something a layout command does not take, or is no layout command of the
+#: list. Pandoc reads each of the first four as one piece of TeX, the 412 in it.
+NOT_LAYOUT = [
+    f"{B}newpage{chr(10)}412",
+    f"{B}newpage[412]",
+    f"{B}newpage{{412 patients}}",
+    f"{B}pagebreak[412]",
+    f"{B}vspace{{1em}}412",
+    # A length is a number with a unit, or a command: anything in the braces was taken
+    # for one, and pandoc leaves it out with the command.
+    f"{B}hspace{{412}}",
+    f"{B}vspace{{412 patients were included}}",
+    f"{B}vspace*{{12 of 40 died}}",
+    f"{B}vspace{{12 inches}}",
+    f"{B}vspace{{1em{chr(10)}}}",
+    f"{B}vspace{{}}",
+    # Layout commands that are not on the list, and listed ones in a form that is not read.
+    f"{B}newpage*",
+    f"{B}pagebreak [4]",
+    f"{B}vspace{{{B}stretch{{1}}}}",
+    f"{B}quad",
+    f"{B}par",
+    f"{B}newpagex",
+    f"{B}centering",
+    f"{B}gamma",
+    "newpage",
+    "",
+]
+
+
+@pytest.mark.parametrize("raw", LAYOUT)
+def test_tex_that_is_only_layout_commands_is_known(raw: str) -> None:
+    assert layout_only(raw)
+
+
+@pytest.mark.parametrize("raw", NOT_LAYOUT)
+def test_tex_that_holds_more_than_layout_commands_is_not_taken_for_them(raw: str) -> None:
+    assert not layout_only(raw)
+
+
+#: Macro definitions, which print nothing and which pandoc applies in maths.
+DEFINITIONS = [
+    f"{B}newcommand{{{B}RR}}{{{B}mathbb{{R}}}}",
+    f"{B}newcommand{B}RR{{{B}mathbb{{R}}}}",
+    f"{B}newcommand*{{{B}x}}{{y}}",
+    f"{B}newcommand{{{B}pair}}[2]{{({B}mathbf{{#1}}, #2)}}",
+    f"{B}newcommand{{{B}opt}}[2][default]{{#1 #2}}",
+    f"{B}renewcommand{{{B}x}}{{z}}",
+    f"{B}providecommand{{{B}p}}{{q}}",
+    f"{B}DeclareMathOperator{{{B}argmax}}{{arg{B},max}}",
+    f"{B}DeclareMathOperator*{{{B}argmin}}{{argmin}}",
+    f"{B}def{B}x{{y}}",
+    f"{B}def{B}x#1#2{{#1 and #2}}",
+    f"{B}newcommand{{{B}x}}{{y}}{chr(10)}{B}renewcommand{{{B}x}}{{z}}",
+    f"{B}newcommand{{{B}x}}{{a {B}}} b}}",
+]
+
+#: TeX that is no definition from end to end.
+NOT_DEFINITIONS = [
+    f"{B}newcommand{{{B}x}}{{y}} 412",
+    f"{B}newcommand{{{B}x}}{{y}}{chr(10)}412",
+    f"{B}newcommand{{{B}x}}",
+    f"{B}newcommand{{{B}x}}{{y",
+    f"{B}newcommandx{{{B}x}}{{y}}",
+    f"{B}def{B}x{{y",
+    f"{B}let{B}a{B}alpha",
+    f"{B}newenvironment{{foo}}{{start}}{{end}}",
+    f"{B}gamma",
+    "",
+]
+
+
+@pytest.mark.parametrize("raw", DEFINITIONS)
+def test_a_macro_definition_is_known(raw: str) -> None:
+    assert only_definitions(raw)
+
+
+@pytest.mark.parametrize("raw", NOT_DEFINITIONS)
+def test_tex_that_is_more_than_definitions_is_not_taken_for_them(raw: str) -> None:
+    assert not only_definitions(raw)
+
+
+#: What a piece of TeX is, for the build: nothing but definitions, nothing but those and
+#: layout commands, or something that would be lost. Pandoc reads a definition directly
+#: over a page break as one piece.
+KIND = {
+    "a definition": (f"{B}newcommand{{{B}x}}{{y}}", "definitions"),
+    "two definitions": (f"{B}newcommand{{{B}x}}{{y}}{chr(10)}{B}def{B}z{{w}}", "definitions"),
+    "a page break": (f"{B}newpage", "layout"),
+    "a definition over a page break": (
+        f"{B}newcommand{{{B}x}}{{y}}{chr(10)}{B}newpage",
+        "layout",
+    ),
+    "a page break over a definition": (
+        f"{B}newpage{chr(10)}{B}newcommand{{{B}x}}{{y}}",
+        "layout",
+    ),
+    "a page break over a number": (f"{B}newpage{chr(10)}412", ""),
+    "a definition and a number": (f"{B}newcommand{{{B}x}}{{y}} 412", ""),
+    "a command that is neither": (f"{B}gamma", ""),
+    "a longer name that opens as a listed one": (f"{B}newpagex", ""),
+    "nothing": ("", ""),
+}
+
+
+@pytest.mark.parametrize("case", list(KIND))
+def test_what_a_piece_of_tex_is_to_the_build(case: str) -> None:
+    raw, kind = KIND[case]
+    assert tex_kind(raw) == kind
+
+
+#: Long TeX of each kind, read to its end.
+LONG_TEX = {
+    "layout commands": (lambda n: (B + "newpage ") * n, layout_only),
+    "definitions": (lambda n: (B + "newcommand{" + B + "x}{y} ") * n, only_definitions),
+    "one definition with braces in it": (
+        lambda n: B + "newcommand{" + B + "x}{" + "{a}" * n + "}",
+        only_definitions,
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(LONG_TEX))
+def test_long_tex_takes_time_in_proportion(case: str, assert_linear) -> None:
+    build, read = LONG_TEX[case]
+    assert read(build(50))
+    assert_linear(build, read, 2000, case)

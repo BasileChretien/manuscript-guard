@@ -33,11 +33,13 @@ from manuscript_guard.build.styles import reference_with
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import (
     KEEP_THE_LETTER,
+    KEEP_THE_TEX,
     PAPER_FILE,
     advice,
     lost_letters,
     named,
     one_line,
+    outside_maths,
     unprintable_character,
 )
 from manuscript_guard.findings import WARN, Finding, Report
@@ -248,7 +250,7 @@ def _word_lines(project) -> list[str]:
     return lines
 
 
-def _yaml_text(project, key: str, value: object) -> str:
+def _yaml_text(project, key: str, value: object, *, sent: bool = False) -> str:
     """`value` on one line, as a double-quoted YAML string that pandoc reads back as the
     same text.
 
@@ -267,6 +269,11 @@ def _yaml_text(project, key: str, value: object) -> str:
     code points that are no character, which an escape makes too (`named`): a surrogate
     cannot be written as UTF-8, and the build ended in a traceback. `check` reports each
     first.
+
+    TeX the document would be printed without is refused too (`outside_maths`): pandoc
+    reads the value as Markdown and the Word writer keeps TeX only as maths, so
+    `IFN-\\gamma release assays` was printed `IFN-release assays`. Not where the
+    document was `sent` already: see `build_document`.
     """
     text = one_line(str(value))
     character = unprintable_character(text)
@@ -275,6 +282,9 @@ def _yaml_text(project, key: str, value: object) -> str:
             f"{project.root / PAPER_FILE}: `{key}` holds {named(character)}, which no "
             f"document can carry: {advice(character)}."
         )
+    said = None if sent else outside_maths(text, keyword=key == "keywords")
+    if said is not None:
+        raise BuildError(f"{project.root / PAPER_FILE}: `{key}`: {said}. Note that {KEEP_THE_TEX}.")
     return json.dumps(text, ensure_ascii=False)
 
 
@@ -284,7 +294,7 @@ def _front_matter(
     """A YAML header carrying the title and the Zotero settings the filter reads.
 
     What the author wrote is read by pandoc as Markdown, as the text is: `*E. coli*` is in
-    italics, and TeX outside `$` is dropped.
+    italics, and TeX outside `$` would be left out, which is why it is refused (`_yaml_text`).
 
     `sent` is for a document that was built already and is built again to be compared with:
     see `build_document`.
@@ -303,17 +313,17 @@ def _front_matter(
     title = str(paper.get("title", ""))
     if supplementary:
         title = f"Supplementary material for: {title}"
-    lines = ["---", f"title: {_yaml_text(project, 'title', title)}"]
+    lines = ["---", f"title: {_yaml_text(project, 'title', title, sent=sent)}"]
     # The short title and keywords belong to the paper. A supplement carrying the paper's
     # running head reads, in a journal's system, as a second copy of the paper.
     short = None if supplementary else paper.get("short_title")
     if short:
-        lines.append(f"subtitle: {_yaml_text(project, 'short_title', short)}")
+        lines.append(f"subtitle: {_yaml_text(project, 'short_title', short, sent=sent)}")
     # `keywords: 5` raised here under `--skip-checks`, and one word where a list is expected
     # was printed letter by letter; see `Project.keywords`.
     keywords = None if supplementary else project.keywords
     if keywords:
-        printed = ", ".join(_yaml_text(project, "keywords", k) for k in keywords)
+        printed = ", ".join(_yaml_text(project, "keywords", k, sent=sent) for k in keywords)
         lines.append(f"keywords: [{printed}]")
     lines += [
         "lang: " + ("en-GB" if project.english_variant == "en-GB" else "en-US"),
@@ -347,9 +357,9 @@ def build_document(
 
     `sent` is for `import`, which builds again a document that was sent, to compare the one
     that came back with it. A refusal newer than that document is not made: the header is
-    written as the sent one's was, an escape that takes a letter included, since refusing
-    there kept back a document a co-author was holding. `check` and the next build still
-    refuse it.
+    written as the sent one's was, an escape that takes a letter and TeX outside dollar
+    signs included, since refusing there kept back a document a co-author was holding.
+    `check` and the next build still refuse it.
 
     `stamp` writes the record of which text the document was built from, and there must be
     exactly one document carrying it: the annotated copy passes `stamp=False`.

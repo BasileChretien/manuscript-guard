@@ -4519,7 +4519,8 @@ Closed since, and why each mattered:
   YAML reads as settings: a build that was asked not to check prints what was typed. What
   it prints, pandoc reads as Markdown, as it reads the text: `*E. coli*` is set in italics
   in a title and loses its asterisks in the document's properties, and
-  TeX outside `$`, `TNF\alpha`, is dropped. The review of #153 found that the title, the
+  TeX outside `$`, `TNF\alpha`, would be left out, which is a finding since (below). The
+  review of #153 found that the title, the
   short title and the keywords were written into the build's YAML header by hand, between
   double quotation marks. A `"` in one ended the string and the build stopped, and a
   backslash began an escape: `$\alpha$-synuclein` became the control character 7, which the
@@ -4578,22 +4579,102 @@ Closed since, and why each mattered:
   and where neither does, the header is left out and
   `paper.yaml`'s is the only title. That is a title holding both kinds, and one that
   begins or ends with a quotation mark of either kind, `the patients'` for one, since the
-  build's reading strips every one of them at either end; for those the header had read
-  as another title, and the build warned of two. Before that, a title with TeX or a
+  build's reading strips every one of them at either end; for one that begins or ends
+  with an apostrophe the header had read as another title.
+  Before that, a title with TeX or a
   quotation in it left a new project that failed `check` on a header the author had not
-  typed. What `init` does not do is keep TeX that stands outside `$`: `IFN-\gamma` goes
-  into both files as given, passes `check`, and is printed `IFN-`, as any title is where
-  its backslash is a backslash. The header `init` typed used to fail on most such titles,
-  which hid that. Whether TeX outside `$` in a title should be a finding is not decided.
-  A title holding a character no file can carry is refused before anything is made: a
-  lone surrogate, which Python makes of an argument that is not in the terminal's
-  encoding, ended `init` in a traceback and left an empty `paper.yaml` that a second
-  `init` kept. A tab or a line break in a title
+  typed. TeX that stands outside `$` was the next thing found: `IFN-\gamma release
+  assays` went into both files as given, passed `check`, and was printed `IFN-release
+  assays`, as any title was where its backslash is a backslash. The header `init` typed
+  used to fail on most such titles, which hid that. It is a finding since (Basile,
+  2026-10-03): see the next paragraph.
+  A title holding a character no document can carry, a control character, a lone
+  surrogate, U+FFFE or U+FFFF, is refused before anything is made. A lone surrogate,
+  which Python makes of an argument that is not in the terminal's encoding, ended `init`
+  in a traceback and left an empty `paper.yaml` that a second `init` kept; the others
+  made a project `check` failed or could not read. A tab or a line break in a title
   given to `init` is written as a space, which is what the build prints for each: as its
   escape, a tab before a letter was reported as a letter lost. A value is
   read from its own opening quotation mark, and of a key written twice the one YAML keeps
   is read: a comment after an anchor was taken for the value, and both of two titles for
   the title. These came from the review of the change.
+  Pandoc reads a backslash directly before a letter as TeX wherever it stands, and the
+  Word writer keeps TeX only as maths, between dollar signs. A command takes what follows
+  it as TeX would: `12 \pm 3 months` is printed without its `3`, and `\textit{in vivo}`
+  without its words. In a title, a short title or a keyword that is a finding at the key
+  that fails at every stage (Basile, 2026-10-03), in these words: `\gamma` stands outside
+  dollar signs, and the document is printed without it; if it is maths, write
+  `$\gamma$`. A build that
+  skips the check refuses it in the same words, `init` refuses such a title before it
+  makes anything, and `import` builds a document that was sent without the refusal, as
+  for a lost letter.
+  `check` runs without pandoc, so the rule is a model of pandoc's reading of one line
+  (`text/tex.py`). It is meant never to pass a value that pandoc drops TeX from, and to
+  report one that pandoc keeps only in the places listed below. `tests/test_tex.py`
+  holds it to the pandoc CI pins, on tables and on 4,000 random lines. Each part of it
+  came from a line it would otherwise pass:
+  a `$` opens maths only as pandoc opens it, so `x$ \gamma $y` and `$\gamma$5` hold
+  none; a backtick, `<`, `[` or `@` can hold a `$` that opens nothing, in code, a tag, a
+  link's address or a citation key; pandoc reads a subscript or a superscript on its
+  own, with its escapes read once already, so maths cannot run past its end and a
+  doubled backslash in it is one, and `~a\\gamma~` loses its `\gamma`; it resolves
+  the character references in one as well, once more for each script around it, and
+  leaves a carriage return out as it reads, so `^&bsol;gamma^`, `^~&amp;bsol;gamma~^`
+  and `^&bsol;&#13;gamma^` each lose a `\gamma`; and a letter is any letter, `\étude`
+  too, by pandoc's Unicode, which may be newer than Python's: 622 letters of Unicode
+  15.1 were none to Python 3.12, so a code point Python has no name for is taken for a
+  letter after a backslash. The third came from random lines tried against pandoc
+  while the rule was written, and the last two from the review of the change, whose two
+  rounds put 52 million lines of their own making to pandoc. The references are not
+  resolved here. That was the fix for the first round, and the second found two values
+  it passed, a script in a script and the carriage return. So a character reference
+  in what a subscript or a superscript can hold, from a `~` or a `^` to the next space,
+  is itself the finding, whatever it stands for and however deep the scripts: none
+  exists without a typed `&` and a `;` after it.
+  Where it reports what pandoc keeps: past a backtick, `<`, `[` or `@` no maths is
+  read, so every backslash before a letter is reported from there to the end of the
+  value, in maths, in code, or doubled (`[18F]FDG and TGF-$\beta$` is one); from a `~`
+  or a `^` to the next space the same holds, and to the end of the value where that
+  stretch holds a `$`; a character reference in such a stretch, `x^&alpha;^` for one,
+  which pandoc prints, and with it any `&` there that a `;` follows, since it is not
+  read to see whether it is one; a command pandoc cannot read as TeX, which it prints
+  as typed, a
+  brace after it never closed, a `%` between its braces, `\end` with no `\begin`; one in
+  a value pandoc reads as code, `>` and a tab before it; a backslash before a code
+  point that is no letter in any Unicode yet; and one before a letter that Python's
+  Unicode has and pandoc's has not, 4,302 letters of Unicode 16.0 on Python 3.14 with
+  pandoc 3.9. No title or keyword of the example or of the one manuscript this was
+  tried on holds a backslash, so neither says how often an over-report occurs.
+  The finding's sentence is held to being true of the value it is printed for, and its
+  remedy to working, which each round of the review found it was not somewhere. Past a
+  sign it does not say "outside dollar signs": it names the sign, says the document may
+  be printed without the command, and says to put a backslash before a sign that is
+  only itself, `\[18F\]FDG`, or to type the character, and with that the value passes.
+  After a `$` that opens no maths it says why, for every command up to the next `$`:
+  `TGF-$\beta$1` is printed `TGF-$$1` and `$p \leq$0.05` loses its `\leq`, for the
+  digit after that `$`; and after maths that a dollar amount earlier in the title opens,
+  it says so, and that `\$` is a dollar sign that is only one. Where braces follow the
+  command it does not say to write the command between dollar signs, since
+  `$\textit${in vivo}` is printed as typed. Where none follow it says "if it is
+  maths", since a path is none. A keyword is told to write it as text, the character
+  itself for a letter: it is printed in the document's properties only, where pandoc
+  writes maths as its TeX. And a reference in a subscript is told to be the character
+  it stands for.
+  What the finding does not reach: the other text of a project that a document prints,
+  the names in `authors.yaml` for one; the title page of a pack made with
+  `submit --skip-checks --document`; a pandoc that reads a line otherwise than the one
+  CI pins; maths in a title or a keyword as the document's properties carry it, which
+  is as its TeX, `IFN-\gamma release assays` for a title whose page shows the letter;
+  a code span the author marks `{=latex}`, which that mark leaves out of the document,
+  and which is reported only where it holds a backslash before a letter; and a
+  backslash before a sign, which is the sign: `10\,mg` is printed `10,mg`
+  where TeX's thin space was meant, in a title and in the text alike.
+  Nor the manuscript's text, which is still open and is a false pass: `\approx
+  {{results.cohort.n_reports}}` in the example's Results passes `check` and the build,
+  and the document is printed without the number (found 2026-10-03). Decided the same
+  day: the build will refuse raw TeX in pandoc's own reading of the text, which it asks
+  for already, a block marked `{=latex}` let pass; then `check` gets a rule for the text
+  that fails from `drafting` on and may only over-report. Each is its own change.
   Whether a keyword should be printed as typed, with its asterisks and backslashes, rather
   than read as Markdown, is not decided; it would differ only in the document's properties.
   Still open, and each fails at every stage, so none is a pass. A file a gate reads by

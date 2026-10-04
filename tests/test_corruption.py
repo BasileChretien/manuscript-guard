@@ -8308,3 +8308,78 @@ def test_a_run_nobody_agreed_to_changes_nothing(project: Path, monkeypatch) -> N
     after = {path: path.read_bytes() for path in sorted(project.rglob("*")) if path.is_file()}
     assert after == before
     assert not _review_failures(project)
+
+
+# --------------------------------------------------------------------------------------
+# TeX outside dollar signs in what the build prints of paper.yaml
+# --------------------------------------------------------------------------------------
+
+#: What an author types in place of a line of the example's `paper.yaml`, and the words
+#: the document was printed with: pandoc reads the value as Markdown, takes a backslash
+#: before a letter for TeX, and the Word writer leaves TeX out wherever it is not maths. A
+#: command takes its braces with it, so the second loses two words. `check` passed each.
+TEX_IN_PAPER_YAML = {
+    "a Greek letter in the title": (
+        "title: ",
+        "title: 'IFN-" + chr(92) + "gamma release assays'",
+        "IFN-release assays",
+    ),
+    "words in a command's braces in the short title": (
+        "short_title: ",
+        "short_title: 'Injury " + chr(92) + "textit{in vivo} and after'",
+        "Injury  and after",
+    ),
+    "a keyword": (
+        "  - hepatotoxicity",
+        "  - TNF" + chr(92) + "alpha signalling",
+        "TNFsignalling",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(TEX_IN_PAPER_YAML))
+def test_tex_outside_dollar_signs_in_a_title_or_a_keyword_is_caught(
+    case: str, project: Path, monkeypatch
+) -> None:
+    from manuscript_guard.contracts import project as contract
+
+    starts, written, _printed = TEX_IN_PAPER_YAML[case]
+    paper = project / "paper.yaml"
+    lines = paper.read_text(encoding="utf-8").split(chr(10))
+    (at,) = [index for index, line in enumerate(lines) if line.startswith(starts)]
+    lines[at] = written
+    paper.write_text(chr(10).join(lines), encoding="utf-8")
+
+    with monkeypatch.context() as before:  # as the tool was before the rule: a pass
+        before.setattr(contract, "outside_maths", lambda text, **how: None)
+        assert gate_report(project).ok
+
+    report = gate_report(project)
+    assert codes(report) == {"schema-violation"}
+    (finding,) = report.failures
+    assert "stands outside dollar signs, and the document is printed without it" in finding.message
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("case", list(TEX_IN_PAPER_YAML))
+def test_what_the_document_was_printed_as_is_what_the_table_says(case: str) -> None:
+    """The corruption is pandoc's reading, so the table is held to pandoc: each value, as
+    the build writes it into its header, and the words pandoc keeps of it."""
+    import subprocess
+
+    _starts, written, printed = TEX_IN_PAPER_YAML[case]
+    value = yaml.safe_load(written.strip().removeprefix("- "))
+    value = value if isinstance(value, str) else next(iter(value.values()))
+    header = "---" + chr(10) + "title: " + json.dumps(value) + chr(10) + "---" + chr(10)
+    shown = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=header.encode("utf-8"),
+        capture_output=True,
+        check=True,
+    )
+    inlines = json.loads(shown.stdout)["meta"]["title"]["c"]
+    words = "".join(
+        inline["c"] if inline["t"] == "Str" else " " if inline["t"] == "Space" else ""
+        for inline in inlines
+    )
+    assert words == printed

@@ -324,7 +324,7 @@ HEADER = {
     # The build's reading strips every quotation mark at either end, so one of either kind
     # there cannot be read back. The header typed for the first was not YAML, as for the
     # two above; the one typed for each of the others read without its apostrophe, `the
-    # patients`, and the build warned of two titles.
+    # patients`: two titles, which no command spoke of then.
     '"Quoted" at the start': None,
     "the patients'": None,
     "'Tis the season": None,

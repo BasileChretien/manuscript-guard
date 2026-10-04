@@ -8519,6 +8519,34 @@ def test_the_page_break_the_warning_gives_passes_check_and_breaks_the_page(
 
 
 @_NEEDS_PANDOC
+def test_a_bound_number_in_the_braces_of_a_space_is_not_lost_through_check_and_the_build(
+    project: Path, capsys
+) -> None:
+    """A length was a number with a unit, or with any command after it. So
+    `\\hspace{ {{results.cohort.n_reports}}\\reports}` passed for a layout command: `check`
+    passed, the build warned that it does nothing in a Word document and made one, and
+    the document read "The database contained  reports", two spaces where the number
+    was. The command in a length has to be one that is a length, and this is refused with
+    the rest."""
+    from manuscript_guard.cli import main
+
+    opened = "contained " + chr(92) + "hspace{ "
+    count = _results_with(
+        project,
+        _HELD.replace("contained ", opened).replace(" reports,", chr(92) + "reports} reports,"),
+    )
+    assert opened + "{{results.cohort.n_reports}}" in main_md(project).read_text(encoding="utf-8")
+    assert gate_report(project).ok, "the gates read the sources, where the number is bound"
+    capsys.readouterr()
+
+    assert main(["build", str(project), "--offline"]) == 1
+    said = capsys.readouterr()
+    assert f"pandoc reads as TeX `{chr(92)}hspace{{ {count}{chr(92)}reports}}`" in said.err, said
+    assert "does nothing in a Word document" not in said.out
+    assert not (project / "build" / "manuscript.docx").exists()
+
+
+@_NEEDS_PANDOC
 def test_a_bound_number_in_a_citations_brackets_is_not_lost_through_check_and_the_build(
     project: Path, capsys
 ) -> None:

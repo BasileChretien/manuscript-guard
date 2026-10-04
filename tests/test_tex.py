@@ -23,9 +23,11 @@ import pytest
 from manuscript_guard.text.tex import (
     Tex,
     layout_only,
+    layout_part,
     only_definitions,
     tex_kind,
     tex_outside_maths,
+    unread_definition,
 )
 
 PANDOC = shutil.which("pandoc")
@@ -442,6 +444,10 @@ LAYOUT = [
     f"{B}vspace{{ 12 pt }}",
     f"{B}vspace{{1em plus 2pt minus 1pt}}",
     f"{B}vspace{{.5cm}}",
+    f"{B}vspace{{{B}baselineskip}}",
+    f"{B}vspace{{0.5 {B}baselineskip}}",
+    f"{B}vspace{{0pt plus 1fil}}",
+    f"{B}vspace{{0pt plus 1fill minus 1filll}}",
 ]
 
 #: TeX that holds something a layout command does not take, or is no layout command of the
@@ -460,6 +466,25 @@ NOT_LAYOUT = [
     f"{B}vspace{{12 inches}}",
     f"{B}vspace{{1em{chr(10)}}}",
     f"{B}vspace{{}}",
+    # A length was a number with a unit or any command, and a unit alone: so a number
+    # before a word typed as a command passed for one, and
+    # `We enrolled \hspace{412\patients} patients.` was printed without its 412,
+    # with a warning only. The command has to be one that is a length.
+    f"{B}hspace{{412{B}patients}}",
+    f"{B}hspace{{5{B}gamma}}",
+    f"{B}hspace{{{B}textbf}}",
+    f"{B}hspace{{{B}approx}}",
+    f"{B}hspace{{in}}",
+    f"{B}vspace{{em}}",
+    f"{B}vspace{{1.2.3em}}",
+    f"{B}vspace{{{B}baselineskipx}}",
+    f"{B}vspace{{{B}fillplus 1pt}}",
+    # What a length stretches by and shrinks by, once each and in that order, and `fil`
+    # only there.
+    f"{B}vspace{{1em plus 2pt plus 3pt}}",
+    f"{B}vspace{{1em minus 2pt plus 3pt}}",
+    f"{B}vspace{{1fil}}",
+    f"{B}vspace{{0pt plus 1fillll}}",
     # Layout commands that are not on the list, and listed ones in a form that is not read.
     f"{B}newpage*",
     f"{B}pagebreak [4]",
@@ -477,6 +502,35 @@ NOT_LAYOUT = [
 @pytest.mark.parametrize("raw", LAYOUT)
 def test_tex_that_is_only_layout_commands_is_known(raw: str) -> None:
     assert layout_only(raw)
+
+
+#: The commands that are lengths, each alone and with a number before it. The list is
+#: written out here so that a name added to it or taken off it is seen.
+LENGTH_COMMANDS = (
+    "baselineskip",
+    "columnwidth",
+    "fill",
+    "linewidth",
+    "paperheight",
+    "paperwidth",
+    "parindent",
+    "parskip",
+    "textheight",
+    "textwidth",
+)
+
+
+@pytest.mark.parametrize("name", LENGTH_COMMANDS)
+def test_a_command_that_is_a_length_is_one_in_the_braces_of_a_space(name: str) -> None:
+    assert layout_only(f"{B}vspace{{{B}{name}}}")
+    assert layout_only(f"{B}hspace*{{0.5{B}{name} plus 2{B}{name}}}")
+    assert not layout_only(f"{B}vspace{{{B}{name}x}}")
+
+
+def test_the_commands_that_are_lengths_are_those_ten() -> None:
+    from manuscript_guard.text import tex
+
+    assert set(tex._LENGTH_COMMANDS) == set(LENGTH_COMMANDS)
 
 
 @pytest.mark.parametrize("raw", NOT_LAYOUT)
@@ -555,19 +609,102 @@ def test_what_a_piece_of_tex_is_to_the_build(case: str) -> None:
     assert tex_kind(raw) == kind
 
 
+#: The layout commands of a piece, which is what a warning names: a definition beside one
+#: does something, and was named with it as doing nothing in a Word document.
+LAYOUT_PART = {
+    "a page break": (f"{B}newpage", f"{B}newpage"),
+    # A piece that is layout from end to end is named as it is written, so that it is
+    # found in the source.
+    "two with nothing between them": (
+        f" {B}clearpage{B}newpage{chr(10)}",
+        f"{B}clearpage{B}newpage",
+    ),
+    "a definition over a page break": (
+        f"{B}newcommand{{{B}x}}{{y}}{chr(10)}{B}newpage",
+        f"{B}newpage",
+    ),
+    "a page break, a definition, a skip": (
+        f"{B}newpage{chr(10)}{B}def{B}z{{w}}{chr(10)}{B}bigskip",
+        f"{B}newpage {B}bigskip",
+    ),
+    "a definition alone": (f"{B}newcommand{{{B}x}}{{y}}", ""),
+    "something that is lost": (f"{B}newpage{chr(10)}412", ""),
+}
+
+
+@pytest.mark.parametrize("case", list(LAYOUT_PART))
+def test_the_layout_commands_of_a_piece_are_what_a_warning_names(case: str) -> None:
+    raw, named = LAYOUT_PART[case]
+    assert layout_part(raw) == named
+
+
+#: A piece that opens as a macro's definition in a form that is not read: pandoc applies
+#: it, the build refuses it, and marked `{=latex}` it would stop being applied, so it is
+#: told to be a `newcommand`. Not a definition that is read with something lost beside
+#: it, which was told so too and is one already; and not an environment, which no
+#: `newcommand` can be.
+UNREAD_DEFINITION = {
+    "let": (f"{B}let{B}a{B}alpha", True),
+    "gdef": (f"{B}gdef{B}x{{y}}", True),
+    "a robust command": (f"{B}DeclareRobustCommand{{{B}z}}{{w}}", True),
+    "a body with no braces": (f"{B}newcommand{{{B}x}}{B}alpha", True),
+    "a name spaced in its braces": (f"{B}newcommand{{ {B}x }}{{y}}", True),
+    "a read definition over a number": (
+        f"{B}newcommand{{{B}RR}}{{{B}mathbb{{R}}}}{chr(10)}{B}newpage{chr(10)}4000",
+        False,
+    ),
+    "a read definition over a command that is lost": (
+        f"{B}newcommand{{{B}x}}{{y}}{chr(10)}{B}centering",
+        False,
+    ),
+    "let, after a space": (f"  {B}let{B}a{B}alpha", True),
+    "an environment": (f"{B}newenvironment{{foo}}{{start}}{{end}}", False),
+    "a command that defines nothing": (f"{B}gamma", False),
+    "a command whose name opens as one that defines": (
+        f"{B}definecolor{{x}}{{rgb}}{{1,0,0}}",
+        False,
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(UNREAD_DEFINITION))
+def test_a_definition_in_a_form_that_is_not_read_is_known(case: str) -> None:
+    raw, unread = UNREAD_DEFINITION[case]
+    assert unread_definition(raw) is unread
+
+
 #: Long TeX of each kind, read to its end.
 LONG_TEX = {
-    "layout commands": (lambda n: (B + "newpage ") * n, layout_only),
-    "definitions": (lambda n: (B + "newcommand{" + B + "x}{y} ") * n, only_definitions),
+    "layout commands": (lambda n: (B + "newpage ") * n, layout_only, True),
+    "definitions": (lambda n: (B + "newcommand{" + B + "x}{y} ") * n, only_definitions, True),
     "one definition with braces in it": (
         lambda n: B + "newcommand{" + B + "x}{" + "{a}" * n + "}",
         only_definitions,
+        True,
+    ),
+    # A number was digits, an optional point, digits: with no point the two runs shared the
+    # same digits, and one that no unit follows was read every way. Twice the digits took
+    # four times as long.
+    "a length of digits and no unit": (
+        lambda n: B + "vspace{" + "1" * n + "}",
+        layout_only,
+        False,
+    ),
+    "a length of digits before a word": (
+        lambda n: B + "vspace{" + "1" * n + " patients}",
+        layout_only,
+        False,
+    ),
+    "digits after a plus": (
+        lambda n: B + "vspace{1em plus " + "1" * n + "}",
+        layout_only,
+        False,
     ),
 }
 
 
 @pytest.mark.parametrize("case", list(LONG_TEX))
 def test_long_tex_takes_time_in_proportion(case: str, assert_linear) -> None:
-    build, read = LONG_TEX[case]
-    assert read(build(50))
+    build, read, held = LONG_TEX[case]
+    assert read(build(50)) is held
     assert_linear(build, read, 2000, case)

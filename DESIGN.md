@@ -4682,7 +4682,9 @@ Closed since, and why each mattered:
   in, so what pandoc reads there as TeX outside maths is in hand and exact, wherever it
   stands: a citation's brackets too, where pandoc keeps what stands before and after
   the key apart from the rest and the first version did not look (the review of the
-  change moved the sentence there, and the number was lost again). The refusal names
+  change moved the sentence there, and the number was lost again), and the description
+  of an image that stands in a figure's caption, which was passed over with the
+  figure's own image, whose description is the caption a second time. The refusal names
   the first piece and counts the rest. It holds at every stage and under
   `--skip-checks`, and the document from the build before is removed with it, as for a
   misread heading. `check` reads the sources and still passes such a text: its rule is
@@ -4707,13 +4709,27 @@ Closed since, and why each mattered:
   `\newpage`, `\clearpage`, `\cleardoublepage`, `\bigskip`, `\medskip`,
   `\smallskip`, `\vfill`, `\hfill` and `\noindent`; `\pagebreak`,
   `\nopagebreak`, `\linebreak` and `\nolinebreak`, with a number from 0 to 4 in
-  brackets or none; `\vspace` and `\hspace` with a length in braces, a number with a
-  unit or a command, `\hspace{412}` being no length and refused. A definition and a
+  brackets or none; `\vspace` and `\hspace` with a length in braces. A length is a
+  number with a unit (`pt`, `pc`, `in`, `bp`, `cm`, `mm`, `dd`, `cc`, `sp`, `em`, `ex`,
+  `mu`), one of ten commands that are lengths (`\baselineskip`, `\columnwidth`,
+  `\fill`, `\linewidth`, `\paperheight`, `\paperwidth`, `\parindent`, `\parskip`,
+  `\textheight`, `\textwidth`) or a number of times one, and after it what it
+  stretches by and shrinks by, `plus` and `minus`, once each and in that order.
+  `\hspace{412}` is no length and is refused. So is `\hspace{412\patients}`: a
+  number before any command passed for a length at first, and `We enrolled
+  \hspace{ {{results.n}}\patients} patients` passed `check`, was warned of, and was
+  printed without its number (found by the review of the change). A definition and a
   layout command that pandoc reads as one piece, one directly over the other, are a
-  warning too. A layout command that is not on the list is refused: `\centering`,
+  warning too, which names the layout command and not the definition. A layout
+  command that is not on the list is refused: `\centering`,
   `\raggedright`, `\par`, `\quad`, `\newline`, `\label{...}`, `\FloatBarrier`,
-  `\newpage*`, `\pagebreak [4]` with a space before its bracket, and a length given
-  by a command with braces of its own, `\vspace{\stretch{1}}`. So is one that takes
+  `\newpage*`, `\pagebreak [4]` with a space before its bracket, and a length that
+  LaTeX takes and that is not in the form above: one given by a command with braces
+  of its own, `\vspace{\stretch{1}}`, or by a length command that is not among the
+  ten, `\vspace{\topsep}`; `\vspace{1,5cm}` with a comma for the point,
+  `\vspace{1EM}` in capitals, `\vspace{- 1em}` with a space after the sign,
+  `\vspace{1em plus1pt}` with none after `plus`, `\vspace{1 true cm}` and
+  `\vspace{\dimexpr 1em\relax}`. So is one that takes
   something with it: pandoc folds digits that open the next line into a command that
   takes no braces, so `\newpage` over `412 reports` is TeX that holds the 412, and
   `\newpage[412]` and `\newpage{412 patients}` are each one piece of TeX. Up to
@@ -4724,10 +4740,13 @@ Closed since, and why each mattered:
   the annotated copy. TeX marked `{=tex}`, which pandoc labels as it labels unmarked
   TeX, and which is refused, where `{=latex}` passes. A definition in a form that is
   not read, which pandoc applies and the build refuses: `\let`, `\gdef`,
-  `\global\def`, `\newenvironment`, `\DeclareRobustCommand`, and a
+  `\global\def`, `\DeclareRobustCommand`, and a
   `\newcommand` whose body has no braces or whose name is spaced in its braces; the
   refusal says to write it as a `\newcommand` with its braces, and does not say to
-  mark it. A macro that leaves out the text it is given and comes to a layout command
+  mark it. It says so only of a piece that opens with such a definition: a definition
+  that is read, with a number under it that the piece takes, was told to be written as
+  it already was. And `\newenvironment`, which is refused as well and which no
+  `\newcommand` can be, is told what any TeX is told. A macro that leaves out the text it is given and comes to a layout command
   or to a definition, `\newcommand{\brk}[1]{\newpage}` and `\brk{412}`, which
   is warned of or passed, and loses the 412. The place named, which is a line of the
   source where the piece's first line or its command first stands, and not always

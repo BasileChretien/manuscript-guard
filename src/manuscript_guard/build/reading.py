@@ -53,7 +53,7 @@ from manuscript_guard.text.fences import Fence, commented_listings, fenced_spans
 from manuscript_guard.text.masking import front_matter_end
 from manuscript_guard.text.placeholders import PLACEHOLDER
 from manuscript_guard.text.sections import heading_index, scannable
-from manuscript_guard.text.tex import tex_kind
+from manuscript_guard.text.tex import layout_part, tex_kind, unread_definition
 
 # Containers whose headings are quoted or set apart, not the document's own.
 _NESTED = frozenset({"BlockQuote", "Note", "Figure"})
@@ -440,12 +440,6 @@ def _listing_misread(
 
 #: A command, at the start of what pandoc read as a piece of TeX.
 _COMMAND = re.compile(r"\\[A-Za-z@]+")
-#: What opens a macro's definition, in any form, the forms the build does not read among
-#: them (`text.tex` reads `\newcommand` and four more, each with its braces).
-_DEFINES = re.compile(
-    r"\\(?:let|[gex]?def|global|long|(?:re)?newenvironment|DeclareRobustCommand|"
-    r"(?:re)?newcommand|providecommand|DeclareMathOperator)(?![A-Za-z@])"
-)
 
 
 def place(raw: str, sources: list[tuple[str, str]], built: list[str]) -> str:
@@ -484,28 +478,35 @@ def _everything(tree: object) -> Iterator[dict]:
     `_nodes` goes inside an element by its content only, which is where every block and
     inline is but one: a citation holds what stands before and after its key under names
     of their own, and TeX there was not seen. A figure holds its caption twice, as the
-    caption and as the image's own text, and the second is passed over. Without recursion,
-    as `_nodes` is."""
+    caption and as its image's own text, and the second is passed over: the text of an
+    image in the figure's content, and of no other. Every image under a figure was passed
+    over, the caption's among them, and an image in a caption lost the TeX of its
+    description unseen. Without recursion, as `_nodes` is."""
     stack: list[tuple[object, bool]] = [(tree, False)]
     while stack:
-        item, in_figure = stack.pop()
+        item, captioned = stack.pop()
         if isinstance(item, list):
-            stack.extend((child, in_figure) for child in reversed(item))
+            stack.extend((child, captioned) for child in reversed(item))
         elif isinstance(item, dict):
             kind = item.get("t")
             if kind is not None:
                 yield item
-            if kind == "Image" and in_figure:
+            if kind == "Image" and captioned:
                 continue
-            stack.extend(
-                (child, in_figure or kind == "Figure") for child in reversed(item.values())
-            )
+            held = item.get("c")
+            if kind == "Figure" and isinstance(held, list) and len(held) == 3:
+                attributes, caption, content = held
+                stack.extend(((content, True), (caption, False), (attributes, captioned)))
+                continue
+            stack.extend((child, captioned) for child in reversed(item.values()))
 
 
 def _raw_tex(blocks: list) -> tuple[list[str], list[str]]:
     """The TeX pandoc reads in the text outside maths, which the Word writer leaves out of
     the document: what loses something, and what is nothing but layout commands, with or
-    without definitions beside them. A piece that is only a macro's definitions is in
+    without definitions beside them. Of the second, the layout commands only: a definition
+    read in one piece with a page break does something, and the warning named it with the
+    break as doing nothing. A piece that is only a macro's definitions is in
     neither. TeX the author marked as raw for another format, `{=latex}`, is not read here
     at all: pandoc labels that `latex` and this `tex`, as it does TeX marked `{=tex}`,
     which is therefore taken for unmarked."""
@@ -515,8 +516,10 @@ def _raw_tex(blocks: list) -> tuple[list[str], list[str]]:
             continue
         raw = node["c"][1]
         kind = tex_kind(raw)
-        if kind != "definitions":
-            (layout if kind == "layout" else lost).append(raw)
+        if kind == "layout":
+            layout.append(layout_part(raw))
+        elif kind != "definitions":
+            lost.append(raw)
     return lost, layout
 
 
@@ -531,7 +534,9 @@ def _tex_left_out(lost: list[str], sources: list[tuple[str, str]], built: list[s
 
     What it says to do holds through `check`: a code span marked `{=latex}`, where a block
     so marked is failed by G2 from `drafting` on. And it does not say that of a definition
-    in a form that is not read, since marked, pandoc no longer applies it."""
+    in a form that is not read, since marked, pandoc no longer applies it: that one is
+    told to be a `\\newcommand` with its braces, and only that one. A definition that is
+    read, with a number under it that the piece takes, was told so too."""
     if not lost:
         return None
     first = lost[0].strip()
@@ -544,7 +549,7 @@ def _tex_left_out(lost: list[str], sources: list[tuple[str, str]], built: list[s
     if first and not where:
         where = " (not found as written in a source: a macro or a value makes it)"
     more = f", and {len(lost) - 1} more after it" if len(lost) > 1 else ""
-    if _DEFINES.match(first):
+    if unread_definition(first):
         remedy = (
             "It opens as a macro's definition, in a form that is not read here: write it as "
             "`\\newcommand{\\name}{...}`, with its braces, which pandoc applies in maths and "

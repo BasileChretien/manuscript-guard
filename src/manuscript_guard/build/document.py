@@ -100,8 +100,13 @@ def pandoc() -> str:
     return found
 
 
-#: What a page break is in a Word document, for the warning about a layout command.
-_PAGE_BREAK = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>'
+#: A page break for a Word document, as a code span in a paragraph of its own: what the
+#: warning about a layout command says to write. A code span and not a block: G2 fails a
+#: raw block from `drafting` on, and the paragraph around the span is the one Word needs.
+_PAGE_BREAK = '`<w:r><w:br w:type="page"/></w:r>`{=openxml}'
+#: How many kinds of layout command are each warned of. Each is looked for in the text, so
+#: without a limit the warnings took time with the square of their number.
+_KINDS_NAMED = 20
 
 
 def _does_nothing(
@@ -118,26 +123,40 @@ def _does_nothing(
     kinds: dict[str, int] = {}
     for raw in inert:
         kinds[raw.strip()] = kinds.get(raw.strip(), 0) + 1
-    return Report(
-        tuple(
+    hint = (
+        f"for a page break in Word, write {_PAGE_BREAK} in a paragraph of its own; a command "
+        "that is there for a PDF made elsewhere can stand in a code span marked `{=latex}`, "
+        "and is then not warned of"
+    )
+    findings = [
+        Finding(
+            gate=GATE,
+            code="tex-does-nothing",
+            severity=WARN,
+            message=(
+                f"`{' '.join(raw.split())}`{place(raw, read, built)} does nothing in a Word "
+                "document" + (f", nor do {times - 1} more like it" if times > 1 else "")
+            ),
+            path=output,
+            hint=hint,
+        )
+        for raw, times in list(kinds.items())[:_KINDS_NAMED]
+    ]
+    if len(kinds) > _KINDS_NAMED:
+        findings.append(
             Finding(
                 gate=GATE,
                 code="tex-does-nothing",
                 severity=WARN,
                 message=(
-                    f"`{' '.join(raw.split())}`{place(raw, read, built)} does nothing in a "
-                    "Word document" + (f", nor do {times - 1} more like it" if times > 1 else "")
+                    f"{len(kinds) - _KINDS_NAMED} more kinds of layout command do nothing in "
+                    "a Word document either"
                 ),
                 path=output,
-                hint=(
-                    "for a page break in Word, write a block marked `{=openxml}` that holds "
-                    f"`{_PAGE_BREAK}`; a command that is there for a PDF made elsewhere can be "
-                    "marked `{=latex}`, and is then not warned of"
-                ),
+                hint=hint,
             )
-            for raw, times in kinds.items()
         )
-    )
+    return Report(tuple(findings))
 
 
 def abbreviations() -> frozenset[str]:

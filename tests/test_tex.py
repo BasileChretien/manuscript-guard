@@ -20,7 +20,13 @@ import subprocess
 
 import pytest
 
-from manuscript_guard.text.tex import Tex, layout_only, only_definitions, tex_outside_maths
+from manuscript_guard.text.tex import (
+    Tex,
+    layout_only,
+    only_definitions,
+    tex_kind,
+    tex_outside_maths,
+)
 
 PANDOC = shutil.which("pandoc")
 needs_pandoc = pytest.mark.skipif(PANDOC is None, reason="pandoc is not installed")
@@ -431,6 +437,11 @@ LAYOUT = [
     f"{B}hspace{{{B}fill}}",
     f"{B}bigskip{chr(10)}{B}noindent",
     f" {B}hfill ",
+    f"{B}hspace{{0.5{B}textwidth}}",
+    f"{B}vspace{{-1ex}}",
+    f"{B}vspace{{ 12 pt }}",
+    f"{B}vspace{{1em plus 2pt minus 1pt}}",
+    f"{B}vspace{{.5cm}}",
 ]
 
 #: TeX that holds something a layout command does not take, or is no layout command of the
@@ -441,7 +452,20 @@ NOT_LAYOUT = [
     f"{B}newpage{{412 patients}}",
     f"{B}pagebreak[412]",
     f"{B}vspace{{1em}}412",
-    f"{B}vspace{{a{{b}}c}}",
+    # A length is a number with a unit, or a command: anything in the braces was taken
+    # for one, and pandoc leaves it out with the command.
+    f"{B}hspace{{412}}",
+    f"{B}vspace{{412 patients were included}}",
+    f"{B}vspace*{{12 of 40 died}}",
+    f"{B}vspace{{12 inches}}",
+    f"{B}vspace{{1em{chr(10)}}}",
+    f"{B}vspace{{}}",
+    # Layout commands that are not on the list, and listed ones in a form that is not read.
+    f"{B}newpage*",
+    f"{B}pagebreak [4]",
+    f"{B}vspace{{{B}stretch{{1}}}}",
+    f"{B}quad",
+    f"{B}par",
     f"{B}newpagex",
     f"{B}centering",
     f"{B}gamma",
@@ -500,6 +524,35 @@ def test_a_macro_definition_is_known(raw: str) -> None:
 @pytest.mark.parametrize("raw", NOT_DEFINITIONS)
 def test_tex_that_is_more_than_definitions_is_not_taken_for_them(raw: str) -> None:
     assert not only_definitions(raw)
+
+
+#: What a piece of TeX is, for the build: nothing but definitions, nothing but those and
+#: layout commands, or something that would be lost. Pandoc reads a definition directly
+#: over a page break as one piece.
+KIND = {
+    "a definition": (f"{B}newcommand{{{B}x}}{{y}}", "definitions"),
+    "two definitions": (f"{B}newcommand{{{B}x}}{{y}}{chr(10)}{B}def{B}z{{w}}", "definitions"),
+    "a page break": (f"{B}newpage", "layout"),
+    "a definition over a page break": (
+        f"{B}newcommand{{{B}x}}{{y}}{chr(10)}{B}newpage",
+        "layout",
+    ),
+    "a page break over a definition": (
+        f"{B}newpage{chr(10)}{B}newcommand{{{B}x}}{{y}}",
+        "layout",
+    ),
+    "a page break over a number": (f"{B}newpage{chr(10)}412", ""),
+    "a definition and a number": (f"{B}newcommand{{{B}x}}{{y}} 412", ""),
+    "a command that is neither": (f"{B}gamma", ""),
+    "a longer name that opens as a listed one": (f"{B}newpagex", ""),
+    "nothing": ("", ""),
+}
+
+
+@pytest.mark.parametrize("case", list(KIND))
+def test_what_a_piece_of_tex_is_to_the_build(case: str) -> None:
+    raw, kind = KIND[case]
+    assert tex_kind(raw) == kind
 
 
 #: Long TeX of each kind, read to its end.

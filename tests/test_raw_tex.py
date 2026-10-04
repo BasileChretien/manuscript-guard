@@ -114,15 +114,60 @@ LEFT_OUT = {
         f"{B}newpage{{412 patients}}",
     ),
     "a command that is no layout command": (f"{B}centering", None, f"{B}centering"),
-    "an environment defined": (
-        f"{B}newenvironment{{foo}}{{start}}{{end}}",
-        None,
-        f"{B}newenvironment{{foo}}{{start}}{{end}}",
-    ),
     "a macro used outside maths": (
         f"{B}newcommand{{{B}RR}}{{{B}mathbb{{R}}}}{N}{N}The set {B}RR is used.",
         None,
         f"{B}mathbb{{R}}",
+    ),
+    # Pandoc holds what stands before and after a key in a citation's brackets apart from
+    # the rest of its reading, and the build did not look there: the headline sentence
+    # moved inside the brackets passed `check` and the build, and lost its number.
+    "a bound number in a citation's prefix": (
+        f"It was high [of {B}approx {{{{results.cohort.n_reports}}}} reports, see @smith2020].",
+        f"It was high [of {B}approx 4000 reports, see @smith2020].",
+        f"{B}approx 4000",
+    ),
+    "in a citation's suffix": (
+        f"It was high [@smith2020, in {B}approx 12 reports].",
+        None,
+        f"{B}approx 12",
+    ),
+    "in a citation's locator": (f"As shown [@smith2020, {B}S 3.2].", None, f"{B}S"),
+    "after a citation in the text": (f"As @smith2020 [{B}S 3.2] shows.", None, f"{B}S"),
+    "in the second of two citations": (
+        f"As shown [@smith2020; see IFN-{B}gamma in @jones2021].",
+        None,
+        f"{B}gamma",
+    ),
+    # Each of these was read, and no row held it: with the reading stopped at any one of
+    # them every test passed.
+    "in a block quote": (f"> IFN-{B}gamma release", None, f"{B}gamma"),
+    "in a div": (f"::: note{N}IFN-{B}gamma release{N}:::", None, f"{B}gamma"),
+    "in a span": (f"[IFN-{B}gamma]{{.smallcaps}} release", None, f"{B}gamma"),
+    "in a link's text": (f"[IFN-{B}gamma](https://example.org) release", None, f"{B}gamma"),
+    "in emphasis": (f"*IFN-{B}gamma* release", None, f"{B}gamma"),
+    "in a figure's caption": (
+        f"![Release of IFN-{B}gamma by group](figures/forest.svg)",
+        None,
+        f"{B}gamma",
+    ),
+    "in a definition": (f"Term{N}:   IFN-{B}gamma release", None, f"{B}gamma"),
+    "in a line block": (f"| IFN-{B}gamma release{N}| a second line", None, f"{B}gamma"),
+    "in a subscript": (f"x~a{B}gamma~ y", None, f"{B}gamma"),
+    "in a superscript": (f"x^a{B}gamma^ y", None, f"{B}gamma"),
+    "in quotation marks": (f'"IFN-{B}gamma release" was said', None, f"{B}gamma"),
+    # A length is a number with a unit or a command. Anything was taken for one, and
+    # `We enrolled \hspace{412} patients` was printed without its number, with a
+    # warning only.
+    "a number where a length belongs": (
+        f"We enrolled {B}hspace{{412}} patients.",
+        None,
+        f"{B}hspace{{412}}",
+    ),
+    "words where a length belongs": (
+        f"{B}vspace{{412 patients were included}}",
+        None,
+        f"{B}vspace{{412 patients were included}}",
     ),
 }
 
@@ -141,7 +186,88 @@ def test_the_refusal_names_the_file_and_the_line() -> None:
     written, built, _named = LEFT_OUT["a sign before a bound number"]
     said = refusal(written, built)
     assert said is not None
-    assert "main.md:5" in said, said
+    assert "(main.md:5)" in said, said
+
+
+def test_the_line_named_is_the_line_of_the_source_and_not_of_the_text_as_built() -> None:
+    """The build takes the front matter off a file and puts tables in, so a line of the
+    text it hands pandoc is another line of the file: the example's Results sentence was
+    named at line 68 and stands on line 72."""
+    front = "---" + N + "title: A study" + N + "---" + N + N
+    held = f"The database held {B}approx "
+    source = front + ABOVE + held + "{{results.cohort.n_reports}} reports." + N
+    document = ABOVE + held + "4000 reports." + N
+    said = misreading(
+        HEADER + document, HEADER, [("main.md", source)], PANDOC, Path(), built=[document]
+    )
+    assert said is not None
+    assert "(main.md:9)" in said, said
+
+
+def test_tex_a_value_puts_in_is_said_to_be_put_in() -> None:
+    """A table's label written by the analysis with `\\dagger` in it: the source holds
+    a placeholder and no backslash, and a line of it was named all the same."""
+    source = ABOVE + "{{table.baseline}}" + N
+    document = ABOVE + f"| Serious {B}dagger | 12 |" + N + "|---|---|" + N + "| Other | 3 |" + N
+    said = misreading(
+        HEADER + document, HEADER, [("main.md", source)], PANDOC, Path(), built=[document]
+    )
+    assert said is not None
+    assert f"`{B}dagger" in said
+    assert "(main.md, where a value or a table puts it)" in said, said
+
+
+def test_tex_over_several_lines_in_a_quotation_is_found_where_it_stands() -> None:
+    """Pandoc takes the `> ` off each line, so the piece as it reads it is in no source,
+    and the refusal said a macro had put it there."""
+    said = refusal(f"> {B}begin{{center}}{N}> Centred words.{N}> {B}end{{center}}")
+    assert said is not None
+    assert "(main.md:5)" in said, said
+    assert "macro" not in said
+
+
+def test_a_macro_that_comes_to_nothing_is_named_as_one() -> None:
+    """`reports\\hide{to check}` with `\\hide` defined to print nothing loses its
+    words. Pandoc reads an empty piece of TeX there, and the refusal named "``" in the
+    build's own prologue."""
+    said = refusal(
+        f"{B}newcommand{{{B}hide}}[1]{{}}{N}{N}There were reports{B}hide{{to check}} here."
+    )
+    assert said is not None
+    assert "``" not in said
+    assert "a macro" in said
+    assert "prologue" not in said
+
+
+def test_one_command_in_a_figures_caption_is_counted_once() -> None:
+    """Pandoc holds a figure's caption twice, as the caption and as the image's own text."""
+    said = refusal(f"![Release of IFN-{B}gamma by group](figures/forest.svg)")
+    assert said is not None
+    assert "more after it" not in said, said
+
+
+def test_two_pieces_are_the_first_and_one_more() -> None:
+    said = refusal(f"IFN-{B}gamma was measured.{N}{N}So was TNF-{B}alpha, later.")
+    assert said is not None
+    assert f"`{B}gamma` (main.md:5), and 1 more after it" in said, said
+
+
+def test_a_definition_in_a_form_that_is_not_read_is_told_how_to_be_written() -> None:
+    """Pandoc applies `\\let`, `\\gdef` and `\\DeclareRobustCommand` in maths
+    as it applies `\\newcommand`, and only the forms named in `text/tex.py` are read
+    here. The general remedy, a code span marked `{=latex}`, would stop the macro being
+    applied, so such a piece is told to be a `\\newcommand`."""
+    for definition in (
+        f"{B}let{B}a{B}alpha",
+        f"{B}gdef{B}x{{y}}",
+        f"{B}DeclareRobustCommand{{{B}z}}{{w}}",
+        f"{B}newenvironment{{foo}}{{start}}{{end}}",
+        f"{B}newcommand{{{B}x}}{B}alpha",
+    ):
+        said = refusal(definition + N + N + "Text.")
+        assert said is not None, definition
+        assert f"`{B}newcommand{{" in said, said
+        assert "{=latex}" not in said, said
 
 
 def test_the_refusal_says_how_many_more_there_are() -> None:
@@ -154,7 +280,7 @@ def test_the_refusal_says_how_many_more_there_are() -> None:
     said = refusal(written)
     assert said is not None
     assert f"`{B}gamma" in said
-    assert "2 more" in said, said
+    assert "and 2 more after it" in said, said
 
 
 #: Text the document is printed with, whole: maths, code, a comment, a backslash that is no
@@ -172,8 +298,15 @@ KEPT = {
     "a comment of its own": f"<!--{N}{B}begin{{x}}{N}-->",
     "a doubled backslash": f"The command {B}{B}gamma is typed so.",
     "escaped signs": f"Up 5{B}% in A{B}&B, under {B}$10.",
-    "a block marked for LaTeX": f"{FENCE}{{=latex}}{N}{B}clearpage{N}{FENCE}",
-    "a span marked for LaTeX": f"Text `{B}hfill`{{=latex}} more.",
+    # Not layout commands: those are let pass marked or not, and with these rows holding
+    # one each, the mark read as no mark passed every test.
+    "a block marked for LaTeX": (
+        f"{FENCE}{{=latex}}{N}{B}textbf{{for the PDF only}}{N}{FENCE}"
+    ),
+    "a span marked for LaTeX": f"Text `{B}textit{{for the PDF}}`{{=latex}} more.",
+    "a page break as a span of Word's own": (
+        '`<w:r><w:br w:type="page"/></w:r>`{=openxml}'
+    ),
     "a block of Word's own": (
         f"{FENCE}{{=openxml}}{N}<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>{N}{FENCE}"
     ),
@@ -201,7 +334,9 @@ KEPT = {
 
 @pytest.mark.parametrize("case", list(KEPT))
 def test_text_the_document_is_printed_with_whole_is_not_refused(case: str) -> None:
-    assert refusal(KEPT[case]) is None
+    inert: list[str] = []
+    assert refusal(KEPT[case], inert=inert) is None
+    assert inert == [], "and none of it is taken for a layout command"
 
 
 #: Layout commands, which print no word in LaTeX either and do nothing in a Word document:
@@ -227,6 +362,16 @@ INERT = {
     ),
     "a fill in a line": (f"Left {B}hfill right.", [f"{B}hfill"]),
     "a line break in a paragraph": (f"Two {B}linebreak three.", [f"{B}linebreak"]),
+    "a length that is part of the page's width": (
+        f"Left {B}hspace{{0.5{B}textwidth}} right.",
+        [f"{B}hspace{{0.5{B}textwidth}}"],
+    ),
+    # One piece of TeX to pandoc, which was refused: the definition is let pass on its own
+    # and so is the page break.
+    "a definition directly over a page break": (
+        f"{B}newcommand{{{B}x}}{{y}}{N}{B}newpage{N}{N}We write ${B}x$.",
+        [f"{B}newcommand{{{B}x}}{{y}}{N}{B}newpage"],
+    ),
 }
 
 
@@ -245,6 +390,37 @@ def test_a_layout_command_beside_tex_that_loses_words_does_not_stop_the_refusal(
     inert: list[str] = []
     said = refusal(f"{B}newpage{N}{N}IFN-{B}gamma release was measured.", inert=inert)
     assert said is not None and f"`{B}gamma" in said
+
+
+def test_the_warning_counts_the_rest_of_a_kind_and_names_where_the_first_stands() -> None:
+    """Its count was not held by any test, nor its place, and its hint named a block,
+    which `check` fails from `drafting` on: the page break is given as a code span."""
+    from manuscript_guard.build.document import _does_nothing
+
+    source = ABOVE + (f"{B}newpage" + N + N + "Words." + N + N) * 3
+    report = _does_nothing(
+        [f"{B}newpage"] * 3, [("main.md", source)], [source], Path("manuscript.docx")
+    )
+    (finding,) = report.findings
+    assert finding.code == "tex-does-nothing" and finding.severity == "warn"
+    assert finding.message == (
+        f"`{B}newpage` (main.md:5) does nothing in a Word document, nor do 2 more like it"
+    )
+    assert '`<w:r><w:br w:type="page"/></w:r>`{=openxml}' in finding.hint
+    assert "code span marked `{=latex}`" in finding.hint
+    assert "block" not in finding.hint
+
+
+def test_many_kinds_of_layout_command_are_twenty_warnings_and_a_count() -> None:
+    """Each kind was looked for in the whole text, so the warnings took time with the
+    square of the number of kinds: 40,000 took 19 seconds. Twenty are named."""
+    from manuscript_guard.build.document import _does_nothing
+
+    kinds = [f"{B}vspace{{{number}pt}}" for number in range(1, 31)]
+    source = N.join(kinds)
+    report = _does_nothing(kinds, [("main.md", source)], [source], Path("manuscript.docx"))
+    assert len(report.findings) == 21
+    assert report.findings[-1].message.startswith("10 more kinds of layout command")
 
 
 def test_a_macro_defined_in_a_marked_block_is_not_applied_which_is_why_one_may_stand_bare() -> None:

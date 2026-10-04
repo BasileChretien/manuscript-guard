@@ -1021,7 +1021,7 @@ def test_a_reference_in_a_superscript_is_a_finding_of_its_own(tmp_path: Path) ->
         "short_title: `&bsol;` may be a character reference where a subscript or a "
         "superscript can hold it: pandoc resolves one there and reads the result again, so "
         "it can make TeX that the document is printed without; type the character itself, "
-        "or put a space before the `&`"
+        "or, where it stands after the script, put a space before the `&`"
     )
 
     written = "short_title: 'IFN-^" + chr(0x3B3) + "^ release and R&D; more'" + LF
@@ -1041,7 +1041,9 @@ def test_an_ampersand_that_is_no_reference_is_not_called_one(tmp_path: Path) -> 
     (finding,) = report.failures
     assert "`&RMSE;` may be a character reference" in finding.message
     assert "is a character reference" not in finding.message
-    assert "put a space before the `&`" in finding.message
+    # A space before the `&` of `x^&alpha;^` would end the superscript, and pandoc then
+    # prints its carets: the space is for an `&` that stands after the script.
+    assert "where it stands after the script, put a space before the `&`" in finding.message
 
     written = "short_title: 'R^2^ &RMSE; model fit'" + LF
     _project, report = load_project(a_project(tmp_path / "mended", PAPER + written))

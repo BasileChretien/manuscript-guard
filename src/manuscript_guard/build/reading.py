@@ -84,14 +84,19 @@ class _Read:
     words: str
 
 
-def _json(markdown: str, pandoc: str, cwd: Path | None) -> dict | None:
+def _json(
+    markdown: str, pandoc: str, cwd: Path | None, limit: float | None = None
+) -> dict | None:
     """Pandoc's reading of `markdown`, or None when pandoc cannot read it at all, which
-    the build's own run of pandoc then reports."""
+    the build's own run of pandoc then reports. `limit` is how many seconds pandoc is
+    given: past it pandoc is stopped and `subprocess.TimeoutExpired` is raised. The build
+    gives none and waits, as it waits for the run that makes the document."""
     finished = subprocess.run(
         [pandoc, "-f", "markdown", "-t", "json"],
         input=markdown.encode("utf-8"),
         capture_output=True,
         cwd=cwd,
+        timeout=limit,
     )
     if finished.returncode != 0:
         return None
@@ -456,22 +461,43 @@ def located(
     built holds it, a value or a table put it there, and the line is None. None where
     nothing holds it, which is what a macro makes.
 
+    The text as built is looked in first, since it holds the piece as pandoc read it, with
+    its value: the piece's command is then the one in the file that as many of the same
+    command stand before, below the file's own header, which the build takes off. Looked
+    for by its command alone, `\\approx` before a bound number was found at a `$\\approx$`
+    further up, which is right as it is written, and the author was sent there.
+
     It is where the text stands, and pandoc may have read it as TeX further down: the same
-    command in maths or in a code span above is found first, and a macro's expansion is
+    piece in maths or in a code span above is found first, and a macro's expansion is
     found in its definition."""
     first = raw.strip().split("\n", 1)[0].strip()
     if not first:
         return None
     command = _COMMAND.match(first)
-    for wanted in dict.fromkeys((first, command[0] if command else first)):
+    key = command[0] if command else first
+    for index, ((_name, source), text) in enumerate(zip(sources, built, strict=True)):
+        at = text.find(first)
+        if at == -1:
+            continue
+        found = _nth(source, key, text.count(key, 0, at), front_matter_end(source))
+        return index, None if found is None else source.count(chr(10), 0, found) + 1
+    for wanted in dict.fromkeys((first, key)):
         for index, (_name, text) in enumerate(sources):
             at = text.find(wanted)
             if at != -1:
                 return index, text.count(chr(10), 0, at) + 1
-    for index, (_source, text) in enumerate(zip(sources, built, strict=True)):
-        if first in text:
-            return index, None
     return None
+
+
+def _nth(text: str, wanted: str, others: int, start: int) -> int | None:
+    """Where `wanted` stands in `text` from `start` on, after `others` occurrences of it
+    that do not overlap; None where there are not so many."""
+    at = text.find(wanted, start)
+    for _ in range(others):
+        if at == -1:
+            break
+        at = text.find(wanted, at + len(wanted))
+    return None if at == -1 else at
 
 
 def place(raw: str, sources: list[tuple[str, str]], built: list[str]) -> str:
@@ -607,14 +633,16 @@ def _tex_left_out(
     return TexLeftOut(f"{said}. {remedy}")
 
 
-def tex_read(source: str, pandoc: str) -> tuple[list[str], list[str]] | None:
+def tex_read(
+    source: str, pandoc: str, limit: float | None = None
+) -> tuple[list[str], list[str]] | None:
     """The TeX pandoc reads outside maths in `source`, a document as the build would hand
     it over: what loses something and what is only layout (`_raw_tex`). None where pandoc
-    cannot read the source at all.
+    cannot read the source at all. `limit` is how many seconds pandoc is given (`_json`).
 
     It is `check`'s question, and the part of `misreading` that one run of pandoc answers:
     the rest compares pandoc's reading with the gates', which takes up to three more."""
-    read = _json(source, pandoc, None)
+    read = _json(source, pandoc, None, limit)
     return None if read is None else _raw_tex(read["blocks"])
 
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -106,7 +107,7 @@ def test_tex_in_the_text_fails_check_in_the_builds_sentence_at_its_line(
     said = capsys.readouterr().err
     assert f"{finding['message']}. {finding['hint']}" in said, said
     assert "`check` cannot see this" not in said, "it sees this one"
-    assert "`check` reports it too" in said
+    assert "`check` reports it too, and fails for it from `drafting` on." in said
 
 
 @needs_pandoc
@@ -201,6 +202,73 @@ def test_each_kind_is_one_finding_and_says_how_many_more_there_are(
 
 
 @needs_pandoc
+def test_the_line_is_the_pieces_and_not_that_of_the_same_sign_in_maths_above(
+    project: Path, capsys
+) -> None:
+    """The line was that of the first place the command stands in the file. A manuscript
+    that writes the sign as maths in one sentence, as it is told to, and bare before a
+    bound number further down was sent to the sentence that is right."""
+    maths = f"About ${B}approx$ half were from clinicians."
+    line = write(
+        project,
+        maths + N + N + HELD.replace("contained ", "contained " + B + "approx "),
+    )
+
+    code, report = checked(project, capsys)
+
+    assert code == 1
+    [finding] = of(report, "tex-in-the-text")
+    assert finding["line"] == line + 2
+    assert f"`{B}approx {count(project)}` (main.md:{line + 2})" in finding["message"]
+
+
+#: Where a piece is looked for: the text as built holds it as pandoc read it, values in, and
+#: the line is that of the same occurrence of its command in the file.
+LOCATED = {
+    "the second of two, the first in maths": (
+        f"{B}approx 12",
+        f"A ${B}approx$ b.{N}{N}Then {B}approx {{{{results.n}}}} of them.",
+        f"A ${B}approx$ b.{N}{N}Then {B}approx 12 of them.",
+        (0, 3),
+    ),
+    "the first of two": (
+        f"{B}approx 12",
+        f"Some {B}approx {{{{results.n}}}} here.{N}And ${B}approx$ there.",
+        f"Some {B}approx 12 here.{N}And ${B}approx$ there.",
+        (0, 1),
+    ),
+    "one a value puts there, after one in the file": (
+        f"{B}approx 12",
+        f"A ${B}approx$ b.{N}Then {{{{results.sign}}}} of them.",
+        f"A ${B}approx$ b.{N}Then {B}approx 12 of them.",
+        (0, None),
+    ),
+    "one no text holds as it is read, by its command": (
+        f"{B}textit{{in vivo}} twice",
+        f"One line.{N}Measured {B}textit{{in{N}vivo}} here.",
+        f"One line.{N}Measured {B}textit{{in{N}vivo}} here.",
+        (0, 2),
+    ),
+    # The build takes the file's own header off, so the text as built holds one fewer.
+    "one the file's own header holds too": (
+        f"{B}gamma",
+        f"---{N}title: 'IFN-${B}gamma$'{N}---{N}{N}Release of IFN-{B}gamma was measured.",
+        f"Release of IFN-{B}gamma was measured.",
+        (0, 5),
+    ),
+    "one nothing holds": (f"{B}gamma", "No such letters.", "Nor here.", None),
+}
+
+
+@pytest.mark.parametrize("case", list(LOCATED))
+def test_where_a_piece_is_looked_for(case: str) -> None:
+    from manuscript_guard.build.reading import located
+
+    piece, written, built, found = LOCATED[case]
+    assert located(piece, [("main.md", written)], [built]) == found
+
+
+@needs_pandoc
 def test_tex_in_the_supplement_is_found_in_its_file(project: Path, capsys) -> None:
     source = supplement_md(project)
     text = source.read_bytes().decode("utf-8")
@@ -262,10 +330,13 @@ def test_more_kinds_than_are_named_are_counted(project: Path) -> None:
     assert len(found) == 21
     assert len(tex_check.findings_of(kinds[:20], [], [("main.md", text)], [text], files)) == 20
     assert {(finding.code, finding.severity) for finding in found} == {("tex-in-the-text", "fail")}
+    # It has no file, so it is printed before the twenty: it says how many they are and
+    # points at nothing "above".
     assert found[-1].message == (
-        "pandoc reads 3 more kinds of TeX in the text, and the Word writer leaves each out "
-        "of the document"
+        "pandoc reads 3 more kinds of TeX in the text than the twenty named, and the Word "
+        "writer leaves each out of the document"
     )
+    assert found[-1].hint == "each is named once the twenty that are named are put right"
 
 
 # --------------------------------------------------------------------------- layout commands
@@ -409,7 +480,7 @@ def test_a_text_nested_too_deep_to_walk_is_a_note_and_no_crash(
 ) -> None:
     from manuscript_guard.build import reading
 
-    def too_deep(source: str, pandoc: str):
+    def too_deep(source: str, pandoc: str, limit: float | None = None):
         raise RecursionError
 
     monkeypatch.setattr(reading, "tex_read", too_deep)
@@ -425,12 +496,138 @@ def test_a_text_nested_too_deep_to_walk_is_a_note_and_no_crash(
 
 
 @needs_pandoc
+def test_check_does_not_wait_for_pandoc_past_its_limit(
+    project: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pandoc takes about three times as long for each level of brackets nested in
+    brackets: a quarter of a second at six, thirteen seconds at ten, and at fourteen far
+    longer than anyone waits. `check` ran it with no limit, where it had never waited on
+    another program, and the suite's own check of prose someone might write did not end."""
+    from manuscript_guard.build import tex_check
+
+    monkeypatch.setattr(tex_check, "READ_SECONDS", 1.0)
+    source = main_md(project)
+    written = source.read_bytes().decode("utf-8")
+    nested = "[" * 14 + "see the note" + "]" * 14
+    source.write_bytes((written + N + nested + N).encode("utf-8"))
+
+    started = time.perf_counter()
+    code, report = checked(project, capsys)
+    waited = time.perf_counter() - started
+
+    assert waited < 30, f"check took {waited:.0f} s"
+    assert code == 0, report
+    assert not of(report, "gate-errored")
+    [note] = of(report, "tex-not-judged")
+    assert note["severity"] == "info"
+    assert note["message"] == (
+        "pandoc had not read the manuscript after 1 s, so TeX in it is not judged here: "
+        "the build judges it, and waits for pandoc as long as it takes"
+    )
+    assert report["counts"]["documents_read_for_tex"] == 1, "the supplement was read"
+
+
+def test_check_waits_ten_seconds_for_each_document() -> None:
+    """Pandoc reads the example in a tenth of a second and its text two hundred times over,
+    164,000 words, in two: ten is past any manuscript and short of a wait that looks like
+    a hang."""
+    from manuscript_guard.build import tex_check
+
+    assert tex_check.READ_SECONDS == 10.0
+
+
+@needs_pandoc
+def test_each_document_is_read_under_the_limit(
+    project: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from manuscript_guard.build import reading, tex_check
+
+    limits: list[float | None] = []
+
+    def read(source: str, pandoc: str, limit: float | None = None):
+        limits.append(limit)
+        return [], []
+
+    monkeypatch.setattr(reading, "tex_read", read)
+
+    checked(project, capsys)
+
+    assert limits == [tex_check.READ_SECONDS, tex_check.READ_SECONDS]
+
+
+def test_the_limit_is_given_to_the_run_of_pandoc(monkeypatch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import reading
+
+    given: dict = {}
+
+    def run(command, **how):
+        given.update(how)
+        return subprocess.CompletedProcess(command, 0, stdout=b'{"blocks": [], "meta": {}}')
+
+    monkeypatch.setattr(reading.subprocess, "run", run)
+
+    assert reading.tex_read("Some text.", "pandoc", 3.0) == ([], [])
+    assert given["timeout"] == 3.0
+    assert reading.tex_read("Some text.", "pandoc") == ([], [])
+    assert given["timeout"] is None, "the build gives no limit"
+
+
+def test_a_pandoc_that_cannot_be_started_is_a_note_and_no_crash(
+    project: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file named pandoc on PATH that the system cannot run was `gate-errored`, which
+    fails at every stage and calls itself a bug, where no pandoc at all is a note."""
+    missing = str(project.parent / "no-such-folder" / "pandoc")
+    which = shutil.which
+
+    def found(name: str, *args, **kwargs):
+        return missing if name == "pandoc" else which(name, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "which", found)
+
+    code, report = checked(project, capsys)
+
+    assert code == 0, report
+    assert not of(report, "gate-errored")
+    notes = of(report, "tex-not-judged")
+    assert len(notes) == 2, "the paper and its supplement"
+    assert all(note["severity"] == "info" for note in notes)
+    assert "pandoc could not be run on the manuscript" in notes[0]["message"]
+    assert report["counts"]["documents_read_for_tex"] == 0
+
+
+@needs_pandoc
+def test_an_answer_from_pandoc_that_is_no_json_is_a_note_and_no_crash(
+    project: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from manuscript_guard.build import reading
+
+    run = subprocess.run
+
+    def garbled(command, *args, **kwargs):
+        if "pandoc" in Path(command[0]).name:
+            return subprocess.CompletedProcess(command, 0, stdout=b"pandoc: out of memory")
+        return run(command, *args, **kwargs)
+
+    monkeypatch.setattr(reading.subprocess, "run", garbled)
+
+    code, report = checked(project, capsys)
+
+    assert code == 0, report
+    assert not of(report, "gate-errored")
+    notes = of(report, "tex-not-judged")
+    assert len(notes) == 2
+    assert "pandoc could not be run on the manuscript" in notes[0]["message"]
+    assert report["counts"]["documents_read_for_tex"] == 0
+
+
+@needs_pandoc
 def test_a_text_pandoc_cannot_read_is_a_note_and_no_crash(
     project: Path, capsys, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from manuscript_guard.build import reading
 
-    monkeypatch.setattr(reading, "tex_read", lambda source, pandoc: None)
+    monkeypatch.setattr(reading, "tex_read", lambda source, pandoc, limit=None: None)
 
     code, report = checked(project, capsys)
 

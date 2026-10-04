@@ -313,25 +313,33 @@ _LENGTHS = ("vspace", "hspace")
 # number before any command was, `\hspace{412\patients}`, and a unit alone. And the number
 # was digits, an optional point, digits, so that without a point the two runs shared the
 # same digits: one that no unit follows was read every way, and twice the digits took four
-# times as long. This is a list too: `1,5cm`, `1EM`, `1 true cm` and `\dimexpr` are lengths
-# to LaTeX and none here, and the command they stand in is then refused with the rest.
-_NUMBER = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
+# times as long. A sign stands before the number or, where there is none, before the
+# command: read only before a digit, `\vspace{-\baselineskip}`, which is how a negative
+# space is written, was refused. This is a list too: `1,5cm`, `1EM`, `1 true cm` and
+# `\dimexpr` are lengths to LaTeX and none here, and the command they stand in is then
+# refused with the rest.
+_SIGN = r"[-+]?"
+_UNSIGNED = r"(?:\d+(?:\.\d*)?|\.\d+)"
+_NUMBER = rf"{_SIGN}{_UNSIGNED}"
 _UNIT = r"(?:pt|pc|in|bp|cm|mm|dd|cc|sp|em|ex|mu)"
 _LENGTH_COMMANDS = (
     "baselineskip",
+    "bigskipamount",
     "columnwidth",
     "fill",
     "linewidth",
+    "medskipamount",
     "paperheight",
     "paperwidth",
     "parindent",
     "parskip",
+    "smallskipamount",
     "textheight",
     "textwidth",
 )
 _LENGTH = (
     rf"(?:{_NUMBER}[ ]*{_UNIT}"
-    rf"|(?:{_NUMBER}[ ]*)?\\(?:{'|'.join(_LENGTH_COMMANDS)}))"
+    rf"|{_SIGN}(?:{_UNSIGNED}[ ]*)?\\(?:{'|'.join(_LENGTH_COMMANDS)}))"
 )
 _STRETCH = rf"(?:{_LENGTH}|{_NUMBER}[ ]*fil{{1,3}})"
 _GLUE = rf"[ ]*{_LENGTH}(?:[ ]+plus[ ]+{_STRETCH})?(?:[ ]+minus[ ]+{_STRETCH})?[ ]*"

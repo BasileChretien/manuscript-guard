@@ -551,8 +551,8 @@ def build_document(
             # comes to it where the check was skipped and where the finding is not yet due.
             raise MisreadError(
                 f"pandoc reads {differs}. The gates that read the sources counted it as "
-                "printed, so the document is not built; `check` reports it too where "
-                "pandoc is installed, and fails for it from `drafting` on."
+                "printed, so the document is not built; `check` reports it too, and fails "
+                "for it from `drafting` on."
             )
         raise MisreadError(
             f"pandoc reads {differs}. The gates judged the sources as they read them, so "

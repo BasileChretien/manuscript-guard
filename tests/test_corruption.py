@@ -8929,7 +8929,7 @@ def test_import_takes_back_a_document_built_before_tex_in_the_text_was_refused(
     _results_with(project, _HELD.replace("contained ", "contained " + chr(92) + "approx "))
     with monkeypatch.context() as before:  # as `check` and the build were before the refusal
         before.setattr(reading, "_tex_left_out", lambda *args: None)
-        before.setattr(reading, "tex_read", lambda source, pandoc: ([], []))
+        before.setattr(reading, "tex_read", lambda source, pandoc, limit=None: ([], []))
         assert main(["build", str(project), "--offline"]) == 0
     sent = project / "build" / "manuscript.docx"
     assert "The database contained  reports" in _printed(sent)

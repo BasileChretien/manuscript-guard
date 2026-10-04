@@ -266,7 +266,10 @@ on its version, as the build does: a pandoc that reads a line otherwise than the
 pins reports otherwise, in `check` and in the build alike. Where pandoc is not on PATH,
 `check` does not judge TeX in the text. Its exit code is that of a pass, and it says so
 once, in a note: `tex-not-judged`, whose severity is `info` and whose code is its own, with
-the count `documents_read_for_tex` at 0. Every other gate runs as usual.
+the count `documents_read_for_tex` at 0. Every other gate runs as usual. `check` gives
+pandoc ten seconds for each document and then stops it: a document pandoc has not read by
+then, one it cannot read, and a pandoc that cannot be run are each that same note, for that
+document.
 
 **Tables and figures are generated from results, never hand-authored.** Tables are emitted
 by code from `results.json`; figure scripts may read `results.json` and nothing else. This
@@ -4758,9 +4761,18 @@ Closed since, and why each mattered:
   would refuse, and the build cannot run there either. Before `drafting` the finding is
   listed and does not fail, where the build refuses at every stage. A text pandoc
   cannot read, or one nested too deep for its reading to be walked, is a note too, and
-  the build says the rest. It costs `check` two runs of pandoc, about a fifth of a
-  second on the example. And the finding is pandoc's reading, so it changes with
-  pandoc's version, as the build's refusal does.
+  the build says the rest. So is a pandoc on PATH that cannot be run, and an answer
+  from it that is no JSON. It costs `check` two runs of pandoc, about a fifth of a
+  second on the example, and at most ten seconds each: pandoc takes about three times
+  as long for each level of brackets nested in brackets, a quarter of a second at six
+  deep and thirteen at ten, and the first version of the rule waited for it without
+  limit, so that `check` did not come back on a line of brackets (found by the review of
+  the change, on the suite's own prose: `check` had never waited on another program).
+  Past ten seconds pandoc is stopped and that document is not judged, which is said
+  in a note; pandoc reads 164,000 words of ordinary prose in two. The build gives
+  pandoc no limit, as before, and on such a text it waits as long as pandoc takes. And
+  the finding
+  is pandoc's reading, so it changes with pandoc's version, as the build's refusal does.
   What the build lets pass: maths, code and a comment, which are no TeX to pandoc; TeX
   the author marked as raw for LaTeX, `{=latex}`, which pandoc labels `latex` where it
   labels unmarked TeX `tex`; and a macro's definition (`\newcommand`, `\renewcommand`,
@@ -4783,9 +4795,11 @@ Closed since, and why each mattered:
   `\nopagebreak`, `\linebreak` and `\nolinebreak`, with a number from 0 to 4 in
   brackets or none; `\vspace` and `\hspace` with a length in braces. A length is a
   number with a unit (`pt`, `pc`, `in`, `bp`, `cm`, `mm`, `dd`, `cc`, `sp`, `em`, `ex`,
-  `mu`), one of ten commands that are lengths (`\baselineskip`, `\columnwidth`,
-  `\fill`, `\linewidth`, `\paperheight`, `\paperwidth`, `\parindent`, `\parskip`,
-  `\textheight`, `\textwidth`) or a number of times one, and after it what it
+  `mu`), one of thirteen commands that are lengths (`\baselineskip`,
+  `\bigskipamount`, `\columnwidth`, `\fill`, `\linewidth`, `\medskipamount`,
+  `\paperheight`, `\paperwidth`, `\parindent`, `\parskip`, `\smallskipamount`,
+  `\textheight`, `\textwidth`) or a number of times one, with a sign before it or
+  none (`\vspace{-\baselineskip}`), and after it what it
   stretches by and shrinks by, `plus` and `minus`, once each and in that order.
   `\hspace{412}` is no length and is refused. So is `\hspace{412\patients}`: a
   number before any command passed for a length at first, and `We enrolled
@@ -4798,7 +4812,7 @@ Closed since, and why each mattered:
   `\newpage*`, `\pagebreak [4]` with a space before its bracket, and a length that
   LaTeX takes and that is not in the form above: one given by a command with braces
   of its own, `\vspace{\stretch{1}}`, or by a length command that is not among the
-  ten, `\vspace{\topsep}`; `\vspace{1,5cm}` with a comma for the point,
+  thirteen, `\vspace{\topsep}`; `\vspace{1,5cm}` with a comma for the point,
   `\vspace{1EM}` in capitals, `\vspace{- 1em}` with a space after the sign,
   `\vspace{1em plus1pt}` with none after `plus`, `\vspace{1 true cm}` and
   `\vspace{\dimexpr 1em\relax}`. So is one that takes
@@ -4820,10 +4834,15 @@ Closed since, and why each mattered:
   it already was. And `\newenvironment`, which is refused as well and which no
   `\newcommand` can be, is told what any TeX is told. A macro that leaves out the text it is given and comes to a layout command
   or to a definition, `\newcommand{\brk}[1]{\newpage}` and `\brk{412}`, which
-  is warned of or passed, and loses the 412. The place named, which is a line of the
-  source where the piece's first line or its command first stands, and not always
-  where pandoc read it as TeX: the same command in maths or in a code span above is
-  found first, and a macro's expansion is found in its definition; TeX that only the
+  is warned of or passed, and loses the 412. The place named, which is not always
+  where pandoc read the piece as TeX. The piece is looked for in the text as built,
+  where it stands with its value, and the line is that of the same occurrence of its
+  command in the file: `\approx` before a bound number is found where it stands, and
+  not at a `$\approx$` further up, where the first version sent the author. But a
+  piece that reads the same as text in maths or in a code span above it, a bare
+  `\gamma` under a `$\gamma$`, is found at the first; a command the file's own header
+  holds, which the build takes off, is counted from below the header; and a macro's
+  expansion is found in its definition. TeX that only the
   text as built holds is said to be put there by a value or a table, with the file's
   name and no line. And G2, which reads the sources and holds every digit to being
   bound, fails `\vspace{1em}` and the `[2]` of a definition with two arguments from

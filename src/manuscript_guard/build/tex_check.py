@@ -17,6 +17,7 @@ which cannot run without pandoc either, judges it.
 from __future__ import annotations
 
 import shutil
+import subprocess
 from pathlib import Path
 
 from manuscript_guard.build import reading
@@ -45,6 +46,13 @@ NOT_JUDGED = "tex-not-judged"
 #: How many documents pandoc read: the paper, and its supplement where there is one. A
 #: pass over none reads otherwise like a pass.
 READ = "documents_read_for_tex"
+#: How many seconds `check` waits for pandoc to read one document. Pandoc reads the example
+#: in a tenth of a second and its text two hundred times over, 164,000 words, in two. But it
+#: takes about three times as long for each level of brackets nested in brackets, thirteen
+#: seconds at ten deep, and the first version waited without limit: `check`, which had never
+#: waited on another program, did not come back on a line of brackets, at a session's start
+#: as before a build. Past the limit pandoc is stopped and the document is not judged here.
+READ_SECONDS = 10.0
 
 
 def _note(message: str, hint: str | None = None) -> Finding:
@@ -87,11 +95,14 @@ def findings_of(
             Finding(
                 gate=GATE,
                 code=CODE,
+                # It has no file, so a report puts it before the twenty: it points at
+                # nothing above it.
                 message=(
                     f"pandoc reads {len(kinds) - _KINDS_NAMED} more kinds of TeX in the "
-                    "text, and the Word writer leaves each out of the document"
+                    "text than the twenty named, and the Word writer leaves each out of the "
+                    "document"
                 ),
-                hint="they are named once those above are put right",
+                hint="each is named once the twenty that are named are put right",
             )
         )
     return [*findings, *does_nothing(layout, read, built, files=files).findings]
@@ -110,7 +121,30 @@ def _document(project, ordered: list, pandoc: str, *, supplementary: bool) -> Re
         header = ""
     read, built = as_read(ordered)
     try:
-        found = reading.tex_read(header + document_text(ordered), pandoc)
+        found = reading.tex_read(header + document_text(ordered), pandoc, READ_SECONDS)
+    except subprocess.TimeoutExpired:
+        return Report(
+            (
+                _note(
+                    f"pandoc had not read {which} after {READ_SECONDS:g} s, so TeX in it is "
+                    "not judged here: the build judges it, and waits for pandoc as long as "
+                    "it takes"
+                ),
+            )
+        )
+    except (OSError, ValueError) as error:
+        # A file named pandoc that the system cannot run, or an answer that is no JSON. It
+        # was `gate-errored`, which fails at every stage and calls itself a bug, where no
+        # pandoc at all is a note.
+        return Report(
+            (
+                _note(
+                    f"pandoc could not be run on {which}, or its answer could not be read "
+                    f"({type(error).__name__}: {error}), so TeX in it is not judged here: "
+                    "the build needs pandoc too, and says what is wrong with it"
+                ),
+            )
+        )
     except RecursionError:
         # Python's JSON reader recurses, and two thousand nested divs overflow it. The
         # build refuses such a document, whatever it holds.

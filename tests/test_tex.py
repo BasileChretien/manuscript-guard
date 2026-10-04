@@ -448,6 +448,12 @@ LAYOUT = [
     f"{B}vspace{{0.5 {B}baselineskip}}",
     f"{B}vspace{{0pt plus 1fil}}",
     f"{B}vspace{{0pt plus 1fill minus 1filll}}",
+    # A sign before a command that is a length, which is how a negative space is written:
+    # the sign was read only before a digit, and these were refused where they had built.
+    f"{B}vspace{{-{B}baselineskip}}",
+    f"{B}vspace{{+{B}parskip}}",
+    f"{B}hspace*{{-{B}parindent}}",
+    f"{B}vspace{{-0.5{B}baselineskip plus -{B}parskip}}",
 ]
 
 #: TeX that holds something a layout command does not take, or is no layout command of the
@@ -478,6 +484,9 @@ NOT_LAYOUT = [
     f"{B}vspace{{em}}",
     f"{B}vspace{{1.2.3em}}",
     f"{B}vspace{{{B}baselineskipx}}",
+    f"{B}vspace{{-}}",
+    f"{B}vspace{{--{B}baselineskip}}",
+    f"{B}hspace{{-412{B}patients}}",
     f"{B}vspace{{{B}fillplus 1pt}}",
     # What a length stretches by and shrinks by, once each and in that order, and `fil`
     # only there.
@@ -508,13 +517,16 @@ def test_tex_that_is_only_layout_commands_is_known(raw: str) -> None:
 #: written out here so that a name added to it or taken off it is seen.
 LENGTH_COMMANDS = (
     "baselineskip",
+    "bigskipamount",
     "columnwidth",
     "fill",
     "linewidth",
+    "medskipamount",
     "paperheight",
     "paperwidth",
     "parindent",
     "parskip",
+    "smallskipamount",
     "textheight",
     "textwidth",
 )
@@ -523,11 +535,12 @@ LENGTH_COMMANDS = (
 @pytest.mark.parametrize("name", LENGTH_COMMANDS)
 def test_a_command_that_is_a_length_is_one_in_the_braces_of_a_space(name: str) -> None:
     assert layout_only(f"{B}vspace{{{B}{name}}}")
+    assert layout_only(f"{B}vspace{{-{B}{name}}}")
     assert layout_only(f"{B}hspace*{{0.5{B}{name} plus 2{B}{name}}}")
     assert not layout_only(f"{B}vspace{{{B}{name}x}}")
 
 
-def test_the_commands_that_are_lengths_are_those_ten() -> None:
+def test_the_commands_that_are_lengths_are_those_listed() -> None:
     from manuscript_guard.text import tex
 
     assert set(tex._LENGTH_COMMANDS) == set(LENGTH_COMMANDS)

@@ -4771,7 +4771,7 @@ Closed since, and why each mattered:
   Past ten seconds pandoc is stopped and that document is not judged, which is said
   in a note; pandoc reads 164,000 words of ordinary prose in two. Tables are what
   come near the limit: forty of three hundred rows and eight columns took pandoc four
-  seconds, and ten with a phrase in each cell (3.6 MB), so a supplement of that size
+  seconds, and ten or more with a phrase in each cell (3.6 MB), so a supplement of that size
   is not judged by `check` and gets the note. The build gives
   pandoc no limit, as before, and on such a text it waits as long as pandoc takes; its
   refusal says that `check` reports the same where pandoc reads the text in the time
@@ -4840,19 +4840,20 @@ Closed since, and why each mattered:
   `\newcommand` can be, is told what any TeX is told. A macro that leaves out the text it is given and comes to a layout command
   or to a definition, `\newcommand{\brk}[1]{\newpage}` and `\brk{412}`, which
   is warned of or passed, and loses the 412. The place named, which is not always
-  where pandoc read the piece as TeX. A piece a file holds as it was read is where it
-  first stands there. Any other is looked for in the text as built,
-  where it stands with its value, and the line is that of the same occurrence of its
-  command in the file: `\approx` before a bound number is found where it stands, and
-  not at a `$\approx$` further up, where the first version sent the author. But a
-  piece that reads the same as text in maths or in a code span above it, a bare
-  `\gamma` under a `$\gamma$`, is found at the first; a command the file's own header
-  holds, which the build takes off, is counted from below the header; a value or an
-  emitted table that holds the piece's command, above a piece that has a value of its
-  own, puts the count one out, and the piece is found at the next of its command or
-  said to be put there by a value; and a macro's
+  where pandoc read the piece as TeX. It is the first place in the files where the
+  piece's command stands, below the file's own header, and the text can print the
+  piece: as it is typed, or with each binding standing for whatever its value holds.
+  So `\approx` before a bound number is found where it stands, and not at a `$\approx$`
+  further up, where the first version sent the author, nor at the same sentence kept in
+  a comment further down, where the third did; the second counted the command in the
+  text as built, and a value or a table above the piece that holds the command put the
+  count one out. But a piece that reads the same as text in maths, in a code span or in
+  a comment above it, a bare `\gamma` under a `$\gamma$`, is found at the first; a
+  binding can print anything, so a piece that only a value or a table makes is named
+  at a binding of the same command further down, where there is one; and a macro's
   expansion is found in its definition. TeX that only the
-  text as built holds is said to be put there by a value or a table, with the file's
+  text as built holds, and no place in a file can print, is said to be put there by a
+  value or a table, with the file's
   name and no line. And G2, which reads the sources and holds every digit to being
   bound, fails `\vspace{1em}` and the `[2]` of a definition with two arguments from
   `drafting` on, as it did before, so a length with a digit in it is warned of only

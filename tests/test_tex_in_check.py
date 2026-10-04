@@ -260,10 +260,10 @@ LOCATED = {
         f"Release of IFN-{B}gamma was measured.",
         (0, 5),
     ),
-    # The command is counted in the text as built, and a value or a table above the piece
+    # The command was counted in the text as built, and a value or a table above the piece
     # that holds it too put the count one out: a piece typed in the file was said to be put
-    # there by a value, or was found at the next of its command. A piece the file holds
-    # once as it is read is where it stands.
+    # there by a value, or was found at the next of its command. The place is the first
+    # of the command in the file that can print the piece.
     "one typed in the file, under a value that holds the command": (
         f"{B}approx 12",
         f"{{{{results.a}}}} named it.{N}{N}We saw {B}approx 12 of them.",
@@ -276,14 +276,61 @@ LOCATED = {
         f"| 5 {B}pm 1 |{N}{N}The mean was 12 {B}pm 3 months.{N}{N}Later 14 {B}pm 2 too.",
         (0, 3),
     ),
-    # Pinned, and in DESIGN.md's Known gaps: where the piece has a value of its own, it is
-    # the count in the text as built that finds it, and a value above that holds the
-    # command puts that count one out.
     "one with a value of its own, under a value that holds the command": (
         f"{B}approx 12",
         f"{{{{results.a}}}} named it.{N}{N}We saw {B}approx {{{{results.n}}}} of them.",
         f"{B}approx 426 named it.{N}{N}We saw {B}approx 12 of them.",
+        (0, 3),
+    ),
+    # A piece with a value of its own is in no file as it is read. Looked for as it is
+    # read before anything else, it was found at any text typed below it that begins as it
+    # prints: the sentence kept in a comment when its number was bound, the same in maths
+    # or in code, a longer number. The line of the binding was named nowhere.
+    "one with a value, over the same text in maths": (
+        f"{B}approx 12",
+        f"We saw {B}approx {{{{results.n}}}} of them.{N}{N}In maths, $x {B}approx 12$ holds.",
+        f"We saw {B}approx 12 of them.{N}{N}In maths, $x {B}approx 12$ holds.",
+        (0, 1),
+    ),
+    "one with a value, over the same text in a comment": (
+        f"{B}approx 12",
+        f"We saw {B}approx {{{{results.n}}}} of them.{N}{N}<!-- We saw {B}approx 12 of them. -->",
+        f"We saw {B}approx 12 of them.{N}{N}<!-- We saw {B}approx 12 of them. -->",
+        (0, 1),
+    ),
+    "one with a value, over a longer number": (
+        f"{B}approx 12",
+        f"We saw {B}approx {{{{results.n}}}} of them.{N}{N}Or $x {B}approx 120$ of them.",
+        f"We saw {B}approx 12 of them.{N}{N}Or $x {B}approx 120$ of them.",
+        (0, 1),
+    ),
+    "one with a value in braces, over the same text in code": (
+        f"{B}textit{{in vivo}}",
+        f"Seen {B}textit{{{{{{results.name}}}}}} here.{N}{N}Typed `{B}textit{{in vivo}}` there.",
+        f"Seen {B}textit{{in vivo}} here.{N}{N}Typed `{B}textit{{in vivo}}` there.",
+        (0, 1),
+    ),
+    # A piece that only an emitted table or a value makes, where the file types the same
+    # command with another number: it was named at that line, which does not hold it.
+    "one a table makes, over a typed piece of the same command": (
+        f"{B}pm 349",
+        f"{{{{table.t}}}}{N}{N}The median delay was 12 {B}pm 5 months.",
+        f"| 77 {B}pm 349 |{N}{N}The median delay was 12 {B}pm 5 months.",
         (0, None),
+    ),
+    "the typed piece under that table": (
+        f"{B}pm 5",
+        f"{{{{table.t}}}}{N}{N}The median delay was 12 {B}pm 5 months.",
+        f"| 77 {B}pm 349 |{N}{N}The median delay was 12 {B}pm 5 months.",
+        (0, 3),
+    ),
+    # Pinned, and in DESIGN.md's Known gaps: a binding can print anything, so a piece that
+    # a value makes is named at a binding of the same command further down.
+    "one a value makes, over a binding of the same command": (
+        f"{B}approx 426",
+        f"{{{{results.a}}}} named it.{N}{N}We saw {B}approx {{{{results.n}}}} of them.",
+        f"{B}approx 426 named it.{N}{N}We saw {B}approx 12 of them.",
+        (0, 3),
     ),
     "one typed twice, at the first": (
         f"{B}textit{{in vivo}}",
@@ -301,6 +348,55 @@ def test_where_a_piece_is_looked_for(case: str) -> None:
 
     piece, written, built, found = LOCATED[case]
     assert located(piece, [("main.md", written)], [built]) == found
+
+
+def test_a_piece_with_a_value_is_found_in_its_own_file_and_not_in_a_later_one() -> None:
+    from manuscript_guard.build.reading import located, place
+
+    written = f"We saw {B}approx {{{{results.n}}}} of them."
+    built = f"We saw {B}approx 12 of them."
+    notes = f"A note.{N}{N}In maths, $n {B}approx 12$ holds."
+    sources = [("main.md", written), ("notes.md", notes)]
+
+    assert located(f"{B}approx 12", sources, [built, notes]) == (0, 1)
+    assert place(f"{B}approx 12", sources, [built, notes]) == " (main.md:1)"
+
+
+def test_looking_for_a_piece_takes_time_in_proportion(assert_linear) -> None:
+    """Each place the command stands is asked whether it can print the piece."""
+    from manuscript_guard.build.reading import located
+
+    def looked_for(text: str) -> object:
+        return located(f"{B}approx 12", [("main.md", text)], [text])
+
+    assert_linear(lambda n: f"A ${B}approx$ b. " * n, looked_for, 2000, "a command many times")
+    assert_linear(
+        lambda n: f"{B}approx " + "{{results.n}}" * n,
+        looked_for,
+        500,
+        "many bindings after a command",
+    )
+
+
+@needs_pandoc
+def test_the_line_is_the_bindings_and_not_that_of_a_copy_typed_below(
+    project: Path, capsys
+) -> None:
+    """The sentence as it was typed before its number was bound, kept in a comment further
+    down: the finding was put at the comment, and the line that loses the number was named
+    nowhere."""
+    line = write(project, HELD.replace("contained ", "contained " + B + "approx "))
+    source = main_md(project)
+    written = source.read_bytes().decode("utf-8")
+    kept = f"<!-- Before: the database contained {B}approx {count(project)} reports. -->"
+    source.write_bytes((written + N + kept + N).encode("utf-8"))
+
+    code, report = checked(project, capsys)
+
+    assert code == 1
+    [finding] = of(report, "tex-in-the-text")
+    assert finding["line"] == line
+    assert f"(main.md:{line})" in finding["message"]
 
 
 @needs_pandoc
@@ -574,7 +670,7 @@ def test_check_waits_ten_seconds_for_each_document() -> None:
     """Pandoc reads the example in a tenth of a second and its text two hundred times over,
     164,000 words, in two: ten is far past a manuscript of prose and short of a wait that
     looks like a hang. Tables are what come near it: forty of three hundred rows and eight
-    columns took pandoc four seconds, and ten with a phrase in each cell, 3.6 MB. A
+    columns took pandoc four seconds, and ten or more with a phrase in each cell, 3.6 MB. A
     supplement of that size is not judged here."""
     from manuscript_guard.build import tex_check
 

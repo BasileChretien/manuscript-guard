@@ -71,6 +71,8 @@ class Verdict:
     kind: str
     rule: str | None = None
     detail: str | None = None
+    #: The terms that accounted for the atom, where `rule` is `terms`.
+    terms: tuple[str, ...] = ()
 
     @property
     def accepted(self) -> bool:
@@ -125,9 +127,10 @@ class Classifier:
         """
         if verdict.rule and verdict.rule.startswith("project:"):
             return True
-        if verdict.rule == "terms" and verdict.detail:
-            used = {part.strip() for part in verdict.detail.split(",")}
-            return bool(used & self.project_terms)
+        if verdict.rule == "terms":
+            # The terms themselves, and not `detail` cut at its commas: a declared name
+            # that holds one, `1,3-BDG`, was a term and was counted for nobody.
+            return bool(set(verdict.terms) & self.project_terms)
         return False
 
     @classmethod
@@ -190,11 +193,11 @@ class Classifier:
         this file has already had several times.
         """
         matched = _terms_covering(atom.text, self.terms)
-        if matched is None and unsigned(atom.text) != atom.text:
+        if matched is None and (bare := unsigned(atom)) is not None:
             # `HbA~1c~` is `HbA1c` with a subscript, and `CO~2~` a declared `CO2`.
-            matched = _terms_covering(unsigned(atom.text), self.terms)
+            matched = _names_covering(bare, self.terms)
         if matched is not None:
-            return Verdict(TERM, rule="terms", detail=", ".join(matched))
+            return Verdict(TERM, rule="terms", detail=", ".join(matched), terms=tuple(matched))
         if scan is None:
             scan = self._scan_of(atom.source)
         for rule in self.structural:
@@ -440,20 +443,81 @@ def _scan(rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False) -
     return Scan(starts, reach)
 
 
-#: The signs pandoc prints a subscript and a superscript between: `HbA~1c~`, `Ca^2+^`.
-_SCRIPT_SIGNS = str.maketrans("", "", "~^")
+#: A subscript and a superscript as pandoc reads them: between two of the sign, with no
+#: space and no sign inside. `HbA~1c~`, `Ca^2+^`.
+_SUBSCRIPT = re.compile(r"~([^\s~]+)~")
+_SUPERSCRIPT = re.compile(r"\^([^\s^]+)\^")
+#: A word and, in a superscript, digits alone, with a sign before them or none: a
+#: citation's number typed by hand (`shown^12^`, `shown^3-5^`) or an exponent (`year^-1^`).
+#: Neither is a name. An ion's charge has its sign after the digit, `Ca^2+^`, and is one.
+_MARKED_WORD = re.compile(r"[^\W\d_]+\^[-+−]?\d[\d,–-]*\^")
 
 
-def unsigned(text: str) -> str:
-    """`text` with pandoc's subscript and superscript signs taken out, which is how a name
-    is matched against the terms: `HbA~1c~` as `HbA1c`, `CO~2~` as a declared `CO2`.
+def _with_its_closing_sign(atom: Atom) -> str:
+    """The atom's text with the `~` that closed its last subscript, where the tokenizer
+    took it off: an atom is cut at the punctuation round it, so `CO~2~` is `CO~2` there."""
+    closed = atom.text.count("~") % 2 and atom.source[atom.end : atom.end + 1] == "~"
+    return atom.text + "~" if closed else atom.text
 
-    An atom is cut at the punctuation round it, so `CO~2~` is `CO~2` here and its signs do
-    not pair: every one is taken out. No term matched it, built in or declared, and an
-    author had to declare `CO~2`, sign and all, or type the subscript character. A number
-    is no nearer a term for it: the terms still have to account for every digit, so
-    `HbA~1c~7.2` is reported for its 7.2 and `412~patients~` for its 412."""
-    return text.translate(_SCRIPT_SIGNS)
+
+def unsigned(atom: Atom) -> str | None:
+    """The atom's text with the signs of its subscripts and superscripts taken out, which
+    is how a name is matched against the terms: `HbA~1c~` as `HbA1c`, `CO~2~` as a declared
+    `CO2`. None where it holds neither.
+
+    No term matched `CO~2`, built in or declared, and an author had to declare it sign and
+    all, or type the subscript character.
+
+    A sign is one where pandoc reads one: closed by another, with no space between. A
+    tilde nothing closes is printed as a tilde and stands for "about" or for a range. The
+    first version took every sign out, and the number after such a tilde joined the
+    letters before it: `pH~2` was `ph2`, which holds the built-in term `h2`, so a pH, an
+    effect of `HR~2` and a rise of `increased~2-fold` were accepted as terms."""
+    text = _with_its_closing_sign(atom)
+    bare = _SUPERSCRIPT.sub(r"\1", _SUBSCRIPT.sub(r"\1", text))
+    return None if bare == text else bare
+
+
+def declarable(atom: Atom) -> str | None:
+    """The name to declare for an unbound atom, where it reads as a name written with a
+    subscript or a superscript: `CO2` for `CO~2~`. None where it reads as anything else.
+
+    A name opens with a letter and keeps its digits in its subscripts and superscripts.
+    A number beside it is a number (`HbA~1c~7.2`, `R^2^=0.85`), and so is one before it
+    (`412~patients~`). A word with digits alone in a superscript is a citation's number
+    or an exponent (`shown^12^`, `year^-1^`). Told how to declare any of these, an author
+    would have exempted the number."""
+    bare = unsigned(atom)
+    if bare is None or not bare[:1].isalpha():
+        return None
+    text = _with_its_closing_sign(atom)
+    if any(ch.isdigit() for ch in _SUPERSCRIPT.sub("", _SUBSCRIPT.sub("", text))):
+        return None
+    return None if _MARKED_WORD.fullmatch(text) else bare
+
+
+def _names_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:
+    """`_terms_covering` for a name read without its signs: a term counts only where it
+    opens a word, with no letter and no digit before it.
+
+    A term is found anywhere in an atom as it is written, and that stays. But taking the
+    signs out puts the digits of a superscript hard against the word before it, and
+    `risk^1^`, a citation's number, was `risk1`, which holds the term `k1`."""
+    rest = text.lower()
+    used: list[str] = []
+    for term in terms:
+        at = rest.find(term) if term else -1
+        found = False
+        while at != -1:
+            if at == 0 or not rest[at - 1].isalnum():
+                rest = rest[:at] + " " + rest[at + len(term) :]
+                found = True
+            at = rest.find(term, at + 1)
+        if found:
+            used.append(term)
+            if not any(ch.isdigit() for ch in rest):
+                return used
+    return None
 
 
 def _terms_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:

@@ -37,10 +37,12 @@ exemptions:
     grants: The atom is accepted anywhere it appears.
     abuse: tests/test_corruption.py::test_a_projects_own_allowlist_is_reported_not_silent
     note: >-
-      A name is matched with pandoc's subscript and superscript signs taken out, so a
-      declared `CO2` accepts `CO~2~` as well. The terms still have to account for every
+      A name is matched with the signs of its subscripts and superscripts taken out, so a
+      declared `CO2` accepts `CO~2~` as well. A sign is one only where another closes it,
+      and read so, a term has to open a word. The terms still have to account for every
       digit of the atom: tests/test_corruption.py::test_a_number_written_with_script_signs_is_still_reported
-      types a count hard against a name.
+      types a count hard against a name, a number after a tilde nothing closes (`pH~2`),
+      and a citation's number after a word that ends as a term does (`cancer^2^`).
 
   - id: unit-exponent
     why: An exponent on a unit, typed with pandoc's superscript signs, is typography as the superscript character is.

@@ -15,7 +15,7 @@ import json
 import re
 from pathlib import Path
 
-from manuscript_guard.classify import UNCLASSIFIED, Classifier, unsigned
+from manuscript_guard.classify import UNCLASSIFIED, Classifier, declarable
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.literature import Literature
 from manuscript_guard.contracts.project import Project
@@ -377,7 +377,7 @@ def _paper_yaml_prose(project: Project, classifier: Classifier) -> Report:
                         message=f"{atom.text!r} in paper.yaml `{key}` is not bound to any source",
                         path=project.root / "paper.yaml",
                         context=text[:160],
-                        hint=_how_to_declare(atom.text)
+                        hint=_how_to_declare(atom)
                         + "bind it or reword the title: the build writes this into the "
                         "document's front matter, where pandoc renders it",
                     )
@@ -685,17 +685,17 @@ _DURATION = re.compile(
 _PLAIN_NAME = re.compile(r"[\w+./-]+")
 
 
-def _how_to_declare(text: str) -> str:
-    """What to say first of `text`, an unbound atom, where it may be a name written with
-    pandoc's subscript or superscript signs: how to declare it. Empty where it is none.
+def _how_to_declare(atom) -> str:
+    """What to say first of an unbound atom where it reads as a name written with a
+    subscript or a superscript (`classify.declarable`): how to declare it. Empty where it
+    reads as anything else.
 
     A name is matched against the terms with its signs taken out, so that is how it is
     declared, and `CO~2~` reported without a word of it left the author to find out that
-    `terms: ['CO~2']` worked. What opens with a digit is no name: `412~patients~`, told
-    the same, would have had a count declared a term.
+    `terms: ['CO~2']` worked.
     """
-    name = unsigned(text)
-    if name == text or not name[:1].isalpha():
+    name = declarable(atom)
+    if name is None:
         return ""
     shown = name if _PLAIN_NAME.fullmatch(name) else json.dumps(name, ensure_ascii=False)
     return (
@@ -713,7 +713,7 @@ def _hint_for(atom) -> str:
     and design parameters are the two that come up in every observational paper, and both
     have a specific answer. So has a name written with a subscript: how it is declared.
     """
-    declare = _how_to_declare(atom.text)
+    declare = _how_to_declare(atom)
     if declare:
         return declare + _GENERIC_HINT
     window = atom.window

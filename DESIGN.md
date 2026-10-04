@@ -3582,26 +3582,43 @@ Added by the adversarial review, verified and **not** fixed:
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did
   not cover `CO~2~`, and `kg/m^2^` was reported where `kg/m²` never was. What passed was
   `terms: ['CO~2']`, sign and all, or the character itself (found 2026-10-04). Now a
-  name is matched against the terms, built in and declared, with
-  its `~` and `^` taken out, and the hint of a name that is not declared says how to
-  declare it, `terms: [CO2]`. And an exponent on a unit is read as the superscript
-  character is, as typography: one digit, with a sign or none, between carets directly
-  after one to three letters, which takes in `m^2^`, `mm^3^`, `s^-1^`, `R^2^` and `χ^2^`.
-  `10^6^` stays a number, as `10⁶` does by its `10`. There is no list of formulae or of
-  units: the terms are the list for names, and the shape is the rule for exponents
-  (Basile, 2026-10-04).
+  name is matched against the terms, built in and declared, with the signs of its
+  subscripts and superscripts taken out, and the hint of a name that is not declared
+  says how to declare it, `terms: [CO2]`. And an exponent on a unit is read as the
+  superscript character is, as typography: one digit, with a sign or none, between
+  carets directly after one to three letters, which takes in `m^2^`, `mm^3^`, `s^-1^`,
+  `R^2^` and `χ^2^`, and the letter in italics, `*R*^2^`. `10^6^` stays a number, as
+  `10⁶` does by its `10`. There is no list of formulae or of units: the terms are the
+  list for names, and the shape is the rule for exponents (Basile, 2026-10-04).
+  A sign is one where pandoc reads one: closed by another, with no space between. A
+  tilde nothing closes is printed as a tilde, and stands for "about" or for a range. The
+  first version took every `~` and `^` out, and the number after such a tilde joined the
+  letters before it: `pH~2` was `ph2`, which holds the built-in term `h2`, and a pH, an
+  effect of `HR~2`, a rise of `increased~2-fold` and the end of `1 week~2 weeks` passed
+  `check` and the build (found by the review of the change). And read without its signs,
+  a name is matched only by terms that open a word: `risk^1^`, a citation's number, was
+  `risk1`, which holds the term `k1`.
   Where it stops. The terms have to account for every digit, as before, so a count typed
   hard against a name (`HbA~1c~7.2`), between the signs (`^412^`) or before a subscript
-  (`412~patients~`) is reported, and the hint of an atom that opens with a digit says
-  nothing of terms. A term is still found anywhere in an atom, so `H~2~O` is accepted by
-  the built-in `h2`, as `H2O` was. An exponent of two digits or more, and one on a word of
-  four letters or more, is a number: `year^-1^` and `mmHg^-1^` are reported, and are typed
-  with the superscript characters or declared. That is narrower than what is read for the
-  characters themselves, on purpose: `shown^12^` is a citation's number typed by hand, and
-  the caret is how it is typed. One digit after a word of one to three letters that is no
-  unit, `it^2^`, is not read, as `it²` is not. The conventions still read the text with
-  its signs in: an ordinal typed `2^nd^` matches no rule. Listed in
-  `tests/data/exemptions.yaml` as `unit-exponent`, with the test that types a count in
+  (`412~patients~`) is reported. The hint says how to declare a term only of what reads
+  as a name: it opens with a letter, its digits are all in its subscripts and
+  superscripts, and it is no word with digits alone in a superscript (`shown^12^`,
+  `year^-1^`). A term is still found anywhere in an atom as it is written, so `H2O` is
+  accepted by the built-in `h2`, as before, and so is `H~2~O`, where `h2` opens the word.
+  A symbol with a subscript that makes a term is that term: `b~1~`, `d~2~`, `k~2~`. An
+  exponent of two digits or more, and one on a word of four letters or more, is a number:
+  `year^-1^` and `mmHg^-1^` are reported, and are typed with the superscript characters or
+  declared. That is narrower than what is read for the characters themselves, on purpose:
+  `shown^12^` is a citation's number typed by hand, and the caret is how it is typed. One
+  digit after a word of one to three letters that is no unit, `it^2^`, `OR^3^`, `mg^7^`,
+  is not read, as `it²` is not: a citation's number typed there is missed. The
+  conventions still read the text with its signs in: `75th percentile` is a convention
+  and `75^th^ percentile` is none, and under Methods `I² > 50%` is one where `I^2^ > 50%`
+  leaves the 50% reported. Both allowances hold wherever the tokenizer and the classifier
+  are used, and not only in a manuscript's text: in a figure's text, in `audit` and in a
+  string value the analysis emits, where `^` and `~` are only characters, `m^2^` is no
+  number either and a declared `CO2` covers `CO~2~`. Listed in
+  `tests/data/exemptions.yaml` as `unit-exponent`, with the test that types a number in
   each of those shapes.
 - **`conventions:` and `terms:` in `paper.yaml` are self-service.** A pattern of `\d+` with a
   `why` of "house style" disables G2, and `terms:` needs no justification at all. The gate

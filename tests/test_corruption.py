@@ -8905,32 +8905,47 @@ def test_import_takes_back_a_document_built_before_tex_in_the_text_was_refused(
 # A number written with pandoc's subscript and superscript signs
 # --------------------------------------------------------------------------------------
 
-#: The example's first bound number typed by hand, in each shape the signs allow. A name is
-#: matched against the terms with its `~` and `^` taken out, and an exponent on a unit is
-#: read as `m²` is, as typography: neither may take a number with it.
+#: A number typed by hand in each shape the signs allow, and the atom G2 reports for it:
+#: the example's first bound count, and small numbers, which are the ones that can pass
+#: for an exponent or complete a term. A name is matched against the terms with the signs
+#: of its subscripts and superscripts taken out, and an exponent on a unit is read as `m²`
+#: is, as typography: neither may take a number with it.
 _TYPED_WITH_SIGNS = {
-    "between the signs of a superscript": "^{n}^ reports",
-    "with a subscript after it": "{n}~total~ reports",
-    "as an exponent on a letter": "n^{n}^ reports",
-    "as an exponent on a unit": "m^{n}^ reports",
-    "hard against a built-in name": "HbA~1c~{n} reports",
-    "as a power of ten": "4 × 10^3^ reports",
+    "between the signs of a superscript": ("^{n}^ reports", "^{n}^"),
+    "with a subscript after it": ("{n}~total~ reports", "{n}~total"),
+    "as an exponent on a letter": ("n^{n}^ reports", "n^{n}^"),
+    "as an exponent on a unit": ("m^{n}^ reports", "m^{n}^"),
+    "hard against a built-in name": ("HbA~1c~{n} reports", "HbA~1c~{n}"),
+    "as a power of ten": ("4 × 10^3^ reports", "10^3^"),
+    # The bounds of the exponent: one digit, on a word that is longer than a unit.
+    "one digit on a word of four letters": ("reports in year^3^", "year^3^"),
+    "one digit on a longer word": ("reports in period^3^", "period^3^"),
+    "two digits on a unit": ("reports per m^25^", "m^25^"),
+    # A number after a tilde nothing closes, hard against a word that ends as a built-in
+    # term does: `ph2` holds `h2`, `hr2` holds `r2`, `increased2` holds `d2`.
+    "an effect after a tilde": ("reports at about HR~2", "HR~2"),
+    "a pH after a tilde": ("reports at pH~2", "pH~2"),
+    "a fold change after a tilde": ("reports, increased~2-fold", "increased~2-fold"),
+    "the upper end of a range": ("reports in 1 week~2 weeks", "week~2"),
+    # The same where the letter before the tilde is the whole of the term's: `h2`.
+    "the upper end of a range in hours": ("reports with a lag of 1 h~2 h", "h~2"),
+    # A citation's number after a word that ends as a built-in term does.
+    "a citation's number in a superscript": ("reports of cancer^2^", "cancer^2^"),
 }
 
 
 @pytest.mark.parametrize("case", list(_TYPED_WITH_SIGNS))
 def test_a_number_written_with_script_signs_is_still_reported(project: Path, case: str) -> None:
-    """`HbA~1c~` is matched as `HbA1c` and `kg/m^2^` is read as `kg/m²`. A count typed by
+    """`HbA~1c~` is matched as `HbA1c` and `kg/m^2^` is read as `kg/m²`. A number typed by
     hand in the same signs is an unbound number like any other."""
     count = load_namespace(load_project(project)[0])[0]["results.cohort.n_reports"].display
-    typed = _TYPED_WITH_SIGNS[case].format(n=count)
+    typed, atom = (part.format(n=count) for part in _TYPED_WITH_SIGNS[case])
     _results_with(project, _HELD.replace("{{results.cohort.n_reports}} reports", typed))
 
     report = gate_report(project)
 
     assert not report.ok
-    wanted = "10^3^" if "10^3^" in typed else count
     assert any(
-        failure.code == "unclassified-number" and wanted in failure.message
+        failure.code == "unclassified-number" and failure.message.startswith(f"{atom!r} ")
         for failure in report.failures
     ), [failure.message for failure in report.failures]

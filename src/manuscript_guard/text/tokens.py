@@ -26,11 +26,12 @@ DIGIT = re.compile(f"[\\d{_FRACTIONS}{_ENCLOSED}]")
 # The same exponent as pandoc is told to print it, `m^2^`, `mm^3^`, `s^-1^`, and on the
 # letter of a statistic, `R^2^`. It was a number: every square metre typed with the signs
 # was reported, where `m²` never was. It is read as the character is, and narrowly: one
-# digit, with a sign or none, between carets directly after a run of one to three letters.
+# digit, with a sign or none, between carets directly after a run of one to three letters,
+# which may be in italics as journals set a statistic's letter, `*R*^2^`.
 # A power of ten stands after a digit and stays a number, as `10⁶` does by its `10`. More
 # than one digit stays one, and so does an exponent on a longer word: `shown^12^` is a
 # citation's number typed by hand, and `n^412^` a count.
-_UNIT_EXPONENT = re.compile(r"((?<![^\W\d_])[^\W\d_]{1,3})\^[-+−]?\d\^")
+_UNIT_EXPONENT = re.compile(r"((?<![^\W\d_])[^\W\d_]{1,3}[*_]{0,3})\^[-+−]?\d\^")
 # An atom is bounded by whitespace *or* by a masked region. Both boundaries matter, and the
 # second one is easy to get wrong: `mask()` preserves offsets by writing NUL, which is not
 # whitespace, so a run of `\S+` reaches straight through a mask boundary. Written that way,

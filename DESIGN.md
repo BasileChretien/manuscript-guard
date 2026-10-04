@@ -3542,9 +3542,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   so many mappings merging one long list cost the one times the other. Since the abstract
   and the title are taken from the one composing, the search runs on every block that is
   composed, a block in the body included, where `main` only composed those. A block built
-  for it, 2,400 mappings merging one list of 24,000 items, 148 KB, takes 18 seconds in the
-  body, against 1.6 before, and as long in the header, against 13. Nothing fails, and no
-  manuscript has such a block. Going through a merged list once was tried in #168 and
+  for it, 2,400 mappings merging one list of 24,000 items, 148 KB, takes 13 to 18 seconds
+  in the body, against 1 to 2 before, about twelve times as long, and the same in the
+  header, against 8 to 13. The lower figures are from a quiet machine and the higher from
+  one running other suites. Nothing fails, and no manuscript has such a block. Going through a merged list once was tried in #168 and
   taken back: marked when the mapping that merged it was read, a list was passed over by a
   mapping reached first, under an earlier merge key, the search took a later mapping's
   abstract, and an abstract pandoc prints went unrefused by `check` and the build. The

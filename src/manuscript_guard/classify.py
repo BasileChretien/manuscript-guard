@@ -447,10 +447,11 @@ def _scan(rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False) -
 #: space and no sign inside. `HbA~1c~`, `Ca^2+^`.
 _SUBSCRIPT = re.compile(r"~([^\s~]+)~")
 _SUPERSCRIPT = re.compile(r"\^([^\s^]+)\^")
-#: A word and, in a superscript, digits alone, with a sign before them or none: a
-#: citation's number typed by hand (`shown^12^`, `shown^3-5^`) or an exponent (`year^-1^`).
-#: Neither is a name. An ion's charge has its sign after the digit, `Ca^2+^`, and is one.
-_MARKED_WORD = re.compile(r"[^\W\d_]+\^[-+−]?\d[\d,–-]*\^")
+#: Digits alone in a superscript, with a sign before them or none: a citation's number
+#: typed by hand (`shown^12^`, `shown^3-5^`) or an exponent (`year^-1^`), and no part of a
+#: name. An ion's charge has its sign after the digit, `Ca^2+^`, and an isotope's mass a
+#: letter, `^99m^Tc`: each is part of one.
+_DIGITS_ALONE = re.compile(r"[-+−]?\d[\d,–-]*")
 
 
 def _with_its_closing_sign(atom: Atom) -> str:
@@ -458,6 +459,19 @@ def _with_its_closing_sign(atom: Atom) -> str:
     took it off: an atom is cut at the punctuation round it, so `CO~2~` is `CO~2` there."""
     closed = atom.text.count("~") % 2 and atom.source[atom.end : atom.end + 1] == "~"
     return atom.text + "~" if closed else atom.text
+
+
+def _without_scripts(text: str, *, keep: bool) -> str:
+    """`text` without the signs of the subscripts and superscripts that can be part of a
+    name, and with what they hold (`keep`) or without it. Digits alone in a superscript
+    are left as they stand, signs and all."""
+
+    def superscript(found: re.Match[str]) -> str:
+        if _DIGITS_ALONE.fullmatch(found[1]):
+            return found[0]
+        return found[1] if keep else ""
+
+    return _SUPERSCRIPT.sub(superscript, _SUBSCRIPT.sub(r"\1" if keep else "", text))
 
 
 def unsigned(atom: Atom) -> str | None:
@@ -472,9 +486,13 @@ def unsigned(atom: Atom) -> str | None:
     tilde nothing closes is printed as a tilde and stands for "about" or for a range. The
     first version took every sign out, and the number after such a tilde joined the
     letters before it: `pH~2` was `ph2`, which holds the built-in term `h2`, so a pH, an
-    effect of `HR~2` and a rise of `increased~2-fold` were accepted as terms."""
+    effect of `HR~2` and a rise of `increased~2-fold` were accepted as terms.
+
+    And digits alone in a superscript stay as they are written. Taken for part of a name,
+    a citation's number after a word that is the whole of a term's letters made the term:
+    `hepatitis B^12^` passed as vitamin B12, and `CD^19^` as CD19."""
     text = _with_its_closing_sign(atom)
-    bare = _SUPERSCRIPT.sub(r"\1", _SUBSCRIPT.sub(r"\1", text))
+    bare = _without_scripts(text, keep=True)
     return None if bare == text else bare
 
 
@@ -484,36 +502,45 @@ def declarable(atom: Atom) -> str | None:
 
     A name opens with a letter and keeps its digits in its subscripts and superscripts.
     A number beside it is a number (`HbA~1c~7.2`, `R^2^=0.85`), and so is one before it
-    (`412~patients~`). A word with digits alone in a superscript is a citation's number
-    or an exponent (`shown^12^`, `year^-1^`). Told how to declare any of these, an author
-    would have exempted the number."""
+    (`412~patients~`). Digits alone in a superscript are a citation's number or an
+    exponent (`shown^12^`, `year^-1^`, `CO~2~^3^`). Told how to declare any of these, an
+    author would have exempted the number."""
     bare = unsigned(atom)
     if bare is None or not bare[:1].isalpha():
         return None
-    text = _with_its_closing_sign(atom)
-    if any(ch.isdigit() for ch in _SUPERSCRIPT.sub("", _SUBSCRIPT.sub("", text))):
-        return None
-    return None if _MARKED_WORD.fullmatch(text) else bare
+    outside = _without_scripts(_with_its_closing_sign(atom), keep=False)
+    return None if any(ch.isdigit() for ch in outside) else bare
 
 
 def _names_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:
     """`_terms_covering` for a name read without its signs: a term counts only where it
-    opens a word, with no letter and no digit before it.
+    opens a word, with no letter and no digit before it, or stands directly after the
+    same term.
 
     A term is found anywhere in an atom as it is written, and that stays. But taking the
     signs out puts the digits of a superscript hard against the word before it, and
-    `risk^1^`, a citation's number, was `risk1`, which holds the term `k1`."""
+    `risk^1^`, a citation's number, was `risk1`, which holds the term `k1`.
+
+    The text is made anew once for each term that is found, and not once for each place
+    it stands: one atom of `h~2~/` 160,000 times over took seven seconds."""
     rest = text.lower()
     used: list[str] = []
     for term in terms:
         at = rest.find(term) if term else -1
-        found = False
+        if at == -1:
+            continue
+        kept: list[str] = []
+        cut = 0
         while at != -1:
-            if at == 0 or not rest[at - 1].isalnum():
-                rest = rest[:at] + " " + rest[at + len(term) :]
-                found = True
-            at = rest.find(term, at + 1)
-        if found:
+            # `cut` is where the text opens, and then where the term last found ended.
+            if at == cut or not rest[at - 1].isalnum():
+                kept += (rest[cut:at], " ")
+                cut = at + len(term)
+                at = rest.find(term, cut)
+            else:
+                at = rest.find(term, at + 1)
+        if kept:
+            rest = "".join((*kept, rest[cut:]))
             used.append(term)
             if not any(ch.isdigit() for ch in rest):
                 return used

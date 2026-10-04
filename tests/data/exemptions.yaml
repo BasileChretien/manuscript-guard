@@ -46,13 +46,13 @@ exemptions:
 
   - id: unit-exponent
     why: An exponent on a unit, typed with pandoc's superscript signs, is typography as the superscript character is.
-    grants: One digit, with a sign or none, between carets directly after one to three letters is not read as a number.
+    grants: One digit, with a sign or none, between carets directly after one to three letters, in italics or not, is not read as a number.
     abuse: tests/test_corruption.py::test_a_number_written_with_script_signs_is_still_reported
     note: >-
       Nothing is declared: the shape is the claim. A count of more than one digit, a power
       of ten and an exponent on a longer word are still numbers. One digit after a word of
-      one to three letters that is no unit, a citation's number typed as `it^2^`, is not
-      read, as `it` with the superscript character is not.
+      one to three letters that is no unit, a citation's number typed as `it^2^` or as
+      `*et al*^3^`, is not read, as `it` with the superscript character is not.
 
   - id: value-label
     why: A string value is a name or a period rather than a measurement.

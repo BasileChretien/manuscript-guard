@@ -73,6 +73,8 @@ NAMES = {
     ),
     "a built-in name in emphasis and in brackets": ("**HbA~1c~** (*HbA~1c~*) was used.", ()),
     "a symbol with a subscript that is a term": ("Vitamin B~12~ was given.", ()),
+    "a term twice with a sign between": ("A ratio H~2~/H~2~ and B~12~-B~12~.", ()),
+    "a term twice with nothing between": ("A dimer H~2~H~2~ was seen.", ()),
 }
 
 
@@ -131,6 +133,24 @@ NOT_NAMES = {
         ["nivolumab^6^", "pembrolizumab^12^"],
     ),
     "a subscript after a word a term ends": ("At week~2~ and month~2~.", (), ["week~2", "month~2"]),
+    # Digits alone in a superscript are a citation's number or an exponent, and no part of
+    # a name: after a word that is the whole of a term's letters they made the term, and
+    # `hepatitis B^12^` passed as vitamin B12.
+    "a citation's number after a word that is a term's letters": (
+        "In hepatitis B^12^, in CD^19^ cells and in BRCA^1^ carriers.",
+        (),
+        ["B^12^", "CD^19^", "BRCA^1^"],
+    ),
+    "the same after a built-in name and a logarithm": (
+        "A PaCO^2^ and a log^10^ scale.",
+        (),
+        ["PaCO^2^", "log^10^"],
+    ),
+    "a citation's number after a name with a subscript": (
+        "End-tidal CO~2~^3^ was recorded.",
+        ("CO2",),
+        ["CO~2~^3^"],
+    ),
     "a declared name inside a longer word": ("A preCO~2~ reading.", ("CO2",), ["preCO~2"]),
 }
 
@@ -218,6 +238,21 @@ def test_a_number_written_with_the_signs_is_still_one(case: str) -> None:
     text, found = NUMBERS[case]
     assert atoms(text) == found
     assert unbound(text) == found
+
+
+def test_a_long_atom_of_names_takes_time_in_proportion(assert_linear) -> None:
+    """A term that opens a word many times in one atom was taken out one occurrence at a
+    time, each making the text anew: 800,000 characters of `h~2~/` took seven seconds."""
+    classifier = Classifier.load()
+
+    def judged(text: str) -> list[str]:
+        return [classifier.classify(atom).kind for atom in find_atoms(text, mask(text))]
+
+    assert judged("h~2~/" * 50) == ["term"]
+    assert_linear(lambda n: "h~2~/" * n, judged, 2000, "one term many times in an atom")
+    assert_linear(
+        lambda n: "PaO~2~/FiO~2~/" * n, judged, 1000, "two terms many times in an atom"
+    )
 
 
 def test_many_exponents_on_one_line_take_time_in_proportion(assert_linear) -> None:
@@ -317,6 +352,8 @@ DECLARED_AS = {
     "As shown^12^ before.": None,
     "A rate in year^-1^.": None,
     "Dissolution at pH~2 was tested.": None,
+    "End-tidal CO~2~^3^ was recorded.": None,
+    "In hepatitis B^12^ it rose.": None,
 }
 
 

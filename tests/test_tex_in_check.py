@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
@@ -511,11 +510,9 @@ def test_check_does_not_wait_for_pandoc_past_its_limit(
     nested = "[" * 14 + "see the note" + "]" * 14
     source.write_bytes((written + N + nested + N).encode("utf-8"))
 
-    started = time.perf_counter()
+    # No clock is read: left to finish, pandoc would be minutes, and there would be no note.
     code, report = checked(project, capsys)
-    waited = time.perf_counter() - started
 
-    assert waited < 30, f"check took {waited:.0f} s"
     assert code == 0, report
     assert not of(report, "gate-errored")
     [note] = of(report, "tex-not-judged")

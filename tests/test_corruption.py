@@ -8425,6 +8425,16 @@ def test_pandoc_takes_from_each_header_the_title_the_table_says() -> None:
     assert differently == ALIKE_TO_PANDOC
 
 
+def _forget_headers() -> None:
+    """Empty the caches of what was read from headers, so that a test of the reading is
+    not answered from an earlier one, its own in a rerun included."""
+    from manuscript_guard.text import masking
+
+    for cached in vars(masking).values():
+        if callable(getattr(cached, "cache_clear", None)):
+            cached.cache_clear()
+
+
 def test_a_header_is_composed_once_for_its_place_its_abstract_and_its_title(monkeypatch) -> None:
     """Composing is the slow part, and each further one is a further place to fail: a
     second one can raise where the first did not, being further down the stack. The
@@ -8432,6 +8442,7 @@ def test_a_header_is_composed_once_for_its_place_its_abstract_and_its_title(monk
     from manuscript_guard.build.assemble import strip_front_matter
     from manuscript_guard.text import masking
 
+    _forget_headers()
     calls = []
     composing = yaml.compose_all
 
@@ -8442,7 +8453,6 @@ def test_a_header_is_composed_once_for_its_place_its_abstract_and_its_title(monk
         return composing(*args, **kwargs)
 
     monkeypatch.setattr(yaml, "compose_all", once)
-    # A header no other test reads, so that nothing here is answered from a cache.
     text = "---\ntitle: Composed once for the title\nabstract: An abstract.\n---\n\nText.\n"
     assert masking.FRONTMATTER.match(text) is not None
     assert masking.front_matter_problem(text) is None
@@ -8461,12 +8471,34 @@ def test_a_header_too_deep_to_compose_declares_nothing_and_stays_in_the_body(mon
     def too_deep(*args, **kwargs):
         raise RecursionError("maximum recursion depth exceeded")
 
+    _forget_headers()
     monkeypatch.setattr(yaml, "compose_all", too_deep)
     text = "---\ntitle: Too deep to compose\nabstract: An abstract.\n---\n\nText.\n"
     assert masking.FRONTMATTER.match(text) is None
     assert masking.front_matter_abstract(text) is None
     assert masking.front_matter_title(text) is None
     assert strip_front_matter(text) == (text, "")
+
+
+def test_mappings_merging_one_long_list_are_searched_in_linear_time(assert_linear) -> None:
+    """The abstract and the title are looked for in every block that is composed, blocks
+    in the body included, and the search follows merge keys. Each mapping that merged a
+    list pushed every item of it again: 2,400 mappings merging one list of 24,000 items,
+    148 KB, took 18 seconds in the body where composing takes under two (the review of
+    #168). A merged list is gone through once."""
+    from manuscript_guard.text import masking
+
+    def block(mappings: int) -> str:
+        items = ", ".join(["x"] * (mappings * 10))
+        merging = [f"m{n}: &m{n} {{<<: *big}}" for n in range(mappings)]
+        merged = ", ".join(f"*m{n}" for n in range(mappings))
+        return "\n".join([f"big: &big [{items}]", *merging, f"<<: [{merged}]"]) + "\n"
+
+    def read(yaml_text: str) -> None:
+        # Not from the cache: the same block is timed several times.
+        assert masking._composed.__wrapped__(yaml_text)[:3] == (True, "", 0)
+
+    assert_linear(block, read, 300, "a block of mappings that merge one list, by mapping")
 
 
 def _nested_header(depth: int) -> str:
@@ -8493,23 +8525,20 @@ def test_a_header_nested_as_deep_as_it_can_be_composed_ends_nothing_in_a_traceba
     second time for its title, one call further down, a header the first composing had
     just managed raised `RecursionError` out of `strip_front_matter`, and `import` ended
     in a traceback where main answered (the review of #168)."""
-    from manuscript_guard.text import masking
-
     raised, stripped, left = [], [], []
     for depth in range(440, 500):
-        for cached in vars(masking).values():
-            if callable(getattr(cached, "cache_clear", None)):
-                cached.cache_clear()
+        _forget_headers()
         try:
             body, _title = _stripped_from(frames, _nested_header(depth))
         except RecursionError:
             raised.append(depth)
             continue
         (stripped if body == "Text.\n" else left).append(depth)
-    # Where the limit falls is the interpreter's and the caller's: on this machine the
-    # range holds both sides of it. The two tests above hold the same with no limit to find.
-    assert stripped or left
     assert raised == [], f"RecursionError at nesting {raised}"
+    # Where the limit falls is the interpreter's and the caller's. The two tests above hold
+    # the same with no limit to find; this one says so when it has found none.
+    if not (stripped and left):
+        pytest.skip("Python's recursion limit falls outside the nestings tried here")
 
 
 def test_the_warning_of_two_titles_names_the_line_of_the_header_s_title(tmp_path: Path) -> None:

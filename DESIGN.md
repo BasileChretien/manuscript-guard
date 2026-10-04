@@ -3791,7 +3791,11 @@ Closed since, and why each mattered:
   The abstract had a second composing of its own, and the title was at first read from
   that: a header nested just as deep as the first composing could take, about 480 levels,
   then raised `RecursionError` out of the second, one call further down the stack, and
-  `import` ended in a traceback where it had answered (the review of #168). The two
+  `import` ended in a traceback where it had answered (the review of #168). The search
+  for a merged abstract or title runs on every block that is composed now, a block in the
+  body included, so it goes through a merged list once: pushed again by each mapping that
+  merged it, a list of 24,000 items merged by 2,400 mappings took 18 seconds where
+  composing takes under two. The two
   titles are compared with their spaces, tabs and line breaks folded, and the warning
   names the line of the header's title. Pandoc is asked for the title it keeps from each header of the
   table that holds this (`AS_YAML_READS_IT` in `tests/test_corruption.py`), and agrees on

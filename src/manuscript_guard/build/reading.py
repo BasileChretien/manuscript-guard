@@ -455,80 +455,49 @@ def located(
 
     The line was counted in the text as built, where the front matter is taken off and the
     tables are put in: the example's Results sentence was named four lines above where it
-    stands. So the piece is looked for in the files, by its first line, and it is often in
-    none as it was read: the number after `\\approx` is a value put in. What is looked for
-    is the first place its command stands, below the file's own header, which the build
-    takes off, where the text can print the piece: as it is typed, or with each binding
-    standing for whatever its value holds (`_prints`). Where no file can print it and the
-    text as built holds it, a value or a table put it there, and the line is None. Failing
-    that it is looked for by its command alone, which finds a macro's expansion at its
-    definition. None where nothing holds it.
+    stands. What is looked for is the piece's first line, and failing that its command,
+    since the piece itself is often in no source: the number after `\\approx` is a value
+    put in, and pandoc takes the `> ` off each line of a quotation. Where only the text as
+    built holds it, a value or a table put it there, and the line is None. None where
+    nothing holds it, which is what a macro makes.
 
-    Three ways of looking each named a wrong line. By the command alone, `\\approx` before
-    a bound number was found at a `$\\approx$` further up, which is right as it is
-    written. By counting the command in the text as built and taking as many in the file,
-    a value or a table above the piece that holds the command put the count one out. And
-    by the piece as it was read, before anything else, a piece with a value of its own was
-    found at any text typed below it that begins as it prints: the sentence kept in a
-    comment when its number was bound, the same in maths, a longer number.
+    The text as built is looked in first, since it holds the piece as pandoc read it, with
+    its value: the piece's command is then the one in the file that as many of the same
+    command stand before, below the file's own header, which the build takes off. Looked
+    for by its command alone, `\\approx` before a bound number was found at a `$\\approx$`
+    further up, which is right as it is written, and the author was sent there.
 
     It is where the text stands, and pandoc may have read it as TeX further down: the same
-    piece in maths, in a code span or in a comment above is found first. A binding can
-    print anything, so a piece that only a value or a table makes is named at a binding of
-    the same command further down, where there is one."""
+    piece in maths or in a code span above is found first, and a macro's expansion is
+    found in its definition."""
     first = raw.strip().split("\n", 1)[0].strip()
     if not first:
         return None
     command = _COMMAND.match(first)
     key = command[0] if command else first
-    for index, (_name, source) in enumerate(sources):
-        at = source.find(key, front_matter_end(source))
-        while at != -1:
-            if _prints(source, at, first):
-                return index, source.count(chr(10), 0, at) + 1
-            at = source.find(key, at + 1)
-    for index, (_source, text) in enumerate(zip(sources, built, strict=True)):
-        if first in text:
-            return index, None
-    for index, (_name, source) in enumerate(sources):
-        at = source.find(key)
-        if at != -1:
-            return index, source.count(chr(10), 0, at) + 1
+    for index, ((_name, source), text) in enumerate(zip(sources, built, strict=True)):
+        at = text.find(first)
+        if at == -1:
+            continue
+        found = _nth(source, key, text.count(key, 0, at), front_matter_end(source))
+        return index, None if found is None else source.count(chr(10), 0, found) + 1
+    for wanted in dict.fromkeys((first, key)):
+        for index, (_name, text) in enumerate(sources):
+            at = text.find(wanted)
+            if at != -1:
+                return index, text.count(chr(10), 0, at) + 1
     return None
 
 
-def _prints(source: str, at: int, piece: str) -> bool:
-    """Can the text of `source` from `at` on print `piece`, each binding in it standing
-    for any text on its line, an empty one too?
-
-    `here` holds each place in `source` that the next character of the piece may stand
-    at, and `values` those of them that stand directly after a binding, whose value may
-    still be going on and so takes any character."""
-    here: set[int] = set()
-    values: set[int] = set()
-
-    def reach(places: set[int]) -> None:
-        waiting = list(places)
-        while waiting:
-            place = waiting.pop()
-            if place in here:
-                continue
-            here.add(place)
-            binding = PLACEHOLDER.match(source, place)
-            if binding is not None:
-                values.add(binding.end())
-                waiting.append(binding.end())
-
-    reach({at})
-    for character in piece:
-        after = {place + 1 for place in here if source.startswith(character, place)}
-        after |= values if character != "\n" else set()
-        here = set()
-        values &= after
-        reach(after)
-        if not here:
-            return False
-    return True
+def _nth(text: str, wanted: str, others: int, start: int) -> int | None:
+    """Where `wanted` stands in `text` from `start` on, after `others` occurrences of it
+    that do not overlap; None where there are not so many."""
+    at = text.find(wanted, start)
+    for _ in range(others):
+        if at == -1:
+            break
+        at = text.find(wanted, at + len(wanted))
+    return None if at == -1 else at
 
 
 def place(raw: str, sources: list[tuple[str, str]], built: list[str]) -> str:

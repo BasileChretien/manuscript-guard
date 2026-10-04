@@ -4840,21 +4840,30 @@ Closed since, and why each mattered:
   `\newcommand` can be, is told what any TeX is told. A macro that leaves out the text it is given and comes to a layout command
   or to a definition, `\newcommand{\brk}[1]{\newpage}` and `\brk{412}`, which
   is warned of or passed, and loses the 412. The place named, which is not always
-  where pandoc read the piece as TeX. It is the first place in the files where the
-  piece's command stands, below the file's own header, and the text can print the
-  piece: as it is typed, or with each binding standing for whatever its value holds.
-  So `\approx` before a bound number is found where it stands, and not at a `$\approx$`
-  further up, where the first version sent the author, nor at the same sentence kept in
-  a comment further down, where the third did; the second counted the command in the
-  text as built, and a value or a table above the piece that holds the command put the
-  count one out. But a piece that reads the same as text in maths, in a code span or in
-  a comment above it, a bare `\gamma` under a `$\gamma$`, is found at the first; a
-  binding can print anything, so a piece that only a value or a table makes is named
-  at a binding of the same command further down, where there is one; and a macro's
+  where pandoc read the piece as TeX. The piece is looked for in the text as built,
+  where it stands with its value, and the line is that of the same occurrence of its
+  command in the file: `\approx` before a bound number is found where it stands, and
+  not at a `$\approx$` further up, where the first version sent the author. But a
+  piece that reads the same as text in maths or in a code span above it, a bare
+  `\gamma` under a `$\gamma$`, is found at the first; a command the file's own header
+  holds, which the build takes off, is counted from below the header; and a macro's
   expansion is found in its definition. TeX that only the
-  text as built holds, and no place in a file can print, is said to be put there by a
-  value or a table, with the file's
-  name and no line. And G2, which reads the sources and holds every digit to being
+  text as built holds is said to be put there by a value or a table, with the file's
+  name and no line, where the file types that command nowhere. And the count is taken
+  in the text as built and applied to the file, so a value or an emitted table that
+  holds the piece's command, above the piece, puts it one out: a piece typed in the
+  file is then found at the next of its command or said to be put there by a value,
+  and a piece that only the table makes is named at a typed piece of the same command.
+  That takes TeX in an emitted value, which is a finding of its own. Two other ways of
+  looking were tried to close it, and each named a wrong line for the usual piece, a
+  command before a bound number (found by the review of each): looking for the piece
+  as it was read before anything else, which found it at any text typed below that
+  begins as it prints, the sentence kept in a comment when its number was bound; and
+  taking the first place in the file that can print the piece, a binding printing
+  anything, which found every piece of a command at the first binding of that command.
+  What would be exact is a record, made where the values are put in, of where each
+  part of the text as built stands in its file, and there is none.
+  And G2, which reads the sources and holds every digit to being
   bound, fails `\vspace{1em}` and the `[2]` of a definition with two arguments from
   `drafting` on, as it did before, so a length with a digit in it is warned of only
   before that stage or under `--skip-checks`.

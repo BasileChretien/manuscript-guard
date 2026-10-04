@@ -122,6 +122,11 @@ def check_overhead(project: Path, plain: Path) -> float:
 
 # ---------------------------------------------------------------- pathological text
 
+#: The body whose `check` waits out the limit `check` really gives pandoc: pandoc takes
+#: about three times as long for each level of brackets nested in brackets, and does not
+#: come back on five thousand.
+AT_THE_LIMIT = "nested-looking brackets"
+
 
 @pytest.mark.parametrize(
     ("name", "body"),
@@ -148,10 +153,20 @@ def check_overhead(project: Path, plain: Path) -> float:
     ids=lambda value: value if isinstance(value, str) and len(value) < 60 else "",
 )
 def test_check_finishes_on_pathological_prose(
-    project: Path, name: str, body: str, plain_project: Path
+    project: Path, name: str, body: str, plain_project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A scan that blows up on prose someone might write, or a wait of a minute or more that
-    ends: one that never does hangs the suite."""
+    ends: one that never does hangs the suite.
+
+    `check` asks pandoc how it reads the text, and pandoc takes longer than `check` gives
+    it on four of these bodies: `check` stops it at its limit (`tex_check.READ_SECONDS`),
+    each time it is run here. One body waits that limit out as it is, which is what holds
+    it under `HANG_SECONDS`. The others are given a second, since what they are here for
+    is `check`'s own scans: waiting ten each time took these twelve from 82 s to 131 s."""
+    if name != AT_THE_LIMIT:
+        from manuscript_guard.build import tex_check
+
+        monkeypatch.setattr(tex_check, "READ_SECONDS", 1.0)
     (project / "manuscript" / "pathological.md").write_text(body, encoding="utf-8")
     overhead = check_overhead(project, plain_project)
     assert overhead < CHECK_OVERHEAD, f"{name}: check took {overhead:.1f} times a plain one"

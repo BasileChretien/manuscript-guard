@@ -29,6 +29,7 @@ from manuscript_guard.build import (
 )
 from manuscript_guard.build.assemble import check_shapes
 from manuscript_guard.build.document import abbreviations
+from manuscript_guard.build.tex_check import check_tex
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts import (
     ContractError,
@@ -134,7 +135,7 @@ def _run_gates(
         ("G8", lambda: check_consistency(results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
         ("G14", lambda: check_language(project)),
-        ("BUILD", lambda: check_shapes(project)),
+        ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
     ):
         report = _guarded(name, gate, unreadable)
         if report is None:

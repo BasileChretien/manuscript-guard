@@ -86,7 +86,9 @@ The database held {{results.cohort.n_reports}} reports. The reporting odds ratio
 - A sign beside a binding is typed as itself (`≈`, `±`, `≤`) or as maths between dollar
   signs (`$\approx$`). Outside dollar signs a TeX command is left out of the document
   with the number after it: `\approx {{results.cohort.n_reports}}` prints neither.
-  `check` passes it and `build` refuses it.
+  `check` asks pandoc how it reads the text and reports this as `tex-in-the-text`, at
+  its line, failing from `drafting` on; `build` refuses it at every stage. Without pandoc
+  on PATH `check` passes it and says in a note (`tex-not-judged`) that the build judges it.
 - `manuscript/supplementary/` is checked the same way and built as its own document.
 
 ## 3. Tables and figures come from results

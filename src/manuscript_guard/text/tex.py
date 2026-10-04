@@ -40,10 +40,15 @@ braces, an `\\end` with no `\\begin`); so is one in a value pandoc reads as code
 a tab before it; a backslash before a code point that is no letter in any Unicode yet is
 an escape to pandoc; and so is one before a letter that Python's Unicode has and pandoc's
 has not yet.
+
+The end of the module is for TeX that pandoc has read as TeX already, in the manuscript's
+text, where the build asks it: which of that is nothing but layout commands, and which
+is a macro's definition (`layout_only`, `only_definitions`).
 """
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from typing import NamedTuple
 
@@ -281,3 +286,90 @@ def tex_outside_maths(line: str) -> Tex | None:
                 return _past(line[script_read_to:], character)
         index += 1
     return None
+
+
+#: Layout commands. Each prints no word in LaTeX either and does nothing in a Word document,
+#: so TeX that is nothing but these loses nothing: the build warns of it and makes the
+#: document. This is a list and no more than a list: a command that is not on it is refused
+#: with the rest, `\centering` for one. The first kind takes nothing after it, the second a
+#: number from 0 to 4 in brackets, the third a length in braces, which is never printed.
+_BREAKS = (
+    "newpage",
+    "clearpage",
+    "cleardoublepage",
+    "bigskip",
+    "medskip",
+    "smallskip",
+    "vfill",
+    "hfill",
+    "noindent",
+)
+_NUMBERED_BREAKS = ("pagebreak", "nopagebreak", "linebreak", "nolinebreak")
+_LENGTHS = ("vspace", "hspace")
+# Matched against the whole of what pandoc read as one piece of TeX, so nothing may follow a
+# command of the first two kinds but space or another command: pandoc reads `\newpage[412]`
+# and `\newpage{412 patients}` as one piece, and folds digits that open the next line into
+# a command that takes no braces, `\newpage` over `412`.
+_LAYOUT_ONLY = re.compile(
+    r"(?:\\(?:"
+    rf"(?:{'|'.join(_BREAKS)})"
+    rf"|(?:{'|'.join(_NUMBERED_BREAKS)})(?:\[[0-4]\])?"
+    rf"|(?:{'|'.join(_LENGTHS)})\*?\{{[^{{}}\n]*\}}"
+    r")\s*)+"
+)
+# A macro's definition. It is raw TeX to pandoc and prints nothing, and pandoc applies it in
+# maths. Marked `{=latex}` it is no longer applied, and `$\RR$` stays `\RR`, which Word cannot
+# show: so a definition passes, since refusing it would leave no way to write one.
+_DEFINER = re.compile(r"\\(?:(?:re)?newcommand|providecommand|DeclareMathOperator)\*?\s*")
+_DEFINED = re.compile(r"\{\\[A-Za-z@]+\}|\\[A-Za-z@]+")
+_ARGUMENTS = re.compile(r"(?:\s*\[[^\]\n]*\]){0,2}\s*")
+_DEF = re.compile(r"\\def\s*\\[A-Za-z@]+[^{}\n]*")
+_WHITE = re.compile(r"\s*")
+
+
+def _braces_end(text: str, at: int) -> int | None:
+    """Past the `}` that closes the `{` at `at`, a brace after a backslash being no brace;
+    None where `at` holds no `{` or it is never closed."""
+    if at >= len(text) or text[at] != "{":
+        return None
+    depth, index = 0, at
+    while index < len(text):
+        character = text[index]
+        if character == "\\":
+            index += 2
+            continue
+        depth += (character == "{") - (character == "}")
+        index += 1
+        if depth == 0:
+            return index
+    return None
+
+
+def _definition_end(raw: str, at: int) -> int | None:
+    """Past the macro definition that opens at `at`, or None where none does."""
+    opened = _DEFINER.match(raw, at)
+    if opened is not None:
+        name = _DEFINED.match(raw, opened.end())
+        if name is None:
+            return None
+        return _braces_end(raw, _ARGUMENTS.match(raw, name.end()).end())
+    opened = _DEF.match(raw, at)
+    return None if opened is None else _braces_end(raw, opened.end())
+
+
+def only_definitions(raw: str) -> bool:
+    """Is `raw` macro definitions from end to end, and nothing else?"""
+    at = _WHITE.match(raw).end()
+    count = 0
+    while at < len(raw):
+        end = _definition_end(raw, at)
+        if end is None:
+            return False
+        at = _WHITE.match(raw, end).end()
+        count += 1
+    return count > 0
+
+
+def layout_only(raw: str) -> bool:
+    """Is `raw` nothing but layout commands from the list above?"""
+    return _LAYOUT_ONLY.fullmatch(raw.strip()) is not None

@@ -1018,14 +1018,45 @@ def test_a_reference_in_a_superscript_is_a_finding_of_its_own(tmp_path: Path) ->
 
     (finding,) = report.failures
     assert finding.message == (
-        "short_title: `&bsol;` is a character reference in a subscript or a superscript, "
-        "where pandoc resolves it and reads the result again, so it can make TeX that the "
-        "document is printed without; type the character itself"
+        "short_title: `&bsol;` may be a character reference where a subscript or a "
+        "superscript can hold it: pandoc resolves one there and reads the result again, so "
+        "it can make TeX that the document is printed without; type the character itself, "
+        "or put a space before the `&`"
     )
 
     written = "short_title: 'IFN-^" + chr(0x3B3) + "^ release and R&D; more'" + LF
     _project, report = load_project(a_project(tmp_path / "mended", PAPER + written))
     assert report.failures == ()
+
+
+def test_an_ampersand_that_is_no_reference_is_not_called_one(tmp_path: Path) -> None:
+    """`R^2^&RMSE; model fit` was told "`&RMSE;` is a character reference in a subscript or
+    a superscript ... type the character itself". It is no reference, it stands after the
+    superscript, and there is no character to type: the rule reports an `&` that a `;`
+    follows wherever a script could hold it, and does not read it to see what it is. The
+    sentence says no more than that, and names what mends this one, a space."""
+    written = "short_title: 'R^2^&RMSE; model fit'" + LF
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = report.failures
+    assert "`&RMSE;` may be a character reference" in finding.message
+    assert "is a character reference" not in finding.message
+    assert "put a space before the `&`" in finding.message
+
+    written = "short_title: 'R^2^ &RMSE; model fit'" + LF
+    _project, report = load_project(a_project(tmp_path / "mended", PAPER + written))
+    assert report.failures == ()
+
+
+def test_past_a_sign_a_keyword_with_braces_is_told_to_write_it_as_text(tmp_path: Path) -> None:
+    """Without that it was given no remedy at all, and no test noticed."""
+    written = (
+        "keywords:" + LF + "  - '[18F] " + BACKSLASH + "textit{in vivo} uptake'" + LF
+    )
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = report.failures
+    assert finding.message.endswith("; write it as text and not as maths")
 
 
 #: The same where nothing is lost, and so nothing is found: TeX between dollar signs, a

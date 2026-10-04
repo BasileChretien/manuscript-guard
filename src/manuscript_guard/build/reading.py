@@ -53,6 +53,7 @@ from manuscript_guard.text.fences import Fence, commented_listings, fenced_spans
 from manuscript_guard.text.masking import front_matter_end
 from manuscript_guard.text.placeholders import PLACEHOLDER
 from manuscript_guard.text.sections import heading_index, scannable
+from manuscript_guard.text.tex import layout_only, only_definitions
 
 # Containers whose headings are quoted or set apart, not the document's own.
 _NESTED = frozenset({"BlockQuote", "Note", "Figure"})
@@ -437,6 +438,59 @@ def _listing_misread(
     return None
 
 
+def place(raw: str, sources: list[tuple[str, str]], built: list[str]) -> str:
+    """Where to look for `raw`: " (name:line)", the first line of the first of `built` that
+    holds it, each being a file of `sources` with its values put in. Empty where none
+    holds it, which is TeX a macro puts there. It is where the text stands, and pandoc may
+    have read it as TeX further down: the same letters in a code span above are found
+    first, and a macro's expansion is found in its definition."""
+    wanted = raw.strip()
+    for (name, _text), text in zip(sources, built, strict=True):
+        at = text.find(wanted)
+        if at != -1:
+            return f" ({name}:{text.count(chr(10), 0, at) + 1})"
+    return ""
+
+
+def _raw_tex(blocks: list) -> tuple[list[str], list[str]]:
+    """The TeX pandoc reads in the text outside maths, which the Word writer leaves out of
+    the document: what loses something, and what is nothing but layout commands. A macro's
+    definition is in neither. TeX the author marked as raw for another format, `{=latex}`,
+    is not read here at all: pandoc labels that `latex` and this `tex`, as it does TeX
+    marked `{=tex}`, which is therefore taken for unmarked."""
+    lost, layout = [], []
+    for node in _nodes(blocks, lambda node: True):
+        if node.get("t") not in ("RawBlock", "RawInline") or node["c"][0] != "tex":
+            continue
+        raw = node["c"][1]
+        if only_definitions(raw):
+            continue
+        (layout if layout_only(raw) else lost).append(raw)
+    return lost, layout
+
+
+def _tex_left_out(lost: list[str], sources: list[tuple[str, str]], built: list[str]) -> str | None:
+    """A phrase to follow "pandoc reads" for TeX that loses something, or None for none.
+
+    Pandoc reads a backslash before a letter as TeX and takes with it what TeX would: the
+    number after `\\approx`, the words in the braces of `\\textit`, everything from `\\begin`
+    to its `\\end`. The Word writer leaves all of it out. `\\approx {{results.n}}` passed
+    every gate, each of which had counted the number as printed, and the build, and the
+    document was printed without the number."""
+    if not lost:
+        return None
+    lines = lost[0].strip().split("\n")
+    shown = f"`{lines[0]}`" if len(lines) == 1 else f"`{lines[0]}` to `{lines[-1]}`"
+    where = place(lost[0], sources, built) or " (in no source as written: a macro puts it there)"
+    more = f", and {len(lost) - 1} more after it" if len(lost) > 1 else ""
+    return (
+        f"as TeX {shown}{where}{more}, which the Word writer leaves out of the document "
+        "with the number or the words it takes. Write maths between dollar signs, where it "
+        "is kept, and TeX that is meant for a PDF only in a block or a code span marked "
+        "`{=latex}`"
+    )
+
+
 def misreading(
     source: str,
     header: str,
@@ -445,15 +499,20 @@ def misreading(
     cwd: Path,
     *,
     built: list[str] | None = None,
+    inert: list[str] | None = None,
 ) -> str | None:
     """What pandoc reads in `source`, the text the build hands it, otherwise than the gates
     read `sources`, each file's name and text as it is on disk, and anything the build adds,
     in order: a phrase to follow "pandoc reads". `built` is each of those texts as the
     build puts it in `source`, values in; without it, the sources are taken as built. None
     when they agree, and when pandoc cannot read `source` at all, which the build's own run
-    of pandoc then reports."""
+    of pandoc then reports.
+
+    TeX outside maths is part of it: the gates count what it takes as printed, and the Word
+    writer leaves it out (`_tex_left_out`). TeX that is nothing but layout commands loses
+    nothing, and is put in `inert`, where one is given, for the build to warn of."""
     try:
-        return _compared(source, header, sources, pandoc, cwd, built)
+        return _compared(source, header, sources, pandoc, cwd, built, inert)
     except RecursionError:
         # Python's JSON reader recurses, and two thousand nested divs overflow it. Not
         # compared is not agreed: the build stops.
@@ -470,6 +529,7 @@ def _compared(
     pandoc: str,
     cwd: Path,
     built: list[str] | None,
+    inert: list[str] | None,
 ) -> str | None:
     """`misreading`, which see."""
     made = built if built is not None else [text for _name, text in sources]
@@ -527,8 +587,14 @@ def _compared(
         )
         for number, (where, level, title) in enumerate(found)
     ]
-    return (
+    differs = (
         _first_difference(read, _headers(whole["blocks"]))
         or _listing_misread(listed["blocks"], source, fences, sources, made, mark)
         or (moved if fences and _without_marks(listed, mark) != json.dumps(whole) else None)
     )
+    if differs is not None:
+        return differs
+    lost, layout = _raw_tex(whole["blocks"])
+    if inert is not None:
+        inert.extend(layout)
+    return _tex_left_out(lost, sources, made)

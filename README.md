@@ -279,7 +279,7 @@ particular thing, and the tool tells you which when you reach it.
 
 | | Needed for | Without it |
 |---|---|---|
-| **pandoc** | `build`, `submit` | The gates all still run; you cannot produce a .docx |
+| **pandoc** | `build`, `submit`, and what `check` says of TeX in the text | You cannot produce a .docx. Every gate still runs but that one finding: `check` passes, and says in a note that the build judges TeX in the text |
 | **Zotero + Better BibTeX** | live citation fields, `sync-bib` | Builds fall back to the committed `references.bib`; citation-key pinning goes unchecked |
 | **poppler** (`pdftotext`) or **pypdf** | reading PDF sources and PDF figures | Those sources are reported as unverifiable rather than passed |
 | **R** (+ `jsonlite`, `digest`) | emitting results from R | Only if your analysis is in R; the Python emitter needs nothing extra |

@@ -440,10 +440,10 @@ def test_a_layout_command_beside_tex_that_loses_words_does_not_stop_the_refusal(
 def test_the_warning_counts_the_rest_of_a_kind_and_names_where_the_first_stands() -> None:
     """Its count was not held by any test, nor its place, and its hint named a block,
     which `check` fails from `drafting` on: the page break is given as a code span."""
-    from manuscript_guard.build.document import _does_nothing
+    from manuscript_guard.build.document import does_nothing
 
     source = ABOVE + (f"{B}newpage" + N + N + "Words." + N + N) * 3
-    report = _does_nothing(
+    report = does_nothing(
         [f"{B}newpage"] * 3, [("main.md", source)], [source], Path("manuscript.docx")
     )
     (finding,) = report.findings
@@ -459,11 +459,11 @@ def test_the_warning_counts_the_rest_of_a_kind_and_names_where_the_first_stands(
 def test_many_kinds_of_layout_command_are_twenty_warnings_and_a_count() -> None:
     """Each kind was looked for in the whole text, so the warnings took time with the
     square of the number of kinds: 40,000 took 19 seconds. Twenty are named."""
-    from manuscript_guard.build.document import _does_nothing
+    from manuscript_guard.build.document import does_nothing
 
     kinds = [f"{B}vspace{{{number}pt}}" for number in range(1, 31)]
     source = N.join(kinds)
-    report = _does_nothing(kinds, [("main.md", source)], [source], Path("manuscript.docx"))
+    report = does_nothing(kinds, [("main.md", source)], [source], Path("manuscript.docx"))
     assert len(report.findings) == 21
     assert report.findings[-1].message.startswith("10 more kinds of layout command")
 

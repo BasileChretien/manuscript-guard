@@ -2344,6 +2344,8 @@ def test_the_build_refuses_what_pandoc_reads_otherwise(
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
     err = capsys.readouterr().err
     assert "pandoc reads" in err and said in err, err
+    # Said of these and not of TeX in the text, which `check` asks pandoc about too.
+    assert "`check` cannot see this, and the build asks pandoc." in err, err
     assert not (project / "build" / "manuscript.UNCHECKED.docx").exists()
 
 
@@ -8412,6 +8414,27 @@ def _printed(document: Path) -> str:
     return chr(10).join(_shown(p) for p in re.findall(r"<w:p[ >].*?</w:p>", body, re.DOTALL))
 
 
+def _refused(project: Path, capsys, sentence: str) -> tuple[str, str]:
+    """`check` fails with `sentence`, a build stops at the check, and a build that skips the
+    check is refused with the same sentence and leaves no document: what `check` printed,
+    and what the build that skipped it said."""
+    from manuscript_guard.cli import main
+
+    capsys.readouterr()
+    assert main(["check", str(project)]) == 1
+    checked = capsys.readouterr().out
+    assert sentence in checked, checked
+
+    assert main(["build", str(project), "--offline"]) == 1
+    assert "not building" in capsys.readouterr().out
+
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    said = capsys.readouterr().err
+    assert sentence in said, said
+    assert not list((project / "build").glob("manuscript*.docx"))
+    return checked, said
+
+
 @_NEEDS_PANDOC
 def test_a_bound_number_under_a_page_break_is_not_lost_through_check_and_the_build(
     project: Path, capsys
@@ -8419,23 +8442,20 @@ def test_a_bound_number_under_a_page_break_is_not_lost_through_check_and_the_bui
     """Pandoc folds digits that open a line into a command above it that takes no braces:
     `\\newpage` over `{{results.cohort.n_reports}} reports were in the database` is the
     TeX `\\newpage` and the number, and the paragraph is printed from ` reports` on.
-    Every gate had counted the number as printed. A page break alone loses no word and
-    only does nothing in Word; this one takes a number with it, and the build refuses."""
-    from manuscript_guard.cli import main
-
+    Every gate that reads the sources had counted the number as printed. A page break
+    alone loses no word and only does nothing in Word; this one takes a number with it, and
+    `check` and the build refuse it."""
     count = _results_with(
         project,
         chr(92) + "newpage" + chr(10)
         + "{{results.cohort.n_reports}} reports were in the database, of which",
     )
     assert gate_report(project).ok, "the gates read the sources, where the number is bound"
-    capsys.readouterr()
 
-    assert main(["build", str(project), "--offline"]) == 1
-    said = capsys.readouterr().err
-    assert f"pandoc reads as TeX `{chr(92)}newpage` to `{count}`" in said, said
-    assert "main.md:" in said
-    assert not (project / "build" / "manuscript.docx").exists()
+    checked, said = _refused(
+        project, capsys, f"pandoc reads as TeX `{chr(92)}newpage` to `{count}` (main.md:"
+    )
+    assert "does nothing in a Word document" not in checked + said
 
 
 @_NEEDS_PANDOC
@@ -8445,27 +8465,28 @@ def test_a_bound_number_after_a_tex_command_is_not_lost_through_check_and_the_bu
     """`The database contained \\approx {{results.cohort.n_reports}} reports` passed
     `check` and the build, and the document read "The database contained  reports": pandoc
     takes the number for the command's argument, and the Word writer leaves the TeX out.
-    `check` reads the sources and still passes; the build asks pandoc, and refuses."""
+    The gates that read the sources still pass it. The build asks pandoc, and refuses;
+    and so does `check`, which asks pandoc too."""
     from manuscript_guard.cli import main
 
     count = _results_with(
         project, _HELD.replace("contained ", "contained " + chr(92) + "approx ")
     )
     assert gate_report(project).ok, "the gates read the sources, where the number is bound"
-    capsys.readouterr()
 
     source = main_md(project).read_text(encoding="utf-8")
     line = source[: source.index(chr(92) + "approx")].count(chr(10)) + 1
 
-    assert main(["build", str(project), "--offline"]) == 1
-    said = capsys.readouterr().err
     # The line of the file, where the build's own text has no front matter and holds the
     # tables: it was named four lines up.
-    assert f"pandoc reads as TeX `{chr(92)}approx {count}` (main.md:{line})" in said, said
-    assert "the Word writer leaves" in said
-    assert "code span marked `{=latex}`" in said
-    assert "a block" not in said, "check fails a raw block from drafting on"
-    assert not (project / "build" / "manuscript.docx").exists()
+    checked, said = _refused(
+        project, capsys, f"pandoc reads as TeX `{chr(92)}approx {count}` (main.md:{line})"
+    )
+    for told in (checked, said):
+        assert "the Word writer leaves" in told
+        assert "code span marked `{=latex}`" in told
+        assert "a block" not in told, "check fails a raw block from drafting on"
+    assert main(["submit", str(project), "--offline"]) == 1
     assert main(["submit", str(project), "--offline", "--skip-checks"]) == 1
 
 
@@ -8528,7 +8549,6 @@ def test_a_bound_number_in_the_braces_of_a_space_is_not_lost_through_check_and_t
     the document read "The database contained  reports", two spaces where the number
     was. The command in a length has to be one that is a length, and this is refused with
     the rest."""
-    from manuscript_guard.cli import main
 
     opened = "contained " + chr(92) + "hspace{ "
     count = _results_with(
@@ -8537,13 +8557,11 @@ def test_a_bound_number_in_the_braces_of_a_space_is_not_lost_through_check_and_t
     )
     assert opened + "{{results.cohort.n_reports}}" in main_md(project).read_text(encoding="utf-8")
     assert gate_report(project).ok, "the gates read the sources, where the number is bound"
-    capsys.readouterr()
 
-    assert main(["build", str(project), "--offline"]) == 1
-    said = capsys.readouterr()
-    assert f"pandoc reads as TeX `{chr(92)}hspace{{ {count}{chr(92)}reports}}`" in said.err, said
-    assert "does nothing in a Word document" not in said.out
-    assert not (project / "build" / "manuscript.docx").exists()
+    checked, said = _refused(
+        project, capsys, f"pandoc reads as TeX `{chr(92)}hspace{{ {count}{chr(92)}reports}}`"
+    )
+    assert "does nothing in a Word document" not in checked + said
 
 
 @_NEEDS_PANDOC
@@ -8555,7 +8573,6 @@ def test_a_bound_number_in_a_citations_brackets_is_not_lost_through_check_and_th
     document read "(of  reports, see Fictional and Fictional 2021)". Pandoc keeps what
     stands before and after the key apart from the rest of its reading, and the build did
     not look there."""
-    from manuscript_guard.cli import main
 
     source = main_md(project)
     text = source.read_text(encoding="utf-8")
@@ -8571,12 +8588,8 @@ def test_a_bound_number_in_a_citations_brackets_is_not_lost_through_check_and_th
     )
     count = load_namespace(load_project(project)[0])[0]["results.cohort.n_reports"].display
     assert gate_report(project).ok, "the gates read the sources, where the number is bound"
-    capsys.readouterr()
 
-    assert main(["build", str(project), "--offline"]) == 1
-    said = capsys.readouterr().err
-    assert f"pandoc reads as TeX `{chr(92)}approx {count}`" in said, said
-    assert not (project / "build" / "manuscript.docx").exists()
+    _refused(project, capsys, f"pandoc reads as TeX `{chr(92)}approx {count}`")
 
 
 @_NEEDS_PANDOC
@@ -8614,8 +8627,9 @@ def test_import_takes_back_a_document_built_before_tex_in_the_text_was_refused(
     from manuscript_guard.cli import main
 
     _results_with(project, _HELD.replace("contained ", "contained " + chr(92) + "approx "))
-    with monkeypatch.context() as before:  # as the build was before the refusal
+    with monkeypatch.context() as before:  # as `check` and the build were before the refusal
         before.setattr(reading, "_tex_left_out", lambda *args: None)
+        before.setattr(reading, "tex_read", lambda source, pandoc: ([], []))
         assert main(["build", str(project), "--offline"]) == 0
     sent = project / "build" / "manuscript.docx"
     assert "The database contained  reports" in _printed(sent)

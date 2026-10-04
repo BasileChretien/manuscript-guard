@@ -64,6 +64,9 @@ BINDS_AT = {
     "unclassified-number": DRAFTING,
     "code-block-text-number": DRAFTING,
     "raw-block": DRAFTING,
+    # TeX in the text that the Word writer leaves out. Pandoc is asked for it, and what it
+    # takes is a number as often as not: it binds with the numbers.
+    "tex-in-the-text": DRAFTING,
     "hand-authored-table": DRAFTING,
     "malformed-placeholder": DRAFTING,
     "unresolved-binding": DRAFTING,

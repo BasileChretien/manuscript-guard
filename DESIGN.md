@@ -255,6 +255,19 @@ decodes the files itself, names the file and exits 2, with neither the byte and 
 the encoding. `review` reads only the bytes, for the digest, and the note after an edit reads
 the text with the bytes it cannot decode replaced; neither says anything of the encoding.
 
+And two that `check` takes from the build, under `BUILD`, without making a document. One is
+the shapes the build would refuse, read from the sources. The other is TeX in the text that
+the Word writer would leave out, `tex-in-the-text`. For that one `check` runs pandoc, once
+for the paper and once for its supplement, on the text the build would hand it, and reports
+what the build refuses, in the build's sentence, at the file and the line. It fails from
+`drafting` on, and the build's warning of a layout command, `tex-does-nothing`, comes with
+it. Like the reading of a PDF, this finding depends on a program outside the package, and
+on its version, as the build does: a pandoc that reads a line otherwise than the one CI
+pins reports otherwise, in `check` and in the build alike. Where pandoc is not on PATH,
+`check` does not judge TeX in the text. Its exit code is that of a pass, and it says so
+once, in a note: `tex-not-judged`, whose severity is `info` and whose code is its own, with
+the count `documents_read_for_tex` at 0. Every other gate runs as usual.
+
 **Tables and figures are generated from results, never hand-authored.** Tables are emitted
 by code from `results.json`; figure scripts may read `results.json` and nothing else. This
 closes the hole that, in the predecessor project, let a wrong count reach Table 1 and
@@ -4687,8 +4700,26 @@ Closed since, and why each mattered:
   figure's own image, whose description is the caption a second time. The refusal names
   the first piece and counts the rest. It holds at every stage and under
   `--skip-checks`, and the document from the build before is removed with it, as for a
-  misread heading. `check` reads the sources and still passes such a text: its rule is
-  the next change, failing from `drafting` on and over-reporting only.
+  misread heading. `check` read the sources and still passed such a text. A rule that
+  reads the sources could only over-report: what pandoc takes for TeX turns on
+  citations, brackets, `<`, line breaks and the values put in. So `check` asks pandoc
+  too (Basile, 2026-10-04), where pandoc is on PATH: one run for the paper and one for
+  its supplement, on the text the build would hand it, under the header of an offline
+  build. What it reports is what the build refuses, in the build's sentence, as
+  `tex-in-the-text`, failing from `drafting` on, and the build's warning of a layout
+  command with it, each at the file and the line the sentence names. Pieces that read
+  the same are one finding, at the first place, which counts the others, so that every
+  kind is named in one run; twenty kinds are named and the rest counted, as for the
+  warning. The build's refusal now says that `check` reports it too.
+  What `check` does not reach here. Without pandoc on PATH it judges none of this and
+  passes, with one note (`tex-not-judged`, severity `info`, and
+  `documents_read_for_tex` at 0): a run in CI with no pandoc passes a text the build
+  would refuse, and the build cannot run there either. Before `drafting` the finding is
+  listed and does not fail, where the build refuses at every stage. A text pandoc
+  cannot read, or one nested too deep for its reading to be walked, is a note too, and
+  the build says the rest. It costs `check` two runs of pandoc, about a fifth of a
+  second on the example. And the finding is pandoc's reading, so it changes with
+  pandoc's version, as the build's refusal does.
   What the build lets pass: maths, code and a comment, which are no TeX to pandoc; TeX
   the author marked as raw for LaTeX, `{=latex}`, which pandoc labels `latex` where it
   labels unmarked TeX `tex`; and a macro's definition (`\newcommand`, `\renewcommand`,

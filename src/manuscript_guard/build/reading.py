@@ -442,34 +442,50 @@ def _listing_misread(
 _COMMAND = re.compile(r"\\[A-Za-z@]+")
 
 
-def place(raw: str, sources: list[tuple[str, str]], built: list[str]) -> str:
-    """Where to look for `raw`, a piece of TeX as pandoc read it: " (name:line)", a line of
-    the first of `sources` that holds it, as the file is written.
+def located(
+    raw: str, sources: list[tuple[str, str]], built: list[str]
+) -> tuple[int, int | None] | None:
+    """Where to look for `raw`, a piece of TeX as pandoc read it: which of `sources` holds
+    it, the first that does, and at which line of the file as it is written.
 
     The line was counted in the text as built, where the front matter is taken off and the
     tables are put in: the example's Results sentence was named four lines above where it
     stands. What is looked for is the piece's first line, and failing that its command,
     since the piece itself is often in no source: the number after `\\approx` is a value
     put in, and pandoc takes the `> ` off each line of a quotation. Where only the text as
-    built holds it, a value or a table put it there, and that is said with the file's
-    name. Empty where nothing holds it, which is what a macro makes.
+    built holds it, a value or a table put it there, and the line is None. None where
+    nothing holds it, which is what a macro makes.
 
     It is where the text stands, and pandoc may have read it as TeX further down: the same
     command in maths or in a code span above is found first, and a macro's expansion is
     found in its definition."""
     first = raw.strip().split("\n", 1)[0].strip()
     if not first:
-        return ""
+        return None
     command = _COMMAND.match(first)
     for wanted in dict.fromkeys((first, command[0] if command else first)):
-        for name, text in sources:
+        for index, (_name, text) in enumerate(sources):
             at = text.find(wanted)
             if at != -1:
-                return f" ({name}:{text.count(chr(10), 0, at) + 1})"
-    for (name, _text), text in zip(sources, built, strict=True):
+                return index, text.count(chr(10), 0, at) + 1
+    for index, (_source, text) in enumerate(zip(sources, built, strict=True)):
         if first in text:
-            return f" ({name}, where a value or a table puts it)"
-    return ""
+            return index, None
+    return None
+
+
+def place(raw: str, sources: list[tuple[str, str]], built: list[str]) -> str:
+    """`located` in words, to stand after the piece: " (name:line)", " (name, where a value
+    or a table puts it)" for a piece only the text as built holds, and empty where nothing
+    holds it."""
+    found = located(raw, sources, built)
+    if found is None:
+        return ""
+    index, line = found
+    name = sources[index][0]
+    if line is None:
+        return f" ({name}, where a value or a table puts it)"
+    return f" ({name}:{line})"
 
 
 def _everything(tree: object) -> Iterator[dict]:
@@ -523,8 +539,11 @@ def _raw_tex(blocks: list) -> tuple[list[str], list[str]]:
     return lost, layout
 
 
-def _tex_left_out(lost: list[str], sources: list[tuple[str, str]], built: list[str]) -> str | None:
-    """A phrase to follow "pandoc reads" for TeX that loses something, or None for none.
+def tex_said(
+    piece: str, sources: list[tuple[str, str]], built: list[str], more: str
+) -> tuple[str, str]:
+    """What is said of `piece`, TeX that loses something: a phrase to follow "pandoc
+    reads", and what to do about it. `more` counts the pieces it speaks for besides.
 
     Pandoc reads a backslash before a letter as TeX and takes with it what TeX would: the
     number after `\\approx`, the words in the braces of `\\textit`, everything from `\\begin`
@@ -536,10 +555,11 @@ def _tex_left_out(lost: list[str], sources: list[tuple[str, str]], built: list[s
     so marked is failed by G2 from `drafting` on. And it does not say that of a definition
     in a form that is not read, since marked, pandoc no longer applies it: that one is
     told to be a `\\newcommand` with its braces, and only that one. A definition that is
-    read, with a number under it that the piece takes, was told so too."""
-    if not lost:
-        return None
-    first = lost[0].strip()
+    read, with a number under it that the piece takes, was told so too.
+
+    The build and `check` both say it, the build of the first piece and `check` of each
+    kind, so that neither can come to word it otherwise than the other."""
+    first = piece.strip()
     lines = first.split("\n")
     if not first:
         shown = "a macro that leaves nothing of the text it takes"
@@ -548,7 +568,6 @@ def _tex_left_out(lost: list[str], sources: list[tuple[str, str]], built: list[s
     where = place(first, sources, built)
     if first and not where:
         where = " (not found as written in a source: a macro or a value makes it)"
-    more = f", and {len(lost) - 1} more after it" if len(lost) > 1 else ""
     if unread_definition(first):
         remedy = (
             "It opens as a macro's definition, in a form that is not read here: write it as "
@@ -561,10 +580,42 @@ def _tex_left_out(lost: list[str], sources: list[tuple[str, str]], built: list[s
             "goes in a code span or has its backslash doubled; and TeX that is meant for a "
             "PDF only goes in a code span marked `{=latex}`"
         )
-    return (
+    said = (
         f"as TeX {shown}{where}{more}, which the Word writer leaves out of the document "
-        f"with whatever the command takes after it. {remedy}"
+        "with whatever the command takes after it"
     )
+    return said, remedy
+
+
+class TexLeftOut(str):
+    """What `misreading` says of TeX that the Word writer leaves out. It is the one
+    misreading `check` reports too, where pandoc is installed, and the build's refusal
+    says so of it and of no other."""
+
+    __slots__ = ()
+
+
+def _tex_left_out(
+    lost: list[str], sources: list[tuple[str, str]], built: list[str]
+) -> TexLeftOut | None:
+    """A phrase to follow "pandoc reads" for TeX that loses something, or None for none:
+    `tex_said` of the first piece, with the rest counted."""
+    if not lost:
+        return None
+    more = f", and {len(lost) - 1} more after it" if len(lost) > 1 else ""
+    said, remedy = tex_said(lost[0], sources, built, more)
+    return TexLeftOut(f"{said}. {remedy}")
+
+
+def tex_read(source: str, pandoc: str) -> tuple[list[str], list[str]] | None:
+    """The TeX pandoc reads outside maths in `source`, a document as the build would hand
+    it over: what loses something and what is only layout (`_raw_tex`). None where pandoc
+    cannot read the source at all.
+
+    It is `check`'s question, and the part of `misreading` that one run of pandoc answers:
+    the rest compares pandoc's reading with the gates', which takes up to three more."""
+    read = _json(source, pandoc, None)
+    return None if read is None else _raw_tex(read["blocks"])
 
 
 def misreading(

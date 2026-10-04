@@ -109,39 +109,61 @@ _PAGE_BREAK = '`<w:r><w:br w:type="page"/></w:r>`{=openxml}'
 _KINDS_NAMED = 20
 
 
-def _does_nothing(
-    inert: list[str], read: list[tuple[str, str]], built: list[str], output: Path
+def kinds_of(pieces: list[str] | tuple[str, ...]) -> dict[str, int]:
+    """Each piece of TeX that reads the same, in the order pandoc read the first of each,
+    with how many there are of it."""
+    kinds: dict[str, int] = {}
+    for raw in pieces:
+        kinds[raw.strip()] = kinds.get(raw.strip(), 0) + 1
+    return kinds
+
+
+def does_nothing(
+    inert: list[str] | tuple[str, ...],
+    read: list[tuple[str, str]],
+    built: list[str],
+    output: Path | None = None,
+    *,
+    files: list[Path | None] | None = None,
 ) -> Report:
     """A warning for each layout command pandoc reads as TeX in the text, with where the
     first of its kind stands (`reading.misreading` fills `inert`).
 
     `\\newpage` loses no word, so the document is made, and a manuscript that held one
     before TeX in the text was refused still builds. But Word shows nothing for it, marked
-    `{=latex}` or not, and an author who typed it for a page break has none."""
-    from manuscript_guard.build.reading import place
+    `{=latex}` or not, and an author who typed it for a page break has none.
 
-    kinds: dict[str, int] = {}
-    for raw in inert:
-        kinds[raw.strip()] = kinds.get(raw.strip(), 0) + 1
+    The build puts each warning at the document it made, `output`. `check` makes none, and
+    gives `files`, the file of each of `read`: the same warning is then put at the file
+    and the line it names."""
+    from manuscript_guard.build.reading import located, place
+
+    kinds = kinds_of(inert)
     hint = (
         f"for a page break in Word, write {_PAGE_BREAK} in a paragraph of its own; a command "
         "that is there for a PDF made elsewhere can stand in a code span marked `{=latex}`, "
         "and is then not warned of"
     )
-    findings = [
-        Finding(
-            gate=GATE,
-            code="tex-does-nothing",
-            severity=WARN,
-            message=(
-                f"`{' '.join(raw.split())}`{place(raw, read, built)} does nothing in a Word "
-                "document" + (f", nor do {times - 1} more like it" if times > 1 else "")
-            ),
-            path=output,
-            hint=hint,
+    findings = []
+    for raw, times in list(kinds.items())[:_KINDS_NAMED]:
+        path, line = output, None
+        if files is not None:
+            found = located(raw, read, built)
+            path, line = (None, None) if found is None else (files[found[0]], found[1])
+        findings.append(
+            Finding(
+                gate=GATE,
+                code="tex-does-nothing",
+                severity=WARN,
+                message=(
+                    f"`{' '.join(raw.split())}`{place(raw, read, built)} does nothing in a "
+                    "Word document" + (f", nor do {times - 1} more like it" if times > 1 else "")
+                ),
+                path=path,
+                line=line,
+                hint=hint,
+            )
         )
-        for raw, times in list(kinds.items())[:_KINDS_NAMED]
-    ]
     if len(kinds) > _KINDS_NAMED:
         findings.append(
             Finding(
@@ -157,6 +179,56 @@ def _does_nothing(
             )
         )
     return Report(tuple(findings))
+
+
+#: What stands between two files of a document. An empty div, which puts nothing in the
+#: document, so each file starts afresh. Joined by blank lines alone, a footnote ending one
+#: file took in the next file's first paragraph when that opened indented, identifier and
+#: all: `tag` judges a note by the end of its own file, where nothing follows. Not a
+#: comment: its `-->` closed a `<!--` left open earlier in the file, and the rest of that
+#: file vanished.
+_BETWEEN_FILES = "\n\n::: {}\n:::\n\n"
+
+
+def document_files(project, assembled, *, supplementary: bool = False) -> list:
+    """The files of one document, the paper or its supplement, in the order they are
+    printed. `BuildError` where there is nothing to make that document of.
+
+    The supplement is a separate document, never appended to the paper. Welded in, it
+    counted against the journal's word limit, arrived as pages the editor had to find the
+    end of, and could not be uploaded to the "supplementary material" slot every
+    submission system has."""
+    from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary, printed_order
+
+    manuscript_dir = project.path("manuscript")
+    wanted = [a for a in assembled if is_supplementary(manuscript_dir, a.path) == supplementary]
+    if supplementary and not wanted:
+        raise BuildError(f"nothing under manuscript/{SUPPLEMENTARY}/ to build")
+    if not supplementary and not any(a.path.name == "main.md" for a in wanted):
+        raise BuildError("no manuscript/main.md to build")
+    by_path = {a.path: a for a in wanted}
+    return [
+        by_path[path]
+        for path in printed_order([a.path for a in wanted], supplementary=supplementary)
+    ]
+
+
+def document_text(ordered: list, prologue: str = "", epilogue: str = "") -> str:
+    """The text of a document under its header: its files, each starting afresh."""
+    return prologue + _BETWEEN_FILES.join(a.text for a in ordered) + epilogue
+
+
+def as_read(
+    ordered: list, prologue: str = "", epilogue: str = ""
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """What a reading of a document is compared with and looked up in: each part's name
+    and its text as it is on disk, and each part's text as built, in the same order."""
+    read = [
+        ("the build's prologue", prologue),
+        *((a.path.name, read_text(a.path)) for a in ordered),
+        ("the build's epilogue", epilogue),
+    ]
+    return read, [prologue, *(a.text for a in ordered), epilogue]
 
 
 def abbreviations() -> frozenset[str]:
@@ -431,7 +503,7 @@ def build_document(
     there stranded a document a co-author was holding; and the annotated copy, which is for
     the author to read, not to send, and whose marks `annotate` has pandoc check as it
     makes them."""
-    from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary, printed_order
+    from manuscript_guard.gates.numbers import SUPPLEMENTARY
 
     build_dir = project.path("build")
     build_dir.mkdir(parents=True, exist_ok=True)
@@ -440,29 +512,8 @@ def build_document(
     # the ordinary one just wrote - two builds, two sources, and either can be read after.
     source = build_dir / f"{output.stem}.md"
 
-    # The supplement is a separate document, never appended to the paper. Welded in, it
-    # counted against the journal's word limit, arrived as pages the editor had to find the
-    # end of, and could not be uploaded to the "supplementary material" slot every
-    # submission system has.
-    manuscript_dir = project.path("manuscript")
-    wanted = [a for a in assembled if is_supplementary(manuscript_dir, a.path) == supplementary]
-
-    if supplementary and not wanted:
-        raise BuildError(f"nothing under manuscript/{SUPPLEMENTARY}/ to build")
-    if not supplementary and not any(a.path.name == "main.md" for a in wanted):
-        raise BuildError("no manuscript/main.md to build")
-    by_path = {a.path: a for a in wanted}
-    ordered = [
-        by_path[path]
-        for path in printed_order([a.path for a in wanted], supplementary=supplementary)
-    ]
-
-    # An empty div between two files, which puts nothing in the document, so each file
-    # starts afresh. Joined by blank lines alone, a footnote ending one file took in the next
-    # file's first paragraph when that opened indented, identifier and all: `tag` judges a
-    # note by the end of its own file, where nothing follows. Not a comment: its `-->` closed
-    # a `<!--` left open earlier in the file, and the rest of that file vanished.
-    body = prologue + "\n\n::: {}\n:::\n\n".join(a.text for a in ordered) + epilogue
+    ordered = document_files(project, assembled, supplementary=supplementary)
+    body = document_text(ordered, prologue, epilogue)
     header = _front_matter(
         project, supplementary=supplementary, live=mode == LIVE, sent=sent
     )
@@ -479,14 +530,9 @@ def build_document(
     # directory cannot make a relative argument mean a different file.
     root = project.root.resolve()
 
-    from manuscript_guard.build.reading import misreading
+    from manuscript_guard.build.reading import TexLeftOut, misreading
 
-    read = [
-        ("the build's prologue", prologue),
-        *((a.path.name, read_text(a.path)) for a in ordered),
-        ("the build's epilogue", epilogue),
-    ]
-    built = [prologue, *(a.text for a in ordered), epilogue]
+    read, built = as_read(ordered, prologue, epilogue)
     inert: list[str] = []
     differs = (
         misreading(header + body, header, read, pandoc(), root, built=built, inert=inert)
@@ -500,6 +546,14 @@ def build_document(
             for stale in (output, output.with_name(output.name + SOURCE_STAMP)):
                 if stale.is_file():
                     stale.unlink()
+        if isinstance(differs, TexLeftOut):
+            # The one misreading `check` asks pandoc about too (`tex_check`). The build
+            # comes to it where the check was skipped and where the finding is not yet due.
+            raise MisreadError(
+                f"pandoc reads {differs}. The gates that read the sources counted it as "
+                "printed, so the document is not built; `check` reports it too where "
+                "pandoc is installed, and fails for it from `drafting` on."
+            )
         raise MisreadError(
             f"pandoc reads {differs}. The gates judged the sources as they read them, so "
             "the document is not built; `check` cannot see this, and the build asks pandoc."
@@ -526,7 +580,7 @@ def build_document(
         f"--reference-doc={reference.resolve()}",
         f"--lua-filter={FIGURE_CAPTION_LUA.resolve()}",
     ]
-    report = _does_nothing(inert, read, built, output)
+    report = does_nothing(inert, read, built, output)
 
     if mode == LIVE:
         command += [f"--lua-filter={ensure_zotero_lua(build_dir / '.cache').resolve()}"]

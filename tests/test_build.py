@@ -7,6 +7,7 @@ one CI and a co-author without Zotero rely on.
 
 from __future__ import annotations
 
+import pathlib
 import shutil
 import zipfile
 from pathlib import Path
@@ -549,3 +550,88 @@ def test_two_builds_of_one_project_at_once_do_not_collide(project: Path) -> None
         assert 'w:styleId="FigureCaption"' in _styles(output)
     left = list((project / "build" / ".cache").glob("reference-*"))
     assert left == [], f"the cache kept {[p.name for p in left]}"
+
+
+def _user_reference(home: pathlib.Path, extra_style: bytes | None, *, as_docx: bool) -> None:
+    """Put a `reference.docx` in a pandoc user data directory under `home`."""
+    import io
+    import subprocess
+
+    (home / "pandoc").mkdir(parents=True, exist_ok=True)
+    target = home / "pandoc" / "reference.docx"
+    if not as_docx:
+        target.write_bytes(b"This is not a .docx at all.")
+        return
+    default = subprocess.run(
+        ["pandoc", "--print-default-data-file", "reference.docx"], capture_output=True, check=True
+    ).stdout
+    with (
+        zipfile.ZipFile(io.BytesIO(default)) as zin,
+        zipfile.ZipFile(target, "w") as zout,
+    ):
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/styles.xml" and extra_style is not None:
+                data = data.replace(b"</w:styles>", extra_style + b"</w:styles>")
+            zout.writestr(item, data)
+
+
+@needs_pandoc
+def test_a_caption_whose_space_is_a_no_break_space_is_still_a_caption(project: Path) -> None:
+    """Word writes one where a space was typed, and a Lua pattern's %s does not match it."""
+    import re
+
+    (project / "manuscript" / "main.md").write_text(
+        "# Results\n\n{{figure.forest}}\n\n"
+        "**Figure\u00a01.** A caption whose space came from Word.\n",
+        encoding="utf-8",
+    )
+    proj, namespace, results, _lit = loaded(project)
+    assembled, report = assemble(proj, namespace, results)
+    assert report.ok, report.render(project)
+    output = build_document(proj, assembled, mode=OFFLINE).output
+    styled = [p for p in _paragraphs(output) if 'w:val="FigureCaption"' in p]
+    assert len(styled) == 1, "the caption was left at body size"
+    assert "came from Word" in "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", styled[0]))
+
+
+@needs_pandoc
+def test_a_user_reference_that_is_not_a_docx_is_said_in_a_sentence(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Their file, not a bug here, and `BadZipFile` names neither the file nor what to do."""
+    home = tmp_path / "data-home"
+    _user_reference(home, None, as_docx=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(home))
+
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    with pytest.raises(BuildError, match="cannot be read as a .docx") as raised:
+        build_document(proj, assembled, mode=OFFLINE)
+    assert str(home / "pandoc" / "reference.docx") in str(raised.value), (
+        "the message has to name the file, which is the whole point of it"
+    )
+
+
+@needs_pandoc
+def test_a_build_that_fails_before_pandoc_leaves_nothing_in_the_cache(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two failures between the file's creation and the pandoc call: the author's reference
+    cannot be read, and the bibliography an offline build needs is gone."""
+    cache = project / "build" / ".cache"
+
+    home = tmp_path / "data-home"
+    _user_reference(home, None, as_docx=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(home))
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    with pytest.raises(BuildError):
+        build_document(proj, assembled, mode=OFFLINE)
+    assert list(cache.glob("reference-*")) == [], "the unreadable reference left a file"
+
+    monkeypatch.delenv("XDG_DATA_HOME")
+    (project / "literature" / "references.bib").unlink()
+    with pytest.raises(BuildError, match="sync-bib"):
+        build_document(proj, assembled, mode=OFFLINE)
+    assert list(cache.glob("reference-*")) == [], "the missing bibliography left a file"

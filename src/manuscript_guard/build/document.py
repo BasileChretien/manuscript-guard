@@ -26,6 +26,7 @@ import subprocess
 import tempfile
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -469,6 +470,34 @@ def _front_matter(
     return "\n".join(lines)
 
 
+@contextlib.contextmanager
+def _reference(build_dir: Path, given: Path | None) -> Iterator[Path]:
+    """The reference document this build hands pandoc, and its removal if this build made it.
+
+    A generated one is this build's own file, named by `mkstemp`: one shared name meant two
+    builds of a project at once - or a build and an `import`, which builds twice - truncated
+    the file the other was reading, or deleted it under it.
+
+    It is removed from the moment it exists, not from the pandoc call onwards, because what
+    comes between can fail: `reference_with` on an author's `reference.docx` that is not a
+    .docx, and the offline branch on a missing bibliography. A process killed outright cannot
+    clean up after itself, and that is in DESIGN.md's Known gaps rather than fixed by deleting
+    files this build does not own.
+    """
+    if given is not None:
+        yield given
+        return
+    cache = build_dir / ".cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    handle, named = tempfile.mkstemp(prefix="reference-", suffix=".docx", dir=cache)
+    os.close(handle)
+    made = Path(named)
+    try:
+        yield reference_with(pandoc(), made)
+    finally:
+        made.unlink(missing_ok=True)
+
+
 def build_document(
     project,
     assembled,
@@ -562,51 +591,29 @@ def build_document(
             "the document is not built; `check` cannot see this, and the build asks pandoc."
         )
     command = [pandoc(), "--standalone", str(source.resolve()), "-o", str(output.resolve())]
-    # The caller's reference document (the annotated build adds its highlight styles to one),
-    # or one generated here for the figure-caption style alone.
-    # A generated reference document of this build's own, removed when pandoc has read it.
-    # One shared name meant two builds of a project at once - or a build and an `import`,
-    # which builds twice - truncated the file the other was reading, or deleted it: pandoc
-    # read half a .docx ("not enough bytes") or the unlink raised. `roundtrip._put` keeps its
-    # intermediates apart for the same reason. Nothing is left behind either way.
-    generated: Path | None = None
-    if reference_doc is None:
-        cache = build_dir / ".cache"
-        cache.mkdir(parents=True, exist_ok=True)
-        handle, named = tempfile.mkstemp(prefix="reference-", suffix=".docx", dir=cache)
-        os.close(handle)
-        generated = Path(named)
-        reference = reference_with(pandoc(), generated)
-    else:
-        reference = reference_doc
-    command += [
-        f"--reference-doc={reference.resolve()}",
-        f"--lua-filter={FIGURE_CAPTION_LUA.resolve()}",
-    ]
-    report = does_nothing(inert, read, built, output)
+    with _reference(build_dir, reference_doc) as reference:
+        command += [
+            f"--reference-doc={reference.resolve()}",
+            f"--lua-filter={FIGURE_CAPTION_LUA.resolve()}",
+        ]
+        report = does_nothing(inert, read, built, output)
 
-    if mode == LIVE:
-        command += [f"--lua-filter={ensure_zotero_lua(build_dir / '.cache').resolve()}"]
-        # A document with no citations gets no bibliography field (a supplement of tables).
-        if cites:
-            command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
-    else:
-        bib = project.path("literature") / "references.bib"
-        if not bib.exists():
-            raise BuildError(
-                f"{bib} does not exist; run `manuscript-guard sync-bib` with Zotero open"
-            )
-        command += ["--citeproc", f"--bibliography={relative_to_root(project, bib)}"]
-        if csl is not None:
-            command += [f"--csl={relative_to_root(project, csl.resolve())}"]
+        if mode == LIVE:
+            command += [f"--lua-filter={ensure_zotero_lua(build_dir / '.cache').resolve()}"]
+            # A document with no citations gets no bibliography field (a supplement of tables).
+            if cites:
+                command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
+        else:
+            bib = project.path("literature") / "references.bib"
+            if not bib.exists():
+                raise BuildError(
+                    f"{bib} does not exist; run `manuscript-guard sync-bib` with Zotero open"
+                )
+            command += ["--citeproc", f"--bibliography={relative_to_root(project, bib)}"]
+            if csl is not None:
+                command += [f"--csl={relative_to_root(project, csl.resolve())}"]
 
-    try:
         finished = subprocess.run(command, capture_output=True, text=True, cwd=root)
-    finally:
-        # Pandoc has read it, or has failed: either way this build's copy goes, so nothing
-        # accumulates in the cache and no other build can read a file this one is writing.
-        if generated is not None:
-            generated.unlink(missing_ok=True)
     if finished.returncode != 0:
         raise BuildError(f"pandoc failed:\n{finished.stderr.strip()}")
     if finished.stderr.strip():

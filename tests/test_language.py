@@ -840,6 +840,37 @@ def test_a_realistic_manuscript_is_reported_as_design_md_says(project: Path) -> 
     assert report.counts["abbreviations_defined"] == 15
 
 
+# ---------------------------------------------------------------- one reading, two texts
+
+
+def test_what_is_hidden_is_a_space_to_the_abbreviations_and_keeps_its_lines(
+    project: Path,
+) -> None:
+    """A file is read once and each half of the gate takes its text from that reading.
+    The vocabulary's keeps what is hidden as NUL. The abbreviations' has a space there, as
+    it always had: with the NUL left in, a long form beside inline code is another long
+    form, and a second definition "two meanings". Both keep every line break, a listing's
+    included, or the line of a finding below one is wrong."""
+    from manuscript_guard.gates.language import _file
+
+    text = (
+        "# Methods\n\nThe hazard ratio (HR) was used. The hazard ratio `hr` (HR) was high.\n\n"
+        "```\ncode\nmore code\n```\n\nThe HR fell, and the PRR rose.\n"
+    )
+    file = _file(0, Path("main.md"), text, [], False)
+    assert "\x00" not in file.prose
+    assert "\x00" in file.printed
+    for reading in (file.prose, file.printed, _hidden(text)):
+        assert len(reading) == len(text)
+        assert reading.count("\n") == text.count("\n")
+
+    report = written(project, text)
+    (message,) = found(report, "abbreviation-redefined")
+    assert "defined again" in message, "one meaning, not two"
+    (undefined,) = [f for f in report.findings if f.code == "abbreviation-undefined"]
+    assert undefined.line == 10, "the line below the listing"
+
+
 # ---------------------------------------------------------------- reading at any size
 
 

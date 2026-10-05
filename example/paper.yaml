@@ -33,3 +33,11 @@ terms:
 language:
   known_abbreviations:
     - "CI"
+
+  # The terms this paper keeps to. One word for one thing: a reader who meets "liver
+  # injury" after three pages of "hepatic injury" has to wonder whether it is a second
+  # outcome. G14 reports a term given up wherever the manuscript still uses it.
+  vocabulary:
+    - use: "hepatic injury"
+      avoid: ["liver injury", "hepatotoxicity"]
+      why: The event term the data generator uses, and so the one the Methods define.

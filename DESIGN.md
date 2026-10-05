@@ -237,7 +237,7 @@ All deterministic, all runnable in CI without Claude.
 | G11 | Panel review | no review round, a stale review, a file nobody read, or an unanswered major finding |
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
 | G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
-| G14 | Abbreviations | never: it warns when one is used before it is defined, defined twice, defined for nothing or never defined |
+| G14 | Abbreviations and terms | never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, and when the manuscript uses a term its author gave up for another |
 
 Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
 is in no stage's deferral list and so fails everywhere, because a checker that could not
@@ -933,6 +933,56 @@ The worked example found its own slip the first time the gate ran: the Introduct
 "(ROR ...)" and nothing defines ROR. It is left as it is, because the example's review
 records are tied to the text they read, so `check` on the example prints that one warning.
 `CI` is listed in the example's `paper.yaml` to show the setting.
+
+## One term for one thing is declared, not guessed
+
+A manuscript that says "participants" in the Methods, "subjects" in the Results and
+"patients" in the Discussion leaves its reader to work out whether those are three groups
+or one. Varying the word is taught as good style, and in a paper it is a fault.
+
+Which word is right is not something a tool knows. A trial has participants and a registry
+has patients, and whether "adverse event" and "adverse reaction" are one thing depends on
+whether causality is claimed. So G14's second reading checks nothing it was not told. The
+author declares the terms the paper keeps to, in `paper.yaml`:
+
+```yaml
+language:
+  vocabulary:
+    - use: "participants"
+      avoid: ["subjects", "patients"]
+      why: The trial's own wording, and the reporting guideline's.
+```
+
+and the gate reports each term given up that the manuscript still uses, as `term-avoided`:
+once for the term, where it first appears, with how many times it is used. A check that
+guessed at synonyms would be wrong about every pair of words that are two things, so there
+is no shipped list and none is planned.
+
+**A term is matched as a reader would match it.** Whole words only, in any case, so
+"Subjects" opening a sentence is found and "subjective" is not. Its words may be joined by
+a hyphen or broken over two lines. A term written in the singular is found in the plural
+too; one written in the plural is found only so, which is how an author keeps "subject to
+bias" out of the report: give up "subjects", not "subject". A term to avoid that is part
+of the term to use is not found there: with "adverse drug reaction" kept and "drug
+reaction" given up, only a "drug reaction" standing alone is reported.
+
+**It is read where the manuscript speaks.** Sentences and headings, in every file and in
+the supplement, as one text: a heading is the paper's wording as much as a sentence is.
+Not in listings, comments, bindings, citation keys, link targets, inline code, equations,
+image captions or front matter, as for abbreviations; not in the reference list, whose
+titles are other people's; and not in a quotation set as a block, whose words are too.
+
+**Entries that disagree are reported and not acted on.** A term that one entry keeps and
+another gives up, or that is given up for two different terms, is a `vocabulary-conflict`
+at `paper.yaml`, and it is not looked for until the entries agree. An entry in the wrong
+shape is the schema's to report; the gate reads the entries the schema accepts, one by
+one, so one mistake does not take the rest with it.
+
+**Both codes are warnings at every stage**, for the reason abbreviations are: a list of
+words cannot tell two meanings of one word apart.
+
+The example declares one entry, "hepatic injury" for "liver injury" and "hepatotoxicity",
+and keeps to it.
 
 ## Methods drift is a reconciliation ledger
 
@@ -6981,16 +7031,21 @@ Closed since, and why each mattered:
     element symbols with a count from two to twelve is taken for a formula and not
     reported: `PI3K`, `VO2`, `CD3`, `CIN2`, `CKD3`, `PIP2`, `ICD10`.
   - Two abbreviations joined by a hyphen, neither defined, are reported as one: `ROR-PRR`.
-  - A defined name is read whole where it opens a hyphenated word, or follows an ordinary
-    word or another defined or listed name in it, and not after any other part: in
-    `10x-RNA-seq` a defined `RNA-seq` is not counted as used, and with `ChIP-seq` defined,
-    `10x-ChIP-seq` is also reported as an undefined `10x-ChIP`.
-  - The capital a name takes at the start of a sentence is read one way only, and only
-    for an opening word of two letters or more. A name defined with the capital, because
-    its definition opens a sentence, "Non-HDL-C (non-high-density lipoprotein cholesterol)
-    was ...", is not found by its lower-case uses: they are reported as an undefined
-    `HDL-C`, and `Non-HDL-C` as unused. And `T-PA` opening a sentence is not a defined
-    `t-PA`, where `Hs-CRP` is `hs-CRP`.
+  - A defined name that holds an ordinary word after its first part, `RNA-seq`, is read
+    whole where it opens a hyphenated word, or follows an ordinary word there, or follows
+    another name of two parts or more that is itself read whole there, as in
+    `HDL-C-RNA-seq`. It is not read whole after any other part, a defined or listed
+    abbreviation of one part included: in `10x-RNA-seq`, and in `ROR-RNA-seq` with `ROR`
+    defined, a defined `RNA-seq` is not counted as used, and with `ChIP-seq` defined,
+    `10x-ChIP-seq` is also reported as an undefined `10x-ChIP`. A name with no such word,
+    `HDL-C`, is read after any part: `10x-HDL-C` is a use of it.
+  - The capital a name takes at the start of a sentence is read one way only, only for an
+    opening word of two letters or more, and only in a hyphenated name: `LncRNAs` opening
+    a sentence is reported as an undefined `LncRNA` beside a defined `lncRNA`. A name
+    defined with the capital, because its definition opens a sentence, "Non-HDL-C
+    (non-high-density lipoprotein cholesterol) was ...", is not found by its lower-case
+    uses: they are reported as an undefined `HDL-C`, and `Non-HDL-C` as unused. And `T-PA`
+    opening a sentence is not a defined `t-PA`, where `Hs-CRP` is `hs-CRP`.
   - A short form in square brackets is read as a definition wherever the words before it
     spell it: a reference link's text, `[ROR][ref]`, and a link to a URL,
     `[ROR](https://...)`, included. A link to a file, `[ROR](glossary.md)`, is not, since
@@ -7016,6 +7071,27 @@ Closed since, and why each mattered:
     thousand times gets a thousand warnings. Making them is linear in the manuscript.
   - The hook that runs after a manuscript file is saved does not run this gate yet; the
     findings appear at `check`.
+
+- **G14's vocabulary is a list of words, and reads them as words.**
+  - Nothing is reported that the author did not declare. Two words for one thing that are
+    in no entry pass in silence; finding candidates is for the writing skill and a reader.
+  - A term cannot be told from the same word with another meaning: giving up "subject"
+    reports "subject to bias". The entry is written narrower, or in the plural.
+  - Only the plural in `s` is folded, and only onto a term written without one: "study"
+    does not find "studies", nor "analysis" "analyses". Both forms go in the entry.
+  - A quotation is left alone only when it is set as a block, each line under `>`. Words
+    quoted inside a sentence are read as the manuscript's own, and so is a line that
+    continues a block quotation without its `>`.
+  - The title, the short title and the keywords come from `paper.yaml` and are not read,
+    nor are tables and figures, which are generated from results.
+  - A term to avoid is not found where it overlaps a term to use that starts before it:
+    with "drug reaction" kept, "reaction time" given up is not found in "drug reaction
+    time".
+  - The count in a finding is of the whole manuscript, and its place is the first use in
+    the order the files are printed, the paper before its supplement.
+  - The reading costs the number of terms times the length of the manuscript: 6,000
+    terms over a megabyte of text took 15 s. A vocabulary of some tens of entries is not
+    felt.
 
 ## Still open
 

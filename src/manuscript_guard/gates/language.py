@@ -26,12 +26,17 @@ Three texts are read apart, because each is read apart. The abstract is indexed 
 without the paper, so what it uses it must define. The main text does not inherit from the
 abstract. The supplement is read after the paper, so it inherits the main text's
 definitions and is otherwise held to its own.
+
+The gate has a second reading, of the terms the paper keeps to, in `gates/vocabulary.py`.
+It takes the files read here, so the manuscript is masked once, and `check_language`
+gives both.
 """
 
 from __future__ import annotations
 
 import re
 from bisect import bisect_left, bisect_right
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -39,9 +44,15 @@ from pathlib import Path
 import yaml
 
 from manuscript_guard.contracts._schema import read_text
-from manuscript_guard.contracts.project import Project
+from manuscript_guard.contracts.project import PAPER_FILE, Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
+from manuscript_guard.gates.vocabulary import (
+    Passage,
+    capitals_together,
+    context,
+    judge_vocabulary,
+)
 from manuscript_guard.paths import SHIPPED_RECIPES
 from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
@@ -215,10 +226,6 @@ def _known(project: Project) -> _Known:
     )
 
 
-def _capitals_together(form: str) -> bool:
-    return any(a.isupper() and b.isupper() for a, b in zip(form, form[1:], strict=False))
-
-
 def _numeral(form: str) -> bool:
     return bool(form) and _ROMAN.fullmatch(form) is not None
 
@@ -266,7 +273,7 @@ def _reads_as_abbreviation(form: str) -> bool:
     """
     return (
         2 <= len(form) <= LONGEST
-        and _capitals_together(form)
+        and capitals_together(form)
         and not _numeral(form)
         and _IDENTIFIER.fullmatch(form) is None
         and not _formula(form)
@@ -347,14 +354,25 @@ def _heading_span(text: str, heading: Heading) -> tuple[int, int]:
     return heading.start, len(text) if end == -1 else end
 
 
-def _prose(text: str, headings: list[Heading]) -> str:
-    """`text` with everything that is not a sentence blanked, offsets and line breaks kept.
+def _hide(text: str, spans: Iterable[tuple[int, int]]) -> str:
+    """`text` with `spans` replaced by NUL, offsets and line breaks kept."""
+    chars = list(text)
+    for start, end in spans:
+        for index in range(start, end):
+            if chars[index] != "\n":
+                chars[index] = NUL
+    return "".join(chars)
 
-    Blanked: what `mask` takes (listings, comments, bindings, citation keys, link targets),
-    the front matter, inline code and equations, image captions, and headings. A heading in
-    capitals is not an abbreviation, and one that uses an abbreviation is not where a
-    reader expects it defined.
-    """
+
+def _hidden(text: str) -> str:
+    """`text` with everything that is not a sentence or a heading replaced by NUL, offsets
+    and line breaks kept: what `mask` takes (listings, comments, bindings, citation keys,
+    link targets), the front matter, inline code and equations, and image captions.
+
+    The one reading of a file both halves of the gate start from. The abbreviations are
+    read in it with the headings hidden as well and every NUL made a space, which is the
+    text they have always been read in. The vocabulary is read in it as it stands, so that
+    a word before a listing and a word after it are not taken for neighbours."""
     masked = mask(text)
     code = code_spans(masked)
     spans = [
@@ -362,17 +380,12 @@ def _prose(text: str, headings: list[Heading]) -> str:
         *code,
         *equation_spans(masked, code),
         *(found.span() for found in _IMAGE.finditer(text)),
-        *(_heading_span(text, heading) for heading in headings),
     ]
-    chars = [
-        ("\n" if text[index] == "\n" else " ") if char == NUL else char
+    kept = "".join(
+        "\n" if char == NUL and text[index] == "\n" else char
         for index, char in enumerate(masked)
-    ]
-    for start, end in spans:
-        for index in range(start, end):
-            if chars[index] != "\n":
-                chars[index] = " "
-    return "".join(chars)
+    )
+    return _hide(kept, spans)
 
 
 @dataclass(frozen=True)
@@ -591,7 +604,11 @@ class _File:
     text: str
     regions: list[_Region]
     definitions: list[tuple[int, str, str]]
+    #: The text the abbreviations are read in: sentences, everything else a space.
     prose: str = ""
+    #: The text the vocabulary is read in: sentences and headings, less the reference
+    #: list, everything else NUL.
+    printed: str = ""
     starts: list[int] = field(default_factory=list)
     breaks: list[int] = field(default_factory=list)
 
@@ -608,14 +625,27 @@ class _File:
 
 def _file(order: int, path: Path, text: str, chain: list[Section], supplementary: bool) -> _File:
     headings = find_headings(text)
-    prose = _prose(text, headings)
+    hidden = _hidden(text)
+    # A heading in capitals is not an abbreviation, and one that uses an abbreviation is
+    # not where a reader expects it defined: the abbreviations are read without them.
+    prose = _hide(hidden, (_heading_span(text, heading) for heading in headings)).replace(
+        NUL, " "
+    )
+    regions = _regions(headings, chain, supplementary=supplementary)
+    ends = [*(region.start for region in regions[1:]), len(text)]
+    references = [
+        (region.start, end)
+        for region, end in zip(regions, ends, strict=True)
+        if region.scope is None
+    ]
     return _File(
         order=order,
         path=path,
         text=text,
-        regions=_regions(headings, chain, supplementary=supplementary),
+        regions=regions,
         definitions=_definitions(prose),
         prose=prose,
+        printed=_hide(hidden, references),
     )
 
 
@@ -680,11 +710,6 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
     return scopes
 
 
-def _context(text: str, offset: int, length: int) -> str:
-    left = max(0, offset - 40)
-    return re.sub(r"\s+", " ", text[left : offset + length + 40]).strip()
-
-
 def _same_meaning(one: str, other: str) -> bool:
     def plain(long: str) -> str:
         words = re.sub(r"[-\s]+", " ", long.lower()).strip()
@@ -718,7 +743,7 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
             message=message,
             path=file.path,
             line=file.line_of(mark.offset),
-            context=_context(file.text, mark.offset, len(short)),
+            context=context(file.text, mark.offset, len(short)),
             hint=hint,
         )
 
@@ -806,4 +831,9 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
 
 
 def check_language(project: Project) -> Report:
-    return _judge(_read(project), _known(project), project.root)
+    """Both readings of the manuscript: its abbreviations, and the terms it keeps to."""
+    files = _read(project)
+    passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
+    return _judge(files, _known(project), project.root).merge(
+        judge_vocabulary(passages, project.vocabulary, project.root / PAPER_FILE)
+    )

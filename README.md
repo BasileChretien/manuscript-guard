@@ -116,7 +116,7 @@ Currently implemented:
 | G11 | a recorded panel has reviewed the manuscript, and its major findings are answered |
 | G12 | there was an analysis plan, and its sections say something |
 | G13 | every reviewer point is answered, and every claimed revision really happened |
-| G14 | an abbreviation is defined once, before it is used (warnings only) |
+| G14 | an abbreviation is defined once, before it is used, and the manuscript keeps to the terms its author declared (warnings only) |
 
 `manuscript-guard check --submission` holds the manuscript to submission standards:
 unanswered review findings become failures rather than warnings, so you can keep building
@@ -207,6 +207,12 @@ nothing or used before its definition is a fact about the text, the same in any 
 G14 reports those four as warnings, reads the abstract, the main text and the supplement
 apart, and takes the abbreviations a paper leaves undefined on purpose from
 `language: known_abbreviations:` in `paper.yaml`.
+
+**One term for one thing is declared, not guessed.** "Participants" in the Methods and
+"subjects" in the Results reads as two groups. Which word is right is the author's call,
+so the author declares it, under `language: vocabulary:` in `paper.yaml`, with the words
+given up for it, and G14 reports each of those the manuscript still uses. It has no list
+of synonyms of its own.
 
 **Exemptions are small, explicit and reviewable.** Conventions live in a narrow shipped
 list pinned to specific values — `p < 0.05` is allowed, `p < 0.37` is not, because a p-value

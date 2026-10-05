@@ -127,6 +127,20 @@ class Project:
         listed = language.get("known_abbreviations") if isinstance(language, dict) else None
         return tuple(str(entry) for entry in listed) if isinstance(listed, list) else ()
 
+    @property
+    def vocabulary(self) -> tuple[dict, ...]:
+        """The terms this paper keeps to, each with the terms it gives up for it: the
+        entries of `language: vocabulary:` that the schema accepts. Entry by entry, as
+        `setting` reads a list, so that one entry written wrongly does not take the
+        others with it; the schema reports that one."""
+        language = self.paper.get("language")
+        listed = language.get("vocabulary") if isinstance(language, dict) else None
+        if not isinstance(listed, list):
+            return ()
+        entry_schema = load_schema("paper")["properties"]["language"]["properties"]
+        accepts = Draft202012Validator(entry_schema["vocabulary"]["items"]).is_valid
+        return tuple(entry for entry in listed if accepts(entry))
+
 
 def _accepted(schema: dict, value: Any) -> Any:
     """`value` as far as `schema` accepts it; see `Project.setting`."""

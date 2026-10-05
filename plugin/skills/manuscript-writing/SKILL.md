@@ -1,6 +1,6 @@
 ---
 name: manuscript-writing
-description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution or an abbreviation finding (used before defined, redefined, unused, undefined), or when revising text that was drafted quickly.
+description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided or vocabulary-conflict, or when revising text that was drafted quickly.
 ---
 
 # Writing prose that reads as written
@@ -101,6 +101,48 @@ name. The list is the author's decision, so ask before adding to it.
 A chemical formula with a count in it (`CO2`, `CO~2~`, `NaHCO3`), the unit symbols
 shipped (`MHz`, `GPa`) and a registration number (`NCT01234567`) are not reported and need
 no entry. A formula with no count (`HCl`, `NaOH`) is reported like any abbreviation.
+
+## One term for one thing
+
+Choose one word for each thing the paper is about and keep to it. "Participants" in the
+Methods and "subjects" in the Results reads as two groups, and a reader of a paper is
+entitled to assume a new word means a new thing. Varying the word for the sake of style is
+the wrong instinct here.
+
+The choice is the author's, and often the field's or the reporting guideline's. Once it is
+made, write it into `paper.yaml` with the words it replaces:
+
+```yaml
+language:
+  vocabulary:
+    - use: "participants"
+      avoid: ["subjects", "patients"]
+      why: The trial's own wording.
+```
+
+G14 then reports `term-avoided` for each word given up that the manuscript still uses, in
+a sentence or a heading: one finding for the word, at its first use, with how many times
+it is used. The finding gives one line and a count, so search the manuscript for the other
+uses and change them all. To answer one, use the paper's term. If the word is right where
+it stands because it means something else there, the entry is too wide: narrow it, and say
+so to the author. `vocabulary-conflict` means two entries disagree about a term; the
+author decides which stands.
+
+How a term is matched:
+
+- A term written in the singular is found in the plural too. One written in the plural is
+  found only so: give up "subjects", not "subject", or "subject to bias" is reported.
+- Only the plural in `s` is folded. For "study" and "studies", list both.
+- A term written with two capitals together, `OR`, `WHO`, is matched as written, so
+  giving up an abbreviation for its long form does not report the word it spells.
+- A hyphen and a space between a term's words are read as one, so the choice between
+  "follow up" and "follow-up" cannot be declared here.
+- Quote the terms, as with abbreviations.
+
+When drafting or revising, look for pairs the list does not hold yet: two words for the
+outcome, the exposure, the population, the data source or the method. Propose the entry;
+do not add it without the author's word, since choosing between two terms is choosing what
+the paper says.
 
 ## Checking your work
 

@@ -9217,3 +9217,88 @@ def test_a_number_written_with_script_signs_is_still_reported(project: Path, cas
         failure.code == "unclassified-number" and failure.message.startswith(f"{atom!r} ")
         for failure in report.failures
     ), [failure.message for failure in report.failures]
+
+
+# --------------------------------------------------------------------------------------
+# G14, the vocabulary: the example keeps to "hepatic injury". Each test below lets another
+# word for it into the text, the way a co-author's paragraph or a pasted sentence does, and
+# the gate has to report that word where it stands.
+# --------------------------------------------------------------------------------------
+
+
+def vocabulary_findings(root: Path) -> list[tuple[str, int, str]]:
+    from manuscript_guard.gates import check_language
+
+    report = check_language(load_project(root)[0])
+    assert report.ok, "G14 warns; it does not fail"
+    return sorted(
+        (f.code, f.line, f.message)
+        for f in report.findings
+        if not f.code.startswith("abbreviation-")
+    )
+
+
+def test_the_example_keeps_to_its_term(project: Path) -> None:
+    """The baseline for what follows."""
+    assert vocabulary_findings(project) == []
+
+
+def test_a_co_author_s_other_word_for_the_outcome_is_caught(project: Path) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    assert old in text, "the fixture changed under this test"
+    edited = text.replace(old, old + " Liver injury is also under-reported in general.")
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert vocabulary_findings(project) == [
+        (
+            "term-avoided",
+            line_of(edited, "Liver injury is also"),
+            "'liver injury' is used once; this paper's term is 'hepatic injury'",
+        )
+    ]
+
+
+def test_a_heading_renamed_with_the_other_word_is_caught(project: Path) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    edited = text.replace("# Discussion\n", "# Liver damage in context\n")
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert vocabulary_findings(project) == [
+        (
+            "term-avoided",
+            line_of(edited, "# Liver damage in context"),
+            "'liver damage' is used once; this paper's term is 'hepatic injury'",
+        )
+    ]
+
+
+def test_find_and_replace_of_the_term_is_caught_everywhere_it_went(project: Path) -> None:
+    """Every "hepatic injury" turned into "liver injury": one finding, at the first in the
+    text, with the count of them all, the supplement's included. The one in the front
+    matter's title is not counted: the build prints its title from `paper.yaml`."""
+    from manuscript_guard.text.masking import front_matter_end
+
+    changed = 0
+    for path in sorted((project / "manuscript").rglob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        edited = re.sub(r"(?i)hepatic(\s+)injury", r"liver\1injury", text)
+        changed += len(re.findall(r"(?i)hepatic\s+injury", text[front_matter_end(text) :]))
+        path.write_text(edited, encoding="utf-8")
+    assert changed > 5
+    ((code, line, message),) = vocabulary_findings(project)
+    assert code == "term-avoided"
+    assert f"is used {changed} times" in message
+    edited = main_md(project).read_text(encoding="utf-8")
+    body = front_matter_end(edited)
+    assert line == edited.count("\n", 0, edited.index("liver injury", body)) + 1
+
+
+def test_the_word_in_a_citation_key_or_a_comment_is_not_the_manuscript_s(project: Path) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(
+        old,
+        old + " <!-- say liver injury here? --> See also [@liver-injury-cohort2020].",
+    )
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert vocabulary_findings(project) == []

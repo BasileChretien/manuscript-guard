@@ -17,7 +17,7 @@ import yaml
 
 from manuscript_guard.contracts import load_project
 from manuscript_guard.gates import check_language
-from manuscript_guard.gates.language import _definitions, _long_form, _prose
+from manuscript_guard.gates.language import _definitions, _hidden, _long_form
 
 
 def written(project: Path, text: str, *, supplement: str | None = None, **files: str):
@@ -406,8 +406,7 @@ def test_a_name_inside_a_longer_word_takes_the_capital_too(project: Path) -> Non
 
 def test_a_single_letter_opening_a_name_is_not_lowered(project: Path) -> None:
     """A known gap, held so that closing it is a decision: an ordinary word has two letters
-    or more, so `T-PA` opening a sentence is not `t-PA`. Lowering any opening letter would
-    make `T-cell` a use of a defined `t-cell`, and a capital alone is often the name."""
+    or more, so `T-PA` opening a sentence is not `t-PA`."""
     report = written(
         project,
         "# Methods\n\nTissue plasminogen activator (t-PA) was given. The t-PA dose was fixed. "
@@ -803,9 +802,16 @@ def test_a_realistic_manuscript_is_reported_as_design_md_says(project: Path) -> 
     What the list leaves out matters as much: the title, the surnames and product names,
     the numerals, `P`, `R`, the initials and the funders."""
     report = written(project, REALISTIC)
+    # The abbreviations only. The example's `paper.yaml` keeps to "hepatic injury", so this
+    # text's "liver injury" is a finding of the other reading, held in test_vocabulary.py.
     reported = sorted(
-        (f.code.removeprefix("abbreviation-"), f.message.split()[0]) for f in report.findings
+        (f.code.removeprefix("abbreviation-"), f.message.split()[0])
+        for f in report.findings
+        if f.code.startswith("abbreviation-")
     )
+    assert [f.message for f in report.findings if f.code == "term-avoided"] == [
+        "'liver injury' is used 2 times; this paper's term is 'hepatic injury'"
+    ]
     assert reported == [
         ("undefined", "AI"),
         ("undefined", "ALP"),
@@ -830,7 +836,8 @@ def test_a_realistic_manuscript_is_reported_as_design_md_says(project: Path) -> 
         ("unused", "WHO"),  # in the abstract
         ("used-before-defined", "mAb"),
     ]
-    assert report.counts == {"abbreviations_read": 31, "abbreviations_defined": 15}
+    assert report.counts["abbreviations_read"] == 31
+    assert report.counts["abbreviations_defined"] == 15
 
 
 # ---------------------------------------------------------------- reading at any size
@@ -847,7 +854,7 @@ def test_unclosed_images_are_read_in_linear_time(assert_linear) -> None:
     def images(count: int) -> str:
         return "![" * count
 
-    assert_linear(images, lambda text: _prose(text, []), 2000, "the prose reading, by `![`")
+    assert_linear(images, _hidden, 2000, "the reading of a file, by `![`")
 
 
 def test_many_findings_are_made_in_linear_time(assert_linear) -> None:

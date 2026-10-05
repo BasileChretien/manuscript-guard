@@ -566,17 +566,39 @@ def test_a_record_that_is_refused_leaves_no_folder_behind(unreviewed: Path) -> N
     assert not (unreviewed / "review").exists()
 
 
+def _second_writer_in_the_loop(monkeypatch):
+    """An event set when a second writer has asked for the panel's lock: it is then past the
+    lock's own making of the folder, and only the loop that waits can make it again. With
+    it, no sleep has to guess how long the second writer takes to get there."""
+    import threading
+
+    from manuscript_guard import record
+
+    asked = threading.Event()
+    takes: list[int] = []
+    real_take = record._take
+
+    def take(lock, panel_file):
+        takes.append(1)
+        if len(takes) == 2:
+            asked.set()
+        return real_take(lock, panel_file)
+
+    monkeypatch.setattr(record, "_take", take)
+    return asked
+
+
 def test_a_writer_that_is_refused_does_not_take_the_folder_from_one_that_waits(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
     """The holder made `review/` for its lock and was refused inside it. It then removed the
     folder it had made, from under a writer waiting for the same lock, which ended in a
     `FileNotFoundError` traceback. Found by the second review round of the run."""
     import threading
-    import time
 
     from manuscript_guard.record import panel_lock
 
+    in_the_loop = _second_writer_in_the_loop(monkeypatch)
     panel = tmp_path / "review" / "panel-1.yaml"
     waiting: list[str] = []
 
@@ -591,37 +613,68 @@ def test_a_writer_that_is_refused_does_not_take_the_folder_from_one_that_waits(
     thread = threading.Thread(target=second)
     with pytest.raises(RecordError, match="refused"), panel_lock(panel):
         thread.start()
-        time.sleep(0.3)
+        assert in_the_loop.wait(60), "the second writer never asked for the lock"
         raise RecordError("refused: no remit")
     thread.join(60)
     assert waiting == ["wrote"], waiting
 
 
-def test_a_folder_removed_while_a_writer_waits_is_made_again(tmp_path: Path) -> None:
+def test_a_folder_removed_while_a_writer_waits_is_made_again(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The folder goes while a second writer waits for the lock; it makes the folder again
+    and writes.
+
+    No timing decides this. The first version slept and then removed the folder with
+    `rmtree`, which takes the lock file away before the folder: the waiting writer could
+    take the lock, make its file and write in between, and `rmtree` then failed on a folder
+    that was no longer empty (seen once in CI on macOS). The lock had done what this test
+    is named for; the test's own removal lost the race. Here the folder is taken away in
+    one step, by renaming it, only once the second writer is known to be in the lock's
+    loop, and the holder lets go only when the second has finished.
+    """
     import threading
-    import time
 
-    from manuscript_guard.record import panel_lock
+    from manuscript_guard import record
 
+    in_the_loop = _second_writer_in_the_loop(monkeypatch)
     panel = tmp_path / "review" / "panel-1.yaml"
     waiting: list[str] = []
 
     def second() -> None:
         try:
-            with panel_lock(panel):
+            with record.panel_lock(panel):
                 panel.write_text("written by the second\n", encoding="utf-8")
             waiting.append("wrote")
         except BaseException as exc:  # noqa: BLE001 - the test reports whatever it was
             waiting.append(f"{type(exc).__name__}: {exc}")
 
     thread = threading.Thread(target=second)
-    with panel_lock(panel):
+    gone = tmp_path / "review-taken-away"
+    with record.panel_lock(panel):
         thread.start()
-        time.sleep(0.3)
-        shutil.rmtree(panel.parent)
-    thread.join(60)
+        assert in_the_loop.wait(60), "the second writer never asked for the lock"
+        _rename_away(panel.parent, gone)
+        thread.join(60)
     assert waiting == ["wrote"], waiting
     assert panel.read_text(encoding="utf-8") == "written by the second\n"
+    assert [found.name for found in gone.iterdir()] == ["panel-1.yaml.lock"], (
+        "the folder that was taken away held the first writer's lock and nothing else"
+    )
+
+
+def _rename_away(folder: Path, to: Path) -> None:
+    """Take a folder away in one step. Windows refuses for the instant another thread has a
+    file in it open, so it is asked again; how often decides nothing."""
+    import time
+
+    for _ in range(2000):
+        try:
+            folder.rename(to)
+            return
+        except PermissionError:
+            time.sleep(0.005)
+    raise AssertionError(f"{folder.name} could not be renamed away")
 
 
 def test_six_records_refused_at_the_same_moment_are_each_refused_in_words(

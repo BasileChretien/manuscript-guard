@@ -3636,16 +3636,41 @@ Added by the adversarial review, verified and **not** fixed:
   A symbol with a subscript that makes a term is that term: `b~1~`, `d~2~`, `k~2~`. An
   exponent of two digits or more, and one on a word of four letters or more, is a number:
   `year^-1^` and `mmHg^-1^` are reported, and are typed with the superscript characters or
-  declared. That is narrower than what is read for the characters themselves, on purpose:
+  declared without their signs, `terms: [year-1]`. That is narrower than what is read for
+  the characters themselves, on purpose:
   `shown^12^` is a citation's number typed by hand, and the caret is how it is typed. One
   digit after a word of one to three letters that is no unit, `it^2^`, `OR^3^`, `mg^7^`,
-  is not read, as `it²` is not: a citation's number typed there is missed. The
+  is not read, as `it²` is not: a citation's number typed there is missed, and so is one
+  after such a word in italics, `*et al*^3^`. Three shapes are read as names that are
+  none. Digits in a superscript after a word that is the whole of a term's letters make
+  the term, so a citation's number typed as `hepatitis B^12^` passes as vitamin B12,
+  and `CD^19^` as CD19. A superscript letter before a number, `^b^12`, is read as `b12`,
+  where `12^b^` is reported. And two tildes that pandoc reads as one subscript,
+  `h~2/d~3`, are read as `h2` and `d3`. None is how a result is written. Leaving digits
+  alone in a superscript in their signs was tried for the first, and it took declared
+  names with it, which the review of that change found: an anion, `SO~4~^2-^` declared
+  `SO42-`, a symbol with a subscript and an exponent, `R~adj~^2^` declared `Radj2`, and
+  `year^-1^` declared `year-1`; so a name's superscripts are taken out whatever they
+  hold. An isotope is declared by its mass and its element, `terms: [68Ga]` for
+  `^68^Ga-DOTATATE`, and its hint does not say so: what opens with a digit is told
+  nothing of terms, since a count typed between the signs opens the same way. And of two
+  names typed with nothing between, the second is matched only where the first was taken
+  out before it, the terms being gone through once, longest first and then by their
+  letters: `FiO~2~PaO~2~` is two terms and `PaO~2~FiO~2~` an unbound number, on every
+  run. Terms of one length came in the order of a set, so it was one or the other from
+  one run to the next. Going through the terms again for as long as one was taken out
+  was tried, and it took time by the square of the atom and did not end for a declared
+  term of one space (found by the review of that change). With a sign between, as the
+  ratio is written, `PaO~2~/FiO~2~`, both are terms either way round. The
   conventions still read the text with its signs in: `75th percentile` is a convention
   and `75^th^ percentile` is none, and under Methods `I² > 50%` is one where `I^2^ > 50%`
   leaves the 50% reported. Both allowances hold wherever the tokenizer and the classifier
   are used, and not only in a manuscript's text: in a figure's text, in `audit` and in a
   string value the analysis emits, where `^` and `~` are only characters, `m^2^` is no
-  number either and a declared `CO2` covers `CO~2~`. Listed in
+  number either. A declared `CO2` covers `CO~2~` in a figure's text and in a table the
+  analysis emits; `audit` and a string value the analysis emits are read with the
+  built-in terms and not the project's, as before, so there `CO~2~` is reported and
+  `HbA~1c~` is not. Listed in
   `tests/data/exemptions.yaml` as `unit-exponent`, with the test that types a number in
   each of those shapes.
 - **`conventions:` and `terms:` in `paper.yaml` are self-service.** A pattern of `\d+` with a

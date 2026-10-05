@@ -73,6 +73,37 @@ NAMES = {
     ),
     "a built-in name in emphasis and in brackets": ("**HbA~1c~** (*HbA~1c~*) was used.", ()),
     "a symbol with a subscript that is a term": ("Vitamin B~12~ was given.", ()),
+    # An isotope's mass stands in a superscript before its element's letter, and is part of
+    # the name: it is declared by its mass and its element.
+    "isotopes, declared": (
+        "Uptake of ^18^F-FDG was measured, with ^131^I and ^14^C as tracers.",
+        ("18F", "131I", "14C"),
+    ),
+    "anions, declared": (
+        "Neither sulfate (SO~4~^2-^) nor phosphate (PO~4~^3-^) was reported.",
+        ("SO42-", "PO43-"),
+    ),
+    "a symbol with a subscript and an exponent, declared": (
+        "An adjusted R~adj~^2^ and an effect size η~p~^2^ were not reported.",
+        ("Radj2", "ηp2"),
+    ),
+    "a unit with an exponent on a longer word, declared": (
+        "A rate in year^-1^ and in mmHg^-1^.",
+        ("year-1", "mmHg-1"),
+    ),
+    "an isotope with its mass after the element, declared": (
+        "Labelled with I^131^ or F^18^-FDG.",
+        ("I131", "F18"),
+    ),
+    # Two names with nothing between: the second opens a word once the first is gone, and
+    # the first is gone where its term comes before the second's, by its length and then
+    # by its letters. `fio2` comes before `pao2`.
+    "two built-in names with nothing between, the first by its letters first": (
+        "A ratio FiO~2~PaO~2~ was taken.",
+        (),
+    ),
+    "a term twice with a sign between": ("A ratio H~2~/H~2~ and B~12~-B~12~.", ()),
+    "a term twice with nothing between": ("A dimer H~2~H~2~ was seen.", ()),
 }
 
 
@@ -131,7 +162,20 @@ NOT_NAMES = {
         ["nivolumab^6^", "pembrolizumab^12^"],
     ),
     "a subscript after a word a term ends": ("At week~2~ and month~2~.", (), ["week~2", "month~2"]),
+    "a citation's number after a name with a subscript": (
+        "End-tidal CO~2~^3^ was recorded.",
+        ("CO2",),
+        ["CO~2~^3^"],
+    ),
     "a declared name inside a longer word": ("A preCO~2~ reading.", ("CO2",), ["preCO~2"]),
+    # Pinned, and in DESIGN.md's Known gaps: the terms are gone through once, so the same
+    # two names the other way round are an unbound number. The same on every run, where
+    # the order of a set decided it.
+    "two built-in names with nothing between, the second by its letters first": (
+        "A ratio PaO~2~FiO~2~ was taken.",
+        (),
+        ["PaO~2~FiO~2"],
+    ),
 }
 
 
@@ -139,6 +183,24 @@ NOT_NAMES = {
 def test_what_no_term_covers_is_still_reported(case: str) -> None:
     text, terms, reported = NOT_NAMES[case]
     assert unbound(text, terms) == reported
+
+
+#: Pinned, and in DESIGN.md's Known gaps: read as names, and none. Digits in a superscript
+#: after a word that is the whole of a term's letters make the term, so a citation's
+#: number typed there passes. Leaving digits alone in a superscript in their signs was
+#: tried, and it took declared names with it: an anion, `SO~4~^2-^` as `SO42-`, and a
+#: symbol with a subscript and an exponent, `R~adj~^2^` as `Radj2`.
+LIMITS = [
+    "In hepatitis B^12^, in CD^19^ cells and in BRCA^1^ carriers.",
+    "A PaCO^2^ and a log^10^ scale.",
+    "A value ^b^12 was given.",
+    "A lag of h~2/d~3 was seen.",
+]
+
+
+@pytest.mark.parametrize("text", LIMITS)
+def test_what_is_read_as_a_name_and_is_none(text: str) -> None:
+    assert unbound(text) == []
 
 
 def test_a_name_matched_without_its_signs_is_counted_as_the_projects_own() -> None:
@@ -218,6 +280,70 @@ def test_a_number_written_with_the_signs_is_still_one(case: str) -> None:
     text, found = NUMBERS[case]
     assert atoms(text) == found
     assert unbound(text) == found
+
+
+def test_the_terms_come_in_one_order_on_every_run() -> None:
+    """Terms of one length came in the order of a set, which changes from one run to the
+    next, and a term directly after another counts only where that one was taken out
+    before it: `PaO~2~FiO~2~` was two terms on one run and an unbound number on the next.
+    The order is fixed, longest first and then by their letters."""
+    from manuscript_guard.classify import _names_covering
+
+    loaded = Classifier.load(extra_terms=("CO2", "N2O")).terms
+    assert list(loaded) == sorted(loaded, key=lambda term: (-len(term), term))
+
+    # One pass, in the order given: the second name counts once the first is gone.
+    assert _names_covering("pao2fio2", ("pao2", "fio2")) == ["pao2", "fio2"]
+    assert _names_covering("pao2fio2", ("fio2", "pao2")) is None
+    assert _names_covering("frisk1", ("k1", "risk")) is None, "terms inside a word"
+
+
+def test_a_declared_term_of_one_space_does_not_stop_the_check() -> None:
+    """Gone through again for as long as a term was taken out, the terms were gone through
+    for ever where one of them was a space: it was taken out of the space the last one
+    left, and the text stayed as it was."""
+    import threading
+
+    reported: list[list[str]] = []
+    sentence = "Hydrogen peroxide (H~2~O~2~) was not reported."
+    # In a thread of its own, so that a loop that does not end fails this test and does
+    # not hold the run.
+    worker = threading.Thread(
+        target=lambda: reported.append(unbound(sentence, (" ",))), daemon=True
+    )
+    worker.start()
+    worker.join(30)
+
+    assert not worker.is_alive(), "the terms were still being gone through after 30 s"
+    assert reported == [["H~2~O~2"]]
+
+
+def test_a_long_atom_of_names_takes_time_in_proportion(assert_linear) -> None:
+    """A term that opens a word many times in one atom was taken out one occurrence at a
+    time, each making the text anew: 800,000 characters of `h~2~/` took seven seconds."""
+    from manuscript_guard.classify import _names_covering
+
+    classifier = Classifier.load()
+
+    def judged(text: str) -> list[str]:
+        return [classifier.classify(atom).kind for atom in find_atoms(text, mask(text))]
+
+    assert judged("h~2~/" * 50) == ["term"]
+    assert_linear(lambda n: "h~2~/" * n, judged, 2000, "one term many times in an atom")
+    assert_linear(
+        lambda n: "PaO~2~/FiO~2~/" * n, judged, 1000, "two terms many times in an atom"
+    )
+    # With nothing between, each stands directly after the one before.
+    assert_linear(lambda n: "h~2~" * n, judged, 2000, "one term many times, nothing between")
+    # Two terms by turns with nothing between are an unbound number, and the classifier
+    # then scans the text for its rules and keeps the last scan: timed through it, the
+    # first timing of the smaller text found its scan kept. So the function is timed alone.
+    assert_linear(
+        lambda n: "h2d3" * n,
+        lambda text: _names_covering(text, classifier.terms),
+        100,
+        "two terms by turns, nothing between",
+    )
 
 
 def test_many_exponents_on_one_line_take_time_in_proportion(assert_linear) -> None:
@@ -317,6 +443,12 @@ DECLARED_AS = {
     "As shown^12^ before.": None,
     "A rate in year^-1^.": None,
     "Dissolution at pH~2 was tested.": None,
+    "In hepatitis B^12^ it rose.": None,
+    "Uptake of ^68^Ga-DOTATATE was measured.": None,
+    "An adjusted R~adj~^2^ was not reported.": "`terms: [Radj2]`",
+    "Sulfate, SO~4~^2-^, was not measured.": "`terms: [SO42-]`",
+    # A limit: the same shape with a citation's number is told the same.
+    "End-tidal CO~2~^3^ was recorded.": "`terms: [CO23]`",
 }
 
 

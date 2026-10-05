@@ -160,7 +160,11 @@ class Classifier:
             for item in extra_conventions
         )
         project_terms = frozenset(str(t).lower() for t in extra_terms)
-        merged_terms = tuple(sorted({*terms, *project_terms}, key=len, reverse=True))
+        # Longest first, and by their letters within one length: left to the order of a set,
+        # terms of one length were tried in an order that changed from one run to the next.
+        merged_terms = tuple(
+            sorted({*terms, *project_terms}, key=lambda term: (-len(term), term))
+        )
         return cls(conventions + project_rules, structural, merged_terms, project_terms)
 
     def scan(self, text: str, *, lines_are_blocks: bool = False) -> Scan:
@@ -498,22 +502,39 @@ def declarable(atom: Atom) -> str | None:
 
 def _names_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:
     """`_terms_covering` for a name read without its signs: a term counts only where it
-    opens a word, with no letter and no digit before it.
+    opens a word, with no letter and no digit before it, or stands directly after the
+    same term.
+
+    The terms are gone through once, longest first. So of two names typed with nothing
+    between, the second is matched only where the first was taken out before it: it is
+    the longer, or as long and before it by its letters. Going through them again for as
+    long as one was taken out was tried: it took time by the square of the atom for names
+    alternating with nothing between, and did not end for a declared term of one space.
 
     A term is found anywhere in an atom as it is written, and that stays. But taking the
     signs out puts the digits of a superscript hard against the word before it, and
-    `risk^1^`, a citation's number, was `risk1`, which holds the term `k1`."""
+    `risk^1^`, a citation's number, was `risk1`, which holds the term `k1`.
+
+    The text is made anew once for each term that is found, and not once for each place
+    it stands: one atom of `h~2~/` 160,000 times over took seven seconds."""
     rest = text.lower()
     used: list[str] = []
     for term in terms:
         at = rest.find(term) if term else -1
-        found = False
+        if at == -1:
+            continue
+        kept: list[str] = []
+        cut = 0
         while at != -1:
-            if at == 0 or not rest[at - 1].isalnum():
-                rest = rest[:at] + " " + rest[at + len(term) :]
-                found = True
-            at = rest.find(term, at + 1)
-        if found:
+            # `cut` is where the text opens, and then where the term last found ended.
+            if at == cut or not rest[at - 1].isalnum():
+                kept += (rest[cut:at], " ")
+                cut = at + len(term)
+                at = rest.find(term, cut)
+            else:
+                at = rest.find(term, at + 1)
+        if kept:
+            rest = "".join((*kept, rest[cut:]))
             used.append(term)
             if not any(ch.isdigit() for ch in rest):
                 return used

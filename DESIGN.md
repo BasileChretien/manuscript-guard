@@ -3641,10 +3641,15 @@ Added by the adversarial review, verified and **not** fixed:
   `year^-1^` declared `year-1`; so a name's superscripts are taken out whatever they
   hold. An isotope is declared by its mass and its element, `terms: [68Ga]` for
   `^68^Ga-DOTATATE`, and its hint does not say so: what opens with a digit is told
-  nothing of terms, since a count typed between the signs opens the same way. And two
-  names typed with nothing between, `PaO~2~FiO~2~`, are two terms: the terms are gone
-  through again once one is taken out, where one pass made of them two terms or an
-  unbound number by the order of the terms, which changed from one run to the next. The
+  nothing of terms, since a count typed between the signs opens the same way. And of two
+  names typed with nothing between, the second is matched only where the first was taken
+  out before it, the terms being gone through once, longest first and then by their
+  letters: `FiO~2~PaO~2~` is two terms and `PaO~2~FiO~2~` an unbound number, on every
+  run. Terms of one length came in the order of a set, so it was one or the other from
+  one run to the next. Going through the terms again for as long as one was taken out
+  was tried, and it took time by the square of the atom and did not end for a declared
+  term of one space (found by the review of that change). With a sign between, as the
+  ratio is written, `PaO~2~/FiO~2~`, both are terms either way round. The
   conventions still read the text with its signs in: `75th percentile` is a convention
   and `75^th^ percentile` is none, and under Methods `I² > 50%` is one where `I^2^ > 50%`
   leaves the 50% reported. Both allowances hold wherever the tokenizer and the classifier

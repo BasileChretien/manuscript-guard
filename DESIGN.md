@@ -3463,6 +3463,16 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   `Block Text` and so loses the quotation's indent. The style is added to the author's own
   `reference.docx` from pandoc's user data directory when there is one, and skipped when that
   file already defines `FigureCaption`; table captions are untouched.
+- **A build killed outright leaves its generated reference document in `build/.cache`.** Each
+  build names its own `reference-XXXX.docx` there and removes it for as long as the process
+  lives, whatever fails — an unreadable reference, a missing bibliography, pandoc itself. A
+  process that is killed cannot run that removal, so the file stays until someone deletes it,
+  and nor can a removal that the operating system refuses — a file held open for an instant by
+  a scanner or a sync client — because the build reports what it was doing, not what tidying up
+  it could not finish.
+  Nothing reads it afterwards and the next build makes its own, so the cost is a stray file in
+  a cache. Sweeping the directory instead would mean one build deleting a file another build
+  is reading, which is the failure this naming exists to prevent.
 - **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and

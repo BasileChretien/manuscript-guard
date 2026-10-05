@@ -482,6 +482,9 @@ def test_a_build_that_brings_a_reference_document_is_still_stamped(project: Path
 
     kept = build_document(proj, assembled, mode=OFFLINE, reference_doc=reference)
     assert kept.output.with_name(kept.output.name + SOURCE_STAMP).is_file()
+    assert reference.is_file(), (
+        "a reference document the caller brought is not the build's to remove"
+    )
 
     unstamped = project / "build" / "unstamped.docx"
     built = build_document(proj, assembled, mode=OFFLINE, output=unstamped, stamp=False)
@@ -549,3 +552,114 @@ def test_two_builds_of_one_project_at_once_do_not_collide(project: Path) -> None
         assert 'w:styleId="FigureCaption"' in _styles(output)
     left = list((project / "build" / ".cache").glob("reference-*"))
     assert left == [], f"the cache kept {[p.name for p in left]}"
+
+
+def _unreadable_user_reference(home: Path) -> Path:
+    """A `reference.docx` in a pandoc user data directory under `home` that is not a .docx."""
+    (home / "pandoc").mkdir(parents=True, exist_ok=True)
+    target = home / "pandoc" / "reference.docx"
+    target.write_bytes(b"This is not a .docx at all.")
+    return target
+
+
+@needs_pandoc
+def test_a_caption_whose_space_is_a_no_break_space_is_still_a_caption(project: Path) -> None:
+    """Word writes one where a space was typed, and a Lua pattern's %s does not match it."""
+    import re
+
+    (project / "manuscript" / "main.md").write_text(
+        "# Results\n\n{{figure.forest}}\n\n"
+        "**Figure\u00a01.** A caption whose space came from Word.\n",
+        encoding="utf-8",
+    )
+    proj, namespace, results, _lit = loaded(project)
+    assembled, report = assemble(proj, namespace, results)
+    assert report.ok, report.render(project)
+    output = build_document(proj, assembled, mode=OFFLINE).output
+    styled = [p for p in _paragraphs(output) if 'w:val="FigureCaption"' in p]
+    assert len(styled) == 1, "the caption was left at body size"
+    assert "came from Word" in "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", styled[0]))
+
+
+@needs_pandoc
+def test_a_user_reference_that_is_not_a_docx_is_said_in_a_sentence(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Their file, not a bug here, and `BadZipFile` names neither the file nor what to do."""
+    home = tmp_path / "data-home"
+    _unreadable_user_reference(home)
+    monkeypatch.setenv("XDG_DATA_HOME", str(home))
+
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    with pytest.raises(BuildError, match="cannot be read as a .docx") as raised:
+        build_document(proj, assembled, mode=OFFLINE)
+    assert str(home / "pandoc" / "reference.docx") in str(raised.value), (
+        "the message has to name the file, which is the whole point of it"
+    )
+
+
+@needs_pandoc
+def test_a_build_that_fails_before_pandoc_leaves_nothing_in_the_cache(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two failures between the file's creation and the pandoc call: the author's reference
+    cannot be read, and the bibliography an offline build needs is gone."""
+    cache = project / "build" / ".cache"
+
+    home = tmp_path / "data-home"
+    _unreadable_user_reference(home)
+    monkeypatch.setenv("XDG_DATA_HOME", str(home))
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    with pytest.raises(BuildError):
+        build_document(proj, assembled, mode=OFFLINE)
+    assert list(cache.glob("reference-*")) == [], "the unreadable reference left a file"
+
+    monkeypatch.delenv("XDG_DATA_HOME")
+    (project / "literature" / "references.bib").unlink()
+    with pytest.raises(BuildError, match="sync-bib"):
+        build_document(proj, assembled, mode=OFFLINE)
+    assert list(cache.glob("reference-*")) == [], "the missing bibliography left a file"
+
+
+@needs_pandoc
+@pytest.mark.parametrize("succeeds", [True, False])
+def test_a_reference_the_build_cannot_remove_is_not_the_builds_error(
+    project: Path, monkeypatch: pytest.MonkeyPatch, succeeds: bool
+) -> None:
+    """A scanner or a sync client holding the file for an instant made the removal raise out
+    of the `finally`: it replaced the sentence a failing build was already raising, and it
+    left a successful build's document unstamped, with no record of what it was built from."""
+    from manuscript_guard.build import document as module
+    from manuscript_guard.build.document import SOURCE_STAMP
+    from manuscript_guard.roundtrip import RECORDS
+
+    real = module.reference_with
+    held = []
+
+    def hold(pandoc: str, target: Path, extra: str = "") -> Path:
+        made = real(pandoc, target, extra)
+        held.append(made.open("rb"))  # kept open across the build, as a scanner would
+        return made
+
+    monkeypatch.setattr(module, "reference_with", hold)
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    try:
+        if succeeds:
+            built = build_document(proj, assembled, mode=OFFLINE)
+            stamp = built.output.with_name(built.output.name + SOURCE_STAMP)
+            assert stamp.is_file(), "the document was built and not stamped"
+            records = project / "build" / RECORDS
+            assert records.is_dir() and any(records.iterdir()), "and left with no record"
+        else:
+            (project / "literature" / "references.bib").unlink()
+            # The build's own sentence, not PermissionError from the tidying up.
+            with pytest.raises(BuildError, match="sync-bib"):
+                build_document(proj, assembled, mode=OFFLINE)
+    finally:
+        for handle in held:
+            handle.close()
+        for left in (project / "build" / ".cache").glob("reference-*"):
+            left.unlink(missing_ok=True)

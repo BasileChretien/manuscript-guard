@@ -318,7 +318,7 @@ READ_WITH_A_SPACE_DECLARED = N.join(
         "print(json.dumps(loose))",
     ]
 )
-#: How long that process is given. It needs a quarter of a second, most of it to start,
+#: How long that process is given. It needs under a second, most of it to start,
 #: and took sixteen with twice as many busy processes as the machine has cores.
 CHILD_SECONDS = 120
 
@@ -360,10 +360,12 @@ def test_a_long_atom_of_names_takes_time_in_proportion(assert_linear) -> None:
     """A term that opens a word many times in one atom was taken out one occurrence at a
     time, each making the text anew: 800,000 characters of `h~2~/` took seven seconds.
 
-    The function is timed alone, and from a text long enough that the square shows at the
-    first size. Through the tokenizer and the classifier, whose own time is in proportion,
-    and from a short text, the old function read under the bound on a busy machine: this
-    test passed against it six runs of seven."""
+    The function is timed alone first, and from a text long enough that the square shows
+    at the first size. Through the tokenizer and the classifier, whose own time is in
+    proportion, and from a short text, the old function read under the bound on a busy
+    machine: this test passed against it six runs of seven. Those timings stay, after the
+    others, for the rest of the way a name with its signs goes: with them gone, a square
+    in the taking out of the signs passed every test."""
     from manuscript_guard.classify import _names_covering
 
     classifier = Classifier.load()
@@ -374,11 +376,8 @@ def test_a_long_atom_of_names_takes_time_in_proportion(assert_linear) -> None:
     def covered(text: str) -> list[str] | None:
         return _names_covering(text, classifier.terms)
 
-    # What is timed is how each of these is found to be one term.
-    assert judged("h~2~/" * 50) == judged("PaO~2~/FiO~2~/" * 50) == judged("h~2~" * 50) == ["term"]
     assert covered("h2/" * 50) == covered("h2" * 50) == ["h2"]
     assert covered("pao2/fio2/" * 50) == ["fio2", "pao2"]
-
     assert_linear(lambda n: "h2/" * n, covered, 16_000, "one term many times in an atom")
     assert_linear(lambda n: "pao2/fio2/" * n, covered, 4_000, "two terms many times in an atom")
     # With nothing between, each stands directly after the one before.
@@ -387,6 +386,14 @@ def test_a_long_atom_of_names_takes_time_in_proportion(assert_linear) -> None:
     # as long as one was taken out, the terms took the square of this one: from a small
     # size, where that fails in seconds.
     assert_linear(lambda n: "h2d3" * n, covered, 100, "two terms by turns, nothing between")
+
+    # The same three names as they are typed, through the tokenizer and the classifier.
+    assert judged("h~2~/" * 50) == judged("PaO~2~/FiO~2~/" * 50) == judged("h~2~" * 50) == ["term"]
+    assert_linear(lambda n: "h~2~/" * n, judged, 2000, "one name with its signs, many times")
+    assert_linear(
+        lambda n: "PaO~2~/FiO~2~/" * n, judged, 1000, "two names with their signs, many times"
+    )
+    assert_linear(lambda n: "h~2~" * n, judged, 2000, "one name with its signs, nothing between")
 
 
 def test_many_exponents_on_one_line_take_time_in_proportion(assert_linear) -> None:

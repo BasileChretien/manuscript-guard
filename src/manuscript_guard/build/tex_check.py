@@ -141,7 +141,7 @@ def _document(project, ordered: list, pandoc: str, *, supplementary: bool) -> Re
                 _note(
                     f"pandoc could not be run on {which}, or its answer could not be read "
                     f"({type(error).__name__}: {error}), so TeX in it is not judged here: "
-                    "the build needs pandoc too, and says what is wrong with it"
+                    "the build needs pandoc too"
                 ),
             )
         )

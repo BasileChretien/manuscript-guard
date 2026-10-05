@@ -4853,8 +4853,13 @@ Closed since, and why each mattered:
   limit, so that `check` did not come back on a line of brackets (found by the review of
   the change, on the suite's own prose: `check` had never waited on another program).
   Past ten seconds pandoc is stopped and that document is not judged, which is said
-  in a note; pandoc reads 164,000 words of ordinary prose in two. The build gives
-  pandoc no limit, as before, and on such a text it waits as long as pandoc takes. And
+  in a note; pandoc reads 164,000 words of ordinary prose in two. Tables are what
+  come near the limit: forty of three hundred rows and eight columns took pandoc four
+  seconds, and ten or more with a phrase in each cell (3.6 MB), so a supplement of that size
+  is not judged by `check` and gets the note. The build gives
+  pandoc no limit, as before, and on such a text it waits as long as pandoc takes; its
+  refusal says that `check` reports the same where pandoc reads the text in the time
+  `check` gives it. And
   the finding
   is pandoc's reading, so it changes with pandoc's version, as the build's refusal does.
   What the build lets pass: maths, code and a comment, which are no TeX to pandoc; TeX
@@ -4928,7 +4933,21 @@ Closed since, and why each mattered:
   holds, which the build takes off, is counted from below the header; and a macro's
   expansion is found in its definition. TeX that only the
   text as built holds is said to be put there by a value or a table, with the file's
-  name and no line. And G2, which reads the sources and holds every digit to being
+  name and no line, where the file types that command nowhere. And the count is taken
+  in the text as built and applied to the file, so a value or an emitted table that
+  holds the piece's command, above the piece, puts it one out: a piece typed in the
+  file is then found at the next of its command or said to be put there by a value,
+  and a piece that only the table makes is named at a typed piece of the same command.
+  That takes TeX in an emitted value, which is a finding of its own. Two other ways of
+  looking were tried to close it, and each named a wrong line for the usual piece, a
+  command before a bound number (found by the review of each): looking for the piece
+  as it was read before anything else, which found it at any text typed below that
+  begins as it prints, the sentence kept in a comment when its number was bound; and
+  taking the first place in the file that can print the piece, a binding printing
+  anything, which found every piece of a command at the first binding of that command.
+  What would be exact is a record, made where the values are put in, of where each
+  part of the text as built stands in its file, and there is none.
+  And G2, which reads the sources and holds every digit to being
   bound, fails `\vspace{1em}` and the `[2]` of a definition with two arguments from
   `drafting` on, as it did before, so a length with a digit in it is warned of only
   before that stage or under `--skip-checks`.

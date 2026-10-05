@@ -29,6 +29,8 @@ LEFT_OUT = (
     "which the Word writer leaves out of the document with whatever the command takes after it"
 )
 needs_pandoc = pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+#: How deep the brackets are nested that pandoc is too slow on: see the test of the limit.
+DEEP = 10
 
 
 def main_md(project: Path) -> Path:
@@ -106,7 +108,10 @@ def test_tex_in_the_text_fails_check_in_the_builds_sentence_at_its_line(
     said = capsys.readouterr().err
     assert f"{finding['message']}. {finding['hint']}" in said, said
     assert "`check` cannot see this" not in said, "it sees this one"
-    assert "`check` reports it too, and fails for it from `drafting` on." in said
+    assert said.rstrip().endswith(
+        "`check` reports it too where pandoc reads the text in the time `check` gives it, "
+        "and fails for it from `drafting` on."
+    ), said
 
 
 @needs_pandoc
@@ -255,6 +260,83 @@ LOCATED = {
         f"Release of IFN-{B}gamma was measured.",
         (0, 5),
     ),
+    # A piece with a value of its own is in no file as it is read, and is found by the
+    # count of its command in the text as built. Two other ways of looking were tried in
+    # the review of this change and each named a wrong line for these, the usual pieces:
+    # looking for the piece as read before anything else found it at any text typed below
+    # that begins as it prints, and letting a binding print anything found every piece
+    # of a command at the first binding of that command.
+    "one with a value, over the same text in maths": (
+        f"{B}approx 12",
+        f"We saw {B}approx {{{{results.n}}}} of them.{N}{N}In maths, $x {B}approx 12$ holds.",
+        f"We saw {B}approx 12 of them.{N}{N}In maths, $x {B}approx 12$ holds.",
+        (0, 1),
+    ),
+    "one with a value, over the same text in a comment": (
+        f"{B}approx 12",
+        f"We saw {B}approx {{{{results.n}}}} of them.{N}{N}<!-- We saw {B}approx 12 of them. -->",
+        f"We saw {B}approx 12 of them.{N}{N}<!-- We saw {B}approx 12 of them. -->",
+        (0, 1),
+    ),
+    "one with a value, over a longer number": (
+        f"{B}approx 12",
+        f"We saw {B}approx {{{{results.n}}}} of them.{N}{N}Or $x {B}approx 120$ of them.",
+        f"We saw {B}approx 12 of them.{N}{N}Or $x {B}approx 120$ of them.",
+        (0, 1),
+    ),
+    "the second of two with a value each": (
+        f"{B}approx 12",
+        f"We saw {B}approx {{{{results.a}}}} of them.{N}{N}And {B}approx {{{{results.n}}}} here.",
+        f"We saw {B}approx 426 of them.{N}{N}And {B}approx 12 here.",
+        (0, 3),
+    ),
+    "one with a value, under maths that holds the command and a value": (
+        f"{B}approx 12",
+        f"About ${B}approx {{{{results.a}}}}$ were sent.{N}{N}"
+        f"We saw {B}approx {{{{results.n}}}} of them.",
+        f"About ${B}approx 426$ were sent.{N}{N}We saw {B}approx 12 of them.",
+        (0, 3),
+    ),
+    # Pinned, and in DESIGN.md's Known gaps: each of these five is the wrong place. The
+    # count is taken in the text as built and applied to the file, so a value or an
+    # emitted table that holds the piece's command, above the piece, puts it one out. It
+    # takes TeX in an emitted value, which is a finding of its own.
+    "a limit: typed under a value that holds the command, said to be a value's": (
+        f"{B}approx 12",
+        f"{{{{results.a}}}} named it.{N}{N}We saw {B}approx 12 of them.",
+        f"{B}approx 426 named it.{N}{N}We saw {B}approx 12 of them.",
+        (0, None),
+    ),
+    "a limit: typed under a table that holds the command, found at the next": (
+        f"{B}pm 3",
+        f"{{{{table.t}}}}{N}{N}The mean was 12 {B}pm 3 months.{N}{N}Later 14 {B}pm 2 too.",
+        f"| 5 {B}pm 1 |{N}{N}The mean was 12 {B}pm 3 months.{N}{N}Later 14 {B}pm 2 too.",
+        (0, 5),
+    ),
+    "a limit: with a value, under a value that holds the command, said to be a value's": (
+        f"{B}approx 12",
+        f"{{{{results.a}}}} named it.{N}{N}We saw {B}approx {{{{results.n}}}} of them.",
+        f"{B}approx 426 named it.{N}{N}We saw {B}approx 12 of them.",
+        (0, None),
+    ),
+    "a limit: one a table makes, found at a typed piece of the same command": (
+        f"{B}pm 349",
+        f"{{{{table.t}}}}{N}{N}The median delay was 12 {B}pm 5 months.",
+        f"| 77 {B}pm 349 |{N}{N}The median delay was 12 {B}pm 5 months.",
+        (0, 3),
+    ),
+    "a limit: the typed piece under that table, said to be a table's": (
+        f"{B}pm 5",
+        f"{{{{table.t}}}}{N}{N}The median delay was 12 {B}pm 5 months.",
+        f"| 77 {B}pm 349 |{N}{N}The median delay was 12 {B}pm 5 months.",
+        (0, None),
+    ),
+    "one typed twice, at the first": (
+        f"{B}textit{{in vivo}}",
+        f"One line.{N}Seen {B}textit{{in vivo}} here.{N}And {B}textit{{in vivo}} there.",
+        f"One line.{N}Seen {B}textit{{in vivo}} here.{N}And {B}textit{{in vivo}} there.",
+        (0, 2),
+    ),
     "one nothing holds": (f"{B}gamma", "No such letters.", "Nor here.", None),
 }
 
@@ -265,6 +347,39 @@ def test_where_a_piece_is_looked_for(case: str) -> None:
 
     piece, written, built, found = LOCATED[case]
     assert located(piece, [("main.md", written)], [built]) == found
+
+
+def test_a_piece_with_a_value_is_found_in_its_own_file_and_not_in_a_later_one() -> None:
+    from manuscript_guard.build.reading import located, place
+
+    written = f"We saw {B}approx {{{{results.n}}}} of them."
+    built = f"We saw {B}approx 12 of them."
+    notes = f"A note.{N}{N}In maths, $n {B}approx 12$ holds."
+    sources = [("main.md", written), ("notes.md", notes)]
+
+    assert located(f"{B}approx 12", sources, [built, notes]) == (0, 1)
+    assert place(f"{B}approx 12", sources, [built, notes]) == " (main.md:1)"
+
+
+@needs_pandoc
+def test_the_line_is_the_bindings_and_not_that_of_a_copy_typed_below(
+    project: Path, capsys
+) -> None:
+    """The sentence as it was typed before its number was bound, kept in a comment further
+    down: the finding was put at the comment, and the line that loses the number was named
+    nowhere."""
+    line = write(project, HELD.replace("contained ", "contained " + B + "approx "))
+    source = main_md(project)
+    written = source.read_bytes().decode("utf-8")
+    kept = f"<!-- Before: the database contained {B}approx {count(project)} reports. -->"
+    source.write_bytes((written + N + kept + N).encode("utf-8"))
+
+    code, report = checked(project, capsys)
+
+    assert code == 1
+    [finding] = of(report, "tex-in-the-text")
+    assert finding["line"] == line
+    assert f"(main.md:{line})" in finding["message"]
 
 
 @needs_pandoc
@@ -501,16 +616,20 @@ def test_check_does_not_wait_for_pandoc_past_its_limit(
     """Pandoc takes about three times as long for each level of brackets nested in
     brackets: a quarter of a second at six, thirteen seconds at ten, and at fourteen far
     longer than anyone waits. `check` ran it with no limit, where it had never waited on
-    another program, and the suite's own check of prose someone might write did not end."""
+    another program, and the suite's own check of prose someone might write did not end.
+
+    The line here is ten deep and the limit one second. Fourteen deep, a `check` that
+    ignored the limit would not have failed this test: it would have stalled it for the
+    better part of an hour, with pandoc past ten gigabytes."""
     from manuscript_guard.build import tex_check
 
     monkeypatch.setattr(tex_check, "READ_SECONDS", 1.0)
     source = main_md(project)
     written = source.read_bytes().decode("utf-8")
-    nested = "[" * 14 + "see the note" + "]" * 14
+    nested = "[" * DEEP + "see the note" + "]" * DEEP
     source.write_bytes((written + N + nested + N).encode("utf-8"))
 
-    # No clock is read: left to finish, pandoc would be minutes, and there would be no note.
+    # No clock is read: left to finish, pandoc would come back, and there would be no note.
     code, report = checked(project, capsys)
 
     assert code == 0, report
@@ -524,10 +643,18 @@ def test_check_does_not_wait_for_pandoc_past_its_limit(
     assert report["counts"]["documents_read_for_tex"] == 1, "the supplement was read"
 
 
+def test_the_line_that_test_is_made_of_is_one_pandoc_comes_back_from() -> None:
+    """Ten deep is a quarter of a minute to pandoc, under load a minute: long past the one
+    second the test gives it, and short enough to fail a test rather than hold a runner."""
+    assert DEEP == 10
+
+
 def test_check_waits_ten_seconds_for_each_document() -> None:
     """Pandoc reads the example in a tenth of a second and its text two hundred times over,
-    164,000 words, in two: ten is past any manuscript and short of a wait that looks like
-    a hang."""
+    164,000 words, in two: ten is far past a manuscript of prose and short of a wait that
+    looks like a hang. Tables are what come near it: forty of three hundred rows and eight
+    columns took pandoc four seconds, and ten or more with a phrase in each cell, 3.6 MB. A
+    supplement of that size is not judged here."""
     from manuscript_guard.build import tex_check
 
     assert tex_check.READ_SECONDS == 10.0
@@ -590,6 +717,10 @@ def test_a_pandoc_that_cannot_be_started_is_a_note_and_no_crash(
     assert len(notes) == 2, "the paper and its supplement"
     assert all(note["severity"] == "info" for note in notes)
     assert "pandoc could not be run on the manuscript" in notes[0]["message"]
+    # The build says it in a traceback, and the note said that it "says what is wrong".
+    assert notes[0]["message"].endswith(
+        "so TeX in it is not judged here: the build needs pandoc too"
+    )
     assert report["counts"]["documents_read_for_tex"] == 0
 
 

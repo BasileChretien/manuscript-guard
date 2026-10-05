@@ -364,11 +364,29 @@ def test_a_line_of_a_paragraph_that_opens_with_a_greater_than_sign_is_read(
         "<!-- a note -->\n> The subjects objected to the word.\n",  # after a hidden line
         "```\ncode\n```\n> The subjects objected to the word.\n",
         "Recall was low.\n   \n> The subjects objected to the word.\n",  # after a line of spaces
+        "Recall was low.\n\n***\n> The subjects objected to the word.\n",  # a rule of asterisks
+        "Voices\n======\n> The subjects objected to the word.\n",  # a first-level setext heading
+        "::: box\nInside.\n:::\n> The subjects objected to the word.\n",  # after a div closes
+        # Far enough down the file that an offset one short for each line would show.
+        "One.\nTwo.\nThree.\nFour.\nFive.\nSix.\n\n> They called themselves subjects\n",
     ],
 )
 def test_a_quotation_is_left_alone_wherever_a_block_can_open(project: Path, text: str) -> None:
     _, found = written(project, text)
     assert not found, messages(found)
+
+
+def test_a_row_of_a_table_that_opens_with_a_greater_than_sign_is_read(project: Path) -> None:
+    """The rule under a simple table's header is hyphens with blanks between, and its first
+    row is a row. Taken for a rule that ends a block, it made "> 65 years" a quotation."""
+    _, found = written(
+        project,
+        "# Results\n\nAge         Group\n----------  ------------\n> 65 years  12 subjects\n"
+        "< 65 years  30 subjects\n",
+    )
+    (finding,) = found
+    assert "used 2 times" in finding.message
+    assert finding.line == 5
 
 
 def test_a_form_feed_does_not_end_a_line(project: Path) -> None:
@@ -547,6 +565,45 @@ def test_a_singular_and_a_plural_for_the_same_pair_of_words_agree(
     to disagree about, and both words are looked for."""
     _, found = written(project, f"# Results\n\n{text}\n", vocabulary)
     assert sorted(messages(found)) == expected
+
+
+def test_one_word_given_up_for_a_singular_and_its_plural_is_no_conflict(project: Path) -> None:
+    """The other half of the same rule: "participant" and "participants" are one term to
+    use, so a word given up for both has one term to give way to."""
+    vocabulary = [
+        {"use": "participant", "avoid": ["subject"]},
+        {"use": "participants", "avoid": ["subject"]},
+    ]
+    _, found = written(project, "# Results\n\nA subject withdrew.\n", vocabulary)
+    assert messages(found) == ["'subject' is used once; this paper's term is 'participant'"]
+
+
+def test_an_abbreviation_s_plural_is_not_the_word_it_spells(project: Path) -> None:
+    """`CIs` is two confidence intervals, though "cis" is in the vocabulary too."""
+    vocabulary = [
+        {"use": "confidence interval", "avoid": ["CI"]},
+        {"use": "trans", "avoid": ["cis"]},
+    ]
+    _, found = written(
+        project, "# Results\n\nBoth CIs were wide. The CI was wide.\n", vocabulary
+    )
+    assert messages(found) == ["'CI' is used 2 times; this paper's term is 'confidence interval'"]
+
+
+def test_a_greek_abbreviation_is_found_in_the_plural(project: Path) -> None:
+    """Its lower case ends in a final sigma and its plural's does not, so the letters are
+    compared with case folded away, which knows the two for one letter."""
+    term = (
+        "\N{GREEK CAPITAL LETTER OMICRON}\N{GREEK CAPITAL LETTER DELTA}"
+        "\N{GREEK CAPITAL LETTER OMICRON}\N{GREEK CAPITAL LETTER SIGMA}"
+    )
+    _, found = written(
+        project,
+        f"# Results\n\nOne {term} and two {term}s.\n",
+        [{"use": "road", "avoid": [term]}],
+    )
+    (finding,) = found
+    assert "used 2 times" in finding.message
 
 
 def test_the_schema_reports_a_term_with_no_letter_in_it(project: Path) -> None:

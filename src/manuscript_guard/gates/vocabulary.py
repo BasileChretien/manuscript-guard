@@ -51,9 +51,12 @@ _AFTER = r"(?![^\W_])"
 # A line of a quotation set as a block. Its words are somebody else's.
 _QUOTE_LINE = re.compile(r"[ ]{0,3}>")
 # A line after which a block can open with no blank line between: a heading, a rule or a
-# setext underline, and the line that opens or closes a fenced div.
+# setext underline, and the line that opens or closes a fenced div. A rule of hyphens is
+# one unbroken run of them here. Hyphens with blanks between are also the rule under the
+# header of a simple table, whose first row is then no quotation though it open with `>`:
+# "> 65 years  12 subjects".
 _ENDS_A_BLOCK = re.compile(
-    r"[ ]{0,3}(?:#{1,6}(?:[ \t]|$)|:::|(?:[-*_][ \t]*){3,}$|-+[ \t]*$|=+[ \t]*$)"
+    r"[ ]{0,3}(?:#{1,6}(?:[ \t]|$)|:::|(?:[*_][ \t]*){3,}$|-+[ \t]*$|=+[ \t]*$)"
 )
 
 
@@ -151,19 +154,18 @@ class _Vocabulary:
     use: dict[str, str]
     avoid: dict[str, tuple[str, str]]  # key -> (the term as the entry writes it, the term to use)
     conflicts: tuple[str, ...]
-    #: The keys by their letters in lower case, an abbreviation before a word that spells
-    #: the same, so that `OR` is tried before `or`.
+    #: The keys by their letters with case folded away: the terms a match's letters can be.
     spelt: dict[str, tuple[str, ...]]
 
     def named(self, found: str) -> str | None:
-        """The key of the term these words are, or None."""
+        """The key of the term these words are, or None. Of two terms the words can be, an
+        abbreviation before a word: with `CI` and "cis" both in the vocabulary, `CIs` is
+        the plural of the first."""
         words = _words(found)
-        plain = " ".join(word.lower() for word in words)
-        for form in dict.fromkeys((plain, plain[:-1] if plain.endswith("s") else plain)):
-            for key in self.spelt.get(form, ()):
-                if _is(key, words):
-                    return key
-        return None
+        plain = " ".join(word.casefold() for word in words)
+        forms = dict.fromkeys((plain, plain[:-1] if plain.endswith("s") else plain))
+        keys = [key for form in forms for key in self.spelt.get(form, ()) if _is(key, words)]
+        return min(keys, key=lambda key: not capitals_together(key), default=None)
 
 
 def _vocabulary(entries: Iterable[dict]) -> _Vocabulary:
@@ -216,9 +218,11 @@ def _vocabulary(entries: Iterable[dict]) -> _Vocabulary:
         for key in written
         if key not in disputed
     }
+    # By `casefold`, not `lower`: the lower case of a Greek abbreviation ends in a final
+    # sigma and that of its plural does not, and the plural was looked up and not found.
     spelt: dict[str, tuple[str, ...]] = {}
     for key in sorted({*use, *avoid}):
-        spelt[key.lower()] = (*spelt.get(key.lower(), ()), key)
+        spelt[key.casefold()] = (*spelt.get(key.casefold(), ()), key)
     conflicts = tuple(dict.fromkeys(disputed[key] for key in sorted(disputed)))
     return _Vocabulary(use, avoid, conflicts, spelt)
 

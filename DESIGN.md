@@ -989,16 +989,18 @@ image captions or front matter, as for abbreviations; not in the reference list,
 titles are other people's; and not in a quotation set as a block, whose words are too. A
 line under `>` opens a quotation where a block can open, after a blank line, a heading, a
 rule or the line of a fenced div. Inside a paragraph it does not: "ALT" ending one line
-and "> 3 times the limit" opening the next are one paragraph, and are read.
+and "> 3 times the limit" opening the next are one paragraph, and are read. This is a
+reading of the line above and no more: it is right for the shapes a manuscript is written
+in, and Known gaps lists where it and pandoc part.
 
 **Entries that disagree are reported and not acted on.** A term that one entry keeps and
 another gives up, or that is given up for two different terms, is a `vocabulary-conflict`
 at `paper.yaml`, and it is not looked for until the entries agree. Two terms are one to
 this check where the reading cannot tell them apart: the same words with a hyphen or a
-space between them, in another case where no word has two capitals together, or in the
-plural of a term written without one. So "follow up" cannot be given up for "follow-up",
-and the message says the two are read as one, while `Covid-19` can be given up for
-`COVID-19`. The terms to use are compared the same way, so an entry for "subject" and
+space between them, in the plural of a term written without one, or with another
+capital in a word that has no two capitals together. So "follow up" cannot be given up
+for "follow-up", and the message says the two are read as one, while `Covid-19` can be
+given up for `COVID-19`, whose capitals stand together. The terms to use are compared the same way, so an entry for "subject" and
 "participant" beside one for "subjects" and "participants" is no conflict. An entry in
 the wrong shape is the schema's to report, a term with no letter or digit
 in it included; the gate reads the entries the schema accepts, one by one, so one mistake
@@ -7122,15 +7124,23 @@ Closed since, and why each mattered:
   - A word in two capitals or more is matched as written, and so is not found where the
     manuscript writes it otherwise: `OR` given up does not find "Or" or "or", which is the
     point, nor a `Who` typed in error, nor "phase ii trial" for "phase II trial".
+  - A capital inside a word that has no two together cannot be declared. `CoV`, `IgG` and
+    `HbA1c` are found in any case, so `SARS-Cov-2` given up for `SARS-CoV-2` is a conflict,
+    as `Hba1c` for `HbA1c` is: only `SARS` is held to its capitals. Before the case rule
+    went word by word the first of these was reported, because `SARS` held the whole term.
   - A quotation is left alone only when it is set as a block, each line under `>`. Words
     quoted inside a sentence are read as the manuscript's own, and so is a line that
     continues a block quotation without its `>`. Everything set under `>` is left alone,
     a summary box written that way included.
-  - Where a quotation opens is read from the line above, and two readings differ from
-    pandoc's. A line that holds only something hidden, a binding or inline code alone on
-    its line, counts as blank, so a `>` line under it is taken for a quotation and not
-    read. And a `>` line straight under a table is read, where pandoc sets it as a
-    quotation.
+  - Where a quotation opens is read from the one line above, and pandoc reads more than
+    that. The gate leaves a `>` line alone, where pandoc prints it as the paper's own
+    words, under a line that holds only something hidden (a binding, inline code, a
+    comment, an equation or an image alone on its line), and under a heading or a rule
+    that itself has no blank line above it and so is no heading or rule to pandoc. The
+    gate reads a `>` line, where pandoc sets a quotation, under a pipe or grid table, an
+    indented code block, a line block, an HTML block, a link's definition, and under a
+    rule written as hyphens with blanks between, `- - -`: that is also the rule under a
+    simple table's header, whose rows are rows.
   - A heading with no blank line under it runs into its paragraph: `# The other side`
     over `Effect sizes were small.` on the next line reports "side effect". With the
     blank line it does not.
@@ -7139,6 +7149,11 @@ Closed since, and why each mattered:
     the term, "side [effect](...)".
   - The underscore is taken for a mark of emphasis, so a term is found in a name written
     with one, `n_subjects`, when that name is not set as code.
+  - A term with an asterisk or an underscore in it is found as the entry writes it.
+    pandoc reads `CYP2D6*4 and CYP2D6*10` as emphasis, so a manuscript writes the mark
+    with a backslash, `CYP2D6\*4`, and that spelling is found only by an entry that has
+    the backslash too. A mark at the end of an entry's word is taken off it: `n_` is read
+    as "n", and `_id` as "id".
   - A term typed with an accent as one character does not find the same word typed as a
     letter and a combining accent.
   - The title, the short title and the keywords come from `paper.yaml` and are not read:

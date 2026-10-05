@@ -32,9 +32,13 @@ from manuscript_guard.text.masking import NUL
 
 GATE = "G14"
 
-# What separates the words of a term as an entry writes it, and as a match is read back:
-# white space, a hyphen, and the marks of emphasis, which print as nothing.
-_BETWEEN = re.compile(r"[\s*_-]+")
+# What separates the words of a term, as an entry writes it and as a match is read back:
+# white space or a hyphen. Not the marks of emphasis: split at those too, `CYP2D6*4` and
+# `R_0` were read as two words each and never found as written.
+_BETWEEN = re.compile(r"[\s-]+")
+# The marks of emphasis, which print as nothing. At either end of a word they are no part
+# of it: `_in vitro_` is "in vitro". Inside one they are the word: `R_0`.
+_MARKS = "*_"
 # What may stand between two words of a term in the manuscript: one hyphen, or blanks, or
 # one line break with its indentation, each with marks of emphasis beside it, so that
 # "_in vitro_ fertilisation" is the term. Not `[\s-]+`: that read a term across a blank
@@ -46,6 +50,14 @@ _BEFORE = r"(?<![^\W_])"
 _AFTER = r"(?![^\W_])"
 # A line of a quotation set as a block. Its words are somebody else's.
 _QUOTE_LINE = re.compile(r"[ ]{0,3}>")
+# A line after which a block can open with no blank line between: a heading, a rule or a
+# setext underline, and the line that opens or closes a fenced div. A rule of hyphens is
+# one unbroken run of them here. Hyphens with blanks between are also the rule under the
+# header of a simple table, whose first row is then no quotation though it open with `>`:
+# "> 65 years  12 subjects".
+_ENDS_A_BLOCK = re.compile(
+    r"[ ]{0,3}(?:#{1,6}(?:[ \t]|$)|:::|(?:[*_][ \t]*){3,}$|-+[ \t]*$|=+[ \t]*$)"
+)
 
 
 @dataclass(frozen=True)
@@ -74,15 +86,22 @@ def capitals_together(form: str) -> bool:
 
 
 def _words(term: str) -> list[str]:
-    return [word for word in _BETWEEN.split(term.strip()) if word]
+    """The words of a term, each without the marks of emphasis at its ends."""
+    parts = (part.strip(_MARKS) for part in _BETWEEN.split(term.strip()))
+    return [word for word in parts if word]
+
+
+def _folded(word: str) -> str:
+    """A word as it is compared: as written where it has two capitals together, in lower
+    case otherwise. `OR`, `WHO` and `US` are abbreviations; in any case, they were the
+    words "or", "who" and "us". Word by word, so that in "phase II trial" only `II` is
+    held to its capitals, and "Phase II trials" opening a sentence is the term."""
+    return word if capitals_together(word) else word.lower()
 
 
 def _key(term: str) -> str:
-    """A term as it is compared: one space between its words, and lower case unless it is
-    written with two capitals together. `OR`, `WHO` and `US` are abbreviations and are
-    matched as written; in any case, they were the words "or", "who" and "us"."""
-    joined = " ".join(_words(term))
-    return joined if capitals_together(joined) else joined.lower()
+    """A term as it is compared: its words folded, one space between them."""
+    return " ".join(_folded(word) for word in _words(term))
 
 
 def _found_as(key: str) -> tuple[str, ...]:
@@ -92,13 +111,34 @@ def _found_as(key: str) -> tuple[str, ...]:
 
 
 def _shape(term: str) -> str:
-    """The pattern a term is found by: its words with `_JOINT` between them, the plural
-    `s` where the term is written without one, and any case unless the term is an
-    abbreviation."""
+    """The pattern a term is found by: its words with `_JOINT` between them, each in any
+    case unless it is an abbreviation, and the plural `s` where the term is written
+    without one."""
     words = _words(term)
-    plural = "" if words[-1].endswith("s") else "s?"
-    body = _JOINT.join(re.escape(word) for word in words) + plural
-    return body if capitals_together(" ".join(words)) else f"(?i:{body})"
+    shaped = [
+        re.escape(word) if capitals_together(word) else f"(?i:{re.escape(word)})"
+        for word in words
+    ]
+    last = words[-1]
+    # An abbreviation's plural is a small `s`: `ORs`. Any other word's is in any case, as
+    # the word is: `SUBJECTS` in a heading set in capitals.
+    plural = "s?" if capitals_together(last) else "(?i:s)?"
+    return _JOINT.join(shaped) + ("" if _folded(last).endswith("s") else plural)
+
+
+def _is(key: str, words: list[str]) -> bool:
+    """Are these words, as the manuscript writes them, the term with this key? Word by
+    word: an abbreviation as written, any other word in any case, and the last with the
+    plural `s` where the term has none."""
+    wanted = key.split(" ")
+    if len(wanted) != len(words):
+        return False
+    for index, (want, word) in enumerate(zip(wanted, words, strict=True)):
+        got = word if capitals_together(want) else word.lower()
+        plural = index == len(wanted) - 1 and not want.endswith("s") and got == want + "s"
+        if got != want and not plural:
+            return False
+    return True
 
 
 def _listed(terms: list[str]) -> str:
@@ -114,16 +154,18 @@ class _Vocabulary:
     use: dict[str, str]
     avoid: dict[str, tuple[str, str]]  # key -> (the term as the entry writes it, the term to use)
     conflicts: tuple[str, ...]
+    #: The keys by their letters with case folded away: the terms a match's letters can be.
+    spelt: dict[str, tuple[str, ...]]
 
     def named(self, found: str) -> str | None:
-        """The key of the term these words are: as written for an abbreviation, in lower
-        case for any other, the plural folded where the term has none."""
-        written = " ".join(_words(found))
-        for key in (written, written.lower()):
-            for form in (key, key[:-1] if key.endswith("s") else key):
-                if form in self.use or form in self.avoid:
-                    return form
-        return None
+        """The key of the term these words are, or None. Of two terms the words can be, an
+        abbreviation before a word: with `CI` and "cis" both in the vocabulary, `CIs` is
+        the plural of the first."""
+        words = _words(found)
+        plain = " ".join(word.casefold() for word in words)
+        forms = dict.fromkeys((plain, plain[:-1] if plain.endswith("s") else plain))
+        keys = [key for form in forms for key in self.spelt.get(form, ()) if _is(key, words)]
+        return min(keys, key=lambda key: not capitals_together(key), default=None)
 
 
 def _vocabulary(entries: Iterable[dict]) -> _Vocabulary:
@@ -144,12 +186,18 @@ def _vocabulary(entries: Iterable[dict]) -> _Vocabulary:
     # Two terms are one to the reading where a form of one is a form of the other: the
     # same words, or the plural of a term written without one.
     kept_as = {form: key for key in use for form in _found_as(key)}
+
+    def one(kept: str) -> str:
+        """A term to use, as the reading finds it: "participants" is "participant" where
+        both are kept, so an entry for the singular and one for the plural agree."""
+        return kept[:-1] if kept.endswith("s") and kept[:-1] in use else kept
+
     given_as: dict[str, str] = {}
     disputed: dict[str, str] = {}
     for key in sorted(written):
-        rivals = list(chosen[key].values())
+        rivals = {one(kept): term for kept, term in chosen[key].items()}
         if len(rivals) > 1:
-            disputed[key] = f"{written[key]!r} is to give way to {_listed(rivals)}"
+            disputed[key] = f"{written[key]!r} is to give way to {_listed(list(rivals.values()))}"
         for form in _found_as(key):
             if form in kept_as:
                 kept = use[kept_as[form]]
@@ -160,7 +208,7 @@ def _vocabulary(entries: Iterable[dict]) -> _Vocabulary:
                     "and the two are read as one term"
                 )
             other = given_as.setdefault(form, key)
-            if other != key and set(chosen[other]) != set(chosen[key]):
+            if other != key and {one(k) for k in chosen[other]} != {one(k) for k in chosen[key]}:
                 both = _listed([written[other], written[key]])
                 disputed[key] = disputed[other] = (
                     f"{both} are read as one term, and are given up for different terms"
@@ -170,7 +218,13 @@ def _vocabulary(entries: Iterable[dict]) -> _Vocabulary:
         for key in written
         if key not in disputed
     }
-    return _Vocabulary(use, avoid, tuple(dict.fromkeys(disputed[key] for key in sorted(disputed))))
+    # By `casefold`, not `lower`: the lower case of a Greek abbreviation ends in a final
+    # sigma and that of its plural does not, and the plural was looked up and not found.
+    spelt: dict[str, tuple[str, ...]] = {}
+    for key in sorted({*use, *avoid}):
+        spelt[key.casefold()] = (*spelt.get(key.casefold(), ()), key)
+    conflicts = tuple(dict.fromkeys(disputed[key] for key in sorted(disputed)))
+    return _Vocabulary(use, avoid, conflicts, spelt)
 
 
 def _pattern(vocabulary: _Vocabulary) -> re.Pattern[str] | None:
@@ -187,19 +241,24 @@ def _pattern(vocabulary: _Vocabulary) -> re.Pattern[str] | None:
 
 
 def _quotations(printed: str) -> list[tuple[int, int]]:
-    """The lines of each block quotation. A line under `>` opens one only after a blank
-    line, as pandoc reads it: "ALT" at the end of one line and "> 3 times the limit" on
-    the next are one paragraph."""
+    """The lines of each block quotation. A line under `>` opens one where a block can
+    open: after a blank line, a heading, a rule or a fenced div's line. Inside a
+    paragraph it does not: "ALT" at the end of one line and "> 3 times the limit" on the
+    next are one paragraph, as pandoc reads them.
+
+    Lines are split at the newline alone. `str.splitlines` also breaks at a form feed, a
+    vertical tab and a line separator, which are characters of a paragraph to pandoc."""
     spans: list[tuple[int, int]] = []
     offset = 0
-    after_blank, after_quoted = True, False
-    for line in printed.splitlines(keepends=True):
-        body = line.rstrip("\r\n")
-        quoted = _QUOTE_LINE.match(body) is not None and (after_blank or after_quoted)
+    after_break, after_quoted = True, False
+    for line in printed.split("\n"):
+        body = line.rstrip("\r")
+        quoted = _QUOTE_LINE.match(body) is not None and (after_break or after_quoted)
         if quoted:
             spans.append((offset, offset + len(body)))
-        after_blank, after_quoted = not body.strip(" \t" + NUL), quoted
-        offset += len(line)
+        after_break = not body.strip(" \t" + NUL) or _ENDS_A_BLOCK.match(body) is not None
+        after_quoted = quoted
+        offset += len(line) + 1
     return spans
 
 
@@ -226,9 +285,9 @@ def judge_vocabulary(
             message=conflict,
             path=paper,
             hint="under `language: vocabulary:` a term is either used or avoided, and "
-            "avoided for one term only; a hyphen, a space, a capital and the plural `s` "
-            "make no difference between two terms. It is not looked for until the "
-            "entries agree",
+            "avoided for one term only. Between two terms a hyphen, a space and the plural "
+            "`s` make no difference, nor does a capital, except in a word written with "
+            "two together. It is not looked for until the entries agree",
         )
         for conflict in vocabulary.conflicts
     ]

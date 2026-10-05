@@ -133,8 +133,11 @@ How a term is matched:
 - A term written in the singular is found in the plural too. One written in the plural is
   found only so: give up "subjects", not "subject", or "subject to bias" is reported.
 - Only the plural in `s` is folded. For "study" and "studies", list both.
-- A term written with two capitals together, `OR`, `WHO`, is matched as written, so
-  giving up an abbreviation for its long form does not report the word it spells.
+- A word written with two capitals together, `OR`, `WHO`, the `II` of "phase II trial",
+  is matched as written, so giving up an abbreviation for its long form does not report
+  the word it spells. The other words of a term are found in any case.
+- An entry for the singular and one for the plural can stand side by side: "subject" for
+  "participant" and "subjects" for "participants".
 - A hyphen and a space between a term's words are read as one, so the choice between
   "follow up" and "follow-up" cannot be declared here.
 - Quote the terms, as with abbreviations.

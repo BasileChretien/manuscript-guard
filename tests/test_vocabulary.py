@@ -203,6 +203,70 @@ def test_an_abbreviation_given_up_is_found_as_written_and_in_the_plural(project:
     ]
 
 
+def test_only_the_abbreviation_in_a_term_is_held_to_its_capitals(project: Path) -> None:
+    """Word by word. "Phase II trials" opening a sentence and "Phase II Trials" in a
+    heading are the term; held to its capitals from end to end, only the entry's own
+    spelling was found."""
+    vocabulary = [
+        {"use": "phase 2 trial", "avoid": ["phase II trial"]},
+        {"use": "hepatitis B", "avoid": ["chronic HBV infection"]},
+    ]
+    _, found = written(
+        project,
+        "# Results\n\nPhase II trials were pooled. Each phase II trial was read twice.\n\n"
+        "## Phase II Trials by Region\n\nChronic HBV infection was an exclusion.\n",
+        vocabulary,
+    )
+    assert sorted(messages(found)) == [
+        "'chronic HBV infection' is used once; this paper's term is 'hepatitis B'",
+        "'phase II trial' is used 3 times; this paper's term is 'phase 2 trial'",
+    ]
+    _, found = written(project, "# Results\n\nEach phase ii trial was read.\n", vocabulary)
+    assert not found, "the numeral is held to its capitals"
+
+
+def test_a_word_in_capitals_is_the_word_and_its_plural(project: Path) -> None:
+    """A heading set in capitals: `SUBJECTS` is "subject" in the plural."""
+    _, found = written(
+        project,
+        "# SUBJECTS\n\nEach SUBJECT gave consent.\n",
+        [{"use": "participant", "avoid": ["subject"]}],
+    )
+    (finding,) = found
+    assert "used 2 times" in finding.message
+
+
+def test_two_capitalisations_of_an_abbreviation_are_two_terms(project: Path) -> None:
+    """`Covid-19` can be given up for `COVID-19`: with two capitals together, a term is
+    its capitals."""
+    report, found = written(
+        project,
+        "# Methods\n\nCovid-19 reports were excluded, as were COVID-19 vaccines.\n",
+        [{"use": "COVID-19", "avoid": ["Covid-19"]}],
+    )
+    assert messages(found) == ["'Covid-19' is used once; this paper's term is 'COVID-19'"]
+
+
+@pytest.mark.parametrize(
+    ("term", "sentence"),
+    [
+        ("CYP2D6*4", "The CYP2D6*4 allele was typed."),
+        ("HLA-B*57:01", "Carriers of HLA-B*57:01 were excluded."),
+        ("R_0", "The R_0 was 2.4."),
+        ("n_eff", "The n_eff was small."),
+    ],
+)
+def test_a_term_with_a_mark_inside_it_is_found_as_written(
+    project: Path, term: str, sentence: str
+) -> None:
+    """An asterisk or an underscore inside a word is the word. Split there, the term was
+    read as its parts and never found."""
+    _, found = written(
+        project, f"# Results\n\n{sentence}\n", [{"use": "the plain name", "avoid": [term]}]
+    )
+    assert messages(found) == [f"{term!r} is used once; this paper's term is 'the plain name'"]
+
+
 # ---------------------------------------------------------------- what joins a term's words
 
 SIDE_EFFECT = [{"use": "adverse reaction", "avoid": ["side effect"]}]
@@ -234,6 +298,23 @@ def test_a_heading_does_not_run_on_into_its_paragraph(project: Path) -> None:
         project, "# The other side\n\nEffect sizes were small.\n", SIDE_EFFECT
     )
     assert not found, messages(found)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "The side *effect* was mild.",  # emphasis after the joint
+        "The **side** **effect** was mild.",  # and on both sides of it
+        "- the side\n  effect was mild",  # a line break, then a list item's indentation
+        "The side  \neffect was mild.",  # blanks, then the line break
+        "The side\t\n\teffect was mild.",
+    ],
+)
+def test_two_words_side_by_side_are_the_term_however_the_line_is_set(
+    project: Path, text: str
+) -> None:
+    _, found = written(project, f"# Methods\n\n{text}\n", SIDE_EFFECT)
+    assert [f.code for f in found] == ["term-avoided"], messages(found)
 
 
 @pytest.mark.parametrize(
@@ -269,6 +350,54 @@ def test_a_line_of_a_paragraph_that_opens_with_a_greater_than_sign_is_read(
         "none.\n",
     )
     assert messages(found) == ["'subjects' is used once; this paper's term is 'participants'"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "> The subjects objected.\n> So did other subjects.\n",  # at the top, two lines
+        "Recall was low.\n\n> One line.\n> The subjects objected on the next.\n",
+        "## Patient voices\n> The subjects objected to the word.\n",  # under a heading
+        "Voices\n------\n> The subjects objected to the word.\n",  # under a setext heading
+        "Recall was low.\n\n---\n> The subjects objected to the word.\n",  # under a rule
+        "::: box\n> The subjects objected to the word.\n:::\n",  # in a fenced div
+        "<!-- a note -->\n> The subjects objected to the word.\n",  # after a hidden line
+        "```\ncode\n```\n> The subjects objected to the word.\n",
+        "Recall was low.\n   \n> The subjects objected to the word.\n",  # after a line of spaces
+        "Recall was low.\n\n***\n> The subjects objected to the word.\n",  # a rule of asterisks
+        "Voices\n======\n> The subjects objected to the word.\n",  # a first-level setext heading
+        "::: box\nInside.\n:::\n> The subjects objected to the word.\n",  # after a div closes
+        # Far enough down the file that an offset one short for each line would show.
+        "One.\nTwo.\nThree.\nFour.\nFive.\nSix.\n\n> They called themselves subjects\n",
+    ],
+)
+def test_a_quotation_is_left_alone_wherever_a_block_can_open(project: Path, text: str) -> None:
+    _, found = written(project, text)
+    assert not found, messages(found)
+
+
+def test_a_row_of_a_table_that_opens_with_a_greater_than_sign_is_read(project: Path) -> None:
+    """The rule under a simple table's header is hyphens with blanks between, and its first
+    row is a row. Taken for a rule that ends a block, it made "> 65 years" a quotation."""
+    _, found = written(
+        project,
+        "# Results\n\nAge         Group\n----------  ------------\n> 65 years  12 subjects\n"
+        "< 65 years  30 subjects\n",
+    )
+    (finding,) = found
+    assert "used 2 times" in finding.message
+    assert finding.line == 5
+
+
+def test_a_form_feed_does_not_end_a_line(project: Path) -> None:
+    """Only a newline does. Split as `str.splitlines` splits, the line after a form feed
+    looked like the first of a block, and its `>` like a quotation."""
+    _, found = written(
+        project,
+        "# Methods\n\nWe enrolled people with ALT\f\n> 3 times the limit, and subjects with "
+        "none.\n",
+    )
+    assert [f.code for f in found] == ["term-avoided"]
 
 
 def test_the_context_of_a_finding_is_the_text_as_written(project: Path) -> None:
@@ -381,6 +510,111 @@ def test_a_conflict_is_a_warning_too(project: Path) -> None:
     assert [f.code for f in found] == ["vocabulary-conflict"]
     assert found[0].severity == "warn"
     assert report.ok
+
+
+def test_a_term_given_up_for_two_others_is_a_conflict(project: Path) -> None:
+    vocabulary = [
+        {"use": "participants", "avoid": ["subjects"]},
+        {"use": "patients", "avoid": ["subjects"]},
+    ]
+    _, found = written(project, "# Results\n\nSubjects were enrolled.\n", vocabulary)
+    (finding,) = found
+    assert finding.message == "'subjects' is to give way to 'participants' and 'patients'"
+
+
+@pytest.mark.parametrize(
+    ("vocabulary", "text", "expected"),
+    [
+        (
+            [
+                {"use": "participant", "avoid": ["subject"]},
+                {"use": "participants", "avoid": ["subjects"]},
+            ],
+            "A subject withdrew. Two subjects were lost to follow-up.",
+            [
+                "'subject' is used once; this paper's term is 'participant'",
+                "'subjects' is used once; this paper's term is 'participants'",
+            ],
+        ),
+        (
+            [
+                {"use": "odds ratio", "avoid": ["OR"]},
+                {"use": "odds ratios", "avoid": ["ORs"]},
+            ],
+            "The OR was 2.1. Both ORs were pooled.",
+            [
+                "'OR' is used once; this paper's term is 'odds ratio'",
+                "'ORs' is used once; this paper's term is 'odds ratios'",
+            ],
+        ),
+        (
+            [{"use": "participants", "avoid": ["subject", "subjects"]}],
+            "A subject withdrew. Two subjects were lost to follow-up.",
+            [
+                "'subject' is used once; this paper's term is 'participants'",
+                "'subjects' is used once; this paper's term is 'participants'",
+            ],
+        ),
+    ],
+)
+def test_a_singular_and_a_plural_for_the_same_pair_of_words_agree(
+    project: Path, vocabulary: list, text: str, expected: list
+) -> None:
+    """The entries an author most naturally writes: one for the singular, one for the
+    plural. The terms they give way to are one term to the reading, so there is nothing
+    to disagree about, and both words are looked for."""
+    _, found = written(project, f"# Results\n\n{text}\n", vocabulary)
+    assert sorted(messages(found)) == expected
+
+
+def test_one_word_given_up_for_a_singular_and_its_plural_is_no_conflict(project: Path) -> None:
+    """The other half of the same rule: "participant" and "participants" are one term to
+    use, so a word given up for both has one term to give way to."""
+    vocabulary = [
+        {"use": "participant", "avoid": ["subject"]},
+        {"use": "participants", "avoid": ["subject"]},
+    ]
+    _, found = written(project, "# Results\n\nA subject withdrew.\n", vocabulary)
+    assert messages(found) == ["'subject' is used once; this paper's term is 'participant'"]
+
+
+def test_an_abbreviation_s_plural_is_not_the_word_it_spells(project: Path) -> None:
+    """`CIs` is two confidence intervals, though "cis" is in the vocabulary too."""
+    vocabulary = [
+        {"use": "confidence interval", "avoid": ["CI"]},
+        {"use": "trans", "avoid": ["cis"]},
+    ]
+    _, found = written(
+        project, "# Results\n\nBoth CIs were wide. The CI was wide.\n", vocabulary
+    )
+    assert messages(found) == ["'CI' is used 2 times; this paper's term is 'confidence interval'"]
+
+
+def test_a_greek_abbreviation_is_found_in_the_plural(project: Path) -> None:
+    """Its lower case ends in a final sigma and its plural's does not, so the letters are
+    compared with case folded away, which knows the two for one letter."""
+    term = (
+        "\N{GREEK CAPITAL LETTER OMICRON}\N{GREEK CAPITAL LETTER DELTA}"
+        "\N{GREEK CAPITAL LETTER OMICRON}\N{GREEK CAPITAL LETTER SIGMA}"
+    )
+    _, found = written(
+        project,
+        f"# Results\n\nOne {term} and two {term}s.\n",
+        [{"use": "road", "avoid": [term]}],
+    )
+    (finding,) = found
+    assert "used 2 times" in finding.message
+
+
+def test_the_schema_reports_a_term_with_no_letter_in_it(project: Path) -> None:
+    path = project / "paper.yaml"
+    paper = yaml.safe_load(path.read_text(encoding="utf-8"))
+    paper["language"] = {"vocabulary": [{"use": "--", "avoid": ["subjects", "+/-"]}]}
+    path.write_text(yaml.safe_dump(paper, sort_keys=False), encoding="utf-8")
+    _, contract = load_project(project)
+    refused = sorted(f.message for f in contract.failures)
+    assert any("language/vocabulary/0/use" in message for message in refused), refused
+    assert any("language/vocabulary/0/avoid/1" in message for message in refused), refused
 
 
 def test_a_term_given_up_for_several_others_names_them_all(project: Path) -> None:

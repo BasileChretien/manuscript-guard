@@ -17,7 +17,7 @@ import yaml
 
 from manuscript_guard.contracts import load_project
 from manuscript_guard.gates import check_language
-from manuscript_guard.gates.language import _definitions, _long_form, _prose
+from manuscript_guard.gates.language import _definitions, _hidden, _long_form
 
 
 def written(project: Path, text: str, *, supplement: str | None = None, **files: str):
@@ -854,7 +854,7 @@ def test_unclosed_images_are_read_in_linear_time(assert_linear) -> None:
     def images(count: int) -> str:
         return "![" * count
 
-    assert_linear(images, lambda text: _prose(text, []), 2000, "the prose reading, by `![`")
+    assert_linear(images, _hidden, 2000, "the reading of a file, by `![`")
 
 
 def test_many_findings_are_made_in_linear_time(assert_linear) -> None:

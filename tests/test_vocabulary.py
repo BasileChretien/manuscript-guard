@@ -139,19 +139,144 @@ def test_a_paper_that_declares_nothing_hears_nothing(project: Path) -> None:
     [
         "Participants gave subjective ratings, and outpatients were excluded.",
         "The estimate is subject to bias.",  # the entry is the plural, and this is not it
-        "Data are in `subjects.csv`, read by `load_subjects()`.",
-        "As reported [@subjectsAndPatients2020], recall was low.",
+        "Data are in `subjects.csv`, read by `load subjects`.",
+        "As reported [@subjects; @doe2020-subjects], recall was low.",
         "See https://example.org/subjects for the protocol.",
         "<!-- subjects or participants? decide before submission -->\n\nRecall was low.",
         "> We called them subjects, and the patients objected.\n\nRecall was low.",
+        "   > Indented, and still a quotation: the subjects objected.\n\nRecall was low.",
         "![Flow of subjects through the study](figures/flow.svg)",
         "The count $n_{subjects}$ was fixed in advance.",
-        "The count was {{results.cohort.n_reports}} reports.",
+        "The count was {{results.subjects.n}} reports.",
     ],
 )
 def test_the_letters_of_a_term_elsewhere_are_not_the_term(project: Path, sentence: str) -> None:
+    """Each of these holds the term itself, in a place the manuscript does not speak."""
     _, found = written(project, f"# Methods\n\n{sentence}\n")
     assert not found, messages(found)
+
+
+def test_a_term_ends_where_its_word_ends(project: Path) -> None:
+    """`subject` is not found in `subjective`, though it opens it."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe ratings were subjective.\n",
+        [{"use": "participant", "avoid": ["subject"]}],
+    )
+    assert not found, messages(found)
+
+
+# ---------------------------------------------------------------- abbreviations as terms
+
+LONG_FORMS = [
+    {"use": "odds ratio", "avoid": ["OR"]},
+    {"use": "World Health Organization", "avoid": ["WHO"]},
+    {"use": "United States", "avoid": ["US", "USA"]},
+    {"use": "acute lymphoblastic leukaemia", "avoid": ["ALL"]},
+    {"use": "information technology", "avoid": ["IT"]},
+]
+
+
+def test_an_abbreviation_given_up_is_not_the_word_it_spells(project: Path) -> None:
+    """Preferring a long form to its abbreviation must not report "or", "who", "us", "all"
+    and "its": a term written with two capitals together is matched as written."""
+    _, found = written(
+        project,
+        "# Methods\n\nReports were classified by two of us, or by a third reviewer who was "
+        "blind to the drug. The World Health Organization categories were used, and all "
+        "cases in the United States were kept. It allowed us to compare the odds ratio, and "
+        "its interval, between groups.\n",
+        LONG_FORMS,
+    )
+    assert not found, messages(found)
+
+
+def test_an_abbreviation_given_up_is_found_as_written_and_in_the_plural(project: Path) -> None:
+    _, found = written(
+        project,
+        "# Results\n\nThe OR was 2.1, and the ORs of the WHO regions were pooled.\n",
+        LONG_FORMS,
+    )
+    assert sorted(messages(found)) == [
+        "'OR' is used 2 times; this paper's term is 'odds ratio'",
+        "'WHO' is used once; this paper's term is 'World Health Organization'",
+    ]
+
+
+# ---------------------------------------------------------------- what joins a term's words
+
+SIDE_EFFECT = [{"use": "adverse reaction", "avoid": ["side effect"]}]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "It had one side\n\neffect sizes were small.",  # a paragraph break
+        "- the affected side\n- effect size",  # two list items
+        "The left side -- effect modification aside -- was used.",  # a dash
+        "On the left side---effect modification aside---it was used.",
+        "The side `x` effect was mild.",  # inline code between them
+        "The side {{results.cohort.n_reports}} effect was mild.",  # a binding
+        "The side $x$ effect was mild.",  # an equation
+        "The side ![a caption](figures/f.png) effect was mild.",  # an image
+        "The side\n\n```\ncode\n```\n\neffect was mild.",  # a whole listing
+        "One side\n\n> quoted words\n\neffect sizes were small.",  # a whole quotation
+        "The side. Effect sizes were small.",  # the end of a sentence
+    ],
+)
+def test_two_words_that_are_not_side_by_side_are_not_a_term(project: Path, text: str) -> None:
+    _, found = written(project, f"# Methods\n\n{text}\n", SIDE_EFFECT)
+    assert not found, messages(found)
+
+
+def test_a_heading_does_not_run_on_into_its_paragraph(project: Path) -> None:
+    _, found = written(
+        project, "# The other side\n\nEffect sizes were small.\n", SIDE_EFFECT
+    )
+    assert not found, messages(found)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "After _in vitro_ fertilisation, the _subjects_ were followed.",
+        "After __in vitro fertilisation__, the __subjects__ were followed.",
+        "After *in vitro* fertilisation, the *subjects* were followed.",
+        "After ***in vitro*** fertilisation, the **subjects** were followed.",
+    ],
+)
+def test_emphasis_does_not_hide_a_term(project: Path, sentence: str) -> None:
+    """pandoc prints each of these as the plain words."""
+    vocabulary = [
+        {"use": "IVF", "avoid": ["in vitro fertilisation"]},
+        {"use": "participants", "avoid": ["subjects"]},
+    ]
+    _, found = written(project, f"# Methods\n\n{sentence}\n", vocabulary)
+    assert sorted(messages(found)) == [
+        "'in vitro fertilisation' is used once; this paper's term is 'IVF'",
+        "'subjects' is used once; this paper's term is 'participants'",
+    ]
+
+
+def test_a_line_of_a_paragraph_that_opens_with_a_greater_than_sign_is_read(
+    project: Path,
+) -> None:
+    """A quotation opens after a blank line. Without one, `>` is the sign in "ALT > 3
+    times the limit", wrapped to the start of a line."""
+    _, found = written(
+        project,
+        "# Methods\n\nWe enrolled people with ALT\n> 3 times the limit, and subjects with "
+        "none.\n",
+    )
+    assert messages(found) == ["'subjects' is used once; this paper's term is 'participants'"]
+
+
+def test_the_context_of_a_finding_is_the_text_as_written(project: Path) -> None:
+    _, found = written(
+        project, "# Results\n\nOf {{results.cohort.n_reports}} subjects, half were women.\n"
+    )
+    (finding,) = found
+    assert "{{results.cohort.n_reports}} subjects" in finding.context
 
 
 def test_a_fenced_listing_and_a_reference_list_are_not_read(project: Path) -> None:
@@ -184,6 +309,37 @@ def test_a_term_to_avoid_inside_the_term_to_use_is_not_found_there(project: Path
     ]
 
 
+def test_a_term_to_avoid_that_opens_the_term_to_use_is_not_found_there(project: Path) -> None:
+    """Two terms that start at the same word: the longer is read."""
+    vocabulary = [{"use": "liver injury score", "avoid": ["liver injury"]}]
+    _, found = written(project, "# Results\n\nThe liver injury score was high.\n", vocabulary)
+    assert not found, messages(found)
+    _, found = written(project, "# Results\n\nLiver injury was common.\n", vocabulary)
+    assert [f.code for f in found] == ["term-avoided"]
+
+
+def test_reading_resumes_after_the_reference_list(project: Path) -> None:
+    """A section that follows the references, figure legends or an appendix, is the
+    manuscript's own again."""
+    _, found = written(
+        project,
+        "# Methods\n\nParticipants were enrolled.\n\n# References\n\n1. Smith J. Human "
+        "subjects in research. Lancet.\n\n# Figure legends\n\nFigure 1. Flow of subjects.\n",
+    )
+    (finding,) = found
+    assert finding.line == 11
+
+
+def test_the_supplement_s_reference_list_is_not_read(project: Path) -> None:
+    _, found = written(
+        project,
+        "# Methods\n\nParticipants were enrolled.\n",
+        supplement="# Supplementary methods\n\nParticipants were followed.\n\n"
+        "# References\n\n1. Smith J. Human subjects in research. Lancet.\n",
+    )
+    assert not found, messages(found)
+
+
 def test_a_term_written_in_the_plural_is_not_its_singular(project: Path) -> None:
     """The way to keep "subject to bias" out of the report: give up `subjects`, not
     `subject`."""
@@ -208,24 +364,90 @@ def test_a_term_both_used_and_given_up_is_reported_and_not_looked_for(project: P
     _, found = written(
         project, "# Results\n\nSubjects and volunteers were enrolled.\n", vocabulary
     )
+    assert sorted(f.code for f in found) == ["term-avoided", "vocabulary-conflict"], (
+        "one of each: the disputed term is not looked for"
+    )
     by_code = {f.code: f for f in found}
-    assert set(by_code) == {"vocabulary-conflict", "term-avoided"}
-    assert "'subjects' is a term to use and a term to avoid" in by_code[
-        "vocabulary-conflict"
-    ].message
+    assert by_code["vocabulary-conflict"].message == (
+        "'subjects' is a term to use and a term to avoid"
+    )
     assert by_code["vocabulary-conflict"].path.name == "paper.yaml"
     assert "'volunteers'" in by_code["term-avoided"].message, "the rest is still read"
 
 
-def test_a_term_given_up_for_two_others_is_reported_and_not_looked_for(project: Path) -> None:
+def test_a_conflict_is_a_warning_too(project: Path) -> None:
+    vocabulary = [{"use": "participants", "avoid": ["participants"]}]
+    report, found = written(project, "# Results\n\nParticipants were enrolled.\n", vocabulary)
+    assert [f.code for f in found] == ["vocabulary-conflict"]
+    assert found[0].severity == "warn"
+    assert report.ok
+
+
+def test_a_term_given_up_for_several_others_names_them_all(project: Path) -> None:
     vocabulary = [
         {"use": "participants", "avoid": ["subjects"]},
         {"use": "patients", "avoid": ["subjects"]},
+        {"use": "volunteers", "avoid": ["subjects"]},
     ]
     _, found = written(project, "# Results\n\nSubjects were enrolled.\n", vocabulary)
     (finding,) = found
     assert finding.code == "vocabulary-conflict"
-    assert "'participants'" in finding.message and "'patients'" in finding.message
+    assert finding.message == (
+        "'subjects' is to give way to 'participants', 'patients' and 'volunteers'"
+    )
+
+
+def test_two_spellings_of_one_term_are_a_conflict_that_says_so(project: Path) -> None:
+    """A hyphen and a space are read as one, so hyphenation cannot be declared, and the
+    message has to say why two entries that look different collide."""
+    vocabulary = [{"use": "follow-up", "avoid": ["follow up", "followup"]}]
+    _, found = written(project, "# Results\n\nThe followup was short.\n", vocabulary)
+    by_code = {f.code: f for f in found}
+    assert by_code["vocabulary-conflict"].message == (
+        "'follow-up' is a term to use and 'follow up' a term to avoid, and the two are read "
+        "as one term"
+    )
+    assert "a hyphen, a space" in by_code["vocabulary-conflict"].hint
+    assert "'followup'" in by_code["term-avoided"].message, "one word is another term"
+
+
+def test_the_plural_of_a_term_to_use_cannot_be_given_up(project: Path) -> None:
+    """`subject` is found as `subjects` too, so an entry that gives `subjects` up for
+    something else disagrees with it."""
+    vocabulary = [
+        {"use": "subject", "avoid": ["person"]},
+        {"use": "participants", "avoid": ["subjects"]},
+    ]
+    _, found = written(project, "# Results\n\nA subject and two subjects.\n", vocabulary)
+    assert [f.code for f in found] == ["vocabulary-conflict"]
+    assert "'subject' is a term to use and 'subjects' a term to avoid" in found[0].message
+
+
+def test_a_singular_and_its_plural_given_up_for_different_terms_disagree(project: Path) -> None:
+    vocabulary = [
+        {"use": "participant", "avoid": ["subject"]},
+        {"use": "patients", "avoid": ["subjects"]},
+    ]
+    _, found = written(project, "# Results\n\nTwo subjects were enrolled.\n", vocabulary)
+    assert [f.code for f in found] == ["vocabulary-conflict"]
+    assert "'subject' and 'subjects' are read as one term" in found[0].message
+
+
+def test_a_term_with_no_letter_in_it_is_passed_over(project: Path) -> None:
+    """The schema refuses one. The reading is also asked directly, as a caller with entries
+    of its own would ask it, and must not raise on them."""
+    from manuscript_guard.gates.vocabulary import Passage, judge_vocabulary
+
+    text = "Subjects were enrolled -- all of them."
+    passage = Passage(Path("main.md"), text, text, lambda offset: 1)
+    entries = [
+        {"use": "--", "avoid": ["subjects"]},
+        {"use": "participants", "avoid": ["  ", "*_*", "subjects"]},
+    ]
+    report = judge_vocabulary([passage], entries, Path("paper.yaml"))
+    assert [f.message for f in report.findings] == [
+        "'subjects' is used once; this paper's term is 'participants'"
+    ]
 
 
 def test_the_same_term_given_up_twice_for_one_term_is_no_conflict(project: Path) -> None:
@@ -248,6 +470,8 @@ def test_the_same_term_given_up_twice_for_one_term_is_no_conflict(project: Path)
         [{"use": "participants", "avoid": []}],
         [{"use": True, "avoid": [False]}],
         [{"use": "participants", "avoid": ["subjects"], "because": "typo of why"}],
+        [{"use": "--", "avoid": ["subjects"]}],
+        [{"use": "participants", "avoid": ["subjects", "  "]}],
     ],
 )
 def test_an_entry_in_the_wrong_shape_is_the_schema_s_and_does_not_stop_the_gate(

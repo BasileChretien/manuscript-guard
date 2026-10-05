@@ -47,7 +47,12 @@ from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import PAPER_FILE, Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
-from manuscript_guard.gates.vocabulary import Passage, context, judge_vocabulary
+from manuscript_guard.gates.vocabulary import (
+    Passage,
+    capitals_together,
+    context,
+    judge_vocabulary,
+)
 from manuscript_guard.paths import SHIPPED_RECIPES
 from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
@@ -221,10 +226,6 @@ def _known(project: Project) -> _Known:
     )
 
 
-def _capitals_together(form: str) -> bool:
-    return any(a.isupper() and b.isupper() for a, b in zip(form, form[1:], strict=False))
-
-
 def _numeral(form: str) -> bool:
     return bool(form) and _ROMAN.fullmatch(form) is not None
 
@@ -272,7 +273,7 @@ def _reads_as_abbreviation(form: str) -> bool:
     """
     return (
         2 <= len(form) <= LONGEST
-        and _capitals_together(form)
+        and capitals_together(form)
         and not _numeral(form)
         and _IDENTIFIER.fullmatch(form) is None
         and not _formula(form)
@@ -353,20 +354,25 @@ def _heading_span(text: str, heading: Heading) -> tuple[int, int]:
     return heading.start, len(text) if end == -1 else end
 
 
-def _blanked(text: str, spans: Iterable[tuple[int, int]]) -> str:
-    """`text` with `spans` replaced by spaces, offsets and line breaks kept."""
+def _hide(text: str, spans: Iterable[tuple[int, int]]) -> str:
+    """`text` with `spans` replaced by NUL, offsets and line breaks kept."""
     chars = list(text)
     for start, end in spans:
         for index in range(start, end):
             if chars[index] != "\n":
-                chars[index] = " "
+                chars[index] = NUL
     return "".join(chars)
 
 
-def _printed(text: str) -> str:
-    """`text` with everything that is not a sentence or a heading blanked, offsets and line
-    breaks kept: what `mask` takes (listings, comments, bindings, citation keys, link
-    targets), the front matter, inline code and equations, and image captions."""
+def _hidden(text: str) -> str:
+    """`text` with everything that is not a sentence or a heading replaced by NUL, offsets
+    and line breaks kept: what `mask` takes (listings, comments, bindings, citation keys,
+    link targets), the front matter, inline code and equations, and image captions.
+
+    The one reading of a file both halves of the gate start from. The abbreviations are
+    read in it with the headings hidden as well and every NUL made a space, which is the
+    text they have always been read in. The vocabulary is read in it as it stands, so that
+    a word before a listing and a word after it are not taken for neighbours."""
     masked = mask(text)
     code = code_spans(masked)
     spans = [
@@ -376,17 +382,10 @@ def _printed(text: str) -> str:
         *(found.span() for found in _IMAGE.finditer(text)),
     ]
     kept = "".join(
-        ("\n" if text[index] == "\n" else " ") if char == NUL else char
+        "\n" if char == NUL and text[index] == "\n" else char
         for index, char in enumerate(masked)
     )
-    return _blanked(kept, spans)
-
-
-def _prose(text: str, headings: list[Heading]) -> str:
-    """`text` with everything that is not a sentence blanked: `_printed`, less the
-    headings. A heading in capitals is not an abbreviation, and one that uses an
-    abbreviation is not where a reader expects it defined."""
-    return _blanked(_printed(text), (_heading_span(text, heading) for heading in headings))
+    return _hide(kept, spans)
 
 
 @dataclass(frozen=True)
@@ -605,8 +604,10 @@ class _File:
     text: str
     regions: list[_Region]
     definitions: list[tuple[int, str, str]]
+    #: The text the abbreviations are read in: sentences, everything else a space.
     prose: str = ""
-    #: The text the vocabulary is read in: sentences and headings, less the reference list.
+    #: The text the vocabulary is read in: sentences and headings, less the reference
+    #: list, everything else NUL.
     printed: str = ""
     starts: list[int] = field(default_factory=list)
     breaks: list[int] = field(default_factory=list)
@@ -624,8 +625,12 @@ class _File:
 
 def _file(order: int, path: Path, text: str, chain: list[Section], supplementary: bool) -> _File:
     headings = find_headings(text)
-    printed = _printed(text)
-    prose = _blanked(printed, (_heading_span(text, heading) for heading in headings))
+    hidden = _hidden(text)
+    # A heading in capitals is not an abbreviation, and one that uses an abbreviation is
+    # not where a reader expects it defined: the abbreviations are read without them.
+    prose = _hide(hidden, (_heading_span(text, heading) for heading in headings)).replace(
+        NUL, " "
+    )
     regions = _regions(headings, chain, supplementary=supplementary)
     ends = [*(region.start for region in regions[1:]), len(text)]
     references = [
@@ -640,7 +645,7 @@ def _file(order: int, path: Path, text: str, chain: list[Section], supplementary
         regions=regions,
         definitions=_definitions(prose),
         prose=prose,
-        printed=_blanked(printed, references),
+        printed=_hide(hidden, references),
     )
 
 

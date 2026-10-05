@@ -9260,14 +9260,14 @@ def test_a_co_author_s_other_word_for_the_outcome_is_caught(project: Path) -> No
 
 def test_a_heading_renamed_with_the_other_word_is_caught(project: Path) -> None:
     text = main_md(project).read_text(encoding="utf-8")
-    edited = text.replace("# Discussion\n", "# Hepatotoxicity in context\n")
+    edited = text.replace("# Discussion\n", "# Liver damage in context\n")
     assert edited != text
     main_md(project).write_text(edited, encoding="utf-8")
     assert vocabulary_findings(project) == [
         (
             "term-avoided",
-            line_of(edited, "# Hepatotoxicity in context"),
-            "'hepatotoxicity' is used once; this paper's term is 'hepatic injury'",
+            line_of(edited, "# Liver damage in context"),
+            "'liver damage' is used once; this paper's term is 'hepatic injury'",
         )
     ]
 
@@ -9298,7 +9298,7 @@ def test_the_word_in_a_citation_key_or_a_comment_is_not_the_manuscript_s(project
     old = "Several limitations follow from the design."
     edited = text.replace(
         old,
-        old + " <!-- say liver injury here? --> See also [@liverInjuryHepatotoxicity2020].",
+        old + " <!-- say liver injury here? --> See also [@liver-injury-cohort2020].",
     )
     main_md(project).write_text(edited, encoding="utf-8")
     assert vocabulary_findings(project) == []

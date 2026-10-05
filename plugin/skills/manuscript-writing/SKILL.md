@@ -120,17 +120,23 @@ language:
       why: The trial's own wording.
 ```
 
-G14 then reports `term-avoided` wherever the manuscript still uses a word given up, in a
-sentence or a heading. To answer one, use the paper's term. If the word is right where it
-stands because it means something else there, the entry is too wide: narrow it, and say so
-to the author. `vocabulary-conflict` means two entries disagree about a term; the author
-decides which stands.
+G14 then reports `term-avoided` for each word given up that the manuscript still uses, in
+a sentence or a heading: one finding for the word, at its first use, with how many times
+it is used. The finding gives one line and a count, so search the manuscript for the other
+uses and change them all. To answer one, use the paper's term. If the word is right where
+it stands because it means something else there, the entry is too wide: narrow it, and say
+so to the author. `vocabulary-conflict` means two entries disagree about a term; the
+author decides which stands.
 
-Three things about how a term is matched:
+How a term is matched:
 
 - A term written in the singular is found in the plural too. One written in the plural is
   found only so: give up "subjects", not "subject", or "subject to bias" is reported.
 - Only the plural in `s` is folded. For "study" and "studies", list both.
+- A term written with two capitals together, `OR`, `WHO`, is matched as written, so
+  giving up an abbreviation for its long form does not report the word it spells.
+- A hyphen and a space between a term's words are read as one, so the choice between
+  "follow up" and "follow-up" cannot be declared here.
 - Quote the terms, as with abbreviations.
 
 When drafting or revising, look for pairs the list does not hold yet: two words for the

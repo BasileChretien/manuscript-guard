@@ -36,8 +36,9 @@ language:
 
   # The terms this paper keeps to. One word for one thing: a reader who meets "liver
   # injury" after three pages of "hepatic injury" has to wonder whether it is a second
-  # outcome. G14 reports a term given up wherever the manuscript still uses it.
+  # outcome. G14 reports a term given up that the manuscript still uses, at its first
+  # use, with how many times it is used.
   vocabulary:
     - use: "hepatic injury"
-      avoid: ["liver injury", "hepatotoxicity"]
+      avoid: ["liver injury", "liver damage"]
       why: The event term the data generator uses, and so the one the Methods define.

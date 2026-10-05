@@ -954,34 +954,53 @@ language:
 ```
 
 and the gate reports each term given up that the manuscript still uses, as `term-avoided`:
-once for the term, where it first appears, with how many times it is used. A check that
+once for the term, where it first appears, with how many times it is used in the whole
+manuscript. One line and a count, not a line for each use: the other uses are found by
+searching for the word. A check that
 guessed at synonyms would be wrong about every pair of words that are two things, so there
 is no shipped list and none is planned.
 
-**A term is matched as a reader would match it.** Whole words only, in any case, so
-"Subjects" opening a sentence is found and "subjective" is not. Its words may be joined by
-a hyphen or broken over two lines. A term written in the singular is found in the plural
-too; one written in the plural is found only so, which is how an author keeps "subject to
-bias" out of the report: give up "subjects", not "subject". A term to avoid that is part
-of the term to use is not found there: with "adverse drug reaction" kept and "drug
-reaction" given up, only a "drug reaction" standing alone is reported.
+**A term is matched as a reader would match it.** Whole words only, so "subjective" is
+not "subject". In any case, so "Subjects" opening a sentence is found, unless the entry
+writes the term with two capitals together: `OR`, `WHO` and `US` are abbreviations and are
+matched as written. The first version folded their case too, and an entry that preferred
+"odds ratio" to `OR` reported every "or" in the paper. A term written in the singular is
+found in the plural too; one written in the plural is found only so, which is how an
+author keeps "subject to bias" out of the report: give up "subjects", not "subject". A
+term to avoid that is part of the term to use is not found there: with "adverse drug
+reaction" kept and "drug reaction" given up, only a "drug reaction" standing alone is
+reported.
+
+**Its words stand side by side.** Between two words of a term there may be one hyphen, or
+blanks, or one line break, since a sentence is wrapped where the editor wraps it; and
+marks of emphasis beside any of them, which print as nothing, so `_in vitro_
+fertilisation` is "in vitro fertilisation". Nothing else: not a blank line, a dash, the
+end of a list item, nor anything the reading hides. The first version allowed any run of
+white space and hyphens, and found "side effect" in a heading that ended in "side" over a
+paragraph that began with "Effect".
 
 **It is read where the manuscript speaks.** Sentences and headings, in every file and in
 the supplement, as one text: a heading is the paper's wording as much as a sentence is.
 Not in listings, comments, bindings, citation keys, link targets, inline code, equations,
 image captions or front matter, as for abbreviations; not in the reference list, whose
-titles are other people's; and not in a quotation set as a block, whose words are too.
+titles are other people's; and not in a quotation set as a block, whose words are too. A
+line under `>` opens a quotation only after a blank line, as pandoc reads it: "ALT" ending
+one line and "> 3 times the limit" opening the next are one paragraph, and are read.
 
 **Entries that disagree are reported and not acted on.** A term that one entry keeps and
 another gives up, or that is given up for two different terms, is a `vocabulary-conflict`
-at `paper.yaml`, and it is not looked for until the entries agree. An entry in the wrong
-shape is the schema's to report; the gate reads the entries the schema accepts, one by
-one, so one mistake does not take the rest with it.
+at `paper.yaml`, and it is not looked for until the entries agree. Two terms are one to
+this check where the reading cannot tell them apart: the same words with a hyphen or a
+space between them, in another case, or in the plural of a term written without one. So
+"follow up" cannot be given up for "follow-up", and the message says the two are read as
+one. An entry in the wrong shape is the schema's to report, a term with no letter or digit
+in it included; the gate reads the entries the schema accepts, one by one, so one mistake
+does not take the rest with it.
 
 **Both codes are warnings at every stage**, for the reason abbreviations are: a list of
 words cannot tell two meanings of one word apart.
 
-The example declares one entry, "hepatic injury" for "liver injury" and "hepatotoxicity",
+The example declares one entry, "hepatic injury" for "liver injury" and "liver damage",
 and keeps to it.
 
 ## Methods drift is a reconciliation ledger
@@ -7079,19 +7098,36 @@ Closed since, and why each mattered:
     reports "subject to bias". The entry is written narrower, or in the plural.
   - Only the plural in `s` is folded, and only onto a term written without one: "study"
     does not find "studies", nor "analysis" "analyses". Both forms go in the entry.
+  - Hyphenation cannot be declared. A hyphen and a space between a term's words are read
+    as one, so "follow up" given up for "follow-up" is a conflict. Written as one word,
+    "followup" is another term and can be given up. An en dash or a non-breaking hyphen
+    between two words is not read as joining them.
+  - A term in two capitals or more is matched as written, and so is not found where the
+    manuscript writes it otherwise: `OR` given up does not find "Or" or "or", which is the
+    point, nor a `Who` typed in error.
   - A quotation is left alone only when it is set as a block, each line under `>`. Words
     quoted inside a sentence are read as the manuscript's own, and so is a line that
-    continues a block quotation without its `>`.
-  - The title, the short title and the keywords come from `paper.yaml` and are not read,
-    nor are tables and figures, which are generated from results.
+    continues a block quotation without its `>`. Everything set under `>` is left alone,
+    a summary box written that way included.
+  - A term is not found where something the reading hides stands between its words, even
+    something that prints as nothing: a comment, or a link that opens part-way through
+    the term, "side [effect](...)".
+  - The underscore is taken for a mark of emphasis, so a term is found in a name written
+    with one, `n_subjects`, when that name is not set as code.
+  - A term typed with an accent as one character does not find the same word typed as a
+    letter and a combining accent.
+  - The title, the short title and the keywords come from `paper.yaml` and are not read:
+    the example gives up "liver damage" and could still list it as a keyword. Tables and
+    figures generated from results are not read either; a table typed into the manuscript
+    is, with its caption.
   - A term to avoid is not found where it overlaps a term to use that starts before it:
     with "drug reaction" kept, "reaction time" given up is not found in "drug reaction
     time".
   - The count in a finding is of the whole manuscript, and its place is the first use in
     the order the files are printed, the paper before its supplement.
   - The reading costs the number of terms times the length of the manuscript: 6,000
-    terms over a megabyte of text took 15 s. A vocabulary of some tens of entries is not
-    felt.
+    terms over a megabyte of text took 15 to 20 s. A vocabulary of some tens of entries is
+    not felt.
 
 ## Still open
 

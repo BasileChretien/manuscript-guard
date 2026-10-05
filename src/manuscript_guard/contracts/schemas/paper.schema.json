@@ -127,7 +127,7 @@
         },
         "vocabulary": {
           "type": "array",
-          "description": "The terms this paper keeps to. Each entry names one term to use and the terms it replaces; G14 reports a replaced term wherever the manuscript still uses it. A term is one word or several, matched whole, in any case, with a hyphen or a line break between its words and with its plural s. Quote the terms: unquoted, YAML reads no, on and yes as booleans.",
+          "description": "The terms this paper keeps to. Each entry names one term to use and the terms it replaces; G14 reports a replaced term the manuscript still uses, once, at its first use, with how many times it is used. A term is one word or several, matched whole, with a hyphen or a line break between its words and with its plural s; in any case, unless it is written with two capitals together, as OR and WHO are, which are matched as written. Quote the terms: unquoted, YAML reads no, on and yes as booleans.",
           "items": {
             "type": "object",
             "required": ["use", "avoid"],
@@ -136,13 +136,14 @@
               "use": {
                 "type": "string",
                 "minLength": 2,
-                "description": "The term the manuscript uses for this thing."
+                "pattern": "[^\\W_]",
+                "description": "The term the manuscript uses for this thing. It holds a letter or a digit."
               },
               "avoid": {
                 "type": "array",
                 "minItems": 1,
                 "description": "Other words for the same thing, which the manuscript does not use.",
-                "items": { "type": "string", "minLength": 2 }
+                "items": { "type": "string", "minLength": 2, "pattern": "[^\\W_]" }
               },
               "why": {
                 "type": "string",

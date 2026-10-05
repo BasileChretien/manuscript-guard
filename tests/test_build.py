@@ -7,7 +7,6 @@ one CI and a co-author without Zotero rely on.
 
 from __future__ import annotations
 
-import pathlib
 import shutil
 import zipfile
 from pathlib import Path
@@ -483,6 +482,9 @@ def test_a_build_that_brings_a_reference_document_is_still_stamped(project: Path
 
     kept = build_document(proj, assembled, mode=OFFLINE, reference_doc=reference)
     assert kept.output.with_name(kept.output.name + SOURCE_STAMP).is_file()
+    assert reference.is_file(), (
+        "a reference document the caller brought is not the build's to remove"
+    )
 
     unstamped = project / "build" / "unstamped.docx"
     built = build_document(proj, assembled, mode=OFFLINE, output=unstamped, stamp=False)
@@ -552,28 +554,12 @@ def test_two_builds_of_one_project_at_once_do_not_collide(project: Path) -> None
     assert left == [], f"the cache kept {[p.name for p in left]}"
 
 
-def _user_reference(home: pathlib.Path, extra_style: bytes | None, *, as_docx: bool) -> None:
-    """Put a `reference.docx` in a pandoc user data directory under `home`."""
-    import io
-    import subprocess
-
+def _unreadable_user_reference(home: Path) -> Path:
+    """A `reference.docx` in a pandoc user data directory under `home` that is not a .docx."""
     (home / "pandoc").mkdir(parents=True, exist_ok=True)
     target = home / "pandoc" / "reference.docx"
-    if not as_docx:
-        target.write_bytes(b"This is not a .docx at all.")
-        return
-    default = subprocess.run(
-        ["pandoc", "--print-default-data-file", "reference.docx"], capture_output=True, check=True
-    ).stdout
-    with (
-        zipfile.ZipFile(io.BytesIO(default)) as zin,
-        zipfile.ZipFile(target, "w") as zout,
-    ):
-        for item in zin.infolist():
-            data = zin.read(item.filename)
-            if item.filename == "word/styles.xml" and extra_style is not None:
-                data = data.replace(b"</w:styles>", extra_style + b"</w:styles>")
-            zout.writestr(item, data)
+    target.write_bytes(b"This is not a .docx at all.")
+    return target
 
 
 @needs_pandoc
@@ -601,7 +587,7 @@ def test_a_user_reference_that_is_not_a_docx_is_said_in_a_sentence(
 ) -> None:
     """Their file, not a bug here, and `BadZipFile` names neither the file nor what to do."""
     home = tmp_path / "data-home"
-    _user_reference(home, None, as_docx=False)
+    _unreadable_user_reference(home)
     monkeypatch.setenv("XDG_DATA_HOME", str(home))
 
     proj, namespace, results, _lit = loaded(project)
@@ -622,7 +608,7 @@ def test_a_build_that_fails_before_pandoc_leaves_nothing_in_the_cache(
     cache = project / "build" / ".cache"
 
     home = tmp_path / "data-home"
-    _user_reference(home, None, as_docx=False)
+    _unreadable_user_reference(home)
     monkeypatch.setenv("XDG_DATA_HOME", str(home))
     proj, namespace, results, _lit = loaded(project)
     assembled, _ = assemble(proj, namespace, results)
@@ -635,3 +621,45 @@ def test_a_build_that_fails_before_pandoc_leaves_nothing_in_the_cache(
     with pytest.raises(BuildError, match="sync-bib"):
         build_document(proj, assembled, mode=OFFLINE)
     assert list(cache.glob("reference-*")) == [], "the missing bibliography left a file"
+
+
+@needs_pandoc
+@pytest.mark.parametrize("succeeds", [True, False])
+def test_a_reference_the_build_cannot_remove_is_not_the_builds_error(
+    project: Path, monkeypatch: pytest.MonkeyPatch, succeeds: bool
+) -> None:
+    """A scanner or a sync client holding the file for an instant made the removal raise out
+    of the `finally`: it replaced the sentence a failing build was already raising, and it
+    left a successful build's document unstamped, with no record of what it was built from."""
+    from manuscript_guard.build import document as module
+    from manuscript_guard.build.document import SOURCE_STAMP
+    from manuscript_guard.roundtrip import RECORDS
+
+    real = module.reference_with
+    held = []
+
+    def hold(pandoc: str, target: Path, extra: str = "") -> Path:
+        made = real(pandoc, target, extra)
+        held.append(made.open("rb"))  # kept open across the build, as a scanner would
+        return made
+
+    monkeypatch.setattr(module, "reference_with", hold)
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    try:
+        if succeeds:
+            built = build_document(proj, assembled, mode=OFFLINE)
+            stamp = built.output.with_name(built.output.name + SOURCE_STAMP)
+            assert stamp.is_file(), "the document was built and not stamped"
+            records = project / "build" / RECORDS
+            assert records.is_dir() and any(records.iterdir()), "and left with no record"
+        else:
+            (project / "literature" / "references.bib").unlink()
+            # The build's own sentence, not PermissionError from the tidying up.
+            with pytest.raises(BuildError, match="sync-bib"):
+                build_document(proj, assembled, mode=OFFLINE)
+    finally:
+        for handle in held:
+            handle.close()
+        for left in (project / "build" / ".cache").glob("reference-*"):
+            left.unlink(missing_ok=True)

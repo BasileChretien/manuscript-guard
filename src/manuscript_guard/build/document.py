@@ -495,7 +495,13 @@ def _reference(build_dir: Path, given: Path | None) -> Iterator[Path]:
     try:
         yield reference_with(pandoc(), made)
     finally:
-        made.unlink(missing_ok=True)
+        # Suppressed, because a removal that fails must not become the build's error: a file
+        # held for an instant by a scanner or a sync client raised PermissionError out of this
+        # `finally`, which replaced the sentence the build was already failing with, and after
+        # a successful pandoc run it left the document built but unstamped and unrecorded. A
+        # file that cannot be removed is left behind instead, as Known gaps says.
+        with contextlib.suppress(OSError):
+            made.unlink(missing_ok=True)
 
 
 def build_document(

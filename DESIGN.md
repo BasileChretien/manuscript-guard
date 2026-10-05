@@ -3658,10 +3658,14 @@ Added by the adversarial review, verified and **not** fixed:
   out before it, the terms being gone through once, longest first and then by their
   letters: `FiO~2~PaO~2~` is two terms and `PaO~2~FiO~2~` an unbound number, on every
   run. Terms of one length came in the order of a set, so it was one or the other from
-  one run to the next. Going through the terms again for as long as one was taken out
-  was tried, and it took time by the square of the atom and did not end for a declared
-  term of one space (found by the review of that change). With a sign between, as the
-  ratio is written, `PaO~2~/FiO~2~`, both are terms either way round. The
+  one run to the next. The order settles an atom with no sign in it as well, where two
+  terms of one length overlap in it, and that was by the run too: `April-1` is reported
+  on every run, `apri` coming before `il-1`, and `MERS-COVID-19` is a term on every
+  run, `covid-19` coming before `mers-cov`. Going through the terms again for as long
+  as one was taken out was tried, and it took time by the square of the atom and did
+  not end for a declared term of one space (found by the review of that change). With
+  a sign between, as the ratio is written, `PaO~2~/FiO~2~`, both are terms either way
+  round. The
   conventions still read the text with its signs in: `75th percentile` is a convention
   and `75^th^ percentile` is none, and under Methods `I² > 50%` is one where `I^2^ > 50%`
   leaves the 50% reported. Both allowances hold wherever the tokenizer and the classifier

@@ -582,11 +582,31 @@ class _TimeThatTells:
         self._real.sleep(seconds)
 
 
+class _OsThatTells:
+    """The `os` module as `record` sees it, noting what each try for the lock file met.
+    Everything but `open` is the real module's."""
+
+    def __init__(self, real, met: list[str]) -> None:
+        self._real = real
+        self._met = met
+
+    def __getattr__(self, name: str):
+        return getattr(self._real, name)
+
+    def open(self, *args, **how):
+        try:
+            return self._real.open(*args, **how)
+        except OSError as exc:
+            self._met.append(type(exc).__name__)
+            raise
+
+
 def _second_writer_in_the_loop(monkeypatch):
-    """An event set when a writer first pauses in the lock's loop. The loop pauses only
-    after it has tried for the lock and found it held, and the first writer never pauses,
-    so this is the second writer, waiting. With it, no sleep in a test has to guess how
-    long the second writer takes to get there."""
+    """An event set when a writer first pauses in the lock's loop. The loop pauses after a
+    try that did not take the lock, and the first writer takes it at its first try, so the
+    one that pauses is the second writer. In the tests below its first such try is the one
+    that finds the lock held: nothing takes the folder away before this event. With it, no
+    sleep in a test has to guess how long the second writer takes to get there."""
     import threading
 
     from manuscript_guard import record
@@ -605,22 +625,18 @@ def test_a_writer_that_is_refused_does_not_take_the_folder_from_one_that_waits(
 
     The waiting loop has since learnt to make a folder that went, so the second writer
     would write either way and could no longer tell this test anything. What is asserted is
-    the thing itself: nobody removes the folder."""
+    what it met while it waited: a lock that was held, and never a folder that had gone,
+    whatever might have taken it."""
     import threading
 
+    from manuscript_guard import record
     from manuscript_guard.record import panel_lock
 
     in_the_loop = _second_writer_in_the_loop(monkeypatch)
+    met: list[str] = []
+    monkeypatch.setattr(record, "os", _OsThatTells(record.os, met))
     panel = tmp_path / "review" / "panel-1.yaml"
     waiting: list[str] = []
-    removed: list[str] = []
-    real_rmdir = Path.rmdir
-
-    def rmdir(self) -> None:
-        removed.append(self.name)
-        real_rmdir(self)
-
-    monkeypatch.setattr(Path, "rmdir", rmdir)
 
     def second() -> None:
         try:
@@ -637,7 +653,8 @@ def test_a_writer_that_is_refused_does_not_take_the_folder_from_one_that_waits(
         raise RecordError("refused: no remit")
     thread.join(60)
     assert waiting == ["wrote"], waiting
-    assert removed == [], "the refused holder took a folder away"
+    assert "FileExistsError" in met, "the second writer waited for a lock that was held"
+    assert "FileNotFoundError" not in met, "the folder was taken from the writer that waited"
 
 
 def test_a_folder_removed_while_a_writer_waits_is_made_again(

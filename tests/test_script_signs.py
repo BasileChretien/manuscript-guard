@@ -297,30 +297,73 @@ def test_the_terms_come_in_one_order_on_every_run() -> None:
     assert _names_covering("pao2fio2", ("fio2", "pao2")) is None
     assert _names_covering("frisk1", ("k1", "risk")) is None, "terms inside a word"
 
+    # The order settles an atom with no sign in it as well, where two terms of one length
+    # overlap in it: each of these was a term on one run and an unbound number on the next.
+    assert unbound("It was read on April-1 again.") == ["April-1"], "`apri` before `il-1`"
+    assert unbound("One case of MERS-COVID-19 was seen.") == [], "`covid-19` before `mers-cov`"
+
+
+#: What the child process of the test below runs: the atoms of its first argument that
+#: nothing classifies, with a term of one space declared, as `unbound` gives them.
+READ_WITH_A_SPACE_DECLARED = N.join(
+    [
+        "import json, sys",
+        "from manuscript_guard.classify import UNCLASSIFIED, Classifier",
+        "from manuscript_guard.text.masking import mask",
+        "from manuscript_guard.text.tokens import find_atoms",
+        "text = sys.argv[1]",
+        'classifier = Classifier.load(extra_terms=(" ",))',
+        "atoms = find_atoms(text, mask(text))",
+        "loose = [atom.text for atom in atoms if classifier.classify(atom).kind == UNCLASSIFIED]",
+        "print(json.dumps(loose))",
+    ]
+)
+#: How long that process is given. It needs a quarter of a second, most of it to start,
+#: and took sixteen with twice as many busy processes as the machine has cores.
+CHILD_SECONDS = 120
+
 
 def test_a_declared_term_of_one_space_does_not_stop_the_check() -> None:
     """Gone through again for as long as a term was taken out, the terms were gone through
     for ever where one of them was a space: it was taken out of the space the last one
-    left, and the text stayed as it was."""
-    import threading
+    left, and the text stayed as it was.
 
-    reported: list[list[str]] = []
+    The sentence is read in a process of its own, which is stopped at the limit, so a loop
+    that does not end fails this test and leaves nothing running. Read in a thread, it
+    went on beside every test after this one until the session ended, and this file took
+    four times as long."""
+    import os
+    import subprocess
+    import sys
+
+    import manuscript_guard
+
     sentence = "Hydrogen peroxide (H~2~O~2~) was not reported."
-    # In a thread of its own, so that a loop that does not end fails this test and does
-    # not hold the run.
-    worker = threading.Thread(
-        target=lambda: reported.append(unbound(sentence, (" ",))), daemon=True
-    )
-    worker.start()
-    worker.join(30)
+    # The source this session tests, wherever it was found: a worktree's, not an installed one.
+    source = str(Path(manuscript_guard.__file__).resolve().parent.parent)
+    path = os.pathsep.join(filter(None, [source, os.environ.get("PYTHONPATH")]))
+    try:
+        read = subprocess.run(
+            [sys.executable, "-c", READ_WITH_A_SPACE_DECLARED, sentence],
+            capture_output=True,
+            env={**os.environ, "PYTHONPATH": path},
+            timeout=CHILD_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(f"the terms were still being gone through after {CHILD_SECONDS} s")
 
-    assert not worker.is_alive(), "the terms were still being gone through after 30 s"
-    assert reported == [["H~2~O~2"]]
+    assert read.returncode == 0, read.stderr.decode("utf-8", errors="replace")
+    assert json.loads(read.stdout) == ["H~2~O~2"]
 
 
 def test_a_long_atom_of_names_takes_time_in_proportion(assert_linear) -> None:
     """A term that opens a word many times in one atom was taken out one occurrence at a
-    time, each making the text anew: 800,000 characters of `h~2~/` took seven seconds."""
+    time, each making the text anew: 800,000 characters of `h~2~/` took seven seconds.
+
+    The function is timed alone, and from a text long enough that the square shows at the
+    first size. Through the tokenizer and the classifier, whose own time is in proportion,
+    and from a short text, the old function read under the bound on a busy machine: this
+    test passed against it six runs of seven."""
     from manuscript_guard.classify import _names_covering
 
     classifier = Classifier.load()
@@ -328,22 +371,22 @@ def test_a_long_atom_of_names_takes_time_in_proportion(assert_linear) -> None:
     def judged(text: str) -> list[str]:
         return [classifier.classify(atom).kind for atom in find_atoms(text, mask(text))]
 
-    assert judged("h~2~/" * 50) == ["term"]
-    assert_linear(lambda n: "h~2~/" * n, judged, 2000, "one term many times in an atom")
-    assert_linear(
-        lambda n: "PaO~2~/FiO~2~/" * n, judged, 1000, "two terms many times in an atom"
-    )
+    def covered(text: str) -> list[str] | None:
+        return _names_covering(text, classifier.terms)
+
+    # What is timed is how each of these is found to be one term.
+    assert judged("h~2~/" * 50) == judged("PaO~2~/FiO~2~/" * 50) == judged("h~2~" * 50) == ["term"]
+    assert covered("h2/" * 50) == covered("h2" * 50) == ["h2"]
+    assert covered("pao2/fio2/" * 50) == ["fio2", "pao2"]
+
+    assert_linear(lambda n: "h2/" * n, covered, 16_000, "one term many times in an atom")
+    assert_linear(lambda n: "pao2/fio2/" * n, covered, 4_000, "two terms many times in an atom")
     # With nothing between, each stands directly after the one before.
-    assert_linear(lambda n: "h~2~" * n, judged, 2000, "one term many times, nothing between")
-    # Two terms by turns with nothing between are an unbound number, and the classifier
-    # then scans the text for its rules and keeps the last scan: timed through it, the
-    # first timing of the smaller text found its scan kept. So the function is timed alone.
-    assert_linear(
-        lambda n: "h2d3" * n,
-        lambda text: _names_covering(text, classifier.terms),
-        100,
-        "two terms by turns, nothing between",
-    )
+    assert_linear(lambda n: "h2" * n, covered, 16_000, "one term many times, nothing between")
+    # Two terms by turns with nothing between are an unbound number. Gone through again for
+    # as long as one was taken out, the terms took the square of this one: from a small
+    # size, where that fails in seconds.
+    assert_linear(lambda n: "h2d3" * n, covered, 100, "two terms by turns, nothing between")
 
 
 def test_many_exponents_on_one_line_take_time_in_proportion(assert_linear) -> None:

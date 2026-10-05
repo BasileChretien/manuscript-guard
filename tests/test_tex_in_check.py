@@ -618,9 +618,11 @@ def test_check_does_not_wait_for_pandoc_past_its_limit(
     longer than anyone waits. `check` ran it with no limit, where it had never waited on
     another program, and the suite's own check of prose someone might write did not end.
 
-    The line here is ten deep and the limit one second. Fourteen deep, a `check` that
-    ignored the limit would not have failed this test: it would have stalled it for the
-    better part of an hour, with pandoc past ten gigabytes."""
+    The line here is ten deep and the limit one second. Pandoc comes back from it in those
+    thirteen seconds, a minute on a busy machine: long past the second it is given, and
+    soon enough that a `check` which ignored the limit fails this test. Fourteen deep, it
+    would not have failed it: it would have stalled it for the better part of an hour, with
+    pandoc past ten gigabytes."""
     from manuscript_guard.build import tex_check
 
     monkeypatch.setattr(tex_check, "READ_SECONDS", 1.0)
@@ -641,12 +643,6 @@ def test_check_does_not_wait_for_pandoc_past_its_limit(
         "the build judges it, and waits for pandoc as long as it takes"
     )
     assert report["counts"]["documents_read_for_tex"] == 1, "the supplement was read"
-
-
-def test_the_line_that_test_is_made_of_is_one_pandoc_comes_back_from() -> None:
-    """Ten deep is a quarter of a minute to pandoc, under load a minute: long past the one
-    second the test gives it, and short enough to fail a test rather than hold a runner."""
-    assert DEEP == 10
 
 
 def test_check_waits_ten_seconds_for_each_document() -> None:

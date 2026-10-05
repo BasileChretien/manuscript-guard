@@ -566,26 +566,34 @@ def test_a_record_that_is_refused_leaves_no_folder_behind(unreviewed: Path) -> N
     assert not (unreviewed / "review").exists()
 
 
+class _TimeThatTells:
+    """The `time` module as `record` sees it, telling the test when the lock's loop pauses.
+    Everything but `sleep` is the real module's."""
+
+    def __init__(self, real, paused) -> None:
+        self._real = real
+        self._paused = paused
+
+    def __getattr__(self, name: str):
+        return getattr(self._real, name)
+
+    def sleep(self, seconds: float) -> None:
+        self._paused.set()
+        self._real.sleep(seconds)
+
+
 def _second_writer_in_the_loop(monkeypatch):
-    """An event set when a second writer has asked for the panel's lock: it is then past the
-    lock's own making of the folder, and only the loop that waits can make it again. With
-    it, no sleep has to guess how long the second writer takes to get there."""
+    """An event set when a writer first pauses in the lock's loop. The loop pauses only
+    after it has tried for the lock and found it held, and the first writer never pauses,
+    so this is the second writer, waiting. With it, no sleep in a test has to guess how
+    long the second writer takes to get there."""
     import threading
 
     from manuscript_guard import record
 
-    asked = threading.Event()
-    takes: list[int] = []
-    real_take = record._take
-
-    def take(lock, panel_file):
-        takes.append(1)
-        if len(takes) == 2:
-            asked.set()
-        return real_take(lock, panel_file)
-
-    monkeypatch.setattr(record, "_take", take)
-    return asked
+    paused = threading.Event()
+    monkeypatch.setattr(record, "time", _TimeThatTells(record.time, paused))
+    return paused
 
 
 def test_a_writer_that_is_refused_does_not_take_the_folder_from_one_that_waits(
@@ -593,7 +601,11 @@ def test_a_writer_that_is_refused_does_not_take_the_folder_from_one_that_waits(
 ) -> None:
     """The holder made `review/` for its lock and was refused inside it. It then removed the
     folder it had made, from under a writer waiting for the same lock, which ended in a
-    `FileNotFoundError` traceback. Found by the second review round of the run."""
+    `FileNotFoundError` traceback. Found by the second review round of the run.
+
+    The waiting loop has since learnt to make a folder that went, so the second writer
+    would write either way and could no longer tell this test anything. What is asserted is
+    the thing itself: nobody removes the folder."""
     import threading
 
     from manuscript_guard.record import panel_lock
@@ -601,6 +613,14 @@ def test_a_writer_that_is_refused_does_not_take_the_folder_from_one_that_waits(
     in_the_loop = _second_writer_in_the_loop(monkeypatch)
     panel = tmp_path / "review" / "panel-1.yaml"
     waiting: list[str] = []
+    removed: list[str] = []
+    real_rmdir = Path.rmdir
+
+    def rmdir(self) -> None:
+        removed.append(self.name)
+        real_rmdir(self)
+
+    monkeypatch.setattr(Path, "rmdir", rmdir)
 
     def second() -> None:
         try:
@@ -613,10 +633,11 @@ def test_a_writer_that_is_refused_does_not_take_the_folder_from_one_that_waits(
     thread = threading.Thread(target=second)
     with pytest.raises(RecordError, match="refused"), panel_lock(panel):
         thread.start()
-        assert in_the_loop.wait(60), "the second writer never asked for the lock"
+        assert in_the_loop.wait(60), "the second writer never waited for the lock"
         raise RecordError("refused: no remit")
     thread.join(60)
     assert waiting == ["wrote"], waiting
+    assert removed == [], "the refused holder took a folder away"
 
 
 def test_a_folder_removed_while_a_writer_waits_is_made_again(
@@ -630,8 +651,8 @@ def test_a_folder_removed_while_a_writer_waits_is_made_again(
     take the lock, make its file and write in between, and `rmtree` then failed on a folder
     that was no longer empty (seen once in CI on macOS). The lock had done what this test
     is named for; the test's own removal lost the race. Here the folder is taken away in
-    one step, by renaming it, only once the second writer is known to be in the lock's
-    loop, and the holder lets go only when the second has finished.
+    one step, by renaming it, only once the second writer has tried for the lock, found it
+    held and paused, and the holder lets go only when the second has finished.
     """
     import threading
 
@@ -653,7 +674,7 @@ def test_a_folder_removed_while_a_writer_waits_is_made_again(
     gone = tmp_path / "review-taken-away"
     with record.panel_lock(panel):
         thread.start()
-        assert in_the_loop.wait(60), "the second writer never asked for the lock"
+        assert in_the_loop.wait(60), "the second writer never waited for the lock"
         _rename_away(panel.parent, gone)
         thread.join(60)
     assert waiting == ["wrote"], waiting

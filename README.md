@@ -218,9 +218,10 @@ of synonyms of its own.
 British or American, and G14 reports the words spelt the other way: "color" in a British
 paper, "randomised" in an American one, and both `-ise` and `-ize` in a British one. A
 name keeps its spelling, and so do a quotation and the reference list. The list of words
-is derived from [VarCon](http://wordlist.aspell.net/), from the part of it that
-was verified against dictionaries. Where a field spells a word its own way, the project
-lists it under `language: accepted_spellings:`.
+is derived from [VarCon](http://wordlist.aspell.net/): from the part of it that was
+verified against dictionaries, and from the rest only verbs in `-ise` and a few medical
+forms such as `haem-`. Where a field spells a word its own way, the project lists the
+word under `language: accepted_spellings:`.
 
 **Exemptions are small, explicit and reviewable.** Conventions live in a narrow shipped
 list pinned to specific values — `p < 0.05` is allowed, `p < 0.37` is not, because a p-value

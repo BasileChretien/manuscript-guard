@@ -1023,7 +1023,7 @@ the paper's English does not spell them.
 Atkinson and Benjamin Titze) records, for each word English spells in more than one way,
 which spelling American, British and Oxford usage prefer and which others each accepts.
 `tools/derive_spelling_variants.py` cuts it down to `data/spelling_variants.tsv`: about
-8,600 words, each with its kind and with what the other usage writes. The source file is
+8,400 words, each with its kind and with what the other usage writes. The source file is
 not in the repository. The script names it by its SHA-256 and refuses another, so the list
 is a function of a pinned source and of a script that can be read, and it is never edited
 by hand. VarCon marks the clusters it has verified against dictionaries and says the rest
@@ -1032,9 +1032,19 @@ documentation it reported the "et" of "et al." as the American spelling of "aet"
 line nobody had verified; "micelle" was the American spelling of "micellae" by the same
 route. So a row comes from a verified cluster, or from another only for a correspondence
 the spelling itself shows: a verb in `-ise` and its noun, and the combining forms British
-spelling writes with a digraph, `haem-`, `-aemia`, `paed-`, `-rrhoea`. Without that second
-door "haemodynamic" and "bacteraemia" would be missing. ATTRIBUTION.md has VarCon's terms
-and how the derived file meets them.
+spelling writes with a digraph, `haem-`, `-aemia`, `-rrhoea`. Without that second door
+"haemodynamic" and "bacteraemia" would be missing, and four rows in ten come through it.
+It is narrow because it let the same fault back in once: `paed-` was among the forms, and
+the first review found "pedogenic", which is the soil's word in any English, given to
+American usage as a spelling of "paedogenic". A form is kept only where its letters
+cannot be another root. ATTRIBUTION.md has VarCon's terms and how the derived file meets
+them.
+
+**A variant in both usages is the spelling of neither.** VarCon gives "embedding" to
+both and "imbedding" as a variant in British usage and a seldom-used one in American.
+The first derivation called "imbedding" British, and a hundred words with it: "useable",
+"liquify", "focussed". Where the two usages prefer the same spelling and the line tags
+the word for both, it writes no row.
 
 **A word is reported only where no line accepts it.** "meter" is the American spelling of
 the unit and everybody's spelling of the instrument; "program" is British for software;
@@ -1046,9 +1056,12 @@ been a "metre".
 **Science writes a few words one way everywhere, and the script says which.** VarCon
 records general usage. IUPAC spells sulfur with an f in any English, British medicine
 prescribes estradiol under its international name, "specialty" is its word for a branch of
-practice and "rigor" its word for the sign. The script leaves these out, each with its
-authority beside it, and that list is meant to stay short: where a field writes a word the
-list gives to the other usage, the project says so under `language: accepted_spellings:`.
+practice and "rigor" its word for the sign; an American paper recruits by "flyer" and
+ligates an "adaptor". The script leaves these out, each with its reason beside it, and
+with them the few words a line of VarCon pairs wrongly: "pyrolyses" is the plural of
+pyrolysis and no British verb. That list is meant to stay short: where a field writes a
+word the list gives to the other usage, the project says so, one word to an entry, under
+`language: accepted_spellings:`.
 
 **A name keeps its spelling.** "World Health Organization" is written so in a British
 paper and "Centre for Evidence-Based Medicine" in an American one. Only a word in lower
@@ -1060,10 +1073,11 @@ not, and a name that opens a sentence is taken for a word. Both are in Known gap
 headings of every file and of the supplement, not the reference list, not a quotation set
 as a block, whose spelling is its author's, and nothing the masking hides. This reading
 hides a little more, because markup is written in American: an HTML tag, so that
-`<span style="color:red">` is no word of the paper, a LaTeX `\label`, and the label of a
-reference link. A word joined to a digit or to an underscore, `color2`, `tumor_size`, is a
-variable's name; one that follows `@`, or that a dot and a letter follow, is an address or
-a file's name.
+`<span style="color:red">` is no word of the paper; a block of attributes that holds a
+key, `{fig-align="center"}`; and the label of a reference link. A LaTeX command is not
+hidden: `check` fails a manuscript that holds one, whatever it spells. A word joined to a
+digit or to an underscore, `color2`, `tumor_size`, is a variable's name; one that stands
+beside an `@`, or that a dot and a letter follow, is part of an address or a file's name.
 
 **Three findings.** `spelling-variant` is one word in the other spelling: once for the
 word, where it first stands, with how many times it is used and what to write. When the
@@ -7195,6 +7209,16 @@ Closed since, and why each mattered:
     under `accepted_spellings`, which then lets it pass everywhere.
   - A word that is mentioned and not used is reported: "the term *color* is American".
     Set as code, it is not read.
+  - A word of another language, or a name written in lower case, is read as English:
+    the species in "*Castor fiber*", the Latin of "rubor, tumor, calor and dolor", the
+    genes *dishevelled* and *colourless*. Emphasis cannot excuse them, since "the
+    *color* was recorded" has to be read. Each goes under `accepted_spellings`.
+  - A wording somebody else prescribes is read as the paper's own. A funder's sentence,
+    "the European Union's Horizon 2020 research and innovation programme", reports
+    "programme" in an American paper; the role names of the CRediT taxonomy,
+    "Conceptualization" and "Visualization", each opening its line of a contributions
+    section, give a British paper in `-ise` a `spelling-mixed`. The sections where G14
+    reports no undefined abbreviation are read for spelling like any other.
   - Words quoted inside a sentence are read as the manuscript's own, as for the
     vocabulary; only a quotation set as a block keeps its author's spelling.
   - A capital after a colon is taken for a sentence's, so in "the journal: Color Research"
@@ -7205,10 +7229,26 @@ Closed since, and why each mattered:
   - A British paper that writes `-ize` is counted with Oxford, and a word Oxford spells
     with `-ise` in any case, "analyse", is not counted on either side. A paper that mixes
     "analyse" with "analyze" is told of "analyze", as American.
+  - A verb is counted for `spelling-mixed` only where Oxford's spelling is the American
+    one. "anaesthetise" and "anaesthetized" are both British to the list, since American
+    usage writes "anesthetize", so neither is counted: a paper whose only word in `-ise`
+    is "anaesthetised", beside "randomized", hears nothing. About fifty rows are so.
   - `spelling-not-as-declared` lists twelve words and counts the rest. The others are
     reported one by one only when the paper's own spellings are no longer the fewer.
   - A file's name written in a sentence and not set as code is read up to its last word:
     in "tumor-color.csv" the gate reads "tumor".
+  - Of code, only what is set in backticks or in a fence is left alone. A block set off
+    by four spaces is read, and so is `<code>color</code>`, the CSS inside a `<style>`
+    block, and a tag whose attributes run on to a second line.
+  - The title, the short title and the keywords come from `paper.yaml` and are not read.
+    Nor is a caption written as an image's description, `![Color of each tumor](...)`;
+    a table's caption under `Table:` is.
+  - Where a sentence opens is read from what stands before the word, and a capital is
+    left alone where that is not plain: after a heading's number (`## 2.1 Color
+    measurement`), after a footnote's mark or a closing quotation mark, in an item
+    lettered `(a)`, and under a heading with no blank line below it.
+  - A derived form is paired with its line's preferred spelling: "amebae" is told
+    "amoebas", since the column numbers VarCon gives such lines are not read.
   - The list is VarCon's of 2020 with changes to 2024, and usage moves. A row that is
     wrong for everyone is put right in the script that derives the list, with its
     authority, and not in the data file.

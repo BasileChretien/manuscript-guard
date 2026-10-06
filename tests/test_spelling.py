@@ -251,6 +251,15 @@ def test_that_finding_lists_so_many_words_and_counts_the_rest(project: Path) -> 
     assert "odor (odour, once), and 2 more. Once" in finding.hint
 
 
+def test_that_finding_gives_both_spellings_where_british_usage_has_two(project: Path) -> None:
+    _, found = written(
+        project,
+        "# Methods\n\nWe saw color, tumor, anemia and edema in the anesthetized mice.\n",
+    )
+    (finding,) = found
+    assert "anesthetized (anaesthetised or anaesthetized, once)" in finding.hint
+
+
 def test_fewer_spellings_than_that_are_reported_each_where_it_stands(project: Path) -> None:
     words = ["color", "tumor", "anemia", "edema", "hemoglobin"]
     assert len(words) == MANY
@@ -303,6 +312,20 @@ def test_where_the_endings_are_level_the_later_one_is_shown(
     assert finding.line == 5, "the second paragraph"
     assert f"the first word in -{ending}" in finding.hint
     assert "since they are level" in finding.hint
+
+
+def test_endings_level_across_two_files_show_the_later_file_s(project: Path) -> None:
+    """Later in the manuscript, which is another file here: an offset alone, counted from
+    the top of each file, would not say so."""
+    _, found = written(
+        project,
+        "# Methods\n\nNothing here, for some lines.\n\nAt last, we randomised the patients.\n",
+        results="# Results\n\nDoses were standardized.\n",
+    )
+    (finding,) = found
+    assert finding.code == "spelling-mixed"
+    assert finding.path.name == "results.md"
+    assert "the first word in -ize" in finding.hint
 
 
 def test_an_ending_in_ize_is_not_evidence_of_british_spelling(project: Path) -> None:
@@ -369,6 +392,9 @@ def test_an_american_paper_is_not_told_its_endings_are_mixed(project: Path) -> N
         "We focused on the license holders and on current practice.",
         "The disk was read, the draft was checked and the inquiry was closed.",
         "The math is given in the appendix.",  # a row VarCon has not verified
+        # the soil's words, from another root than the child's: never "paedogenic"
+        "Pedogenic carbonate and slow pedogenesis were described by the pedologist.",
+        "Hematite and stilbestrol were weighed.",  # the mineral's name, and the drug's
     ],
 )
 def test_a_word_british_usage_also_writes_is_not_american(project: Path, sentence: str) -> None:
@@ -387,6 +413,12 @@ def test_a_word_british_usage_also_writes_is_not_american(project: Path, sentenc
         "The protein hydrolysate was added and the caecilian was observed.",
         "Aerogenic bacteria were cultured on the premises.",
         "Acknowledgement is made of the ageing cohort.",
+        "Participants were recruited through flyers, and the adaptor protein was knocked down.",
+        # a variant in both usages is the spelling of neither
+        "By the Sobolev imbedding theorem the map is compact, and a useable fraction remained.",
+        "Flash vacuum pyrolyses were run, and the pourer was calibrated.",  # two wrong pairings
+        "Entamoeba histolytica was cultured, and paedomorphosis was scored.",  # a genus
+        "Blaise Pascal showed it, and the cloth was cut weftwise.",
     ],
 )
 def test_a_word_american_usage_also_writes_is_not_british(project: Path, sentence: str) -> None:
@@ -441,13 +473,21 @@ def test_only_the_first_word_of_a_heading_in_title_case_is_read(project: Path) -
         '<span style="color:red">The value</span> was high.',
         '<div class="color">\n\nThe value was high.\n\n</div>',
         "See [the figure][color-ref].\n\n[color-ref]: https://example.org/x",
-        "The value was high.\\label{tab:color}",
-        "Write to info@color.org, or read color.csv.",
+        # a block of attributes that opens with a key, which the masking leaves
+        '![The value](figures/x.png){fig-align="center" width=80%}',
+        'The [value]{style="text-align: center; color: red"} was high.',
+        '::: {style="text-align: center"}\nThe value was high.\n:::',
+        "Write to info@color-lab.org or to center@example.org, or read color.csv.",
     ],
 )
 def test_what_is_not_the_paper_s_prose_is_not_read(project: Path, text: str) -> None:
     _, found = written(project, f"# Methods\n\n{text}\n")
     assert not found, messages(found)
+
+
+def test_braces_that_hold_no_key_are_prose(project: Path) -> None:
+    _, found = written(project, "# Methods\n\nThe set {color, tumor} was recorded.\n")
+    assert reported(found) == ["color", "tumor"]
 
 
 def test_the_front_matter_is_not_read(project: Path) -> None:
@@ -519,14 +559,40 @@ def test_the_schema_takes_the_setting(project: Path) -> None:
     assert contract.ok, messages(contract.findings)
 
 
-def test_another_english_is_not_judged() -> None:
-    """The schema lets a paper be en-GB or en-US. Called with anything else, the reading
-    has no list to hold the paper to, and says nothing."""
+@pytest.mark.parametrize("entry", ["Labor Department", "color-coded", "color2"])
+def test_the_schema_reports_an_entry_that_is_not_one_word(project: Path, entry: str) -> None:
+    """Only a word can be kept, since only words are read: an entry that is a whole name
+    would never match, and the author would not know why the warning stayed."""
+    _, found = written(
+        project, "# Methods\n\nLabor Department figures were color-coded.\n", accepted=[entry]
+    )
+    assert reported(found) == ["labor", "color"]
+    _, contract = load_project(project)
+    refused = [f.message for f in contract.failures]
+    assert any("language/accepted_spellings/0" in message for message in refused), refused
+
+
+@pytest.mark.parametrize("variant", ["en-AU", "en-gb", "", 5, None, ["en-GB"], {"a": "en-GB"}])
+def test_another_english_is_not_judged(variant: object) -> None:
+    """The schema lets a paper be en-GB or en-US. Called with anything else, a list or a
+    mapping included, the reading has no list to hold the paper to: it says nothing, and
+    it does not raise."""
     text = "The color and the colour."
     passages = [Passage(Path("main.md"), text, text, lambda offset: 1)]
-    report = judge_spelling(passages, "en-AU", (), Path("paper.yaml"))
+    report = judge_spelling(passages, variant, (), Path("paper.yaml"))
     assert not report.findings
     assert report.counts == {"spelling_own": 0, "spelling_other": 0}
+
+
+@pytest.mark.parametrize("variant", [["en-GB"], {"a": "en-GB"}, 5, None])
+def test_an_english_in_the_wrong_shape_does_not_take_the_gate_s_other_readings_with_it(
+    project: Path, variant: object
+) -> None:
+    """The schema reports the setting. The first version looked a list up in a table, the
+    gate raised, and the abbreviations and the vocabulary went unreported with it."""
+    report, found = written(project, "# Methods\n\nThe ROR and the color were noted.\n", variant)
+    assert not found
+    assert [f.code for f in report.findings] == ["abbreviation-undefined"]
 
 
 def test_the_reading_asked_directly_takes_what_it_is_given() -> None:
@@ -566,7 +632,9 @@ def test_the_example_is_in_the_english_it_declares(project: Path) -> None:
         ("text\n+ ", True),
         ("text\n  - ", True),
         ("text\n        - ", True),  # a list inside a list
+        ("text\n" + " " * 40 + "- ", True),  # and deeper than most
         ("no full stop\n\n            ", True),
+        ("It was. [", True),
         ("text\n12. ", True),
         ("text\n2) ", True),
         ("# ", True),
@@ -620,6 +688,22 @@ def test_one_long_line_of_capitals_is_read_in_linear_time(assert_linear) -> None
         assert report.counts["spelling_other"] == 1, "only the first opens a sentence"
 
     assert_linear(manuscript, judge, 2000, "the spelling, on one line")
+
+
+@pytest.mark.parametrize("opener", ['<span style="', "{fig-align=", "][", "[label]: "])
+def test_a_line_of_markup_left_open_is_read_in_linear_time(assert_linear, opener: str) -> None:
+    """Each kind of markup this reading hides, opened again and again on one line and never
+    closed. The first version also hid LaTeX commands, and read such a line of them from
+    each one to the end: 96 KB took seven seconds."""
+
+    def manuscript(count: int) -> list[Passage]:
+        text = "See " + (opener + "color ") * count
+        return [Passage(Path("main.md"), text, text, lambda offset: 1)]
+
+    def judge(passages: list[Passage]) -> None:
+        judge_spelling(passages, "en-GB", (), Path("paper.yaml"))
+
+    assert_linear(manuscript, judge, 2000, f"the spelling, on a line of {opener!r}")
 
 
 # ---------------------------------------------------------------- the list itself
@@ -695,6 +779,9 @@ def test_the_list_holds_what_it_should(word: str, row: tuple[str, str]) -> None:
         "gray", "license", "practice", "focused", "specialty", "rigor", "estradiol",
         "hydrolysate", "et", "ax", "mom", "micelle", "macule", "diene", "raphe", "prev",
         "surprisal", "expertise", "advertise", "exercise", "larvae", "fossae", "homeostasis",
+        "flyer", "adaptor", "pedogenic", "pedology", "paedomorphosis", "entamoeba", "hematite",
+        "stilbestrol", "imbedding", "useable", "focussed", "pyrolyses", "pourer", "blaise",
+        "weftwise", "caulkings",
     ],
 )  # fmt: skip
 def test_the_list_leaves_out_what_it_should(word: str) -> None:
@@ -724,6 +811,10 @@ def test_the_list_carries_its_source_s_notices() -> None:
         "the supporting documentation repeats the notices, word for word"
     )
     assert "modified version" in attribution
+    # In a fence. As a quotation, Markdown took the licence's numbered clauses for a list
+    # and renumbered them: clause 5 was printed as 4, under a note that 4 was removed.
+    assert "\n```text\nCopyright 2000-2020 by Kevin Atkinson" in attribution
+    assert "SUCH DAMAGE.\n```\n" in attribution
 
 
 # ---------------------------------------------------------------- the script that derives it
@@ -761,6 +852,21 @@ def test_the_list_is_what_the_script_derives_from_varcon(derive) -> None:
     assert hashlib.sha256(data).hexdigest() == derive.SOURCE["sha256"]
     derived = derive.render(derive.derive(derive.read(data.decode("latin-1"))))
     assert derived.encode("utf-8") == DATA.read_bytes()
+
+
+def test_every_word_the_script_leaves_out_would_have_had_a_row(
+    derive, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the pinned source at hand. A word in `EVERYWHERE` that takes no row out of the
+    list says VarCon was wrong where the list never was: two such stood there once."""
+    source = os.environ.get("MANUSCRIPT_GUARD_VARCON")
+    if not source:
+        pytest.skip("MANUSCRIPT_GUARD_VARCON does not name a copy of varcon.txt")
+    lines = derive.read(Path(source).read_bytes().decode("latin-1"))
+    left_out = set(derive.EVERYWHERE)
+    monkeypatch.setattr(derive, "EVERYWHERE", {})
+    with_them = {word for word, _, _ in derive.derive(lines)}
+    assert sorted(left_out - with_them) == []
 
 
 def test_a_line_of_varcon_is_read_as_its_readme_says(derive) -> None:
@@ -838,6 +944,49 @@ A B: fiber / B: fibre
 
 # fiber <verified> (level 20)
 A: fiber / B: fibre
+
+# judgment <verified> (level 10)
+A B.: judgment / B: judgement
+
+# mold <verified> (level 35)
+A: mold / B: mould
+
+# anonymization (level 80)
+A Z: anonymization / B: anonymisation
+
+# bacteremia (level 80)
+A: bacteremia / B: bacteraemia
+
+# pedogenesis (level 70)
+A: pedogenesis / B: paedogenesis
+
+# anesthetize <verified> (level 40)
+A: anesthetize / B: anaesthetise / Z: anaesthetize
+
+# liter <verified> (level 20)
+A: liter / B: litre # the unit, and a comment
+
+# Cesarean <verified> (level 50)
+A: Cesarean / B: Caesarean
+
+# maneuver <verified> (level 35)
+A: maneuver / Bv: manoeuver / B: manoeuvre
+
+# embed <verified> (level 35)
+A B: embedding / AV Bv: imbedding
+A B: fetus / Bv: foetus
+
+# adapter <verified> (level 35)
+A Bv: adapter / AV B: adaptor
+
+# surprize (level 80)
+A Z: surprize / B: surprise
+
+# mize (level 70)
+A Z: mize / B: mise
+
+# weftwize (level 80)
+A Z: weftwize / B: weftwise
 """
 
 
@@ -868,6 +1017,29 @@ def test_the_script_takes_the_rows_it_says_it_takes(derive) -> None:
         # above level 80 a cluster writes no row, and its line still accepts "fiber" in
         # British usage, which is why "fiber" has none
         "fibre": ("gb", "fiber"),
+        # "judgment" is equal in British usage (`B.`), so it has no row
+        "judgement": ("gb", "judgment"),
+        "mold": ("us", "mould"),  # four letters are enough
+        "mould": ("gb", "mold"),
+        # more from clusters nobody verified: the noun of a verb in -ise, and -aemia. Not
+        # "paedogenesis": `paed-` is no door, since "pedogenesis" is the soil's word
+        "anonymisation": ("ise", "anonymization"),
+        "bacteremia": ("us", "bacteraemia"),
+        "bacteraemia": ("gb", "bacteremia"),
+        # Oxford's spelling is neither of the others: both are offered, and both are British
+        "anesthetize": ("us", "anaesthetise/anaesthetize"),
+        "anaesthetise": ("gb", "anesthetize"),
+        "anaesthetize": ("gb", "anesthetize"),
+        "liter": ("us", "litre"),  # the comment after the line is no part of the word
+        "litre": ("gb", "liter"),
+        # what to write is the preferred spelling, not the first the usage accepts
+        "maneuver": ("us", "manoeuvre"),
+        "manoeuver": ("gb", "maneuver"),
+        "manoeuvre": ("gb", "maneuver"),
+        # "imbedding" is a variant in both usages and so the spelling of neither; "foetus"
+        # has no American tag and is British. "Caesarean" has a capital, "adaptor" is in
+        # EVERYWHERE, and "surprise", "mise" and "weftwise" are no verbs in -ize
+        "foetus": ("gb", "fetus"),
     }
 
 

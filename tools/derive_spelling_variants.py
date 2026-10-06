@@ -25,7 +25,12 @@ What is kept, and why each rule is there:
   is accepted in British usage and is never reported. That is the conservative side: a
   word is reported only when no line of VarCon accepts it for the paper's English.
 * A word is written out only where its line has a preferred spelling for the other usage
-  that differs from it, so every row can say what to write instead.
+  that differs from it, so every row can say what to write instead. The column numbers
+  VarCon gives some lines are not read, so a derived form is paired with its line's
+  preferred spelling and not with its own column's: "amebae" is told "amoebas".
+* A spelling both usages have as a variant is neither's. On the line that gives
+  "embedding" to both and "imbedding" as a variant in British usage and a seldom-used one
+  in American, "imbedding" is not the British spelling of anything, and writes no row.
 * Clusters above SCOWL level 80 are read for acceptance and write no rows: VarCon says of
   them that the headword "may not even be a legal word".
 * VarCon marks the clusters it has checked against dictionaries as `<verified>`, and says
@@ -35,7 +40,9 @@ What is kept, and why each rule is there:
   spelling itself shows: a verb in `-ise` and its noun in `-isation`, never one of the
   verbs that are `-ise` in any English (`ONLY_ISE`); and the combining forms British
   spelling writes with a digraph (`DIGRAPHS`), `haem-` and `-aemia` among them. Without
-  those, "haemodynamic", "bacteraemia" and "anonymise" would not be in the list.
+  those, "haemodynamic", "bacteraemia" and "anonymise" would not be in the list. A form
+  is in `DIGRAPHS` only where the letters cannot be another root: `paed-` was, and gave
+  the "pedogenic" of soil science to American usage as a spelling of "paedogenic".
 * A word of fewer than four letters writes no row. "ax" and "mom" are spellings, and in
   a manuscript a word that short is more often a symbol or a variable.
 * Only words of lower-case ASCII letters are written. Possessives repeat their base word,
@@ -73,12 +80,18 @@ HIGHEST_LEVEL = 80
 ACCEPTED = ("", ".", "v")
 USAGES = ("A", "B", "Z")
 
-#: Words VarCon gives to one usage and scientific writing spells this way in both, with
-#: the authority for each. No row is written for them, so the check never reports them.
+#: Words VarCon gives to one usage and scientific writing spells this way in both, or that
+#: a line of VarCon pairs wrongly, with the reason for each. No row is written for them, so
+#: the check never reports them. Each one here takes a row out of the list: a test holds
+#: that, so the table does not gather words that were never in it.
 EVERYWHERE = {
     "acknowledgment": "British dictionaries give it beside acknowledgement, and it heads "
     "the section in journals of either usage",
     "acknowledgments": "as acknowledgment",
+    "adaptor": "the spelling of molecular biology in either English, and of the MeSH "
+    "heading for adaptor proteins",
+    "adaptors": "as adaptor",
+    "blaise": "a given name, and nobody writes the verb VarCon has",
     "diethylstilbestrol": "as estradiol",
     "estradiol": "the recommended International Nonproprietary Name, which British "
     "medicine has used since 2003 in place of oestradiol",
@@ -87,12 +100,21 @@ EVERYWHERE = {
     "estriols": "as estradiol",
     "estrone": "as estradiol",
     "estrones": "as estradiol",
-    "hydrolysate": "the first spelling in American dictionaries too",
-    "hydrolysates": "as hydrolysate",
+    "flyer": "American dictionaries give it beside flier, and it is the usual spelling of "
+    "a leaflet in either English",
+    "flyers": "as flyer",
+    "hematite": "the name the International Mineralogical Association gives the mineral",
+    "hematites": "as hematite",
+    "hematitic": "as hematite",
+    "porer": "one who pores, which a line of VarCon pairs with pourer, one who pours",
+    "pourer": "as porer",
+    "pyrolyses": "the plural of pyrolysis, which VarCon has only as a form of the verb",
     "rigor": "the clinical sign, and rigor mortis, are spelt so in British medicine",
     "rigors": "as rigor",
     "specialty": "the word of British medicine for a branch of practice",
     "specialties": "as specialty",
+    "stilbestrol": "as estradiol",
+    "stilbestrols": "as estradiol",
 }
 #: IUPAC's spelling of sulfur, and of every name made from it, in any English.
 IUPAC = "sulf"
@@ -101,11 +123,12 @@ IUPAC = "sulf"
 SHORTEST = 4
 
 #: From a cluster VarCon has not verified: the combining forms British spelling writes
-#: with a digraph, and what American spelling writes for each.
+#: with a digraph, and what American spelling writes for each. Not `paed-`, whose American
+#: `ped-` is also the root of "pedogenic" and "pedology", the soil's words in any English;
+#: and not `amoeb-`, which would respell a genus, "Entamoeba".
 DIGRAPHS = {
     "aemi": "emi",
     "aetiol": "etiol",
-    "amoeb": "ameb",
     "anaesth": "anesth",
     "coeli": "celi",
     "gynaec": "gynec",
@@ -113,7 +136,6 @@ DIGRAPHS = {
     "oedem": "edem",
     "oesoph": "esoph",
     "oestr": "estr",
-    "paed": "ped",
     "palaeo": "paleo",
     "pnoea": "pnea",
     "rrhoea": "rrhea",
@@ -121,11 +143,12 @@ DIGRAPHS = {
 #: From a cluster VarCon has not verified: a verb in -ise, and its noun in -isation.
 _VERB = re.compile(r"(?P<stem>[a-z]{3,}is)(?:e|ed|es|ing|ation|ations)")
 #: The verbs that are -ise in any English, as far as their s: a word that ends in one of
-#: them is not taken from a cluster nobody verified. New Hart's Rules gives the list.
+#: them is not taken from a cluster nobody verified. New Hart's Rules gives the list. The
+#: last is no verb: "-wise" makes adverbs, "weftwise", "stepwise".
 ONLY_ISE = (
     "advertis", "advis", "chastis", "circumcis", "compromis", "demis", "despis", "devis",
     "disguis", "excis", "exercis", "franchis", "improvis", "incis", "merchandis", "premis",
-    "pris", "promis", "revis", "supervis", "surmis", "televis",
+    "pris", "promis", "revis", "supervis", "surmis", "televis", "wis",
 )  # fmt: skip
 
 _HEADER = re.compile(r"# .*\(level (?P<level>\d+)\)")
@@ -213,12 +236,14 @@ NOTICE = """\
 
 @dataclass
 class Line:
-    """One line of VarCon: for each usage, the spelling it prefers and those it accepts."""
+    """One line of VarCon: for each usage, the spelling it prefers, those it accepts, and
+    those the line tags for it at all, a seldom-used variant included."""
 
     level: int
     verified: bool = False
     preferred: dict[str, str] = field(default_factory=dict)
     accepted: dict[str, set[str]] = field(default_factory=dict)
+    tagged: dict[str, set[str]] = field(default_factory=dict)
 
 
 def read_line(text: str, level: int, verified: bool = False) -> Line | None:
@@ -245,6 +270,8 @@ def read_line(text: str, level: int, verified: bool = False) -> Line | None:
     line = Line(level, verified)
     for marks, word in entries:
         for usage in USAGES:
+            if usage in marks:
+                line.tagged.setdefault(usage, set()).add(word)
             if marks.get(usage) in ACCEPTED:
                 line.accepted.setdefault(usage, set()).add(word)
                 if marks[usage] == "":
@@ -318,6 +345,8 @@ def derive(lines: list[Line]) -> list[tuple[str, str, str]]:
             ise = word == british and oxford == american and _one_letter_apart(british, oxford)
             if in_a and not in_b and not in_z and IUPAC in word:
                 continue
+            if british == american and all(word in line.tagged.get(usage, ()) for usage in "AB"):
+                continue  # a variant in both usages, and the spelling of neither
             if in_a and not in_b and not in_z and word != british:
                 instead = british if oxford == british else f"{british}/{oxford}"
                 row = (word, "us", instead)

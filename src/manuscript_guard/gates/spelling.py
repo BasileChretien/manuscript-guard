@@ -68,15 +68,17 @@ _MARKER = re.compile(r"(?:[-+*]|\d{1,9}[.)]|#{1,6})[ \t][" + re.escape(_OPENING)
 #: How far back the start of a sentence is looked for.
 _REACH = 200
 # Markup the other readings have no reason to hide and this one does, since CSS and HTML
-# are written in American: `<span style="color:red">`. An HTML tag; the label of a
-# reference link and the line that defines it, which a footnote's text is not; a LaTeX
-# command that names a label or a file.
+# are written in American: `<span style="color:red">`. An HTML tag; a block of attributes
+# that holds a key, `{fig-align="center"}`, which the masking hides only where it opens
+# with `.` or `#`; the label of a reference link and the line that defines it, which a
+# footnote's text is not. Each alternative stops at the next character that could open
+# another of its kind, so a line of unclosed ones is read once. A LaTeX command is not
+# here: `check` fails a manuscript that holds one, whatever its spelling.
 _MARKUP = re.compile(
     r"</?[A-Za-z][^<>\n]*>"
+    r"|\{[^{}=\n]*=[^{}\n]*\}"
     r"|\]\[[^\]\n]*\]"
-    r"|^[ ]{0,3}\[(?!\^)[^\]\n]+\]:[^\n]*"
-    r"|\\(?:label|ref|eqref|autoref|[cC]ref|pageref|nameref|cite[A-Za-z]*|input|include"
-    r"|includegraphics)\*?(?:\[[^\]\n]*\])*\{[^{}\n]*\}",
+    r"|^[ ]{0,3}\[(?!\^)[^\]\n]+\]:[^\n]*",
     re.MULTILINE,
 )
 
@@ -121,13 +123,13 @@ def _prose(printed: str) -> str:
 
 
 def _in_an_identifier(text: str, start: int, end: int) -> bool:
-    """`tumor_size` and `color2` are names somebody gave a variable, `color.csv` is a file
-    and `info@color.org` an address: none is a word of the paper. `_color_`, with the
-    underscores of emphasis around it, is one."""
+    """`tumor_size` and `color2` are names somebody gave a variable, `color.csv` is a file,
+    `info@color-lab.org` and `center@example.org` are addresses: none is a word of the
+    paper. `_color_`, with the underscores of emphasis around it, is one."""
     before = text[start - 1] if start else ""
     after = text[end] if end < len(text) else ""
     beyond = text[end + 1] if end + 1 < len(text) else ""
-    if before.isdigit() or after.isdigit() or before in ("@", "\\"):
+    if before.isdigit() or after.isdigit() or "@" in (before, after):
         return True
     if before == "_" and start > 1 and text[start - 2].isalnum():
         return True
@@ -149,7 +151,9 @@ def judge_spelling(
     """The findings of the spelling reading, for a paper in `variant`. `accepted` are the
     spellings the project keeps whatever the list says; `paper` is the file that names the
     variant, for the finding that is about it."""
-    if variant not in _NAMES:
+    if not isinstance(variant, str) or variant not in _NAMES:
+        # The schema reports an `english_variant` that is neither; a list is not even a
+        # key to look up, and the gate's other readings are not to fall with this one.
         return Report((), {"spelling_own": 0, "spelling_other": 0})
     words, with_ize = _variants()
     kept = {word.lower() for word in accepted if isinstance(word, str)}
@@ -235,9 +239,10 @@ def judge_spelling(
                     path=passage.path,
                     line=passage.line_of(offset),
                     context=context(passage.text, offset, len(key)),
-                    hint="respell it, or list it under `language: accepted_spellings:` in "
-                    "paper.yaml if it is this field's spelling or part of a name. This is "
-                    "its first use; the count is of the whole manuscript",
+                    hint="respell it, or list that one word under `language: "
+                    "accepted_spellings:` in paper.yaml if it is this field's spelling or a "
+                    "word of a name. This is its first use; the count is of the whole "
+                    "manuscript",
                 )
             )
 

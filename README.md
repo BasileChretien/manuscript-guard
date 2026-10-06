@@ -116,7 +116,7 @@ Currently implemented:
 | G11 | a recorded panel has reviewed the manuscript, and its major findings are answered |
 | G12 | there was an analysis plan, and its sections say something |
 | G13 | every reviewer point is answered, and every claimed revision really happened |
-| G14 | an abbreviation is defined once, before it is used, and the manuscript keeps to the terms its author declared (warnings only) |
+| G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, and it is spelt in one English (warnings only) |
 
 `manuscript-guard check --submission` holds the manuscript to submission standards:
 unanswered review findings become failures rather than warnings, so you can keep building
@@ -214,6 +214,15 @@ so the author declares it, under `language: vocabulary:` in `paper.yaml`, with t
 given up for it, and G14 reports each of those the manuscript still uses. It has no list
 of synonyms of its own.
 
+**One English, the one the paper declares.** `english_variant` in `paper.yaml` says
+British or American, and G14 reports the words spelt the other way: "color" in a British
+paper, "randomised" in an American one, and both `-ise` and `-ize` in a British one. A
+name keeps its spelling, and so do a quotation and the reference list. The list of words
+is derived from [VarCon](http://wordlist.aspell.net/): from the part of it that was
+verified against dictionaries, and from the rest only verbs in `-ise` and a few medical
+forms such as `haem-`. Where a field spells a word its own way, the project lists the
+word under `language: accepted_spellings:`.
+
 **Exemptions are small, explicit and reviewable.** Conventions live in a narrow shipped
 list pinned to specific values — `p < 0.05` is allowed, `p < 0.37` is not, because a p-value
 you obtained is a result. Project additions require a written reason. Axis ticks are
@@ -294,7 +303,9 @@ particular thing, and the tool tells you which when you reach it.
 
 Nothing is fetched during installation. Reporting checklists are downloaded on request by
 `manuscript-guard fetch`, never as an install side effect — see
-[ATTRIBUTION.md](ATTRIBUTION.md) for why.
+[ATTRIBUTION.md](ATTRIBUTION.md) for why. One file in the package is derived from
+somebody else's work: the list of spellings G14 reads comes from VarCon and carries its
+notices, and the same file says how.
 
 ### The R emitter (only if your analysis is in R)
 

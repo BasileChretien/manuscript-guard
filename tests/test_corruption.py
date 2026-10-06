@@ -9302,3 +9302,142 @@ def test_the_word_in_a_citation_key_or_a_comment_is_not_the_manuscript_s(project
     )
     main_md(project).write_text(edited, encoding="utf-8")
     assert vocabulary_findings(project) == []
+
+
+# --------------------------------------------------------------------------------------
+# G14, the spelling: the example declares British English and is written in it. Each test
+# below lets the other spelling into the text the way it gets there: a co-author's
+# sentence, a spell-checker set to the other English, a paragraph pasted from another
+# paper, a line of paper.yaml changed with nobody respelling the text. The gate has to say
+# which word, and where.
+# --------------------------------------------------------------------------------------
+
+
+def spelling_findings(root: Path) -> list[tuple[str, int | None, str]]:
+    from manuscript_guard.gates import check_language
+
+    report = check_language(load_project(root)[0])
+    assert report.ok, "G14 warns; it does not fail"
+    return [
+        (f.code, f.line, f.message) for f in report.findings if f.code.startswith("spelling-")
+    ]
+
+
+def test_the_example_is_spelt_as_it_declares(project: Path) -> None:
+    """The baseline for what follows."""
+    assert spelling_findings(project) == []
+
+
+def test_a_co_author_s_sentence_in_the_other_spelling_is_caught(project: Path) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    assert old in text, "the fixture changed under this test"
+    edited = text.replace(old, old + " The color of a tablet is rarely recorded.")
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(edited, "The color of a tablet"),
+            "'color' is the American spelling of 'colour', used once; this paper is in "
+            "British English",
+        )
+    ]
+
+
+def test_a_word_respelt_by_a_spell_checker_is_caught(project: Path) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    assert text.count("We analysed") == 1, "the fixture changed under this test"
+    edited = text.replace("We analysed", "We analyzed")
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(edited, "We analyzed"),
+            "'analyzed' is the American spelling of 'analysed', used once; this paper is in "
+            "British English",
+        )
+    ]
+
+
+def test_the_declared_english_changed_and_the_text_left_as_it_was_is_caught(
+    project: Path,
+) -> None:
+    """A journal that wants American spelling: the line in paper.yaml is changed, and the
+    manuscript still says "analysed"."""
+    path = project / "paper.yaml"
+    paper = path.read_text(encoding="utf-8")
+    assert paper.count("english_variant: en-GB") == 1, "the fixture changed under this test"
+    path.write_text(paper.replace("english_variant: en-GB", "english_variant: en-US"), "utf-8")
+    text = main_md(project).read_text(encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(text, "We analysed"),
+            "'analysed' is the British spelling of 'analyzed', used once; this paper is in "
+            "American English",
+        )
+    ]
+
+
+def test_a_second_ending_brought_in_by_a_co_author_is_caught(project: Path) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(
+        old,
+        old + " Reports were categorised and prioritised by region.\n\nThey were then "
+        "summarized by quarter.",
+    )
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-mixed",
+            line_of(edited, "They were then summarized"),
+            "both endings are used: -ise 2 times ('categorised', 'prioritised') and -ize "
+            "once ('summarized')",
+        )
+    ]
+
+
+def test_a_paragraph_pasted_from_a_paper_in_the_other_english_is_caught(project: Path) -> None:
+    """Five spellings of the other usage against the example's one of its own: the gate
+    says the manuscript is not in the English it declares, names every word and what to
+    write, and points at paper.yaml, since it cannot know which of the two is the slip."""
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    text = supplement.read_text(encoding="utf-8")
+    supplement.write_text(
+        text + "\nThe color of the tumor, the anemia, the edema and the hemoglobin level "
+        "were not coded.\n",
+        encoding="utf-8",
+    )
+    from manuscript_guard.gates import check_language
+
+    report = check_language(load_project(project)[0])
+    (finding,) = [f for f in report.findings if f.code.startswith("spelling-")]
+    assert finding.code == "spelling-not-as-declared"
+    assert finding.path == project / "paper.yaml"
+    assert finding.message.startswith("5 words are in American spelling (5 different ones)")
+    for word, instead in (
+        ("color", "colour"),
+        ("tumor", "tumour"),
+        ("anemia", "anaemia"),
+        ("edema", "oedema"),
+        ("hemoglobin", "haemoglobin"),
+    ):
+        assert f"{word} ({instead}, once)" in finding.hint
+
+
+def test_a_name_a_quotation_and_a_citation_key_in_the_other_spelling_are_left_alone(
+    project: Path,
+) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(
+        old,
+        old + " The World Health Organization keeps the database [@color-atlas2020], and "
+        "its guidance says:\n\n> Report the color and the labeling of the product.\n\n"
+        "<!-- check the color of the tablet -->",
+    )
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert spelling_findings(project) == []

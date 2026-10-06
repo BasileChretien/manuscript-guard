@@ -141,6 +141,17 @@ class Project:
         accepts = Draft202012Validator(entry_schema["vocabulary"]["items"]).is_valid
         return tuple(entry for entry in listed if accepts(entry))
 
+    @property
+    def accepted_spellings(self) -> tuple[str, ...]:
+        """Spellings this paper keeps although the list calls them the other usage's: its
+        field's, or a name's. Read past a setting in the wrong shape, which the schema
+        reports."""
+        language = self.paper.get("language")
+        listed = language.get("accepted_spellings") if isinstance(language, dict) else None
+        if not isinstance(listed, list):
+            return ()
+        return tuple(entry for entry in listed if isinstance(entry, str))
+
 
 def _accepted(schema: dict, value: Any) -> Any:
     """`value` as far as `schema` accepts it; see `Project.setting`."""

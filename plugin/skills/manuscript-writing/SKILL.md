@@ -1,6 +1,6 @@
 ---
 name: manuscript-writing
-description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided or vocabulary-conflict, or when revising text that was drafted quickly.
+description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict or a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared), or when revising text that was drafted quickly.
 ---
 
 # Writing prose that reads as written
@@ -146,6 +146,41 @@ When drafting or revising, look for pairs the list does not hold yet: two words 
 outcome, the exposure, the population, the data source or the method. Propose the entry;
 do not add it without the author's word, since choosing between two terms is choosing what
 the paper says.
+
+## One English
+
+`english_variant` in `paper.yaml` says whether the paper is in British (`en-GB`) or
+American (`en-US`) spelling, and G14 holds the manuscript to it. Write in that English
+from the first draft: a paragraph pasted from another paper, or drafted without looking,
+is where the other spelling comes in.
+
+- `spelling-variant`: a word in the other spelling, reported once, at its first use, with
+  how many times it is used and what this paper writes. Search for the others and respell
+  them all. If the word is right as it stands, because the field spells it so or it is
+  part of a name the gate took for a word, list it under `language: accepted_spellings:`
+  in `paper.yaml`, and say so to the author.
+- `spelling-not-as-declared`: most of the manuscript is in the other English. Do not
+  respell a whole paper on your own reading of this. Ask the author which English the
+  paper is in. If the answer is the one the manuscript is written in, the fix is one line
+  in `paper.yaml`; a target journal's profile may also name the English it wants.
+- `spelling-mixed`: a British paper that writes both "randomised" and "standardized".
+  British usage takes either ending and a paper takes one. The finding names the ending
+  used less; change those words unless the author or the journal prefers the other, and
+  then change the rest. "Analyse" is spelt so with either.
+
+What is left alone: a name with its capital ("World Health Organization", in any paper),
+a quotation set as a block, the reference list, and code set in backticks or in a fence.
+Quoted words inside a sentence are read, so a quotation whose spelling must stand is set
+as a block.
+
+What is read and should not be changed: a species (*Castor fiber*), a gene
+(*dishevelled*), Latin (rubor, tumor, calor, dolor), a funder's prescribed sentence (the
+Horizon 2020 "programme"), the CRediT role names ("Conceptualization"). Do not respell
+these. List the word under `accepted_spellings`, one word to an entry, letters only: a
+whole name, or a word with a hyphen, matches nothing and the schema refuses it.
+
+The list is of general English. It does not hold every technical word, so it is no
+substitute for reading the text: "hyperglycemia" in a British paper passes.
 
 ## Checking your work
 

@@ -125,6 +125,11 @@
           "description": "Short forms this paper uses without defining them, because the journal lets them stand or its readers take them for words or names: CI, PCR, MedDRA. Written as the manuscript writes them, and in quotes: unquoted, YAML reads NO, ON and YES as booleans. G14 reports any other abbreviation it finds used and not defined.",
           "items": { "type": "string", "minLength": 2 }
         },
+        "accepted_spellings": {
+          "type": "array",
+          "description": "Single words this paper keeps although G14's list gives them to the other English: a field's own spelling, as orthopaedic is for American orthopaedics, or one word of a name. Letters only, in any case: a word is what G14 reads, so an entry with a space or a hyphen in it would match nothing. G14 reports any other word that is spelt the way english_variant does not spell it.",
+          "items": { "type": "string", "minLength": 2, "pattern": "^[A-Za-z]+$" }
+        },
         "vocabulary": {
           "type": "array",
           "description": "The terms this paper keeps to. Each entry names one term to use and the terms it replaces; G14 reports a replaced term the manuscript still uses, once, at its first use, with how many times it is used. A term is one word or several, matched whole, with a hyphen or a line break between its words and with its plural s; in any case, except for a word written with two capitals together, as OR, WHO and the II of phase II trial are, which is matched as written. Quote the terms: unquoted, YAML reads no, on and yes as booleans.",

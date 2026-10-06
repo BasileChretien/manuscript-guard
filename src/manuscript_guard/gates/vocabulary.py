@@ -271,6 +271,12 @@ def _without(printed: str, spans: list[tuple[int, int]]) -> str:
     return "".join(chars)
 
 
+def own_words(printed: str) -> str:
+    """A passage's text less its block quotations: the words that are the manuscript's
+    own, which is what this reading and the spelling reading judge."""
+    return _without(printed, _quotations(printed))
+
+
 def judge_vocabulary(
     passages: Iterable[Passage], entries: Iterable[dict], paper: Path
 ) -> Report:
@@ -296,7 +302,7 @@ def judge_vocabulary(
     first: dict[str, tuple[Passage, int, int]] = {}
     times: dict[str, int] = {}
     for passage in passages if pattern is not None else ():
-        printed = _without(passage.printed, _quotations(passage.printed))
+        printed = own_words(passage.printed)
         for found in pattern.finditer(printed):
             key = vocabulary.named(found.group(0))
             if key is None or key not in vocabulary.avoid:

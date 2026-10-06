@@ -45,7 +45,8 @@ GATES = {
     "G11": "the manuscript has been reviewed by a recorded panel",
     "G12": "there was an analysis plan before there was an analysis",
     "G13": "the response to the reviewers answers every point, and its claims hold",
-    "G14": "abbreviations are defined once, and one term is kept for one thing",
+    "G14": "abbreviations are defined once, one term is kept for one thing, and the "
+    "spelling is one English",
 }
 
 __all__ = [

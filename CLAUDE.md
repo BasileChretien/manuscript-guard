@@ -94,6 +94,19 @@ the copy of whoever is running it.
 The example's citekeys are fictional and live in its committed `references.bib`, so it
 builds offline anywhere without touching anyone's Zotero.
 
+The list of spellings G14 reads, `src/manuscript_guard/data/spelling_variants.tsv`, is
+generated from VarCon and never edited by hand:
+
+```bash
+python tools/derive_spelling_variants.py path/to/varcon.txt
+```
+
+The script names the source file by its SHA-256 and refuses another. `varcon.txt` is not
+in the repository; with `MANUSCRIPT_GUARD_VARCON` naming a copy, a test derives the list
+again and compares it byte for byte. A row that is wrong is put right in the script, with
+the authority for it. The derived file carries VarCon's notices and so does
+ATTRIBUTION.md, and both have to keep them.
+
 Reporting checklists are generated, not committed:
 
 ```bash

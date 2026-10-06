@@ -27,9 +27,9 @@ without the paper, so what it uses it must define. The main text does not inheri
 abstract. The supplement is read after the paper, so it inherits the main text's
 definitions and is otherwise held to its own.
 
-The gate has a second reading, of the terms the paper keeps to, in `gates/vocabulary.py`.
-It takes the files read here, so the manuscript is masked once, and `check_language`
-gives both.
+The gate has two more readings: of the terms the paper keeps to, in
+`gates/vocabulary.py`, and of its spelling, in `gates/spelling.py`. They take the files
+read here, so the manuscript is masked once, and `check_language` gives all three.
 """
 
 from __future__ import annotations
@@ -47,6 +47,7 @@ from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import PAPER_FILE, Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
+from manuscript_guard.gates.spelling import judge_spelling
 from manuscript_guard.gates.vocabulary import (
     Passage,
     capitals_together,
@@ -831,9 +832,17 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
 
 
 def check_language(project: Project) -> Report:
-    """Both readings of the manuscript: its abbreviations, and the terms it keeps to."""
+    """The three readings of the manuscript: its abbreviations, the terms it keeps to,
+    and its spelling."""
     files = _read(project)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
-    return _judge(files, _known(project), project.root).merge(
-        judge_vocabulary(passages, project.vocabulary, project.root / PAPER_FILE)
+    paper = project.root / PAPER_FILE
+    return (
+        _judge(files, _known(project), project.root)
+        .merge(judge_vocabulary(passages, project.vocabulary, paper))
+        .merge(
+            judge_spelling(
+                passages, project.english_variant, project.accepted_spellings, paper
+            )
+        )
     )

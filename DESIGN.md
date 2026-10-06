@@ -237,7 +237,7 @@ All deterministic, all runnable in CI without Claude.
 | G11 | Panel review | no review round, a stale review, a file nobody read, or an unanswered major finding |
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
 | G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
-| G14 | Abbreviations and terms | never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, and when the manuscript uses a term its author gave up for another |
+| G14 | Abbreviations, terms and spelling | never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, and when a word is in the spelling of the English the paper does not declare |
 
 Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
 is in no stage's deferral list and so fails everywhere, because a checker that could not
@@ -1000,17 +1000,86 @@ this check where the reading cannot tell them apart: the same words with a hyphe
 space between them, in the plural of a term written without one, or with another
 capital in a word that has no two capitals together. So "follow up" cannot be given up
 for "follow-up", and the message says the two are read as one, while `Covid-19` can be
-given up for `COVID-19`, whose capitals stand together. The terms to use are compared the same way, so an entry for "subject" and
-"participant" beside one for "subjects" and "participants" is no conflict. An entry in
-the wrong shape is the schema's to report, a term with no letter or digit
-in it included; the gate reads the entries the schema accepts, one by one, so one mistake
-does not take the rest with it.
+given up for `COVID-19`, whose capitals stand together. The terms to use are compared the
+same way, so an entry for "subject" and "participant" beside one for "subjects" and
+"participants" is no conflict. An entry in the wrong shape is the schema's to report, a
+term with no letter or digit in it included; the gate reads the entries the schema
+accepts, one by one, so one mistake does not take the rest with it.
 
 **Both codes are warnings at every stage**, for the reason abbreviations are: a list of
 words cannot tell two meanings of one word apart.
 
 The example declares one entry, "hepatic injury" for "liver injury" and "liver damage",
 and keeps to it.
+
+## One English is declared, and the list of the other is somebody else's
+
+`paper.yaml` has always said `english_variant`, and nothing held the manuscript to it. A
+paper written by several hands, or revised from a draft in the other spelling, has "colour"
+on one page and "color" on the next. G14's third reading reports the words spelt the way
+the paper's English does not spell them.
+
+**The list comes from VarCon, and from the part of it that was checked.** VarCon (Kevin
+Atkinson and Benjamin Titze) records, for each word English spells in more than one way,
+which spelling American, British and Oxford usage prefer and which others each accepts.
+`tools/derive_spelling_variants.py` cuts it down to `data/spelling_variants.tsv`: about
+8,600 words, each with its kind and with what the other usage writes. The source file is
+not in the repository. The script names it by its SHA-256 and refuses another, so the list
+is a function of a pinned source and of a script that can be read, and it is never edited
+by hand. VarCon marks the clusters it has verified against dictionaries and says the rest
+held numerous errors. The first derivation took them all, and run on this repository's own
+documentation it reported the "et" of "et al." as the American spelling of "aet", from a
+line nobody had verified; "micelle" was the American spelling of "micellae" by the same
+route. So a row comes from a verified cluster, or from another only for a correspondence
+the spelling itself shows: a verb in `-ise` and its noun, and the combining forms British
+spelling writes with a digraph, `haem-`, `-aemia`, `paed-`, `-rrhoea`. Without that second
+door "haemodynamic" and "bacteraemia" would be missing. ATTRIBUTION.md has VarCon's terms
+and how the derived file meets them.
+
+**A word is reported only where no line accepts it.** "meter" is the American spelling of
+the unit and everybody's spelling of the instrument; "program" is British for software;
+"practice" is the noun in both. Acceptance is gathered over every line a word stands on,
+in every cluster, verified or not, so each of these is accepted in British usage and is
+never reported there. That is the cautious side, and it costs the "meter" that should have
+been a "metre".
+
+**Science writes a few words one way everywhere, and the script says which.** VarCon
+records general usage. IUPAC spells sulfur with an f in any English, British medicine
+prescribes estradiol under its international name, "specialty" is its word for a branch of
+practice and "rigor" its word for the sign. The script leaves these out, each with its
+authority beside it, and that list is meant to stay short: where a field writes a word the
+list gives to the other usage, the project says so under `language: accepted_spellings:`.
+
+**A name keeps its spelling.** "World Health Organization" is written so in a British
+paper and "Centre for Evidence-Based Medicine" in an American one. Only a word in lower
+case is read, or one with a capital where a sentence, a heading, a list item or a table
+cell opens. So the first word of a heading is read and the rest of one in title case is
+not, and a name that opens a sentence is taken for a word. Both are in Known gaps.
+
+**It is read where the manuscript speaks**, as the vocabulary is: the sentences and
+headings of every file and of the supplement, not the reference list, not a quotation set
+as a block, whose spelling is its author's, and nothing the masking hides. This reading
+hides a little more, because markup is written in American: an HTML tag, so that
+`<span style="color:red">` is no word of the paper, a LaTeX `\label`, and the label of a
+reference link. A word joined to a digit or to an underscore, `color2`, `tumor_size`, is a
+variable's name; one that follows `@`, or that a dot and a letter follow, is an address or
+a file's name.
+
+**Three findings.** `spelling-variant` is one word in the other spelling: once for the
+word, where it first stands, with how many times it is used and what to write. When the
+other usage's spellings are five or more and are used more often than the paper's own, the
+likelier mistake is the line in `paper.yaml`, which `init` writes as `en-GB` for everyone,
+and one `spelling-not-as-declared` at `paper.yaml` takes the place of them all, with the
+twelve most used listed. `spelling-mixed` is for a British paper alone. British usage
+takes `-ise` or `-ize`, Oxford's being `-ize`, and a paper takes one: the finding is given
+once, at the first word in the ending used less, with both counts. An American paper has
+no such choice, so an `-ise` there is a `spelling-variant`.
+
+**All three are warnings at every stage.** A list cannot tell "Labor", the party, from
+"labor", the word misspelt, and it is a list of general English.
+
+A journal that insists on one English says so in its profile, and G4 already reports a
+paper that declares the other. G14 holds the manuscript to what the paper declares.
 
 ## Methods drift is a reconciliation ledger
 
@@ -7110,6 +7179,41 @@ Closed since, and why each mattered:
   - The hook that runs after a manuscript file is saved does not run this gate yet; the
     findings appear at `check`.
 
+- **G14's spelling is a list of general English, and reads a capital as a name's.**
+  - A word the list does not hold is not read. It has "haemoglobin", "oedema" and
+    "randomise", and not "hyperglycaemia", "leucocyte" or "operationalise"; a spelling of
+    the other usage that it lacks passes in silence.
+  - A word some line of VarCon accepts in the paper's English is never reported, whatever
+    it means where it stands: "meter" for the unit, "program" for a schedule and
+    "practise" used as a noun all pass in a British paper.
+  - Only the first word of a heading in title case is read: in "Tumor Response and Color
+    Change" the gate sees "tumor" and takes "Color" for a name. A word in capitals
+    throughout is not read at all.
+  - A name that opens a sentence, a list item or a table cell is read as a word: "Labor
+    Department figures were used" reports "labor" in a British paper. So is one that
+    follows a full stop inside a sentence, "J. Labor Econ.". The project lists the word
+    under `accepted_spellings`, which then lets it pass everywhere.
+  - A word that is mentioned and not used is reported: "the term *color* is American".
+    Set as code, it is not read.
+  - Words quoted inside a sentence are read as the manuscript's own, as for the
+    vocabulary; only a quotation set as a block keeps its author's spelling.
+  - A capital after a colon is taken for a sentence's, so in "the journal: Color Research"
+    the name is read.
+  - A spelling that differs by a hyphen or a space is not read: "co-operate" and "per
+    cent" pass in an American paper. Nor is vocabulary: "whilst", "autumn" and
+    "fortnight" are words, not spellings.
+  - A British paper that writes `-ize` is counted with Oxford, and a word Oxford spells
+    with `-ise` in any case, "analyse", is not counted on either side. A paper that mixes
+    "analyse" with "analyze" is told of "analyze", as American.
+  - `spelling-not-as-declared` lists twelve words and counts the rest. The others are
+    reported one by one only when the paper's own spellings are no longer the fewer.
+  - A file's name written in a sentence and not set as code is read up to its last word:
+    in "tumor-color.csv" the gate reads "tumor".
+  - The list is VarCon's of 2020 with changes to 2024, and usage moves. A row that is
+    wrong for everyone is put right in the script that derives the list, with its
+    authority, and not in the data file.
+  - The hook that runs after a manuscript file is saved does not run this reading either.
+
 - **G14's vocabulary is a list of words, and reads them as words.**
   - Nothing is reported that the author did not declare. Two words for one thing that are
     in no entry pass in silence; finding candidates is for the writing skill and a reader.
@@ -7135,12 +7239,13 @@ Closed since, and why each mattered:
   - Where a quotation opens is read from the one line above, and pandoc reads more than
     that. The gate leaves a `>` line alone, where pandoc prints it as the paper's own
     words, under a line that holds only something hidden (a binding, inline code, a
-    comment, an equation or an image alone on its line), and under a heading or a rule
-    that itself has no blank line above it and so is no heading or rule to pandoc. The
-    gate reads a `>` line, where pandoc sets a quotation, under a pipe or grid table, an
-    indented code block, a line block, an HTML block, a link's definition, and under a
-    rule written as hyphens with blanks between, `- - -`: that is also the rule under a
-    simple table's header, whose rows are rows.
+    comment inside a paragraph, an equation or an image alone on its line), under a line
+    of `=` or `--` that underlines nothing, and under a heading or a rule that itself has
+    no blank line above it and so is no heading or rule to pandoc. The gate reads a `>`
+    line, where pandoc sets a quotation, under a pipe or grid table, an indented code
+    block, a line block, an HTML block, a link's definition, and under a rule written as
+    hyphens with blanks between, `- - -`: that is also the rule under a simple table's
+    header, whose rows are rows.
   - A heading with no blank line under it runs into its paragraph: `# The other side`
     over `Effect sizes were small.` on the next line reports "side effect". With the
     blank line it does not.
@@ -7155,7 +7260,9 @@ Closed since, and why each mattered:
     the backslash too. A mark at the end of an entry's word is taken off it: `n_` is read
     as "n", and `_id` as "id".
   - A term typed with an accent as one character does not find the same word typed as a
-    letter and a combining accent.
+    letter and a combining accent. Nor does one typed with the micro sign find the Greek
+    mu, or the other way round: the search takes the two for one letter and the
+    comparison after it does not, so the match is passed over.
   - The title, the short title and the keywords come from `paper.yaml` and are not read:
     the example gives up "liver damage" and could still list it as a keyword. Tables and
     figures generated from results are not read either; a table typed into the manuscript

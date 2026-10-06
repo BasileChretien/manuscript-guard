@@ -367,8 +367,11 @@ def test_a_line_of_a_paragraph_that_opens_with_a_greater_than_sign_is_read(
         "Recall was low.\n\n***\n> The subjects objected to the word.\n",  # a rule of asterisks
         "Voices\n======\n> The subjects objected to the word.\n",  # a first-level setext heading
         "::: box\nInside.\n:::\n> The subjects objected to the word.\n",  # after a div closes
-        # Far enough down the file that an offset one short for each line would show.
-        "One.\nTwo.\nThree.\nFour.\nFive.\nSix.\n\n> They called themselves subjects\n",
+        "Recall was low.\n\n___\n> The subjects objected to the word.\n",  # a rule of underscores
+        "Recall was low.\n\n* * *\n> The subjects objected to the word.\n",  # blanks inside a rule
+        # Far enough down the file that an offset one short for each line would show:
+        # eight lines above, and the word has eight letters.
+        "One.\nTwo.\nThree.\nFour.\nFive.\nSix.\nSeven.\n\n> They called themselves subjects\n",
     ],
 )
 def test_a_quotation_is_left_alone_wherever_a_block_can_open(project: Path, text: str) -> None:
@@ -604,6 +607,23 @@ def test_a_greek_abbreviation_is_found_in_the_plural(project: Path) -> None:
     )
     (finding,) = found
     assert "used 2 times" in finding.message
+
+
+def test_a_match_no_term_claims_is_passed_over(project: Path) -> None:
+    """The search takes the micro sign and the Greek mu for one letter in any case, and
+    the comparison that follows keeps them apart. So a match can be nobody's: it is not
+    reported, and nothing raises."""
+    micro, mu = "\N{MICRO SIGN}g", "\N{GREEK SMALL LETTER MU}g"
+    vocabulary = [{"use": "micrograms", "avoid": [micro]}]
+    _, found = written(project, f"# Methods\n\nThe dose was 5 {mu} daily.\n", vocabulary)
+    assert not found
+    _, found = written(
+        project,
+        f"# Methods\n\nThe dose was 5 {mu} daily and 2 {micro} at night.\n",
+        vocabulary,
+    )
+    (finding,) = found
+    assert "is used once" in finding.message, "the one typed as the entry types it"
 
 
 def test_the_schema_reports_a_term_with_no_letter_in_it(project: Path) -> None:

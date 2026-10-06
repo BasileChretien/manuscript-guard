@@ -86,7 +86,8 @@ Then fill in, in this order:
    and competing interests are not enforced by the check. The submission pack reports a
    missing competing-interests statement per author, and CRediT and funding only when no
    author has any; a missing ORCID is left out without comment.
-2. **`paper.yaml`**: the title, `english_variant` (`en-GB` or `en-US`), and the reporting
+2. **`paper.yaml`**: the title, `english_variant` (`en-GB` or `en-US`; ask, do not
+   assume: G14 holds the manuscript's spelling to it), and the reporting
    guideline under the key `reporting_guideline` (singular, a list). Any key the schema does
    not know is a failure at every stage. The title, the short title and the keywords are
    read as Markdown, and TeX in them is kept only between dollar signs: write
@@ -144,7 +145,7 @@ Each finding names a code. The code says where to go:
 |---|---|
 | `no-analysis-plan`, `plan-section-*` | [analysis-plan](../analysis-plan/SKILL.md) |
 | `unclassified-number`, `unresolved-binding`, `unquoted-result`, `hand-authored-table`, G1 and G8 codes | [results-binding](../results-binding/SKILL.md) |
-| `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact`, `abbreviation-*`, `term-avoided`, `vocabulary-conflict` | [manuscript-writing](../manuscript-writing/SKILL.md) |
+| `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact`, `abbreviation-*`, `term-avoided`, `vocabulary-conflict`, `spelling-*` | [manuscript-writing](../manuscript-writing/SKILL.md) |
 | `methods-drift`, `methods-never-reconciled` | [methods-writer](../methods-writer/SKILL.md) |
 | `literature-source-missing`, `quote-not-in-source`, `value-not-in-quote` | [literature-verify](../literature-verify/SKILL.md) |
 | `figure-unreviewed`, `figure-review-stale` | [figure-review](../figure-review/SKILL.md) |

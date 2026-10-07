@@ -91,8 +91,8 @@ def decide(now: str, before: str | None, published: Callable[[str], bool]) -> tu
     if before is None:
         raise SystemExit(
             "the commit this push replaced cannot be read, so whether this push raised the "
-            f"version is not known: nothing is published. If {now} is to be released, raise "
-            "the number again in a commit of its own."
+            f"version to {now} is not known: nothing is published. If it did, that number is "
+            "passed over: to release what main holds, raise it again in a commit of its own."
         )
     if before == now:
         return False, f"this push left the version at {now}: nothing to release"

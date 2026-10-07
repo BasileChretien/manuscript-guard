@@ -75,11 +75,13 @@ When a release does not go through:
   the one that is going, and a third push that touches `pyproject.toml` in those minutes
   cancels the one waiting.
 - A run that says the commit it replaced cannot be read followed a forced push to `main`.
-  It releases nothing, since nothing says that push raised the number. Raise the number
-  again in a commit of its own.
-- An upload that stopped after one of its two files cannot be finished. PyPI then has the
-  version, so a later run releases nothing, and a re-run of the failed job fails on the
-  file already there. Raise the number again: the next release carries both files.
+  It releases nothing, since nothing says that push raised the number. If it did, raise
+  the number again in a commit of its own: that next number is the release, and the one
+  passed over is never published.
+- An upload that stopped after one of its two files is not finished by this workflow.
+  PyPI then has the version, so a later run releases nothing, and a re-run of the failed
+  job fails on the file already there. Raise the number again: the next release carries
+  both files.
 
 The upload carries no password and no token. PyPI trusts that one workflow file, in this
 repository, in the `pypi` environment. That pairing is set on PyPI: as a pending publisher
@@ -90,7 +92,8 @@ told.
 The description PyPI shows is built from the README, with each relative link and picture
 pointed at the repository at the release's tag (`[tool.hatch.metadata.hooks.fancy-pypi-readme]`
 in `pyproject.toml`), since a page on PyPI has nothing beside it. `tests/test_docs.py` builds
-a wheel and holds that no relative target is left.
+a wheel and reads its description for a relative target left in it, in the forms its
+`relative_targets` names.
 
 ## Running it
 

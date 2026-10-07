@@ -217,18 +217,24 @@ def test_the_citation_file_reads_and_names_no_version() -> None:
 
 #: A target that leads somewhere from any page: it names a scheme, or a place on the page.
 ABSOLUTE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:|#")
-#: The forms a target can take beside the two the build rewrites, which are `](target)` and
-#: one `src` or `srcset`: a link that carries a title, one written as a reference with its
-#: definition on a line of its own, an `href`, and each picture of a `srcset` after the first.
+#: The forms read, beside the two the build rewrites, which are `](target)` and one `src` or
+#: `srcset`: a link that carries a title; one written as a reference, with its target on the
+#: line of its label (a footnote opens the same way and has no target); an `href`; and each
+#: picture of a `srcset` after the first. An attribute is read as the README writes one, in
+#: lower case and between double quotes: in single quotes, in capitals or with no quotes it
+#: is not seen here, and the build does not rewrite it either.
 TITLED = re.compile(r"\]\(\s*<?([^)\s>]+)")
-DEFINED = re.compile(r"^ {0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>]+)", re.MULTILINE)
-ATTRIBUTE = re.compile(r'\b(?:href|src)="([^"]*)"')
-SET = re.compile(r'\bsrcset="([^"]*)"')
+DEFINED = re.compile(r"^ {0,3}\[(?!\^)[^\]\n]+\]:[ \t]*<?([^\s>]+)", re.MULTILINE)
+ATTRIBUTE = re.compile(r'(?<![\w-])(?:href|src)="([^"]*)"')
+SET = re.compile(r'(?<![\w-])srcset="([^"]*)"')
+#: Text shown as code within a line: between two runs of backticks of one length.
+CODE = re.compile(r"(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)")
 
 
 def relative_targets(markdown: str) -> list[str]:
-    """Every target in the text, of any form, that is dead on a page with nothing beside it."""
-    text = FENCE.sub("", markdown)
+    """Each target in the text, in the forms read above, that is dead on a page with nothing
+    beside it. What is shown as code is no target."""
+    text = CODE.sub("", FENCE.sub("", markdown))
     pictures = [one.split() for found in SET.findall(text) for one in found.split(",")]
     several = [picture[0] for picture in pictures if picture]
     targets = TITLED.findall(text) + DEFINED.findall(text) + ATTRIBUTE.findall(text) + several
@@ -250,9 +256,15 @@ def relative_targets(markdown: str) -> list[str]:
         ("[a](https://example.org/x), [b](#status), [c](mailto:someone@example.org)", []),
         ('[a]: https://example.org/x\n<a href="#status">b</a>', []),
         ("```\n[in a listing](docs/install.md)\n```\n", []),
+        # What is no target, and stood to fail the test of the description: a footnote, whose
+        # line opens as a reference's does, and a link shown as code.
+        ("A claim.[^1]\n\n[^1]: See the design notes.\n", []),
+        ('A link with a title is written `[text](file.md "Title")`.', []),
+        ("In two backticks, ``[text](file.md) and a ` too``, it is code as well.", []),
+        ('<img data-src="lazy.png" src="https://example.org/a.png">', []),
     ],
 )
-def test_a_relative_target_of_any_form_is_found(markdown: str, dead: list[str]) -> None:
+def test_a_relative_target_is_found_in_each_form_read(markdown: str, dead: list[str]) -> None:
     assert relative_targets(markdown) == dead
 
 

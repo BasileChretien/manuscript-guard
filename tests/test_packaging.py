@@ -167,3 +167,54 @@ def test_the_check_catches_a_directory_an_ignore_rule_swallows(tmp_path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
     assert ignored_by_git(tmp_path, [kept, lost]) == ["pkg/build/document.py"]
+
+
+# ------------------------------------------------------------------ the tag of a release
+#
+# `.github/scripts/check_release_tag.py` is what publish.yml runs before it builds. PyPI
+# keeps a version for good, so a release under the wrong tag cannot be taken back: the
+# refusal is held here, where it can be seen to refuse.
+
+
+def load_tag_check():
+    import importlib.util
+
+    path = REPO / ".github" / "scripts" / "check_release_tag.py"
+    spec = importlib.util.spec_from_file_location("check_release_tag", path)
+    assert spec and spec.loader, path
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def checkout_at(tmp_path: Path, version: str) -> Path:
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\nname = "manuscript-guard"\nversion = "{version}"\n', encoding="utf-8"
+    )
+    return tmp_path
+
+
+def test_the_tag_of_this_checkout_s_version_passes(capsys):
+    check = load_tag_check()
+    version = check.package_version(REPO)
+    assert check.main(["check_release_tag.py", f"v{version}", str(REPO)]) == 0
+    assert "::error::" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "tag",
+    ["0.2.431", "v0.2.430", "v0.2.4310", "V0.2.431", "v0.2.431-rc1", "v0.2.431 ", "release", ""],
+)
+def test_a_tag_that_does_not_name_the_version_is_refused_in_words(tag: str, tmp_path, capsys):
+    check = load_tag_check()
+    assert check.main(["check_release_tag.py", tag, str(checkout_at(tmp_path, "0.2.431"))]) == 1
+    printed = capsys.readouterr().out
+    assert printed.startswith("::error::") and "tag it v0.2.431" in printed
+
+
+def test_the_version_is_read_from_the_one_line_that_gives_it(tmp_path):
+    check = load_tag_check()
+    assert check.package_version(checkout_at(tmp_path, "1.2.3")) == "1.2.3"
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'x'\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        check.package_version(tmp_path)

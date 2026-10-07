@@ -243,20 +243,19 @@ def test_the_description_pypi_shows_has_no_link_that_leads_nowhere(tmp_path: Pat
     assert "Description-Content-Type: text/markdown" in header
     version = re.search(r"^Version: (\S+)$", header, re.MULTILINE).group(1)
 
+    # What each target of the README has to have become: one that names a scheme, or a place
+    # on the page itself, as it was; a relative one, the same path in the repository at the
+    # release's tag, as a page for a link and as the file for a picture.
+    page = f"https://github.com/BasileChretien/manuscript-guard/blob/v{version}/"
+    file = f"https://raw.githubusercontent.com/BasileChretien/manuscript-guard/v{version}/"
+
+    def becomes(target: str, at: str) -> str:
+        return target if re.match(r"[A-Za-z][A-Za-z0-9+.-]*:|#", target) else at + target
+
     in_readme = FENCE.sub("", text_of(README))
     in_description = FENCE.sub("", description)
-    targets = [*LINK.findall(in_description), *SOURCE.findall(in_description)]
-    assert len(targets) == len([*LINK.findall(in_readme), *SOURCE.findall(in_readme)])
-    at_tag = (
-        f"https://github.com/BasileChretien/manuscript-guard/blob/v{version}/",
-        f"https://raw.githubusercontent.com/BasileChretien/manuscript-guard/v{version}/",
-    )
-    for target in targets:
-        if target.startswith("#"):
-            continue  # a place on the page itself
-        assert re.match(r"https?://", target), f"{target} is relative, and dead on PyPI"
-        if "BasileChretien/manuscript-guard/" in target and "/actions/" not in target:
-            assert target.startswith(at_tag), f"{target} does not point at the tag v{version}"
-    for path in (DOCS / "img").glob("*.svg"):
-        assert f"{at_tag[1]}docs/img/{path.name}" in description
-    assert f"{at_tag[0]}docs/install.md" in description
+    links, pictures = LINK.findall(in_readme), SOURCE.findall(in_readme)
+    assert any(not re.match(r"[a-z]+:|#", link) for link in links), "no relative link to test"
+    assert pictures, "the README shows no picture; the pattern no longer matches"
+    assert LINK.findall(in_description) == [becomes(link, page) for link in links]
+    assert SOURCE.findall(in_description) == [becomes(picture, file) for picture in pictures]

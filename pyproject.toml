@@ -68,15 +68,22 @@ content-type = "text/markdown"
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
 path = "README.md"
 
-# A picture: the file itself, which the page loads.
+#
+# Both patterns read the text, not Markdown. One would rewrite a link or a picture written
+# inside a code block, and neither sees a link that carries a title (`[x](y "title")`),
+# which stays relative. The README has neither, and tests/test_docs.py fails if a relative
+# target reaches the description.
+
+# A picture: the file itself, which the page loads. One that already names a scheme
+# (`https:`, `data:`) is left alone.
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
-pattern = '(src|srcset)="(?!https?://)([^"]+)"'
+pattern = '(src|srcset)="(?![A-Za-z][A-Za-z0-9+.-]*:)([^"]+)"'
 replacement = '\1="https://raw.githubusercontent.com/BasileChretien/manuscript-guard/v$HFPR_VERSION/\2"'
 
-# A link to a file or a folder: its page on GitHub. A link to a place on the page itself
-# (`#status`) is left alone.
+# A link to a file or a folder: its page on GitHub. A link that names a scheme (`https:`,
+# `mailto:`) and one to a place on the page itself (`#status`) are left alone.
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
-pattern = '\]\((?!https?://|#)([^)\s]+)\)'
+pattern = '\]\((?![A-Za-z][A-Za-z0-9+.-]*:|#)([^)\s]+)\)'
 replacement = '](https://github.com/BasileChretien/manuscript-guard/blob/v$HFPR_VERSION/\1)'
 
 [tool.hatch.build.targets.wheel]

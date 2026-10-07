@@ -56,8 +56,10 @@ the source distribution and uploads them. It refuses a tag that says another num
 `pyproject.toml`, and a commit that is not on `main`.
 
 The upload carries no password and no token. PyPI trusts that one workflow file, in this
-repository, in the `pypi` environment, which is set on PyPI under the project's publishing
-settings. Renaming the file, or the environment, breaks the upload until PyPI is told.
+repository, in the `pypi` environment. That pairing is set on PyPI: as a pending publisher
+of the maintainer's account until the first release, and in the project's publishing
+settings after it. Renaming the file, or the environment, breaks the upload until PyPI is
+told. A release marked as a pre-release on GitHub is not published.
 
 The description PyPI shows is built from the README, with each relative link and picture
 pointed at the repository at the release's tag (`[tool.hatch.metadata.hooks.fancy-pypi-readme]`

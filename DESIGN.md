@@ -5327,7 +5327,10 @@ Closed since, and why each mattered:
   Skills and the tool update separately, so the plugin can be newer than the installed tool.
   The session-start hook compares the plugin's version (read from
   `$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json`) with the tool's and says so once, with the
-  upgrade command, and blocks nothing. It says nothing when the variable is unset, the file
+  upgrade command, and blocks nothing. The command takes the latest release from PyPI. The
+  plugin's number is raised on `main` a few minutes before that release is uploaded, and a
+  release can fail: until PyPI has the number, the command finds nothing newer and the
+  next session warns again. It says nothing when the variable is unset, the file
   is unreadable, or the version is not plain dotted digits. The comparison lives in the
   tool's own handler, so a tool older than 0.2.260, which is every copy installed before it,
   runs the old handler and never warns: its first upgrade has to be made by hand, as

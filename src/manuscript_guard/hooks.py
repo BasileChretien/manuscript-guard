@@ -643,12 +643,12 @@ def _status_line(payload: dict) -> str | None:
     return " ".join(parts)
 
 
-# `pip install --upgrade` is enough for a pip install now that the package version moves with
-# the plugin. pipx is the exception: `pipx upgrade` refuses a git install ("no package index
-# was checked"), so it has to be reinstalled.
+# Every version is released to PyPI as it is raised, so the index has the number the plugin
+# carries and `pip install --upgrade` takes it, wherever the copy came from. pipx is the
+# exception: `pipx upgrade` keeps a copy that was installed from git on git ("no package
+# index was checked"), so it is reinstalled, which serves a copy from PyPI as well.
 UPGRADE_COMMAND = (
-    "pip install --upgrade git+https://github.com/BasileChretien/manuscript-guard "
-    "(with pipx: pipx install --force git+https://github.com/BasileChretien/manuscript-guard)"
+    "pip install --upgrade manuscript-guard (with pipx: pipx install --force manuscript-guard)"
 )
 
 # A clear or a compact happens inside a session that already heard it at its start.

@@ -48,8 +48,12 @@ pip install --upgrade manuscript-guard
 pipx upgrade manuscript-guard
 ```
 
-A copy installed from the repository is upgraded from the repository, with the command in
-the section above. With pipx, `pipx upgrade` refuses a copy installed from git (it checks a
+The warning at the start of a session gives the pip command, and for pipx
+`pipx install --force manuscript-guard`: either moves a copy to the latest release wherever
+it was installed from.
+
+To keep a copy on the repository instead, upgrade it from there, with the command in the
+section above. With pipx, `pipx upgrade` refuses a copy installed from git (it checks a
 package index, not the repository), so reinstall instead:
 
 ```bash

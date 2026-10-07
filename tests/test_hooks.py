@@ -1381,8 +1381,8 @@ def test_a_search_for_named_projects_is_made_only_for_a_submission(
 
 # ---------------------------------------------------------------- a CLI older than its plugin
 
-UPGRADE_PIP = "pip install --upgrade git+https://github.com/BasileChretien/manuscript-guard"
-UPGRADE_PIPX = "pipx install --force git+https://github.com/BasileChretien/manuscript-guard"
+UPGRADE_PIP = "pip install --upgrade manuscript-guard"
+UPGRADE_PIPX = "pipx install --force manuscript-guard"
 
 
 def plugin_at(root: Path, version: object) -> Path:
@@ -1403,9 +1403,12 @@ def test_a_plugin_newer_than_the_cli_says_so_with_the_upgrade_command(
     result = run("session-start", {"cwd": str(tmp_path), "source": "startup"}, capsys)
     assert result is not None
     shown = result["systemMessage"]
-    # Both versions and both upgrade commands: pipx has no `upgrade` for a git install.
+    # Both versions and both upgrade commands. Each takes the release from PyPI, where every
+    # version goes as it is raised, and neither names the repository: `pipx upgrade` would
+    # leave a copy that was installed from git where it is.
     for needle in ("99.0.0", __version__, UPGRADE_PIP, UPGRADE_PIPX):
         assert needle in shown, needle
+    assert "git+" not in shown, shown
     assert shown in context(result), "the model is told as well as the person"
     assert decision(result) is None, "a stale CLI blocks nothing"
 

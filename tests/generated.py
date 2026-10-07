@@ -17,6 +17,11 @@ alone and the same test run after the rest of the suite drew different examples,
 failure in CI did not come back when the test was run by itself. The pool is emptied below,
 and `test_the_examples_do_not_depend_on_what_is_imported` holds that it stays so.
 
+Seeded from its source, a test draws other examples when a word of it changes, docstring
+included. That costs nothing where a test holds a rule over whatever is drawn. It matters
+where a test draws few and is also held to what they are, as the twelve sessions of
+`tests/test_generated_sessions.py`: that test names a seed (`pinned`) and is drawn from it.
+
 **A bounded number of them.** Each test says how many it draws. No example has a deadline:
 a time limit on one example fails a healthy rule on a busy machine, which this suite has
 had enough of. What bounds the time is the count, the size of what is drawn, and the hard
@@ -38,6 +43,7 @@ from typing import Any, TypeVar
 from hypothesis import HealthCheck, Phase, given, seed, settings
 from hypothesis import strategies as st
 from hypothesis.internal.conjecture import providers
+from readings import SAYS, TAGS
 
 Test = TypeVar("Test", bound=Callable[..., Any])
 
@@ -73,40 +79,56 @@ def times() -> int:
     return _whole(MORE, 1) or 1
 
 
-def generated(examples: int, *, cut_down: bool = True) -> Callable[[Test], Test]:
+def generated(
+    examples: int, *, cut_down: bool = True, pinned: int | None = None
+) -> Callable[[Test], Test]:
     """Run a `@given` test on `examples` generated inputs, the same ones on every run.
     With `cut_down` false it stops at the first input that fails and reports that one,
-    without looking for a smaller."""
+    without looking for a smaller.
+
+    `pinned` is a seed to draw from in place of the test's own source. It is for a test
+    that draws few inputs and is held to what they contain: seeded from its source, such a
+    test draws others whenever a word of it changes, docstring included, and then fails on
+    a rule nobody touched. `MANUSCRIPT_GUARD_SEED` still draws from another seed."""
     # Both read here and not when the test is wrapped, so that a value typed wrongly is
     # refused wherever `generated` is called, a test's own body included.
     chosen, count = _whole(SEED, 0), examples * times()
+    drawn_from = pinned if chosen is None else chosen
     phases = tuple(Phase) if cut_down else (Phase.explicit, Phase.generate)
 
     def configure(test: Test) -> Test:
         configured = settings(
             max_examples=count,
-            derandomize=chosen is None,
+            derandomize=drawn_from is None,
             deadline=None,
             # The one health check that reads a clock. The others say a strategy is wrong.
             suppress_health_check=[HealthCheck.too_slow],
             print_blob=True,
             phases=phases,
         )(test)
-        return configured if chosen is None else seed(chosen)(configured)
+        # Either way nothing an earlier run failed on is kept and played first: Hypothesis
+        # keeps no examples for a derandomized test, nor for one given a seed.
+        return configured if drawn_from is None else seed(drawn_from)(configured)
 
     return configure
 
 
-def holds(examples: int, *given_each: st.SearchStrategy[Any]) -> Callable[[Test], Test]:
+def holds(
+    examples: int, *given_each: st.SearchStrategy[Any], pinned: int | None = None
+) -> Callable[[Test], Test]:
     """A property: the test is run on `examples` inputs, each drawn from `given_each`.
 
     The test it returns has a twin, `at_first_failure`, on the same inputs: for the test
     that breaks a rule and has to see this property fail. Looking for the smallest failing
-    input is most of the time a failure costs, and that test wants only the failure."""
+    input is most of the time a failure costs, and that test wants only the failure.
+
+    `pinned` is as `generated` has it."""
 
     def wrap(test: Test) -> Test:
-        held = generated(examples)(given(*given_each)(test))
-        held.at_first_failure = generated(examples, cut_down=False)(given(*given_each)(test))
+        held = generated(examples, pinned=pinned)(given(*given_each)(test))
+        held.at_first_failure = generated(examples, cut_down=False, pinned=pinned)(
+            given(*given_each)(test)
+        )
         return held
 
     return wrap
@@ -404,7 +426,7 @@ TYPOGRAPHY = {
     "\N{HORIZONTAL ELLIPSIS}": "...",
 }
 
-_SOURCE_WORDS = (
+SOURCE_WORDS = (
     "the", "reporting", "odds", "ratio", "for", "hepatic", "events", "was", "effect",
     "coefficient", "different", "efficacy", "per", "100", "000", "person-years", "13.42",
     "3.4", "0.42", "(95%", "CI", "9.10", "to", "19.80)", "0.21", "0.63", "14", "412",
@@ -413,14 +435,25 @@ _SOURCE_WORDS = (
     "\N{LEFT DOUBLE QUOTATION MARK}serious\N{RIGHT DOUBLE QUOTATION MARK}",
     "patients\N{RIGHT SINGLE QUOTATION MARK}", "\N{HORIZONTAL ELLIPSIS}", "non\N{HYPHEN}serious",
     "\N{GREEK CAPITAL LETTER ALPHA}\N{GREEK CAPITAL LETTER SIGMA}",
+    "\N{LEFT SINGLE QUOTATION MARK}probable\N{RIGHT SINGLE QUOTATION MARK}",
+    "events\N{EM DASH}all", "non\N{NON-BREAKING HYPHEN}fatal",
+    "in\N{LATIN SMALL LIGATURE FL}ammation", "ba\N{LATIN SMALL LIGATURE FFL}ed",
+)  # fmt: skip
+
+
+#: What stands between two words of a source.
+SOURCE_GAPS = (
+    " ", " ", " ", " ", "\n", "  ", " \n ", "\N{NO-BREAK SPACE}", "\N{THIN SPACE}",
+    "\N{NARROW NO-BREAK SPACE}",
 )  # fmt: skip
 
 
 def sources() -> st.SearchStrategy[str]:
     """The text of a stored source, as it is read from a page or out of a PDF."""
-    between = st.sampled_from((" ", " ", " ", "\n", "  ", "\N{NO-BREAK SPACE}", " \n "))
     return st.lists(
-        st.tuples(st.sampled_from(_SOURCE_WORDS), between), min_size=1, max_size=14
+        st.tuples(st.sampled_from(SOURCE_WORDS), st.sampled_from(SOURCE_GAPS)),
+        min_size=1,
+        max_size=14,
     ).map(lambda drawn: "".join(word + gap for word, gap in drawn))
 
 
@@ -486,6 +519,34 @@ def settings_typed() -> st.SearchStrategy[str]:
     return st.sampled_from(_SETTINGS)
 
 
+# ----------------------------------------------------------------------------- sessions
+
+
+@st.composite
+def sessions(draw: st.DrawFn) -> dict[str, Any]:
+    """A paper, what a co-author did to it in Word, and what its author did meanwhile.
+
+    The paper is three to seven blocks that read alike, each a paragraph, a heading, a
+    quotation, a list item, a table's caption, a line block or a div, and each with a word
+    of its own (`tests/readings.py` has what they say). The co-author rewords or deletes one
+    to four of them. In some sessions the author has since reworded a block in the source,
+    removed one or added a paragraph, and the import has to be forced. One in three is
+    what is asked for; a choice between strategies is not drawn in the proportions it is
+    written in, and how many of a given twelve it is changes with the twelve."""
+    tags = draw(st.lists(st.sampled_from(TAGS), min_size=3, max_size=7, unique=True))
+    kind = st.sampled_from(("paragraph",) * 4 + ("second paragraph",) * 2 + tuple(SAYS))
+    did = st.sampled_from(("reworded",) * 4 + ("deleted", "deleted and gone"))
+    touched = draw(st.lists(st.sampled_from(tags), min_size=1, max_size=4, unique=True))
+    since = st.tuples(
+        st.sampled_from(("reworded", "removed", "added above")), st.sampled_from(tags)
+    ).map(list)
+    return {
+        "blocks": [{"tag": tag, "kind": draw(kind)} for tag in tags],
+        "in_word": [[tag, draw(did)] for tag in touched],
+        "since": draw(st.one_of(st.none(), st.none(), since)),
+    }
+
+
 # ------------------------------------------------------------------------------ inputs
 
 
@@ -540,4 +601,5 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             "stage": st.sampled_from(("design", "drafting", "submission")),
         }
     ),
+    "import": sessions(),
 }

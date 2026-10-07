@@ -35,8 +35,8 @@ installs it, and with that variable set `tests/conftest.py` refuses to start unl
 pandoc is on PATH. Set it to the same value locally to run the suite as CI does; unset, a
 missing pandoc only skips the tests that need it.
 
-The generated tests (`tests/test_properties.py`, `tests/test_differential.py`) draw the same
-inputs on every run. To look harder at a change, draw more of them or from another seed,
+The generated tests (`tests/test_properties.py`, `tests/test_generated_sessions.py` and
+`tests/test_differential.py`) draw the same inputs on every run. To look harder at a change, draw more of them or from another seed,
 and name the commit to compare the working tree with:
 
 ```bash
@@ -45,11 +45,21 @@ MANUSCRIPT_GUARD_SEED=7 pytest -q tests/test_properties.py             # other i
 MANUSCRIPT_GUARD_BASE=origin/main pytest -q -rs tests/test_differential.py
 ```
 
+The twelve sessions of `tests/test_generated_sessions.py` are drawn from a seed written in
+that file (`PINNED`), because the file also holds what the twelve have in them. A change to
+`sessions()` in `tests/generated.py`, or to the pin of Hypothesis, draws twelve others, and
+the test of what they contain may then fail with nothing wrong in the import: its message
+says so, and which numbers to try in its place. Under the first two variables above, the
+two tests that are about the pinned twelve are skipped.
+
 Unset, the base is where the branch left `origin/main`. CI's `old-against-new` job names the
-commit of main that the pull request's merge was made on, the first parent of what it checks
-out, and fails on any difference in what a reading of `tests/readings.py` reports. A pull request that means to change one says so in
+commit of the base branch that the pull request's merge was made on, the first parent of
+what it checks out, and fails on any difference in what a reading of `tests/readings.py`
+reports. A pull request that means to change one says so in
 `tests/data/differential_expected.yaml`, with the reason; the entry counts in that pull
-request only. DESIGN.md, "Generated inputs belong to the suite", has the rest.
+request only. It says so there, too, when it changes what a reading goes through, so that
+the base cannot be asked for it. DESIGN.md, "Generated inputs belong to the suite", has the
+rest.
 
 The repository is its own plugin marketplace (`.claude-plugin/marketplace.json`, source
 `./plugin`). The package and the plugin share one version number, written in four places:

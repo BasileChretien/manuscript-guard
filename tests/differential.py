@@ -28,8 +28,10 @@ EXPECTED = Path(__file__).with_name("data") / "differential_expected.yaml"
 
 #: The commit to compare with, where the run is told one.
 BASE = "MANUSCRIPT_GUARD_BASE"
-#: How long one answer may take, in seconds. An answer takes milliseconds, and `check` on
-#: a new project under a second; this is for a reading that never comes back.
+#: How long one answer may take, in seconds. Most answers take milliseconds and `check` on
+#: a new project under a second. A session of the round trip, which builds three documents,
+#: took three seconds on a quiet machine and fourteen on a busy one. This is for a reading
+#: that never comes back.
 ANSWER_WITHIN = 120
 #: How long a reader may take to say it is there. It is not an answer's limit, however
 #: short that is set: this is Python starting and importing the package, which takes a
@@ -87,6 +89,9 @@ class Reader:
         self.package = found
         #: The readings this source has no door for, each with what looking for it raised.
         self.absent: dict[str, str] = first["absent"]
+        #: The readings this source has and could not be asked for, each with why: not
+        #: the same as having none, and never passed over (`readings.why_not`).
+        self.broken: dict[str, str] = first.get("broken", {})
 
     def _listen(self) -> None:
         assert self.process.stdout is not None
@@ -165,7 +170,11 @@ def first_difference(first: Any, second: Any, at: str = "") -> str | None:
         elif not at:
             # The whole answer: one side answered, and the other raised or has no such reading.
             (one,), (other,) = first, second
-            told = {"answer": "answered", "absent": "has no such reading"}
+            told = {
+                "answer": "answered",
+                "absent": "has no such reading",
+                "broken": "cannot make the reading",
+            }
             said = [
                 f"raised {side[key]}" if key == "raised" else told[key]
                 for side, key in ((first, one), (second, other))

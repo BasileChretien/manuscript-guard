@@ -1,5 +1,7 @@
 [build-system]
-requires = ["hatchling"]
+# hatch-fancy-pypi-readme writes the description PyPI shows from README.md: see the hook
+# below for why the README cannot be handed over as it is.
+requires = ["hatchling", "hatch-fancy-pypi-readme>=24.1"]
 build-backend = "hatchling.build"
 
 [project]
@@ -10,7 +12,7 @@ name = "manuscript-guard"
 # plugin bump that leaves it behind ships skills to a tool that cannot be upgraded to match.
 version = "0.2.430"
 description = "Make every number in a scientific manuscript traceable to its source."
-readme = "README.md"
+dynamic = ["readme"]
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "Basile Chrétien" }]
@@ -30,10 +32,17 @@ dependencies = ["PyYAML>=6.0", "jsonschema>=4.0"]
 # changed nothing, which teaches everyone to ignore CI.
 # matplotlib is not a dependency of the toolkit. It is here because the test suite builds
 # the worked example, and the example's figure script draws with it.
-# hatchling is the build backend. It is here so that the test which builds a wheel, to see
-# that it carries the skills, can do so without the network; where it is absent that test
-# is skipped.
-dev = ["pytest>=7.0", "ruff==0.16.1", "matplotlib>=3.7", "hatchling"]
+# hatchling is the build backend, and hatch-fancy-pypi-readme its plugin for the description.
+# They are here so that the tests which build a wheel, to see that it carries the skills and
+# a description PyPI can show, can do so without the network; where either is absent those
+# tests are skipped.
+dev = [
+  "pytest>=7.0",
+  "ruff==0.16.1",
+  "matplotlib>=3.7",
+  "hatchling",
+  "hatch-fancy-pypi-readme>=24.1",
+]
 
 [project.scripts]
 manuscript-guard = "manuscript_guard.cli:main"
@@ -45,6 +54,30 @@ manuscript-guard-hook = "manuscript_guard.hooks:main"
 [project.urls]
 Homepage = "https://github.com/BasileChretien/manuscript-guard"
 Source = "https://github.com/BasileChretien/manuscript-guard"
+Issues = "https://github.com/BasileChretien/manuscript-guard/issues"
+
+# The README links to pages and pictures beside it, by relative path, which is what GitHub
+# shows and what tests/test_docs.py can hold to the files. PyPI shows the same text on a page
+# with nothing beside it, where every one of those links and pictures is dead. So the
+# description is built from the README with each relative target pointed at the repository,
+# at the tag of the version being built: a release is tagged `v` and its number, which
+# .github/workflows/publish.yml refuses to publish under any other tag.
+[tool.hatch.metadata.hooks.fancy-pypi-readme]
+content-type = "text/markdown"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+path = "README.md"
+
+# A picture: the file itself, which the page loads.
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+pattern = '(src|srcset)="(?!https?://)([^"]+)"'
+replacement = '\1="https://raw.githubusercontent.com/BasileChretien/manuscript-guard/v$HFPR_VERSION/\2"'
+
+# A link to a file or a folder: its page on GitHub. A link to a place on the page itself
+# (`#status`) is left alone.
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+pattern = '\]\((?!https?://|#)([^)\s]+)\)'
+replacement = '](https://github.com/BasileChretien/manuscript-guard/blob/v$HFPR_VERSION/\1)'
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/manuscript_guard"]

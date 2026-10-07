@@ -46,6 +46,24 @@ move, on `main`: a change released under the old one is invisible to `pip instal
 which decides on it, and a plugin that moved alone would leave an installed tool behind the
 skills that call it.
 
+## Releases on PyPI
+
+Not every number on `main` goes to PyPI. A release there is permanent: a version can be
+withdrawn, and never replaced or used again. So the maintainer makes one deliberately, by
+publishing a GitHub Release on a commit of `main`, tagged `v` and the number that commit
+carries (`v0.2.431` for 0.2.431). `.github/workflows/publish.yml` then builds the wheel and
+the source distribution and uploads them. It refuses a tag that says another number than
+`pyproject.toml`, and a commit that is not on `main`.
+
+The upload carries no password and no token. PyPI trusts that one workflow file, in this
+repository, in the `pypi` environment, which is set on PyPI under the project's publishing
+settings. Renaming the file, or the environment, breaks the upload until PyPI is told.
+
+The description PyPI shows is built from the README, with each relative link and picture
+pointed at the repository at the release's tag (`[tool.hatch.metadata.hooks.fancy-pypi-readme]`
+in `pyproject.toml`), since a page on PyPI has nothing beside it. `tests/test_docs.py` builds
+a wheel and holds that no relative target is left.
+
 ## Running it
 
 ```bash

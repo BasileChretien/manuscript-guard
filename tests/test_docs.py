@@ -211,3 +211,52 @@ def test_the_citation_file_reads_and_names_no_version() -> None:
         assert citation.get(key), f"CITATION.cff has no {key}"
     assert "version" not in citation
     assert "CITATION.cff" in text_of(README)
+
+
+# ----------------------------------------------------------------------------------- PyPI
+
+
+def test_the_description_pypi_shows_has_no_link_that_leads_nowhere(tmp_path: Path) -> None:
+    """PyPI shows the README on a page with nothing beside it, so a relative link or picture
+    is dead there. The build points each at the repository, at the tag of the version built.
+    Built with the hatchling and the plugin that are installed, so it needs no network."""
+    import subprocess
+    import sys
+    import zipfile
+
+    pytest.importorskip("hatchling")
+    pytest.importorskip("hatch_fancy_pypi_readme")
+    built = subprocess.run(
+        [sys.executable, "-m", "pip", "wheel", str(REPO), "--no-deps", "--no-build-isolation",
+         "-q", "-w", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert built.returncode == 0, built.stdout + built.stderr
+    (wheel,) = tmp_path.glob("*.whl")
+    with zipfile.ZipFile(wheel) as archive:
+        (name,) = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
+        metadata = archive.read(name).decode("utf-8")
+    header, _, description = metadata.partition("\n\n")
+    assert "Description-Content-Type: text/markdown" in header
+    version = re.search(r"^Version: (\S+)$", header, re.MULTILINE).group(1)
+
+    in_readme = FENCE.sub("", text_of(README))
+    in_description = FENCE.sub("", description)
+    targets = [*LINK.findall(in_description), *SOURCE.findall(in_description)]
+    assert len(targets) == len([*LINK.findall(in_readme), *SOURCE.findall(in_readme)])
+    at_tag = (
+        f"https://github.com/BasileChretien/manuscript-guard/blob/v{version}/",
+        f"https://raw.githubusercontent.com/BasileChretien/manuscript-guard/v{version}/",
+    )
+    for target in targets:
+        if target.startswith("#"):
+            continue  # a place on the page itself
+        assert re.match(r"https?://", target), f"{target} is relative, and dead on PyPI"
+        if "BasileChretien/manuscript-guard/" in target and "/actions/" not in target:
+            assert target.startswith(at_tag), f"{target} does not point at the tag v{version}"
+    for path in (DOCS / "img").glob("*.svg"):
+        assert f"{at_tag[1]}docs/img/{path.name}" in description
+    assert f"{at_tag[0]}docs/install.md" in description

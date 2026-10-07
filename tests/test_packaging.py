@@ -211,9 +211,9 @@ def test_a_version_pypi_already_has_is_not_released_again():
     assert not publish and "already on PyPI" in why
 
 
-def test_a_run_started_by_hand_releases_what_pypi_lacks_and_nothing_else():
-    """No push, so no commit to compare with: a release that stopped half way is finished
-    by running again, and one that finished is left alone."""
+def test_a_push_whose_commit_before_cannot_be_read_releases_what_pypi_lacks_and_no_more():
+    """As after a forced push, the one case left with no commit to compare with: the
+    workflow cannot be started by hand."""
     decision = load_release_decision()
     assert decision.decide("0.2.431", None, lambda version: False)[0]
     assert not decision.decide("0.2.431", None, lambda version: True)[0]

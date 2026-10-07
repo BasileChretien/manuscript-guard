@@ -12,8 +12,10 @@ on:
   push:
     branches: [main]
     paths: [pyproject.toml]
-  # To finish a release that stopped half way: run it by hand, on main.
-  workflow_dispatch:
+  # Not startable by hand, on purpose. A run by hand has no push behind it and builds
+  # whatever main holds at that moment: after a later merge, that is not the commit the
+  # number was raised on. A release that stopped half way is finished by re-running the
+  # failed jobs of its own run, which builds the same commit.
 
 permissions: {}
 
@@ -44,7 +46,7 @@ jobs:
           python-version: "3.12"
       - id: decide
         # The commit reaches the script through the environment, never as part of the
-        # command. It is empty for a run started by hand, which then asks PyPI alone.
+        # command.
         env:
           BEFORE: ${{ github.event.before }}
         run: python .github/scripts/release_decision.py --before "$BEFORE" >> "$GITHUB_OUTPUT"

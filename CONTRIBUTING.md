@@ -62,9 +62,11 @@ release, and a pull request, which leaves the version line alone, never is one.
 A release on PyPI is permanent: a version can be withdrawn, and never replaced or used
 again. A push that leaves the number alone releases nothing, and a number PyPI already has
 is not released twice (`.github/scripts/release_decision.py`, with its cases in
-`tests/test_packaging.py`). A release that stopped half way is finished by running the
-workflow again by hand, on `main`: it makes the tag and the GitHub Release only where they
-are missing, and stops if the tag is on another commit.
+`tests/test_packaging.py`). A release that stopped half way is finished by re-running the
+failed jobs of its own run, on the Actions page: that builds the same commit, and makes the
+tag and the GitHub Release only where they are missing. The workflow cannot be started by
+hand, because a run by hand builds whatever `main` holds at that moment, and after a later
+merge that is not the commit the number was raised on.
 
 The upload carries no password and no token. PyPI trusts that one workflow file, in this
 repository, in the `pypi` environment. That pairing is set on PyPI: as a pending publisher

@@ -74,7 +74,7 @@ def on_pypi(version: str, status: Callable[[str], int] = status_of) -> bool:
 
 def decide(now: str, before: str | None, published: Callable[[str], bool]) -> tuple[bool, str]:
     """Whether to publish `now`, and why. `before` is the version of the commit this push
-    replaced, or None where there is none to compare with (a run started by hand)."""
+    replaced, or None where that commit cannot be read (a forced push): PyPI then decides."""
     if before == now:
         return False, f"this push left the version at {now}: nothing to release"
     if published(now):

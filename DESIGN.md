@@ -3696,18 +3696,26 @@ What the sessions are is held twice, each thing under the name a failure gives i
 - **Of the generator**, on two thousand sessions that are drawn and not built: every
   kind of block; a paragraph reworded, deleted with its bookmark, and deleted as Word
   deletes it with the bookmark left on the block after; that bookmark left on a reworded
-  block with no identifier of its own, which is the case of #121, and on a reworded
-  paragraph, which the import reads as two paragraphs joined; a block with no identifier
-  reworded and deleted; and each thing an author does to the source meanwhile. Under each
-  of thirty seeds the rarest of these, the case of #121, was drawn twelve times or more;
-  in six hundred sessions, under one seed of thirty, once.
-- **Of the twelve the import is played on**: the case of #121, and the import having
-  written in three sessions or more, beside a deletion, beside a paragraph that went with
-  its bookmark, and when it was forced.
+  block with no identifier of its own, which is the shape of #121's case, and on a
+  reworded paragraph, which then carries two; a block with no identifier reworded and
+  deleted; and each thing an author does to the source meanwhile. Under each of thirty
+  seeds the rarest of these, the shape of #121's case, was drawn twelve times or more; in
+  six hundred sessions, under one seed of thirty, once.
+- **Of the twelve the import is played on**: the case of #121, by what the import said. A
+  session of that shape, and of the block the bookmark was left on, quoted, the sentence
+  #121 made the import say: that nothing in the document tells the paragraph reworded
+  from the text that stood under it. And the import having written in three sessions or
+  more, beside a deletion, beside a paragraph that went with its bookmark, and when it
+  was forced.
 
-The third review found those two bookmarks counted as one thing under #121's name, and
-the twelve of the day with the join only. They have a name each now, and the seed pinned
-is one whose twelve have #121's case.
+The third review of #190 found the two bookmarks counted as one thing under #121's name,
+and the twelve of the day with the join only. The review after found the shape taken for
+the case. The import reads a join where a second paragraph deleted the same way stood in
+front, since both bookmarks are passed on; it can tell which is which where the block is
+a heading; and it refuses for another reason where the source changed there since the
+build. Of six seeds listed as having everything, two passed without the import once
+saying #121's sentence. So the generator is asked for the shape, which is all a draw
+has, and the twelve for the sentence.
 
 The second review found the first form of this asking for the word "deleted". The twelve
 of the day had it three times and never as the document it stands for: a caption has no
@@ -7600,8 +7608,9 @@ Closed since, and why each mattered:
     and lists the numbers worth trying; `TAGS` and `SAYS` of `tests/readings.py`, which
     `sessions()` draws from, fix the twelve as it does.
     About one seed in four draws twelve with the sessions asked for, and whether the
-    import then writes where it is asked to is a run of the test: of seventeen tried,
-    six. So pinning another seed is a few runs of most of a minute each.
+    import then writes where it is asked to, and says #121's sentence, is a run of the
+    test: of seventeen tried, four. So pinning another seed is a few runs of most of a
+    minute each.
   - No property holds a reading to pandoc's. The sessions build their documents with
     pandoc, and `check` has it read a manuscript where it is installed; but where a
     reading has to agree with what pandoc makes of a text, that is still
@@ -7632,12 +7641,13 @@ Closed since, and why each mattered:
     and changes when that test's text does.
   - A deletion that leaves its bookmark is counted from the session as drawn, an
     identified paragraph deleted with the block after it left in the document, and not
-    read out of the document that was built. Of the one session of the pinned twelve
-    that is the case of #121, a paragraph deleted in front of a reworded div, the import
-    says what #121 made it say, that nothing in the document tells the paragraph reworded
-    from the text that stood under it, and writes nothing. That was read once from what
-    it printed, for seed 34, and is held by no test: the twelve are held to having the
-    case, and the property to nothing wrong being written in it.
+    read out of the document that was built. What the import makes of one is read from
+    what it printed. The twelve are held to its saying #121's sentence of one such
+    session, the tenth of seed 34, a paragraph deleted in front of a reworded div. The
+    sentence is matched by its words, up to the block it quotes, so rewording it in
+    `merge.py` fails that test as it fails `tests/test_corruption.py`, which holds the
+    sentence on sessions written by hand. That a bookmark left on a reworded paragraph is
+    read as two paragraphs joined was read once and is held by no test of this file.
   - The comparison with the base covers the readings of `tests/readings.py` and nothing
     else. The build is compared only through the round trip, and the gates that read
     results, figures, sources and review records only as far as `check` on a new project

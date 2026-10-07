@@ -210,8 +210,8 @@ def test_the_tests_of_pinning_pass_under_a_seed_the_run_names(
 ) -> None:
     """`MANUSCRIPT_GUARD_SEED=7 pytest tests/test_properties.py` is how to look harder at a
     change, and the test above failed under it on source nobody had touched: it holds two
-    unpinned draws apart, and a named seed makes them one. Each test here that is about
-    seeds is run again as that command runs it."""
+    unpinned draws apart, and a named seed makes them one. The two tests here that draw
+    under a seed are run again as that command runs them."""
     monkeypatch.setenv("MANUSCRIPT_GUARD_SEED", "7")
     test_a_pinned_test_draws_the_same_inputs_whatever_it_says(monkeypatch)
     monkeypatch.setenv("MANUSCRIPT_GUARD_SEED", "7")

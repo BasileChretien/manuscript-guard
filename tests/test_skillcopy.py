@@ -91,12 +91,14 @@ def test_the_wheel_carries_the_plugins_skills_and_no_copy_is_kept_in_the_package
 
 
 def test_a_built_wheel_holds_every_skill_file_as_the_plugin_has_it(tmp_path: Path) -> None:
-    """Built with the hatchling that is installed, so the test needs no network. It is among
-    the development dependencies for this; without it the test is skipped, and CI's wheel job
-    makes the same comparison on an installed wheel."""
+    """Built with the hatchling that is installed, and its plugin for the description, so the
+    test needs no network. Both are among the development dependencies for this; without
+    either the test is skipped, and CI's wheel job makes the same comparison on an installed
+    wheel."""
     import zipfile
 
     pytest.importorskip("hatchling")
+    pytest.importorskip("hatch_fancy_pypi_readme")
     built = subprocess.run(
         [sys.executable, "-m", "pip", "wheel", str(REPO), "--no-deps", "--no-build-isolation",
          "-q", "-w", str(tmp_path)],

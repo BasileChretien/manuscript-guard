@@ -147,6 +147,15 @@ jobs:
         run: |
           wheel=$(python -c "import glob, os; print(glob.glob(os.path.join(os.environ['RUNNER_TEMP'], 'wheelhouse', '*.whl'))[0])")
           python .github/scripts/check_wheel_files.py "$wheel" .
+      - name: The wheel has a description, of a kind PyPI accepts
+        # publish.yml makes the same check before an upload. Made here too, a build that lost
+        # its description is found on the pull request that broke it, not at a release. twine
+        # reads the metadata and does not render Markdown: tests/test_docs.py holds the links.
+        shell: bash
+        run: |
+          wheel=$(python -c "import glob, os; print(glob.glob(os.path.join(os.environ['RUNNER_TEMP'], 'wheelhouse', '*.whl'))[0])")
+          python -m pip install twine
+          python -m twine check --strict "$wheel"
       - name: Install it into a fresh venv and use it
         shell: bash
         run: |

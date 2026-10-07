@@ -25,7 +25,7 @@ Each session builds a document with pandoc and imports it, which takes about thr
 seconds, so a run has few: twelve. `MANUSCRIPT_GUARD_MORE_EXAMPLES` draws more.
 
 Twelve are few enough to hold nothing by accident, so two more things are held here.
-What `sessions()` draws at all is asked of six hundred sessions that are only drawn. And
+What `sessions()` draws at all is asked of two thousand sessions that are only drawn. And
 what the twelve are, and where the import wrote among them, is asked of the twelve, which
 for that are drawn from a seed written below and not from the property's own source.
 """
@@ -58,15 +58,18 @@ Session = dict[str, Any]
 #: The other generated tests are seeded by Hypothesis from their own source, docstring
 #: included. This one is also held to what its twelve contain, and seeded that way it drew
 #: twelve others when one word of it changed, and failed on an import nobody had touched.
-#: So the twelve are fixed by this number, by `sessions()` in `tests/generated.py` and by
-#: the pin of Hypothesis in `pyproject.toml`, and by nothing else. When one of those
+#: So the twelve are fixed by this number, by `sessions()` in `tests/generated.py`, by
+#: `TAGS` and `SAYS` in `tests/readings.py`, which it draws from, and by the pin of
+#: Hypothesis in `pyproject.toml`; and not by a word of this file. When one of those
 #: changes, `test_the_twelve_sessions_are_the_ones_the_property_is_for` may fail on twelve
 #: other sessions: its message says so, and which numbers are worth trying.
 #:
-#: How it was chosen: of the numbers 0 to 59, twenty-five draw twelve with the sessions
-#: asked for. Ten of those were played through the import, and with two of them, 5 and
-#: 22, it wrote everywhere it is asked to.
-PINNED = 5
+#: How it was chosen: of the numbers 0 to 119, twenty-eight draw twelve with the sessions
+#: asked for. Seventeen of those were played through the import, and with six of them it
+#: wrote everywhere it is asked to: 34, 37, 38, 53, 54 and 75.
+PINNED = 34
+#: How many of the numbers worth trying turned out to have it all, for the message.
+_HAS_IT_ALL = "about one in three"
 
 
 @cache
@@ -143,19 +146,26 @@ def _done(session: Session, *, identified: bool) -> set[str]:
     return {how for tag, how in session["in_word"] if (kind[tag] in IDENTIFIED) == identified}
 
 
-def _left_by_word(session: Session) -> list[str]:
+def _left_by_word(session: Session) -> list[tuple[bool, str]]:
     """The paragraphs deleted as Word deletes them whose bookmark has a block to stand in
     front of: each is an identified paragraph, "deleted", and the block after it is not
-    deleted in the same session. For each, what was done to that block, "" for nothing.
+    deleted in the same session. For each, whether that block has an identifier of its
+    own, and what was done to it, "" for nothing.
 
     "Deleted" alone does not say it. A caption has no bookmark to leave, and the last
     paragraph of a document has nowhere to leave one (`_edited_in_word` in
     `tests/readings.py`), so for those the word stands for the same document as "deleted
-    and gone"."""
+    and gone".
+
+    Nor does "the block after, reworded". Where that block has no identifier of its own,
+    the bookmark left on it is the only one it carries, and the import cannot tell the
+    deleted paragraph reworded from the text that stood under it: that is the case #121
+    was about. Where it is an identified paragraph it carries two, and the import reads
+    two paragraphs joined into one."""
     kind, did = _kinds(session), dict(session["in_word"])
     order = [block["tag"] for block in session["blocks"]]
     return [
-        did.get(after, "")
+        (kind[after] in IDENTIFIED, did.get(after, ""))
         for tag, after in zip(order, order[1:], strict=False)
         if did.get(tag) == "deleted"
         and kind[tag] in IDENTIFIED
@@ -168,7 +178,8 @@ def _since(session: Session) -> str:
 
 
 _LEFT = "a paragraph deleted as Word deletes it, its bookmark left on the block after"
-_LEFT_ON_A_REWORDING = "the same with the block after reworded, which is the session of #121"
+_AS_IN_121 = "the same on a block with no identifier of its own, reworded: the case of #121"
+_AS_A_JOIN = "the same on an identified paragraph, reworded: two paragraphs come back as one"
 
 #: What `sessions()` has to draw, each by the name a failure gives it.
 DRAWN: dict[str, Callable[[Session], bool]] = {
@@ -181,7 +192,8 @@ DRAWN: dict[str, Callable[[Session], bool]] = {
         "deleted and gone" in _done(session, identified=True)
     ),
     _LEFT: lambda session: bool(_left_by_word(session)),
-    _LEFT_ON_A_REWORDING: lambda session: "reworded" in _left_by_word(session),
+    _AS_IN_121: lambda session: (False, "reworded") in _left_by_word(session),
+    _AS_A_JOIN: lambda session: (True, "reworded") in _left_by_word(session),
     "a block with no identifier reworded": lambda session: (
         "reworded" in _done(session, identified=False)
     ),
@@ -207,8 +219,7 @@ _FORCED_AND_WRITTEN = "an import that had to be forced, and wrote"
 #: What the twelve sessions the property plays have to have among them, by the same kind
 #: of name: of each session, and of whether the import wrote anything in it.
 PLAYED: dict[str, Callable[[Session, bool], bool]] = {
-    _LEFT: lambda session, wrote: bool(_left_by_word(session)),
-    _LEFT_ON_A_REWORDING: lambda session, wrote: "reworded" in _left_by_word(session),
+    _AS_IN_121: lambda session, wrote: (False, "reworded") in _left_by_word(session),
     _DELETED_AND_WRITTEN: lambda session, wrote: (
         wrote and any(how != "reworded" for _tag, how in session["in_word"])
     ),
@@ -229,16 +240,17 @@ def _lacking(asked: dict[str, Callable[..., bool]], run: Iterable[tuple[Any, ...
 
 def test_sessions_draws_every_session_the_property_is_for() -> None:
     """What `sessions()` draws, asked of the generator and not of the twelve the import
-    is played on. Six hundred sessions are drawn and nothing is built, so it does not
-    hang on one draw: under each of fifty seeds tried, the rarest thing here, the session
-    of #121, was drawn five times or more, and everything else twenty-four times or more.
+    is played on. Two thousand sessions are drawn and nothing is built, so it does not
+    hang on one draw: under each of thirty seeds tried, the rarest thing here, the case
+    of #121, was drawn twelve times or more. Six hundred were not enough for that one:
+    under one seed of thirty they had it once.
 
     A generator that stopped drawing one of these would leave the property passing on
     sessions that cannot show what it is for, which is how it stood when every check that
     a broken import is noticed was decided by the simplest session alone."""
     drawn: list[tuple[Session]] = []
 
-    @generated(600)
+    @generated(2000)
     @given(sessions())
     def collect(session: Session) -> None:
         drawn.append((session,))
@@ -253,31 +265,43 @@ def test_the_twelve_sessions_are_the_ones_the_property_is_for() -> None:
 
     Hypothesis plays the simplest value of a strategy first: three paragraphs, the first
     reworded, nothing changed since. A run of twelve like it would pass the property and
-    say nothing. So the twelve are held to having the session the reviews found wrong
-    writes on, a paragraph deleted in Word in front of a block that reads like it, and to
-    the import having written beside a deletion, beside a paragraph that went with its
-    bookmark, and when it was forced."""
+    say nothing. So the twelve are held to having the session the reviews of #121 found
+    wrong writes on, a paragraph deleted in Word in front of a reworded block that has no
+    identifier of its own, and to the import having written beside a deletion, beside a
+    paragraph that went with its bookmark, and when it was forced."""
     if not _as_pinned():
         pytest.skip("another draw than the twelve of PINNED: what it has in it is chance")
     run = _the_run()
     # The seed and nothing in the property's text: another test, drawn from it, draws them.
     assert [session for session, _wrote in run] == _twelve_of(PINNED)
-    assert _worth_trying([PINNED]) == [PINNED]
+    amiss = _amiss(run)
+    if amiss:
+        pytest.fail(amiss)
+
+
+def _amiss(run: Iterable[tuple[Session, bool]], *, among: Iterable[int] | None = None) -> str:
+    """What a run of the pinned twelve lacks, as the message the test fails with, or
+    nothing where the twelve have what is asked and the import wrote in enough of them.
+    `among` are the numbers looked through for ones worth pinning: the next forty."""
+    run = list(run)
     lacking = _lacking(PLAYED, run)
     wrote = sum(1 for _session, wrote in run if wrote)
-    if lacking or wrote < WRITES_IN:
-        pytest.fail(
-            f"the twelve sessions of seed {PINNED} lack: {lacking}; the import wrote in "
-            f"{wrote} of them, and {WRITES_IN} is the least.\n"
-            "The twelve are fixed by PINNED in this file, by sessions() in "
-            "tests/generated.py and by the pin of Hypothesis in pyproject.toml. If one of "
-            "those has changed, these are twelve other sessions and nothing is wrong with "
-            "the import: set PINNED to a number whose twelve have all of this again. By "
-            "the draw alone these of the next forty have the sessions asked for: "
-            f"{_worth_trying(range(PINNED + 1, PINNED + 41))}. Where the import then writes "
-            "is a run of this test for each, and about one in five of them has it all. If "
-            "none of the three has changed, the import no longer writes where it wrote."
-        )
+    if not lacking and wrote >= WRITES_IN:
+        return ""
+    among = range(PINNED + 1, PINNED + 41) if among is None else among
+    return (
+        f"the twelve sessions of seed {PINNED} lack: {lacking}; the import wrote in "
+        f"{wrote} of them, and {WRITES_IN} is the least.\n"
+        "The twelve are fixed by PINNED in this file, by sessions() in tests/generated.py, "
+        "by TAGS and SAYS in tests/readings.py, which it draws from, and by the pin of "
+        "Hypothesis in pyproject.toml. If one of those has changed, these are twelve other "
+        "sessions and nothing is wrong with the import: set PINNED to a number whose "
+        "twelve have all of this again. By the draw alone these have the sessions asked "
+        f"for: {_worth_trying(among)}. Where the import then writes is a run of this test "
+        f"for each, and {_HAS_IT_ALL} of them has it all. If none of those has changed, the "
+        "import no longer writes where it wrote, or _edited_in_word in tests/readings.py "
+        "no longer edits the document as it did."
+    )
 
 
 def _twelve_of(number: int) -> list[Session]:
@@ -310,8 +334,8 @@ _SIMPLEST = {
     "in_word": [["alpha", "reworded"]],
     "since": None,
 }
-#: A session with a paragraph deleted in Word in front of a reworded block, another gone
-#: with its bookmark, and a source changed since the build.
+#: A session with a paragraph deleted in Word in front of a reworded line block, which is
+#: the case of #121, another gone with its bookmark, and a source changed since the build.
 _BUSY = {
     "blocks": [
         {"tag": "alpha", "kind": "second paragraph"},
@@ -333,7 +357,7 @@ def test_each_thing_asked_of_the_sessions_is_named_when_it_is_missing() -> None:
         "a paragraph reworded",
         "a source left as it was built",
     }
-    assert set(_lacking(DRAWN, [(_SIMPLEST,)] * 600)) == set(DRAWN) - in_the_simplest
+    assert set(_lacking(DRAWN, [(_SIMPLEST,)] * 12)) == set(DRAWN) - in_the_simplest
     assert in_the_simplest <= set(_lacking(DRAWN, [(_BUSY,)]))
 
     assert _lacking(PLAYED, [(_SIMPLEST, True)] * 12) == list(PLAYED)
@@ -358,8 +382,37 @@ def test_each_thing_asked_of_the_sessions_is_named_when_it_is_missing() -> None:
     ):
         blocks = [{"tag": tag, "kind": kind} for tag, kind in zip(TAGS, kinds, strict=False)]
         in_name_only = {"blocks": blocks, "in_word": in_word, "since": None}
-        assert _LEFT in _lacking(PLAYED, [(in_name_only, True)]), in_name_only
         assert _LEFT in _lacking(DRAWN, [(in_name_only,)]), in_name_only
+        assert _AS_IN_121 in _lacking(PLAYED, [(in_name_only, True)]), in_name_only
+    # A bookmark left on an identified paragraph is two paragraphs joined, and is not the
+    # case of #121, which it was counted as; one left on a line block is that case, and
+    # is no join.
+    joined = {
+        "blocks": [{"tag": tag, "kind": "paragraph"} for tag in TAGS[:3]],
+        "in_word": [["alpha", "deleted"], ["bravo", "reworded"]],
+        "since": None,
+    }
+    assert _AS_IN_121 in _lacking(PLAYED, [(joined, True)])
+    assert {_AS_IN_121, _AS_A_JOIN} & set(_lacking(DRAWN, [(joined,)])) == {_AS_IN_121}
+    assert {_AS_IN_121, _AS_A_JOIN} & set(_lacking(DRAWN, [(_BUSY,)])) == {_AS_A_JOIN}
+
+
+def test_twelve_other_sessions_fail_with_the_whole_message() -> None:
+    """After a redraw the twelve most often lack a session by the draw alone. The first
+    form of the test then stopped at a bare assertion that stood in front of its message,
+    and no test ran either way of failing. Both give the whole message: what is lacking,
+    everything that fixes the twelve, and the numbers worth pinning in place of this one."""
+    few = range(PINNED, PINNED + 3)
+    lacking_a_session = _amiss([(_SIMPLEST, True)] * 12, among=few)
+    written_in_too_few = _amiss([(_BUSY, True)] + [(_SIMPLEST, False)] * 11, among=few)
+    for said in (lacking_a_session, written_in_too_few):
+        for named in ("PINNED", "sessions()", "TAGS", "SAYS", "pin of Hypothesis"):
+            assert named in said, (named, said)
+        assert "twelve other sessions" in said and "_edited_in_word" in said, said
+        assert f"asked for: {_worth_trying(few)}." in said, said
+    assert _AS_IN_121 in lacking_a_session and "wrote in 12 of them" in lacking_a_session
+    assert "lack: [];" in written_in_too_few and "wrote in 1 of them" in written_in_too_few
+    assert _amiss([(_BUSY, True)] * WRITES_IN, among=few) == ""
 
 
 def test_a_document_only_saved_changes_nothing_and_one_rewording_lands() -> None:

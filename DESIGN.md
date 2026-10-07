@@ -3693,19 +3693,21 @@ session and has to be caught by a drawn one.
 
 What the sessions are is held twice, each thing under the name a failure gives it.
 
-- **Of the generator**, on six hundred sessions that are drawn and not built: every kind
-  of block; a paragraph reworded, deleted with its bookmark, and deleted as Word deletes
-  it with the bookmark left on the block after; that block reworded in the same session,
-  which the test names for #121; a block with no identifier reworded and deleted; and each
-  thing an author does to the source meanwhile. Under each of fifty seeds the rarest of
-  these was drawn five times or more.
-- **Of the twelve the import is played on**: a deletion that leaves its bookmark, one
-  with the block after reworded, and the import having written in three sessions or
-  more, beside a deletion, beside a paragraph that went with its bookmark, and when it
-  was forced.
+- **Of the generator**, on two thousand sessions that are drawn and not built: every
+  kind of block; a paragraph reworded, deleted with its bookmark, and deleted as Word
+  deletes it with the bookmark left on the block after; that bookmark left on a reworded
+  block with no identifier of its own, which is the case of #121, and on a reworded
+  paragraph, which the import reads as two paragraphs joined; a block with no identifier
+  reworded and deleted; and each thing an author does to the source meanwhile. Under each
+  of thirty seeds the rarest of these, the case of #121, was drawn twelve times or more;
+  in six hundred sessions, under one seed of thirty, once.
+- **Of the twelve the import is played on**: the case of #121, and the import having
+  written in three sessions or more, beside a deletion, beside a paragraph that went with
+  its bookmark, and when it was forced.
 
-The name "the session of #121" takes more than #121's case, and the twelve of seed 5,
-which is the seed pinned, have none of that case: Known gaps.
+The third review found those two bookmarks counted as one thing under #121's name, and
+the twelve of the day with the join only. They have a name each now, and the seed pinned
+is one whose twelve have #121's case.
 
 The second review found the first form of this asking for the word "deleted". The twelve
 of the day had it three times and never as the document it stands for: a caption has no
@@ -3720,8 +3722,10 @@ its own source. Seeded from its source the property drew twelve other sessions w
 word of its docstring changed, and of forty seeds three drew twelve that had what was
 then asked: the second review changed the word and showed it. Drawn from the seed, the
 twelve change with `sessions()` and what it draws from, with the pin of Hypothesis and
-with the seed, and not with the property's text. The test that holds them has a message
-for that, and Known gaps has when it is printed. Under a seed the run
+with the seed, and not with the property's text. The test that holds them fails with a
+message that says so and lists the numbers worth pinning in its place, and both ways it
+can fail are run by a test: a bare assertion once stood in front of that message and
+failed first. Under a seed the run
 names, or more examples, the twelve are others. The property is held of those too, and
 the two tests that are about the pinned twelve are skipped, with the reason.
 
@@ -7593,20 +7597,11 @@ Closed since, and why each mattered:
     the test of what the twelve sessions contain: they are drawn from a seed written in
     the test, the same in every job, and when `sessions()`, the pin or the seed changes,
     a failure there is twelve other sessions and no counterexample. Its message says so
-    and lists the numbers worth trying, where it is reached. A line in front of it fails
-    first, as a bare `assert [] == [5]`, whenever the twelve lack a session by the draw
-    alone, which is the usual case after a redraw; no test runs either branch. Then
-    `_worth_trying(range(0, 60))` in the test file gives the numbers without a run. The
-    message also leaves out `TAGS` and `SAYS` of `tests/readings.py`, which fix the
-    twelve as `sessions()` does, and `_edited_in_word` there, which decides with the
-    import where it wrote. The comment on `PINNED` says what the message says, and
-    "by nothing else", until this is fixed.
-    About four seeds in ten draw twelve with the sessions asked for, and whether the
-    import then writes where it is asked to is a run of the test: of ten tried, two. So
-    pinning another seed is a few runs of most of a minute each.
-  - Under `MANUSCRIPT_GUARD_SEED`, one test of `tests/test_properties.py` fails on source
-    nobody touched: `test_a_pinned_test_draws_the_same_inputs_whatever_it_says` first
-    holds two unpinned draws apart, and a seed the run names makes them one draw.
+    and lists the numbers worth trying; `TAGS` and `SAYS` of `tests/readings.py`, which
+    `sessions()` draws from, fix the twelve as it does.
+    About one seed in four draws twelve with the sessions asked for, and whether the
+    import then writes where it is asked to is a run of the test: of seventeen tried,
+    six. So pinning another seed is a few runs of most of a minute each.
   - No property holds a reading to pandoc's. The sessions build their documents with
     pandoc, and `check` has it read a manuscript where it is installed; but where a
     reading has to agree with what pandoc makes of a text, that is still
@@ -7637,14 +7632,12 @@ Closed since, and why each mattered:
     and changes when that test's text does.
   - A deletion that leaves its bookmark is counted from the session as drawn, an
     identified paragraph deleted with the block after it left in the document, and not
-    read out of the document that was built. The test's name for the one with the block
-    after reworded, "the session of #121", takes more than #121's case, which is the
-    bookmark left on a block with no identifier of its own. Where that block is an
-    identified paragraph the import reads two paragraphs joined, and both such sessions
-    of the twelve of seed 5 are that: read once from what the import printed, and held
-    by no test. #121's case is in none of those twelve, though fifteen of the twenty-five
-    seeds worth trying draw it, and it is asked of neither the twelve nor the six
-    hundred: `tests/test_corruption.py` and `tests/test_ordinary_sessions.py` hold it.
+    read out of the document that was built. Of the one session of the pinned twelve
+    that is the case of #121, a paragraph deleted in front of a reworded div, the import
+    says what #121 made it say, that nothing in the document tells the paragraph reworded
+    from the text that stood under it, and writes nothing. That was read once from what
+    it printed, for seed 34, and is held by no test: the twelve are held to having the
+    case, and the property to nothing wrong being written in it.
   - The comparison with the base covers the readings of `tests/readings.py` and nothing
     else. The build is compared only through the round trip, and the gates that read
     results, figures, sources and review records only as far as `check` on a new project

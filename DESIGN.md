@@ -3682,11 +3682,20 @@ the generators. So seven rules are broken in place, one at a time, and the prope
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word.
-The import is broken twice the same way: a rewording written over the next paragraph, and
-one written a second time. The first way it was broken, a rewording written over the first
-paragraph of the file, passed all twelve sessions as they were first drawn. So the
-sessions were weighted towards rewordings and made to touch at least one block, and the
-case now writes over the paragraph after, which no session that writes anything can hide.
+The import is broken three times the same way: a rewording written over the next
+paragraph, one written a second time, and one written over the next paragraph only where
+another paragraph was deleted in Word. Each is known by the sentence that wrong write
+produces, since an import that merely raised failed the property too and was taken for
+one. The first two are shown by the first session Hypothesis plays, which is always the
+simplest: three paragraphs, the first reworded. So they hold nothing of the eleven that
+are drawn, and the first review of this work said so. The third passes that session and
+has to be caught by a drawn one; and the twelve themselves are held, to having every kind
+of block in them, each thing a co-author does and each thing an author does meanwhile,
+and among the sessions that write something one with a deletion and one that was forced.
+Twelve copies of the simplest session fail that check, which is its own test.
+The sessions are weighted towards rewordings, and touch at least one block, because the
+first way the import was broken, a rewording written over the first paragraph of the
+file, passed all twelve as they were first drawn.
 
 ### Drawn from a pool, not from a grammar
 
@@ -3775,15 +3784,18 @@ it.
   `pytest.fail` does not do that, since Hypothesis takes it for a failing input.
 - **A base that cannot be asked.** A reader says at its start which readings its source
   does not have and which it has and cannot make, and the two are not treated alike. A
-  reading the base does not have is passed over: it is newer than the base, or needs a
-  program this machine lacks. That is a skip, and it is also written on the job's page,
-  since a skip is one line among hundreds. A reading the base has and cannot make is a
-  comparison that was not made: a helper it goes through takes other arguments now, or
-  the base needs a dependency that is not installed for the working tree. It fails,
-  unless the pull request says in `differential_expected.yaml` that it changed what the
-  reading goes through, and then it passes with that said. Both used to be passed over,
-  which left a job green that had compared nothing; and a base that can be asked for
-  none of the readings is refused outright.
+  reading the base does not have is passed over: it is newer than the base. That is a
+  skip, and it is also written on the job's page, since a skip is one line among
+  hundreds. A reading that needs a program this machine lacks, pandoc for the round trip,
+  is skipped on either side, and only skipped: CI has the program. A reading the base has
+  and cannot make is a comparison that was not made: a helper it goes through takes other
+  arguments now, or the base needs a dependency that is not installed for the working
+  tree. It fails, unless the pull request says in `differential_expected.yaml` that it
+  changed what the reading goes through, and then it passes with that said. Both used to
+  be passed over, which left a job green that had compared nothing; and a base that can
+  be asked for none of the readings is refused outright. A command line that refuses a
+  reading's arguments, in a base older than an option the reading passes, is an answer
+  like any other and is compared: it used to end the process that was answering.
 - **The comparison is held to being one.** Two processes on this source under two hash
   seeds must answer alike on every reading, which also catches a reading that walks a
   set. And seven lines are changed in a copy of the source, one at a time, and the reading
@@ -3794,9 +3806,9 @@ it.
 
 Run against main as it was before #181 and #183, it reports the vocabulary reading
 changed, on a vocabulary of one entry, and `check` changed; passes over the spelling
-reading and the paper's own words, which that base did not have; and finds the other
-nine readings the same, the abbreviations among them, which #181's description said and
-its reviewer ran 1,500 projects to see.
+reading and the paper's own words, which that base did not have; and finds the other ten
+readings the same, the round trip and the abbreviations among them, the second of which
+#181's description said and its reviewer ran 1,500 projects to see.
 
 ### What the first runs found
 
@@ -7540,7 +7552,9 @@ Closed since, and why each mattered:
     `tests/generated.py` draws others, and so does raising the pin. A failure can
     therefore first show in a pull request that did not cause it. It is a true
     counterexample all the same, and the report gives the input.
-  - No property asks pandoc. Where a reading has to agree with pandoc, that is still
+  - No property holds a reading to pandoc's. The sessions build their documents with
+    pandoc, and `check` has it read a manuscript where it is installed; but where a
+    reading has to agree with what pandoc makes of a text, that is still
     `tests/test_pandoc_agreement.py` and the tables and random lines of
     `tests/test_tex.py`.
   - The generated sessions hold one direction: nothing is written but what the co-author
@@ -7552,10 +7566,17 @@ Closed since, and why each mattered:
     paragraph, join two, split one, restyle one, paste text or track its changes, and it
     is made by editing the document's XML the way Word leaves it, not in Word. Those are
     still the sessions written by hand.
-  - Its paper is a new project's, typed from eight sentences in one file: no binding, no
-    citation, no table from results, no supplement, and a document built past its checks.
+  - Its paper is a new project's, typed from four sentences in eight kinds of block, in
+    one file: no binding, no citation, no table from results, no supplement, and a
+    document built past its checks.
   - Twelve sessions in a run, and fifteen compared with the base, at about three seconds
-    each. A session that differs from the base is cut down for up to five minutes.
+    each and fifteen starts of pandoc. A session that differs from the base is cut down
+    for up to five minutes. The build's own call of pandoc has no time limit: what ends a
+    session that hangs is the two minutes a reader has for an answer, or the fifteen a
+    test has.
+  - On the last paragraph of a document the two ways of deleting are one: with no
+    paragraph after it, the drawn session has nowhere to leave the bookmark and drops it.
+    What Word does with that bookmark has not been looked at.
   - The comparison with the base covers the readings of `tests/readings.py` and nothing
     else. The build is compared only through the round trip, and the gates that read
     results, figures, sources and review records only as far as `check` on a new project
@@ -7577,9 +7598,10 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on nine broken rules, and the comparison on seven
+  - The properties were seen to fail on ten broken rules, and the comparison on seven
     changed lines. That is a spot check, and not the mutation runs four of the reviews
-    made, which changed every line of a diff.
+    made, which changed every line of a diff. Two of the three broken imports, and the
+    changed line of the import, are shown by the simplest session alone.
   - The hard limit ends the whole run, not the one test: nothing else stops a pattern
     that is backtracking in C.
 

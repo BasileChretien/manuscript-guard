@@ -81,7 +81,9 @@ def answer(read: Reading, given: Any) -> Any:
     what the pipe makes of it, are the same answer."""
     try:
         found = {"answer": read(given)}
-    except Exception as raised:  # noqa: BLE001 - what a reading raises is its answer
+    # `SystemExit` with the rest: it is what the command line raises when it refuses its
+    # arguments, and let through it ended the process that was answering.
+    except (Exception, SystemExit) as raised:  # noqa: BLE001 - what is raised is the answer
         found = {"raised": f"{type(raised).__name__}: {raised}"}
     return json.loads(json.dumps(found, ensure_ascii=True, sort_keys=True))
 
@@ -444,7 +446,10 @@ def _edited_in_word(xml: str, in_word: list[list[str]]) -> str:
     """The document's XML after the co-author's session: each block they touched reworded,
     or deleted. A paragraph deleted in Word with Track Changes off leaves its bookmark
     behind, in front of the next paragraph ("deleted"); edited outside Word it goes with
-    its bookmark ("deleted and gone")."""
+    its bookmark ("deleted and gone"). The two are one document where there is no bookmark
+    to leave or nowhere to leave it: for a block that has no identifier, and for the last
+    paragraph of the document, whose bookmark is dropped here. What Word does with that
+    last one has not been looked at."""
     for tag, did in in_word:
         paragraph = next(p for p in _WORD_PARAGRAPH.findall(xml) if f" {tag} " in p)
         at = xml.index(paragraph)

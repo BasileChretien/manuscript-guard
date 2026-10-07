@@ -28,8 +28,10 @@ EXPECTED = Path(__file__).with_name("data") / "differential_expected.yaml"
 
 #: The commit to compare with, where the run is told one.
 BASE = "MANUSCRIPT_GUARD_BASE"
-#: How long one answer may take, in seconds. An answer takes milliseconds, and `check` on
-#: a new project under a second; this is for a reading that never comes back.
+#: How long one answer may take, in seconds. Most answers take milliseconds and `check` on
+#: a new project under a second. A session of the round trip, which builds three documents,
+#: took three seconds on a quiet machine and fourteen on a busy one. This is for a reading
+#: that never comes back.
 ANSWER_WITHIN = 120
 #: How long a reader may take to say it is there. It is not an answer's limit, however
 #: short that is set: this is Python starting and importing the package, which takes a

@@ -859,3 +859,7 @@ def test_the_digest_of_an_answer_is_of_its_content() -> None:
     assert digest({"b": (1, 2), "a": None}) == digest({"a": None, "b": [1, 2]})
     assert digest([1, 2]) != digest([2, 1])
     assert answer(lambda given: 1 / given, 0) == {"raised": "ZeroDivisionError: division by zero"}
+    # What the command line raises when it refuses its arguments. It is no `Exception`, and
+    # let through it ended the process that was answering, for a base whose command line
+    # lacks an option a reading passes.
+    assert answer(sys.exit, 2) == {"raised": "SystemExit: 2"}

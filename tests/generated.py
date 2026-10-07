@@ -92,9 +92,6 @@ def generated(examples: int, *, cut_down: bool = True) -> Callable[[Test], Test]
             suppress_health_check=[HealthCheck.too_slow],
             print_blob=True,
             phases=phases,
-            # Without the cutting down, the first failure is the answer: looking on for a
-            # second kind of failure would play out every session that is left.
-            report_multiple_bugs=cut_down,
         )(test)
         return configured if chosen is None else seed(chosen)(configured)
 
@@ -511,9 +508,10 @@ def sessions(draw: st.DrawFn) -> dict[str, Any]:
     The paper is three to seven blocks that read alike, each a paragraph, a heading, a
     quotation, a list item, a table's caption, a line block or a div, and each with a word
     of its own (`tests/readings.py` has what they say). The co-author rewords or deletes one
-    to four of them. In one session of three the author has
-    since reworded a block in the source, removed one or added a paragraph, and the import
-    has to be forced."""
+    to four of them. In some sessions the author has since reworded a block in the source,
+    removed one or added a paragraph, and the import has to be forced: in six of the twelve
+    the property plays, though one in three is what is asked for, a choice between
+    strategies not being drawn in the proportions it is written in."""
     tags = draw(st.lists(st.sampled_from(TAGS), min_size=3, max_size=7, unique=True))
     kind = st.sampled_from(("paragraph",) * 4 + ("second paragraph",) * 2 + tuple(SAYS))
     did = st.sampled_from(("reworded",) * 4 + ("deleted", "deleted and gone"))

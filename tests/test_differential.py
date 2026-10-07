@@ -271,8 +271,11 @@ def test_a_rule_changed_in_a_copy_is_a_difference_in_its_reading(
     reading = CHANGED[case][3]
     _skip_where_it_cannot_be_made(reading, here)
     with _changed_copy(case, tmp_path) as changed:
-        # A session of the round trip takes seconds, and one in two writes a rewording.
-        examples = 6 if reading == "import" else 120
+        # A session of the round trip takes seconds, and one is enough: the first one
+        # played is the simplest there is, three paragraphs with the first reworded, and
+        # its rewording lands. More of them could not change the result. What the drawn
+        # sessions are is held in `tests/test_generated_sessions.py`.
+        examples = 1 if reading == "import" else 120
         assert differences(reading, here, changed, examples), f"{reading!r} did not notice"
         untouched = "title" if reading != "tex outside maths" else "quotation"
         assert not differences(untouched, here, changed, 30)

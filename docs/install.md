@@ -19,23 +19,25 @@ manuscript-guard --version
 manuscript-guard stages
 ```
 
-## The repository is ahead of PyPI
+## Versions, PyPI and the plugin
 
-The package and the plugin carry one version number, raised on `main` after every change to
-either, so `manuscript-guard --version` names exactly what you have. A release goes to PyPI
-when the maintainer makes one, so `main` is usually a few numbers ahead of it. To install
-what `main` has:
+The package and the plugin carry one version number. It is raised on `main` after every
+change to either, and each number is released to PyPI as it is raised, so
+`manuscript-guard --version` names exactly what you have.
+
+Claude Code and Codex install the plugin from the repository, and its skills describe the
+commands of the version they came with, so keep the two together (see
+[the plugin](agent-tools.md#the-claude-code-plugin)). When the plugin is newer than the
+installed command line tool, its session-start hook says so, once, with an upgrade command,
+and blocks nothing. That warning comes from the tool itself, so a copy older than 0.2.260
+cannot give it: upgrade such a copy once, by hand.
+
+Between a change landing on `main` and the number being raised, the repository holds code
+that no release has. To install what `main` has:
 
 ```bash
 pip install --upgrade git+https://github.com/BasileChretien/manuscript-guard
 ```
-
-This matters with the plugin. Claude Code and Codex install it from the repository, so its
-skills can be newer than the latest release on PyPI, and they describe the commands of the
-version they came with (see [the plugin](agent-tools.md#the-claude-code-plugin)). When the
-plugin is newer than the installed command line tool, its session-start hook says so, once,
-with that command, and blocks nothing. That warning comes from the tool itself, so a copy
-older than 0.2.260 cannot give it: upgrade such a copy once, by hand.
 
 ## Upgrading
 

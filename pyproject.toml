@@ -60,8 +60,8 @@ Issues = "https://github.com/BasileChretien/manuscript-guard/issues"
 # shows and what tests/test_docs.py can hold to the files. PyPI shows the same text on a page
 # with nothing beside it, where every one of those links and pictures is dead. So the
 # description is built from the README with each relative target pointed at the repository,
-# at the tag of the version being built: a release is tagged `v` and its number, which
-# .github/workflows/publish.yml refuses to publish under any other tag.
+# at the tag of the version being built: .github/workflows/publish.yml tags a release `v`
+# and its number before it uploads.
 [tool.hatch.metadata.hooks.fancy-pypi-readme]
 content-type = "text/markdown"
 

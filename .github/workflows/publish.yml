@@ -1,19 +1,58 @@
 name: Publish to PyPI
 
+# Every version on main is released. The maintainer raises the number on main after merges
+# that change the tool (CONTRIBUTING.md), and that push is the release: this workflow tags
+# the commit, makes the GitHub Release, builds, and uploads to PyPI, with nobody's click.
+#
 # A release on PyPI is permanent: a version can be withdrawn, and never replaced or used
-# again. So nothing is uploaded on a push or a merge. Publishing a GitHub Release is the one
-# act that does it, and CONTRIBUTING.md says how a release is made. `released` and not
-# `published`: a release marked as a pre-release fires `published` too, and would put its
-# number on PyPI as a final version.
+# again. So a push releases only where it changed the version to one PyPI does not have
+# (.github/scripts/release_decision.py). A push that leaves the number alone releases
+# nothing, and neither does a second run for a version already there.
 on:
-  release:
-    types: [released]
+  push:
+    branches: [main]
+    paths: [pyproject.toml]
+  # To finish a release that stopped half way: run it by hand, on main.
+  workflow_dispatch:
 
 permissions: {}
 
+# One release at a time, and never a second one cancelling the first mid-upload.
+concurrency:
+  group: publish-to-pypi
+  cancel-in-progress: false
+
 jobs:
+  decide:
+    name: Is there a version to release?
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.decide.outputs.publish }}
+      version: ${{ steps.decide.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          # The whole history, so that the commit this push replaced can be read.
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - id: decide
+        # The commit reaches the script through the environment, never as part of the
+        # command. It is empty for a run started by hand, which then asks PyPI alone.
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: python .github/scripts/release_decision.py --before "$BEFORE" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build the distributions
+    needs: decide
+    if: needs.decide.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -22,25 +61,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-          # The whole history, so that the tagged commit can be placed on main below.
-          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: The tag names the version the package carries
-        # The tag reaches the script through the environment, never as part of the command.
-        env:
-          TAG: ${{ github.event.release.tag_name }}
-        run: python .github/scripts/check_release_tag.py "$TAG" .
-      - name: The commit being built is on main
-        # Only main has been through review and the whole of CI. A tag on a branch would
-        # publish what neither has seen. HEAD is what the steps below build.
-        run: |
-          git fetch --quiet origin main
-          if ! git merge-base --is-ancestor HEAD origin/main; then
-            echo "::error::$(git rev-parse HEAD) is not on main: tag a commit of main"
-            exit 1
-          fi
       - name: Build a source distribution, and a wheel from it
         run: |
           python -m pip install --upgrade pip build twine
@@ -59,9 +82,42 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  release:
+    name: Tag the commit and make the GitHub Release
+    needs: [decide, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The one job that may write to the repository, and it writes a tag and a release.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          # With the tags, to see whether this version's is already there.
+          fetch-depth: 0
+      - name: Tag v<version> at this commit, unless it is already there
+        # The description PyPI shows links to files at this tag, so the tag comes before
+        # the upload: a release on GitHub with no upload yet is mended by running again,
+        # an upload whose links lead nowhere is not. A tag of this name on another commit
+        # stops the release: something else made it, and it is not this version.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.decide.outputs.version }}
+        run: |
+          if at=$(git rev-parse --quiet --verify "refs/tags/$TAG^{commit}"); then
+            if [ "$at" != "$GITHUB_SHA" ]; then
+              echo "::error::$TAG is already at $at, and this run builds $GITHUB_SHA"
+              exit 1
+            fi
+          fi
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+          fi
+
   publish:
     name: Upload to PyPI
-    needs: build
+    needs: [decide, build, release]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # PyPI trusts this workflow file, in this repository, in this environment, and nothing
@@ -70,7 +126,7 @@ jobs:
     # publishing settings after it. It names this file, so renaming it breaks the upload.
     environment:
       name: pypi
-      url: https://pypi.org/project/manuscript-guard/
+      url: https://pypi.org/project/manuscript-guard/${{ needs.decide.outputs.version }}/
     permissions:
       id-token: write
     steps:

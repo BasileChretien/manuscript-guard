@@ -154,9 +154,9 @@ manuscript-guard --version
 
 To build a .docx you also need [pandoc](https://pandoc.org/installing.html). Zotero, R, and
 `pdftotext` or pypdf for reading PDFs, are needed only for particular things, and the tool
-says which when you reach it. The repository is usually a few versions ahead of the latest
-release on PyPI: [Installing and upgrading](docs/install.md) says how to install from it,
-and has the table of optional tools, the upgrade commands and the R emitter.
+says which when you reach it. [Installing and upgrading](docs/install.md) has the table of
+optional tools, the upgrade commands, how to install from the repository, and the R
+emitter.
 
 ## Quick start
 

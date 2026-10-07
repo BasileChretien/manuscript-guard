@@ -3622,12 +3622,15 @@ campaign of its own. Where a change needs one, the finding is that the suite lac
 the campaigns are in the suite, on Hypothesis:
 
 - `tests/generated.py` holds the generators: manuscripts, vocabularies, one-line titles,
-  sources with quotations of them, and the settings typed into a project.
+  sources with quotations of them, the settings typed into a project, and a co-author's
+  sessions in Word.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the three readings of G14, the TeX rule and its
-  sentence, the quotation check, and `check --json` on a new project.
-- `tests/test_properties.py` holds what a reading owes its input.
+  sentence, the quotation check, `check --json` on a new project, and the round trip: a
+  paper typed into a new project, built, edited in Word and imported.
+- `tests/test_properties.py` holds what a reading owes its input, and
+  `tests/test_generated_sessions.py` what an import owes the source.
 - `tests/test_differential.py` puts each input through the base branch's source and
   through the working tree's.
 
@@ -3660,12 +3663,30 @@ The reviews checked the same few things of every change, by hand. They are tests
   whether there is anything to say.
 - **`check` writes nothing**, no gate fails to run, and settings that cannot be read end
   in one sentence.
+- **What an import writes is what the co-author typed, where they typed it.** The reviews
+  found the wrong writes on papers "built from four sentences, so that paragraphs,
+  headings, captions, list items, quotations, line blocks and divs read alike", with a
+  paragraph deleted in front of a block that reads like it. So a session is drawn on such
+  a paper: three to seven blocks of eight kinds, each one of a few sentences with a word
+  of its own, by which it is known again. The co-author rewords or deletes one to four of
+  them, as Word deletes a paragraph and leaves its bookmark behind, or with the bookmark;
+  in some sessions the author has since reworded a block in the source, removed one or
+  added one, and the import is forced. Afterwards every block of the source is the
+  block as it was, or the block with the co-author's own rewording of that block. Whether
+  a rewording lands or is held back is the import's to decide and is not asserted: a
+  document only saved, and one word changed in one paragraph, are written out beside the
+  property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
 the generators. So seven rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word.
+The import is broken twice the same way: a rewording written over the next paragraph, and
+one written a second time. The first way it was broken, a rewording written over the first
+paragraph of the file, passed all twelve sessions as they were first drawn. So the
+sessions were weighted towards rewordings and made to touch at least one block, and the
+case now writes over the paragraph after, which no session that writes anything can hide.
 
 ### Drawn from a pool, not from a grammar
 
@@ -3747,9 +3768,10 @@ it.
   `pytest.fail` does not do that, since Hypothesis takes it for a failing input.
 - **The comparison is held to being one.** Two processes on this source under two hash
   seeds must answer alike on every reading, which also catches a reading that walks a
-  set. And five lines are changed in a copy of the source, one at a time, and the reading
+  set. And six lines are changed in a copy of the source, one at a time, and the reading
   that goes through each must differ: among them the mutant the review of #181 found
-  alive, the offset of a quotation's lines losing a character at each line break.
+  alive, the offset of a quotation's lines losing a character at each line break, and an
+  import that writes no rewording.
 
 Run against main as it was before #181 and #183, it reports the vocabulary reading
 changed, on a vocabulary of one entry, and `check` changed; passes over the spelling
@@ -7502,13 +7524,23 @@ Closed since, and why each mattered:
   - No property asks pandoc. Where a reading has to agree with pandoc, that is still
     `tests/test_pandoc_agreement.py` and the tables and random lines of
     `tests/test_tex.py`.
-  - The round trip is not generated. A co-author's sessions in Word are those of
-    `tests/test_ordinary_sessions.py`, written by hand from the reviews, and nothing
-    draws new ones or compares what `import` writes under the base and under the change.
+  - The generated sessions hold one direction: nothing is written but what the co-author
+    typed, where they typed it. Whether a rewording lands is not asserted, so an import
+    that held back everything would pass them; what catches that is the comparison with
+    the base, the two sessions written out beside the property, and
+    `tests/test_ordinary_sessions.py`, whose sessions each have their outcome.
+  - A drawn session rewords one word of a block or deletes the block. It does not move a
+    paragraph, join two, split one, restyle one, paste text or track its changes, and it
+    is made by editing the document's XML the way Word leaves it, not in Word. Those are
+    still the sessions written by hand.
+  - Its paper is a new project's, typed from eight sentences in one file: no binding, no
+    citation, no table from results, no supplement, and a document built past its checks.
+  - Twelve sessions in a run, and fifteen compared with the base, at about three seconds
+    each. A session that differs from the base is cut down for up to five minutes.
   - The comparison with the base covers the readings of `tests/readings.py` and nothing
-    else. The build, the import, and the gates that read results, figures, sources and
-    review records are compared only as far as `check` on a new project reaches them,
-    which has none of those.
+    else. The build is compared only through the round trip, and the gates that read
+    results, figures, sources and review records only as far as `check` on a new project
+    reaches them, which has none of those.
   - A reading that is new in a pull request has no base to compare with, and neither has
     one whose helper was renamed in it: several readings go through a private name
     (`_hidden`, `_file`, `_judge`). Each is passed over with a line saying so.
@@ -7517,7 +7549,7 @@ Closed since, and why each mattered:
   - A meant change excuses its whole reading in that pull request. A difference nobody
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read.
-  - The properties were seen to fail on seven broken rules, and the comparison on five
+  - The properties were seen to fail on nine broken rules, and the comparison on six
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff.
   - The hard limit ends the whole run, not the one test: nothing else stops a pattern

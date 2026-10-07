@@ -66,10 +66,10 @@ PACKAGE = REPO / "src" / "manuscript_guard"
 pytestmark = pytest.mark.usefixtures("stopped_if_stuck")
 
 #: How many inputs each reading is compared on. `check` makes a project on disk in each
-#: process for every one.
-EXAMPLES = dict.fromkeys(READINGS, 300) | {"check": 20}
+#: process for every one, and `import` builds a document and imports it.
+EXAMPLES = dict.fromkeys(READINGS, 300) | {"check": 20, "import": 15}
 #: And how many when the two sides are this same source under two hash seeds.
-RESEEDED = dict.fromkeys(READINGS, 40) | {"check": 3}
+RESEEDED = dict.fromkeys(READINGS, 40) | {"check": 3, "import": 2}
 
 
 # ------------------------------------------------------------------------- the two sides
@@ -112,6 +112,19 @@ def _unless_lost() -> Iterator[None]:
         pytest.fail(str(gave_up), pytrace=False)
 
 
+def _unavailable(why: str) -> bool:
+    """Whether a reading is missing for want of a program, and not of a name in the source."""
+    return why.startswith("Unavailable: ")
+
+
+def _skip_where_it_cannot_be_made(name: str, *readers: Reader) -> None:
+    """Pass over a reading that needs a program this machine lacks, pandoc for the round
+    trip. CI has it, pinned, in every job that runs pytest."""
+    for reader in readers:
+        if _unavailable(reader.absent.get(name, "")):
+            pytest.skip(reader.absent[name])
+
+
 def differences(name: str, old: Reader, new: Reader, examples: int) -> list[tuple[Any, str]]:
     """Every generated input the two read differently, each with where the answers part."""
     found: list[tuple[Any, str]] = []
@@ -146,7 +159,8 @@ def assert_alike(name: str, old: Reader, new: Reader, examples: int, *, sides: s
 
 def test_the_reader_found_the_source_it_was_given_and_every_reading_in_it(here: Reader) -> None:
     assert here.package == PACKAGE.resolve()
-    assert here.absent == {}, "a reading of tests/readings.py cannot be found in this source"
+    lacking = {name: why for name, why in here.absent.items() if not _unavailable(why)}
+    assert lacking == {}, "a reading of tests/readings.py cannot be found in this source"
 
 
 def test_a_source_that_is_not_the_one_asked_for_is_refused(tmp_path: Path) -> None:
@@ -167,6 +181,7 @@ def test_under_another_hash_seed_a_reading_answers_the_same(
     answers that change from run to run: terms of one length were once tried in an order
     that did. It is also what holds the comparison itself to being exact: two processes on
     one source must not differ, or every difference from the base is in doubt."""
+    _skip_where_it_cannot_be_made(name, here, reseeded)
     assert_alike(name, here, reseeded, RESEEDED[name], sides="two processes on this source")
 
 
@@ -204,6 +219,12 @@ CHANGED = {
         "_TRAIL = \"]}>\\\"'",
         "numbers",
     ),
+    "an import that writes no rewording": (
+        "merge.py",
+        "        if replacement != original:\n",
+        "        if replacement == original:\n",
+        "import",
+    ),
 }
 
 
@@ -231,8 +252,11 @@ def test_a_rule_changed_in_a_copy_is_a_difference_in_its_reading(
     must differ from this source's on some generated input; a reading that does not go
     through it must not."""
     reading = CHANGED[case][3]
+    _skip_where_it_cannot_be_made(reading, here)
     with _changed_copy(case, tmp_path) as changed:
-        assert differences(reading, here, changed, 120), f"{reading!r} did not notice"
+        # A session of the round trip takes seconds, and one in two writes a rewording.
+        examples = 6 if reading == "import" else 120
+        assert differences(reading, here, changed, examples), f"{reading!r} did not notice"
         untouched = "title" if reading != "tex outside maths" else "quotation"
         assert not differences(untouched, here, changed, 30)
 
@@ -505,6 +529,7 @@ def test_the_working_tree_reads_as_the_base_does(
     name: str, here: Reader, base: tuple[Reader, dict[str, str]]
 ) -> None:
     old, meant = base
+    _skip_where_it_cannot_be_made(name, here, old)
     if name in old.absent:
         assert name not in meant, f"{name!r} is said to differ, and the base has no such reading"
         pytest.skip(f"the base has no reading {name!r}: {old.absent[name]}")

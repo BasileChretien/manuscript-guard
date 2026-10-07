@@ -46,7 +46,7 @@ from generated import (
 )
 from hypothesis import given
 from hypothesis import strategies as st
-from readings import MAIN, PAPER, READINGS, answer
+from readings import MAIN, PAPER, READINGS, Unavailable, answer
 
 from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.project import outside_maths
@@ -75,8 +75,10 @@ pytestmark = pytest.mark.usefixtures("stopped_if_stuck")
 
 #: How many pairs of inputs each reading is given. `check` makes a project on disk for each
 #: input and takes half a second of it, so it is given few: what it is made of is read by
-#: the other readings many times over.
-PAIRS = dict.fromkeys(READINGS, 75) | {"check": 6}
+#: the other readings many times over. `import` builds a document for each and takes three
+#: seconds; its sessions have a file of their own, `tests/test_generated_sessions.py`, and
+#: here it is only asked twice for the same one.
+PAIRS = dict.fromkeys(READINGS, 75) | {"check": 6, "import": 1}
 
 
 # ---------------------------------------------------------------- the generators themselves
@@ -182,7 +184,10 @@ def test_a_reading_answers_and_answers_the_same_the_second_time(name: str) -> No
     And with the same answer when it is asked again after another text. A reading that
     keeps something between two texts answers for the last one: the classifier keeps one
     scan, and the spelling list is read once."""
-    read = READINGS[name]()
+    try:
+        read = READINGS[name]()
+    except Unavailable as missing:
+        pytest.skip(str(missing))
 
     @generated(PAIRS[name])
     @given(INPUTS[name], INPUTS[name])

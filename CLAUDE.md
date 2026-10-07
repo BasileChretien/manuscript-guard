@@ -35,8 +35,8 @@ installs it, and with that variable set `tests/conftest.py` refuses to start unl
 pandoc is on PATH. Set it to the same value locally to run the suite as CI does; unset, a
 missing pandoc only skips the tests that need it.
 
-The generated tests (`tests/test_properties.py`, `tests/test_differential.py`) draw the same
-inputs on every run. To look harder at a change, draw more of them or from another seed,
+The generated tests (`tests/test_properties.py`, `tests/test_generated_sessions.py` and
+`tests/test_differential.py`) draw the same inputs on every run. To look harder at a change, draw more of them or from another seed,
 and name the commit to compare the working tree with:
 
 ```bash

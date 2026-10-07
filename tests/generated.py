@@ -38,6 +38,7 @@ from typing import Any, TypeVar
 from hypothesis import HealthCheck, Phase, given, seed, settings
 from hypothesis import strategies as st
 from hypothesis.internal.conjecture import providers
+from readings import SAYS, TAGS
 
 Test = TypeVar("Test", bound=Callable[..., Any])
 
@@ -91,6 +92,9 @@ def generated(examples: int, *, cut_down: bool = True) -> Callable[[Test], Test]
             suppress_health_check=[HealthCheck.too_slow],
             print_blob=True,
             phases=phases,
+            # Without the cutting down, the first failure is the answer: looking on for a
+            # second kind of failure would play out every session that is left.
+            report_multiple_bugs=cut_down,
         )(test)
         return configured if chosen is None else seed(chosen)(configured)
 
@@ -486,6 +490,33 @@ def settings_typed() -> st.SearchStrategy[str]:
     return st.sampled_from(_SETTINGS)
 
 
+# ----------------------------------------------------------------------------- sessions
+
+
+@st.composite
+def sessions(draw: st.DrawFn) -> dict[str, Any]:
+    """A paper, what a co-author did to it in Word, and what its author did meanwhile.
+
+    The paper is three to seven blocks that read alike, each a paragraph, a heading, a
+    quotation, a list item, a table's caption, a line block or a div, and each with a word
+    of its own (`tests/readings.py` has what they say). The co-author rewords or deletes one
+    to four of them. In one session of three the author has
+    since reworded a block in the source, removed one or added a paragraph, and the import
+    has to be forced."""
+    tags = draw(st.lists(st.sampled_from(TAGS), min_size=3, max_size=7, unique=True))
+    kind = st.sampled_from(("paragraph",) * 4 + ("second paragraph",) * 2 + tuple(SAYS))
+    did = st.sampled_from(("reworded",) * 4 + ("deleted", "deleted and gone"))
+    touched = draw(st.lists(st.sampled_from(tags), min_size=1, max_size=4, unique=True))
+    since = st.tuples(
+        st.sampled_from(("reworded", "removed", "added above")), st.sampled_from(tags)
+    ).map(list)
+    return {
+        "blocks": [{"tag": tag, "kind": draw(kind)} for tag in tags],
+        "in_word": [[tag, draw(did)] for tag in touched],
+        "since": draw(st.one_of(st.none(), st.none(), since)),
+    }
+
+
 # ------------------------------------------------------------------------------ inputs
 
 
@@ -540,4 +571,5 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             "stage": st.sampled_from(("design", "drafting", "submission")),
         }
     ),
+    "import": sessions(),
 }

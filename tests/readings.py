@@ -23,8 +23,10 @@ no such reading until the rename is merged.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import tempfile
+import zipfile
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
@@ -48,6 +50,11 @@ def reading(name: str) -> Callable[[Callable[[], Reading]], Callable[[], Reading
         return find
 
     return register
+
+
+class Unavailable(Exception):
+    """This reading needs a program that is not installed here. Raised when the reading is
+    looked for, so that it is passed over where it cannot be made, on either side."""
 
 
 def answer(read: Reading, given: Any) -> Any:
@@ -339,18 +346,18 @@ def _check() -> Reading:
     return check
 
 
-def _from_root(said: Any, root: Path) -> Any:
-    """`said` with the project's folder written `<project>` in every text it holds, in
-    each way a path to it is spelt. Longest first: the resolved path can hold the other."""
+def _from_root(said: Any, root: Path, *, written: str = "<project>") -> Any:
+    """`said` with the folder `root` written `<project>` in every text it holds, in each
+    way a path to it is spelt. Longest first: the resolved path can hold the other."""
     if isinstance(said, dict):
-        return {key: _from_root(value, root) for key, value in said.items()}
+        return {key: _from_root(value, root, written=written) for key, value in said.items()}
     if isinstance(said, list):
-        return [_from_root(value, root) for value in said]
+        return [_from_root(value, root, written=written) for value in said]
     if not isinstance(said, str):
         return said
     forms = {str(root), str(root.resolve()), root.as_posix(), root.resolve().as_posix()}
     for form in sorted(forms, key=len, reverse=True):
-        said = said.replace(form, "<project>")
+        said = said.replace(form, written)
     return said
 
 
@@ -364,6 +371,151 @@ def _snapshot(root: Path) -> dict[str, bytes]:
 
 def _changed(before: dict[str, bytes], after: dict[str, bytes]) -> set[str]:
     return {name for name in {*before, *after} if before.get(name) != after.get(name)}
+
+
+# -------------------------------------------------------------------------- the round trip
+
+#: The word a block of a generated paper is known by. No two blocks have the same one.
+TAGS = ("alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel")
+_TABLE = "| Drug | Reports |\n|------|---------|\n| A | 12 |\n| B | 30 |"
+#: What each kind of block says, with its own word in it. They read alike on purpose: the
+#: wrong writes the reviews found were on papers whose blocks did.
+SAYS = {
+    "paragraph": "The {tag} reports of hepatic injury were counted once in each group.",
+    "second paragraph": "The {tag} reports of hepatic injury are shown below for each group.",
+    "heading": "The {tag} reports of hepatic injury",
+    "quotation": "The {tag} reports of hepatic injury were counted once in each group.",
+    "item": "The {tag} reports of hepatic injury were counted once in each group.",
+    "caption": "The {tag} reports of hepatic injury in each group.",
+    "lines": "The {tag} reports of hepatic injury were counted once in each group.",
+    "div": "The {tag} reports of hepatic injury were counted once in each group.",
+}
+#: How each kind is typed. Only the first two are given an identifier by the build.
+TYPED = {
+    "paragraph": "{says}",
+    "second paragraph": "{says}",
+    "heading": "## {says}",
+    "quotation": "> {says}",
+    "item": "- {says}",
+    "caption": _TABLE + "\n\n: {says}",
+    "lines": "| {says}",
+    "div": "::: {{.plain}}\n{says}\n:::",
+}
+#: The word a co-author changes in a block, and what they type for it. In every sentence.
+WAS, NOW = "hepatic", "liver"
+#: The word the author changes in the source after the build, where they change one.
+AUTHOR_WAS, AUTHOR_NOW = "reports", "records"
+#: What the author adds to the source after the build, where they add a paragraph.
+ADDED = "A paragraph the author added since the build, about the india reports."
+
+_WORD_PARAGRAPH = re.compile(r"<w:p\b.*?</w:p>", re.DOTALL)
+_OPENS = re.compile(
+    r"<w:p>(?:<w:pPr>.*?</w:pPr>)?(?P<mark>(?:<w:bookmark(?:Start|End)\b[^>]*/>)*)", re.DOTALL
+)
+
+
+def typed(block: dict[str, str]) -> str:
+    """One block of a generated paper as it stands in the source."""
+    return TYPED[block["kind"]].format(says=SAYS[block["kind"]].format(tag=block["tag"]))
+
+
+def _edited_in_word(xml: str, in_word: list[list[str]]) -> str:
+    """The document's XML after the co-author's session: each block they touched reworded,
+    or deleted. A paragraph deleted in Word with Track Changes off leaves its bookmark
+    behind, in front of the next paragraph ("deleted"); edited outside Word it goes with
+    its bookmark ("deleted and gone")."""
+    for tag, did in in_word:
+        paragraph = next(p for p in _WORD_PARAGRAPH.findall(xml) if f" {tag} " in p)
+        at = xml.index(paragraph)
+        if did == "reworded":
+            xml = xml[:at] + paragraph.replace(WAS, NOW, 1) + xml[at + len(paragraph) :]
+            continue
+        xml = xml[:at] + xml[at + len(paragraph) :]
+        opening = _OPENS.match(paragraph)
+        following = xml.find("<w:p>", at)
+        if did == "deleted" and opening and opening["mark"] and following != -1:
+            into = _OPENS.match(xml, following)
+            xml = xml[: into.start("mark")] + opening["mark"] + xml[into.start("mark") :]
+    return xml
+
+
+@reading("import")
+def _import() -> Reading:
+    if shutil.which("pandoc") is None:
+        raise Unavailable("pandoc is not installed, and a document is built with it")
+    from manuscript_guard.cli import main
+    from manuscript_guard.scaffold import init_project
+
+    def round_trip(given: dict[str, Any]) -> dict[str, Any]:
+        """A paper typed into a new project, built, edited in Word, and imported: the
+        source as the import found it, as it left it, and what was said.
+
+        `blocks` are the paper, `in_word` what the co-author did to which block, and
+        `since` what the author did to the source after the build, if anything; with a
+        change since, the import is forced, as a stale one has to be."""
+        folder = Path(tempfile.mkdtemp(prefix="mg-reading-"))
+        try:
+            root = folder / "paper"
+            init_project(root, "A study of reports")
+            path = root / MAIN
+            header = path.read_text(encoding="utf-8")
+            header = header[: header.index("\n---\n") + len("\n---\n")]
+
+            def write(blocks: list[str]) -> None:
+                text = header + "\n" + "\n\n".join(blocks) + "\n"
+                path.write_text(text, encoding="utf-8", newline="\n")
+
+            built = [typed(block) for block in given["blocks"]]
+            now = list(built)
+            if given.get("since"):
+                did, tag = given["since"]
+                at = next(i for i, block in enumerate(given["blocks"]) if block["tag"] == tag)
+                if did == "reworded":
+                    now[at] = now[at].replace(AUTHOR_WAS, AUTHOR_NOW, 1)
+                elif did == "removed":
+                    del now[at]
+                else:
+                    now.insert(at, ADDED)
+
+            said = StringIO()
+            write(built)
+            with redirect_stdout(said), redirect_stderr(said):
+                code = main(["build", str(root), "--offline", "--skip-checks"])
+                if code != 0:
+                    return {"built": code, "said": _named(said.getvalue(), root, folder)}
+                (document,) = (root / "build").glob("manuscript*.docx")
+                returned = folder / "returned.docx"
+                with zipfile.ZipFile(document) as sent, zipfile.ZipFile(returned, "w") as back:
+                    for item in sent.infolist():
+                        data = sent.read(item.filename)
+                        if item.filename == "word/document.xml":
+                            xml = _edited_in_word(data.decode("utf-8"), given["in_word"])
+                            data = xml.encode("utf-8")
+                        back.writestr(item, data)
+                write(now)
+                before = path.read_text(encoding="utf-8")
+                forced = ["--force"] if now != built else []
+                code = main(["import", str(returned), str(root), "--apply", *forced])
+            found = {
+                "exit": code,
+                "before": before,
+                "after": path.read_text(encoding="utf-8"),
+                "said": _named(said.getvalue(), root, folder),
+            }
+            if folder.name in json.dumps(found):
+                raise AssertionError(
+                    "the import printed the folder made for this run in a form this reading "
+                    "does not know, so two runs of it could not be compared"
+                )
+            return found
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    return round_trip
+
+
+def _named(said: str, root: Path, folder: Path) -> str:
+    return _from_root(_from_root(said, root), folder, written="<folder>")
 
 
 # ------------------------------------------------------------------- as a process of its own

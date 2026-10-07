@@ -35,8 +35,9 @@ scratch copy and compares the fragments value by value. A digest can be forged; 
 cannot be forged into existence. It is a separate command because it executes your code,
 which a gate must never do, and because it takes as long as the analysis does. The digests
 are of the script that wrote a results file and of the inputs it declared: a module that
-script imports is covered only where it is listed among the `inputs`, and otherwise only
-`verify` sees it change.
+script imports fails the run only where it is listed among the `inputs`. Left unlisted, a
+source file under `analysis/` that is newer than the results is a warning, and only
+`verify` shows that a value changed.
 
 ## Design principles
 

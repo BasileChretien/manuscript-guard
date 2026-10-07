@@ -3611,10 +3611,12 @@ of whoever is running it.
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
-- **G1 follows the script that wrote a results file and the inputs it declared, and no
-  further.** The digests it compares are of the emitting script and of each path given to
-  the emitter as an input. A module that script imports, or a file it reads without
-  declaring it, can change and `check` still passes, and `build` then writes the old values:
+- **G1 fails only on the script that wrote a results file and on the inputs it declared.**
+  The digests it compares are of the emitting script and of each path given to the emitter
+  as an input. A module that script imports, or a file it reads without declaring it, can
+  change and `check` still passes. The most it says is a warning, `analysis-newer`, for a
+  source file under `analysis/` modified after the newest results file; a helper kept
+  elsewhere gets none. `build` then writes the old values:
   seen on the example with a helper module holding the 1.96 of a confidence interval, changed
   to 2.58 with nothing run again. Listing the helper among the emitter's `inputs` makes its
   change an `input-changed` failure. `verify`, which runs the analysis again and compares

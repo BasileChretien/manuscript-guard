@@ -31,6 +31,10 @@ BASE = "MANUSCRIPT_GUARD_BASE"
 #: How long one answer may take, in seconds. An answer takes milliseconds, and `check` on
 #: a new project under a second; this is for a reading that never comes back.
 ANSWER_WITHIN = 120
+#: How long a reader may take to say it is there. It is not an answer's limit, however
+#: short that is set: this is Python starting and importing the package, which takes a
+#: second on a quiet machine and several on a busy one.
+START_WITHIN = 120
 
 
 class Lost(Exception):
@@ -73,7 +77,7 @@ class Reader:
         self._answers: queue.Queue[bytes | None] = queue.Queue()
         threading.Thread(target=self._listen, daemon=True).start()
         try:
-            first = self._next("to start")
+            first = self._next("to start", within=max(within, START_WITHIN))
             found = Path(first["package"]).resolve()
             if found != self.source / "manuscript_guard":
                 self._end(f"it read {found}, which is not the source it was given")
@@ -99,11 +103,12 @@ class Reader:
         self.lost = why + (f"; it printed:\n{printed[-2000:]}" if printed else "")
         raise Lost(self.lost)
 
-    def _next(self, what: str) -> dict[str, Any]:
+    def _next(self, what: str, *, within: int | None = None) -> dict[str, Any]:
+        within = self.within if within is None else within
         try:
-            line = self._answers.get(timeout=self.within)
+            line = self._answers.get(timeout=within)
         except queue.Empty:
-            self._end(f"no answer within {self.within} seconds {what}")
+            self._end(f"no answer within {within} seconds {what}")
         if line is None:
             self._end(f"it ended {what}")
         return json.loads(line)
@@ -216,8 +221,17 @@ def _git(*arguments: str) -> subprocess.CompletedProcess[bytes]:
 
 def base_commit() -> str | None:
     """The commit to compare with: the one `MANUSCRIPT_GUARD_BASE` names, which has to be
-    here, or else where this branch left `origin/main`, or None where that cannot be told."""
-    named = os.environ.get(BASE, "").strip()
+    here, or else where this branch left `origin/main`, or None where that cannot be told.
+
+    Set and empty is not "not set". It is what a workflow's expression leaves when it
+    found no commit to name, and a run that was told to compare must not skip for it."""
+    named = os.environ.get(BASE)
+    if named is not None and not named.strip():
+        raise LookupError(
+            f"{BASE} is set and names no commit; name the commit to compare with, or unset "
+            "the variable to compare with where this branch left origin/main"
+        )
+    named = (named or "").strip()
     if named:
         found = _git("rev-parse", "--verify", "--quiet", f"{named}^{{commit}}")
         if found.returncode != 0:
@@ -240,7 +254,13 @@ def exported(commit: str, to: Path) -> Path:
         )
     to.mkdir(parents=True, exist_ok=True)
     with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
-        tar.extractall(to, filter="data")
+        # Extraction filters came to 3.10 in 3.10.12, and CI's Windows and macOS jobs run
+        # 3.10.11. Without one nothing is lost here: the archive is git's own, of a folder
+        # it tracks.
+        if hasattr(tarfile, "data_filter"):
+            tar.extractall(to, filter="data")
+        else:
+            tar.extractall(to)
     return to / "src"
 
 

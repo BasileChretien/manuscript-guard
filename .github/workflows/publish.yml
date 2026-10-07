@@ -1,0 +1,137 @@
+name: Publish to PyPI
+
+# Every version on main is released. The maintainer raises the number on main after merges
+# that change the tool (CONTRIBUTING.md), and that push is the release: this workflow tags
+# the commit, makes the GitHub Release, builds, and uploads to PyPI, with nobody's click.
+#
+# A release on PyPI is permanent: a version can be withdrawn, and never replaced or used
+# again. So a push releases only where it changed the version to one PyPI does not have
+# (.github/scripts/release_decision.py). A push that leaves the number alone releases
+# nothing, and neither does a second run for a version already there.
+on:
+  push:
+    branches: [main]
+    paths: [pyproject.toml]
+  # To finish a release that stopped half way: run it by hand, on main.
+  workflow_dispatch:
+
+permissions: {}
+
+# One release at a time, and never a second one cancelling the first mid-upload.
+concurrency:
+  group: publish-to-pypi
+  cancel-in-progress: false
+
+jobs:
+  decide:
+    name: Is there a version to release?
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.decide.outputs.publish }}
+      version: ${{ steps.decide.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          # The whole history, so that the commit this push replaced can be read.
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - id: decide
+        # The commit reaches the script through the environment, never as part of the
+        # command. It is empty for a run started by hand, which then asks PyPI alone.
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: python .github/scripts/release_decision.py --before "$BEFORE" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build the distributions
+    needs: decide
+    if: needs.decide.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Build a source distribution, and a wheel from it
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+      - name: The wheel holds every file git tracks in the package, and no others
+        # CI's wheel job makes this comparison on a wheel built from the checkout. The one
+        # uploaded is built from the source distribution, so it is compared too.
+        run: python .github/scripts/check_wheel_files.py dist/*.whl .
+      - name: Each distribution has a description, of a kind PyPI accepts
+        # twine reads the metadata. It does not render Markdown, so this says that a
+        # description and its content type are there, not that the page will look right.
+        run: twine check --strict dist/*
+      - uses: actions/upload-artifact@v5
+        with:
+          name: distributions
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: Tag the commit and make the GitHub Release
+    needs: [decide, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The one job that may write to the repository, and it writes a tag and a release.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          # With the tags, to see whether this version's is already there.
+          fetch-depth: 0
+      - name: Tag v<version> at this commit, unless it is already there
+        # The description PyPI shows links to files at this tag, so the tag comes before
+        # the upload: a release on GitHub with no upload yet is mended by running again,
+        # an upload whose links lead nowhere is not. A tag of this name on another commit
+        # stops the release: something else made it, and it is not this version.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.decide.outputs.version }}
+        run: |
+          if at=$(git rev-parse --quiet --verify "refs/tags/$TAG^{commit}"); then
+            if [ "$at" != "$GITHUB_SHA" ]; then
+              echo "::error::$TAG is already at $at, and this run builds $GITHUB_SHA"
+              exit 1
+            fi
+          fi
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+          fi
+
+  publish:
+    name: Upload to PyPI
+    needs: [decide, build, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # PyPI trusts this workflow file, in this repository, in this environment, and nothing
+    # else, so the upload carries no password and no token. The pairing is set on PyPI: as a
+    # pending publisher of the account before the first release, and in the project's
+    # publishing settings after it. It names this file, so renaming it breaks the upload.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/manuscript-guard/${{ needs.decide.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: distributions
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

@@ -211,3 +211,51 @@ def test_the_citation_file_reads_and_names_no_version() -> None:
         assert citation.get(key), f"CITATION.cff has no {key}"
     assert "version" not in citation
     assert "CITATION.cff" in text_of(README)
+
+
+# ----------------------------------------------------------------------------------- PyPI
+
+
+def test_the_description_pypi_shows_has_no_link_that_leads_nowhere(tmp_path: Path) -> None:
+    """PyPI shows the README on a page with nothing beside it, so a relative link or picture
+    is dead there. The build points each at the repository, at the tag of the version built.
+    Built with the hatchling and the plugin that are installed, so it needs no network."""
+    import subprocess
+    import sys
+    import zipfile
+
+    pytest.importorskip("hatchling")
+    pytest.importorskip("hatch_fancy_pypi_readme")
+    built = subprocess.run(
+        [sys.executable, "-m", "pip", "wheel", str(REPO), "--no-deps", "--no-build-isolation",
+         "-q", "-w", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert built.returncode == 0, built.stdout + built.stderr
+    (wheel,) = tmp_path.glob("*.whl")
+    with zipfile.ZipFile(wheel) as archive:
+        (name,) = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
+        metadata = archive.read(name).decode("utf-8")
+    header, _, description = metadata.partition("\n\n")
+    assert "Description-Content-Type: text/markdown" in header
+    version = re.search(r"^Version: (\S+)$", header, re.MULTILINE).group(1)
+
+    # What each target of the README has to have become: one that names a scheme, or a place
+    # on the page itself, as it was; a relative one, the same path in the repository at the
+    # release's tag, as a page for a link and as the file for a picture.
+    page = f"https://github.com/BasileChretien/manuscript-guard/blob/v{version}/"
+    file = f"https://raw.githubusercontent.com/BasileChretien/manuscript-guard/v{version}/"
+
+    def becomes(target: str, at: str) -> str:
+        return target if re.match(r"[A-Za-z][A-Za-z0-9+.-]*:|#", target) else at + target
+
+    in_readme = FENCE.sub("", text_of(README))
+    in_description = FENCE.sub("", description)
+    links, pictures = LINK.findall(in_readme), SOURCE.findall(in_readme)
+    assert any(not re.match(r"[a-z]+:|#", link) for link in links), "no relative link to test"
+    assert pictures, "the README shows no picture; the pattern no longer matches"
+    assert LINK.findall(in_description) == [becomes(link, page) for link in links]
+    assert SOURCE.findall(in_description) == [becomes(picture, file) for picture in pictures]

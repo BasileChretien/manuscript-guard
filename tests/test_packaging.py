@@ -167,3 +167,112 @@ def test_the_check_catches_a_directory_an_ignore_rule_swallows(tmp_path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
     assert ignored_by_git(tmp_path, [kept, lost]) == ["pkg/build/document.py"]
+
+
+# ---------------------------------------------------------------- when a push is a release
+#
+# `.github/scripts/release_decision.py` is what publish.yml asks before it builds. PyPI
+# keeps a version for good and refuses a number twice, so what is published, and when, is
+# held here, where each case can be seen.
+
+
+def load_release_decision():
+    import importlib.util
+
+    path = REPO / ".github" / "scripts" / "release_decision.py"
+    spec = importlib.util.spec_from_file_location("release_decision", path)
+    assert spec and spec.loader, path
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def never_asked(version: str) -> bool:
+    raise AssertionError(f"PyPI was asked about {version}, and need not have been")
+
+
+def test_a_push_that_raises_the_version_to_one_pypi_lacks_is_a_release():
+    decision = load_release_decision()
+    publish, why = decision.decide("0.2.431", "0.2.430", lambda version: False)
+    assert publish and "0.2.430 to 0.2.431" in why
+
+
+def test_a_push_that_leaves_the_version_alone_releases_nothing_and_asks_nobody():
+    """The code between a merge and its bump carries the old number: it is not that release,
+    whether or not the number reached PyPI."""
+    decision = load_release_decision()
+    publish, why = decision.decide("0.2.430", "0.2.430", never_asked)
+    assert not publish and "left the version at 0.2.430" in why
+
+
+def test_a_version_pypi_already_has_is_not_released_again():
+    decision = load_release_decision()
+    publish, why = decision.decide("0.2.431", "0.2.430", lambda version: True)
+    assert not publish and "already on PyPI" in why
+
+
+def test_a_run_started_by_hand_releases_what_pypi_lacks_and_nothing_else():
+    """No push, so no commit to compare with: a release that stopped half way is finished
+    by running again, and one that finished is left alone."""
+    decision = load_release_decision()
+    assert decision.decide("0.2.431", None, lambda version: False)[0]
+    assert not decision.decide("0.2.431", None, lambda version: True)[0]
+
+
+@pytest.mark.parametrize(("code", "there"), [(200, True), (404, False)])
+def test_pypi_s_yes_and_no_are_read_as_such(code: int, there: bool):
+    decision = load_release_decision()
+    asked = []
+
+    def status(url: str) -> int:
+        asked.append(url)
+        return code
+
+    assert decision.on_pypi("0.2.431", status) is there
+    assert asked == ["https://pypi.org/pypi/manuscript-guard/0.2.431/json"]
+
+
+@pytest.mark.parametrize("code", [500, 503, 429, 301])
+def test_an_answer_that_is_neither_stops_the_release(code: int):
+    decision = load_release_decision()
+    with pytest.raises(SystemExit, match="nothing is published"):
+        decision.on_pypi("0.2.431", lambda url: code)
+
+
+def test_the_version_is_the_one_line_of_digits_and_dots():
+    decision = load_release_decision()
+    assert decision.version_in((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+    assert decision.version_in('[project]\nversion = "1.2.3"\n') == "1.2.3"
+    for unreadable in (
+        "[project]\nname = 'x'\n",
+        '[project]\nversion = "1.2.3"\n[tool.x]\nversion = "9.9"\n',
+        '[project]\nversion = "1.2.3-rc1"\n',
+        '[project]\nversion = "1.2.3\nextra"\n',
+    ):
+        with pytest.raises(SystemExit):
+            decision.version_in(unreadable)
+
+
+@needs_git
+def test_the_commit_before_is_read_from_git_and_no_commit_reads_as_none():
+    decision = load_release_decision()
+    assert decision.version_at("0" * 40, REPO) is None
+    assert decision.version_at("", REPO) is None
+    assert decision.version_at("not-a-commit", REPO) is None
+    assert decision.version_at("HEAD", REPO) == decision.version_in(
+        subprocess.run(
+            ["git", "show", "HEAD:pyproject.toml"],
+            cwd=REPO, capture_output=True, text=True, encoding="utf-8", check=True,
+        ).stdout
+    )
+
+
+@needs_git
+def test_the_script_prints_the_two_lines_the_workflow_reads(monkeypatch, capsys):
+    decision = load_release_decision()
+    monkeypatch.setattr(decision, "on_pypi", lambda version: False)
+    assert decision.main(["release_decision.py", "--before", "", "--checkout", str(REPO)]) == 0
+    printed = capsys.readouterr()
+    version = decision.version_in((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+    assert printed.out.splitlines() == ["publish=true", f"version={version}"]
+    assert "releasing it" in printed.err

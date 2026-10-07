@@ -17,11 +17,14 @@ it found there. A reader that found another is refused.
 `src/manuscript_guard` into a temporary folder. No worktree is registered and no ref is
 made, so a run that is killed leaves nothing in a repository several sessions share.
 
-**Which commit is the base.** `MANUSCRIPT_GUARD_BASE` names it, and CI sets it to the
-commit the pull request is to be merged into. Named and not found, the run fails: a job
-that is there to compare must not pass by having nothing to compare with. Unset, it is
-where this branch left `origin/main`, and where that cannot be told the comparison is
-skipped; the tests of the comparison itself, below, need no base and always run.
+**Which commit is the base.** `MANUSCRIPT_GUARD_BASE` names it. For a pull request CI
+checks out the merge GitHub made of it into the base branch, and names that merge's first
+parent: the commit of the base branch the merge was made on, so that the two sides differ
+by the pull request and by nothing else. Named and not found, the run fails, and so does a
+name that is set and empty: a job that is there to compare must not pass by having nothing
+to compare with. Unset, it is where this branch left `origin/main`, and where that cannot
+be told the comparison is skipped; the tests of the comparison itself, below, need no base
+and always run.
 
 **A change that is meant.** A pull request that changes what a gate reports differs from
 its base, and says so in `tests/data/differential_expected.yaml`: the reading, and why. An
@@ -36,6 +39,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tarfile
 import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -43,6 +47,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from differential import (
     BASE,
     EXPECTED,
@@ -339,8 +344,14 @@ def _worker(folder: Path, body: str) -> Path:
 
 def test_a_reader_that_stops_answering_is_stopped(tmp_path: Path) -> None:
     """A reading that hangs in the base must not hang the job. The reader is given a time
-    to answer in, and is ended when it has not."""
-    silent = _worker(tmp_path, _HELLO + "for line in sys.stdin:\n    pass\n")
+    to answer in, and is ended when it has not.
+
+    That time is for an answer, not for the interpreter to start: this stand-in takes three
+    seconds to say it is there and is given two to answer in. Held to two for its start
+    as well, the reader was lost before it was asked anything wherever Python was slow to
+    come up, which on a busy machine it is."""
+    slow_to_start = "import time\ntime.sleep(3)\n"
+    silent = _worker(tmp_path, slow_to_start + _HELLO + "for line in sys.stdin:\n    pass\n")
     reader = Reader(REPO / "src", worker=silent, within=2)
     with pytest.raises(Lost, match="no answer within 2 seconds"):
         reader.ask("mask", "a text")
@@ -497,6 +508,51 @@ def test_a_base_that_is_named_and_not_found_fails(monkeypatch: pytest.MonkeyPatc
         base_commit()
     monkeypatch.setenv(BASE, "HEAD")
     assert base_commit() == _git("rev-parse", "HEAD").stdout.strip()
+    # Named, and the name is empty: what a workflow's expression leaves when it finds
+    # nothing. Read as not named, the comparison was skipped and the job was green.
+    for nothing in ("", "  "):
+        monkeypatch.setenv(BASE, nothing)
+        with pytest.raises(LookupError, match=f"{BASE} is set and names no commit"):
+            base_commit()
+
+
+@needs_git
+# What 3.12 and 3.13 say of an extraction with no filter, which is this test's subject.
+@pytest.mark.filterwarnings("ignore:Python 3.14 will, by default, filter:DeprecationWarning")
+def test_the_export_asks_nothing_of_python_that_3_10_11_lacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`tarfile` took its extraction filters in 3.10.12, and 3.10.11 is the last 3.10 with
+    an installer: it is what CI's Windows and macOS jobs run. There `extractall` has no
+    `filter` to be given, and the export raised. This is `tarfile` as 3.10.11 has it."""
+    real = tarfile.TarFile.extractall
+
+    def extractall(self, path=".", members=None, *, numeric_owner=False):  # noqa: ANN001
+        return real(self, path, members, numeric_owner=numeric_owner)
+
+    monkeypatch.setattr(tarfile.TarFile, "extractall", extractall)
+    monkeypatch.delattr(tarfile, "data_filter", raising=False)
+    source = exported("HEAD", tmp_path / "base")
+    at_head = _git("show", "HEAD:src/manuscript_guard/__init__.py").stdout
+    assert (source / "manuscript_guard" / "__init__.py").read_text(encoding="utf-8") == at_head
+
+
+def test_the_job_compares_with_the_commit_the_merge_was_made_on() -> None:
+    """For a pull request GitHub checks out a merge of it into the base branch as that
+    branch stands. The commit to compare with is that merge's first parent. It is not
+    `pull_request.base.sha`: GitHub stores that with the pull request and does not move it
+    when the base branch moves, so once main had merged anything the job compared an older
+    main with the merge. Everything main took in since then counted as this pull request's
+    change, and an entry another pull request had declared and merged excused its reading
+    here too (#83's stored base was four commits of main behind the merge its last run
+    checked out)."""
+    workflow = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text("utf-8"))
+    job = workflow["jobs"]["old-against-new"]
+    named = job["env"][BASE]
+    assert "base.sha" not in named, named
+    assert "github.event_name == 'pull_request' && 'HEAD^1'" in named, named
+    checkout = next(step for step in job["steps"] if "actions/checkout" in step.get("uses", ""))
+    assert checkout["with"]["fetch-depth"] == 2, "the merge's first parent is not fetched"
 
 
 @pytest.fixture(scope="module")

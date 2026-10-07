@@ -3,21 +3,14 @@
 The short version is in the [README](../README.md#install). This page has the rest:
 upgrading, what each optional tool is needed for, and the R emitter.
 
-Not on PyPI yet, so install from the repository:
+Releases are on PyPI:
 
 ```bash
-git clone https://github.com/BasileChretien/manuscript-guard
-pip install ./manuscript-guard
+pip install manuscript-guard
 ```
 
-Or without cloning:
-
-```bash
-pip install git+https://github.com/BasileChretien/manuscript-guard
-```
-
-`pipx install ./manuscript-guard` works too, and is the better choice if you want the
-command available everywhere without touching a project's environment.
+`pipx install manuscript-guard` works too, and is the better choice if you want the command
+available everywhere without touching a project's environment.
 
 Check it:
 
@@ -26,15 +19,38 @@ manuscript-guard --version
 manuscript-guard stages
 ```
 
-The package and the plugin carry one version number, raised after every change to either, so
-`manuscript-guard --version` names the release you have. To take a newer one:
+## Versions, PyPI and the plugin
+
+The package and the plugin carry one version number. It is raised on `main` after every
+change to either, and each number is released to PyPI as it is raised, so
+`manuscript-guard --version` names exactly what you have.
+
+Claude Code and Codex install the plugin from the repository, and its skills describe the
+commands of the version they came with, so keep the two together (see
+[the plugin](agent-tools.md#the-claude-code-plugin)). When the plugin is newer than the
+installed command line tool, its session-start hook says so, once, with an upgrade command,
+and blocks nothing. That warning comes from the tool itself, so a copy older than 0.2.260
+cannot give it: upgrade such a copy once, by hand.
+
+Between a change landing on `main` and the number being raised, the repository holds code
+that no release has. To install what `main` has:
 
 ```bash
 pip install --upgrade git+https://github.com/BasileChretien/manuscript-guard
 ```
 
-With pipx, `pipx upgrade` refuses a copy installed from git (it checks a package index, not
-the repository), so reinstall instead:
+## Upgrading
+
+A copy installed from PyPI takes the latest release:
+
+```bash
+pip install --upgrade manuscript-guard
+pipx upgrade manuscript-guard
+```
+
+A copy installed from the repository is upgraded from the repository, with the command in
+the section above. With pipx, `pipx upgrade` refuses a copy installed from git (it checks a
+package index, not the repository), so reinstall instead:
 
 ```bash
 pipx install --force git+https://github.com/BasileChretien/manuscript-guard
@@ -43,12 +59,6 @@ pipx install --force git+https://github.com/BasileChretien/manuscript-guard
 If pip says the requirement is already satisfied although the repository is ahead, the version
 did not rise with that commit, and only a reinstall takes it:
 `pip install --force-reinstall git+https://github.com/BasileChretien/manuscript-guard`.
-
-The plugin's skills describe the commands of the release they came with, so keep the two
-together (see [the plugin](agent-tools.md#the-claude-code-plugin)). When the plugin is newer
-than the installed command line tool, its session-start hook says so, once, with the upgrade
-command, and blocks nothing. That warning comes from the tool itself, so a copy older than
-0.2.260 cannot give it: upgrade such a copy once, by hand.
 
 To work on the toolkit itself, install it editable with the test dependencies:
 

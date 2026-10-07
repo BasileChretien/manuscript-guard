@@ -46,8 +46,8 @@ MANUSCRIPT_GUARD_BASE=origin/main pytest -q -rs tests/test_differential.py
 ```
 
 Unset, the base is where the branch left `origin/main`. CI's `old-against-new` job names the
-commit the pull request is to be merged into, and fails on any difference in what a reading
-of `tests/readings.py` reports. A pull request that means to change one says so in
+commit of main that the pull request's merge was made on, the first parent of what it checks
+out, and fails on any difference in what a reading of `tests/readings.py` reports. A pull request that means to change one says so in
 `tests/data/differential_expected.yaml`, with the reason; the entry counts in that pull
 request only. DESIGN.md, "Generated inputs belong to the suite", has the rest.
 

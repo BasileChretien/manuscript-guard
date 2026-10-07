@@ -45,6 +45,13 @@ MANUSCRIPT_GUARD_SEED=7 pytest -q tests/test_properties.py             # other i
 MANUSCRIPT_GUARD_BASE=origin/main pytest -q -rs tests/test_differential.py
 ```
 
+The twelve sessions of `tests/test_generated_sessions.py` are drawn from a seed written in
+that file (`PINNED`), because the file also holds what the twelve have in them. A change to
+`sessions()` in `tests/generated.py`, or to the pin of Hypothesis, draws twelve others, and
+the test of what they contain may then fail with nothing wrong in the import: its message
+says so, and which numbers to try in its place. Under the first two variables above, the
+two tests that are about the pinned twelve are skipped.
+
 Unset, the base is where the branch left `origin/main`. CI's `old-against-new` job names the
 commit of the base branch that the pull request's merge was made on, the first parent of
 what it checks out, and fails on any difference in what a reading of `tests/readings.py`

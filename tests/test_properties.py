@@ -47,8 +47,9 @@ from generated import (
     typed,
     vocabularies,
 )
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
+from hypothesis.database import InMemoryExampleDatabase
 from readings import MAIN, PAPER, READINGS, Unavailable, answer
 
 from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED, Classifier
@@ -157,6 +158,77 @@ def test_a_number_of_examples_that_is_no_number_is_refused(
     monkeypatch.setenv("MANUSCRIPT_GUARD_SEED", "x")
     with pytest.raises(ValueError, match="MANUSCRIPT_GUARD_SEED"):
         generated(10)
+
+
+_NUMBERS = st.integers(min_value=0, max_value=10**6)
+
+
+def test_a_pinned_test_draws_the_same_inputs_whatever_it_says(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A generated test is seeded from its own source, docstring included. One that draws
+    few inputs and is held to what they contain drew others when a word of it changed, and
+    failed on a rule nobody had touched. `pinned` draws from a number instead: two tests
+    that differ in what they say draw alike, where unpinned they draw apart. A seed the
+    run names is still the one drawn from."""
+    first: list[int] = []
+    second: list[int] = []
+
+    def one(number: int) -> None:
+        first.append(number)
+
+    def another(number: int) -> None:
+        """The same test, said otherwise."""
+        second.append(number)
+
+    def draw(**how: Any) -> tuple[list[int], list[int]]:
+        first.clear()
+        second.clear()
+        generated(30, **how)(given(_NUMBERS)(one))()
+        generated(30, **how)(given(_NUMBERS)(another))()
+        return list(first), list(second)
+
+    by_its_text, by_the_others_text = draw()
+    assert by_its_text != by_the_others_text
+
+    of_three, of_three_again = draw(pinned=3)
+    assert of_three == of_three_again
+    assert len(set(of_three)) > 10, of_three
+    of_four, _ = draw(pinned=4)
+    assert of_four != of_three
+
+    monkeypatch.setenv("MANUSCRIPT_GUARD_SEED", "4")
+    named, _ = draw(pinned=3)
+    assert named == of_four
+
+
+def test_a_pinned_test_plays_nothing_an_earlier_run_left() -> None:
+    """Hypothesis keeps the inputs a test failed on and plays them first the next time. A
+    test held to what its inputs are must not be played one more, a failure of last week's
+    at the head of the run. A test given a seed keeps none, which is Hypothesis's doing
+    and not this suite's, so it is held here, where a release that changed it would show:
+    with somewhere to keep them the smallest input that failed is played first, and
+    pinned it is not played at all."""
+    seen: list[int] = []
+    fails = [True]
+
+    def played(number: int) -> None:
+        seen.append(number)
+        assert not (fails[0] and number > 1000)
+
+    def after_a_failure(held: Any) -> list[int]:
+        fails[0] = True
+        with pytest.raises(AssertionError):
+            held()
+        fails[0] = False
+        seen.clear()
+        held()
+        return list(seen)
+
+    keeping = settings(max_examples=20, deadline=None, database=InMemoryExampleDatabase())
+    assert after_a_failure(keeping(given(_NUMBERS)(played)))[0] == 1001
+    pinned = after_a_failure(generated(20, pinned=3)(given(_NUMBERS)(played)))
+    assert pinned[0] == 0 and 1001 not in pinned, pinned
 
 
 # ----------------------------------------------------- nothing raises, and nothing is kept

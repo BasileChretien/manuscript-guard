@@ -3684,15 +3684,42 @@ the line break with it, every finding on line 1, a ligature not folded, a value 
 inside a longer number, a nought trimmed off a number, a variable's name read as a word.
 The import is broken three times the same way: a rewording written over the next
 paragraph, one written a second time, and one written over the next paragraph only where
-another paragraph was deleted in Word. Each is known by the sentence that wrong write
-produces, since an import that merely raised failed the property too and was taken for
-one. The first two are shown by the first session Hypothesis plays, which is always the
-simplest: three paragraphs, the first reworded. So they hold nothing of the eleven that
-are drawn, and the first review of this work said so. The third passes that session and
-has to be caught by a drawn one; and the twelve themselves are held, to having every kind
-of block in them, each thing a co-author does and each thing an author does meanwhile,
-and among the sessions that write something one with a deletion and one that was forced.
-Twelve copies of the simplest session fail that check, which is its own test.
+an identified paragraph did not come back at all. Each is known by the sentence that
+wrong write produces, since an import that merely raised failed the property too and was
+taken for one. The first two are shown by the first session Hypothesis plays, which is
+always the simplest: three paragraphs, the first reworded. So they hold nothing of the
+eleven that are drawn, and the first review of this work said so. The third passes that
+session and has to be caught by a drawn one.
+
+What the sessions are is held twice, each thing under the name a failure gives it.
+
+- **Of the generator**, on six hundred sessions that are drawn and not built: every kind
+  of block; a paragraph reworded, deleted with its bookmark, and deleted as Word deletes
+  it with the bookmark left on the block after; that block reworded in the same session,
+  which is the session of #121; a block with no identifier reworded and deleted; and each
+  thing an author does to the source meanwhile. Under each of fifty seeds the rarest of
+  these was drawn five times or more.
+- **Of the twelve the import is played on**: a deletion that leaves its bookmark, the
+  session of #121, and the import having written in three sessions or more, beside a
+  deletion, beside a paragraph that went with its bookmark, and when it was forced.
+
+The second review found the first form of this asking for the word "deleted". The twelve
+of the day had it three times and never as the document it stands for: a caption has no
+bookmark to leave, and the last paragraph has nowhere to leave one. So a deletion is
+counted only where an identified paragraph is deleted and the block after it stays. That
+form was also tested with twelve copies of the simplest session and any failure at all,
+which reached its first line; now each thing asked is seen lacking, by its name, on
+sessions written for that.
+
+The twelve are drawn from a seed written in the test, and every other generated test from
+its own source. Seeded from its source the property drew twelve other sessions when one
+word of its docstring changed, and of forty seeds three drew twelve that had what was
+then asked: the second review changed the word and showed it. Drawn from the seed, the
+twelve change with `sessions()`, with the pin of Hypothesis and with the seed, and with
+nothing else, and the test that holds them says so when it fails. Under a seed the run
+names, or more examples, the twelve are others. The property is held of those too, and
+the two tests that are about the pinned twelve are skipped, with the reason.
+
 The sessions are weighted towards rewordings, and touch at least one block, because the
 first way the import was broken, a rewording written over the first paragraph of the
 file, passed all twelve as they were first drawn.
@@ -3728,7 +3755,10 @@ A generated test in CI has to fail for the commit that broke it and no other.
   (two different sets, measured). The pool of constants is emptied, which replaces one
   internal of Hypothesis, so the version is pinned to the day as ruff's is, and a test
   draws the same sixty inputs in two fresh processes, one of which imported the whole
-  command line first.
+  command line first. A test seeded from its source draws other inputs when a word of it
+  changes. Where a test draws few and is also held to what they are, that is a failure
+  nobody caused, so such a test names a seed and is drawn from it (`pinned`): the twelve
+  sessions are the one case.
 - **Bounded by a count, not by a clock.** Each test says how many inputs it draws. No
   input has a deadline: a time limit on one example fails a healthy rule on a busy
   machine, as `check_linear` exists to say.
@@ -7551,7 +7581,14 @@ Closed since, and why each mattered:
     Hypothesis. Each of CI's jobs draws its own, a change to a test or to
     `tests/generated.py` draws others, and so does raising the pin. A failure can
     therefore first show in a pull request that did not cause it. It is a true
-    counterexample all the same, and the report gives the input.
+    counterexample all the same, and the report gives the input. The one exception is
+    the test of what the twelve sessions contain: they are drawn from a seed written in
+    the test, the same in every job, and when `sessions()`, the pin or the seed changes,
+    a failure there is twelve other sessions and no counterexample. Its message says so.
+    About four seeds in ten draw twelve with the sessions asked for, and whether the
+    import then writes where it is asked to is a run of the test: of ten tried, two. So
+    pinning another seed is a few runs of most of a minute each, and the failing message
+    lists the numbers that are worth one.
   - No property holds a reading to pandoc's. The sessions build their documents with
     pandoc, and `check` has it read a manuscript where it is installed; but where a
     reading has to agree with what pandoc makes of a text, that is still
@@ -7577,6 +7614,14 @@ Closed since, and why each mattered:
   - On the last paragraph of a document the two ways of deleting are one: with no
     paragraph after it, the drawn session has nowhere to leave the bookmark and drops it.
     What Word does with that bookmark has not been looked at.
+  - The fifteen sessions compared with the base are another draw, seeded from the
+    comparison's own source, and are held to nothing: what they have in them is chance,
+    and changes when that test's text does.
+  - A deletion that leaves its bookmark is counted from the session as drawn, an
+    identified paragraph deleted with the block after it left in the document, and not
+    read out of the document that was built. For the two such sessions of the pinned
+    twelve the import reports two paragraphs come back as one, which is what a second
+    bookmark on a block is to it; that was read once, by hand.
   - The comparison with the base covers the readings of `tests/readings.py` and nothing
     else. The build is compared only through the round trip, and the gates that read
     results, figures, sources and review records only as far as `check` on a new project

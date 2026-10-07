@@ -1204,8 +1204,9 @@ def test_every_prefix_of_submission_that_is_read_is_one_the_guard_sees() -> None
     through in a project that fails. Taken from the parser, so that a command given the
     option later is held to the same.
 
-    It is about the one option. `--stage submission` asks for the same standard and is not a
-    marker, on purpose for `check` and as a known gap for `build`."""
+    It is about the one option. `--stage submission` asks for the same standard and is a
+    marker after `build` only: after `check` it is what a refusal tells its reader to run
+    (`tests/test_hooks.py`)."""
     from manuscript_guard.hooks import SUBMISSION_MARKERS
 
     word = "--submission"

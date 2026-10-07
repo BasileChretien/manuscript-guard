@@ -52,10 +52,21 @@ ALLOWED = ("profiles/reporting/recipes/",)
 # command string rather than by a prefix rule: a leading env-var assignment or `cd x &&`
 # defeats prefix matching, which is exactly how a submission slipped past the guard in the
 # project that preceded this one.
+#
+# The command, under each name it is installed or run by: `mguard` is its second name, both
+# end in `.exe` on Windows, and `python -m manuscript_guard.cli` runs it with no script at
+# all. A quote may close the name, as in PowerShell's `& "C:\Tools\mguard.exe" submit`.
+# tests/test_hooks.py holds the names to the ones `pyproject.toml` installs.
+_TOOL = r"\b(?:(?:manuscript-guard|mguard)(?:\.exe)?|manuscript_guard\.cli)[\"']?\s+"
+# What follows a subcommand, up to the end of that one command: not across `;`, `&` or `|`,
+# and across a line only where the line is continued, with `\` or PowerShell's backtick.
+_SAME_COMMAND = r"(?:[^\n;&|]|[\\`]\r?\n)*?"
 SUBMISSION_MARKERS = re.compile(
-    # The two unambiguous ones: asking for a submission pack, or asking for submission
-    # standards.
-    r"manuscript-guard\s+submit\b|--submission\b|"
+    # The unambiguous ones: asking for a submission pack, for a build at the submission
+    # stage, or for submission standards. `--stage submission` is a marker after `build`
+    # only: after `check` it is the command a refusal tells its reader to run.
+    _TOOL + r"(?:submit\b|build\b" + _SAME_COMMAND + r"--stage[\s=]+[\"']?submission\b)|"
+    r"--submission\b|"
     # Moving a submission somewhere: an action verb near the pack or a built document.
     r"\b(?:zip|tar|scp|rsync|cp|copy|mv|move|curl|wget|mail|sendmail|git\s+push|"
     # The same verbs as PowerShell and Windows spell them, since on Windows an agent's shell
@@ -70,7 +81,8 @@ SUBMISSION_MARKERS = re.compile(
 
 # What a refusal tells its reader to run. Spelled with `--stage`, because `--submission` is
 # one of the markers above: told to run `check --submission`, an agent was refused again with
-# the same lines and never saw the list. Both spellings give one verdict.
+# the same lines and never saw the list. Both spellings give one verdict, and after `check`
+# the stage is no marker, which is what lets this command through.
 #
 # A refusal says to run it on its own, and that is part of the advice. The command ends in
 # the word `submission`, so after `cp`, `git push` or a folder named `Copy` on the same line
@@ -643,10 +655,11 @@ def _status_line(payload: dict) -> str | None:
     return " ".join(parts)
 
 
-# Every version is released to PyPI as it is raised, so the index has the number the plugin
-# carries and `pip install --upgrade` takes it, wherever the copy came from. pipx is the
-# exception: `pipx upgrade` keeps a copy that was installed from git on git ("no package
-# index was checked"), so it is reinstalled, which serves a copy from PyPI as well.
+# Every version is released to PyPI within minutes of being raised, so the index soon has
+# the number the plugin carries and `pip install --upgrade` takes it, wherever the copy
+# came from. pipx is the exception: `pipx upgrade` keeps a copy that was installed from
+# git on git ("no package index was checked"), so it is reinstalled, which serves a copy
+# from PyPI as well.
 UPGRADE_COMMAND = (
     "pip install --upgrade manuscript-guard (with pipx: pipx install --force manuscript-guard)"
 )

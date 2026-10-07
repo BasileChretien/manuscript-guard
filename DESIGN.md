@@ -4919,22 +4919,28 @@ Closed since, and why each mattered:
   matcher is part of what a user trusted (`hook_hash` in
   `codex-rs/hooks/src/engine/discovery.rs`, read 2026-10-02), so after this change of
   matcher the guard is skipped there until the user reviews it again with `/hooks`.
-- **`build --stage submission` is a submission build the submission guard does not hold.**
-  `--stage submission` gives the same verdict as `--submission` and is not one of the
-  guard's markers, which is why a refusal can name `check --stage submission`. On `build` it
-  is let through too: in a project that fails, `manuscript-guard build --stage submission
-  --offline` is not stopped by the guard and refuses on its own account, and with
-  `--skip-checks` it writes `manuscript.UNCHECKED.docx`, where the same command with
-  `--submission` is refused before it runs. Found in the review of #136 on 2026-10-02 and
-  true on `main` before it. Not decided: a marker for `--stage submission` after `build`
-  only would close it.
-- **Under another name the command line is not a submission the guard sees.** The marker for
-  the pack is the words `manuscript-guard submit`. The package installs `mguard` as a second
-  name for the same command, and `mguard submit --offline --skip-checks`, `python -m
-  manuscript_guard.cli submit` and `manuscript-guard.exe submit` are all let through in a
-  project that fails. `submit` refuses on its own account without `--skip-checks`. An option
-  is seen under any name: `mguard build --submission` is refused. Found in the review of
-  #136 and true on `main` before it. Not fixed yet; the marker's line is one #132 changes.
+- **A submission build that names no stage is one the submission guard does not hold.**
+  `--stage submission` gives the same verdict as `--submission`. After `check` it is no
+  marker, which is why a refusal can name `check --stage submission`; after `build` it is
+  one, on that one command and not across `;`, `&`, `|` or the end of a line that is not
+  continued. Until 2026-10-08 it was none after `build` either: in a project that fails,
+  `manuscript-guard build --stage submission --skip-checks` wrote
+  `manuscript.UNCHECKED.docx`, where the same command with `--submission` was refused
+  before it ran. What is left is a project that declares `stage: submission` in
+  `paper.yaml`: there `build --skip-checks` is an unchecked submission build, and the
+  command holds no word for a marker to match. So is a stage held in a variable,
+  `--stage $STAGE`. Found in the review of #136 on 2026-10-02.
+- **Under a name the package does not give it, the command is not a submission the guard
+  sees.** The markers for the pack and for a build at the submission stage begin with the
+  command's name, and the names known are the ones the package installs or runs by:
+  `manuscript-guard` and `mguard`, each with `.exe` or without, at the end of a path or
+  between quotes, and `python -m manuscript_guard.cli`. Until 2026-10-08 only the first
+  was known, and `mguard submit --offline --skip-checks` went through in a project that
+  fails. A shell alias, a wrapper script, a `make submit` and
+  `python -c "from manuscript_guard.cli import main; main(['submit'])"` are names the
+  guard cannot know. An option is seen under any name: `mg build --submission` is
+  refused. `tests/test_hooks.py` holds the names to `[project.scripts]` in
+  `pyproject.toml`. Found in the review of #136.
 - **`AGENTS.md` is read by some agent tools and not by others, and it is written once.**
   Read from each tool's documentation on 2026-10-02, none of it observed in a session: Codex
   reads it before any work, from the repository's root down to the working directory, up to

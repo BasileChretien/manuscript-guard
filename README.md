@@ -50,7 +50,9 @@ can wait ([stages](docs/stages.md)).
 
 `check` knows that a results file is out of date from digests: of the script that wrote
 it, and of the inputs that script declared. It does not follow imports, so a change in a
-helper module is seen only where the script lists that module among its `inputs`.
+helper module fails the run only where the script lists that module among its `inputs`.
+Left unlisted, a source file under `analysis/` that is newer than the results gets a
+warning, and the run passes.
 `manuscript-guard verify` asks the other question. It runs the analysis again into a
 scratch copy and compares every value, which takes as long as the analysis does, and is
 what catches a result that changed while its file did not.

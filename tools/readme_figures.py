@@ -80,15 +80,17 @@ def card_svg(palette: dict[str, str]) -> str:
     ])
 
 
-#: The boxes of the loop: where each stands, its name, and one line under it.
+#: The boxes of the loop: where each stands, its name, and one line under it. The widths
+#: leave room for a font wider than the one a title was measured in: a Linux page falls back
+#: to DejaVu Sans, whose bold is a quarter wider than Segoe UI's.
 BOXES = {
     "analysis": (20, 60, 150, "Analysis", "Python or R"),
-    "results": (205, 60, 150, "results/", "written by the emitter"),
-    "manuscript": (390, 60, 150, "Manuscript", "Markdown, {{bindings}}"),
-    "check": (575, 60, 130, "check", "fourteen gates"),
+    "results": (200, 60, 150, "results/", "from the emitter"),
+    "manuscript": (380, 60, 150, "Manuscript", "with {{bindings}}"),
+    "check": (560, 60, 150, "check", "fourteen gates"),
     "build": (740, 60, 120, "build", "the .docx"),
-    "ledger": (390, 190, 150, "Literature ledger", "value, quote, source"),
-    "rules": (575, 190, 130, "Journal, checklist", "retrieved, not built in"),
+    "ledger": (370, 190, 170, "Literature ledger", "value, quote, source"),
+    "rules": (550, 190, 170, "Journal profile", "reporting checklist"),
 }
 BOX_HEIGHT = 62
 
@@ -103,7 +105,7 @@ def _box(name: str, palette: dict[str, str]) -> str:
     return (
         f'  <rect x="{x}" y="{y}" width="{width}" height="{BOX_HEIGHT}" rx="8" '
         f'fill="{fill}" stroke="{stroke}" stroke-width="1.5"/>\n'
-        f'  <text x="{middle}" y="{y + 27}" text-anchor="middle" font-size="15" '
+        f'  <text x="{middle}" y="{y + 27}" text-anchor="middle" font-size="14" '
         f'font-weight="600" fill="{palette["text"]}">{escape(title)}</text>\n'
         f'  <text x="{middle}" y="{y + 46}" text-anchor="middle" font-size="12" '
         f'fill="{palette["soft"]}">{escape(under)}</text>'
@@ -155,8 +157,8 @@ def loop_svg(palette: dict[str, str]) -> str:
         up("rules", "check"),
         back,
         f'  <text x="{width / 2}" y="286" text-anchor="middle" font-size="13" '
-        f'fill="{palette["soft"]}">Change the analysis and rebuild: every number follows. '
-        "A number that no longer has a source fails the check.</text>",
+        f'fill="{palette["soft"]}">Change the analysis, run it again and rebuild: '
+        "every bound number follows.</text>",
         "</svg>",
         "",
     ])

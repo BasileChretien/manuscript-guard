@@ -132,12 +132,13 @@ def test_the_pictures_are_the_ones_the_script_draws() -> None:
     """They are committed, so a change to the script that nobody ran would leave the README
     showing the old ones."""
     drawn = figures_script().figures()
-    committed = {path.name for path in (DOCS / "img").glob("*.svg")}
-    assert committed == set(drawn)
+    assert drawn
+    # A picture drawn by hand may sit beside these; only the script's own are compared.
     for name, text in drawn.items():
-        on_disk = (DOCS / "img" / name).read_text(encoding="utf-8")
+        path = DOCS / "img" / name
+        assert path.is_file(), f"docs/img/{name} is missing: run python tools/readme_figures.py"
+        on_disk = path.read_text(encoding="utf-8")
         assert on_disk == text, f"docs/img/{name} is stale: run python tools/readme_figures.py"
-    for name in drawn:
         assert f"docs/img/{name}" in text_of(README), f"the README does not show {name}"
 
 
@@ -171,18 +172,30 @@ def test_the_terminal_picture_says_what_check_says(project: Path, capsys) -> Non
 def test_the_readme_quotes_what_check_says_of_an_edited_results_file(
     project: Path, capsys
 ) -> None:
-    block = re.search(r"changed by hand:\n\n```text\n(.*?)```", text_of(README), re.DOTALL)
+    """The lines the README quotes are printed, in that order, and where it leaves one out it
+    says so with `...`: that is the only line the block may drop."""
+    block = re.search(
+        r"changed by hand\..*?\n\n```text\n(.*?)```", text_of(README), re.DOTALL
+    )
     assert block, "the README no longer quotes that finding"
+    quoted = [said(line) for line in block.group(1).splitlines()]
+    assert len(quoted) >= 3 and quoted[0].startswith("[FAIL] G1 "), quoted
     results = project / "results" / "01_disproportionality.json"
     text = results.read_text(encoding="utf-8")
     assert '"value": 4000' in text
     results.write_text(text.replace('"value": 4000', '"value": 4100', 1), encoding="utf-8")
 
     assert main(["check", str(project)]) == 1
-    printed = said(capsys.readouterr().out)
+    printed = [said(line) for line in capsys.readouterr().out.splitlines()]
 
-    for line in block.group(1).splitlines():
-        assert said(line) in printed, f"check no longer prints: {line.strip()}"
+    assert quoted[0] in printed, f"check no longer prints: {quoted[0]}"
+    at = printed.index(quoted[0])
+    for line in quoted[1:]:
+        if line == "...":
+            at += 1  # one line of the output, left out and marked
+            continue
+        at += 1
+        assert printed[at] == line, f"after the line before it, check prints: {printed[at]}"
 
 
 # ------------------------------------------------------------------------------ citation

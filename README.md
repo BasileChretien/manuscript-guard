@@ -11,8 +11,9 @@ A number in a paper comes from one of three places: your results, the literature
 convention of scientific writing. `manuscript-guard` holds a manuscript to that. Numbers
 from your analysis are bindings into a results file that your code writes, numbers from the
 literature are bindings into a ledger backed by stored sources, and anything else has to be
-justified. Change the analysis, rebuild, and the manuscript, the supplement and the figures
-follow. A stale number is a failed check, not something a reviewer finds.
+justified. Change the analysis, run it again and rebuild, and every bound number in the
+manuscript and the supplement follows. A number with no source is a finding of the check,
+not something left for a reviewer to notice.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/loop-dark.svg">
@@ -22,27 +23,41 @@ follow. A stale number is a failed check, not something a reviewer finds.
 
 It is a command line tool written in Python, for a manuscript written in Markdown and built
 to a Word document. The checks are deterministic code: they run offline and in CI and give
-the same answer every time, and no model decides whether a manuscript is clean. Skills and
-hooks for Claude Code, Codex and other agent tools are optional, and help with the parts
-that need judgement.
+the same answer every time. No gate asks a model anything. Two of them read a recorded
+review, of each figure and of the manuscript, which a person or a model may have written:
+the record is what the gate reads, and a person answers its major findings
+([principles](docs/principles.md)). Skills and hooks for Claude Code, Codex and other agent
+tools are optional, and help with the parts that need judgement.
 
 ## What it catches
 
-| What went wrong | What you get |
-|---|---|
-| A number was typed into the text where a result should be bound | `check` fails and names the line and the column |
-| A results file was edited by hand | `check` fails: the file no longer matches what the analysis wrote |
-| An analysis script or its input data changed after the results were written | `check` fails until the script is run again |
-| A value taken from a paper is not in the sentence quoted as evidence for it | `check` fails and shows the quote; the quote itself has to be in the stored source |
-| A number was typed into text that a figure draws | `check` fails at that line of the figure's script |
-| The analysis changed after the Methods were last read against it | `check` reports it at once, and fails on it from internal review on |
-| A reporting checklist item (STROBE, CONSORT, PRISMA and others) is not addressed | `check` lists each item still open |
-| The journal's word limit, a required section or a required statement is missed | `check` says which |
-| A reply to a reviewer claims a revision that was not made | `check` names the point |
-| A number sits in TeX that Word would silently drop | `check` and `build` both refuse it |
+Each finding names the stage from which it fails the run. Before that stage it is printed
+and counted, and the run passes: a new project starts at `design`, where the manuscript
+can wait ([stages](docs/stages.md)).
 
-This is what the first of those looks like, on the worked example, after one binding in the
-abstract was replaced by the number it stood for:
+| What went wrong | What `check` names | Fails from |
+|---|---|---|
+| A number was typed into the text where a result should be bound | the number, with its line and column | `drafting` |
+| A results file was edited by hand | the file, which no longer matches what the analysis wrote | `analysis` |
+| The script that wrote a results file, or an input it declared, changed afterwards | which of them, and the script to run again | `analysis` |
+| A value taken from a paper is not in the sentence quoted as evidence for it | the value and the quote; the quote itself has to be in the stored source | `drafting` |
+| A number was typed into text that a figure draws | the line of the figure's script | `drafting` |
+| The analysis changed after the Methods were last read against it | the files that changed | `internal-review` |
+| A reporting checklist item (STROBE, CONSORT, PRISMA and others) is not addressed | each item still open | `internal-review` |
+| The journal's word limit, a required section or a required statement is missed | which one | `internal-review` |
+| A reply to a reviewer claims a revision that was not made | the point | `submission` |
+| A number sits in TeX that Word would silently drop | the piece of TeX and its line, where pandoc is installed; `build` refuses it too | `drafting` |
+
+`check` knows that a results file is out of date from digests: of the script that wrote
+it, and of the inputs that script declared. It does not follow imports, so a change in a
+helper module is seen only where the script lists that module among its `inputs`.
+`manuscript-guard verify` asks the other question. It runs the analysis again into a
+scratch copy and compares every value, which takes as long as the analysis does, and is
+what catches a result that changed while its file did not.
+
+This is the finding for the first of those, on the worked example, after one binding in
+the abstract was replaced by the number it stood for. The line that opens the output and
+the warnings that follow the finding are left out:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/check-dark.svg">
@@ -50,11 +65,13 @@ abstract was replaced by the number it stood for:
        alt="manuscript-guard check prints: FAIL G2 manuscript/main.md:11:17, '4,000' is not bound to any source, with the line it is on and a hint to bind it with a results or literature key.">
 </picture>
 
-And the second, after one value in a results file was changed by hand:
+And for the second, after one value in a results file was changed by hand. `...` stands
+for a line left out, and three more findings follow from the same edit:
 
 ```text
   [FAIL] G1 results/01_disproportionality.json
          01_disproportionality.json has been modified since the analysis wrote it
+         ...
          hint: results are machine-written; change the analysis and re-run it rather than editing this file
 ```
 
@@ -117,6 +134,10 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G13 | every reviewer point is answered, and every claimed revision really happened |
 | G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, and it is spelt in one English (warnings only) |
 
+A finding also carries one of two labels that are no gate of their own: `G0`, for a file
+of the project that cannot be used as it stands, and `BUILD`, for what the build would
+refuse or warn of.
+
 You do not have to satisfy every gate on the first day. Each finding declares the stage at
 which it starts to matter, from `design` to `submission`, and until then it is printed and
 counted without failing the run: see [stages](docs/stages.md). What each gate guarantees and
@@ -131,9 +152,9 @@ pip install git+https://github.com/BasileChretien/manuscript-guard
 manuscript-guard --version
 ```
 
-To build a .docx you also need [pandoc](https://pandoc.org/installing.html). Zotero, R and
-a PDF reader are needed only for particular things, and the tool says which when you reach
-it. [Installing and upgrading](docs/install.md) has the table, the upgrade commands and the
+To build a .docx you also need [pandoc](https://pandoc.org/installing.html). Zotero, R, and
+`pdftotext` or pypdf for reading PDFs, are needed only for particular things, and the tool
+says which when you reach it. [Installing and upgrading](docs/install.md) has the table, the upgrade commands and the
 R emitter.
 
 ## Quick start
@@ -148,7 +169,7 @@ That writes a project with a `paper.yaml`, an analysis plan to fill in, a manusc
 `AGENTS.md` that gives any agent working there the rules on one page.
 
 Or run the worked example first. [`example/`](example/) is a synthetic pharmacovigilance
-study that exercises every gate. It is in the repository and not in the installed package,
+study that exercises every gate but G13, having no revision round. It is in the repository and not in the installed package,
 so it needs a clone, a Python that has `manuscript_guard` installed, and matplotlib for its
 figure:
 
@@ -211,8 +232,8 @@ claude plugin marketplace add BasileChretien/manuscript-guard
 claude plugin install manuscript-guard@manuscript-guard
 ```
 
-Fourteen skills. Start with `project-setup`; each of the others names the finding codes that
-should send you to it.
+Fourteen skills. Start with `project-setup`; most of the others name the finding codes that
+should send you to them.
 
 | Skill | For |
 |---|---|
@@ -244,11 +265,12 @@ codex plugin marketplace add BasileChretien/manuscript-guard
 codex plugin add manuscript-guard@manuscript-guard
 ```
 
-Codex runs a hook only after you have trusted it, under `/hooks`.
+By Codex's documentation, it runs a hook only after you have trusted it, under `/hooks`.
 
 ### Gemini CLI, Mistral Vibe, Kimi Code CLI and other tools
 
-These read skills from a folder, and one command copies the fourteen there:
+By their own documentation these read skills from a folder, and one command copies the
+fourteen there:
 
 ```bash
 manuscript-guard install-skills              # for you, in every project: ~/.agents/skills
@@ -274,7 +296,7 @@ everywhere.
 | [Agent tools](docs/agent-tools.md) | Claude Code, Codex and the others: installing, updating, what each enforces |
 | [A review panel read by several models](docs/review-panel.md) | internal review by people, an agent, or models from several providers |
 | [Auditing a paper you already wrote](docs/audit.md) | one command for a manuscript with no bindings, and how little a match means |
-| [DESIGN.md](DESIGN.md) | the architecture, every decision with its reason, and the known gaps |
+| [DESIGN.md](DESIGN.md) | the architecture, the reasons for its decisions, and the known gaps |
 | [ATTRIBUTION.md](ATTRIBUTION.md) | the reporting guidelines' licences, and the one data file derived from another work |
 
 ## Status
@@ -284,10 +306,12 @@ week to week: interfaces, file formats and what a gate reports can change withou
 migration path. Every round of review so far has found something the round before had
 opened up.
 
-A passing `check` means that what the tables above describe holds for your project. It is
-not evidence that a paper is right. What the toolkit cannot see is listed, gate by gate,
-under "Known gaps" in [DESIGN.md](DESIGN.md), because a gate whose limits are undocumented
-gets trusted beyond them.
+A passing `check` means that no finding due at the project's stage is open. At
+`submission` that is what the tables above describe; at an earlier stage the findings not
+yet due are printed and counted, and the run still passes. Neither is evidence that a
+paper is right. What the toolkit cannot see is listed under "Known gaps" in
+[DESIGN.md](DESIGN.md), because a gate whose limits are undocumented gets trusted beyond
+them.
 
 The most useful contribution now is a case where a gate is wrong, in either direction:
 [CONTRIBUTING.md](CONTRIBUTING.md) says how.

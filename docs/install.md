@@ -45,7 +45,7 @@ did not rise with that commit, and only a reinstall takes it:
 `pip install --force-reinstall git+https://github.com/BasileChretien/manuscript-guard`.
 
 The plugin's skills describe the commands of the release they came with, so keep the two
-together (see [the plugin](agent-tools.md#the-claude-code-plugin-optional)). When the plugin is newer
+together (see [the plugin](agent-tools.md#the-claude-code-plugin)). When the plugin is newer
 than the installed command line tool, its session-start hook says so, once, with the upgrade
 command, and blocks nothing. That warning comes from the tool itself, so a copy older than
 0.2.260 cannot give it: upgrade such a copy once, by hand.

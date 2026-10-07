@@ -1,11 +1,10 @@
 # Agent tools: Claude Code, Codex and the others
 
-The pip package is the whole guarantee. This page is about the optional part: the skills
-and hooks an agent tool can load, how each tool installs and updates them, and what each
-one does and does not enforce. The fourteen skills are listed in the
-[README](../README.md#the-claude-code-plugin).
+This page is about the part that is optional: the skills and hooks an agent tool can load,
+how each tool installs and updates them, and what each one does and does not enforce. The
+fourteen skills are listed in the [README](../README.md#the-claude-code-plugin).
 
-## The Claude Code plugin (optional)
+## The Claude Code plugin
 
 The pip package is the whole guarantee and needs nothing else. The plugin adds the parts
 that need judgement — setting up a project, drafting, literature verification, figure
@@ -70,7 +69,7 @@ unexpected: `check` names it in a sentence, and the submission guard and the ses
 pass that sentence on. A manuscript file that is not UTF-8 is a failing finding of the check
 like any other, and the guard blocks on it. Outside a project they say nothing.
 
-## Codex (optional)
+## Codex
 
 Codex installs the same plugin from this repository, with the same fourteen skills and the
 same four hooks. After the pip package:
@@ -124,7 +123,7 @@ login: a Codex session in which a skill is loaded, a hook is trusted or a hook f
 includes the session-start notice, which depends on Codex telling the hook where the plugin
 is, as its documentation says it does.
 
-## Gemini CLI, Mistral Vibe, Kimi Code CLI and other agent tools (optional)
+## Gemini CLI, Mistral Vibe, Kimi Code CLI and other agent tools
 
 By their own documentation, these tools read skills from a folder, `.agents/skills`, in your
 home or in a project. After the pip package, one command copies the fourteen skills there:
@@ -178,5 +177,14 @@ How far this has been checked: Gemini CLI 0.58.0 lists the fourteen skills from 
 CLI read either, is from their own documentation and has not been watched. What each tool
 does with `AGENTS.md` is from its documentation too, and for Kimi Code CLI that documentation
 was not found to say. No skill has been used in a session of any of the three.
+
+## AGENTS.md
+
+Among the files `manuscript-guard init` writes is an `AGENTS.md`: the rules of the project
+on one short page, for any agent working in it. Going by each tool's own documentation,
+Codex reads that file on its own, Mistral Vibe does in a folder you have trusted, and Claude
+Code (2.1.277 or later) does where there is no `CLAUDE.md` in the project or above it.
+Gemini CLI reads it once `context.fileName` in its settings lists `AGENTS.md`. None of this
+has been watched in a session. It is advice to the reader; the gates are what holds.
 
 [Back to the README](../README.md)

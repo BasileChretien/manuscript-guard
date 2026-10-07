@@ -29,6 +29,15 @@ caption describing the figure the author meant to make. That last review is reco
 `figures/<name>.review.yaml`, and the gate enforces that it exists, covered the required
 ground, and applies to the figure as it now stands — not that it was any good.
 
+`check` asks whether anything has been *disturbed*, and that is a question about digests —
+which can be recomputed. `verify` asks a different question: it re-runs your analysis into a
+scratch copy and compares the fragments value by value. A digest can be forged; a result
+cannot be forged into existence. It is a separate command because it executes your code,
+which a gate must never do, and because it takes as long as the analysis does. The digests
+are of the script that wrote a results file and of the inputs it declared: a module that
+script imports is covered only where it is listed among the `inputs`, and otherwise only
+`verify` sees it change.
+
 ## Design principles
 
 **The guarantees are deterministic code.** No model output is trusted as evidence about the

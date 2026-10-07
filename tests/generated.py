@@ -408,7 +408,7 @@ TYPOGRAPHY = {
     "\N{HORIZONTAL ELLIPSIS}": "...",
 }
 
-_SOURCE_WORDS = (
+SOURCE_WORDS = (
     "the", "reporting", "odds", "ratio", "for", "hepatic", "events", "was", "effect",
     "coefficient", "different", "efficacy", "per", "100", "000", "person-years", "13.42",
     "3.4", "0.42", "(95%", "CI", "9.10", "to", "19.80)", "0.21", "0.63", "14", "412",
@@ -417,14 +417,25 @@ _SOURCE_WORDS = (
     "\N{LEFT DOUBLE QUOTATION MARK}serious\N{RIGHT DOUBLE QUOTATION MARK}",
     "patients\N{RIGHT SINGLE QUOTATION MARK}", "\N{HORIZONTAL ELLIPSIS}", "non\N{HYPHEN}serious",
     "\N{GREEK CAPITAL LETTER ALPHA}\N{GREEK CAPITAL LETTER SIGMA}",
+    "\N{LEFT SINGLE QUOTATION MARK}probable\N{RIGHT SINGLE QUOTATION MARK}",
+    "events\N{EM DASH}all", "non\N{NON-BREAKING HYPHEN}fatal",
+    "in\N{LATIN SMALL LIGATURE FL}ammation", "ba\N{LATIN SMALL LIGATURE FFL}ed",
+)  # fmt: skip
+
+
+#: What stands between two words of a source.
+SOURCE_GAPS = (
+    " ", " ", " ", " ", "\n", "  ", " \n ", "\N{NO-BREAK SPACE}", "\N{THIN SPACE}",
+    "\N{NARROW NO-BREAK SPACE}",
 )  # fmt: skip
 
 
 def sources() -> st.SearchStrategy[str]:
     """The text of a stored source, as it is read from a page or out of a PDF."""
-    between = st.sampled_from((" ", " ", " ", "\n", "  ", "\N{NO-BREAK SPACE}", " \n "))
     return st.lists(
-        st.tuples(st.sampled_from(_SOURCE_WORDS), between), min_size=1, max_size=14
+        st.tuples(st.sampled_from(SOURCE_WORDS), st.sampled_from(SOURCE_GAPS)),
+        min_size=1,
+        max_size=14,
     ).map(lambda drawn: "".join(word + gap for word, gap in drawn))
 
 

@@ -33,7 +33,10 @@ from generated import (
     AGREED,
     FILLER,
     INPUTS,
+    SOURCE_GAPS,
+    SOURCE_WORDS,
     TERMS,
+    TYPOGRAPHY,
     generated,
     holds,
     lines,
@@ -660,6 +663,16 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
 
 
 # -------------------------------------------------------------------------------- quotations
+
+
+def test_every_character_a_quotation_is_typed_without_is_drawn_into_a_source() -> None:
+    """`TYPOGRAPHY` is what a page holds where a person types something else, and the
+    quotation property holds that each is folded. It held it of eleven of the eighteen:
+    the other seven were in the table and in no source, so a folding that lost one of
+    them passed."""
+    drawn = "".join((*SOURCE_WORDS, *SOURCE_GAPS))
+    never = [f"U+{ord(character):04X}" for character in TYPOGRAPHY if character not in drawn]
+    assert not never, never
 
 
 @holds(150, sources(), signs())

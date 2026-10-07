@@ -57,6 +57,24 @@ class Unavailable(Exception):
     looked for, so that it is passed over where it cannot be made, on either side."""
 
 
+def why_not(raised: BaseException) -> str:
+    """Why a reading could not be found in the package on the path, as one of two words.
+
+    `absent`: the package has no such reading, or this machine cannot make it. The module
+    or the name it is imported from is not in `manuscript_guard`, which is a reading newer
+    than the source, or one whose helper was since renamed; or a program it needs is not
+    installed. That is passed over.
+
+    `broken`: anything else. A helper that takes other arguments now, a dependency this
+    source needs and the installed ones do not include. The source has the reading and
+    could not be asked, which is not the same as having nothing to compare, and was taken
+    for it: the readings were passed over and the job was green."""
+    if isinstance(raised, Unavailable):
+        return "absent"
+    inside = (getattr(raised, "name", None) or "").split(".")[0] == "manuscript_guard"
+    return "absent" if isinstance(raised, ImportError) and inside else "broken"
+
+
 def answer(read: Reading, given: Any) -> Any:
     """What `read` makes of `given`, as JSON carries it: its answer, or what it raised.
     Through JSON and back, so that a tuple in one process and a list in the other, which is
@@ -71,11 +89,14 @@ def answer(read: Reading, given: Any) -> Any:
 def _told(report: Any) -> dict[str, Any]:
     """A report as the two sides compare it: every finding with where it points and what it
     says, in the order the gate gave them, and the counts. Each part under its name, so
-    that where two answers part can be said in words: `findings[0].line`."""
+    that where two answers part can be said in words: `findings[0].line`. The file is one
+    of the parts: a finding moved from the manuscript to `paper.yaml` with its line kept
+    was no difference."""
     return {
         "findings": [
             {
                 "gate": f.gate,
+                "path": None if f.path is None else f.path.as_posix(),
                 "code": f.code,
                 "severity": f.severity,
                 "message": f.message,
@@ -523,8 +544,10 @@ def _named(said: str, root: Path, folder: Path) -> str:
 
 def serve() -> None:
     """Answer for the package on the path until the questions end: a line of JSON in, a
-    line of JSON out. The first line out says which package was found and which readings
-    it has no door for, so that whoever asks can refuse an answer from the wrong source.
+    line of JSON out. The first line out says which package was found, which readings it
+    does not have and which it has and cannot make (`why_not`), so that whoever asks can
+    refuse an answer from the wrong source and tell nothing to compare from a comparison
+    that could not be made.
 
     Answers go to the standard output as it was when the process began. Everything a
     reading prints after that goes to the standard error, where it cannot be taken for one.
@@ -538,25 +561,27 @@ def serve() -> None:
     import manuscript_guard
 
     found: dict[str, Reading] = {}
-    absent: dict[str, str] = {}
+    lacking: dict[str, dict[str, str]] = {"absent": {}, "broken": {}}
     for name, find in READINGS.items():
         try:
             found[name] = find()
-        except Exception as raised:  # noqa: BLE001 - an older package lacks a newer door
-            absent[name] = f"{type(raised).__name__}: {raised}"
+        except Exception as raised:  # noqa: BLE001 - told apart by `why_not`
+            lacking[why_not(raised)][name] = f"{type(raised).__name__}: {raised}"
 
     def say(told: dict[str, Any]) -> None:
         answers.write(json.dumps(told, ensure_ascii=True, sort_keys=True) + "\n")
         answers.flush()
 
-    say({"package": str(Path(manuscript_guard.__file__).resolve().parent), "absent": absent})
+    say({"package": str(Path(manuscript_guard.__file__).resolve().parent), **lacking})
     for line in sys.stdin.buffer:
         asked = json.loads(line)
         name = asked["reading"]
         if name in found:
             say(answer(found[name], asked["given"]))
+        elif name in lacking["broken"]:
+            say({"broken": lacking["broken"][name]})
         else:
-            say({"absent": absent.get(name, "no reading has that name")})
+            say({"absent": lacking["absent"].get(name, "no reading has that name")})
 
 
 if __name__ == "__main__":

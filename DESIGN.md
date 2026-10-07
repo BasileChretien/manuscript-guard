@@ -3773,12 +3773,24 @@ it.
   is ended, and the test with it, without the input being cut down: a hang would be
   waited for again at every smaller input, and the smallest would be named as the cause.
   `pytest.fail` does not do that, since Hypothesis takes it for a failing input.
+- **A base that cannot be asked.** A reader says at its start which readings its source
+  does not have and which it has and cannot make, and the two are not treated alike. A
+  reading the base does not have is passed over: it is newer than the base, or needs a
+  program this machine lacks. That is a skip, and it is also written on the job's page,
+  since a skip is one line among hundreds. A reading the base has and cannot make is a
+  comparison that was not made: a helper it goes through takes other arguments now, or
+  the base needs a dependency that is not installed for the working tree. It fails,
+  unless the pull request says in `differential_expected.yaml` that it changed what the
+  reading goes through, and then it passes with that said. Both used to be passed over,
+  which left a job green that had compared nothing; and a base that can be asked for
+  none of the readings is refused outright.
 - **The comparison is held to being one.** Two processes on this source under two hash
   seeds must answer alike on every reading, which also catches a reading that walks a
-  set. And six lines are changed in a copy of the source, one at a time, and the reading
+  set. And seven lines are changed in a copy of the source, one at a time, and the reading
   that goes through each must differ: among them the mutant the review of #181 found
-  alive, the offset of a quotation's lines losing a character at each line break, and an
-  import that writes no rewording.
+  alive, the offset of a quotation's lines losing a character at each line break, an
+  import that writes no rewording, and a finding that points at another file with its
+  line kept, which the readings did not compare at first.
 
 Run against main as it was before #181 and #183, it reports the vocabulary reading
 changed, on a vocabulary of one entry, and `check` changed; passes over the spelling
@@ -7550,12 +7562,10 @@ Closed since, and why each mattered:
     reaches them, which has none of those.
   - A reading that is new in a pull request has no base to compare with, and neither has
     one whose helper was renamed in it: several readings go through a private name
-    (`_hidden`, `_file`, `_judge`). Each is passed over with a line saying so.
-  - Whatever stops the base from making a reading reads as the base not having it. A
-    helper that takes other arguments now, or a base that cannot be imported at all under
-    the working tree's dependencies, passes its readings over just as a new reading is
-    passed over. Nothing fails when every reading is passed over, and the lines that say
-    so are among the run's skips, not on the job's page (review of #188, round 1).
+    (`_hidden`, `_file`, `_judge`), and a name the base does not have reads as a reading
+    it does not have. Each is passed over, with a line among the skips and on the job's
+    page. A helper that kept its name and takes other arguments is not passed over: the
+    comparison fails until the pull request says so.
   - The base is read with the dependencies installed for the working tree. A pull
     request that raises PyYAML or jsonschema compares both sources under the new one.
     It is read under the installed pandoc too: where there is one, `check` has it read
@@ -7563,18 +7573,11 @@ Closed since, and why each mattered:
     `check` gives pandoc ten seconds for a document. That is the one clock inside a
     reading. A generated manuscript is nowhere near it, but past it two answers to one
     input could differ for a reason that is not the source.
-  - Two sides are compared on a finding's gate, code, severity, message, line, column,
-    context and hint, and not on the file it points at, except in what `check` prints. A
-    finding moved from the manuscript to `paper.yaml` with its line kept is no difference
-    in the readings of G14.
-  - Of the eighteen characters a quotation is typed without, a generated source writes
-    eleven. The left single quotation mark, the em dash, the non-breaking hyphen, the
-    thin and the narrow no-break space, and the ligatures fl and ffl are never drawn, so
-    a folding table that lost one of them would pass.
   - A meant change excuses its whole reading in that pull request. A difference nobody
     meant, in the same reading, is listed with the others and passes: the list is there
-    to be read.
-  - The properties were seen to fail on nine broken rules, and the comparison on six
+    to be read. So does a reading the base cannot make, once the pull request says it
+    changed what the reading goes through: nothing of it is compared.
+  - The properties were seen to fail on nine broken rules, and the comparison on seven
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff.
   - The hard limit ends the whole run, not the one test: nothing else stops a pattern

@@ -63,7 +63,7 @@ from differential import (
 )
 from generated import INPUTS, generated, times
 from hypothesis import given
-from readings import READINGS
+from readings import READINGS, Unavailable, why_not
 
 REPO = Path(__file__).resolve().parent.parent
 PACKAGE = REPO / "src" / "manuscript_guard"
@@ -166,6 +166,7 @@ def test_the_reader_found_the_source_it_was_given_and_every_reading_in_it(here: 
     assert here.package == PACKAGE.resolve()
     lacking = {name: why for name, why in here.absent.items() if not _unavailable(why)}
     assert lacking == {}, "a reading of tests/readings.py cannot be found in this source"
+    assert here.broken == {}, "a reading of tests/readings.py cannot be made of this source"
 
 
 def test_a_source_that_is_not_the_one_asked_for_is_refused(tmp_path: Path) -> None:
@@ -230,12 +231,23 @@ CHANGED = {
         "        if replacement == original:\n",
         "import",
     ),
+    "a finding that points at another file": (
+        "gates/vocabulary.py",
+        "                path=passage.path,\n",
+        "                path=paper,\n",
+        "vocabulary",
+    ),
 }
 
 
 def _changed_copy(case: str, folder: Path) -> Reader:
     """A reader for a copy of this source with the one line of `case` changed."""
     file, old, new, _reading = CHANGED[case]
+    return _copy_with(file, old, new, folder)
+
+
+def _copy_with(file: str, old: str, new: str, folder: Path) -> Reader:
+    """A reader for a copy of this source in which `old` of `file` reads `new`."""
     shutil.copytree(
         PACKAGE, folder / "src" / "manuscript_guard", ignore=shutil.ignore_patterns("__pycache__")
     )
@@ -297,13 +309,143 @@ def compared(name: str, old: Reader, new: Reader, meant: dict[str, str], example
         f"generated inputs, as {EXPECTED.name} says it will ({meant[name]}):\n"
         f"{summarised(found)}"
     )
-    # Where whoever reviews the change will look: among the warnings of the run, and on the
-    # page GitHub makes of a job.
     warnings.warn(message, stacklevel=2)
+    _on_the_jobs_page("A change that was meant", message)
+
+
+def against_the_base(
+    name: str, new: Reader, old: Reader, meant: dict[str, str], examples: int
+) -> None:
+    """One reading of the working tree held to the base's, whatever the base can do.
+
+    A reading the base does not have is passed over, and that is written on the job's
+    page as well as among the skips. A reading the base has and cannot make is a
+    comparison that was not made: it fails, unless the pull request says it changed what
+    the reading goes through, and then it passes with that said. Any other is compared."""
+    _skip_where_it_cannot_be_made(name, new, old)
+    if name in old.broken:
+        message = (
+            f"the base cannot make the reading {name!r} ({old.broken[name]}), so nothing "
+            "was compared"
+        )
+        assert name in meant, (
+            f"{message}. If this pull request changed what the reading goes through, say "
+            f"so in {EXPECTED.name}; if not, the base cannot be read here"
+        )
+        message += f", as {EXPECTED.name} says ({meant[name]})"
+        warnings.warn(message, stacklevel=2)
+        _on_the_jobs_page("A reading that could not be compared", message)
+        return
+    if name in old.absent:
+        assert name not in meant, f"{name!r} is said to differ, and the base has no such reading"
+        message = f"the base has no reading {name!r}: {old.absent[name]}"
+        _on_the_jobs_page("A reading with no base", message)
+        pytest.skip(message)
+    compared(name, old, new, meant, examples)
+
+
+def must_have_a_reading(old: Reader) -> None:
+    """A base that can be asked for none of the readings is no base: every comparison
+    would be passed over, and the run would be green for having compared nothing."""
+    without = {**old.absent, **old.broken}
+    assert set(READINGS) - set(without), (
+        f"the base has none of the readings, so nothing would be compared: {without}"
+    )
+
+
+def _on_the_jobs_page(heading: str, said: str) -> None:
+    """Write to the page GitHub makes of a job, where whoever reviews the change will
+    look: a skip or a warning is one line among the run's hundreds."""
     page = os.environ.get("GITHUB_STEP_SUMMARY")
     if page:
         with open(page, "a", encoding="utf-8") as summary:
-            summary.write(f"### A change that was meant\n\n```\n{message}\n```\n\n")
+            summary.write(f"### {heading}\n\n```\n{said}\n```\n\n")
+
+
+def test_what_stops_a_reading_being_made_is_told_apart() -> None:
+    """A source may have no answer for a reading because the reading is newer than the
+    source, or needs a program that is not installed: that is passed over. Anything else
+    that stops it is not the same thing, and was taken for it: a helper that takes other
+    arguments now, a dependency the base cannot import under what is installed for the
+    working tree. Passed over, those readings were not compared and the job was green."""
+    newer = ModuleNotFoundError(
+        "No module named 'manuscript_guard.gates.spelling'", name="manuscript_guard.gates.spelling"
+    )
+    renamed = ImportError(
+        "cannot import name 'own_words' from 'manuscript_guard.gates.vocabulary'",
+        name="manuscript_guard.gates.vocabulary",
+    )
+    assert why_not(newer) == why_not(renamed) == "absent"
+    assert why_not(Unavailable("pandoc is not installed")) == "absent"
+    assert why_not(ModuleNotFoundError("No module named 'jsonschema'", name="jsonschema")) == (
+        "broken"
+    )
+    assert why_not(TypeError("_file() missing 1 required positional argument")) == "broken"
+    assert why_not(AttributeError("module has no attribute")) == "broken"
+
+
+#: The helper three readings go through, given one argument more: what a pull request does
+#: that changes it, with `tests/readings.py` brought up to date in the same pull request.
+_ANOTHER_ARGUMENT = (
+    "gates/language.py",
+    "def _file(order: int, path: Path, text: str, chain: list[Section], supplementary: bool)"
+    " -> _File:\n",
+    "def _file(order: int, path: Path, text: str, chain: list[Section], supplementary: bool,"
+    " kind: str) -> _File:\n",
+)
+
+
+def test_a_base_that_cannot_make_a_reading_fails_unless_the_change_says_so(
+    here: Reader, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The base here is a copy whose `_file` takes an argument this suite's readings do
+    not give. It cannot make the three readings that go through it, and that is not the
+    base lacking them: nothing was compared, so the run fails, unless the pull request
+    says in `differential_expected.yaml` that it changed what those readings go through.
+    A reading that does not go through `_file` is compared as ever."""
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    with _copy_with(*_ANOTHER_ARGUMENT, tmp_path) as base:
+        assert set(base.broken) == {"vocabulary", "spelling", "abbreviations"}, base.broken
+        assert all(why.startswith("TypeError: ") for why in base.broken.values()), base.broken
+        assert not [why for why in base.absent.values() if not _unavailable(why)], base.absent
+        with pytest.raises(AssertionError, match="the base cannot make the reading 'vocabulary'"):
+            against_the_base("vocabulary", here, base, {}, 10)
+        meant = {"vocabulary": "a file is read with its kind now"}
+        with pytest.warns(UserWarning, match="cannot make the reading 'vocabulary'") as said:
+            against_the_base("vocabulary", here, base, meant, 10)
+        assert "a file is read with its kind now" in str(said[0].message)
+        against_the_base("title", here, base, {}, 10)
+
+
+def test_a_reading_passed_over_is_said_on_the_jobs_page(
+    here: Reader, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reading the base does not have is skipped, and a skip is a line among hundreds.
+    It is also written where a meant change is: on the page GitHub makes of the job."""
+    page = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(page))
+    lacks = "ImportError: cannot import name 'mask' from 'manuscript_guard.text.masking'"
+    older = _worker(tmp_path, _hello(absent={"mask": lacks}) + "for line in sys.stdin:\n    pass\n")
+    with Reader(REPO / "src", worker=older) as base:
+        with pytest.raises(pytest.skip.Exception, match="the base has no reading 'mask'"):
+            against_the_base("mask", here, base, {}, 5)
+        with pytest.raises(AssertionError, match="is said to differ, and the base has no such"):
+            against_the_base("mask", here, base, {"mask": "it is new"}, 5)
+    assert "the base has no reading 'mask'" in page.read_text(encoding="utf-8")
+    assert lacks in page.read_text(encoding="utf-8")
+
+
+def test_a_base_with_none_of_the_readings_is_no_base(tmp_path: Path) -> None:
+    """Every reading passed over is a comparison of nothing, and it was a green one."""
+    lacks = dict.fromkeys(READINGS, "ImportError: cannot import name")
+    nothing = _worker(tmp_path, _hello(absent=lacks) + "for line in sys.stdin:\n    pass\n")
+    with (
+        Reader(REPO / "src", worker=nothing) as base,
+        pytest.raises(AssertionError, match="the base has none of the readings"),
+    ):
+        must_have_a_reading(base)
+    with Reader(REPO / "src", worker=_worker(tmp_path, _HELLO + "sys.stdin.read()\n")) as base:
+        must_have_a_reading(base)
 
 
 def test_a_change_that_is_meant_passes_and_says_what_differs_and_any_other_fails(
@@ -329,11 +471,15 @@ def test_a_change_that_is_meant_passes_and_says_what_differs_and_any_other_fails
 
 #: How a stand-in for the worker begins: by saying, as the real one does, which package it
 #: found, and here that it is the one asked for.
-_HELLO = (
-    "import json, sys\n"
-    f"found = {{'package': {str(PACKAGE.resolve())!r}, 'absent': {{}}}}\n"
-    "print(json.dumps(found), flush=True)\n"
-)
+def _hello(*, absent: dict[str, str]) -> str:
+    return (
+        "import json, sys\n"
+        f"found = {{'package': {str(PACKAGE.resolve())!r}, 'absent': {absent!r}}}\n"
+        "print(json.dumps(found), flush=True)\n"
+    )
+
+
+_HELLO = _hello(absent={})
 
 
 def _worker(folder: Path, body: str) -> Path:
@@ -545,14 +691,47 @@ def test_the_job_compares_with_the_commit_the_merge_was_made_on() -> None:
     main with the merge. Everything main took in since then counted as this pull request's
     change, and an entry another pull request had declared and merged excused its reading
     here too (#83's stored base was four commits of main behind the merge its last run
-    checked out)."""
+    checked out).
+
+    The first parent is the base only of that merge. So the job may not be told to check
+    out anything else, and has to fetch at least two commits deep."""
     workflow = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text("utf-8"))
     job = workflow["jobs"]["old-against-new"]
+    _names_the_merges_first_parent(job)
+
+    def checked_out(**given: Any) -> dict[str, Any]:
+        """The job with its checkout step given these settings in place of its own."""
+        steps = [
+            {**step, "with": given} if "actions/checkout" in step.get("uses", "") else step
+            for step in job["steps"]
+        ]
+        return {**job, "steps": steps}
+
+    # `HEAD^1` is the base only while `HEAD` is the merge GitHub made. Told to check out
+    # the pull request's own head, the job would compare its last commit with the one
+    # before, and pass where an earlier commit changed a reading.
+    with pytest.raises(AssertionError, match="not GitHub's merge"):
+        _names_the_merges_first_parent(
+            checked_out(**{"fetch-depth": 2, "ref": "${{ github.event.pull_request.head.sha }}"})
+        )
+    # One commit deep, the first parent is not there to be named.
+    for shallow in ({"fetch-depth": 1}, {}):
+        with pytest.raises(AssertionError, match="first parent is not fetched"):
+            _names_the_merges_first_parent(checked_out(**shallow))
+    # Deeper is as good, and so is the whole history.
+    _names_the_merges_first_parent(checked_out(**{"fetch-depth": 0}))
+    _names_the_merges_first_parent(checked_out(**{"fetch-depth": 50}))
+
+
+def _names_the_merges_first_parent(job: dict[str, Any]) -> None:
     named = job["env"][BASE]
     assert "base.sha" not in named, named
     assert "github.event_name == 'pull_request' && 'HEAD^1'" in named, named
     checkout = next(step for step in job["steps"] if "actions/checkout" in step.get("uses", ""))
-    assert checkout["with"]["fetch-depth"] == 2, "the merge's first parent is not fetched"
+    given = checkout.get("with", {})
+    assert "ref" not in given, "what is checked out is not GitHub's merge, so HEAD^1 is no base"
+    depth = given.get("fetch-depth", 1)
+    assert depth == 0 or depth >= 2, "the merge's first parent is not fetched"
 
 
 @pytest.fixture(scope="module")
@@ -577,6 +756,7 @@ def base(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[Reader, dic
         )
         pytest.skip(f"src/manuscript_guard is as {commit[:12]} has it: nothing to compare")
     with Reader(source) as reader:
+        must_have_a_reading(reader)
         yield reader, meant
 
 
@@ -585,8 +765,4 @@ def test_the_working_tree_reads_as_the_base_does(
     name: str, here: Reader, base: tuple[Reader, dict[str, str]]
 ) -> None:
     old, meant = base
-    _skip_where_it_cannot_be_made(name, here, old)
-    if name in old.absent:
-        assert name not in meant, f"{name!r} is said to differ, and the base has no such reading"
-        pytest.skip(f"the base has no reading {name!r}: {old.absent[name]}")
-    compared(name, old, here, meant, EXAMPLES[name])
+    against_the_base(name, here, old, meant, EXAMPLES[name])

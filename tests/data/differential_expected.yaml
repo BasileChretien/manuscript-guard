@@ -16,6 +16,10 @@
 # lists what differs, for whoever reviews the change to read against the `why`. Every other
 # reading still fails on a difference, which is how "nothing else changed" is held.
 #
+# An entry is also how a pull request says it changed what a reading goes through, a
+# helper that takes another argument now, so that the base's source cannot be asked for
+# that reading at all. Without the entry that fails: nothing was compared.
+#
 # An entry for a reading that does not differ fails, and so does one that names no reading.
 # Spent entries may stay as a record or go; the list is not read for them.
 

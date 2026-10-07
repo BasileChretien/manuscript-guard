@@ -87,6 +87,9 @@ class Reader:
         self.package = found
         #: The readings this source has no door for, each with what looking for it raised.
         self.absent: dict[str, str] = first["absent"]
+        #: The readings this source has and could not be asked for, each with why: not
+        #: the same as having none, and never passed over (`readings.why_not`).
+        self.broken: dict[str, str] = first.get("broken", {})
 
     def _listen(self) -> None:
         assert self.process.stdout is not None
@@ -165,7 +168,11 @@ def first_difference(first: Any, second: Any, at: str = "") -> str | None:
         elif not at:
             # The whole answer: one side answered, and the other raised or has no such reading.
             (one,), (other,) = first, second
-            told = {"answer": "answered", "absent": "has no such reading"}
+            told = {
+                "answer": "answered",
+                "absent": "has no such reading",
+                "broken": "cannot make the reading",
+            }
             said = [
                 f"raised {side[key]}" if key == "raised" else told[key]
                 for side, key in ((first, one), (second, other))

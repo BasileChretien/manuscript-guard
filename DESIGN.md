@@ -7646,8 +7646,8 @@ Closed since, and why each mattered:
     session, the tenth of seed 34, a paragraph deleted in front of a reworded div. The
     sentence is matched from "or the text that stood under it" to the block it quotes,
     so rewording that in `merge.py` fails the test; `tests/test_corruption.py` holds the
-    sentence's opening on sessions written by hand, and no test its ending, that nothing
-    is written. The import says the same of a paragraph with nothing deleted, as "stood
+    sentence's opening on sessions written by hand, and that nothing is written; no test
+    holds its closing words. The import says the same with nothing deleted, as "stood
     above it", which is not counted. That a bookmark left on a reworded paragraph is read
     as two paragraphs joined was read once and is held by no test of this file.
   - The comparison with the base covers the readings of `tests/readings.py` and nothing

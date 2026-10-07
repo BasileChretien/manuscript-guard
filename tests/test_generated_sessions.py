@@ -200,8 +200,8 @@ def _left_on(session: Session, *, identified: bool) -> list[str]:
 
 
 #: The middle of what #121 made the import say of a paragraph it cannot tell from the
-#: block under it, from these words to the block it quotes. The sentence's opening is
-#: `tests/test_corruption.py`'s to hold; its ending, that nothing is written, no test's.
+#: block under it, from these words to the block it quotes. `tests/test_corruption.py`
+#: holds the sentence's opening, and that nothing is written; no test its closing words.
 _UNDER_IT = "or the text that stood under it when the document was sent ('The {tag} reports"
 
 
@@ -209,9 +209,11 @@ def _refused_as_in_121(session: Session, said: str) -> bool:
     """Whether the import said, of a block of this session that stands as in the case of
     #121, what #121 made it say. Every block of a generated paper begins "The", its own
     word, "reports", and the import quotes the block it means, so the sentence names which
-    one. It says the same of a paragraph with nothing deleted, as "stood above it", and
-    would quote a block gone above the deleted paragraph before the one under it; neither
-    is counted, which errs towards the twelve lacking the case."""
+    one. It says the same of a paragraph with nothing deleted, as "stood above it": that
+    has not the shape, and is rightly not counted. Where blocks are gone on both sides of
+    the deleted paragraph it quotes the one that reads like the text, else the one above;
+    a session in which that is not the block under it is not counted either, which errs
+    towards the twelve lacking the case."""
     return any(
         _UNDER_IT.format(tag=after) in said for after in _left_on(session, identified=False)
     )

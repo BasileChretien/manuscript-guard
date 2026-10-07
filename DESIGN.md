@@ -3714,8 +3714,8 @@ the case. The import reads a join where a second paragraph deleted the same way 
 front, since both bookmarks are passed on; it can tell which is which where the block is
 a heading; and it refuses for another reason where the source changed there since the
 build. Of six seeds listed as having everything, two passed without the import once
-saying #121's sentence. So the generator is asked for the shape, which is all a draw
-has, and the twelve for the sentence.
+saying #121's sentence of a deleted paragraph. So the generator is asked for the shape,
+which is all a draw has, and the twelve for the sentence.
 
 The second review found the first form of this asking for the word "deleted". The twelve
 of the day had it three times and never as the document it stands for: a caption has no
@@ -7644,10 +7644,12 @@ Closed since, and why each mattered:
     read out of the document that was built. What the import makes of one is read from
     what it printed. The twelve are held to its saying #121's sentence of one such
     session, the tenth of seed 34, a paragraph deleted in front of a reworded div. The
-    sentence is matched by its words, up to the block it quotes, so rewording it in
-    `merge.py` fails that test as it fails `tests/test_corruption.py`, which holds the
-    sentence on sessions written by hand. That a bookmark left on a reworded paragraph is
-    read as two paragraphs joined was read once and is held by no test of this file.
+    sentence is matched from "or the text that stood under it" to the block it quotes,
+    so rewording that in `merge.py` fails the test; `tests/test_corruption.py` holds the
+    sentence's opening on sessions written by hand, and no test its ending, that nothing
+    is written. The import says the same of a paragraph with nothing deleted, as "stood
+    above it", which is not counted. That a bookmark left on a reworded paragraph is read
+    as two paragraphs joined was read once and is held by no test of this file.
   - The comparison with the base covers the readings of `tests/readings.py` and nothing
     else. The build is compared only through the round trip, and the gates that read
     results, figures, sources and review records only as far as `check` on a new project

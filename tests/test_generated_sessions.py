@@ -67,7 +67,8 @@ Session = dict[str, Any]
 #: How it was chosen: of the numbers 0 to 119, twenty-eight draw twelve with the sessions
 #: asked for. Seventeen of those were played through the import, and with four of them it
 #: wrote everywhere it is asked to and said of the case of #121 what #121 made it say:
-#: 34, 38, 53 and 54. With two more, 37 and 75, it wrote everywhere and never said it.
+#: 34, 38, 53 and 54. With two more, 37 and 75, it wrote everywhere and never said it
+#: of a deleted paragraph.
 PINNED = 34
 #: How many of the numbers worth trying turned out to have it all, for the message.
 _HAS_IT_ALL = "about one in four"
@@ -198,15 +199,19 @@ def _left_on(session: Session, *, identified: bool) -> list[str]:
     ]
 
 
-#: What #121 made the import say of a paragraph it cannot tell from the block under it,
-#: up to where it quotes that block.
+#: The middle of what #121 made the import say of a paragraph it cannot tell from the
+#: block under it, from these words to the block it quotes. The sentence's opening is
+#: `tests/test_corruption.py`'s to hold; its ending, that nothing is written, no test's.
 _UNDER_IT = "or the text that stood under it when the document was sent ('The {tag} reports"
 
 
 def _refused_as_in_121(session: Session, said: str) -> bool:
     """Whether the import said, of a block of this session that stands as in the case of
     #121, what #121 made it say. Every block of a generated paper begins "The", its own
-    word, "reports", and the import quotes the block, so the sentence names which one."""
+    word, "reports", and the import quotes the block it means, so the sentence names which
+    one. It says the same of a paragraph with nothing deleted, as "stood above it", and
+    would quote a block gone above the deleted paragraph before the one under it; neither
+    is counted, which errs towards the twelve lacking the case."""
     return any(
         _UNDER_IT.format(tag=after) in said for after in _left_on(session, identified=False)
     )
@@ -415,7 +420,8 @@ def test_each_thing_asked_of_the_sessions_is_named_when_it_is_missing() -> None:
     ]
     # And with the shape of #121's case but not its sentence, or the sentence of another
     # block than the one the bookmark was left on: twelve that passed under #121's name
-    # without the import ever saying it are what two of the six seeds first listed were.
+    # without the import ever saying it of a deleted paragraph are what two of the six
+    # seeds first listed were.
     of_bravo, of_delta = (_UNDER_IT.format(tag=tag) for tag in ("bravo", "delta"))
     assert _lacking(PLAYED, [(_BUSY, True, "deleted in Word, left in place here")]) == [
         _AS_IN_121
@@ -467,13 +473,22 @@ def test_twelve_other_sessions_fail_with_the_whole_message() -> None:
     assert _AS_IN_121 in lacking_a_session and "wrote in 12 of them" in lacking_a_session
     assert "lack: [];" in written_in_too_few and "wrote in 1 of them" in written_in_too_few
     assert _amiss([busy] * WRITES_IN, among=few) == ""
-    # The numbers the message gives are the helper's, and were held to nothing but
-    # themselves. The number pinned is one of them, the next is not, and left to itself
-    # the message looks through the forty after the one pinned.
-    if _as_pinned():
-        assert PINNED in _worth_trying(few) and PINNED + 1 not in _worth_trying(few)
-        after = _worth_trying(range(PINNED + 1, PINNED + 41))
-        assert after and f"asked for: {after}." in _amiss([simplest] * 12)
+    # Left to itself the message looks through the forty numbers after the one pinned.
+    after = _worth_trying(range(PINNED + 1, PINNED + 41))
+    assert f"asked for: {after}." in _amiss([simplest] * 12)
+
+
+def test_a_number_is_worth_trying_where_its_twelve_have_what_is_asked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The numbers the message gives are `_worth_trying`'s, and a wrong list sends whoever
+    reads it to runs of most of a minute each. It was held to finding the number pinned
+    and not the one after it, which is a fact of seed 34: with 53 pinned, a number that
+    has it all, that line failed with nothing wrong and no message. So it is held on
+    twelves written here, whatever is pinned and whatever seed the run names."""
+    twelves = {1: [_BUSY] * 12, 2: [_SIMPLEST] * 12, 3: [_SIMPLEST] * 11 + [_BUSY]}
+    monkeypatch.setitem(globals(), "_twelve_of", twelves.__getitem__)
+    assert _worth_trying([1, 2, 3]) == [1, 3]
 
 
 def test_a_document_only_saved_changes_nothing_and_one_rewording_lands() -> None:

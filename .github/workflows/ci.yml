@@ -43,6 +43,38 @@ jobs:
       # -rs names each test that still skips, and why.
       - run: pytest -q -rs
 
+  old-against-new:
+    # The same generated inputs read by the source this change is to be merged into and by
+    # the source with the change in it, reading by reading (tests/test_differential.py). A
+    # difference fails, unless the pull request names the reading in
+    # tests/data/differential_expected.yaml and says why. This is the comparison the
+    # independent reviews made by hand, with a campaign written for each round.
+    #
+    # The test jobs run the same file, and there the comparison with the base is skipped:
+    # they have no commit to compare with. Here one is named, so a base that could not be
+    # fetched fails the run. For a pull request it is the commit the pull request would be
+    # merged into, and what is checked out is the merge, so the two differ by this change
+    # and by nothing main took in since. For a push to main it is main as it was before.
+    runs-on: ubuntu-latest
+    # About two minutes when the source changed and seconds when it did not; a reading
+    # that never answers is stopped by the test itself long before this.
+    timeout-minutes: 20
+    env:
+      MANUSCRIPT_GUARD_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@v4
+      # One commit, by its hash: the checkout above fetched one too, and no history is read.
+      - run: git fetch --no-tags --depth=1 origin "$MANUSCRIPT_GUARD_BASE"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # These tests call no pandoc, but every pytest run here is held to the same requirement.
+      - uses: r-lib/actions/setup-pandoc@v2
+        with:
+          pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
+      - run: pip install -e ".[dev]"
+      - run: pytest -q -rs tests/test_differential.py
+
   plugin-manifests:
     # Validation reads JSON only: no model and no credentials are involved. Two versions,
     # because they disagree: 2.1.119 refuses root keys ($schema, description) that the

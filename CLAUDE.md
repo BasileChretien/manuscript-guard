@@ -35,6 +35,22 @@ installs it, and with that variable set `tests/conftest.py` refuses to start unl
 pandoc is on PATH. Set it to the same value locally to run the suite as CI does; unset, a
 missing pandoc only skips the tests that need it.
 
+The generated tests (`tests/test_properties.py`, `tests/test_differential.py`) draw the same
+inputs on every run. To look harder at a change, draw more of them or from another seed,
+and name the commit to compare the working tree with:
+
+```bash
+MANUSCRIPT_GUARD_MORE_EXAMPLES=20 pytest -q tests/test_properties.py   # twenty times as many
+MANUSCRIPT_GUARD_SEED=7 pytest -q tests/test_properties.py             # other inputs
+MANUSCRIPT_GUARD_BASE=origin/main pytest -q -rs tests/test_differential.py
+```
+
+Unset, the base is where the branch left `origin/main`. CI's `old-against-new` job names the
+commit the pull request is to be merged into, and fails on any difference in what a reading
+of `tests/readings.py` reports. A pull request that means to change one says so in
+`tests/data/differential_expected.yaml`, with the reason; the entry counts in that pull
+request only. DESIGN.md, "Generated inputs belong to the suite", has the rest.
+
 The repository is its own plugin marketplace (`.claude-plugin/marketplace.json`, source
 `./plugin`). The package and the plugin share one version number, written in four places:
 `version` in `pyproject.toml`, `__version__` in `src/manuscript_guard/__init__.py`, and
@@ -126,6 +142,12 @@ re-run, so the profile stays a function of the published checklist.
 - Gates are deterministic and testable. A gate without a test that proves it catches the
   failure it claims to catch is not finished. Add the failure to
   `tests/test_corruption.py`, not just a happy-path test.
+- A rule that reads text is held over generated inputs, and the campaign is the suite's. A
+  change to such a rule adds what it needs to `tests/generated.py`, `tests/readings.py` and
+  `tests/test_properties.py`; a generator in a scratch folder goes with the folder. A review
+  reads the diff and runs these, and builds no campaign of its own: where a change needs one
+  the suite lacks, that is the finding. A property is not finished until a broken rule fails
+  it (`BROKEN` in `tests/test_properties.py`, `CHANGED` in `tests/test_differential.py`).
 - Tests never open a connection to a provider. The client takes its transport as an
   argument; `tests/test_review_transport.py` runs the real one against a server it
   starts on a loopback port.

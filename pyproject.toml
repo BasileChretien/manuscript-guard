@@ -33,7 +33,13 @@ dependencies = ["PyYAML>=6.0", "jsonschema>=4.0"]
 # hatchling is the build backend. It is here so that the test which builds a wheel, to see
 # that it carries the skills, can do so without the network; where it is absent that test
 # is skipped.
-dev = ["pytest>=7.0", "ruff==0.16.1", "matplotlib>=3.7", "hatchling"]
+# hypothesis draws the generated inputs of tests/test_properties.py and
+# tests/test_differential.py, and is pinned exactly for the reason ruff is. The inputs a
+# test draws are fixed by its own source and by the release of Hypothesis, so an unpinned
+# one would draw other inputs under a commit that changed nothing, and a failure nobody
+# caused would turn up in somebody's pull request. tests/generated.py also replaces one
+# internal of it, and says why; raise the pin on purpose, with that file open.
+dev = ["pytest>=7.0", "ruff==0.16.1", "matplotlib>=3.7", "hatchling", "hypothesis==6.168.5"]
 
 [project.scripts]
 manuscript-guard = "manuscript_guard.cli:main"

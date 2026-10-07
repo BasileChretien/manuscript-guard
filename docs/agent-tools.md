@@ -67,7 +67,9 @@ crashes on a half-configured project gets removed, taking the guards that worked
 A project file that cannot be used, because it does not parse or is not UTF-8, is not
 unexpected: `check` names it in a sentence, and the submission guard and the session start
 pass that sentence on. A manuscript file that is not UTF-8 is a failing finding of the check
-like any other, and the guard blocks on it. Outside a project they say nothing.
+like any other, and the guard blocks on it. Outside a project they say nothing, with one
+exception: the submission guard holds a command to a project the command names by a path,
+as `cd paper && manuscript-guard submit` does when it is sent from the folder above.
 
 ## Codex
 

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" width="880" height="300" role="img" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>From the analysis to the document: results, manuscript, check, build</title>
+  <defs>
+    <marker id="tip" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9198a1"/>
+    </marker>
+  </defs>
+  <rect x="20" y="60" width="150" height="62" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="95.0" y="87" text-anchor="middle" font-size="14" font-weight="600" fill="#f0f6fc">Analysis</text>
+  <text x="95.0" y="106" text-anchor="middle" font-size="12" fill="#9198a1">Python or R</text>
+  <rect x="200" y="60" width="150" height="62" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="275.0" y="87" text-anchor="middle" font-size="14" font-weight="600" fill="#f0f6fc">results/</text>
+  <text x="275.0" y="106" text-anchor="middle" font-size="12" fill="#9198a1">from the emitter</text>
+  <rect x="380" y="60" width="150" height="62" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="455.0" y="87" text-anchor="middle" font-size="14" font-weight="600" fill="#f0f6fc">Manuscript</text>
+  <text x="455.0" y="106" text-anchor="middle" font-size="12" fill="#9198a1">with {{bindings}}</text>
+  <rect x="560" y="60" width="150" height="62" rx="8" fill="#121d2f" stroke="#4493f8" stroke-width="1.5"/>
+  <text x="635.0" y="87" text-anchor="middle" font-size="14" font-weight="600" fill="#f0f6fc">check</text>
+  <text x="635.0" y="106" text-anchor="middle" font-size="12" fill="#9198a1">fourteen gates</text>
+  <rect x="740" y="60" width="120" height="62" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="800.0" y="87" text-anchor="middle" font-size="14" font-weight="600" fill="#f0f6fc">build</text>
+  <text x="800.0" y="106" text-anchor="middle" font-size="12" fill="#9198a1">the .docx</text>
+  <rect x="370" y="190" width="170" height="62" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="455.0" y="217" text-anchor="middle" font-size="14" font-weight="600" fill="#f0f6fc">Literature ledger</text>
+  <text x="455.0" y="236" text-anchor="middle" font-size="12" fill="#9198a1">value, quote, source</text>
+  <rect x="550" y="190" width="170" height="62" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <text x="635.0" y="217" text-anchor="middle" font-size="14" font-weight="600" fill="#f0f6fc">Journal profile</text>
+  <text x="635.0" y="236" text-anchor="middle" font-size="12" fill="#9198a1">reporting checklist</text>
+  <line x1="174" y1="91.0" x2="192" y2="91.0" stroke="#9198a1" stroke-width="1.5" marker-end="url(#tip)"/>
+  <line x1="354" y1="91.0" x2="372" y2="91.0" stroke="#9198a1" stroke-width="1.5" marker-end="url(#tip)"/>
+  <line x1="534" y1="91.0" x2="552" y2="91.0" stroke="#9198a1" stroke-width="1.5" marker-end="url(#tip)"/>
+  <line x1="714" y1="91.0" x2="732" y2="91.0" stroke="#9198a1" stroke-width="1.5" marker-end="url(#tip)"/>
+  <line x1="455.0" y1="186" x2="455.0" y2="130" stroke="#9198a1" stroke-width="1.5" marker-end="url(#tip)"/>
+  <line x1="635.0" y1="186" x2="635.0" y2="130" stroke="#9198a1" stroke-width="1.5" marker-end="url(#tip)"/>
+  <path d="M 800.0 56 V 28 H 455.0 V 50" fill="none" stroke="#9198a1" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#tip)"/>
+  <text x="627.5" y="20" text-anchor="middle" font-size="12" fill="#9198a1">import: a co-author&#8217;s Word edits come back</text>
+  <text x="440.0" y="286" text-anchor="middle" font-size="13" fill="#9198a1">Change the analysis, run it again and rebuild: every bound number follows.</text>
+</svg>

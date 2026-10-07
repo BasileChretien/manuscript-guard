@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 230" width="860" height="230" role="img" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13.5">
+  <title>manuscript-guard check refusing a number typed into the manuscript</title>
+  <rect x="0.5" y="0.5" width="859" height="229" rx="10" fill="#161b22" stroke="#3d444d"/>
+  <circle cx="30" cy="20" r="5.5" fill="#3d444d"/><circle cx="48" cy="20" r="5.5" fill="#3d444d"/><circle cx="66" cy="20" r="5.5" fill="#3d444d"/>
+  <text x="22" y="60" fill="#3fb950" font-weight="600" xml:space="preserve">$ manuscript-guard check</text>
+  <text x="22" y="81" fill="#f0f6fc" xml:space="preserve">stage: drafting (writing the manuscript against results that exist)</text>
+  <text x="22" y="102" fill="#f85149" font-weight="600" xml:space="preserve">  [FAIL] G2 manuscript/main.md:11:17</text>
+  <text x="22" y="123" fill="#f0f6fc" xml:space="preserve">         &#x27;4,000&#x27; is not bound to any source</text>
+  <text x="22" y="144" fill="#9198a1" xml:space="preserve">         &gt; **Results.** Of 4,000 reports, {{results.case.n_cases}} described</text>
+  <text x="22" y="165" fill="#9198a1" xml:space="preserve">         hint: bind it with {{results.&lt;key&gt;}} or {{lit.&lt;key&gt;}}; if it is a writing</text>
+  <text x="22" y="186" fill="#9198a1" xml:space="preserve">         convention, add it to `conventions:` in paper.yaml with a justification</text>
+  <text x="22" y="207" fill="#9198a1" xml:space="preserve">  ...</text>
+</svg>

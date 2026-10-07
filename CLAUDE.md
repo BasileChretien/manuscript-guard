@@ -86,6 +86,13 @@ model per reviewer; `--yes` is for a script, never an agent's to add).
 `.agents/skills` (the user's, or `--project`, or `--dir`) for an agent tool that has no
 plugin; it never writes over a folder it did not write.
 
+The README is the front page and is held to the tool by `tests/test_docs.py`: its
+"Commands" table lists exactly the subcommands (all but `hook`), its "What is checked" table
+exactly the gates, every link in it and in `docs/` resolves, and its two pictures are what
+`python tools/readme_figures.py` draws and what `check` prints. So a new command or gate
+needs its row in the README, and a change to what `check` says of a typed number needs the
+script's `CARD` updated and the pictures drawn again. The long sections live under `docs/`.
+
 The skills have one home, `plugin/skills`. The wheel takes them from there when it is built
 and nothing under `src/` holds a copy, so edit them only there. The test suite sets
 `MANUSCRIPT_GUARD_USER_SKILLS` to a folder that does not exist, so that `check` never reads

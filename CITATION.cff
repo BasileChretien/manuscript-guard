@@ -1,0 +1,28 @@
+# How to cite manuscript-guard. GitHub reads this file for its "Cite this repository" button.
+# No `version` is given on purpose: the release number lives in four places that a test holds
+# equal, and a fifth here would be the one nobody raises. Cite the commit or the date used.
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "manuscript-guard"
+abstract: >-
+  A toolkit for writing scientific manuscripts in which every number is traceable to its
+  source: the results of the analysis, the literature, or a stated convention of scientific
+  writing. Deterministic checks read the manuscript source, and the document is rebuilt from
+  it every time.
+authors:
+  - family-names: "Chrétien"
+    given-names: "Basile"
+    orcid: "https://orcid.org/0000-0002-7483-2489"
+    affiliation: >-
+      Department of International Medical Education, Nagoya University Graduate School of
+      Medicine, Nagoya, Japan
+repository-code: "https://github.com/BasileChretien/manuscript-guard"
+url: "https://github.com/BasileChretien/manuscript-guard"
+license: MIT
+keywords:
+  - scientific writing
+  - reproducible research
+  - research integrity
+  - manuscript
+  - reporting guidelines

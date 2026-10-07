@@ -63,6 +63,7 @@ def test_every_skill_the_project_points_to_exists():
         *(REPO / "example").rglob("*.md"),
         *SKILLS.glob("*/SKILL.md"),
         REPO / "README.md",
+        *(REPO / "docs").glob("*.md"),
         REPO / "DESIGN.md",
         REPO / "CLAUDE.md",
     ]

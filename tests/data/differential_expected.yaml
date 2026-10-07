@@ -1,0 +1,22 @@
+# The readings a pull request means to change.
+#
+# tests/test_differential.py puts generated inputs through the base branch's source and
+# through the working tree's, reading by reading (tests/readings.py), and fails on any
+# difference. A pull request that changes what a gate reports is meant to differ, and says
+# so here:
+#
+#   expected:
+#     - reading: vocabulary
+#       why: >-
+#         a `>` line under the rule of a simple table is a row of it again, so the terms
+#         in it are counted
+#
+# An entry excuses one reading, in the pull request that adds the entry and in no other:
+# once it is merged the base holds it too, and it is spent. The reading then passes and
+# lists what differs, for whoever reviews the change to read against the `why`. Every other
+# reading still fails on a difference, which is how "nothing else changed" is held.
+#
+# An entry for a reading that does not differ fails, and so does one that names no reading.
+# Spent entries may stay as a record or go; the list is not read for them.
+
+expected: []

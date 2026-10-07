@@ -24,6 +24,11 @@ request against an interface that will change.
 - **A classifier rule names values, not shapes.** Every rule needs `accepts` *and* `rejects`
   cases in `tests/data/rule_cases.yaml`; the build fails without them. Read the header of
   that file first — it lists the eight times this rule was learned the hard way.
+- **A rule that reads text is held over generated inputs.** `tests/test_properties.py` holds
+  what every reading owes its input, on manuscripts drawn by `tests/generated.py`, and
+  `tests/test_differential.py` reads the same inputs with the source your change is to be
+  merged into and with your own. A difference fails; a pull request that means to change
+  what a gate reports says so in `tests/data/differential_expected.yaml`.
 - **Known limits are documented.** A gate whose limits are undocumented gets trusted beyond
   them, so DESIGN.md's "Known gaps" is corrected in the same commit as the code.
 - **No absolute paths, no author-specific configuration**, and no assumption that Claude

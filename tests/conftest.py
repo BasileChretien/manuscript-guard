@@ -8,6 +8,7 @@ copy has to be per test; only the expensive part is shared.
 from __future__ import annotations
 
 import atexit
+import faulthandler
 import os
 import re
 import shutil
@@ -15,7 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -53,9 +54,23 @@ atexit.register(shutil.rmtree, _FOR_THIS_RUN, ignore_errors=True)
 os.environ["MANUSCRIPT_GUARD_USER_SKILLS"] = str(_FOR_THIS_RUN / "no-user-skills")
 
 
+#: How long one generated test may take before the run is stopped, in seconds. Such a test
+#: takes seconds, and half a minute on a machine busy with other suites. See
+#: `stopped_if_stuck`.
+STUCK_AFTER = 900
+
+#: The terminal's own standard error, kept from the one moment pytest is not capturing it.
+_TERMINAL: int | None = None
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Where pandoc is required, refuse to start without it rather than skip every test that
     needs it. Unset, a missing pandoc still skips them."""
+    global _TERMINAL
+    try:
+        _TERMINAL = os.dup(sys.stderr.fileno())
+    except (AttributeError, OSError, ValueError):
+        _TERMINAL = None
     wanted = os.environ.get(REQUIRE_PANDOC, "").strip()
     if not wanted:
         return
@@ -78,6 +93,40 @@ def pytest_configure(config: pytest.Config) -> None:
     version = line.group(1) if line else "unreadable"
     if version != wanted:
         raise pytest.UsageError(f"{REQUIRE_PANDOC}={wanted}, but pandoc on PATH is {version}")
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    global _TERMINAL
+    if _TERMINAL is not None:
+        os.close(_TERMINAL)
+        _TERMINAL = None
+
+
+@pytest.fixture
+def stopped_if_stuck() -> Iterator[None]:
+    """Stop the whole run if this test is still going after `STUCK_AFTER` seconds, and say
+    where it was.
+
+    A generated input is one nobody chose, and now and then it is the one a pattern
+    backtracks on for ever. A test stuck there holds its runner until the job's own limit,
+    an hour and a half, and says nothing about which input it was. Nothing in Python can
+    interrupt it: the matching is done in C with the interpreter held, so a timer thread
+    never gets to run. `faulthandler` watches from a thread of its own, prints where every
+    thread stands and ends the process. It prints to the terminal's standard error as it was
+    before pytest began capturing: to the captured one, the report would go with the process.
+
+    The limit is no measure of anything, which is why it is long: it is for a hang, and
+    `check_linear` below is for a scan that has slowed.
+    """
+    from generated import times
+
+    faulthandler.dump_traceback_later(
+        STUCK_AFTER * times(), exit=True, file=sys.__stderr__ if _TERMINAL is None else _TERMINAL
+    )
+    try:
+        yield
+    finally:
+        faulthandler.cancel_dump_traceback_later()
 
 
 def run_analysis(root: Path) -> None:

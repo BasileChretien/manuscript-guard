@@ -3607,6 +3607,170 @@ The gates themselves do not look at it: a stale skill is not a finding about the
 The test suite sets it to a folder that does not exist, so that a run never reads the copy
 of whoever is running it.
 
+## Generated inputs belong to the suite
+
+Between 24 September and 6 October 2026, 192 of the 516 independent-review verdicts posted
+on this repository's pull requests described a campaign of generated inputs that the
+reviewer built for that one round: 124,000 vocabularies and manuscripts for a pull request
+of 485 changed lines to G14's vocabulary, sixteen million lines of Markdown signs for the
+rule that reads TeX in a title, a million quotations for six entries of a folding table. Each generator was
+written from scratch, run once, and went with its scratch folder. They found real defects,
+and the next round started over.
+
+Since 2026-10-07 a review reads the diff and may run the project's own tests, and builds no
+campaign of its own. Where a change needs one, the finding is that the suite lacks it. So
+the campaigns are in the suite, on Hypothesis:
+
+- `tests/generated.py` holds the generators: manuscripts, vocabularies, one-line titles,
+  sources with quotations of them, and the settings typed into a project.
+- `tests/readings.py` names each way the package reads a text, at the widest door it has:
+  `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
+  sections, G2's reading of every number, the three readings of G14, the TeX rule and its
+  sentence, the quotation check, and `check --json` on a new project.
+- `tests/test_properties.py` holds what a reading owes its input.
+- `tests/test_differential.py` puts each input through the base branch's source and
+  through the working tree's.
+
+### What is held
+
+The reviews checked the same few things of every change, by hand. They are tests now:
+
+- **Nothing raises, and the answer is the same the second time.** A gate that raises is
+  reported as `gate-errored` and reads nothing. A reading that keeps something between two
+  texts answers for the last one.
+- **What is hidden leaves every other character in its place.** A finding's line is
+  counted in the text a gate reads and shown in the file the author opens; they agree only
+  while hiding changes no length and moves no line break.
+- **Every match maps back.** A span lies in the text and no two of a kind overlap. An atom
+  is the text at its offsets, on the line and column it gives, and holds nothing hidden.
+  Every digit a reader sees is in an atom, the exponent on a unit apart. A verdict is the
+  same with the file's scan and without.
+- **What is planted is found, there, and nowhere else.** A term the paper gave up is
+  planted among words that are nobody's, in every way the rule says it is found, and the
+  finding has to give the count and the line of the first. The same term is planted in a
+  quotation, a listing, a comment, code, a link's address, an image's caption and the
+  reference list, and must not be counted. The spelling reading is held the same way, with
+  a name, an identifier, a file's name and an address as what it must leave alone. These
+  are the tests that fail when a rule stops finding anything.
+- **The order of a list changes nothing that is found.**
+- **A quotation typed from its source is found in it**, with the keyboard's characters
+  for the typographer's, and one with a word the source lacks is not. A value is stated
+  whole or not at all.
+- **What the TeX rule reports stands in the line**, and the sentence and the rule agree on
+  whether there is anything to say.
+- **`check` writes nothing**, no gate fails to run, and settings that cannot be read end
+  in one sentence.
+
+A property that passes on a broken rule holds nothing, and whether it does is decided by
+the generators. So seven rules are broken in place, one at a time, and the property that is
+there for each has to fail: a quotation read as the paper's own words, hiding that takes
+the line break with it, every finding on line 1, a ligature not folded, a value found
+inside a longer number, a nought trimmed off a number, a variable's name read as a word.
+
+### Drawn from a pool, not from a grammar
+
+A manuscript is drawn piece by piece from one pool: words, what ends a sentence, numbers,
+citations, bindings, code, what opens a block and what closes one, whole blocks, and the
+bare signs of Markdown. Nothing pairs an opener with its closer. A grammar of Markdown
+writes only what its author knew to be a block; the pool writes a heading under a
+paragraph's last line and a comment nobody closed, which is where the readings have gone
+wrong. It is also one draw for each piece where a grammar took several, and Hypothesis
+spends its time on draws: the first generator here was a grammar, and a manuscript took
+about four times as long to draw as one from the pool does.
+
+Two things about Hypothesis were measured and are built round:
+
+- A list drawn in one go is five long on average, however long it is allowed to be. Five
+  pieces are a sentence, and nothing in it is far enough from anything else for two rules
+  to meet. A short list and a long one are both drawn, the long one twice as often.
+- A choice between two strategies is not made in the proportions asked for. Asked for two
+  manuscripts to one run of bare signs, it drew 68% signs. So the signs are in the pool,
+  and a property that wants both kinds of text takes one of each.
+
+### The same inputs every time, and a limit
+
+A generated test in CI has to fail for the commit that broke it and no other.
+
+- **Derandomized.** Hypothesis seeds each test from the test's own source, so a commit that
+  changed nothing draws what the last one drew. That alone was not enough: it also takes
+  about one value in twenty from the constants it reads out of whatever local modules are
+  imported, so the same test drew different inputs alone and after the rest of the suite
+  (two different sets, measured). The pool of constants is emptied, which replaces one
+  internal of Hypothesis, so the version is pinned to the day as ruff's is, and a test
+  draws the same sixty inputs in two fresh processes, one of which imported the whole
+  command line first.
+- **Bounded by a count, not by a clock.** Each test says how many inputs it draws. No
+  input has a deadline: a time limit on one example fails a healthy rule on a busy
+  machine, as `check_linear` exists to say.
+- **A hard limit on the whole test.** A generated input is one nobody chose, and now and
+  then it is the one a pattern backtracks on for ever. A timer thread cannot interrupt
+  that: the matching is done in C with the interpreter held. `faulthandler` watches from a
+  thread of its own, prints where every thread stands and ends the run after fifteen
+  minutes, to the terminal's own standard error, taken before pytest captures it.
+- **More when somebody wants more.** `MANUSCRIPT_GUARD_MORE_EXAMPLES=50` draws fifty times
+  as many, and `MANUSCRIPT_GUARD_SEED=7` draws them from another seed. That is the
+  campaign a reviewer wrote a script for: the suite's own generators, run longer.
+
+### Old against new
+
+`tests/test_differential.py` reads each generated input with the base branch's source and
+with the working tree's, and a difference fails, cut down to the smallest input that shows
+it.
+
+- **Two processes.** The package imports itself by its full name in all 444 places, so a
+  second copy loaded beside the first would use the first's modules wherever it imported
+  one, and the comparison would be of a thing with itself. Each side is a process with one
+  source on its path, which says in its first line where it found the package. A reader
+  that found another is refused: with nothing at the path it is given, Python falls back
+  to whatever copy is installed.
+- **The base is exported.** `git archive` writes the base commit's `src/manuscript_guard`
+  to a temporary folder. No worktree is registered and no ref is made, so a run that is
+  killed leaves nothing in a repository several sessions share.
+- **Which commit.** `MANUSCRIPT_GUARD_BASE` names it. For a pull request GitHub checks out
+  a merge of it into the base branch as that branch stands, and CI's `old-against-new` job
+  names that merge's first parent, so the two sides differ by the change and by nothing
+  main took in since. It first named `pull_request.base.sha`, which GitHub stores with the
+  pull request and does not move when the base branch does: once main had merged anything,
+  the job compared an older main with the merge, everything merged since counted as the
+  pull request's change, and an entry another pull request had declared and merged
+  excused its reading here too. The first review of this work found it in the repository's
+  own record, where #83's stored base was four commits of main behind the merge its last
+  run checked out. Named and not found, the run fails, and so does a name that is set and
+  empty. Unset, it is where the branch left `origin/main`. Where that cannot be told,
+  which is the case of a pull request in CI's test jobs, the comparison is skipped and
+  says so; and where the two sources are the same file for file, as they are in those
+  jobs after a push to main, there is nothing to compare, and it says that.
+- **A change that is meant.** A pull request that changes what a gate reports differs
+  from its base, and says so in `tests/data/differential_expected.yaml`: the reading, and
+  why. An entry counts only in the pull request that adds it, since once merged the base
+  has it too. That reading then passes and lists its differences by kind, how many inputs
+  part where and the shortest of each, among the run's warnings and on the job's page,
+  for whoever reviews the change to read against the reason given. Every other reading
+  still fails on a difference, which is how "nothing else changed" is held. An entry for
+  a reading that turns out not to differ fails.
+- **A reader that is lost.** Each answer has two minutes. A reader that does not answer
+  is ended, and the test with it, without the input being cut down: a hang would be
+  waited for again at every smaller input, and the smallest would be named as the cause.
+  `pytest.fail` does not do that, since Hypothesis takes it for a failing input.
+- **The comparison is held to being one.** Two processes on this source under two hash
+  seeds must answer alike on every reading, which also catches a reading that walks a
+  set. And five lines are changed in a copy of the source, one at a time, and the reading
+  that goes through each must differ: among them the mutant the review of #181 found
+  alive, the offset of a quotation's lines losing a character at each line break.
+
+Run against main as it was before #181 and #183, it reports the vocabulary reading
+changed, on a vocabulary of one entry, and `check` changed; passes over the spelling
+reading and the paper's own words, which that base did not have; and finds the other
+nine readings the same, the abbreviations among them, which #181's description said and
+its reviewer ran 1,500 projects to see.
+
+### What the first runs found
+
+Nothing in the gates. The invariants over 6,000 inputs each with the first generator, and
+every property at ten times its examples with the second, held on main at 0.2.430.
+What turned up is three ways the sentence of a vocabulary conflict is worded by the order
+of the entries, which is under Known gaps and held by a test.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -7325,6 +7489,46 @@ Closed since, and why each mattered:
   - The reading costs the number of terms times the length of the manuscript: 6,000
     terms over a megabyte of text took 15 to 20 s. A vocabulary of some tens of entries is
     not felt.
+  - How a conflict is worded turns on the order of the entries. Which terms are found,
+    where and how often does not, nor which terms the entries disagree about. But the
+    rivals are listed in the order the entries give them; a term is quoted as the first
+    entry to name it wrote it, so that `in-vitro` and `in vitro` are said to be "read as
+    one term" only when the hyphenated entry comes first; and of a term kept in the
+    singular and in the plural, the one named is the one kept last. Each is one conflict
+    about the same term either way. Found by the generated tests, which hold all three.
+
+- **The generated tests hold what they hold, on the inputs they draw.**
+  - A few hundred inputs for each property in every run, the same ones each time. A
+    defect that needs an input they do not draw is not found until someone draws more
+    (`MANUSCRIPT_GUARD_MORE_EXAMPLES`) or from another seed.
+  - The inputs are fixed by the test's own source, the Python version and the pinned
+    Hypothesis. Each of CI's jobs draws its own, a change to a test or to
+    `tests/generated.py` draws others, and so does raising the pin. A failure can
+    therefore first show in a pull request that did not cause it. It is a true
+    counterexample all the same, and the report gives the input.
+  - No property asks pandoc. Where a reading has to agree with pandoc, that is still
+    `tests/test_pandoc_agreement.py` and the tables and random lines of
+    `tests/test_tex.py`.
+  - The round trip is not generated. A co-author's sessions in Word are those of
+    `tests/test_ordinary_sessions.py`, written by hand from the reviews, and nothing
+    draws new ones or compares what `import` writes under the base and under the change.
+  - The comparison with the base covers the readings of `tests/readings.py` and nothing
+    else. The build, the import, and the gates that read results, figures, sources and
+    review records are compared only as far as `check` on a new project reaches them,
+    which has none of those.
+  - A reading that is new in a pull request has no base to compare with, and neither has
+    one whose helper was renamed in it: several readings go through a private name
+    (`_hidden`, `_file`, `_judge`). Each is passed over with a line saying so.
+  - The base is read with the dependencies installed for the working tree. A pull
+    request that raises PyYAML or jsonschema compares both sources under the new one.
+  - A meant change excuses its whole reading in that pull request. A difference nobody
+    meant, in the same reading, is listed with the others and passes: the list is there
+    to be read.
+  - The properties were seen to fail on seven broken rules, and the comparison on five
+    changed lines. That is a spot check, and not the mutation runs four of the reviews
+    made, which changed every line of a diff.
+  - The hard limit ends the whole run, not the one test: nothing else stops a pattern
+    that is backtracking in C.
 
 ## Still open
 

@@ -47,7 +47,8 @@ MANUSCRIPT_GUARD_BASE=origin/main pytest -q -rs tests/test_differential.py
 
 The twelve sessions of `tests/test_generated_sessions.py` are drawn from a seed written in
 that file (`PINNED`), because the file also holds what the twelve have in them. A change to
-`sessions()` in `tests/generated.py`, or to the pin of Hypothesis, draws twelve others, and
+`sessions()` in `tests/generated.py`, to what it draws from (`TAGS` and `SAYS` of
+`tests/readings.py`), or to the pin of Hypothesis, draws twelve others, and
 the test of what they contain may then fail with nothing wrong in the import: its message
 says so, and which numbers to try in its place, though a bare assertion in front of it
 often fails first. Under the first two variables above, the two tests that are about the

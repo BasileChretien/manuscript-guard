@@ -3704,8 +3704,8 @@ What the sessions are is held twice, each thing under the name a failure gives i
   more, beside a deletion, beside a paragraph that went with its bookmark, and when it
   was forced.
 
-The name "the session of #121" takes more than #121's case, and the twelve have none of
-that case: Known gaps.
+The name "the session of #121" takes more than #121's case, and the twelve of seed 5,
+which is the seed pinned, have none of that case: Known gaps.
 
 The second review found the first form of this asking for the word "deleted". The twelve
 of the day had it three times and never as the document it stands for: a caption has no
@@ -7595,9 +7595,12 @@ Closed since, and why each mattered:
     a failure there is twelve other sessions and no counterexample. Its message says so
     and lists the numbers worth trying, where it is reached. A line in front of it fails
     first, as a bare `assert [] == [5]`, whenever the twelve lack a session by the draw
-    alone, which is the usual case after a redraw; no test runs either branch. The
+    alone, which is the usual case after a redraw; no test runs either branch. Then
+    `_worth_trying(range(0, 60))` in the test file gives the numbers without a run. The
     message also leaves out `TAGS` and `SAYS` of `tests/readings.py`, which fix the
-    twelve as `sessions()` does.
+    twelve as `sessions()` does, and `_edited_in_word` there, which decides with the
+    import where it wrote. The comment on `PINNED` says what the message says, and
+    "by nothing else", until this is fixed.
     About four seeds in ten draw twelve with the sessions asked for, and whether the
     import then writes where it is asked to is a run of the test: of ten tried, two. So
     pinning another seed is a few runs of most of a minute each.
@@ -7638,9 +7641,10 @@ Closed since, and why each mattered:
     after reworded, "the session of #121", takes more than #121's case, which is the
     bookmark left on a block with no identifier of its own. Where that block is an
     identified paragraph the import reads two paragraphs joined, and both such sessions
-    of the pinned twelve are that. #121's case is in none of the twelve and is asked of
-    neither them nor the six hundred: `tests/test_corruption.py` and
-    `tests/test_ordinary_sessions.py` hold it.
+    of the twelve of seed 5 are that: read once from what the import printed, and held
+    by no test. #121's case is in none of those twelve, though fifteen of the twenty-five
+    seeds worth trying draw it, and it is asked of neither the twelve nor the six
+    hundred: `tests/test_corruption.py` and `tests/test_ordinary_sessions.py` hold it.
   - The comparison with the base covers the readings of `tests/readings.py` and nothing
     else. The build is compared only through the round trip, and the gates that read
     results, figures, sources and review records only as far as `check` on a new project

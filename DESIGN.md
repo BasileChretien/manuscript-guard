@@ -224,7 +224,7 @@ All deterministic, all runnable in CI without Claude.
 
 | | Gate | Fails when |
 |---|---|---|
-| G1 | Results freshness | `results.json` older than any analysis script or input file |
+| G1 | Results freshness | a results file older than the script that wrote it or an input that script declared |
 | G2 | Number classification | a numeric token is unclassified, or a display value has no bound claim |
 | G3 | Figures | a number in a figure's output or in its source is not traceable to results |
 | G4 | Journal profile | word counts, structure, reference style, required statements |
@@ -3611,6 +3611,14 @@ of whoever is running it.
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
+- **G1 follows the script that wrote a results file and the inputs it declared, and no
+  further.** The digests it compares are of the emitting script and of each path given to
+  the emitter as an input. A module that script imports, or a file it reads without
+  declaring it, can change and `check` still passes, and `build` then writes the old values:
+  seen on the example with a helper module holding the 1.96 of a confidence interval, changed
+  to 2.58 with nothing run again. Listing the helper among the emitter's `inputs` makes its
+  change an `input-changed` failure. `verify`, which runs the analysis again and compares
+  every value, sees the change either way. Imports are not followed.
 - **The figure-caption style reads one convention and nothing else.** The paragraph after a
   figure is set in `Figure Caption` (10 pt against 12 pt) when its text opens "Figure 1.",
   "Figure 4:" or "Figure S1."; the stop or colon has to come right after the number, so that
@@ -5306,8 +5314,8 @@ Closed since, and why each mattered:
   tell that code changed on `main` and the number was not raised after it, which is the case
   the policy is for: `pip install --upgrade` finds nothing newer for a fix under the old
   number, and the stale-tool notice below cannot fire either, because `plugin.json` did not
-  move. Between a merge and the bump that follows it, `main` is in that state. The README's
-  `--force-reinstall` is the fallback. Before the package and the plugin had one number,
+  move. Between a merge and the bump that follows it, `main` is in that state. The
+  `--force-reinstall` that `docs/install.md` gives is the fallback. Before the package and the plugin had one number,
   the package sat at 0.1.0 while the plugin moved, so `pip install --upgrade git+...` found
   nothing newer and left an older copy in place, and `--version` could not say which release
   anyone had. Verified 2026-09-30 with pip 26.2: an upgrade takes a newer commit when its
@@ -5320,8 +5328,8 @@ Closed since, and why each mattered:
   upgrade command, and blocks nothing. It says nothing when the variable is unset, the file
   is unreadable, or the version is not plain dotted digits. The comparison lives in the
   tool's own handler, so a tool older than 0.2.260, which is every copy installed before it,
-  runs the old handler and never warns: its first upgrade has to be made by hand, as the
-  README says. Making the check from the plugin's `hooks.json` instead would reach them,
+  runs the old handler and never warns: its first upgrade has to be made by hand, as
+  `docs/install.md` says. Making the check from the plugin's `hooks.json` instead would reach them,
   since that updates with the plugin. Not observed in a live Claude Code session. The
   plugins reference lists `CLAUDE_PLUGIN_ROOT` among the variables exported to a hook's
   process, and the hooks reference describes `systemMessage` as a field any hook event can

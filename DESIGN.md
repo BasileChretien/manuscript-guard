@@ -7551,8 +7551,26 @@ Closed since, and why each mattered:
   - A reading that is new in a pull request has no base to compare with, and neither has
     one whose helper was renamed in it: several readings go through a private name
     (`_hidden`, `_file`, `_judge`). Each is passed over with a line saying so.
+  - Whatever stops the base from making a reading reads as the base not having it. A
+    helper that takes other arguments now, or a base that cannot be imported at all under
+    the working tree's dependencies, passes its readings over just as a new reading is
+    passed over. Nothing fails when every reading is passed over, and the lines that say
+    so are among the run's skips, not on the job's page (review of #188, round 1).
   - The base is read with the dependencies installed for the working tree. A pull
     request that raises PyYAML or jsonschema compares both sources under the new one.
+    It is read under the installed pandoc too: where there is one, `check` has it read
+    each document, in both processes, and where there is none both say `tex-not-judged`.
+    `check` gives pandoc ten seconds for a document. That is the one clock inside a
+    reading. A generated manuscript is nowhere near it, but past it two answers to one
+    input could differ for a reason that is not the source.
+  - Two sides are compared on a finding's gate, code, severity, message, line, column,
+    context and hint, and not on the file it points at, except in what `check` prints. A
+    finding moved from the manuscript to `paper.yaml` with its line kept is no difference
+    in the readings of G14.
+  - Of the eighteen characters a quotation is typed without, a generated source writes
+    eleven. The left single quotation mark, the em dash, the non-breaking hyphen, the
+    thin and the narrow no-break space, and the ligatures fl and ffl are never drawn, so
+    a folding table that lost one of them would pass.
   - A meant change excuses its whole reading in that pull request. A difference nobody
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read.

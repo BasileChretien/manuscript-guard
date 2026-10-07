@@ -3726,13 +3726,20 @@ it.
 - **The base is exported.** `git archive` writes the base commit's `src/manuscript_guard`
   to a temporary folder. No worktree is registered and no ref is made, so a run that is
   killed leaves nothing in a repository several sessions share.
-- **Which commit.** `MANUSCRIPT_GUARD_BASE` names it. CI's `old-against-new` job sets it
-  to the commit the pull request is to be merged into, and checks out the merge, so the
-  two sides differ by the change and by nothing main took in since. Named and not found,
-  the run fails. Unset, it is where the branch left `origin/main`; where that cannot be
-  told, which is the case in CI's test jobs, the comparison is skipped and says so. Where
-  the two sources are the same file for file there is nothing to compare, and it says
-  that.
+- **Which commit.** `MANUSCRIPT_GUARD_BASE` names it. For a pull request GitHub checks out
+  a merge of it into the base branch as that branch stands, and CI's `old-against-new` job
+  names that merge's first parent, so the two sides differ by the change and by nothing
+  main took in since. It first named `pull_request.base.sha`, which GitHub stores with the
+  pull request and does not move when the base branch does: once main had merged anything,
+  the job compared an older main with the merge, everything merged since counted as the
+  pull request's change, and an entry another pull request had declared and merged
+  excused its reading here too. The first review of this work found it in the repository's
+  own record, where #83's stored base was four commits of main behind the merge its last
+  run checked out. Named and not found, the run fails, and so does a name that is set and
+  empty. Unset, it is where the branch left `origin/main`. Where that cannot be told,
+  which is the case of a pull request in CI's test jobs, the comparison is skipped and
+  says so; and where the two sources are the same file for file, as they are in those
+  jobs after a push to main, there is nothing to compare, and it says that.
 - **A change that is meant.** A pull request that changes what a gate reports differs
   from its base, and says so in `tests/data/differential_expected.yaml`: the reading, and
   why. An entry counts only in the pull request that adds it, since once merged the base

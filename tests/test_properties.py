@@ -171,6 +171,9 @@ def test_a_pinned_test_draws_the_same_inputs_whatever_it_says(
     failed on a rule nobody had touched. `pinned` draws from a number instead: two tests
     that differ in what they say draw alike, where unpinned they draw apart. A seed the
     run names is still the one drawn from."""
+    # This test is about what is drawn where the run names no seed, so it starts from
+    # none: under a named one the two unpinned tests are one draw.
+    monkeypatch.delenv("MANUSCRIPT_GUARD_SEED", raising=False)
     first: list[int] = []
     second: list[int] = []
 
@@ -200,6 +203,19 @@ def test_a_pinned_test_draws_the_same_inputs_whatever_it_says(
     monkeypatch.setenv("MANUSCRIPT_GUARD_SEED", "4")
     named, _ = draw(pinned=3)
     assert named == of_four
+
+
+def test_the_tests_of_pinning_pass_under_a_seed_the_run_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`MANUSCRIPT_GUARD_SEED=7 pytest tests/test_properties.py` is how to look harder at a
+    change, and the test above failed under it on source nobody had touched: it holds two
+    unpinned draws apart, and a named seed makes them one. The two tests here that draw
+    under a seed are run again as that command runs them."""
+    monkeypatch.setenv("MANUSCRIPT_GUARD_SEED", "7")
+    test_a_pinned_test_draws_the_same_inputs_whatever_it_says(monkeypatch)
+    monkeypatch.setenv("MANUSCRIPT_GUARD_SEED", "7")
+    test_a_pinned_test_plays_nothing_an_earlier_run_left()
 
 
 def test_a_pinned_test_plays_nothing_an_earlier_run_left() -> None:

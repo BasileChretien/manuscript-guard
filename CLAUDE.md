@@ -50,10 +50,8 @@ that file (`PINNED`), because the file also holds what the twelve have in them. 
 `sessions()` in `tests/generated.py`, to what it draws from (`TAGS` and `SAYS` of
 `tests/readings.py`), or to the pin of Hypothesis, draws twelve others, and
 the test of what they contain may then fail with nothing wrong in the import: its message
-says so, and which numbers to try in its place, though a bare assertion in front of it
-often fails first. Under the first two variables above, the two tests that are about the
-pinned twelve are skipped, and under `MANUSCRIPT_GUARD_SEED` one test of
-`tests/test_properties.py` fails on source nobody touched. DESIGN.md's Known gaps has both.
+says so, and which numbers to try in its place. Under the first two variables above, the
+two tests that are about the pinned twelve are skipped.
 
 Unset, the base is where the branch left `origin/main`. CI's `old-against-new` job names the
 commit of the base branch that the pull request's merge was made on, the first parent of

@@ -6,10 +6,12 @@ and one sentence on stderr saying why.
 
 Every version on main is released, and a release cannot be taken back: PyPI keeps a version
 for good and refuses the same number twice. So a version is published exactly once, when a
-push changes the number in pyproject.toml to one PyPI does not have. A push that leaves the
+push raises the number in pyproject.toml to one PyPI does not have. A push that leaves the
 number alone releases nothing, however much else it changes: the code between a merge and
-the bump that follows it carries the old number, and is not that release. Where the answer
-cannot be had, because PyPI did not reply, nothing is published and the run fails.
+the bump that follows it carries the old number, and is not that release. Neither does a
+push that lowers it, as a bump taken back does. Where the answer cannot be had, because
+PyPI did not reply or because the commit this push replaced cannot be read, nothing is
+published and the run fails.
 """
 
 from __future__ import annotations
@@ -72,15 +74,33 @@ def on_pypi(version: str, status: Callable[[str], int] = status_of) -> bool:
     raise SystemExit(f"PyPI answered {code} for {PROJECT} {version}: nothing is published")
 
 
+def numbers_of(version: str) -> tuple[int, ...]:
+    """A version as numbers, so that 0.2.9 is below 0.2.10, with the zeros at its end left
+    off, so that 0.2 and 0.2.0 are one version, as they are to PyPI."""
+    numbers = [int(part) for part in version.split(".")]
+    while len(numbers) > 1 and numbers[-1] == 0:
+        numbers.pop()
+    return tuple(numbers)
+
+
 def decide(now: str, before: str | None, published: Callable[[str], bool]) -> tuple[bool, str]:
     """Whether to publish `now`, and why. `before` is the version of the commit this push
-    replaced, or None where that commit cannot be read (a forced push): PyPI then decides."""
+    replaced, or None where that commit cannot be read, as after a forced push. Nothing then
+    says that this push is the one that raised the number, and PyPI's lacking it is no proof
+    of that, so the run stops."""
+    if before is None:
+        raise SystemExit(
+            "the commit this push replaced cannot be read, so whether this push raised the "
+            f"version is not known: nothing is published. If {now} is to be released, raise "
+            "the number again in a commit of its own."
+        )
     if before == now:
         return False, f"this push left the version at {now}: nothing to release"
+    if numbers_of(now) <= numbers_of(before):
+        return False, f"the version went from {before} to {now}, not above it: nothing to release"
     if published(now):
         return False, f"{now} is already on PyPI: nothing to release"
-    moved = f"the version went from {before} to {now}" if before else f"the version is {now}"
-    return True, f"{moved}, which PyPI does not have: releasing it"
+    return True, f"the version went from {before} to {now}, which PyPI does not have: releasing it"
 
 
 def main(argv: list[str]) -> int:

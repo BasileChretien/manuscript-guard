@@ -1,13 +1,14 @@
 name: Publish to PyPI
 
 # Every version on main is released. The maintainer raises the number on main after merges
-# that change the tool (CONTRIBUTING.md), and that push is the release: this workflow tags
-# the commit, makes the GitHub Release, builds, and uploads to PyPI, with nobody's click.
+# that change the tool (CONTRIBUTING.md), and that push is the release: this workflow
+# builds, tags the commit, makes the GitHub Release, and uploads to PyPI, with nobody's
+# click.
 #
 # A release on PyPI is permanent: a version can be withdrawn, and never replaced or used
-# again. So a push releases only where it changed the version to one PyPI does not have
-# (.github/scripts/release_decision.py). A push that leaves the number alone releases
-# nothing, and neither does a second run for a version already there.
+# again. So a push releases only where it raised the version to one PyPI does not have
+# (.github/scripts/release_decision.py). A push that leaves the number alone, or lowers it,
+# releases nothing, and neither does a second run for a version already there.
 on:
   push:
     branches: [main]
@@ -19,7 +20,9 @@ on:
 
 permissions: {}
 
-# One release at a time, and never a second one cancelling the first mid-upload.
+# One release at a time, and never a second one cancelling the first mid-upload. GitHub
+# keeps one run waiting behind the one that is going: a third push that touches
+# pyproject.toml in those minutes cancels the one waiting, which is then re-run by hand.
 concurrency:
   group: publish-to-pypi
   cancel-in-progress: false
@@ -27,7 +30,10 @@ concurrency:
 jobs:
   decide:
     name: Is there a version to release?
-    if: github.ref == 'refs/heads/main'
+    # In this repository only. A fork that has Actions on would otherwise tag its own copy
+    # and make a release there before PyPI, which trusts this repository alone, refused the
+    # upload. Every job below waits for this one, so none starts where it did not.
+    if: github.repository == 'BasileChretien/manuscript-guard' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

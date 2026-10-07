@@ -215,6 +215,46 @@ def test_the_citation_file_reads_and_names_no_version() -> None:
 
 # ----------------------------------------------------------------------------------- PyPI
 
+#: A target that leads somewhere from any page: it names a scheme, or a place on the page.
+ABSOLUTE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:|#")
+#: The forms a target can take beside the two the build rewrites, which are `](target)` and
+#: one `src` or `srcset`: a link that carries a title, one written as a reference with its
+#: definition on a line of its own, an `href`, and each picture of a `srcset` after the first.
+TITLED = re.compile(r"\]\(\s*<?([^)\s>]+)")
+DEFINED = re.compile(r"^ {0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>]+)", re.MULTILINE)
+ATTRIBUTE = re.compile(r'\b(?:href|src)="([^"]*)"')
+SET = re.compile(r'\bsrcset="([^"]*)"')
+
+
+def relative_targets(markdown: str) -> list[str]:
+    """Every target in the text, of any form, that is dead on a page with nothing beside it."""
+    text = FENCE.sub("", markdown)
+    pictures = [one.split() for found in SET.findall(text) for one in found.split(",")]
+    several = [picture[0] for picture in pictures if picture]
+    targets = TITLED.findall(text) + DEFINED.findall(text) + ATTRIBUTE.findall(text) + several
+    return [target for target in targets if not ABSOLUTE.match(target)]
+
+
+@pytest.mark.parametrize(
+    ("markdown", "dead"),
+    [
+        ("see [the page](docs/install.md).", ["docs/install.md"]),
+        ('see [the page](docs/install.md "Installing").', ["docs/install.md"]),
+        ("see [the page][install].\n\n[install]: docs/install.md\n", ["docs/install.md"]),
+        ('<a href="docs/install.md">the page</a>', ["docs/install.md"]),
+        ('<img src="docs/img/loop-light.svg" alt="">', ["docs/img/loop-light.svg"]),
+        (
+            '<source srcset="https://example.org/a.svg 1x, docs/img/b.svg 2x">',
+            ["docs/img/b.svg"],
+        ),
+        ("[a](https://example.org/x), [b](#status), [c](mailto:someone@example.org)", []),
+        ('[a]: https://example.org/x\n<a href="#status">b</a>', []),
+        ("```\n[in a listing](docs/install.md)\n```\n", []),
+    ],
+)
+def test_a_relative_target_of_any_form_is_found(markdown: str, dead: list[str]) -> None:
+    assert relative_targets(markdown) == dead
+
 
 def test_the_description_pypi_shows_has_no_link_that_leads_nowhere(tmp_path: Path) -> None:
     """PyPI shows the README on a page with nothing beside it, so a relative link or picture
@@ -259,3 +299,6 @@ def test_the_description_pypi_shows_has_no_link_that_leads_nowhere(tmp_path: Pat
     assert pictures, "the README shows no picture; the pattern no longer matches"
     assert LINK.findall(in_description) == [becomes(link, page) for link in links]
     assert SOURCE.findall(in_description) == [becomes(picture, file) for picture in pictures]
+    # The build rewrites two forms and sees no other, so a target written any other way
+    # arrives as it was: one that is relative fails here, and has to be written out in full.
+    assert relative_targets(description) == []

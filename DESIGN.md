@@ -72,8 +72,10 @@ a build failure.
 
 Two rules support it. Results are **never hand-written** — one machine-generated file
 stamped with script, git SHA, input hashes and timestamp. And the build **refuses to run
-when results are older than any analysis script or input file**, which is what makes "the
-latest results are always used" mechanical rather than a habit.
+when results are older than the script that wrote them or an input that script
+declared**, which is what makes "the latest results are always used" mechanical rather
+than a habit. A module the script imports counts only where it is listed among the
+inputs (Known gaps).
 
 ## Empirical findings (verified 2026-08-03 on the author's machine)
 
@@ -1707,7 +1709,8 @@ gates raise the same error where there is no `paper.yaml` above the folder at al
 a hook has nothing to say: a guard that refused on it would refuse every command that names
 a `.docx` anywhere on the machine. So both look for the project first
 (`hooks._project_root`), stay silent where there is none, and pass on only an error raised
-once one was found. Anything else the gates raise is still a fault of the tool, and still
+once one was found. The guard looks further than the folder it is sent from: with no
+project there, it holds a command to each project the command names by a path (above). Anything else the gates raise is still a fault of the tool, and still
 ends in silence.
 
 **A hook reads its event as UTF-8.** The agent tool writes the event on the hook's standard
@@ -5603,9 +5606,13 @@ Closed since, and why each mattered:
   upgrade command, and blocks nothing. The command takes the latest release from PyPI. The
   plugin's number is raised on `main` a few minutes before that release is uploaded, and a
   release can fail: until PyPI has the number, the command finds nothing newer and the
-  next session warns again. It says nothing when the variable is unset, the file
-  is unreadable, or the version is not plain dotted digits. The comparison lives in the
-  tool's own handler, so a tool older than 0.2.260, which is every copy installed before it,
+  next session warns again. The pipx half of the command reinstalls whatever PyPI has,
+  where pip's upgrade only ever goes up: a copy that is ahead of PyPI, one from the
+  repository or an editable one after a release that failed, is put back to the older
+  release. Read from pipx's documentation, not run. It says nothing when the variable is
+  unset, the file is unreadable, or the version is not plain dotted digits. The comparison
+  lives in the tool's own handler, so a tool older than 0.2.260, which is every copy
+  installed before it,
   runs the old handler and never warns: its first upgrade has to be made by hand, as
   `docs/install.md` says. Making the check from the plugin's `hooks.json` instead would reach them,
   since that updates with the plugin. Not observed in a live Claude Code session. The
@@ -6290,10 +6297,15 @@ Closed since, and why each mattered:
   column reader is not shaped for.
 - **ARRIVE's items are verified only at their opening clause**, for the reason above. It is
   the one profile whose tail text rests on the parser rather than on a check.
-- **ARRIVE's page is cut where poppler's `pdftotext` lays it out.** The one from Xpdf, which
-  Git for Windows puts on PATH, sets the two columns at other positions, the recipe's
-  `column_split` does not fit, and the transcription stops at `no items found on pages
-  (2,)` without a word about which `pdftotext` it wants.
+- **ARRIVE's items are found only as poppler's `pdftotext` sets them.** The one from Xpdf,
+  which Git for Windows puts on PATH, sets one space between an item's number and its
+  text where poppler sets several. The line that starts an item (`ITEM_LINE` in
+  `reporting/columns.py`) asks for two or more, so none is found, and the transcription
+  stops at `no items found on pages (2,)` without a word about which `pdftotext` it
+  wants. The recipe's `column_split` clears both layouts, and moving it would not help.
+  Allowing one space is no quick cure either: Xpdf then gives 20 item lines where poppler
+  gives 21. Measured on the checklist's second page with Xpdf 4.00 and poppler 24.04, in
+  the review of #138.
 - **The TRIPOD adherence assessment form is not transcribed.** It is an appraisal
   instrument rather than a reporting checklist, and answering it is a different task from
   the one G5 performs.

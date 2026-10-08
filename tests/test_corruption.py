@@ -1389,6 +1389,62 @@ def test_a_stop_against_a_binding_ends_a_sentence_for_that_binding_alone(
     assert _reversed_in(text) == backwards
 
 
+@pytest.mark.parametrize(
+    ("text", "backwards"),
+    [
+        ("It ran {high} <!-- was 7.02. --> to {low}.\n", [(1, "")]),
+        ("It ran {high} <!-- was 7.02 --> to {low}.\n", [(1, "")]),
+        ("It ran {high}\n<!--\nA note. Another!\n\nAnd a third?\n-->\nto {low}.\n", [(1, "")]),
+        ("<!-- A draft. Of two sentences. -->\nIt ran {high} to {low}.\n", [(2, "")]),
+        ("It ran {high}.<!-- checked --> The lower bound was {low}.\n", []),
+        ("It ran {high}. <!-- checked -->The lower bound was {low}.\n", []),
+        ("It ran {high}.<!-- checked -->{low} was the lower bound.\n", []),
+        ("It ran.<!-- checked -->{high} to {low} in all.\n", [(1, "")]),
+        ("It ran {high} `<!-- was 7.02. -->` to {low}.\n", []),
+        ("It ran {high} <!-- was 7.02. to {low}.\n", []),
+    ],
+    ids=[
+        "a stop in a comment",
+        "a comment with no stop",
+        "a comment of several lines",
+        "a comment above the sentence",
+        "a comment between a stop and its space",
+        "a comment after a stop and its space",
+        "a comment between a stop and a binding",
+        "a comment between a stop and the upper bound",
+        "a comment that is code",
+        "a comment nobody closed",
+    ],
+)
+def test_a_comment_is_white_space_to_the_sentences(
+    text: str, backwards: list[tuple[int, str]]
+) -> None:
+    """Pandoc drops an HTML comment, and the bindings are read in the text with each
+    comment blanked. The sentences were read in the text as typed. So a stop inside a
+    comment ended a sentence between the two bounds of an interval, and the reversal
+    passed with the paper printing it; and a stop with a comment typed against it ended
+    none, so the bounds of two sentences were compared. The sentences are read where the
+    bindings are now: a comment is white space to both. What is no comment, code or a
+    `<!--` nobody closed, is read as it is typed."""
+    assert _reversed_in(text) == backwards
+
+
+def test_a_stop_in_a_comment_hides_no_reversed_interval(project: Path) -> None:
+    """The example's interval quoted backwards, with a note between its bounds that holds
+    a stop. Both bindings resolve, the note reaches no document, and the paper prints the
+    interval backwards: `check` said nothing."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    swapped = text.replace(
+        "{{results.ror.ci_low}} to {{results.ror.ci_high}}",
+        "{{results.ror.ci_high}} <!-- was 7.02. Check. --> to {{results.ror.ci_low}}",
+        1,
+    )
+    assert swapped != text, "the example must still quote the interval in one sentence"
+    path.write_text(swapped, encoding="utf-8")
+    assert "interval-reversed" in codes(gate_report(project))
+
+
 def _publish_text(project: Path, key: str, text: str, *, quoted: bool = True, **extra) -> None:
     """Add a string value to the fragment, and quote it in the manuscript if it is quoted."""
     fragment = next((project / "results").glob("*.json"))

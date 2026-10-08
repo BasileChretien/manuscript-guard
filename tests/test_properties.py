@@ -39,6 +39,7 @@ from generated import (
     SOURCE_WORDS,
     TERMS,
     TYPOGRAPHY,
+    commented,
     generated,
     holds,
     lines,
@@ -402,6 +403,19 @@ def _looked_up_as_counted(text: str) -> None:
     for start in range(len(text) + 1):
         counted = sum(1 for _ in numbers_gate._SENTENCE_END.finditer(text, 0, start))
         assert numbers_gate._sentence(text, ends, start) == counted, (text, start)
+
+
+@holds(200, commented())
+def test_a_comment_is_white_space_to_the_order_of_intervals(drawn: tuple[str, str]) -> None:
+    """Pandoc drops an HTML comment, and the bindings are read in the text with each
+    comment blanked. The sentences an interval's bounds are compared in are read in that
+    text too. So what G2 finds in a text with comments typed into it is what it finds, on
+    the same lines and in the same order, in that text with white space where each comment
+    stood: a stop inside a comment ends no sentence, and one with a comment typed against
+    it ends one."""
+    typed_with, blanked = drawn
+    read = READINGS["interval order"]()
+    assert read(typed_with) == read(blanked), (typed_with, blanked)
 
 
 # ---------------------------------------------------------------------------------- numbers
@@ -1166,6 +1180,12 @@ def _a_value_is_some_characters_of_a_number(patch: pytest.MonkeyPatch) -> None:
     )
 
 
+def _a_comment_is_read_for_its_stops(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import numbers as numbers_gate
+
+    patch.setattr(numbers_gate, "blank_comments", lambda text: text)
+
+
 def _a_stop_against_a_binding_ends_no_sentence(patch: pytest.MonkeyPatch) -> None:
     from bisect import bisect_left
 
@@ -1257,6 +1277,10 @@ BROKEN = {
     "a stop against a binding ends no sentence": (
         _a_stop_against_a_binding_ends_no_sentence,
         test_a_sentence_is_looked_up_as_it_was_counted,
+    ),
+    "a comment is read for its stops": (
+        _a_comment_is_read_for_its_stops,
+        test_a_comment_is_white_space_to_the_order_of_intervals,
     ),
     "a nought is trimmed off a number": (
         _a_nought_is_trimmed_off_a_number,

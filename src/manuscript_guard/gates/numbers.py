@@ -486,7 +486,11 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
             # lower bound of 2.10 excludes unity" — was reported as reversed, and a genuinely
             # reversed one restated the other way round went unreported.
             seen.setdefault(f"{value.bounds}@{value.level or ''}:{value.bound}", placeholder.start)
-        for estimate, level in {(value.bounds, value.level or "") for _p, value in group}:
+        # In the order each interval is first quoted. They were walked as a set, whose order
+        # the hash seed of the process decides: two intervals reversed on one line changed
+        # places in the report from one run of `check` to the next.
+        intervals = dict.fromkeys((value.bounds, value.level or "") for _p, value in group)
+        for estimate, level in intervals:
             low = seen.get(f"{estimate}@{level}:low")
             high = seen.get(f"{estimate}@{level}:high")
             if low is None or high is None or low < high:

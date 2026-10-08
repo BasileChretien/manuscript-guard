@@ -1305,8 +1305,7 @@ def test_the_second_interval_is_still_read_for_order(project: Path) -> None:
 def _reversed_in(text: str) -> list[tuple[int, str]]:
     """The intervals G2 finds quoted upper bound first in `text`, each by its line and its
     level. `{low}` and `{high}` are the bounds of a 95% interval, `{low90}` and `{high90}`
-    those of a 90% one around the same estimate. Sorted, since two of one sentence come in
-    the order Python walks a set."""
+    those of a 90% one around the same estimate. In the order the gate reports them."""
     from manuscript_guard.contracts.values import RESULTS, Value
     from manuscript_guard.gates.numbers import _interval_order
     from manuscript_guard.text.placeholders import parse
@@ -1322,9 +1321,7 @@ def _reversed_in(text: str) -> list[tuple[int, str]]:
     text = text.format(**written)
     report = _interval_order(parse(text)[0], namespace, Path("main.md"), text)
     assert {f.code for f in report.findings} <= {"interval-reversed"}
-    return sorted(
-        (f.line, "90%" if "the 90% interval" in f.message else "") for f in report.findings
-    )
+    return [(f.line, "90%" if "the 90% interval" in f.message else "") for f in report.findings]
 
 
 @pytest.mark.parametrize(
@@ -1339,6 +1336,9 @@ def _reversed_in(text: str) -> list[tuple[int, str]]:
         ("It was (95% CI {low} to {high}; 90% CI {low90} to {high90}).\n", []),
         ("It was (95% CI {low} to {high}; 90% CI {high90} to {low90}).\n", [(1, "90%")]),
         ("It was (95% CI {high} to {low}; 90% CI {high90} to {low90}).\n", [(1, ""), (1, "90%")]),
+        ("It was (90% CI {high90} to {low90}; 95% CI {high} to {low}).\n", [(1, "90%"), (1, "")]),
+        ("It was {high90} (95%: {high} to {low}) to {low90}.\n", [(1, "90%"), (1, "")]),
+        ("It was {low} and {high90} to {high} and {low90}.\n", [(1, "90%")]),
         ("It was {high} in 3.5 of them and {low} in the rest.\n", [(1, "")]),
         ("{high} to {low}", [(1, "")]),
     ],
@@ -1352,6 +1352,9 @@ def _reversed_in(text: str) -> list[tuple[int, str]]:
         "two levels in one sentence",
         "two levels, the second backwards",
         "two levels, both backwards",
+        "two levels, both backwards, the 90% first",
+        "two levels, both backwards, one inside the other",
+        "two levels, one backwards and quoted second",
         "a stop inside a number",
         "nothing before or after",
     ],

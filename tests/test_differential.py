@@ -225,6 +225,12 @@ CHANGED = {
         "    return before\n",
         "interval order",
     ),
+    "the intervals of a sentence walked as a set": (
+        "gates/numbers.py",
+        'dict.fromkeys((value.bounds, value.level or "") for _p, value in group)\n',
+        '{(value.bounds, value.level or "") for _p, value in group}\n',
+        "interval order",
+    ),
     "a trailing sign kept on a number": (
         "text/tokens.py",
         "_TRAIL = \")]}>\\\"'",

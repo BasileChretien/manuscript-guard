@@ -7550,6 +7550,24 @@ Closed since, and why each mattered:
   keys emitted separately with `value()` are still three unrelated numbers, and the order
   they are quoted in is unchecked. The order is judged per sentence, so a paper may quote
   one bound alone or two intervals in successive sentences without complaint.
+- **A stop typed against a binding ends a sentence for that binding alone.** A sentence
+  ends at `.`, `!` or `?` with white space after it. In
+  `It ran.{{results.ror.ci_high}} to {{results.ror.ci_low}}` the stop has none, and it
+  still ends a sentence for the binding it touches, and for nothing after it. So the upper
+  bound is counted one sentence on from the lower: this reversal passes, and
+  `Up.{{results.ror.ci_high}} came first. The lower bound was {{results.ror.ci_low}}.` is
+  reported as one. It is what the search for sentence ends did while it was made again for
+  every bound and stopped at the binding, which it took for the end of the text. The
+  sentence is looked up now, in one list of the file's sentence ends, and the lookup counts
+  that stop as the search did, so that nothing G2 reports changed with it;
+  `test_a_stop_against_a_binding_ends_a_sentence_for_that_binding_alone` holds the three
+  cases. It takes a full stop with no space after it, directly before a bound.
+- **Two intervals quoted backwards in one sentence are reported in an order that changes
+  from run to run.** The estimates and levels of a sentence are walked as a Python set,
+  whose order turns on the hash seed of the process. Which intervals are reported does not
+  change, nor on which line; `check` sorts by file and line, so two such findings change
+  places only where both are on one line. The generated reading of the order of intervals
+  (`interval order` in `tests/readings.py`) compares them sorted for that reason.
 - **A structured abstract cannot state its own signal threshold.** `methods_only` rules need
   a Methods heading, and an abstract's chain is `("Abstract",)`. Treating the whole abstract
   as Methods was considered and rejected: an abstract states results in the same block, and

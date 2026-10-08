@@ -368,6 +368,30 @@ def _found_in_order(text: str) -> None:
         before = heading.start
 
 
+# ------------------------------------------------------------------ the sentence of a bound
+
+
+@holds(200, INPUTS["interval order"], signs())
+def test_a_sentence_is_looked_up_as_it_was_counted(quoting: str, nobodys: str) -> None:
+    """G2 compares the bounds of an interval within one sentence. Which sentence a binding
+    is in was a search for sentence ends from the top of the file, stopped at the binding;
+    it is looked up now among the sentence ends of the whole file, and has to be the same
+    number at every offset. The two searches do not find the same ends: a stop against a
+    binding is one for the search that stops there, and none for the one that reads on."""
+    _looked_up_as_counted(quoting)
+    _looked_up_as_counted(nobodys)
+
+
+def _looked_up_as_counted(text: str) -> None:
+    # Imported here, not at the top, to keep clear of the import block other branches edit.
+    from manuscript_guard.gates import numbers as numbers_gate
+
+    ends = [match.start() for match in numbers_gate._SENTENCE_END.finditer(text)]
+    for start in range(len(text) + 1):
+        counted = sum(1 for _ in numbers_gate._SENTENCE_END.finditer(text, 0, start))
+        assert numbers_gate._sentence(text, ends, start) == counted, (text, start)
+
+
 # ---------------------------------------------------------------------------------- numbers
 
 CLASSIFIER = Classifier.load()
@@ -903,6 +927,14 @@ def _a_value_is_some_characters_of_a_number(patch: pytest.MonkeyPatch) -> None:
     )
 
 
+def _a_stop_against_a_binding_ends_no_sentence(patch: pytest.MonkeyPatch) -> None:
+    from bisect import bisect_left
+
+    from manuscript_guard.gates import numbers as numbers_gate
+
+    patch.setattr(numbers_gate, "_sentence", lambda text, ends, start: bisect_left(ends, start))
+
+
 def _a_nought_is_trimmed_off_a_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(tokens, "_TRAIL", tokens._TRAIL + "0")
 
@@ -937,6 +969,10 @@ BROKEN = {
     "a value is some characters of a longer number": (
         _a_value_is_some_characters_of_a_number,
         test_a_value_is_stated_whole_or_not_at_all,
+    ),
+    "a stop against a binding ends no sentence": (
+        _a_stop_against_a_binding_ends_no_sentence,
+        test_a_sentence_is_looked_up_as_it_was_counted,
     ),
     "a nought is trimmed off a number": (
         _a_nought_is_trimmed_off_a_number,

@@ -952,3 +952,27 @@ def test_a_scale_profile_says_it_has_no_independent_check(
         "score": "2",
         "statement": "Evidence is offered throughout.",
     }
+
+
+def test_a_last_item_alone_on_a_second_page_is_not_dropped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """"Until the scale has started" began again on every page, so an item printed alone at the
+    top of a second page was read as one of the rater's numbered instructions and dropped in
+    silence, while the profile said every line had been placed."""
+    from manuscript_guard.reporting import columns
+    from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
+    from manuscript_guard.reporting.transcribe import RecipeError
+
+    second = """\
+3) A last item, carried over
+
+The thing is not described.                                                   0
+"""
+    pages = {1: _SCALE, 2: second}
+    monkeypatch.setattr(columns, "page_text", lambda _path, page: pages[page])
+    with pytest.raises(RecipeError, match="fewer than"):
+        transcribe_scale(
+            tmp_path / "x.pdf",
+            ScaleRecipe(document="x.pdf", pages=(1, 2), stop_at="Sumscore"),
+        )

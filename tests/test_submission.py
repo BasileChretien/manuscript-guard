@@ -239,12 +239,17 @@ def test_a_scale_is_not_sent_as_a_completed_reporting_checklist(project: Path) -
     assert "Not done. (0); Done. (2)" in text
     assert "(e.g., a clarifying line, as a scale prints one)" in text
 
-    document = next((project / "build").glob("manuscript.docx"), None)
-    if document is not None:
-        pack = assemble_pack(projekt, document)
-        assert any(p.name == "scale-DEMO-OBS.md" for p in pack.files), [p.name for p in pack.files]
-        assert any(p.name == "scale-DEMO-OBS.yaml" for p in pack.files)
-        assert not any(p.name.startswith("checklist-DEMO-OBS") for p in pack.files)
+    # The fixture copies the example without a build, so a pack test writes the document it
+    # packs, as the others here do. Guarded on its existence instead, this block ran never and
+    # the file names were held by nothing.
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 a placeholder document, as the other pack tests use")
+    pack = assemble_pack(projekt, document)
+    names = [p.name for p in pack.files]
+    assert "scale-DEMO-OBS.md" in names, names
+    assert "scale-DEMO-OBS.yaml" in names, names
+    assert not any(name.startswith("checklist-DEMO-OBS") for name in names), names
 
 
 def test_a_pipe_in_an_item_does_not_break_the_table(project: Path) -> None:

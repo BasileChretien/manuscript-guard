@@ -379,7 +379,8 @@ def checklist_table(project: Project, completion: Path) -> str:
     for identifier in extra:
         entry = answered[identifier]
         lines.append(
-            f"| {_escape_cell(identifier)} | *not in the published checklist* "
+            f"| {_escape_cell(identifier)} | *not in the published "
+            f"{'scale' if is_scale else 'checklist'}* "
             f"| {_escape_cell(entry.get('where', ''))} "
             f"| {_escape_cell(entry.get('not_applicable', ''))} |"
         )

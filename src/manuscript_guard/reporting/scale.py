@@ -5,23 +5,23 @@ for systematic reviews — and the instrument editors and reviewers score one wi
 as a one-page form: numbered items, each with a clarifying line under some of the titles, then
 the statements a rater chooses between with the score at the right-hand end of each line.
 
-    5) Scientific reasoning
+    3) Clarity of the thing described
 
-    (e.g., incorporation of appropriate evidence, such as RCTs in clinical medicine)
+    (e.g., a line some forms print under the title to explain the item)
 
-    The article's point is not based on appropriate arguments.                   0
-    Appropriate evidence is introduced selectively.                             1
-    Appropriate evidence is generally present.                                  2
+    The thing is not described.                                                 0
+    The thing is described in passing.                                          1
+    The thing is described plainly.                                             2
 
 That is neither a Word table nor two columns of a checklist, so neither of the other readers
 can read it, and the alternative — retyping six items and eighteen statements — is the one
 thing this package exists to refuse.
 
-**Every line between the first item and the last is accounted for or the transcription
-stops.** The first version of this reader dropped whatever did not match: the parenthetical
-under items 5 and 6 of SANRA's own form vanished from the profile, a wrapped statement would
-have been cut at the line end, and an item printed with one option would have disappeared —
-each silently, and each with a profile that claimed every statement was there. So:
+**A line is placed or the transcription stops**, which is the whole of what this reader
+offers in place of a check. The first version dropped whatever did not match: the parenthetical
+under two items of SANRA's own form vanished from the profile, a wrapped statement would have
+been cut at the line end, and an item printed with one option would have disappeared — each
+silently, and each with a profile that claimed every statement was there. So:
 
 * a line directly under a heading, before any option, is that item's clarification, which is
   what the parenthetical is, and is kept;
@@ -29,16 +29,19 @@ each silently, and each with a profile that claimed every statement was there. S
   because the only honest reading of a line this reader does not understand is that the recipe
   does not fit the document;
 * an item with fewer than `min_options` options is a heading mistaken for one while no item
-  has been read yet — the rater's numbered instructions sit above the scale — and a
-  `RecipeError` once the scale has started;
+  has been read yet, anywhere in the document — the rater's numbered instructions sit above
+  the scale — and a `RecipeError` once the scale has started;
 * the item numbers must run from one without a gap, and a recipe may state how many items and
   how many options each has, which the transcription is then held to.
 
 **What is checked, and what is not.** The reader's output is its input, read line by line, so
 there is nothing here to compare the items against: the profile says so in as many words
-rather than claiming a verbatim check it cannot perform. What stands in for one is that
-nothing may be dropped, which is weaker than a Word table's item-by-item verification and
-stronger than the silence it replaced. DESIGN.md's Known gaps carries this.
+rather than claiming a verbatim check it cannot perform. What stands in for one is that a line
+is placed or the reading stops — and that holds as far as the recipe's counts reach. A recipe
+that states neither `items` nor `options` can still have a wrapped title read as a title and a
+clarification, or a statement whose score sits on its second line read as a clarification and
+an option. DESIGN.md's Known gaps carries both, and a recipe for a new form should state its
+counts and be compared with the form once by eye.
 """
 
 from __future__ import annotations
@@ -55,14 +58,20 @@ HEADING = re.compile(r"^\s*(?P<id>\d{1,2})\)\s+(?P<topic>\S.*?)\s*$")
 
 #: "The importance is not justified.          0" — a statement, then its score at the end of
 #: the line. Two spaces at least, so a sentence that merely ends in a number is not an option.
-#: Where a build of pdftotext leaves one space the line stops the transcription rather than
-#: disappearing from it.
+#: Where a
+#: build of pdftotext leaves one space, the line is refused wherever an option is expected, and
+#: read as the item's clarification when it is the first line under a title and the recipe
+#: states no option count: Known gaps carries that case.
 OPTION = re.compile(r"^\s*(?P<statement>\S.*?)\s{2,}(?P<score>\d{1,2})\s*$")
 
 #: What a scale's profile records in place of a verification, because there is none to record.
+#: It says what is true and no more: the reader places every line or stops, *where the recipe
+#: says how many items and options the form prints*. Without those counts a line can still be
+#: filed in the wrong place — a wrapped title, a statement whose score is on the next line —
+#: and DESIGN.md's Known gaps carries the cases.
 VERIFICATION = (
-    "read line by line from the published form; every line of every item accounted for, "
-    "and the scores in the order printed — no check independent of the reader"
+    "read line by line from the published form, with the item counts the recipe states; no "
+    "check independent of the reader, and none of the item text against anything else"
 )
 
 
@@ -103,14 +112,21 @@ def parse_scale(
     min_options: int = 2,
     options: int | None = None,
     stop_at: str | None = None,
+    started: bool = False,
 ) -> list[Item]:
-    """The items on one page of a scale. Raises rather than drop a line it cannot place."""
+    """The items on one page of a scale. Raises rather than drop a line it cannot place.
+
+    `started` says whether an item has been read already, on an earlier page of the same form.
+    Without it the rule "a numbered line with too few options is one of the rater's
+    instructions, until the scale has started" began again on every page, so a last item alone
+    at the top of a second page was dropped in silence.
+    """
     items: list[Item] = []
     reading: _Reading | None = None
 
     def finish(current: _Reading) -> None:
         if len(current.options) < min_options:
-            if not items:
+            if not items and not started:
                 return  # the rater's instructions, above the scale
             raise RecipeError(
                 f"line {current.line_number}: item {current.heading.group('id')} "
@@ -186,6 +202,7 @@ def transcribe_scale(path: Path, recipe: ScaleRecipe) -> tuple[list[Item], str]:
                 min_options=recipe.min_options,
                 options=recipe.options,
                 stop_at=recipe.stop_at,
+                started=bool(items),
             )
         )
     if not items:

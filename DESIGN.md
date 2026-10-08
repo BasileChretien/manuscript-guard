@@ -6356,17 +6356,30 @@ Closed since, and why each mattered:
   are the reader's output read from its own input, so there is nothing to compare them against —
   a Word table's items are verified verbatim, a column PDF's by their opening clause, and a
   scale's not at all. The profile says so in those words rather than printing a guarantee.
-  What stands in for one is that nothing may be dropped: a line the reader cannot place stops
-  the transcription, an item with too few options stops it once the scale has started, the
-  numbers must run from one without a gap, and the recipe states how many items and options the
-  form prints. The first version of this reader dropped what did not match, and the
-  parenthetical under two of SANRA's six items vanished from the profile while it reported every
-  statement verbatim. What remains uncaught: a form whose layout is misread from the start, and
-  a statement that ends within one space of its score, which `pdftotext -layout` may lay out
-  differently between builds — SANRA's longest leaves exactly two spaces under Xpdf 4.00 and
-  many more under poppler 24.04, and both are read, but that is a margin and not a guarantee.
+  What stands in for one is that a line is placed or the reading stops: a line the reader cannot
+  place stops the transcription, an item with too few options stops it once the scale has
+  started anywhere in the document, and the numbers must run from one without a gap. The first
+  version dropped what did not match, and the parenthetical under two of SANRA's six items
+  vanished from the profile while it reported every statement verbatim.
+
+  **How far that reaches depends on the recipe.** A recipe that states `items` and `options`, as
+  SANRA's does, is held to them, and every case below is refused rather than written. A recipe
+  that states neither is not, and these are then written wrongly and in silence: a title that
+  wraps onto a second line, whose remainder is filed as the item's clarifying line; a first
+  statement that wraps, whose beginning is filed the same way and whose end becomes an option; a
+  statement printed within one space of its score where it is the first line under a title,
+  which `pdftotext -layout` may lay out differently between builds (SANRA's longest leaves
+  exactly two spaces under Xpdf 4.00 and many more under poppler 24.04, which is a margin and
+  not a guarantee); and a running foot ending in a page number where the recipe gives no
+  `stop_at`, which is read as one more option. A form whose layout is misread from the start is
+  uncaught in any case. So a new recipe states its counts, and its first profile is compared
+  with the published form once, by eye.
+
   Where the form prints something that is not an item, the recipe names it (`stop_at`), because
-  only the recipe can tell a footer from a statement that wrapped.
+  only the recipe can tell a footer from a statement that wrapped. A numbered line in the
+  rater's instructions that runs to a second unscored line is refused with a message about a
+  second clarification, which names the wrong cause; the recipe cannot yet say where the scale
+  begins.
 - **Recipes are tuned to one document each.** A guideline that reformats its checklist
   breaks its recipe, loudly — the transcription fails rather than producing something
   plausible, which is the right failure, but it is still work.

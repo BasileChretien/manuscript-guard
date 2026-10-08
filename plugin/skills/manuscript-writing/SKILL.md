@@ -261,6 +261,9 @@ and the report is then of the pass alone.
   it that came or went where it could be a sign or the dash of a range: after emphasis, a
   raised figure, a product sign, the "e" of an exponent. A range retyped is nothing; a
   sign lost is a number changed. Read the place.
+- A warning that "the dash before the number … stands at another of its places" is the
+  same figures with a dash at a different one of them: two clauses that changed places,
+  or a minus sign that went from one number to the other. Read both places.
 - A number is compared as typed, so "3" spelt out as "three" fails. Leave the figures of a
   manuscript as the author typed them unless you were asked to change them.
 

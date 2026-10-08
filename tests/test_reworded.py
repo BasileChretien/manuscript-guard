@@ -165,6 +165,8 @@ def test_a_number_is_read_as_it_is_typed(typed: str, read: list[str]) -> None:
         ("struck ~~-3~~ out", ["?3"]),
         ("pages 12 \N{EN DASH}15", ["12", "?15"]),  # a range with a space on one side
         ("pages 12\n\N{EN DASH}15", ["12", "?15"]),  # or wrapped there
+        ("pages 12 --15", ["12", "?15"]),  # or with the two hyphens of a dash
+        ("a fall to --3", ["-3"]),
     ],
 )
 def test_a_dash_before_a_number_is_its_sign_for_sure_perhaps_or_not(
@@ -370,6 +372,7 @@ def test_what_a_language_edit_does_to_the_notation_passes(old: str, new: str) ->
         ("$n$-1", "$n$ - 1"),
         ("Figures 1E\N{EN DASH}1G", "Figures 1E to 1G"),
         ("pages 12 \N{EN DASH}15", "pages 12\N{EN DASH}15"),
+        ("pages 12 --15", "pages 12\N{EN DASH}15"),
     ],
 )
 def test_a_range_retyped_where_its_dash_may_be_a_sign_passes_with_a_warning(
@@ -387,10 +390,84 @@ def test_a_sign_lost_beside_the_same_number_kept_is_counted() -> None:
     report = compare(before, before.replace("-0.3 there", "0.3 there"), PATH)
     assert told(report) == [("sign-lost", FAIL)]
     assert report.findings[0].message == (
-        "the number '0.3' stood as '-0.3' twice before the edit, on lines 1 and 3, and has a "
-        "dash before it once now"
+        "the number '0.3' stood as '-0.3' twice before the edit, on lines 1 and 3, and stands "
+        "as '-0.3' once now"
     )
     assert report.findings[0].line == 3
+
+
+def test_a_sure_sign_that_goes_fails_beside_a_dash_that_may_be_one() -> None:
+    """The third review: a dash that may be a sign, standing where it stood, was counted
+    among the dashes now and answered for a sure sign that went. A slope of -1 made 1 was
+    only shown, because the `*n*-1` of a later paragraph had the same figure."""
+    beside = "\n\nWith *n*-1 degrees of freedom, in the 5'-3' direction.\n"
+    gone = compare("The slope was -1 here." + beside, "The slope was 1 here." + beside, PATH)
+    assert told(gone) == [("sign-lost", FAIL)], said(gone)
+    assert gone.findings[0].message == (
+        "the number '1' has lost its minus sign: '-1' stood on line 1 before the edit"
+    )
+    come = compare("It moved by 3 units." + beside, "It moved by -3 units." + beside, PATH)
+    assert told(come) == [("sign-new", FAIL)], said(come)
+    assert come.findings[0].message == (
+        "the number '3' has a minus sign it did not have: '-3' stands on line 1"
+    )
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        (
+            "It fell by -0.3 in the first group and rose by 0.3 in the second.",
+            "It fell by 0.3 in the first group and rose by -0.3 in the second.",
+        ),
+        ("It ranged from -1.96 to 1.96 here.", "It ranged from 1.96 to -1.96 here."),
+        # a sure sign gone and a dash that may be one new, on the same figures
+        (
+            "It was -10 here.\n\nWe plated 10^3^ to 10^5^ cells.",
+            "It was 10 here.\n\nWe plated 10^3^-10^5^ cells.",
+        ),
+        (
+            "The slope was 1 here.\n\nWith *n*-1 degrees of freedom.",
+            "The slope was -1 here.\n\nWith *n* to 1 degrees of freedom.",
+        ),
+    ],
+)
+def test_a_dash_at_another_place_of_the_same_figures_is_shown(before: str, after: str) -> None:
+    """Two signs that changed places, or two clauses that did: the figures stand as they
+    stood and as many of them have a dash, so only their places tell. The third review
+    found nothing said of it, once a number's sign was no part of what is compared."""
+    report = compare(before + "\n", after + "\n", PATH)
+    assert told(report) == [("sign-moved", WARN)], said(report)
+    assert report.ok
+
+
+def test_the_places_of_a_dash_are_named() -> None:
+    report = compare(
+        "It fell by -0.3 here.\n\nIt rose by 0.3 there.\n",
+        "It fell by 0.3 here.\n\nIt rose by -0.3 there.\n",
+        PATH,
+    )
+    (finding,) = report.findings
+    assert finding.message == (
+        "the dash before the number '0.3' stands at another of its 2 places: before the edit "
+        "at the 1st, on line 1, and now at the 2nd, on line 3"
+    )
+    assert finding.line == 3
+
+
+def test_a_number_that_came_or_went_with_its_sign_is_counted_by_its_figures() -> None:
+    """The count of one text was said of the other text's number: "'-2' stands twice now
+    and stood once" of a 2 that stood once."""
+    come = compare("It was 2 here.\n", "It was -2 here.\n\nAnd -2 there.\n", PATH)
+    assert [finding.message for finding in come.findings] == [
+        "the number '2' stands twice now, on lines 1 and 3, and stood once before the edit",
+        "the number '2' has a minus sign it did not have: '-2' stands on lines 1 and 3",
+    ]
+    gone = compare("It was -2 here.\n\nAnd -2 there.\n", "It was 2 here.\n", PATH)
+    assert [finding.message for finding in gone.findings] == [
+        "the number '2' stood twice before the edit, on lines 1 and 3, and stands once now",
+        "the number '2' has lost its minus sign: '-2' stood on lines 1 and 3 before the edit",
+    ]
 
 
 def test_a_negative_number_that_is_gone_is_named_with_its_sign() -> None:

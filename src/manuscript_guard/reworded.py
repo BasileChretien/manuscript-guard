@@ -204,15 +204,14 @@ def _sign(text: str, at: int) -> int:
     exponent, which is also the E of a panel in "Figures 1E-1G", and after a figure and one
     space or line end, which is a range typed with a space on one side as often as a
     negative number."""
-    if at == 0:
-        return SURE
-    before = text[at - 1]
-    if before == "-" == text[at]:
+    if text[at] == "-":
         # Two or three hyphens are the dash pandoc prints for them: one dash, read by what
         # stands before the first.
         while at and text[at - 1] == "-":
             at -= 1
-        return NO if at and _JOIN.match(text[at - 1]) else SURE
+    if at == 0:
+        return SURE
+    before = text[at - 1]
     if before in _ATTACHED or before in _SPACED:
         return SURE if _opens(text, at - 1) else MAYBE
     if before in " \n":
@@ -286,17 +285,20 @@ _PUT_BACK = (
 )
 
 
-def _what(found: Sequence[Fact]) -> str:
+def _what(found: Sequence[Fact], alone: bool) -> str:
     """The fact these all are, named for a message: a number with its minus sign where
-    every one of them has it for sure."""
+    every one of them has it for sure and the other text holds none of the number.
+    Where both texts hold it the sentence counts both, and the sign of one text's is
+    not the other's: "'-2' stood twice and stands once now" was said of a 2."""
     first = found[0]
-    if first.kind == NUMBER and not all(fact.minus == SURE for fact in found):
+    signed = alone and all(fact.minus == SURE for fact in found)
+    if first.kind == NUMBER and not signed:
         return f"the number '{first.text}'"
     return f"the {first.kind} {first.shown}"
 
 
 def _lost(before: Sequence[Fact], now: int, path: Path | None) -> Finding:
-    what = _what(before)
+    what = _what(before, alone=now == 0)
     if now == 0 and len(before) == 1:
         message = f"{what} is gone: it stood on {_lines(before)} before the edit"
     elif now == 0:
@@ -312,7 +314,7 @@ def _lost(before: Sequence[Fact], now: int, path: Path | None) -> Finding:
 
 
 def _new(after: Sequence[Fact], was: int, path: Path | None, line: int) -> Finding:
-    what = _what(after)
+    what = _what(after, alone=was == 0)
     if was == 0 and len(after) == 1:
         message = f"{what} is new: it did not stand in the text before the edit"
     elif was == 0:
@@ -389,6 +391,10 @@ _UNSURE = (
     "a dash before a number is its minus sign or the dash of a range, and nothing here can "
     "tell which: read the place"
 )
+_MOVED = (
+    "if a minus sign went from one place to the other, two numbers changed; if their clauses "
+    "changed places, nothing did: read the places"
+)
 
 
 def _signed(found: Sequence[Fact]) -> tuple[list[Fact], list[Fact]]:
@@ -399,61 +405,106 @@ def _signed(found: Sequence[Fact]) -> tuple[list[Fact], list[Fact]]:
     )
 
 
-def _sign_change(
+def _newly(now: int, before: int) -> int:
+    """How many more dashes that may be a sign there are now than there were."""
+    return max(now - before, 0)
+
+
+def _nth(places: Sequence[int]) -> str:
+    """"1st", "2nd and 4th": which of a number's places, counted from the top of the file."""
+    endings = {1: "st", 2: "nd", 3: "rd"}
+    return _listed(
+        [f"{at}{'th' if 10 < at % 100 < 14 else endings.get(at % 10, 'th')}" for at in places]
+    )
+
+
+def _sign_failure(
     figures: str,
     was: Sequence[Fact],
     now: Sequence[Fact],
     placed: Callable[[Sequence[Fact]], int | None],
     path: Path | None,
 ) -> Finding | None:
-    """What an edit did to the minus signs of one number that both texts may hold.
+    """A minus sign that is gone or new for sure, of one number both texts may hold.
 
-    From counts, as the rest is. A sign is gone for sure where more of them had one for
-    sure than have a dash at all now, beyond those that are gone themselves, and it fails.
-    Short of that, a dash that came or went may have been a sign, and is shown. A dash that
-    is read another way and stands as it stood, `x*-1` made `x * -1`, is no change."""
+    From counts, as the rest is. A sign is gone for sure where more of the number had one
+    for sure than have one for sure now, beyond those that are gone themselves and beyond
+    the dashes that may be a sign and are new: `x * -1` made `x*-1` has the same sign in a
+    place where it is no longer sure. A dash that may be a sign and stood before the edit is
+    itself, and answers for nothing: counted with the dashes now, as it was at first, the
+    `*n*-1` of a later paragraph answered for a slope of -1 made 1."""
     (sure, dashed), (sure_now, dashed_now) = _signed(was), _signed(now)
-    plain_now = [fact for fact in now if fact.minus == NO]
+    maybe, maybe_now = len(dashed) - len(sure), len(dashed_now) - len(sure_now)
     gone, come = max(len(was) - len(now), 0), max(len(now) - len(was), 0)
     number, signed = f"the number '{figures}'", f"'-{figures}'"
-    if len(sure) - gone > len(dashed_now):
+    if len(sure) - gone > len(sure_now) + _newly(maybe_now, maybe):
         message = (
             f"{number} has lost its minus sign: {signed} stood on {_lines(sure)} before the edit"
         )
-        if dashed_now:
+        if sure_now:
             message = (
                 f"{number} stood as {signed} {_times(len(sure))} before the edit, on "
-                f"{_lines(sure)}, and has a dash before it {_times(len(dashed_now))} now"
+                f"{_lines(sure)}, and stands as {signed} {_times(len(sure_now))} now"
             )
-        line = placed(plain_now or now)
-        return Finding(GATE, "sign-lost", message, FAIL, path, line, hint=_PUT_BACK)
-    if len(sure_now) - come > len(dashed):
+        plain = [fact for fact in now if fact.minus == NO]
+        return Finding(GATE, "sign-lost", message, FAIL, path, placed(plain or now), hint=_PUT_BACK)
+    if len(sure_now) - come > len(sure) + _newly(maybe, maybe_now):
         message = (
             f"{number} has a minus sign it did not have: {signed} stands on {_lines(sure_now)}"
         )
-        if dashed:
+        if sure:
             message = (
                 f"{number} stands as {signed} {_times(len(sure_now))} now, on {_lines(sure_now)}, "
-                f"and had a dash before it {_times(len(dashed))} before the edit"
+                f"and stood as {signed} {_times(len(sure))} before the edit"
             )
         return Finding(GATE, "sign-new", message, FAIL, path, placed(sure_now), hint=_PUT_BACK)
-    if len(was) != len(now) or len(dashed) == len(dashed_now):
+    return None
+
+
+def _sign_warning(
+    figures: str,
+    was: Sequence[Fact],
+    now: Sequence[Fact],
+    placed: Callable[[Sequence[Fact]], int | None],
+    path: Path | None,
+) -> Finding | None:
+    """A dash that came, went or changed places where nothing about it is sure.
+
+    Only of a number that stands as often as it did: where it does not, that is told and
+    fails. A dash more or fewer may be a sign more or fewer. As many dashes at other places
+    of the number is two signs that changed places, "fell by -0.3 and rose by 0.3" made
+    "fell by 0.3 and rose by -0.3", or two clauses that did, and the two look the same. A
+    dash that stands where it stood and is only read another way, `x*-1` made `x * -1`, is
+    no change."""
+    if len(was) != len(now):
         return None
+    dashed, dashed_now = _signed(was)[1], _signed(now)[1]
+    number = f"the number '{figures}'"
     if len(dashed) > len(dashed_now):
         then = f"stands before it {_times(len(dashed_now))} now" if dashed_now else "does not now"
         message = (
             f"{number} may have lost a minus sign: a dash stood before it {_times(len(dashed))} "
             f"before the edit, on {_lines(dashed)}, and {then}"
         )
-        line = placed(plain_now or now)
-    else:
+        line = placed([fact for fact in now if fact.minus == NO] or now)
+        return Finding(GATE, "sign-unsure", message, WARN, path, line, hint=_UNSURE)
+    if len(dashed) < len(dashed_now):
         then = f"stood before it {_times(len(dashed))}" if dashed else "none stood before it"
         message = (
             f"{number} may have gained a minus sign: a dash stands before it "
             f"{_times(len(dashed_now))} now, on {_lines(dashed_now)}, and {then} before the edit"
         )
-        line = placed(dashed_now)
-    return Finding(GATE, "sign-unsure", message, WARN, path, line, hint=_UNSURE)
+        return Finding(GATE, "sign-unsure", message, WARN, path, placed(dashed_now), hint=_UNSURE)
+    places = [at for at, fact in enumerate(was, 1) if fact.minus != NO]
+    places_now = [at for at, fact in enumerate(now, 1) if fact.minus != NO]
+    if places == places_now:
+        return None
+    message = (
+        f"the dash before {number} stands at another of its {len(now)} places: before the edit "
+        f"at the {_nth(places)}, on {_lines(dashed)}, and now at the {_nth(places_now)}, on "
+        f"{_lines(dashed_now)}"
+    )
+    return Finding(GATE, "sign-moved", message, WARN, path, placed(dashed_now), hint=_MOVED)
 
 
 def _by_key(found: Sequence[Fact]) -> dict[tuple[str, str], list[Fact]]:
@@ -508,7 +559,8 @@ def compare(before: str, after: str, path: Path | None = None) -> Report:
     # Only a number with a dash against it somewhere, in either text, can have had its sign
     # changed.
     for key in dict.fromkeys(fact.key for fact in (*was, *now) if fact.minus != NO):
-        change = _sign_change(key[1], stood.get(key, ()), stands.get(key, ()), placed, path)
+        both = key[1], stood.get(key, ()), stands.get(key, ()), placed, path
+        change = _sign_failure(*both) or _sign_warning(*both)
         findings += [change] if change else []
     kinds = Counter(fact.kind for fact in now)
     return Report(tuple(findings)).with_counts(

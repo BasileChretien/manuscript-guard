@@ -1288,9 +1288,25 @@ is sure it fails, and where it is not the place is shown and the command passes.
 that can only open leaves the sign sure: one whose run stands at the start or after
 something that does not join, or the first caret of its word. After any other, after a
 figure and "e", and after a figure and one space or a line end, a dash that came or went
-is a warning. A
-dash that stands as it stood and is only read another way, "x*-1" made "x * -1", is no
-change.
+is a warning. A dash that stands as it stood and is read as a sure sign in one text and
+as perhaps one in the other, "x*-1" made "x * -1", is no change.
+
+The third review found what was concluded from this wrong where a number stands in
+several places. All of it is from counts, and three things had to be counted apart. A
+dash that may be a sign and stood before the edit is itself: counted among the dashes
+now, the `*n*-1` of a later paragraph answered for a slope of -1 made 1, which only
+warned. Only a dash that may be a sign and is new can be the sure one in another place.
+The places count too: "fell by -0.3 and rose by 0.3" made "fell by 0.3 and rose by
+-0.3" has the same figures and as many dashes, and with the sign no part of what is
+compared nothing was said of it. Two signs that changed places and two clauses that did
+look the same, so it is the order's case and a warning, `sign-moved`. And a number is
+named with its sign only where the other text holds none of it.
+
+Two or three hyphens before a number are the dash pandoc prints for them, and are read
+as one dash by what stands before the first: "1--3" is a range, and "-5 to -3" made
+"-5--3" has lost the sign of the 3. A plus sign is part of the figures where a minus
+would be a sure sign, and is not read elsewhere: "0.5, +0.3" made "0.5 +0.3" is told
+as one number gone and one new.
 
 A number with no nought keeps its point, ".05", and raised and lowered figures are
 figures: the first review found "-.30" read as "30", and ten to the minus eight typed with
@@ -7698,6 +7714,14 @@ Closed since, and why each mattered:
     end. So "x*-1" made "x*1", "10**-6" made "10**6" and "1e-5" made "1e5" are shown and
     not refused, and so is the sign of a negative number that follows another number after
     one space, "0.5 -0.3". A listing is read by the same rule as the prose.
+  - A dash that stands as it stood fails where the edit moves it between a place where
+    it is a sign for sure and one where it joins: "about -3" closed up to "about-3",
+    "Day-1" opened to "Day -1", and a range typed with a space on one side after a
+    word or a unit, "5 mg -10 mg" made "5 mg-10 mg".
+  - Where the same figures stand in several places, what is sure of their signs is
+    counted and not placed. A sure sign gone at one place while a dash that may be one
+    is new at another is a warning that the dash stands at another place, not a
+    failure.
   - A sign set apart from its number is not read with it: a true minus, a space and "0.3",
     made "0.3", passes, and so does "-$5" made "$5".
   - A figure retyped raised or lowered is told as gone and new, as "3" made "three" is: a

@@ -68,8 +68,9 @@ from manuscript_guard.gates.vocabulary import (
 )
 from manuscript_guard.literature import sources as literature_sources
 from manuscript_guard.literature.sources import contains, normalise, states_value
-from manuscript_guard.text import placeholders, tokens
+from manuscript_guard.text import tokens
 from manuscript_guard.text.masking import NUL, mask
+from manuscript_guard.text.placeholders import parse as parse_bindings
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tex import tex_outside_maths
 from manuscript_guard.text.tokens import DIGIT, find_atoms
@@ -432,7 +433,7 @@ def test_a_binding_is_placed_where_it_stands(manuscript: str, nobodys: str) -> N
     in any other. What else Python ends a line at, a form feed for one, is too seldom drawn
     before a binding to be held here: `tests/test_text.py` names each."""
     for text in (manuscript, nobodys):
-        bound, malformed = placeholders.parse(text)
+        bound, malformed = parse_bindings(text)
         for found in bound:
             line_start = text.rfind("\n", 0, found.start) + 1
             assert found.line == text.count("\n", 0, found.start) + 1, (text, found)
@@ -880,6 +881,10 @@ def _every_finding_is_on_line_one(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate._File, "line_of", lambda self, offset: 1)
 
 
+def _a_binding_that_opens_a_line_is_on_the_line_before(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr("manuscript_guard.text.placeholders.bisect_right", bisect_left)
+
+
 def _a_ligature_is_not_folded(patch: pytest.MonkeyPatch) -> None:
     patch.delitem(literature_sources._EQUIVALENT, "\N{LATIN SMALL LIGATURE FF}")
 
@@ -900,10 +905,6 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
 
-def _a_binding_that_opens_a_line_is_on_the_line_before(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(placeholders, "bisect_right", bisect_left)
-
-
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -918,6 +919,10 @@ BROKEN = {
     "every finding is on line 1": (
         _every_finding_is_on_line_one,
         test_a_term_given_up_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a binding that opens a line is put on the line before": (
+        _a_binding_that_opens_a_line_is_on_the_line_before,
+        test_a_binding_is_placed_where_it_stands,
     ),
     "a ligature is not folded": (
         _a_ligature_is_not_folded,
@@ -934,10 +939,6 @@ BROKEN = {
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
-    ),
-    "a binding that opens a line is put on the line before": (
-        _a_binding_that_opens_a_line_is_on_the_line_before,
-        test_a_binding_is_placed_where_it_stands,
     ),
 }
 

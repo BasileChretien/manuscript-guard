@@ -36,10 +36,10 @@ scale rather than as a checklist, and the scoring is left to the editor or revie
 A scale is also read differently, and its profile says so: a Word table's items are verified
 verbatim, a column-laid-out PDF's by their opening clause, and a scale's not at all, because
 they are read line by line from the form and there is nothing else to compare them with. What
-the reader offers instead is that a line it cannot place stops the transcription — below the
-first heading of its page, and as far as the counts the recipe states can see. Above that
-heading every line is passed over, and a wrapped line changes no count, so no count sees one.
-DESIGN.md's Known gaps carries what that does and does not cover.
+the reader offers instead is its own rules, stated in `reporting/scale.py`: what is read on each
+page, what each line becomes, and which of `items` and `options` the recipe stated. What those
+rules refuse and what they let through follows from them, and is pinned in the tests DESIGN.md's
+Known gaps names.
 
 ```bash
 manuscript-guard fetch STROBE

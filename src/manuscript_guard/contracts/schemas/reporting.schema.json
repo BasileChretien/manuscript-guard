@@ -57,7 +57,7 @@
     },
     "verification": {
       "type": "string",
-      "description": "How thoroughly the transcription was checked against the source. Recorded because it differs: a Word table allows every item's full text to be verified, a column-laid-out PDF allows only each item's opening clause, and a rating scale read line by line allows no independent check at all — what it offers instead is that a line it cannot place stops the transcription, below the first heading of its page and as far as the counts its recipe states can see. The three should not be mistaken for the same guarantee."
+      "description": "How thoroughly the transcription was checked against the source. Recorded because it differs: a Word table allows every item's full text to be verified, a column-laid-out PDF allows only each item's opening clause, and a rating scale read line by line allows no independent check at all — what it offers instead is the rules it reads by, which `reporting/scale.py` states, with the cases they produce pinned in tests. The three should not be mistaken for the same guarantee."
     },
     "items": {
       "type": "array",

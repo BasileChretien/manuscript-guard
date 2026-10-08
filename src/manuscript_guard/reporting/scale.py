@@ -19,53 +19,45 @@ That is neither a Word table nor two columns of a checklist, so neither of the o
 can read it, and the alternative — retyping six items and eighteen statements — is the one
 thing this package exists to refuse.
 
-**A line is placed, or the reading stops where a count can see it** — which is the whole of
-what this reader offers in place of a check, and less than it sounds: see the end of this
-docstring, and DESIGN.md's Known gaps, for what no count sees.
+**The reading's rules are the whole of what this reader offers in place of a check**, and they
+are stated below: what is read on each page, what each line becomes, what is counted. What those
+rules refuse and what they let through follows from them, and is pinned in the tests DESIGN.md's
+Known gaps names rather than written out here.
 
 The first version dropped whatever did not match: the parenthetical
 under two items of SANRA's own form vanished from the profile, a wrapped statement would have
 been cut at the line end, and an item printed with one option would have disappeared — each
 silently, and each with a profile that claimed every statement was there. So:
 
-* a line directly under a heading, before any option, is that item's clarification, which is
-  what the parenthetical is, and is kept;
-* any *other* line that is neither a heading nor an option is a `RecipeError` naming it —
-  anywhere below the first heading of its page, since above that heading every line is passed
-  over as the form's title and the rater's instructions;
-* an item with fewer than `min_options` options is a heading mistaken for one while no item
-  has been read yet, anywhere in the document — the rater's numbered instructions sit above
-  the scale — and a `RecipeError` once the scale has started;
-* the item numbers must run from one without a gap, and a recipe may state how many items and
-  how many options each has, which the transcription is then held to.
+The rules it reads by are below, under "What is read" and the two headings after it, stated once
+rather than twice.
 
 **What is checked, and what is not.** The reader's output is its input, read line by line, so
-there is nothing here to compare the items against: the profile says so in as many words
-rather than claiming a verbatim check it cannot perform. What stands in for one is that a line
-is placed or the reading stops — within two limits, both narrower than that sentence sounds.
+there is nothing here to compare the items against: the profile says so in as many words rather
+than claiming a verbatim check it cannot perform. What stands in for one is the reading's own
+rules, and they are the whole of it.
 
-**The first is the page.** Every line before the first numbered heading *of each page* is passed
-over, because that is where a form prints its title and the rater's instructions. The line is
-lost whatever the counts say; whether its loss is noticed afterwards is another matter. A
-statement whose second line sits at the top of the next page goes through **in silence** where
-the score is on the statement's own first line and the statement is its item's last — the shape
-the test pins. Anywhere else the counts or the line rules catch what is left: a wrap before the
-item's other scored lines leaves the item an option short, a wrapped first statement leaves it
-with none, and a statement after the first is refused outright as a line after that item's
-options.
+**What is read.** On each page of the recipe's `pages`, the lines from the first numbered heading
+to a line equal to `stop_at`, or to the end of that page. A line above that heading is passed
+over — it is where a form prints its title and the rater's instructions — and so is every line
+after `stop_at` on that page. Each page is read afresh, so a `stop_at` on one does not end the
+next.
 
-**The second is what a count can see.** `options` refuses a dropped option, an extra one read
-from a running foot, and an item whose scored lines carry on to the next page; `items` refuses a
-scale read short. No count sees a wrapped line, because a wrap changes nothing's number: a title
-running onto a second line is read as a title and a clarification, and a first statement whose
-score sits on its second line as a clarification and a shortened first option — both with
-SANRA's own counts stated. Elsewhere on a page a wrapped line is refused by the line rules, not
-by a count: any statement after the first, a first statement with its score on its own line, and
-any wrap under an item that already carries a clarifying line.
+**What each line becomes.** A line opening with a number and a bracket starts an item. A line
+whose text is followed by two spaces or more and a one- or two-digit number at its end is one of
+that item's options. The first non-blank unscored line under a heading, before any option, is
+that item's clarification. A blank line is skipped. Any other line is a `RecipeError` naming it.
 
-DESIGN.md's Known gaps carries the cases, and a recipe for a new form states its counts and has
-its first profile read against the form once, by eye. Two limits, then: the page, which no count
-reaches, and what a count can see.
+**What is counted.** An item read with fewer than `min_options` options is refused, once any item
+has been read anywhere in the document. The item numbers must run from one without a gap. `items`
+is compared with how many items were read, and `options` with how many options each item has —
+each only if the recipe states it.
+
+That is all of it. Which misprints and which wrapped lines those rules refuse, which they write
+wrongly, and which they pass over, follows from them; the cases are pinned in the tests
+DESIGN.md's Known gaps names, because a shape is exact in a test and has not stayed exact in a
+paragraph. A recipe for a new form states its counts and has its first profile read against the
+published form once, by eye.
 """
 
 from __future__ import annotations

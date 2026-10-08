@@ -6605,62 +6605,45 @@ Closed since, and why each mattered:
   (`reporting/scale.py`) reads a form of numbered items with scored options: SANRA's. The items
   are the reader's output read from its own input, so there is nothing to compare them against —
   a Word table's items are verified verbatim, a column PDF's by their opening clause, and a
-  scale's not at all. The profile says so in those words rather than printing a guarantee.
-  What stands in for one is that a line is placed or the reading stops: a line the reader cannot
-  place stops the transcription, an item with too few options stops it once the scale has
-  started anywhere in the document, and the numbers must run from one without a gap. The first
-  version dropped what did not match, and the parenthetical under two of SANRA's six items
-  vanished from the profile while it reported every statement verbatim.
+  scale's not at all. The profile says so in those words rather than printing a guarantee, and
+  records which of `items` and `options` its recipe stated.
 
-  **Above the first heading of a page, nothing is placed.** Every line before it is passed over,
-  because that is where a form prints its title and the rater's instructions. So a statement
-  whose second line sits at the top of the next page loses it, with both counts stated, where
-  the same wrap on one page is refused. Whether that loss is then noticed depends on where the
-  wrap falls: it goes through **in silence** where the score is on the statement's own first
-  line and the statement is its item's last, and otherwise leaves the item an option short or
-  none at all, which the counts refuse. Nothing shipped reaches any of it: SANRA's recipe reads
-  one page.
+  What stands in for a verification is the reading's own rules, which `scale.py`'s docstring
+  states in three short paragraphs: what is read on each page, what each line becomes, and what
+  is counted. The first version of this reader dropped what did not match, and the parenthetical
+  under two of SANRA's six items vanished from the profile while it reported every statement
+  verbatim.
 
-  It is not the only place "a line is placed or the reading stops" does not hold. A line under
-  one of the rater's numbered instructions, before the scale has started, goes with the
-  instruction; every line after `stop_at` is left by the recipe's own word; and the first
-  unscored line under a heading is kept as that item's clarification. The sentence above should
-  be read with this paragraph beside it.
+  **The consequences are pinned, not described.** Four rounds of review, by two readers of this
+  code, each corrected a case-by-case account of which misprints and which wrapped lines are
+  refused and wrote a new one that was wrong somewhere — and every case still at issue is a form
+  of several pages, which no shipped recipe reads. The enumeration has more cases than prose
+  keeps straight, so it lives in `tests/test_transcribe.py` instead, in these four:
 
-  **What each count can see.** `options` refuses a line that changes how many options an item
-  has: a statement printed within one space of its score (`pdftotext -layout` may lay that out
-  differently between builds — SANRA's longest leaves exactly two spaces under Xpdf 4.00 and many
-  more under poppler 24.04, which is a margin and not a guarantee), a running foot ending in a
-  page number where the recipe gives no `stop_at`, and an item whose scored lines carry on to the
-  next page. `items` refuses a scale read short: a line equal to `stop_at` printed before the
-  last item, and a page the recipe's `pages` leaves out. Neither count catches the other's cases.
+  - `test_a_statement_split_across_a_page_break_loses_its_second_line`
+  - `test_a_stop_at_line_before_the_last_item_is_caught_only_by_the_item_count`
+  - `test_a_last_item_alone_on_a_second_page_is_refused_not_passed_over`
+  - `test_the_profile_carries_the_sentence_for_its_recipes_counts`
 
-  One thing that list used to carry and should not: a last item alone on a page, which is read
-  correctly, or refused for too few options, with and without counts alike. And one it still
-  carries, correctly, though not for the reason first given — a one-space statement is refused by
-  the line rules with no counts at all in every position but one, first line under a title of an
-  item with no clarifying line, where it is read as the clarification; it is there because that
-  one position is `options`' to catch.
+  [#219][scale-219] records ten sentences found inexact, each with what is true instead, for
+  anyone who wants that account as it stood.
 
-  **No count sees a wrapped line**, because wrapping changes nothing's number. A title that runs
-  onto a second line is read as a title cut at the line end and a clarifying line; a first
-  statement that wraps with its score on the second line is read as a clarification and a
-  shortened first option. Both are written in silence with SANRA's own counts stated. Elsewhere
-  on a page the line rules refuse a wrap without help from any count: any statement after the
-  first, a first statement with its score on its own line, and any wrap under an item that
-  already carries a clarifying line. A form whose layout is misread from the start is uncaught in
-  any case.
+  Two things prose can carry. A statement printed within one space of its score depends on the
+  build of `pdftotext`: SANRA's longest leaves exactly two spaces under Xpdf 4.00 and many more
+  under poppler 24.04, which is a margin and not a guarantee. And a form whose layout is misread
+  from the start is uncaught in any case.
+
+  Where the form prints something that is not an item, the recipe names it (`stop_at`), because
+  only the recipe can tell a footer from a statement that wrapped. A numbered line in the rater's
+  instructions that runs to a second unscored line is refused with a message about a second
+  clarification, which names the wrong cause; the recipe cannot yet say where the scale begins.
 
   So a new recipe states its counts, and — the part no machine does — its first profile is read
   against the published form once, item by item. For the form this ships a recipe for, that was
   done: under Xpdf 4.00 and poppler 24.04 every one of SANRA's six titles and six first
   statements is on one line, and both builds transcribe it identically.
 
-  Where the form prints something that is not an item, the recipe names it (`stop_at`), because
-  only the recipe can tell a footer from a statement that wrapped. A numbered line in the
-  rater's instructions that runs to a second unscored line is refused with a message about a
-  second clarification, which names the wrong cause; the recipe cannot yet say where the scale
-  begins.
+  [scale-219]: https://github.com/BasileChretien/manuscript-guard/pull/219
 - **Recipes are tuned to one document each.** A guideline that reformats its checklist
   breaks its recipe, loudly — the transcription fails rather than producing something
   plausible, which is the right failure, but it is still work.

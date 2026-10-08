@@ -79,10 +79,10 @@ def build_profile(
     if parse_mode == "pdf-scale":
         # A rating scale, not a checklist: numbered items with the statements a rater chooses
         # between. There is nothing here to verify the items against — they are the reader's
-        # output read line by line from its input — so the profile says that in as many words
-        # instead of claiming a check. What stands in for one is that a line below the first
-        # heading of its page is placed or the reading stops — above that heading every line is
-        # passed over, and no count sees a wrapped one. See scale.py and DESIGN.md's Known gaps.
+        # output read line by line from its input — so the profile records which counts the
+        # recipe stated instead of claiming a check. `scale.py` states the rules the reader reads
+        # by; what those rules refuse and what they let through is pinned in the tests
+        # DESIGN.md's Known gaps names.
         from manuscript_guard.reporting.scale import (
             ScaleRecipe,
             transcribe_scale,

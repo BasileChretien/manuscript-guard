@@ -181,7 +181,8 @@ check, so run `manuscript-guard check --submission` yourself before a manuscript
 - Before a shell command containing `--submission`, or one that copies, zips or pushes a
   submission or a `.docx`, the whole submission check runs and the command is refused if
   anything fails, or if a file of the project cannot be used and the check cannot run. That
-  includes `manuscript-guard check --submission` itself. The refusal shows the first eight
+  includes `manuscript-guard check --submission` itself, `submit`, and a build asked for
+  with `--stage submission`. The refusal shows the first eight
   failures; `check --stage submission` runs the same check without the hook and lists them
   all.
 

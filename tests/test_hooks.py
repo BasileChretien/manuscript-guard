@@ -582,6 +582,130 @@ def test_a_failing_submission_blocks_the_command(project: Path, capsys) -> None:
     assert "check --stage submission" in reason(result)
 
 
+#: The command under each name it is installed or run by, and a submission build asked for
+#: by its stage. Each went through in a project that fails, where `manuscript-guard submit`
+#: and `build --submission` were refused; with `--skip-checks` nothing else stopped it.
+UNDER_ANOTHER_NAME = [
+    "mguard submit",
+    "mguard submit --offline --skip-checks",
+    "MGUARD submit",
+    "mguard.exe submit",
+    "manuscript-guard.exe submit --skip-checks",
+    "python -m manuscript_guard.cli submit",
+    "python3 -m manuscript_guard.cli submit --offline --skip-checks",
+    "py -3 -m manuscript_guard.cli submit",
+    ".venv/bin/mguard submit",
+    "uv run mguard submit",
+    "cd . && mguard submit",
+    r"& 'C:\Tools\Scripts\manuscript-guard.exe' submit",
+    '"mguard" submit',
+    "manuscript-guard build --stage submission --offline",
+    "manuscript-guard build --offline --stage submission --skip-checks",
+    "manuscript-guard build --stage=submission --skip-checks",
+    'manuscript-guard build --stage "submission" --offline',
+    "mguard build --stage submission --skip-checks",
+    "python -m manuscript_guard.cli build --skip-checks --stage submission",
+    "manuscript-guard build --offline \\\n  --stage submission --skip-checks",
+    "manuscript-guard build --offline `\n  --stage submission --skip-checks",
+]
+
+#: What must go on being let through in the same project: the check a refusal tells its
+#: reader to run, under either name, and a build that asks for no submission. Two commands
+#: on one line, or on two, are two commands: the stage of the second is not the first's.
+NOT_A_SUBMISSION = [
+    "manuscript-guard check --stage submission",
+    "mguard check --stage submission",
+    "python -m manuscript_guard.cli check --stage submission",
+    "manuscript-guard build --offline",
+    "mguard build --offline --skip-checks",
+    "manuscript-guard build --stage drafting --offline",
+    "mguard build --stage internal-review",
+    "manuscript-guard build --offline && manuscript-guard check --stage submission",
+    "manuscript-guard build --offline; manuscript-guard check --stage submission",
+    "manuscript-guard build --offline | tee build.log; mguard check --stage submission",
+    "manuscript-guard build --offline\nmanuscript-guard check --stage submission",
+    "manuscript-guard check --stage submission && manuscript-guard build --offline",
+    "manuscript-guard stages",
+    "mguard explain manuscript/main.md",
+    "manuscript-guard verify",
+    # A stage belongs to the nearest invocation before it. After `build` the marker read on
+    # to the end of the line, past a second invocation, and took the stage of the check a
+    # refusal names for the build's: in the body of a pull request, in a message, in two
+    # PowerShell commands the first of which ends in a folder's backslash, and in a branch.
+    'gh pr create --title "methods" --body "## Test plan\n'
+    "- `manuscript-guard build --offline`\n- `manuscript-guard check --stage submission`\"",
+    'git commit -m "methods: rebuilt with manuscript-guard build --offline, '
+    'manuscript-guard check --stage submission still fails on G11"',
+    "manuscript-guard build --offline ."
+    + chr(92)
+    + "\nmanuscript-guard check --stage submission ."
+    + chr(92),
+    'echo "ran manuscript-guard build --offline then mguard check --stage submission" >> log',
+    "if ($quick) { mguard build --offline } else { mguard check --stage submission }",
+    "python -m manuscript_guard.cli build --offline, then "
+    "python -m manuscript_guard.cli check --stage submission",
+]
+
+#: And what the nearest invocation does not let through: a second build that is a
+#: submission, and a stage after a folder that is called as the command is.
+UNDER_ANOTHER_NAME += [
+    "manuscript-guard build --offline && manuscript-guard build --stage submission --offline",
+    "manuscript-guard check --stage submission; mguard build --offline --stage submission",
+    "manuscript-guard build manuscript-guard/example --stage submission --skip-checks",
+    "mguard build ../manuscript-guard --stage submission --skip-checks",
+]
+
+
+def test_a_line_that_names_the_command_often_is_read_in_linear_time(assert_linear) -> None:
+    """After `build` the marker reads on for a stage, and it read to the end of the line
+    from each `build`: a line that named the command n times cost n times its length, 9 s
+    for 391 KB of one line. It stops at the next invocation."""
+
+    def line(mentions: int) -> str:
+        return ("run mguard build the paper " + "word " * 40) * mentions
+
+    assert_linear(line, SUBMISSION_MARKERS.search, 50, "the submission markers, by mention")
+
+
+@pytest.mark.parametrize("command", UNDER_ANOTHER_NAME)
+def test_a_submission_is_held_under_every_name_of_the_command(
+    command: str, project: Path, capsys
+) -> None:
+    _without_a_review(project)
+    assert SUBMISSION_MARKERS.search(command), command
+    event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(project)}
+    result = run("guard-submission", event, capsys)
+    assert decision(result) == "deny", command
+    assert "submission check" in reason(result)
+
+
+@pytest.mark.parametrize("command", NOT_A_SUBMISSION)
+def test_a_command_that_asks_for_no_submission_is_let_through_under_either_name(
+    command: str, project: Path, capsys
+) -> None:
+    _without_a_review(project)
+    assert SUBMISSION_MARKERS.search(command) is None, command
+    event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(project)}
+    assert run("guard-submission", event, capsys) is None, command
+
+
+def test_every_name_the_package_installs_is_one_the_guard_knows() -> None:
+    """The names are the package's to give, in `pyproject.toml`. One added there, or the
+    module's path changed, has to reach the guard's marker."""
+    scripts = re.search(
+        r"^\[project\.scripts\]\n((?:.+\n)+)",
+        (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text("utf-8"),
+        re.MULTILINE,
+    )
+    assert scripts, "pyproject.toml lists no console scripts"
+    named = dict(re.findall(r'^([\w-]+) = "([\w.]+):main"$', scripts.group(1), re.MULTILINE))
+    commands = {name: module for name, module in named.items() if module.endswith(".cli")}
+    assert set(commands) == {"manuscript-guard", "mguard"}
+    for name, module in commands.items():
+        assert SUBMISSION_MARKERS.search(f"{name} submit"), name
+        assert SUBMISSION_MARKERS.search(f"python -m {module} submit"), module
+
+
 def _named_commands(text: str) -> list[str]:
     """Each `manuscript-guard` command a message tells its reader to run."""
     return re.findall(r"`(manuscript-guard\s[^`]*)`", text)

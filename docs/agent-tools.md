@@ -53,7 +53,10 @@ because `cd example && manuscript-guard submit` and `FOO=1 manuscript-guard subm
 defeat prefix matching. That is not hypothetical: it is how a submission slipped past the
 guard in the project this one learned from. It reads a command whichever tool runs it
 (`Bash`, `PowerShell` or `Monitor` under Claude Code), and knows the PowerShell words for
-its verbs, `Compress-Archive` and `Send-MailMessage` among them.
+its verbs, `Compress-Archive` and `Send-MailMessage` among them. It knows the command by
+each name it is installed or run under (`manuscript-guard`, `mguard`, and
+`python -m manuscript_guard.cli`), and holds a build asked for at the submission stage,
+`build --stage submission`, as it holds `build --submission`.
 
 The command is held to the project at the folder the agent is in, and to each other
 project it names by a path. So from the root of a repository with the paper in a folder

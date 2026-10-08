@@ -1155,6 +1155,17 @@ the sign is a modifier and not a comparison between two things. An interval is o
 "CI", "CrI" or the words "confidence interval" introduce. Known gaps lists what that
 leaves unread.
 
+**What a house style does on purpose is not a second form.** The first review of this
+reading found four things it had counted against a manuscript that was right. A house
+that joins the bounds of an interval with a hyphen, as JAMA does, writes "to" where a
+bound is negative, so that the dash is not read as its sign: an interval joined by "to"
+with a typed negative bound says nothing of the rest and is not counted. A `P` with a
+typed value above 1 is a pressure, a partition coefficient or a number of predictors,
+and no P value. A capital `P` that opens a sentence has its capital from the sentence,
+in "P < 0.05 was considered significant" as in "P values were two-sided"; the spacing
+of its sign is still read. And a level of confidence stated after the letters, "a
+confidence interval of 95%, 5% margin of error", is no bound.
+
 **The space before a unit is not a matter of counting.** `notation-unit` reports a number
 that runs into its unit, "5mg", "10mL", "37°C", wherever it stands, in a manuscript that
 always writes it so too. Here a field-neutral authority speaks: the SI Brochure (9th
@@ -1168,8 +1179,11 @@ journals do otherwise, so "%" is held to consistency alone. Basile chose both on
 **A unit is known by name, and the short names are few.** The symbols read are listed in
 `gates/notation.py`. Of those of one letter only `g` and `h` are among them: "5m" is as
 often five months, "1L" a first line of treatment, "30s" an age and "3A" a grade. And
-those two are not read in a sentence that names a figure or a table before them, where
-"3g" is a panel.
+those two are not read where a number and a letter are a name: in a sentence that has
+named a figure, a table or a scheme before them, where "3g" is a panel; after the word
+for a compound, a product or a derivative, or alone between marks of emphasis, where
+"**3g**" is the seventh of a series. Nor is `g` read in a sentence of centrifuging:
+"12,000g" is a force, printed closed, and "12,000 g" would be twelve kilograms.
 
 **It is read where the manuscript speaks**, as the vocabulary is, the contributions and
 acknowledgements included: a P value there is the author's. Not in a quotation set as a
@@ -7665,24 +7679,39 @@ Closed since, and why each mattered:
     comparison with no symbol before it, "aged <65 years", are not read, so a manuscript
     that mixes "r = 0.31" with "r=0.42" passes.
   - A `p` that is a proportion or a probability, "where p = 0.5 is the expected share", is
-    counted as a P value.
+    counted as a P value. A pressure or a count is told from one by a typed value above
+    1, which a binding hides: `P~plat~ < {{results.limit}}` is counted.
   - Words between the symbol and its sign hide the sign: "P for trend = 0.03" counts
     neither the symbol nor the spacing. A subscript written as pandoc's, `P~trend~`, is
     read.
   - "p-value" spelt out counts as the symbol "p", so a manuscript that writes "P = 0.03"
     and "the p-value" is told. A capital that opens a sentence, "P values were
-    two-sided", is not counted. The hyphen of "p-value" against "p value" is not read.
+    two-sided" or "P < 0.05 was considered significant", is not counted, so a paper
+    that writes "P" only there and "p" elsewhere passes. The hyphen of "p-value" against
+    "p value" is not read.
   - An interval is read only where "CI", "CrI" or the words for it stand before its
     bounds. A range, "IQR 3-7" or "aged 18 to 65", is not, and neither is what stands
     between the letters and the first bound, "95% CI 1.2" against "95% CI: 1.2". An
     interval printed by one binding is not read. "CI" for a cardiac index followed by two
     numbers is counted as an interval.
+  - An interval joined by "to" is left out of the count where a typed bound is
+    negative, as a house that joins with a dash writes it. Where both bounds are
+    bindings their sign is not seen, and that "to" is counted as a second form. And a
+    manuscript that joins with "to" throughout is not counted where a bound is negative,
+    which changes no finding.
+  - Two or three hyphens are read as the dash pandoc prints for them. "95%, 5%" after
+    the letters, with no level before them, is taken for a level and a margin only
+    where the first number is 80, 90, 95, 99 or 99.9.
   - The convention is the majority. A manuscript that is mostly in the form its journal
     does not print is told of the places where it is right.
   - Only the units listed in `gates/notation.py` are read, and of the symbols of one
     letter only `g` and `h`: "5m", "5L", "30s" and "4V" pass. A `g` or an `h` after the
-    word for a figure or a table in the same sentence is taken for a panel, so "In Figure
-    2, a dose of 2g" passes.
+    word for a figure, a table, a scheme, a compound, a product or a derivative in the
+    same sentence is taken for a name, so "In Figure 2, a dose of 2g" and "the product
+    weighed 2g" pass; so does a `g` after a word of centrifuging, "the pellet weighed
+    2g". A compound named with neither such a word nor marks of emphasis around it, "3g
+    was the most potent", is reported. "6mA", the methylated base, is read as
+    milliamperes.
   - "37°C" is reported, as the SI Brochure has it, in a manuscript for a journal that
     prints it closed. There is no setting to say so; the journal profile's style block is
     where one will go.

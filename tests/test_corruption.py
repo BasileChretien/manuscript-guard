@@ -9542,3 +9542,37 @@ def test_another_notation_in_a_comment_a_listing_or_a_quotation_is_not_the_manus
     assert edited != text
     main_md(project).write_text(edited, encoding="utf-8")
     assert notation_findings(project) == []
+
+def test_a_sign_closed_up_by_a_co_author_is_caught(project: Path) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    assert old in text, "the fixture changed under this test"
+    edited = text.replace(
+        old,
+        old + " Most reports were serious (n = 12) or fatal (n = 4)."
+        "\n\nFew were neither (n=3).",
+    )
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert notation_findings(project) == [
+        (
+            "notation-sign-spacing",
+            line_of(edited, "Few were neither"),
+            "the sign after P or n has no space around it once, as in 'n=3'; the manuscript "
+            "writes it with a space on each side of it 2 times, as in 'n = 12'",
+        )
+    ]
+
+
+def test_a_space_typed_on_one_side_of_a_sign_is_caught(project: Path) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(old, old + " Most reports were serious (n= 12).")
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert notation_findings(project) == [
+        (
+            "notation-sign-spacing",
+            line_of(edited, "Several limitations"),
+            "the sign after P or n has a space on one side only once, as in 'n= 12'",
+        )
+    ]

@@ -165,6 +165,11 @@ def test_a_space_on_one_side_of_the_sign_is_reported_whatever_the_rest_does() ->
         (f"95% CI {LOW}, {HIGH}", "a comma"),
         (f"95% CI {LOW}; {HIGH}", "a semicolon"),
         (f"95% CI {LOW}\N{EM DASH}{HIGH}", "an em dash"),
+        # the dashes as a Markdown author types them: pandoc prints -- as an en dash
+        (f"95% CI {LOW}--{HIGH}", "an en dash"),
+        ("95% CI 1.2--3.4", "an en dash"),
+        ("95% CI 1.2 -- 3.4", "an en dash"),
+        ("95% CI 1.2---3.4", "an em dash"),
     ],
 )
 def test_an_interval_joined_another_way_is_reported(interval: str, joined: str) -> None:
@@ -195,9 +200,11 @@ def test_an_interval_joined_another_way_is_reported(interval: str, joined: str) 
         "95% confidence interval of 1.2 to 3.4",
         "95% confidence\ninterval from 1.2 to 3.4",
         "95% credible interval was 1.2 to 3.4",
-        "95% CI \N{MINUS SIGN}1.2 to \N{MINUS SIGN}0.3",  # negative bounds
-        "95% CI -1.2 to 0.3",
+        # the abbreviation defined between the words and the bounds
+        "95% confidence interval [CI], 1.2 to 3.4",
+        "95% confidence interval (CI) 1.2 to 3.4",
         "95% CI 1.2% to 3.4%",
+        "95% CI 85% to 97%",
         "95% CI 1,200 to 3,400",
         "95% CI .12 to .34",
     ],
@@ -206,6 +213,56 @@ def test_an_interval_is_found_however_it_is_introduced(interval: str) -> None:
     report = read(f"# Results\n\nFirst (95% CI 1-2), second (95% CI 3-4), third ({interval}).\n")
     assert codes(report) == ["notation-interval"], told(report)
     assert report.counts["notation_intervals"] == 3
+
+
+@pytest.mark.parametrize(
+    "interval",
+    [
+        "95% CI, \N{MINUS SIGN}4.1 to \N{MINUS SIGN}0.5",
+        "95% CI -1.2 to 0.3",
+        "95% CI 1.2 to -0.3",
+    ],
+)
+def test_to_before_a_negative_bound_says_nothing_of_the_rest(interval: str) -> None:
+    """A house that joins the bounds with a hyphen, as JAMA does, writes "to" where a bound
+    is negative, so that the dash is not read as its sign. The first version counted that
+    "to" as a second form and reported every trial that gives a ratio and a difference."""
+    report = read(
+        "# Results\n\nThe hazard ratio was 0.80 (95% CI, 0.69-0.93) and 1.10 (95% CI, "
+        f"0.95-1.27).\n\nThe difference was \N{MINUS SIGN}2.3 ({interval}).\n"
+    )
+    assert not report.findings, told(report)
+    assert report.counts["notation_intervals"] == 2
+
+
+def test_a_negative_bound_joined_by_anything_else_is_counted() -> None:
+    report = read("# Results\n\n(95% CI 1 to 2), (95% CI 3 to 4), (95% CI -1.2, 0.3).\n")
+    assert codes(report) == ["notation-interval"]
+    assert "joined by a comma once" in report.findings[0].message
+
+
+def test_a_bound_that_is_a_binding_cannot_be_seen_to_be_negative() -> None:
+    """Written down in Known gaps: with both bounds bound, the "to" before a negative one
+    is counted like any other."""
+    report = read(
+        f"# Results\n\n(95% CI {LOW}-{HIGH}) and (95% CI {LOW}-{HIGH}).\n\nThe difference "
+        f"was {X} (95% CI {LOW} to {HIGH}).\n"
+    )
+    assert codes(report) == ["notation-interval"]
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "We assumed a confidence interval of 95%, 5% margin of error and 80% power.",
+        "With a CI of 95%, 80% power needs 340 participants.",
+        "The survey used a CI 95%, 5% margin.",
+    ],
+)
+def test_a_level_of_confidence_is_no_bound(sentence: str) -> None:
+    report = read(f"# Methods\n\n{sentence}\n\n# Results\n\nIt was 2 (95% CI 1 to 3).\n")
+    assert not report.findings, told(report)
+    assert report.counts["notation_intervals"] == 1
 
 
 def test_a_percent_sign_set_another_way_is_reported() -> None:
@@ -224,7 +281,7 @@ def test_a_percent_sign_set_another_way_is_reported() -> None:
 
 
 def test_a_number_that_runs_into_its_unit_is_reported_though_the_manuscript_always_does() -> None:
-    """No counting here: the SI Brochure sets the space, and no house style closes it."""
+    """No counting here: the SI Brochure sets the space, whatever the manuscript's habit."""
     report = read(
         "# Methods\n\nA dose of 5mg was given.\n\n# Results\n\nThe dose rose to 10mg in "
         f"{X}mL of saline at 37\N{DEGREE SIGN}C, and to 20mg later.\n"
@@ -385,6 +442,56 @@ def test_a_capital_that_opens_a_sentence_is_the_sentence_s() -> None:
     assert report.counts["notation_p_values"] == 2
 
 
+def test_a_capital_that_opens_a_sentence_is_the_sentence_s_with_a_sign_after_it_too() -> None:
+    """ "P < 0.05 was considered significant." is the commonest sentence of a Methods
+    section. Its capital is the sentence's; its spacing is still the manuscript's."""
+    report = read(
+        "# Methods\n\nP < 0.05 was considered statistically significant.\n\n"
+        f"# Results\n\nIt held (p = {X}) and again (p = {X}).\n"
+    )
+    assert not report.findings, told(report)
+    assert report.counts["notation_p_values"] == 2
+    assert report.counts["notation_signs"] == 3
+
+    report = read(
+        "# Methods\n\nP<0.05 was considered statistically significant.\n\n"
+        f"# Results\n\nIt held (p = {X}) and again (p = {X}).\n"
+    )
+    assert codes(report) == ["notation-sign-spacing"]
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Plateau pressure was limited (P~plat~ < 30 cmH~2~O).",
+        "Ventilation was set for a P~CO2~ = 40 mmHg.",
+        "Lipophilicity was high (log P = 3.2).",
+        "The model was fitted with P = 10 predictors.",
+        "The order was P = 2 and the lag P = 1.5.",
+    ],
+)
+def test_a_p_with_a_value_above_one_is_no_p_value(sentence: str) -> None:
+    """A pressure, a partition coefficient, a number of predictors. A P value is never
+    above 1, so these are told apart; a proportion, "p = 0.5", cannot be."""
+    report = read(f"# Results\n\nIt held (p = {X}) and again (p = {X}).\n\n{sentence}\n")
+    assert not report.findings, told(report)
+    assert report.counts["notation_p_values"] == 2
+    assert report.counts["notation_signs"] == 2
+
+
+@pytest.mark.parametrize(
+    "stated",
+    [
+        "= 1", "= 1.0", "= 1.00", "= 0.99", "= .99", "= 0.05", "< 0.001", "> 0.99",
+        # the figures are above 1 and the value is not: a power of ten follows them
+        "= 3.2 x 10-9", "= 3.2 \N{MULTIPLICATION SIGN} 10^-9^", "= 5e-8", "< 1.2E-10",
+    ],
+)  # fmt: skip
+def test_a_p_value_of_one_or_less_is_one(stated: str) -> None:
+    report = read(f"# Results\n\nIt held (p = {X}) and again (p = {X}).\n\nThen P {stated}.\n")
+    assert codes(report) == ["notation-p-symbol"], stated
+
+
 @pytest.mark.parametrize(
     "sentence",
     [
@@ -427,6 +534,18 @@ def test_a_comparison_that_is_not_a_statistic_s_is_not_read(sentence: str) -> No
         "See Figures 2g and 3h, and Fig. 4a, 4g and 5h.",
         "Panel 2g shows the dose; Supplementary Figure S3h shows the time.",
         "The angle was 30\N{DEGREE SIGN} and the isotope 131I.",
+        # a panel named in lower case, on a wrapped line, after an abbreviation's full stop
+        "As shown in figure 3g and in table 2h.",
+        "The effect is shown in Figure\n3g and in Figures 2f and\n3h.",
+        "Compare Fig. 2f vs. 2g.",
+        # a relative centrifugal force is written closed: 12,000 g would be twelve kilograms
+        "Samples were centrifuged at 12,000g for 10 min and the pellet was kept.",
+        "The lysate was spun at 800g, and after centrifugation at 3000g it was frozen.",
+        "Cells were pelleted at 300g.",
+        # a compound of a series, by the word before it or by its bold type
+        "Compounds 3g and 4h were inactive, and the product 5g was not isolated.",
+        "The most potent was **3g**, followed by **4h** and *5g*.",
+        "Analogue 7g, derivative 8h and intermediate 9g were prepared (Scheme 2, entry 4g).",
     ],
 )
 def test_what_only_looks_like_a_number_and_its_unit_is_left_alone(sentence: str) -> None:
@@ -434,9 +553,20 @@ def test_what_only_looks_like_a_number_and_its_unit_is_left_alone(sentence: str)
     assert not report.findings, told(report)
 
 
-def test_a_panel_is_left_alone_only_in_the_sentence_that_names_the_figure() -> None:
-    report = read("# Methods\n\nSee Figure 3. A dose of 2g was given.\n")
-    assert codes(report) == ["notation-unit"]
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "See Figure 3. A dose of 2g was given.",  # the figure is another sentence's
+        "The compound was given. A dose of 2g followed.",
+        "After centrifugation the pellet was dried. It weighed 2g.",
+        "A dose of **2 g** or of 3g was given.",  # the marks are not around it
+        "The dose was 24h apart, by 5mg steps.",  # no word of these, and no force in mg
+        "Samples were centrifuged for 10min.",  # only g is a force
+    ],
+)
+def test_a_unit_is_a_unit_outside_those_sentences(sentence: str) -> None:
+    report = read(f"# Methods\n\n{sentence}\n")
+    assert codes(report) == ["notation-unit"], told(report)
 
 
 @pytest.mark.parametrize(
@@ -542,6 +672,33 @@ def test_a_line_that_never_ends_what_it_starts_is_read_in_linear_time(
         judge_notation(passages)
 
     assert_linear(manuscript, judge, 2000, f"the notation, on a line of {piece!r}")
+
+
+@pytest.mark.parametrize(
+    ("opening", "closing"),
+    [
+        ("The 95% CI", "is shown in the table."),
+        ("The 95% confidence", "interval is shown."),
+        ("The 95% CI:", "1.2 to"),
+        ("It held (P", "< 0.05"),
+        ("Of these (n", "= 12"),
+        ("Serious in 5", "% of reports"),
+    ],
+)
+def test_one_long_run_of_spaces_is_read_in_linear_time(
+    assert_linear, opening: str, closing: str
+) -> None:
+    """A cell of a table padded to its column, or a line nobody ended. The first version
+    had three gaps in a row after the letters of an interval, which shared a run of
+    spaces out among themselves in every way: 800 spaces after "CI" took 24 seconds."""
+
+    def manuscript(count: int) -> list[Passage]:
+        return passage(opening + " " * count + closing)
+
+    def judge(passages: list[Passage]) -> None:
+        judge_notation(passages)
+
+    assert_linear(manuscript, judge, 20000, f"the notation, on spaces after {opening!r}")
 
 
 def test_a_line_of_bindings_is_read_in_linear_time(assert_linear) -> None:

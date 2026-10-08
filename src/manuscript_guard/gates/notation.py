@@ -21,9 +21,9 @@ the later one is shown, and the finding says so.
 One finding is not about consistency:
 
 * `notation-unit`: a number that runs into its unit, "5mg". The SI Brochure sets a space
-  between the two, and no house style closes it for a unit, so this is reported wherever it
-  stands, in a manuscript that always writes it so too. "%" is left to consistency above,
-  because journals do differ on it.
+  between the two, so this is reported wherever it stands, in a manuscript that always
+  writes it so too. "%" is left to consistency above, because journals differ on it more
+  than on any unit; where one prints "37°C", the warning is that journal's to overrule.
 
 **A value is a value, typed or bound.** In a manuscript of this toolkit the numbers are
 bindings, `{{results.ror.point}}`, so the notation is read with each binding that stands in
@@ -66,6 +66,15 @@ _NUMBER = r"(?:[-+\u2212]?" + _TYPED + "|" + VALUE + "+)"
 _NOT_INSIDE = r"(?<![\w.,\u00b7" + VALUE + "])"
 # The sign of a comparison, with the escape `mask` blanks before `<` and `>`.
 _SIGN = NUL + r"?[=<>\u2264\u2265]"
+# What follows the figures of a number written as a power of ten: 3.2 x 10-9, 5e-8.
+_POWER_OF_TEN = re.compile(
+    r"[ \u00a0\u2009]?[x*\u00d7\u00b7\u22c5][ \u00a0\u2009]?10"
+    r"|[eE][-+\u2212]?\d"
+)
+# A typed number above 1: its whole part, and whether anything but zeros follows it.
+_WHOLE_AND_REST = re.compile(
+    r"[-+\u2212]?(?P<whole>\d*)(?:[.,\u00b7](?P<rest>[\d.,\u00b7]*))?"
+)
 
 # "P = 0.03", "*p*<0.001", "p-value of", "P {{…}}" where the binding prints its own sign.
 _P = re.compile(
@@ -83,22 +92,37 @@ _N = re.compile(
 # "95% CI 1.2 to 3.4", "(95% CI, 1.2-3.4)", "confidence interval of {{…}} to {{…}}".
 _INTERVAL = re.compile(
     r"(?<![\w" + VALUE + r"])"
-    r"(?:CIs?|CrIs?|(?:confidence|credible|credibility|compatibility)" + _SPACE + r"*\n?"
-    + _SPACE + r"*intervals?)\b"
-    r"(?:" + _GAP + r"\d{2}(?:\.\d)?" + _SPACE + r"?%)?"
-    + _GAP + r"(?:(?:of|from|was|were|is|are)\b|[:,=])?" + _GAP + r"[\[(]?" + _GAP
-    + r"(?P<low>" + _NUMBER + r")(?:" + _SPACE + r"?%)?"
+    r"(?:CIs?|CrIs?|(?:confidence|credible|credibility|compatibility)" + _GAP + r"intervals?)\b"
+    # Each thing that may stand before the first bound brings its own gap. Three gaps in a
+    # row shared a run of spaces out among themselves in every way: 800 spaces after
+    # "CI" took 24 seconds.
+    r"(?:" + _GAP + r"[\[(](?:CI|CrI)s?[\])])?"  # "confidence interval (CI)"
+    r"(?:" + _GAP + r"\d{2}(?:\.\d)?" + _SPACE + r"?%)?"  # "CI 95%"
+    r"(?:" + _GAP + r"(?:(?:of|from|was|were|is|are)\b|[:,=]))?"
+    r"(?:" + _GAP + r"[\[(])?"
+    + _GAP + r"(?P<low>" + _NUMBER + r")(?P<percent>" + _SPACE + r"?%)?"
     r"(?P<join>" + _GAP + r"to\b" + _GAP
-    + r"|" + _SPACE + r"*[\u2013\u2014]" + _SPACE + r"*"
+    + r"|" + _SPACE + r"*(?:[\u2013\u2014]|-{2,3})" + _SPACE + r"*"
     + r"|" + _SPACE + r"?-" + _SPACE + r"?(?=[\d." + VALUE + r"])"
     + r"|" + _SPACE + r"*[,;]" + _SPACE + r"*)"
     r"(?P<high>" + _NUMBER + r")"
 )
+# A level of confidence stated before the letters: "95% CI", "95% two-sided Wald CI".
+_LEVEL_BEFORE = re.compile(
+    r"\d{2}(?:\.\d)?" + _SPACE + r"?%" + _GAP + r"(?:[\w-]+" + _GAP + r"){0,3}\Z"
+)
+#: The levels one states. Standing with a "%" right after the letters, and none before
+#: them, such a number is the level and no bound: "a confidence interval of 95%, 5%
+#: margin of error".
+_LEVELS = ("80", "90", "95", "99", "99.9")
 _JOINS = {
     "t": "'to'",
     "\u2013": "an en dash",
     "\u2014": "an em dash",
     "-": "a hyphen",
+    # pandoc prints two hyphens as an en dash and three as an em dash
+    "--": "an en dash",
+    "---": "an em dash",
     ",": "a comma",
     ";": "a semicolon",
 }
@@ -108,8 +132,8 @@ _PERCENT = re.compile(
 
 #: The unit symbols a number is not to run into. Of the symbols of one letter only `g` and
 #: `h` are here: "5m" is as often five months, "1L" a first line of treatment, "30s" an
-#: age, "5M" five million and "3A" a grade. And those two are not read after the word for
-#: a figure or a table, where "3g" is a panel: `_PANELS`.
+#: age, "5M" five million and "3A" a grade. And those two are not read where a number and
+#: a letter are a name or a force: `_NAMED` and `_SPUN`.
 UNITS = (
     "kg", "mg", "\u00b5g", "\u03bcg", "mcg", "ng", "pg", "g",
     "mL", "ml", "dL", "dl", "\u00b5L", "\u03bcL", "\u00b5l", "\u03bcl", "nL",
@@ -131,10 +155,25 @@ _UNIT = re.compile(
     r"(?:[\u00b2\u00b3]|\^?[-\u2212]?[123]\^?)?"
     r"(?![\w\u00b0])"
 )
-# The words after which a number and a letter name a part of something: Figure 3g, Table
-# 2h. Looked for back to the start of the sentence, so that "Figures 2g and 3h" is two
-# panels.
-_PANELS = re.compile(r"\b(?:Figs?\.?|Figures?|Tables?|Panels?)(?!\w)[^.;\n]*\Z")
+# What may stand between such a word and the number: the rest of its sentence. A full stop
+# ends it only before a capital, so that "Fig. 2f vs. 2g" is one, and a line may be
+# wrapped in it.
+_SAME_SENTENCE = r"(?:[^.;\n]|\.(?![ \t\n]+(?-i:[A-Z]))|\n(?!\n))*\Z"
+# The words after which a number and a letter name a part of something or a member of a
+# series: Figure 3g, Table 2h, compound 4g. Looked for back to the start of the sentence,
+# so that "Figures 2g and 3h" is two panels.
+_NAMED = re.compile(
+    r"\b(?:figs?\.?|figures?|tables?|panels?|schemes?|compounds?|products?|analogues?"
+    r"|analogs?|derivatives?|intermediates?|ligands?|substrates?|entry|entries)(?!\w)"
+    + _SAME_SENTENCE,
+    re.IGNORECASE,
+)
+# A relative centrifugal force is written closed, "centrifuged at 12,000g": that g is no
+# gram.
+_SPUN = re.compile(
+    r"(?:centrifug|\bspun\b|\bspin(?:s|ning)?\b|\bpellet|\bsediment)" + _SAME_SENTENCE,
+    re.IGNORECASE,
+)
 #: How far back that word is looked for.
 _BACK = 80
 
@@ -192,6 +231,28 @@ def _counted(passage: Passage) -> str:
             continue
         chars[start:end] = VALUE * (end - start)
     return "".join(chars)
+
+
+def _above_one(value: str) -> bool:
+    """Is this typed number greater than 1? A P value never is, so "P = 40 mmHg" is a
+    pressure and "p = 10 predictors" a count. A bound value cannot be asked."""
+    found = _WHOLE_AND_REST.fullmatch(value)
+    if found is None:
+        return False
+    whole = int(found["whole"] or 0)
+    return whole > 1 or (whole == 1 and any(char in "123456789" for char in found["rest"] or ""))
+
+
+def _negative(bound: str) -> bool:
+    return bound[:1] in ("-", "\u2212")
+
+
+def _a_name(text: str, start: int, end: int) -> bool:
+    """Is the number and letter at `start` a name and no quantity: a panel, a compound of
+    a series, or the two alone between marks of emphasis, as a compound is set?"""
+    before = text[max(0, start - _BACK) : start]
+    marked = before[-1:] in ("*", "_") and text[end : end + 1] in ("*", "_")
+    return marked or _NAMED.search(before) is not None
 
 
 def _spacing(before: str, after: str) -> str:
@@ -261,17 +322,22 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                 continue
             symbol = found["symbol"]
             if (
-                sign is None
-                and symbol == "P"
-                and not found["mark"]
-                and opens_a_sentence(text, found.start())
+                sign is not None
+                and _above_one(found["value"])
+                and not _POWER_OF_TEN.match(text, found.end())
             ):
-                continue  # "P values were two-sided." has its capital from the sentence
+                # A pressure, a partition coefficient, a number of predictors. Not
+                # "P = 3.2 x 10-9", whose figures are above 1 and whose value is not.
+                continue
             use = _Use(place, found.start(), passage, found.end() - found.start())
-            mark = "*" * len(found["mark"])
-            symbols.add(f"{mark}{symbol}{mark}", use)
             if sign is not None:
                 signs.add(_spacing(found["before"], found["after"]), use)
+            if symbol == "P" and not found["mark"] and opens_a_sentence(text, found.start()):
+                # "P values were two-sided." and "P < 0.05 was taken as significant." have
+                # their capital from the sentence, in a paper that writes p too.
+                continue
+            mark = "*" * len(found["mark"])
+            symbols.add(f"{mark}{symbol}{mark}", use)
 
         for found in _N.finditer(text):
             use = _Use(place, found.start(), passage, found.end() - found.start())
@@ -279,8 +345,18 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
 
         for found in _INTERVAL.finditer(text):
             join = found["join"].strip()
+            if join == "to" and (_negative(found["low"]) or _negative(found["high"])):
+                # A house that joins with a dash writes "to" before a negative bound, so
+                # that the dash is not read as its sign: this one says nothing of the rest.
+                continue
+            if (
+                found["percent"]
+                and found["low"] in _LEVELS
+                and not _LEVEL_BEFORE.search(text[max(0, found.start() - _BACK) : found.start()])
+            ):
+                continue  # "a confidence interval of 95%, 5% margin": the level, no bound
             use = _Use(place, found.start(), passage, found.end() - found.start())
-            joins.add(_JOINS[join[:1]], use)
+            joins.add(_JOINS["t" if join == "to" else join], use)
 
         for found in _PERCENT.finditer(text):
             use = _Use(place, found.start(), passage, found.end() - found.start())
@@ -288,9 +364,11 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
 
         for found in _UNIT.finditer(text):
             unit = found["unit"]
+            if len(unit) == 1 and _a_name(text, found.start(), found.end()):
+                continue  # "Figure 3g" is a panel and "compound 3g" a compound
             before = text[max(0, found.start() - _BACK) : found.start()]
-            if len(unit) == 1 and _PANELS.search(before):
-                continue  # "Figure 3g" is a panel, not three grams
+            if unit == "g" and _SPUN.search(before):
+                continue  # "centrifuged at 12,000g" is a force, not twelve kilograms
             use = _Use(place, found.start(), passage, found.end() - found.start())
             closed.append((use, unit))
 

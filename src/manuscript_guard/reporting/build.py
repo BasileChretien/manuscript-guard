@@ -81,8 +81,8 @@ def build_profile(
         # between. There is nothing here to verify the items against — they are the reader's
         # output read line by line from its input — so the profile records which counts the
         # recipe stated instead of claiming a check. `scale.py` states the rules the reader reads
-        # by; what those rules refuse and what they let through is pinned in the tests
-        # DESIGN.md's Known gaps names.
+        # by; the cases worth knowing are pinned in the tests DESIGN.md's Known gaps names, and
+        # that entry says which cases are pinned by nothing.
         from manuscript_guard.reporting.scale import (
             ScaleRecipe,
             transcribe_scale,

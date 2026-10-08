@@ -21,13 +21,13 @@ thing this package exists to refuse.
 
 **The reading's rules are the whole of what this reader offers in place of a check**, and they
 are stated below: what is read on each page, what each line becomes, what is counted. What those
-rules refuse and what they let through follows from them, and is pinned in the tests DESIGN.md's
-Known gaps names rather than written out here.
+rules refuse and what they let through follows from them. The cases worth knowing are pinned in
+the tests DESIGN.md's Known gaps names; that entry also says which cases are pinned by nothing.
 
 The first version dropped whatever did not match: the parenthetical
 under two items of SANRA's own form vanished from the profile, a wrapped statement would have
 been cut at the line end, and an item printed with one option would have disappeared — each
-silently, and each with a profile that claimed every statement was there. So:
+silently, and each with a profile that claimed every statement was there.
 
 The rules it reads by are below, under "What is read" and the two paragraphs after it.
 
@@ -40,28 +40,35 @@ rules, and they are the whole of it.
 to `stop_at`, wherever on the page that line is — above the first heading too, which then leaves
 that page read as nothing. Of the lines before it, those from the first numbered heading are
 read; a line above that heading is passed over, it being where a form prints its title and the
-rater's instructions. Each page is read afresh, so a `stop_at` on one does not end the next.
+rater's instructions. Where the recipe states no `stop_at`, or no line of the page equals it,
+the page is read to its end. Each page is read afresh, so a `stop_at` on one does not end the
+next.
 
 **What each line becomes.** A line opening with one or two digits, a closing bracket, a space and
 then a title starts an item — so `2)` alone, `2)Evidence`, `102) Evidence` and `(2) Evidence` do
 not. A line whose text is followed by two spaces or more and a one- or two-digit number at its
 end is one of that item's options. The first non-blank unscored line under a heading, before any
 option, is that item's clarification. A blank line is skipped. Any other line is a `RecipeError`
-naming it.
+naming it. A line fitting both the heading rule and the option rule is a heading, and its
+trailing number goes into the topic.
 
-**What is counted.** An item read with fewer than `min_options` options is passed over, with
-whatever was read under it, until any item has been read anywhere in the document — that is how
-the rater's numbered instructions above a scale are left out — and refused from then on. At least
-one item must be read. The item numbers must run from one without a gap. `items` is compared with
-how many items were read, and `options` with how many options each item has — each only if the
-recipe states it.
+**What is counted.** A numbered line with fewer than `min_options` options under it is passed
+over, with whatever was read under it, until any item has been read anywhere in the document —
+that is how the rater's numbered instructions above a scale are left out — and refused from then
+on. A line passed over that way is no item: it counts towards `items`, the numbering and "at
+least one" no more than a blank line does. At least one item must be read, and the item numbers
+must run from one without a gap. `items` is compared with how many items were read, and
+`options` with how many options each item has — each only if the recipe states it.
 
 That is all of it. Which misprints and which wrapped lines those rules refuse, which they write
 wrongly, and which they pass over, follows from them — and the ones worth knowing are pinned in
 the tests DESIGN.md's Known gaps names, because a shape is exact in a test and has not stayed
-exact in a paragraph. **The one a one-page form reaches in silence is a wrapped title or a
-wrapped first statement**, which is what to look at when a recipe for a new form has its first
-profile read against the published form once, by eye — the thing no machine here does.
+exact in a paragraph. **What a one-page form reaches in silence, where its recipe states both
+counts, is a wrapped title or a wrapped first statement** — each an instance of the rule above
+that keeps the first unscored line under a title, and each silent only under an item that has no
+clarifying line of its own. State one count and less is caught: see the comment on the four
+sentences below. That is what to look at when a recipe for a new form has its first profile read
+against the published form once, by eye — the thing no machine here does.
 """
 
 from __future__ import annotations

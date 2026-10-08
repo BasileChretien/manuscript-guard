@@ -39,9 +39,9 @@ they are read line by line from the form and there is nothing else to compare th
 the reader offers instead is its own rules, stated in `reporting/scale.py`: what is read on each
 page, what each line becomes, and what is counted. What those rules refuse and what they let
 through follows from them, and the cases worth knowing are pinned in the tests DESIGN.md's Known
-gaps names — among them the one a one-page form reaches in silence, a wrapped title or a wrapped
-first statement, which is why a new form's first profile is read against the published form by
-eye.
+gaps names — among them what a one-page form reaches in silence where its recipe states both
+counts, a wrapped title or a wrapped first statement, which is why a new form's first profile is
+read against the published form by eye. That entry also says which cases are pinned by nothing.
 
 ```bash
 manuscript-guard fetch STROBE

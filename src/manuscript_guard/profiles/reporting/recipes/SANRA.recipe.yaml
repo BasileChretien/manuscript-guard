@@ -35,8 +35,9 @@ pages: [1]
 items: 6
 options: 3
 # The form prints a "Sumscore" box under the last item. Named here because the reader refuses a
-# line it cannot place rather than discarding it, and only the recipe can say which this is. See
-# scale.py for the rules the reader reads by, and DESIGN.md's Known gaps for the tests that pin
-# what those rules get wrong.
+# line it cannot place rather than discarding it — below the first heading of its page, and
+# before this line — and only the recipe can say which this is. See scale.py for the rules the
+# reader reads by, and DESIGN.md's Known gaps for the tests that pin what those rules get wrong,
+# and for the cases nothing pins.
 stop_at: Sumscore
 text_column: 0

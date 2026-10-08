@@ -72,10 +72,10 @@ a build failure.
 
 Two rules support it. Results are **never hand-written** — one machine-generated file
 stamped with script, git SHA, input hashes and timestamp. And the build **refuses to run
-when results are older than the script that wrote them or an input that script
-declared**, which is what makes "the latest results are always used" mechanical rather
-than a habit. A module the script imports counts only where it is listed among the
-inputs (Known gaps).
+when the script that wrote the results, or an input that script declared, has changed
+since**, which is what makes "the latest results are always used" mechanical rather than
+a habit. Changed is by digest, not by date. A module the script imports counts only where
+it is listed among the inputs (Known gaps).
 
 ## Empirical findings (verified 2026-08-03 on the author's machine)
 
@@ -226,7 +226,7 @@ All deterministic, all runnable in CI without Claude.
 
 | | Gate | Fails when |
 |---|---|---|
-| G1 | Results freshness | a results file older than the script that wrote it or an input that script declared |
+| G1 | Results freshness | a results file whose script, or an input that script declared, has changed since it was written |
 | G2 | Number classification | a numeric token is unclassified, or a display value has no bound claim |
 | G3 | Figures | a number in a figure's output or in its source is not traceable to results |
 | G4 | Journal profile | word counts, structure, reference style, required statements |
@@ -1700,8 +1700,8 @@ a hook has nothing to say: a guard that refused on it would refuse every command
 a `.docx` anywhere on the machine. So both look for the project first
 (`hooks._project_root`), stay silent where there is none, and pass on only an error raised
 once one was found. The guard looks further than the folder it is sent from: with no
-project there, it holds a command to each project the command names by a path (above). Anything else the gates raise is still a fault of the tool, and still
-ends in silence.
+project there, it holds a command to each project the command names by a path (above).
+Anything else the gates raise is still a fault of the tool, and still ends in silence.
 
 **A hook reads its event as UTF-8.** The agent tool writes the event on the hook's standard
 input as UTF-8, and a name outside ASCII goes as its own bytes, with no `\u` escape. Python on
@@ -5622,11 +5622,11 @@ Closed since, and why each mattered:
   next session warns again. The pipx half of the command reinstalls whatever PyPI has,
   where pip's upgrade only ever goes up: a copy that is ahead of PyPI, one from the
   repository or an editable one after a release that failed, is put back to the older
-  release. Read from pipx's documentation, not run. It says nothing when the variable is
-  unset, the file is unreadable, or the version is not plain dotted digits. The comparison
-  lives in the tool's own handler, so a tool older than 0.2.260, which is every copy
-  installed before it,
-  runs the old handler and never warns: its first upgrade has to be made by hand, as
+  release. Read from pipx's documentation, not run. The hook says nothing when the
+  variable is unset, the file is unreadable, or the version is not plain dotted digits.
+  The comparison lives in the tool's own handler, so a tool older than 0.2.260, which is
+  every copy installed before it, runs the old handler and never warns: its first upgrade
+  has to be made by hand, as
   `docs/install.md` says. Making the check from the plugin's `hooks.json` instead would reach them,
   since that updates with the plugin. Not observed in a live Claude Code session. The
   plugins reference lists `CLAUDE_PLUGIN_ROOT` among the variables exported to a hook's

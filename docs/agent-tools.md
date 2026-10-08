@@ -37,7 +37,7 @@ apply on the next start: `claude --plugin-dir ./plugin`.
 
 The hooks call `manuscript-guard-hook`, so the pip package has to be on the `PATH` that
 Claude Code sees. Outside a manuscript-guard project they find no `paper.yaml` and do
-nothing.
+nothing, but for the submission guard where a command names a project (below).
 
 **Four hooks**, and what each is for:
 

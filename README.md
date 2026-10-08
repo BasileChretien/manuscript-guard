@@ -121,7 +121,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 
 | Gate | Checks |
 |---|---|
-| G1 | results are as the analysis wrote them, and no older than the script that wrote them or the inputs it declared |
+| G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since |
 | G2 | every number is classified, and every declared value is quoted |
 | G3 | numbers in a figure's output *and in its source* trace back to results |
 | G4 | word counts, required sections and required statements match the target journal |

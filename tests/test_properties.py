@@ -25,6 +25,7 @@ import os
 import re
 import subprocess
 import sys
+from bisect import bisect_left
 from pathlib import Path
 from typing import Any
 
@@ -70,6 +71,7 @@ from manuscript_guard.literature import sources as literature_sources
 from manuscript_guard.literature.sources import contains, normalise, states_value
 from manuscript_guard.text import tokens
 from manuscript_guard.text.masking import NUL, mask
+from manuscript_guard.text.placeholders import parse as parse_bindings
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tex import tex_outside_maths
 from manuscript_guard.text.tokens import DIGIT, find_atoms
@@ -423,6 +425,27 @@ def _seen_and_judged(text: str) -> None:
             with_scan = CLASSIFIER.classify(atom, chain, scan)
             assert with_scan == CLASSIFIER.classify(atom, chain), (text, atom.text)
             assert with_scan.kind in (TERM, STRUCTURAL, CONVENTION, UNCLASSIFIED)
+
+
+# --------------------------------------------------------------------------------- bindings
+
+
+@holds(200, texts(), signs())
+def test_a_binding_is_placed_where_it_stands(manuscript: str, nobodys: str) -> None:
+    """A binding that does not resolve is reported by its line and column, and a malformed
+    one by its line. `parse` looks them up among the starts of the file's lines, and they
+    have to be what counting gives: the line feeds before the binding and one more, and the
+    characters since the last of them and one more, in a file whose lines Windows ended as
+    in any other. What else Python ends a line at, a form feed for one, is too seldom drawn
+    before a binding to be held here: `tests/test_text.py` names each."""
+    for text in (manuscript, nobodys):
+        bound, malformed = parse_bindings(text)
+        for found in bound:
+            line_start = text.rfind("\n", 0, found.start) + 1
+            assert found.line == text.count("\n", 0, found.start) + 1, (text, found)
+            assert found.col == found.start - line_start + 1, (text, found)
+        for raw, offset, line in malformed:
+            assert line == text.count("\n", 0, offset) + 1, (text, raw, offset)
 
 
 # ------------------------------------------------------------------------------- vocabulary
@@ -864,6 +887,10 @@ def _every_finding_is_on_line_one(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate._File, "line_of", lambda self, offset: 1)
 
 
+def _a_binding_that_opens_a_line_is_on_the_line_before(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr("manuscript_guard.text.placeholders.bisect_right", bisect_left)
+
+
 def _a_ligature_is_not_folded(patch: pytest.MonkeyPatch) -> None:
     patch.delitem(literature_sources._EQUIVALENT, "\N{LATIN SMALL LIGATURE FF}")
 
@@ -898,6 +925,10 @@ BROKEN = {
     "every finding is on line 1": (
         _every_finding_is_on_line_one,
         test_a_term_given_up_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a binding that opens a line is put on the line before": (
+        _a_binding_that_opens_a_line_is_on_the_line_before,
+        test_a_binding_is_placed_where_it_stands,
     ),
     "a ligature is not folded": (
         _a_ligature_is_not_folded,

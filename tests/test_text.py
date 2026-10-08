@@ -561,6 +561,78 @@ def test_substitute_replaces_only_known_refs() -> None:
     assert out == "a=12 b={{results.b}}"
 
 
+#: The lines of a paper with a binding wherever one can stand: at the start of a line,
+#: mid-line, after a comment on its line and after one of three lines, and on a last line
+#: that nothing ends. Three that are printed are malformed, and so is one in a comment.
+_PLACED = (
+    "{{results.first}} opens the file.",
+    "Mid-line there is {{lit.second}}, and {{Results.Second}} beside it.",
+    "<!-- a draft that quoted {{results.gone}} -->{{results.third}} follows a comment.",
+    "<!--",
+    "not printed: {{results.cut}",
+    "-->",
+    "{{table.fourth}}",
+    "{{oops}} is no binding, nor is {{results.cut} here.",
+    "",
+    "The last line has no line end: {{figure.last}}",
+)
+#: Each binding of `_PLACED` with its line and its column, and each malformed one that is
+#: printed with its line, as `parse` gave them when it counted the line breaks from the top
+#: of the file for every one.
+_BINDINGS = [
+    ("results.first", 1, 1),
+    ("lit.second", 2, 19),
+    ("results.third", 3, 46),
+    ("table.fourth", 7, 1),
+    ("figure.last", 10, 32),
+]
+_MALFORMED = [("{{Results.Second}}", 2), ("{{oops}}", 8), ("{{results.cut}", 8)]
+
+#: What `str.splitlines` ends a line at and `parse` does not: a carriage return, a vertical
+#: tab, a form feed, the file, group and record separators, and Unicode's next line, line
+#: separator and paragraph separator.
+_NO_LINE_END = (0x0D, 0x0B, 0x0C, 0x1C, 0x1D, 0x1E, 0x85, 0x2028, 0x2029)
+
+
+def _placed(text: str) -> tuple[list[tuple[str, int, int]], list[tuple[str, int]]]:
+    good, bad = parse(text)
+    return [(p.ref, p.line, p.col) for p in good], [(raw, line) for raw, _offset, line in bad]
+
+
+@pytest.mark.parametrize("line_end", ["\n", "\r\n"], ids=["folded", "as Windows wrote them"])
+def test_a_binding_is_placed_by_the_line_and_the_column_it_stands_at(line_end: str) -> None:
+    """A finding names a binding by its line and column, both counted from 1, and a
+    malformed one by its line. They are looked up among the starts of the lines now, and
+    have to come out as they did when each was counted from the top of the file. `render`
+    hands `parse` a text nobody folded: the carriage return before each line feed is the
+    last character of its line, and moves nothing."""
+    assert _placed(line_end.join(_PLACED)) == (_BINDINGS, _MALFORMED)
+
+
+@pytest.mark.parametrize("line_end", ["\r\n", "\r"], ids=["Windows", "old Mac OS"])
+def test_a_binding_is_placed_alike_whatever_ends_the_lines_of_its_file(
+    line_end: str, tmp_path
+) -> None:
+    """`read_text` folds the line ends of Windows into one character each, so a binding in
+    a file saved there is on the line and at the column its author sees."""
+    from manuscript_guard.contracts._schema import read_text
+
+    path = tmp_path / "main.md"
+    path.write_bytes(line_end.join(_PLACED).encode("utf-8"))
+    assert _placed(read_text(path)) == (_BINDINGS, _MALFORMED)
+
+
+@pytest.mark.parametrize("code", _NO_LINE_END, ids=lambda code: f"U+{code:04X}")
+def test_only_a_line_feed_ends_a_line_for_a_binding(code: int) -> None:
+    """A line is what a line feed ends, as an editor numbers them. Split the way Python
+    splits lines, a form feed or a carriage return alone would start another, and every
+    binding after it would be reported a line down from where it is."""
+    mark = chr(code)
+    good, bad = parse(f"one{mark}{{{{results.a}}}} and {{{{oops}}}}\ntwo{mark}{mark}{{{{lit.b}}}}")
+    assert [(p.line, p.col) for p in good] == [(1, 5), (2, 6)]
+    assert [line for _raw, _offset, line in bad] == [1]
+
+
 # ------------------------------------------------------ a hint that names what you wrote
 
 

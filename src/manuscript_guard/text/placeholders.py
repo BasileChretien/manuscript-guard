@@ -9,6 +9,7 @@ it, which makes the second rounding a visible decision rather than an accident.
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from dataclasses import dataclass
 
 from manuscript_guard.text.masking import blank_comments
@@ -79,16 +80,23 @@ def _without_comments(text: str) -> str:
 
 
 def parse(text: str) -> tuple[list[Placeholder], list[tuple[str, int, int]]]:
-    """Return well-formed placeholders and the malformed ones, with positions."""
+    """Return well-formed placeholders and the malformed ones, with positions.
+
+    A line is looked up among the starts of the lines, by bisection, and the column is
+    counted from the start found. Each binding had its line breaks counted from the top of
+    the file: 5,000 bindings took 0.35 seconds and 40,000 took 18.5, on every `check`.
+    """
     good: list[Placeholder] = []
     spans: set[tuple[int, int]] = set()
     text = _without_comments(text)
+    # A line ends at a line feed and nowhere else: a form feed or a carriage return alone,
+    # where `str.splitlines` starts another line, is a character of its line.
+    starts = [0, *(found.end() for found in re.finditer("\n", text))]
     for match in PLACEHOLDER.finditer(text):
         namespace = match.group("ns")
         if namespace not in NAMESPACES:
             continue
-        line = text.count("\n", 0, match.start()) + 1
-        col = match.start() - (text.rfind("\n", 0, match.start()) + 1) + 1
+        line = bisect_right(starts, match.start())
         good.append(
             Placeholder(
                 namespace=namespace,
@@ -97,13 +105,13 @@ def parse(text: str) -> tuple[list[Placeholder], list[tuple[str, int, int]]]:
                 start=match.start(),
                 end=match.end(),
                 line=line,
-                col=col,
+                col=match.start() - starts[line - 1] + 1,
             )
         )
         spans.add((match.start(), match.end()))
 
     malformed = [
-        (m.group(0), m.start(), text.count("\n", 0, m.start()) + 1)
+        (m.group(0), m.start(), bisect_right(starts, m.start()))
         for m in LOOSE.finditer(text)
         if (m.start(), m.end()) not in spans
     ]

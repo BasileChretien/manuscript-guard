@@ -100,6 +100,8 @@ uploaded to the supplementary slot rather than pasted onto the end of the paper.
 CLI: `check` (all gates, exit 1 on failure, `--json` for machines), `build` (the .docx;
 live Zotero fields by default, `--offline` for citeproc), `sync-bib` (rewrite
 `references.bib` from Zotero), `explain` (how every number in a file was classified),
+`reworded` (an edit changed the wording and no binding, citation key or typed number:
+the manuscript against the last commit, `--since` another, or one file `--before` a copy),
 `render` (substitute bindings only), `init` (scaffold a project),
 `review --record <reviewer> --remit … --verdict …` (file the record G11 asks for, with the
 digests filled in; `--record-figure <name> --by …` for G10). Neither can re-stamp an existing

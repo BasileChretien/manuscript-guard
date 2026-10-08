@@ -146,6 +146,18 @@ counts as a number, so the notation around `{{results.p}}` is read like any othe
 thing is no matter of counting: a number that runs into its unit, "5mg", is reported
 wherever it stands, because the SI Brochure sets a space there.
 
+**A language edit changes the wording and nothing else.** A co-author, an editing service
+or a model that tidies a paragraph is trusted with its words, and `check` cannot see
+whether it kept to them: one confidence bound written for the other is still a binding
+that resolves. `manuscript-guard reworded` compares the manuscript with the last commit and
+holds every binding, every citation key and every typed number to its place. One that is
+gone, new or changed fails. The same ones in another order pass with a warning for each
+place, because a clause that moved and two values that changed places look the same. A
+number is compared as it is typed, so "3" spelt out as "three" is reported too; the space
+before a unit or around a sign is free. A minus sign is part of its number where the dash
+can be nothing else; where it may be the dash of a range, after a mark of emphasis or a
+raised figure, one that came or went is shown with a warning.
+
 **Exemptions are small, explicit and reviewable.** Conventions live in a narrow shipped
 list pinned to specific values — `p < 0.05` is allowed, `p < 0.37` is not, because a p-value
 you obtained is a result. Project additions require a written reason. Axis ticks are

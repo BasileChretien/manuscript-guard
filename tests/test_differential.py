@@ -237,6 +237,12 @@ CHANGED = {
         "        if replacement == original:\n",
         "import",
     ),
+    "a sign that is no part of its number": (
+        "reworded.py",
+        "            minus, start = read, number.start()\n",
+        "            minus, start = NO, number.start()\n",
+        "reworded",
+    ),
     "a finding that points at another file": (
         "gates/vocabulary.py",
         "                path=passage.path,\n",

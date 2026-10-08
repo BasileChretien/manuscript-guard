@@ -392,11 +392,12 @@ def _spelt(word: str, cwd: Path) -> Path | None:
 def _named_projects(command: str, cwd: Path) -> list[Path]:
     """The projects a command names: each one that a word of the command is a path into.
 
-    Asked only where no project is at the folder the command was sent from, which is where
-    an agent started at the root of a repository stands, with the paper in a folder below.
-    `cd paper && manuscript-guard submit`, `manuscript-guard submit paper` and
+    Where no project is at the folder the command was sent from, this is all the guard has:
+    an agent started at the root of a repository stands there, with the paper in a folder
+    below. `cd paper && manuscript-guard submit`, `manuscript-guard submit paper` and
     `scp paper/build/manuscript.docx host:` each name it; a file that is not written yet
-    names the project its folder is in.
+    names the project its folder is in. From inside a project it finds a second one, and
+    the project the command was sent from among them where a path leads back into it.
 
     A project the command does not name is not looked for. The same folder is where every
     other command of the repository is sent from, and a paper somewhere below that fails
@@ -532,8 +533,8 @@ def _analysis_note(path: Path) -> str | None:
 def guard_submission(payload: dict) -> int:
     """Before anything that looks like a submission, hold the project to that standard.
 
-    The project is the one at the folder the command was sent from. Where there is none, it
-    is each project the command names.
+    The project is the one at the folder the command was sent from, where there is one, and
+    each other project the command names.
     """
     # Codex puts the text of a patch in the field a shell command arrives in. A patch that
     # writes the word `--submission` into a file is an edit, which the write guard reads.
@@ -544,15 +545,20 @@ def guard_submission(payload: dict) -> int:
         return 0
 
     root = _project_root(payload)
-    if root is not None:
-        refusals = [_submission_refusal(root)]
-    else:
-        # One named project that the tool itself fails on must not cost the others theirs.
+    refusals = [_submission_refusal(root)] if root is not None else []
+    # Then the projects the command names, which from a project's own folder is how a second
+    # one is reached: `cd ../second && manuscript-guard submit`. The search for them must not
+    # cost the project the command was sent from its refusal, and one named project that the
+    # tool itself fails on must not cost the others theirs.
+    try:
         cwd = Path(payload.get("cwd") or Path.cwd()).resolve()
-        refusals = [
-            _or_nothing(lambda named: _submission_refusal(named, named_from=cwd), named)
-            for named in _named_projects(command, cwd)
-        ]
+        others = [named for named in _named_projects(command, cwd) if named != root]
+    except Exception:  # noqa: BLE001 - a hook must never break the session
+        others = []
+    refusals += [
+        _or_nothing(lambda named: _submission_refusal(named, named_from=cwd), named)
+        for named in others
+    ]
     refusals = [refusal for refusal in refusals if refusal]
     if not refusals:
         return 0

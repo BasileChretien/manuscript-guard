@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "The items a co-author is asked to check",
+  "description": "What a project offers for human verification: one entry per thing to confirm, with the sentences it appears in and the evidence to confirm it against. A project writes this file (checks/items.json); `manuscript-guard checker build` turns it into one self-contained page a co-author can be sent, and `checker import` takes their answers back. Finding the items is the project's work, because only the project knows where its numbers came from; carrying them to a co-author and recording what came back is the toolkit's.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "groups",
+    "items"
+  ],
+  "properties": {
+    "schema": {
+      "const": "manuscript-guard/checking/1"
+    },
+    "title": {
+      "type": "string",
+      "description": "What the page calls itself, e.g. the manuscript's short title. The paper's own title is used when this is absent."
+    },
+    "groups": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The kinds of item, in the order a checker should meet them. A group is a question asked the same way of every item in it.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "ask"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ask": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The question put to the person checking, in words they need no instructions to answer: \"Does the source say this number?\""
+          },
+          "seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How long one item of this group takes, for the page's estimate of the work left."
+          }
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "group",
+          "title"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable within a project: an answer refers to it."
+          },
+          "group": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "One line, as a list shows it."
+          },
+          "facts": {
+            "type": "array",
+            "description": "Label and value pairs shown above the evidence: the value as printed, its unit, where it came from.",
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "sentences": {
+            "type": "array",
+            "description": "Where the manuscript uses it, so a checker sees the claim and not only the number.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "text"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "section": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer"
+                },
+                "mark": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Substrings to highlight in the sentence."
+                }
+              }
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "description": "What to check it against, in the order to try. Everything here is carried into the page: an image by its file, a table or a text excerpt by its content. Nothing is fetched when the page is opened.",
+            "items": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "image",
+                    "table",
+                    "text",
+                    "quote",
+                    "facts",
+                    "none"
+                  ]
+                },
+                "caption": {
+                  "type": "string",
+                  "description": "What this evidence is: the document, the page, the sheet."
+                },
+                "note": {
+                  "type": "string",
+                  "description": "What to look at, or a warning that the value could not be highlighted."
+                },
+                "file": {
+                  "type": "string",
+                  "description": "image only: a path, relative to the items file, of a PNG, JPEG or SVG. Carried into the page, so it need not travel separately."
+                },
+                "grid": {
+                  "type": "array",
+                  "description": "table only: rows of cells as strings, the first rows being the table's headings.",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "row_labels": {
+                  "type": "array",
+                  "description": "table only: a label for each row, printed down the left, e.g. a spreadsheet's row numbers.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "target": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "integer"
+                  },
+                  "description": "table only: the cell to outline, as [row, column] counting from zero."
+                },
+                "lines": {
+                  "type": "array",
+                  "description": "text only: the lines around the value, each [number, text].",
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                },
+                "text": {
+                  "type": "string",
+                  "description": "quote only: a passage of the source, as published. What a reader of the manuscript's sentence has to compare it against."
+                },
+                "line": {
+                  "type": "integer",
+                  "description": "text only: the line to mark."
+                },
+                "mark": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "text only: substrings to highlight."
+                },
+                "rows": {
+                  "type": "array",
+                  "description": "facts only: label and value pairs.",
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "already": {
+            "type": "string",
+            "description": "Why this item needs no checking, where someone has already done it: the sentence is shown instead of asking again."
+          }
+        }
+      }
+    }
+  }
+}

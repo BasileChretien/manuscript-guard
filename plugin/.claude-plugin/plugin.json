@@ -1,6 +1,6 @@
 {
   "name": "manuscript-guard",
-  "description": "Make every number in a scientific manuscript traceable to its source. Skills for setting up a paper project, drafting, literature verification, figure review, journal compliance, review panels, the Word round trip and the response to reviewers; hooks that refuse edits to machine-written files and hold a submission to submission standards.",
+  "description": "Make every number in a scientific manuscript traceable to its source. Skills for setting up a paper project, drafting, literature verification, figure review, journal compliance, review panels, a co-author's check of what no gate can ask, the Word round trip and the response to reviewers; hooks that refuse edits to machine-written files and hold a submission to submission standards.",
   "version": "0.2.433",
   "author": {
     "name": "Basile Chrétien"

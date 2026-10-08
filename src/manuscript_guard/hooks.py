@@ -41,6 +41,13 @@ FORBIDDEN = (
         "checklist profiles are transcribed from the official document; "
         "edit the recipe and re-run `manuscript-guard transcribe`",
     ),
+    (
+        # `checks/items.json` is a project's own file and stays writable: the extension decides.
+        "checks/",
+        ".csv",
+        "the record of who checked what is appended to by `manuscript-guard checker import`; "
+        "a decision nobody made cannot be written into it by hand",
+    ),
 )
 
 # Exempt from the rule above. Without this, the guard denies edits to

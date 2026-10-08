@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+  :root {
+    --ink: #1a1a18; --quiet: #6b6b66; --line: #d9d7d0; --page: #fbfaf7; --card: #ffffff;
+    --ok: #1f7a4d; --bad: #a3321f; --maybe: #8a6a12; --mark: #ffe9a8; --row: #dce9f7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+         color: var(--ink); background: var(--page); }
+  header { padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--card);
+           position: sticky; top: 0; z-index: 3; }
+  h1 { margin: 0 0 2px; font-size: 17px; }
+  .who { color: var(--quiet); font-size: 14px; }
+  .wrap { display: grid; grid-template-columns: 300px 1fr; gap: 0; min-height: calc(100vh - 150px); }
+  @media (max-width: 860px) { .wrap { grid-template-columns: 1fr; } #side { display: none; } }
+  #side { border-right: 1px solid var(--line); background: var(--card); overflow: auto;
+          max-height: calc(100vh - 150px); }
+  #side button { display: block; width: 100%; text-align: left; border: 0; background: none;
+                 padding: 7px 12px; font: inherit; color: inherit; cursor: pointer;
+                 border-bottom: 1px solid #f0efe9; }
+  #side button:hover { background: #f6f5f0; }
+  #side button.cur { background: #eef3fa; font-weight: 600; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px;
+         background: var(--line); vertical-align: 1px; }
+  .dot.ok { background: var(--ok); } .dot.wrong { background: var(--bad); }
+  .dot.unsure { background: var(--maybe); }
+  main { padding: 18px 20px 90px; max-width: 980px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .tabs button { border: 1px solid var(--line); background: var(--card); border-radius: 999px;
+                 padding: 5px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+  .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .ask { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  .title { color: var(--quiet); margin: 0 0 14px; }
+  table.facts { border-collapse: collapse; margin: 0 0 16px; font-size: 15px; }
+  table.facts th { text-align: left; color: var(--quiet); font-weight: 500; padding: 2px 14px 2px 0;
+                   vertical-align: top; white-space: nowrap; }
+  table.facts td { padding: 2px 0; }
+  .sentence { background: var(--card); border: 1px solid var(--line); border-left: 3px solid #b9c7d8;
+              padding: 9px 12px; margin: 0 0 8px; border-radius: 3px; }
+  .sentence small { display: block; color: var(--quiet); margin-bottom: 3px; }
+  mark { background: var(--mark); padding: 0 1px; }
+  .ev { background: var(--card); border: 1px solid var(--line); border-radius: 4px; margin: 14px 0; }
+  .evhead { padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 14px;
+            color: var(--quiet); }
+  .evbody { padding: 12px; overflow: auto; max-height: 62vh; }
+  .evbody img { max-width: 100%; height: auto; border: 1px solid var(--line); }
+  table.grid { border-collapse: collapse; font-size: 13px; }
+  table.grid td { border: 1px solid #e6e4dd; padding: 2px 6px; white-space: nowrap; }
+  table.grid td.rn { background: #f4f3ee; color: var(--quiet); text-align: right; }
+  table.grid tr.trow td { background: var(--row); }
+  table.grid td.tcell { outline: 2px solid var(--bad); font-weight: 700; }
+  blockquote.quote { margin: 0; padding: 2px 0 2px 14px; border-left: 3px solid #cfcbbe;
+                     white-space: pre-wrap; }
+  pre.lines { font: 13px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; margin: 0; }
+  pre.lines .tl { background: var(--row); display: block; }
+  .bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card);
+         border-top: 1px solid var(--line); padding: 10px 16px; display: flex; gap: 10px;
+         align-items: center; flex-wrap: wrap; z-index: 4; }
+  .bar button { font: inherit; padding: 9px 16px; border-radius: 4px; cursor: pointer;
+                border: 1px solid var(--line); background: var(--card); }
+  .bar button.yes { background: var(--ok); color: #fff; border-color: var(--ok); }
+  .bar button.no { background: var(--bad); color: #fff; border-color: var(--bad); }
+  .bar button.hm { background: var(--maybe); color: #fff; border-color: var(--maybe); }
+  .bar input { font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 4px;
+               flex: 1 1 220px; min-width: 160px; }
+  .done { padding: 10px 14px; background: #eef7f1; border: 1px solid #bfdcc9; border-radius: 4px; }
+  .note { color: var(--quiet); font-size: 14px; }
+  .warn { color: var(--bad); font-size: 14px; }
+  dialog { border: 1px solid var(--line); border-radius: 6px; max-width: 560px; padding: 20px; }
+  dialog h2 { margin-top: 0; font-size: 17px; }
+  textarea { width: 100%; height: 150px; font: 12px ui-monospace, Consolas, monospace; }
+  @media print { #side, .bar, .tabs { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>__TITLE__</h1>
+  <div class="who">Checked by <b id="who"></b> · <span id="progress"></span></div>
+</header>
+
+<div class="wrap">
+  <nav id="side"></nav>
+  <main>
+    <div class="tabs" id="tabs"></div>
+    <div id="item"></div>
+  </main>
+</div>
+
+<div class="bar">
+  <button class="yes" id="yes">Matches (Y)</button>
+  <button class="no" id="no">Does not match (N)</button>
+  <button class="hm" id="hm">Not sure (U)</button>
+  <input id="note" placeholder="A note, if anything needs saying">
+  <button id="prev">◀ back</button>
+  <button id="next">next ▶</button>
+  <button id="save"><b>Save my answers</b></button>
+  <button id="copy">Copy instead</button>
+</div>
+
+<dialog id="sent">
+  <h2>Your answers</h2>
+  <p id="sentwhat"></p>
+  <textarea id="blob" readonly></textarea>
+  <p class="note">If the download did not work — some hospital computers block it — select all of
+     the text above, copy it, and paste it into an email. Either way is complete.</p>
+  <p><button id="shut">Close</button></p>
+</dialog>
+
+<script>
+const BUNDLE = __BUNDLE__;
+const KEY = "mg-checks-" + BUNDLE.bundle;
+const S = { group: null, filter: "todo", list: [], pos: 0, answers: {} };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+try { S.answers = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { S.answers = {}; }
+function keep() { try { localStorage.setItem(KEY, JSON.stringify(S.answers)); } catch (e) {} }
+
+const groupOf = (id) => BUNDLE.groups.find((g) => g.id === id) || { title: id, ask: "", seconds: 20 };
+const statusOf = (it) => (S.answers[it.id] || {}).status || (it.already ? "already" : "todo");
+const marks = (text, needles) => {
+  let out = esc(text);
+  (needles || []).filter((n) => String(n).length > 1)
+    .sort((a, b) => b.length - a.length)
+    .forEach((n) => { out = out.split(esc(n)).join("<mark>" + esc(n) + "</mark>"); });
+  return out;
+};
+
+function renderTabs() {
+  $("tabs").innerHTML = BUNDLE.groups.map((g) => {
+    const mine = BUNDLE.items.filter((it) => it.group === g.id);
+    const todo = mine.filter((it) => statusOf(it) === "todo").length;
+    return `<button data-g="${esc(g.id)}" class="${S.group === g.id ? "on" : ""}">${esc(g.title)}
+            <span class="note">${mine.length - todo}/${mine.length}</span></button>`;
+  }).join("");
+  $("tabs").querySelectorAll("[data-g]").forEach((b) => b.onclick = () => {
+    S.group = b.dataset.g; rebuild(true); render();
+  });
+  const todo = BUNDLE.items.filter((it) => statusOf(it) === "todo");
+  const mins = Math.round(todo.reduce((s, it) => s + (groupOf(it.group).seconds || 20), 0) / 60);
+  $("progress").textContent = todo.length
+    ? `${BUNDLE.items.length - todo.length} of ${BUNDLE.items.length} done · about ${mins} min left`
+    : `all ${BUNDLE.items.length} done — press Save my answers`;
+}
+
+function rebuild(reset) {
+  S.list = BUNDLE.items.filter((it) => !S.group || it.group === S.group);
+  if (reset) {
+    const first = S.list.findIndex((it) => statusOf(it) === "todo");
+    S.pos = first < 0 ? 0 : first;
+  }
+  S.pos = Math.max(0, Math.min(S.list.length - 1, S.pos));
+}
+
+function renderSide() {
+  $("side").innerHTML = S.list.map((it, i) =>
+    `<button data-i="${i}" class="${i === S.pos ? "cur" : ""}">
+       <span class="dot ${statusOf(it)}"></span>${esc(it.title)}</button>`).join("");
+  $("side").querySelectorAll("[data-i]").forEach((b) => b.onclick = () => {
+    S.pos = +b.dataset.i; render();
+  });
+  const cur = $("side").querySelector(".cur");
+  if (cur) cur.scrollIntoView({ block: "nearest" });
+}
+
+function evidence(e) {
+  // A "none" block says its whole message in the body, so the head would print it twice.
+  const inhead = e.note && e.kind !== "none" ? " · " + esc(e.note) : "";
+  const head = `<div class="evhead">${esc(e.caption || e.kind)}${inhead}</div>`;
+  let body = "";
+  if (e.kind === "image") {
+    const src = (BUNDLE.images || {})[e.img] || e.src || "";
+    body = src
+      ? `<img src="${src}" alt="${esc(e.caption || "source page")}">`
+      : `<p class="warn">This page's image did not travel with the file. Answer "not sure".</p>`;
+  } else if (e.kind === "table") {
+    const labels = e.row_labels || [];
+    body = `<table class="grid">` + (e.grid || []).map((row, r) =>
+      `<tr class="${e.target && r === e.target[0] ? "trow" : ""}">` +
+      `<td class="rn">${esc(labels[r] || r + 1)}</td>` +
+      row.map((cell, c) =>
+        `<td class="${e.target && r === e.target[0] && c === e.target[1] ? "tcell" : ""}">${esc(cell)}</td>`
+      ).join("") + `</tr>`).join("") + `</table>`;
+  } else if (e.kind === "text") {
+    body = `<pre class="lines">` + (e.lines || []).map(([n, t]) =>
+      `<span class="${n === e.line ? "tl" : ""}">${String(n).padStart(5)}  ${marks(t, e.mark)}</span>`
+    ).join("\n") + `</pre>`;
+  } else if (e.kind === "quote") {
+    body = `<blockquote class="quote">${marks(e.text || "", e.mark)}</blockquote>`;
+  } else if (e.kind === "facts") {
+    body = `<table class="facts">` + (e.rows || []).map(([k, v]) =>
+      `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("") + `</table>`;
+  } else {
+    body = `<p class="note">${esc(e.note || `No page or line was recorded for this one; the facts
+            above are all there is, so answer "not sure" if that is not enough.`)}</p>`;
+  }
+  return `<div class="ev">${head}<div class="evbody">${body}</div></div>`;
+}
+
+function render() {
+  renderTabs(); renderSide();
+  const it = S.list[S.pos];
+  if (!it) { $("item").innerHTML = `<p class="note">Nothing here.</p>`; return; }
+  const g = groupOf(it.group);
+  const a = S.answers[it.id] || {};
+  const facts = (it.facts || []).map(([k, v]) =>
+    `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
+  const sentences = (it.sentences || []).slice(0, 8).map((s) =>
+    `<div class="sentence"><small>${s.line ? "line " + s.line : ""}${s.section ? " · " + esc(s.section) : ""}</small>
+     ${marks(s.text, s.mark)}</div>`).join("");
+  const more = (it.sentences || []).length > 8
+    ? `<p class="note">…and ${it.sentences.length - 8} more places using the same value.</p>` : "";
+  $("item").innerHTML =
+    (it.already ? `<div class="done">Already checked: ${esc(it.already)}</div>` : "") +
+    `<p class="ask">${esc(g.ask)}</p><p class="title">${esc(it.title)}</p>` +
+    (facts ? `<table class="facts">${facts}</table>` : "") + sentences + more +
+    (it.evidence || [{ kind: "none" }]).map(evidence).join("") +
+    (a.status ? `<p class="note">You answered: <b>${esc(a.status)}</b>${a.note ? " — " + esc(a.note) : ""}</p>` : "");
+  $("note").value = a.note || "";
+}
+
+function answer(status) {
+  const it = S.list[S.pos];
+  if (!it) return;
+  S.answers[it.id] = {
+    id: it.id, digest: it.digest, status,
+    note: $("note").value.trim(), at: new Date().toISOString().slice(0, 19),
+  };
+  keep();
+  if (S.pos < S.list.length - 1) S.pos += 1;
+  render();
+}
+
+function answersFile() {
+  return JSON.stringify({
+    schema: "manuscript-guard/checking-answers/1",
+    bundle: BUNDLE.bundle, by: BUNDLE.by, built_on: BUNDLE.built_on,
+    saved_on: new Date().toISOString().slice(0, 19),
+    answers: Object.values(S.answers),
+  }, null, 1);
+}
+
+function save() {
+  const text = answersFile();
+  const done = Object.keys(S.answers).length;
+  $("sentwhat").textContent = `${done} of ${BUNDLE.items.length} answered. The file is called ` +
+    `${BUNDLE.filename}; send it back to ${BUNDLE.to || "the corresponding author"}.`;
+  $("blob").value = text;
+  try {
+    const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = BUNDLE.filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (e) { /* the dialog's text is the fallback */ }
+  $("sent").showModal();
+}
+
+$("yes").onclick = () => answer("ok");
+$("no").onclick = () => answer("wrong");
+$("hm").onclick = () => answer("unsure");
+$("prev").onclick = () => { S.pos = Math.max(0, S.pos - 1); render(); };
+$("next").onclick = () => { S.pos = Math.min(S.list.length - 1, S.pos + 1); render(); };
+$("save").onclick = save;
+$("copy").onclick = () => {
+  $("blob").value = answersFile();
+  $("sentwhat").textContent = "Copy everything in the box and paste it into an email.";
+  $("sent").showModal();
+  $("blob").select();
+  try { navigator.clipboard.writeText(answersFile()); } catch (e) {}
+};
+$("shut").onclick = () => $("sent").close();
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+  const k = e.key.toLowerCase();
+  if (k === "y") answer("ok");
+  else if (k === "n") answer("wrong");
+  else if (k === "u") answer("unsure");
+  else if (k === "arrowleft") { S.pos = Math.max(0, S.pos - 1); render(); }
+  else if (k === "arrowright") { S.pos = Math.min(S.list.length - 1, S.pos + 1); render(); }
+});
+
+$("who").textContent = BUNDLE.by;
+rebuild(true);
+render();
+</script>
+</body>
+</html>

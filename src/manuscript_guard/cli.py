@@ -1795,6 +1795,136 @@ def cmd_checklist(args: argparse.Namespace) -> int:
     return 0
 
 
+def _checking_items(project, named: Path | None):
+    """What this project offers a co-author: what the toolkit finds, plus what the project adds.
+
+    The toolkit finds the values quoted from the literature, the sentences that cite something,
+    the references and the authors. A number transcribed from a table in a source document is not
+    among them and cannot be — only the project knows where that one came from — so a project
+    that traces its own writes `checks/items.json`, and those go in front.
+    """
+    from manuscript_guard.checking.items import SCHEMA, ItemsError, items_file, items_from
+    from manuscript_guard.checking.produce import merge, produce
+    from manuscript_guard.contracts._schema import read_structured
+
+    # The project's file is read raw and checked once, with the toolkit's, after the merge.
+    # Reading it through `load_items` instead returned items carrying the `digest` it adds, and
+    # the schema forbids a property it does not know: every project that had an items file of
+    # its own — the only ones that had anything to merge — was refused, item by item.
+    contributed = None
+    source = items_file(project.root, named)
+    if source.is_file():
+        try:
+            contributed = read_structured(source) or {}
+        except Exception as exc:  # noqa: BLE001 — any unreadable file is one message
+            raise ItemsError(f"{source} cannot be read: {exc}") from exc
+        if contributed.get("schema") != SCHEMA:
+            # Checked here because the merged document carries the toolkit's own schema key, so
+            # a wrong one in the project's file would otherwise pass unremarked.
+            raise ItemsError(
+                f"{source}: schema is {contributed.get('schema')!r}, and this reads {SCHEMA!r}"
+            )
+    elif named is not None:
+        # A file named on the command line and not there is a mistake worth saying, where the
+        # default being absent only means this project contributes nothing of its own.
+        raise ItemsError(f"{named} does not exist")
+
+    document, skipped = merge(produce(project), contributed)
+    for group, count in sorted(skipped.items()):
+        print(
+            f"{group}: {count} item(s) the toolkit found are left out, because this project "
+            f"supplies that group itself in {source.name}."
+        )
+    if not document["items"]:
+        # Reachable on a project that has not got far enough to have anything to check, where
+        # the schema's "items: [] should be non-empty" names a file that does not exist and a
+        # rule the author never wrote. Say what was looked at instead.
+        raise ItemsError(
+            "there is nothing to check yet. A co-author is sent the values quoted from the "
+            "literature (literature/ledger.yaml and attested.yaml), the sentences that cite "
+            "something, the references (literature/references.bib) and the authors "
+            "(authors.yaml), and none of those holds anything. A project that traces numbers of "
+            f"its own adds them in {source}: see contracts/schemas/checking.schema.json."
+        )
+    return items_from(document, source)
+
+
+def cmd_checker(args: argparse.Namespace) -> int:
+    """Send a co-author the numbers to check, and take their answers back.
+
+    Three verbs, and they are the whole of a round: `build` writes one file per person, `import`
+    records what one of them sent back, `status` says where the round stands. Nothing here asks
+    the co-author to install, sign in or configure anything, and nothing here is particular to a
+    model or a vendor: the file is a page, the answers are JSON, the record is a CSV.
+    """
+    from manuscript_guard.checking import (
+        AnswersError,
+        BundleError,
+        ItemsError,
+        build_bundle,
+        import_answers,
+        status,
+    )
+    from manuscript_guard.checking.bundle import slug
+
+    project, _ = load_project(args.path)
+    try:
+        items = _checking_items(project, args.items)
+    except ItemsError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+
+    title = args.title or str(project.paper.get("short_title") or project.paper.get("title") or "")
+    if args.verb == "build":
+        out = args.output or project.root / "checks" / f"check-{slug(args.name)}.html"
+        try:
+            written, size = build_bundle(
+                items, person=args.name, title=title, out=out, to=args.to or ""
+            )
+        except BundleError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        asked = len(items.outstanding)
+        print(f"wrote {written} ({size // 1024} kB)")
+        print(
+            f"{asked} item(s) to check, {len(items.items) - asked} already checked by someone, "
+            f"for {args.name}."
+        )
+        print(
+            "Send that one file. It opens by double-clicking, needs nothing installed and no "
+            "network, and its own button writes the answers file to send back."
+        )
+        return 0
+
+    if args.verb == "import":
+        try:
+            brought = import_answers(project.root, args.answers, items)
+        except AnswersError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        print(f"{len(brought.recorded)} decision(s) recorded for {brought.by}")
+        for identifier, why in brought.stale:
+            print(f"  not recorded: {identifier} — {why}")
+        for identifier in brought.unknown:
+            print(f"  not recorded: {identifier} — this project has no such item")
+        return 1 if (brought.stale or brought.unknown) and not brought.recorded else 0
+
+    standing = status(project.root, items)
+    print(f"{len(items.items)} item(s); {standing.outstanding} nobody has answered")
+    if standing.already:
+        print(f"{standing.already} were already checked before this round")
+    for person in standing.people:
+        counts = standing.by_person[person]
+        said = ", ".join(f"{n} {name}" for name, n in sorted(counts.items()))
+        print(f"  {person}: {said}")
+    for decision in standing.wrong:
+        print(f"  [{decision.status}] {decision.by} on {decision.title}: {decision.note or '—'}")
+    for identifier, decisions in standing.disagreements:
+        who = "; ".join(f"{d.by} says {d.status}" for d in decisions)
+        print(f"  disagreement on {identifier}: {who}")
+    return 0
+
+
 def cmd_methods(args: argparse.Namespace) -> int:
     """Report or record the state of the Methods against the analysis."""
     project, _ = load_project(args.path)
@@ -2337,6 +2467,23 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("--document", type=Path, help="use an existing .docx instead of building")
     submit.add_argument("--skip-checks", action="store_true")
     submit.set_defaults(func=cmd_submit)
+
+    checker = sub.add_parser(
+        "checker", help="send a co-author the numbers to check, and take their answers back"
+    )
+    checker.add_argument("verb", choices=["build", "import", "status"])
+    checker.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    checker.add_argument("--for", dest="name", default="", help="build: who the file is for")
+    checker.add_argument("--to", default="", help="build: who they send the answers back to")
+    checker.add_argument("-o", "--output", type=Path, help="build: where to write the file")
+    checker.add_argument("--title", help="build: what the page calls itself")
+    checker.add_argument(
+        "--answers", type=Path, help="import: the file a co-author sent back"
+    )
+    checker.add_argument(
+        "--items", type=Path, help="the items file, if not checks/items.json"
+    )
+    checker.set_defaults(func=cmd_checker)
 
     methods = sub.add_parser("methods", help="check or record Methods-to-code reconciliation")
     methods.add_argument("path", nargs="?", type=Path, default=Path.cwd())

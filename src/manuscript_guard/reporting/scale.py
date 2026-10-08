@@ -29,35 +29,39 @@ under two items of SANRA's own form vanished from the profile, a wrapped stateme
 been cut at the line end, and an item printed with one option would have disappeared — each
 silently, and each with a profile that claimed every statement was there. So:
 
-The rules it reads by are below, under "What is read" and the two headings after it, stated once
-rather than twice.
+The rules it reads by are below, under "What is read" and the two paragraphs after it.
 
 **What is checked, and what is not.** The reader's output is its input, read line by line, so
 there is nothing here to compare the items against: the profile says so in as many words rather
 than claiming a verbatim check it cannot perform. What stands in for one is the reading's own
 rules, and they are the whole of it.
 
-**What is read.** On each page of the recipe's `pages`, the lines from the first numbered heading
-to a line equal to `stop_at`, or to the end of that page. A line above that heading is passed
-over — it is where a form prints its title and the rater's instructions — and so is every line
-after `stop_at` on that page. Each page is read afresh, so a `stop_at` on one does not end the
-next.
+**What is read.** On each page of the recipe's `pages`, the reading ends at the first line equal
+to `stop_at`, wherever on the page that line is — above the first heading too, which then leaves
+that page read as nothing. Of the lines before it, those from the first numbered heading are
+read; a line above that heading is passed over, it being where a form prints its title and the
+rater's instructions. Each page is read afresh, so a `stop_at` on one does not end the next.
 
-**What each line becomes.** A line opening with a number and a bracket starts an item. A line
-whose text is followed by two spaces or more and a one- or two-digit number at its end is one of
-that item's options. The first non-blank unscored line under a heading, before any option, is
-that item's clarification. A blank line is skipped. Any other line is a `RecipeError` naming it.
+**What each line becomes.** A line opening with one or two digits, a closing bracket, a space and
+then a title starts an item — so `2)` alone, `2)Evidence`, `102) Evidence` and `(2) Evidence` do
+not. A line whose text is followed by two spaces or more and a one- or two-digit number at its
+end is one of that item's options. The first non-blank unscored line under a heading, before any
+option, is that item's clarification. A blank line is skipped. Any other line is a `RecipeError`
+naming it.
 
-**What is counted.** An item read with fewer than `min_options` options is refused, once any item
-has been read anywhere in the document. The item numbers must run from one without a gap. `items`
-is compared with how many items were read, and `options` with how many options each item has —
-each only if the recipe states it.
+**What is counted.** An item read with fewer than `min_options` options is passed over, with
+whatever was read under it, until any item has been read anywhere in the document — that is how
+the rater's numbered instructions above a scale are left out — and refused from then on. At least
+one item must be read. The item numbers must run from one without a gap. `items` is compared with
+how many items were read, and `options` with how many options each item has — each only if the
+recipe states it.
 
 That is all of it. Which misprints and which wrapped lines those rules refuse, which they write
-wrongly, and which they pass over, follows from them; the cases are pinned in the tests
-DESIGN.md's Known gaps names, because a shape is exact in a test and has not stayed exact in a
-paragraph. A recipe for a new form states its counts and has its first profile read against the
-published form once, by eye.
+wrongly, and which they pass over, follows from them — and the ones worth knowing are pinned in
+the tests DESIGN.md's Known gaps names, because a shape is exact in a test and has not stayed
+exact in a paragraph. **The one a one-page form reaches in silence is a wrapped title or a
+wrapped first statement**, which is what to look at when a recipe for a new form has its first
+profile read against the published form once, by eye — the thing no machine here does.
 """
 
 from __future__ import annotations
@@ -76,8 +80,8 @@ HEADING = re.compile(r"^\s*(?P<id>\d{1,2})\)\s+(?P<topic>\S.*?)\s*$")
 #: line. Two spaces at least, so a sentence that merely ends in a number is not an option.
 #: Where a
 #: build of pdftotext leaves one space, the line is refused wherever an option is expected, and
-#: read as the item's clarification when it is the first line under a title and the recipe states
-#: no option count: Known gaps carries that case.
+#: read as the item's clarification when it is the first line under a title. Known gaps says what
+#: that depends on.
 OPTION = re.compile(r"^\s*(?P<statement>\S.*?)\s{2,}(?P<score>\d{1,2})\s*$")
 
 #: What a scale's profile records in place of a verification, because there is none to record.
@@ -93,8 +97,8 @@ OPTION = re.compile(r"^\s*(?P<statement>\S.*?)\s{2,}(?P<score>\d{1,2})\s*$")
 #:
 #: "May not be caught" rather than "is not", because the line rules refuse a good deal with no
 #: counts at all: an unscored line after an item's options, a second unscored line, too few
-#: options once the scale has started, and a gap in the numbering. DESIGN.md's Known gaps
-#: carries the cases.
+#: options once the scale has started, and a gap in the numbering. DESIGN.md's Known gaps names
+#: the tests that pin what these bullets leave through.
 _READ = "read line by line from the published form"
 _NO_CHECK = "no check independent of the reader, and none of the item text against anything else"
 VERIFICATION_BOTH = f"{_READ}, held to the item and option counts the recipe states; {_NO_CHECK}"

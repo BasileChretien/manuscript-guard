@@ -6617,21 +6617,35 @@ Closed since, and why each mattered:
   **The consequences are pinned, not described.** Four rounds of review, by two readers of this
   code, each corrected a case-by-case account of which misprints and which wrapped lines are
   refused and wrote a new one that was wrong somewhere — and every case still at issue is a form
-  of several pages, which no shipped recipe reads. The enumeration has more cases than prose
-  keeps straight, so it lives in `tests/test_transcribe.py` instead, in these four:
+  of several pages. The enumeration has more cases than prose keeps straight, so the ones worth
+  knowing are pinned in `tests/test_transcribe.py` instead of written out. These five hold what
+  is not obvious from the rules, each by its own name:
 
-  - `test_a_statement_split_across_a_page_break_loses_its_second_line`
-  - `test_a_stop_at_line_before_the_last_item_is_caught_only_by_the_item_count`
-  - `test_a_last_item_alone_on_a_second_page_is_refused_not_passed_over`
-  - `test_the_profile_carries_the_sentence_for_its_recipes_counts`
+  - `test_a_wrapped_title_or_wrapped_first_statement_is_written_wrong_on_one_page` — **the one
+    shape a one-page form reaches in silence**, and the reason a first profile is read against
+    the published form by eye;
+  - `test_a_statement_split_across_a_page_break_loses_its_second_line`;
+  - `test_a_stop_at_line_before_the_last_item_is_caught_only_by_the_item_count`;
+  - `test_a_last_item_alone_on_a_second_page_is_refused_not_passed_over` — a *one-option* last
+    item on a later page; a complete one is read correctly, which no test pins;
+  - `test_the_profile_carries_the_sentence_for_its_recipes_counts`.
+
+  Those five are not the whole of it, and this list does not claim to be: a dozen other tests in
+  the same file hold the line rules — a line that can be placed nowhere, a second unscored line,
+  too few options, the rater's instructions above the scale, numbers that do not run from one.
+  Four shapes are in no test at all, and are written or dropped without a word: a one-space first
+  statement and a running foot read as an option, each where no option count is stated, and the
+  two page cases where only one of the two counts is.
 
   [#219][scale-219] records ten sentences found inexact, each with what is true instead, for
   anyone who wants that account as it stood.
 
-  Two things prose can carry. A statement printed within one space of its score depends on the
-  build of `pdftotext`: SANRA's longest leaves exactly two spaces under Xpdf 4.00 and many more
-  under poppler 24.04, which is a margin and not a guarantee. And a form whose layout is misread
-  from the start is uncaught in any case.
+  Two things prose can carry. Whether a statement is printed within one space of its score
+  depends on the build of `pdftotext`, and such a line is no option: it is refused where an
+  option is expected, and read as the item's clarification where it is the first line under a
+  title. SANRA's longest leaves exactly two spaces under Xpdf 4.00 and many more under poppler
+  24.04, which is a margin and not a guarantee. And a form whose layout is misread from the start
+  is uncaught in any case.
 
   Where the form prints something that is not an item, the recipe names it (`stop_at`), because
   only the recipe can tell a footer from a statement that wrapped. A numbered line in the rater's

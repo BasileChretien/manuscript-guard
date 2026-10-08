@@ -917,6 +917,7 @@ def test_a_scale_profile_says_it_has_no_independent_check(
 
     from manuscript_guard.reporting import columns
     from manuscript_guard.reporting.build import build_profile
+    from manuscript_guard.reporting.scale import VERIFICATION_BOTH
 
     sources = tmp_path / "sources"
     sources.mkdir()
@@ -946,7 +947,8 @@ def test_a_scale_profile_says_it_has_no_independent_check(
     assert (count, unverified) == (2, [])
     profile = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert profile["kind"] == "scale", "the pack tells a scale from a checklist by this"
-    assert "no check independent of the reader" in profile["verification"]
+    # The whole sentence, not a phrase all four of them share: this recipe states both counts.
+    assert profile["verification"] == VERIFICATION_BOTH
     assert profile["items"][1]["clarification"].startswith("(e.g., measurements")
     assert profile["items"][1]["options"][2] == {
         "score": "2",
@@ -954,12 +956,187 @@ def test_a_scale_profile_says_it_has_no_independent_check(
     }
 
 
+def test_the_verification_sentence_names_the_counts_the_recipe_states() -> None:
+    """One string for every recipe said "with the item counts the recipe states" of a recipe
+    that stated none; the two that replaced it said "no count" of a recipe that states one. The
+    profile's own account of what was done has been wrong twice, so the choice is held here:
+    each of the four says something the other three do not."""
+    from manuscript_guard.reporting.scale import verification_for
+
+    said = {
+        (6, 3): verification_for(6, 3),
+        (6, None): verification_for(6, None),
+        (None, 3): verification_for(None, 3),
+        (None, None): verification_for(None, None),
+    }
+    assert len(set(said.values())) == 4, "two combinations cannot share a sentence"
+
+    assert "held to the item and option counts" in said[(6, 3)]
+    assert "may not be caught" not in said[(6, 3)]
+
+    assert "to no option count" in said[(6, None)]
+    assert "dropped or invented option may not be caught" in said[(6, None)]
+
+    assert "to no item count" in said[(None, 3)]
+    assert "scale read short may not be caught" in said[(None, 3)]
+
+    assert "held to no item or option count" in said[(None, None)]
+
+    # Every one of them says what no scale profile may leave out.
+    for sentence in said.values():
+        assert "no check independent of the reader" in sentence
+        assert sentence.startswith("read line by line from the published form")
+
+
+def test_the_shipped_scale_recipe_takes_the_sentence_for_both_counts() -> None:
+    """The only recipe that ships with a `pdf-scale` layout states both counts, so a profile
+    built from it must not carry a sentence that says a count is missing."""
+    from manuscript_guard.paths import SHIPPED_RECIPES
+    from manuscript_guard.reporting.build import load_recipe
+    from manuscript_guard.reporting.scale import VERIFICATION_BOTH, verification_for
+
+    # Through the loader, not by reading the file: the counts are top-level keys that the loader
+    # lifts into its layout, and a test that re-implements that can agree with itself while
+    # disagreeing with the build.
+    layouts = {}
+    for path in sorted(SHIPPED_RECIPES.glob("*.recipe.yaml")):
+        _recipe, meta = load_recipe(path)
+        layout = meta.get("_layout") or {}
+        if layout.get("format") == "pdf-scale":
+            layouts[path.name] = layout
+    assert layouts, "no shipped recipe uses the scale reader; this test guards nothing"
+    for name, layout in layouts.items():
+        chosen = verification_for(layout.get("items"), layout.get("options"))
+        assert chosen == VERIFICATION_BOTH, f"{name} no longer states both counts"
+
+
+def test_the_profile_carries_the_sentence_for_its_recipes_counts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What `build_profile` writes, not what `verification_for` returns.
+
+    Round 1 of #219 found the hole: with the call in `build.py`'s scale branch changed to pass
+    no counts — so that every scale profile, SANRA's included, said "held to no item or option
+    count" — every test in this file passed, and so did the submission, contracts and compliance
+    files. Passing the two arguments the wrong way round passed too. That is #211's finding 8
+    closed on the function and left open on the call, which is the half that writes the file.
+    """
+    import yaml
+
+    from manuscript_guard.reporting import columns
+    from manuscript_guard.reporting.build import build_profile
+    from manuscript_guard.reporting.scale import (
+        VERIFICATION_BOTH,
+        VERIFICATION_ITEMS_ONLY,
+        VERIFICATION_NEITHER,
+        VERIFICATION_OPTIONS_ONLY,
+    )
+
+    monkeypatch.setattr(columns, "page_text", lambda _path, _page: _SCALE)
+
+    def written(counts: str, where: str) -> str:
+        """The `verification` of a profile built from a recipe stating these counts."""
+        root = tmp_path / where
+        sources = root / "sources"
+        sources.mkdir(parents=True)
+        (sources / "SAIT.pdf").write_bytes(b"%PDF-1.4 not read, page_text is replaced")
+        recipe = root / "SAIT.recipe.yaml"
+        recipe.write_text(
+            "schema: manuscript-guard/recipe/1\n"
+            "meta:\n"
+            "  name: SAIT\n"
+            "  long_name: Scale for the Assessment of Imaginary Things\n"
+            "  applies_to: Imaginary things; an appraisal scale\n"
+            "  source_url: https://example.invalid/sait\n"
+            "  retrieved_on: 2026-10-08\n"
+            "  licence: invented for this test\n"
+            "document: SAIT.pdf\n"
+            "format: pdf-scale\n"
+            "pages: [1]\n"
+            f"{counts}"
+            "stop_at: Sumscore\n"
+            "text_column: 0\n",
+            encoding="utf-8",
+        )
+        path, count, _unverified = build_profile(recipe, sources, root / "out")
+        assert count == 2, "the stand-in form has two items however the recipe is written"
+        return yaml.safe_load(path.read_text(encoding="utf-8"))["verification"]
+
+    assert written("items: 2\noptions: 3\n", "both") == VERIFICATION_BOTH
+    assert written("items: 2\n", "items") == VERIFICATION_ITEMS_ONLY
+    assert written("options: 3\n", "options") == VERIFICATION_OPTIONS_ONLY
+    assert written("", "neither") == VERIFICATION_NEITHER
+
+
+def test_a_statement_split_across_a_page_break_loses_its_second_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pinned limit, not a wish. Every line above the first heading of a page is passed over —
+    that is where a form prints its title and the rater's instructions — so the second line of a
+    statement that wraps across the break is lost, where the same wrap on one page is refused.
+
+    This is the one shape in which the loss is also silent: the score sits on the statement's own
+    first line, and the statement is its item's last, so the item still has its three options and
+    neither count notices. A wrap earlier in the item leaves it an option short and the counts
+    refuse it. Nothing shipped reaches any of this: SANRA's recipe reads one page. If this test
+    fails because the reading changed, Known gaps is what to correct."""
+    from manuscript_guard.reporting import columns
+    from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
+
+    wrapped = "Evidence is offered throughout, and in the appendix as well as the"
+    first = _SCALE.replace("Evidence is offered throughout.", wrapped).replace("\nSumscore\n", "")
+    assert wrapped in first and "Sumscore" not in first
+    pages = {1: first, 2: "main text.\n\nSumscore\n"}
+    monkeypatch.setattr(columns, "page_text", lambda _path, page: pages[page])
+
+    items, _read = transcribe_scale(
+        tmp_path / "x.pdf",
+        ScaleRecipe(document="x.pdf", pages=(1, 2), items=2, options=3, stop_at="Sumscore"),
+    )
+    assert [item.id for item in items] == ["1", "2"]
+    assert items[1].extras["statements"][2] == wrapped, (
+        "the pinned shape is a statement written short, with no word said about it; if this now "
+        "holds the whole statement the limit has been closed and Known gaps should say so"
+    )
+
+
+def test_a_stop_at_line_before_the_last_item_is_caught_only_by_the_item_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pinned limit, recorded under "What each count can see" in DESIGN.md's Known gaps. A form
+    that prints its `stop_at` word twice ends the reading at the first, and only `items` notices
+    that the scale came out short. This is what the item count buys, and it is the whole of what
+    it buys."""
+    from manuscript_guard.reporting import columns
+    from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
+    from manuscript_guard.reporting.transcribe import RecipeError
+
+    second = "2) Evidence offered for the thing"
+    early = _SCALE.replace(second, f"Sumscore\n\n{second}")
+    assert early.count("Sumscore") == 2
+    monkeypatch.setattr(columns, "page_text", lambda _path, _page: early)
+
+    with pytest.raises(RecipeError, match="1 items read, and the recipe says the form has 2"):
+        transcribe_scale(
+            tmp_path / "x.pdf",
+            ScaleRecipe(document="x.pdf", pages=(1,), items=2, options=3, stop_at="Sumscore"),
+        )
+
+    # With no item count, the short scale is written and nothing says so.
+    items, _read = transcribe_scale(
+        tmp_path / "x.pdf",
+        ScaleRecipe(document="x.pdf", pages=(1,), options=3, stop_at="Sumscore"),
+    )
+    assert [item.id for item in items] == ["1"]
+
+
 def test_a_last_item_alone_on_a_second_page_is_refused_not_passed_over(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """"Until the scale has started" began again on every page, so an item printed alone at the
-    top of a second page was read as one of the rater's numbered instructions and dropped in
-    silence, while the profile said every line had been placed."""
+    top of a second page was read as one of the rater's numbered instructions and passed over in
+    silence, while the profile said every line had been placed. It is refused now, which is what
+    this test's name says."""
     from manuscript_guard.reporting import columns
     from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
     from manuscript_guard.reporting.transcribe import RecipeError
@@ -969,10 +1146,12 @@ def test_a_last_item_alone_on_a_second_page_is_refused_not_passed_over(
 
 The thing is not described.                                                   0
 """
-    pages = {1: _SCALE, 2: second}
+    # Pages 3 and 7, not 1 and 2: the message must carry the page the recipe names, and with
+    # (1, 2) a number counted from the start of the list reads the same as the page itself.
+    pages = {3: _SCALE, 7: second}
     monkeypatch.setattr(columns, "page_text", lambda _path, page: pages[page])
-    with pytest.raises(RecipeError, match="fewer than"):
+    with pytest.raises(RecipeError, match=r"x\.pdf, page 7: line \d+: .*fewer than"):
         transcribe_scale(
             tmp_path / "x.pdf",
-            ScaleRecipe(document="x.pdf", pages=(1, 2), stop_at="Sumscore"),
+            ScaleRecipe(document="x.pdf", pages=(3, 7), stop_at="Sumscore"),
         )

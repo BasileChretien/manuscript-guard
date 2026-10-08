@@ -36,8 +36,10 @@ scale rather than as a checklist, and the scoring is left to the editor or revie
 A scale is also read differently, and its profile says so: a Word table's items are verified
 verbatim, a column-laid-out PDF's by their opening clause, and a scale's not at all, because
 they are read line by line from the form and there is nothing else to compare them with. What
-the reader offers instead is that a line it cannot place stops the transcription, as far as the
-counts the recipe states can see — and a wrapped line changes no count, so none sees one. DESIGN.md's Known gaps carries what that does and does not cover.
+the reader offers instead is that a line it cannot place stops the transcription — below the
+first heading of its page, and as far as the counts the recipe states can see. Above that
+heading every line is passed over, and a wrapped line changes no count, so no count sees one.
+DESIGN.md's Known gaps carries what that does and does not cover.
 
 ```bash
 manuscript-guard fetch STROBE
@@ -65,9 +67,10 @@ manuscript-guard transcribe STROBE
 That builds `profiles/reporting/STROBE.yaml` from the stored document. It keeps the
 guideline's own item numbering, including sub-letters like `6a`, because that is what
 journals and reviewers refer to, and for a checklist it fails if an item cannot be found
-verbatim in the document; for a scale, where that check does not exist, it fails on a line it cannot
-place, within the limits DESIGN.md's Known gaps records. Name the guideline: with no name the command tries every recipe. The profile
-records how thoroughly it was verified, which differs. A Word table lets every item's full
+verbatim in the document; for a scale, where that check does not exist, it fails on a line it
+cannot place, within the limits DESIGN.md's Known gaps records. Name the guideline: with no name
+the command tries every recipe. The profile records how thoroughly it was verified, which
+differs. A Word table lets every item's full
 text be checked, and a PDF laid out in columns only each item's opening clause.
 
 **Do not write or edit the profile by hand.** It is generated, the write guard refuses edits

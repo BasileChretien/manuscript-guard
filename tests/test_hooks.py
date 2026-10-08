@@ -1014,9 +1014,12 @@ NAMING_NONE = [
     # Somewhere else than this machine.
     "scp host:paper/build/manuscript.docx .",
     "curl -O https://example.org/paper/manuscript.docx",
-    # Words in quotes are read as one word, so the text of a message names nothing, unless
-    # it ends in `=paper` or `@paper` (Known gaps).
+    # What a commit is told to say is not read at all, for a marker or for a path.
     'git commit -m "copy edits to paper before submission"',
+    'git commit -m "sent to editor@paper" && cp notes.docx /backup',
+    # Words in quotes are read as one word, so text that is no message names nothing
+    # either, unless it ends in `=paper` or `@paper` (Known gaps).
+    'echo "copy edits to paper before submission"',
     # The folder the command was sent from, and the ones above it, were looked in already.
     "cd . && cp notes.docx ..",
 ]
@@ -1103,19 +1106,68 @@ def test_a_path_that_reads_as_a_submission_by_itself_is_refused_again(
     assert sent(f'{hooks.FULL_CHECK} "paper"', home, capsys) is None
 
 
-def test_a_commit_of_a_file_of_the_paper_is_held_when_its_message_reads_as_a_submission(
-    above: Path, capsys
-) -> None:
-    """A known false alarm, held here. The markers match the message, `copy` and then
-    `submission`, and the path that is staged names the project. Inside the project the
-    same commit was always refused; from above it used to go through."""
-    commit = 'git commit -m "copy-edit the abstract before submission"'
-    assert SUBMISSION_MARKERS.search(commit)
+#: A long message as an agent writes one, through a heredoc, with a quotation in it.
+IN_A_HEREDOC = (
+    "git commit -m \"$(cat <<'EOF'\n"
+    "copy-edit the abstract before submission\n"
+    "\n"
+    'The reviewer asked to "move" the limits up; zip nothing yet.\n'
+    "EOF\n"
+    ')"'
+)
 
-    assert sent(commit, above, capsys) is None, "the message alone names no project"
-    assert decision(sent(f"git add paper/manuscript/main.md && {commit}", above, capsys)) == "deny"
-    inside = sent(f"git add manuscript/main.md && {commit}", above / "paper", capsys)
-    assert decision(inside) == "deny"
+#: What a commit is told to record. Each reads as a submission to the markers, a verb and
+#: then the word, or the option, or the command itself, and none of it is a command.
+MESSAGES = [
+    'git commit -m "copy-edit the abstract before submission"',
+    "git commit -m 'copy-edit the abstract before submission'",
+    'git commit -am "move the tables up; copy nothing before submission"',
+    'git commit -m"copy-edit the abstract before submission"',
+    'git commit --message "copy the wording of the covering letter.docx"',
+    'git commit --message="say what the --submission option asks for"',
+    'git commit -m "say when to run manuscript-guard submit"',
+    'git commit -m "tables" -m "copy edits before submission"',
+    'git commit -m "tables & figures" -m "copy edits before submission"',
+    'git -C . commit --amend -m "copy edits before submission"',
+    'git tag -a v2 -m "the copy sent with the submission"',
+    IN_A_HEREDOC,
+]
+
+
+@pytest.mark.parametrize("commit", MESSAGES)
+def test_what_a_commit_is_told_to_say_is_not_read_as_a_command(
+    commit: str, above: Path, capsys
+) -> None:
+    """The markers matched the message, `copy` and then `submission`, and the path that was
+    staged named the project: a commit of a file of the paper was refused for its message,
+    in a project that fails, from the folder above and from inside it."""
+    assert SUBMISSION_MARKERS.search(commit), "submission-shaped, to the markers alone"
+
+    assert sent(commit, above, capsys) is None
+    assert sent(f"git add paper/manuscript/main.md && {commit}", above, capsys) is None
+    assert sent(f"git add manuscript/main.md && {commit}", above / "paper", capsys) is None
+
+
+#: The message is left out and nothing else: what the same line goes on to do is read, and
+#: so is a quoted string that is no message, which may be a command or a path.
+BESIDE_A_MESSAGE = [
+    'git commit -m "tables" && git push origin submission',
+    'git commit -m "tables" && scp build/manuscript.docx host:',
+    'git commit -m "tables"; manuscript-guard submit',
+    'git commit -m "copy edits before submission" && manuscript-guard check --submission',
+    'git commit -m "tables" && bash -c "manuscript-guard submit"',
+    'bash -c "manuscript-guard submit"',
+    'ssh host "scp build/manuscript.docx elsewhere:"',
+    'mail -s "the submission" -a build/manuscript.docx editor@journal.example',
+    # Not git's: the value of another command's `-m` is read as before.
+    'tool -m "copy build/manuscript.docx to the editor"',
+]
+
+
+@pytest.mark.parametrize("command", BESIDE_A_MESSAGE)
+def test_what_stands_beside_a_message_is_still_read(command: str, above: Path, capsys) -> None:
+    result = sent(command, above / "paper", capsys)
+    assert decision(result) == "deny", command
 
 
 def test_a_word_too_long_to_be_a_path_is_not_walked(above: Path) -> None:
@@ -1286,15 +1338,62 @@ def test_a_name_with_escaped_spaces_is_one_name_and_not_its_pieces(
     assert sent(command, above, capsys) is None, command
 
 
-@ON_WINDOWS
-def test_a_name_that_is_the_folders_with_a_bracket_after_a_space_is_taken_for_it(
-    above: Path, capsys
+ESCAPE = chr(92)  # before a character a shell would read otherwise, it makes it that character
+
+#: A file beside the project whose name is the folder's, a space, and a bracket or an `&`.
+#: A word ended at the bracket, escaped or not, and Windows drops the space then left at the
+#: end of `paper `: the copy of `paper (1).docx` was held to `paper/`.
+BESIDE_THE_FOLDER = [
+    f"cp paper{SPACE}{ESCAPE}(1{ESCAPE}).docx /backup",
+    f"cp paper{SPACE}{ESCAPE}[1{ESCAPE}].docx /backup",
+    f"cp paper{SPACE}{ESCAPE}&{SPACE}co.docx /backup",
+    f"mv paper{SPACE}{ESCAPE}(final{ESCAPE}){SPACE}{ESCAPE}(2{ESCAPE}).docx docs/",
+    f"cp paper{SPACE}{ESCAPE}(1{ESCAPE}).docx paper{SPACE}{ESCAPE}(2{ESCAPE}).docx /backup",
+    'cp "paper (1).docx" /backup',
+]
+
+
+@pytest.mark.parametrize("command", BESIDE_THE_FOLDER)
+def test_a_name_that_is_the_folders_and_an_escaped_bracket_is_not_the_folder(
+    command: str, above: Path, capsys
 ) -> None:
-    """A known false alarm, held here. A word ends at a bracket, escaped or not, and Windows
-    drops the space left at the end of `paper `: `paper (1).docx` is held to `paper/`."""
-    command = f"cp paper{SPACE}{chr(92)}(1{chr(92)}).docx /backup"
-    assert decision(sent(command, above, capsys)) == "deny"
-    assert sent('cp "paper (1).docx" /backup', above, capsys) is None, "in quotes it is not"
+    assert SUBMISSION_MARKERS.search(command)
+    assert sent(command, above, capsys) is None, command
+
+
+#: A word with an escaped space and another escape is one name, as a shell reads it, and
+#: where that name is a path into the project the command is held to it.
+ESCAPED_INTO_THE_PROJECT = [
+    f"scp paper/build/Table{SPACE}{ESCAPE}(1{ESCAPE}).docx host:",
+    f"cp paper/build/R{ESCAPE}&D{SPACE}notes.docx /backup",
+    f"zip sent.zip paper/build/manuscript.docx other{SPACE}{ESCAPE}(1{ESCAPE}).docx",
+]
+
+
+@pytest.mark.parametrize("command", ESCAPED_INTO_THE_PROJECT)
+def test_an_escaped_name_inside_the_project_still_names_it(
+    command: str, above: Path, capsys
+) -> None:
+    result = sent(command, above, capsys)
+    assert decision(result) == "deny", command
+    assert "failing in paper, which this command names" in reason(result)
+
+
+#: A backslash before a letter or a digit is where Windows ends a folder's name, and a word
+#: that holds one is read as before, whatever else is escaped in it.
+AS_WINDOWS_WRITES_IT = [
+    "cd ." + ESCAPE + "paper" + ESCAPE + "; manuscript-guard submit",
+    "Copy-Item ." + ESCAPE + "paper" + ESCAPE + "build" + ESCAPE + "manuscript.docx sent",
+    "Copy-Item (Join-Path ." + ESCAPE + "paper" + ESCAPE + ") sent" + ESCAPE + "manuscript.docx",
+]
+
+
+@ON_WINDOWS
+@pytest.mark.parametrize("command", AS_WINDOWS_WRITES_IT)
+def test_a_path_as_windows_writes_it_is_read_as_before(command: str, above: Path, capsys) -> None:
+    result = sent(command, above, capsys)
+    assert decision(result) == "deny", command
+    assert "failing in paper, which this command names" in reason(result)
 
 
 def test_a_project_named_by_its_whole_path_is_found_from_anywhere(

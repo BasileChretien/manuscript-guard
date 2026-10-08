@@ -321,7 +321,37 @@ def _cannot_check(error: Exception) -> str:
 # and at what a shell or PowerShell puts between two commands, around a value or between the
 # items of a list. Nothing is run and nothing expanded: this is not how a shell reads a
 # command, only enough to find the paths written out in one.
-_WORDS = re.compile(r""""([^"]*)"|'([^']*)'|((?:\\ |[^\s;&|()<>=,{}`"'])+)""")
+#
+# One kind of word is read as a shell reads it: a word with an escaped space, `\ `, in which
+# no backslash stands before a letter or a digit. Git Bash writes `paper (1).docx` as
+# `paper\ \(1\).docx`, and there every backslash makes the character after it part of the
+# name, a bracket or an `&` included, so the word does not end at them. A backslash before a
+# letter or a digit is where Windows ends a folder's name, `.\paper\build`, and a word that
+# holds one is read as it always was, by the last pattern: it ends at a bracket, escaped or
+# not. The first look ahead finds the escaped space without trying the word's every split.
+_ESCAPED = r"""\\[^A-Za-z0-9\n]|[^\s\\;&|()<>=,{}`"']"""
+_SHELL_WORD = (
+    r"""(?=(?:\\[^ \n]|[^\s\\;&|()<>=,{}`"'])*\\ )"""
+    rf"""((?:{_ESCAPED})+)(?![^\s;&|()<>=,{{}}`"'])"""
+)
+_WORDS = re.compile(
+    r""""([^"]*)"|'([^']*)'|""" + _SHELL_WORD + r"""|((?:\\ |[^\s;&|()<>=,{}`"'])+)"""
+)
+_ESCAPE = re.compile(r"\\(.)")
+
+# What a `git` command is told to record: the value of `-m` or `--message`, in quotes, or
+# as the heredoc an agent writes a long one through. It is text and no command, so the
+# markers do not read it: `git commit -m "copy-edit the abstract before submission"` named
+# a verb and then the word. Only a value in quotes, and only git's: `python -m` names a
+# module to run, and what another command takes after `-m` is not known.
+_MESSAGE = re.compile(
+    r"""(?<![\w-])(?:-[A-Za-z]*m|--message)\s*=?\s*(?P<said>"""
+    r""""\$\(cat\s*<<-?\s*['"]?(?P<end>\w+)['"]?\n.*?\n[ \t]*(?P=end)[ \t]*\n?[ \t]*\)\""""
+    r"""|"[^"]*"|'[^']*')""",
+    re.DOTALL,
+)
+_BETWEEN_COMMANDS = re.compile(r"[;&|\n]")
+_GIT = re.compile(r"\bgit\b")
 
 # `/c/Users/x`, which is how Git Bash writes `C:/Users/x`, and Claude Code runs its commands
 # in Git Bash on Windows. Not `/s` with nothing after it, which is a switch: read as a drive
@@ -351,13 +381,41 @@ def _words(command: str) -> list[str]:
     name, so `.\\paper\\ D:\\sent` is two paths, and it is not found. Reading the pieces as
     well found it, and twice took a piece of a file's name for the project beside it:
     `paper` in `cp paper\\ draft.docx`, then in `cp Edited\\ paper\\ \\(JD\\).docx`.
+
+    A word with an escaped space and no backslash before a letter or a digit is a shell's
+    throughout (`_SHELL_WORD`): each backslash in it is taken off and the character after
+    it kept, so `paper\\ \\(1\\).docx` is the one name `paper (1).docx`. It ended at the
+    bracket, and Windows drops the space then left at the end of `paper `, which named the
+    folder `paper` beside the file.
     """
     words: list[str] = []
-    for double, single, bare in _WORDS.findall(command):
+    for double, single, shell, bare in _WORDS.findall(command):
         quoted = double or single
-        words += [quoted, quoted.rpartition("=")[2]] if quoted else [bare.replace("\\ ", " ")]
+        if quoted:
+            words += [quoted, quoted.rpartition("=")[2]]
+        else:
+            words.append(_ESCAPE.sub(r"\1", shell) if shell else bare.replace("\\ ", " "))
     read = (reading for word in words for reading in (word, word.rpartition("@")[2]))
     return list(dict.fromkeys(reading for reading in read if reading))
+
+
+def _without_messages(command: str) -> str:
+    """The command with what each `git` command in it is told to record left out.
+
+    A message is left out where the command it belongs to is git's: the word `git` stands
+    between it and the start of that command, which is the start of the line or the last
+    `;`, `&` or `|` before it. What was left out earlier on the line is not searched for
+    those, so a second `-m` after a message with an `&` in it is still git's.
+    """
+    if "git" not in command:
+        return command
+    kept, at = "", 0
+    for found in _MESSAGE.finditer(command):
+        kept += command[at : found.start("said")]
+        if not _GIT.search(_BETWEEN_COMMANDS.split(kept)[-1]):
+            kept += found["said"]
+        at = found.end()
+    return kept + command[at:]
 
 
 def _spelt(word: str, cwd: Path) -> Path | None:
@@ -539,7 +597,9 @@ def guard_submission(payload: dict) -> int:
     # writes the word `--submission` into a file is an edit, which the write guard reads.
     if payload.get("tool_name") == PATCH_TOOL:
         return 0
-    command = str(payload.get("tool_input", {}).get("command", ""))
+    # What a commit is told to say is no command and names no file: it is left out before
+    # the markers are asked, and before the words are read for a project.
+    command = _without_messages(str(payload.get("tool_input", {}).get("command", "")))
     if not SUBMISSION_MARKERS.search(command):
         return 0
 

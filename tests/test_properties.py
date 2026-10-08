@@ -869,21 +869,16 @@ def test_a_fact_is_where_it_says_and_a_text_is_what_it_was(manuscript: str, nobo
 
 
 @st.composite
-def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
-    """A text, what an edit made of it, what the edit did besides reword it, the facts it
-    did that to as a finding shows them, and the line of the after text it did it on.
+def _rewordings(draw: st.DrawFn, did: str) -> tuple[str, str, str, list[str], int]:
+    """A text, what an edit made of it, what the edit did besides reword it, which is `did`,
+    the facts it did that to as a finding shows them, and the line of the after text it did
+    it on.
 
     Every sentence is written twice, with other words between its facts each time and each
     fact in another of the ways it is written: a number bare, in brackets, in emphasis or
     as a bound of a range, joined each of the ways a range is. That is the rewording, and
     it is free. A comment stands in both, and holds other things in each: a listing in
     the first."""
-    did = draw(
-        st.sampled_from(
-            ("nothing", "nothing", "lost", "new", "changed", "unsigned", "turned", "unsure",
-             "beside", "swapped", "both")
-        )
-    )
 
     def fact() -> tuple[str, str]:
         kind = draw(st.sampled_from((BINDING, CITATION, NUMBER, NUMBER)))
@@ -899,9 +894,9 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
     if did == "turned" and not turnable:
         before.append([(NUMBER, "12"), (BINDING, "k1")])
         turnable = [len(before) - 1]
+    if did in ("lost", "changed") and not any(before):
+        before.append([fact()])
     holding = [at for at, held in enumerate(before) if held]
-    if did in ("lost", "changed") and not holding:
-        did = "nothing"
 
     after = [list(held) for held in before]
     shown: list[str] = []
@@ -1003,10 +998,27 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
     return texts_of[0], texts_of[1], did, shown, line
 
 
-@holds(200, _rewordings())
+#: Everything an edit does that the property plants, one of each in every example. Drawn
+#: one to an example, as they were at first, a kind could go undrawn for a whole run: under
+#: `MANUSCRIPT_GUARD_SEED=5` no text had its order turned in 200 examples, and under 8 none
+#: had a sign taken off beside a dash that may be one, so the rule broken for each of those
+#: passed. What Hypothesis draws first in an example it varies least.
+_EDITS = (
+    "nothing", "lost", "new", "changed", "unsigned", "turned", "unsure", "beside", "swapped",
+    "both",
+)  # fmt: skip
+
+
+@holds(40, st.tuples(*(_rewordings(did) for did in _EDITS)))
 def test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands(
-    drawn: tuple[str, str, str, list[str], int],
+    drawn: tuple[tuple[str, str, str, list[str], int], ...],
 ) -> None:
+    assert [did for _before, _after, did, _shown, _line in drawn] == list(_EDITS)
+    for one in drawn:
+        _held_to_its_edit(one)
+
+
+def _held_to_its_edit(drawn: tuple[str, str, str, list[str], int]) -> None:
     before, after, did, shown, line = drawn
     report = compare(before, after, MAIN)
     said = [(found.code, found.severity, found.line, found.message) for found in report.findings]

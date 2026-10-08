@@ -628,7 +628,43 @@ NOT_A_SUBMISSION = [
     "manuscript-guard stages",
     "mguard explain manuscript/main.md",
     "manuscript-guard verify",
+    # A stage belongs to the nearest invocation before it. After `build` the marker read on
+    # to the end of the line, past a second invocation, and took the stage of the check a
+    # refusal names for the build's: in the body of a pull request, in a message, in two
+    # PowerShell commands the first of which ends in a folder's backslash, and in a branch.
+    'gh pr create --title "methods" --body "## Test plan\n'
+    "- `manuscript-guard build --offline`\n- `manuscript-guard check --stage submission`\"",
+    'git commit -m "methods: rebuilt with manuscript-guard build --offline, '
+    'manuscript-guard check --stage submission still fails on G11"',
+    "manuscript-guard build --offline ."
+    + chr(92)
+    + "\nmanuscript-guard check --stage submission ."
+    + chr(92),
+    'echo "ran manuscript-guard build --offline then mguard check --stage submission" >> log',
+    "if ($quick) { mguard build --offline } else { mguard check --stage submission }",
+    "python -m manuscript_guard.cli build --offline, then "
+    "python -m manuscript_guard.cli check --stage submission",
 ]
+
+#: And what the nearest invocation does not let through: a second build that is a
+#: submission, and a stage after a folder that is called as the command is.
+UNDER_ANOTHER_NAME += [
+    "manuscript-guard build --offline && manuscript-guard build --stage submission --offline",
+    "manuscript-guard check --stage submission; mguard build --offline --stage submission",
+    "manuscript-guard build manuscript-guard/example --stage submission --skip-checks",
+    "mguard build ../manuscript-guard --stage submission --skip-checks",
+]
+
+
+def test_a_line_that_names_the_command_often_is_read_in_linear_time(assert_linear) -> None:
+    """After `build` the marker reads on for a stage, and it read to the end of the line
+    from each `build`: a line that named the command n times cost n times its length, 9 s
+    for 391 KB of one line. It stops at the next invocation."""
+
+    def line(mentions: int) -> str:
+        return ("run mguard build the paper " + "word " * 40) * mentions
+
+    assert_linear(line, SUBMISSION_MARKERS.search, 50, "the submission markers, by mention")
 
 
 @pytest.mark.parametrize("command", UNDER_ANOTHER_NAME)

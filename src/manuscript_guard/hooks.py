@@ -58,9 +58,15 @@ ALLOWED = ("profiles/reporting/recipes/",)
 # all. A quote may close the name, as in PowerShell's `& "C:\Tools\mguard.exe" submit`.
 # tests/test_hooks.py holds the names to the ones `pyproject.toml` installs.
 _TOOL = r"\b(?:(?:manuscript-guard|mguard)(?:\.exe)?|manuscript_guard\.cli)[\"']?\s+"
-# What follows a subcommand, up to the end of that one command: not across `;`, `&` or `|`,
-# and across a line only where the line is continued, with `\` or PowerShell's backtick.
-_SAME_COMMAND = r"(?:[^\n;&|]|[\\`]\r?\n)*?"
+# What follows a subcommand and may belong to it: up to a `;`, `&` or `|`, in quotes or not,
+# and up to the end of the line unless it ends in `\` or a backtick, which is how bash and
+# PowerShell continue one. The guard does not know which shell runs the command, so it
+# reads on after either, and a PowerShell line that ends in a folder's backslash is read
+# with the next. It stops in every case at the next invocation, a name of the command and
+# a subcommand after it: a stage belongs to the nearest invocation before it. Without that,
+# a build with no stage took the stage of the check a refusal names, later on the line,
+# and a line that named the command n times cost n times its length.
+_SAME_COMMAND = rf"(?:(?!{_TOOL}[A-Za-z])(?:[^\n;&|]|[\\`]\r?\n))*?"
 SUBMISSION_MARKERS = re.compile(
     # The unambiguous ones: asking for a submission pack, for a build at the submission
     # stage, or for submission standards. `--stage submission` is a marker after `build`

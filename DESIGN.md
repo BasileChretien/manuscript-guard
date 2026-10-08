@@ -1676,7 +1676,7 @@ command line reads. argparse reads any prefix that names one option, which made 
 spelling the guard did not have. The parser refuses abbreviations, on every command, so the
 word is the only spelling of that option (see "Closed since"). It is not the only way to ask
 for the submission standard: `--stage submission` is the other, which a refusal itself names
-for `check`, and on `build` the guard does not hold it (Known gaps).
+for `check`, and which the guard holds on `build` alone (Known gaps has what is left).
 
 **A hook never breaks the session.** Every handler swallows unexpected errors and exits 0.
 A guard that crashes on a half-configured project gets removed by the author, and the guards
@@ -4922,14 +4922,26 @@ Closed since, and why each mattered:
 - **A submission build that names no stage is one the submission guard does not hold.**
   `--stage submission` gives the same verdict as `--submission`. After `check` it is no
   marker, which is why a refusal can name `check --stage submission`; after `build` it is
-  one, on that one command and not across `;`, `&`, `|` or the end of a line that is not
-  continued. Until 2026-10-08 it was none after `build` either: in a project that fails,
+  one. Until 2026-10-08 it was none after `build` either: in a project that fails,
   `manuscript-guard build --stage submission --skip-checks` wrote
   `manuscript.UNCHECKED.docx`, where the same command with `--submission` was refused
-  before it ran. What is left is a project that declares `stage: submission` in
-  `paper.yaml`: there `build --skip-checks` is an unchecked submission build, and the
-  command holds no word for a marker to match. So is a stage held in a variable,
-  `--stage $STAGE`. Found in the review of #136 on 2026-10-02.
+  before it ran. The stage is looked for after `build` as far as the next `;`, `&` or
+  `|`, the end of the line, or the next invocation of the command, whichever comes
+  first: a stage belongs to the nearest invocation before it, so that a build with no
+  stage does not take the stage of a check named after it. What is left:
+  - A project that declares `stage: submission` in `paper.yaml`: there `build
+    --skip-checks` is an unchecked submission build, and the command holds no word for
+    a marker to match. So is a stage held in a variable, `--stage $STAGE`.
+  - A `;`, `&` or `|` ends the command for the guard inside quotes too: `manuscript-guard
+    build "R&D/paper" --stage submission --skip-checks` goes through.
+  - The guard does not know which shell runs the command. It reads on past the end of a
+    line that ends in `\` or a backtick, which is how bash and PowerShell continue
+    one, so a PowerShell line that ends in a folder's backslash is read with the next,
+    and a stage on that next line is taken for the build's unless an invocation stands
+    before it.
+  - A stage that is only mentioned on a build's line is read as the build's: `build
+    --offline  # not --stage submission yet` is refused in a project that fails.
+  Found in the review of #136 on 2026-10-02.
 - **Under a name the package does not give it, the command is not a submission the guard
   sees.** The markers for the pack and for a build at the submission stage begin with the
   command's name, and the names known are the ones the package installs or runs by:
@@ -4938,8 +4950,10 @@ Closed since, and why each mattered:
   was known, and `mguard submit --offline --skip-checks` went through in a project that
   fails. A shell alias, a wrapper script, a `make submit` and
   `python -c "from manuscript_guard.cli import main; main(['submit'])"` are names the
-  guard cannot know. An option is seen under any name: `mg build --submission` is
-  refused. `tests/test_hooks.py` holds the names to `[project.scripts]` in
+  guard cannot know, and it does not know the module's file run by its path, `python
+  src/manuscript_guard/cli.py submit`, nor `-m` written against the module's name,
+  `python -mmanuscript_guard.cli submit`, nor a line continued between the name and
+  `submit`. An option is seen under any name: `mg build --submission` is refused. `tests/test_hooks.py` holds the names to `[project.scripts]` in
   `pyproject.toml`. Found in the review of #136.
 - **`AGENTS.md` is read by some agent tools and not by others, and it is written once.**
   Read from each tool's documentation on 2026-10-02, none of it observed in a session: Codex

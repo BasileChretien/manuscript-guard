@@ -329,6 +329,26 @@ def test_link_texts_on_one_long_line_are_read_in_linear_time(assert_linear) -> N
     assert_linear(lambda count: "See [1] " * count + "\n", link_text_spans, 4000, "link texts")
 
 
+@pytest.mark.parametrize(
+    "paper",
+    [
+        lambda count: "".join(f"It was {{{{results.v{i}}}}} there.\n" for i in range(count)),
+        lambda count: "".join(f"It was {{{{results.v{i}}} there.\n" for i in range(count)),
+        lambda count: " ".join(f"{{{{results.v{i}}}}}" for i in range(count)) + "\n",
+    ],
+    ids=["one to a line", "one malformed to a line", "all on one line"],
+)
+def test_bindings_are_placed_in_linear_time(paper, assert_linear) -> None:
+    """G2 reads the bindings of every file on every `check`. For the line of each one,
+    `parse` counted the line breaks from the top of the file, and for its column it looked
+    back to the start of its line: with one binding to a line, 5,000 took 0.35 seconds and
+    40,000 took 18.5. A malformed one had its line counted the same way. On one long line
+    the looking back alone took as long, so that shape holds the column."""
+    from manuscript_guard.text.placeholders import parse
+
+    assert_linear(paper, parse, 500, "the bindings of a file")
+
+
 def test_starred_commands_before_text_are_read_in_linear_time(assert_linear) -> None:
     """`\\newcommand* ` could be read as the starred command, or as the command and then a
     `* ` list marker, so a line of them that is not all openers was read every way:

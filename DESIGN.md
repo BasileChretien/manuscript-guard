@@ -6616,26 +6616,31 @@ Closed since, and why each mattered:
 
   **The consequences are pinned, not described.** Four rounds of review, by two readers of this
   code, each corrected a case-by-case account of which misprints and which wrapped lines are
-  refused and wrote a new one that was wrong somewhere — and every case still at issue is a form
-  of several pages. The enumeration has more cases than prose keeps straight, so the ones worth
+  refused and wrote a new one that was wrong somewhere. Of the silent cases listed below, one
+  page reaches three: the wrapped title or first statement with both counts stated, a one-space
+  first statement or a running foot with no option count, and a scale cut short by an early
+  `stop_at` with no item count. The enumeration has more cases than prose keeps straight, so the ones worth
   knowing are pinned in `tests/test_transcribe.py` instead of written out. These five hold what
   is not obvious from the rules, each by its own name:
 
-  - `test_a_wrapped_title_or_wrapped_first_statement_is_written_wrong_on_one_page` — **the one
-    shape a one-page form reaches in silence**, and the reason a first profile is read against
-    the published form by eye;
+  - `test_a_wrapped_title_or_wrapped_first_statement_is_written_wrong_on_one_page` — **what a
+    one-page form reaches in silence where its recipe states both counts**, and the reason a
+    first profile is read against the published form by eye;
   - `test_a_statement_split_across_a_page_break_loses_its_second_line`;
   - `test_a_stop_at_line_before_the_last_item_is_caught_only_by_the_item_count`;
   - `test_a_last_item_alone_on_a_second_page_is_refused_not_passed_over` — a *one-option* last
     item on a later page; a complete one is read correctly, which no test pins;
   - `test_the_profile_carries_the_sentence_for_its_recipes_counts`.
 
-  Those five are not the whole of it, and this list does not claim to be: a dozen other tests in
-  the same file hold the line rules — a line that can be placed nowhere, a second unscored line,
-  too few options, the rater's instructions above the scale, numbers that do not run from one.
-  Four shapes are in no test at all, and are written or dropped without a word: a one-space first
-  statement and a running foot read as an option, each where no option count is stated, and the
-  two page cases where only one of the two counts is.
+  Those five are not the whole of it, and this list does not claim to be: twelve other scale
+  tests are in the same file, nine of them holding the reading — a line that can be placed
+  nowhere, a second unscored line, too few options, the rater's instructions above the scale,
+  numbers that do not run from one — and three the sentence a profile records.
+  Four shapes are in no test at all, and are written or dropped without a word, each where no
+  option count is stated except the last: a one-space first statement, kept as the item's
+  clarification so that the item is written an option short; a running foot read as one more
+  option; an item whose scored lines carry on to the next page, written short; and, where no
+  item count is stated, a page the recipe's `pages` leaves out, so the scale is written short.
 
   [#219][scale-219] records ten sentences found inexact, each with what is true instead, for
   anyone who wants that account as it stood.

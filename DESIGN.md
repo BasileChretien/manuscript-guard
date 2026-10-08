@@ -1650,12 +1650,16 @@ narrowed to Windows and to a run holding another backslash, in `cp Edited\ paper
 limit that is written down, and a document refused for a project it has nothing to do with
 is what this change was decided against. One kind of word has since been read as a shell
 reads it, whole and not by its pieces (2026-10-08): a word with an escaped space in which
-no backslash stands before a letter, a digit or an underscore. There every backslash is
-the shell's, so `paper\ \(1\).docx` is the one name `paper (1).docx` and does not end at
-the bracket. A backslash before a letter, a digit or an underscore is where Windows ends a
-folder's name, and a word that holds one is read as before; a letter of any script, since
-a folder is as often `études` as `paper`, and `.\études\ ` read as a shell's word was a
-folder not found. A word of more than 4096 characters or 100
+every backslash stands before a space or one of the characters a shell escapes, which
+are a few of ASCII: brackets, quotation marks, `&`, `#`, `~` and their like. There every
+backslash is the shell's, so `paper\ \(1\).docx` is the one name `paper (1).docx` and
+does not end at the bracket. A backslash before anything else is where Windows ends a
+folder's name, and a word that holds one is read as before: before a letter or a digit
+of any script, since a folder is as often `études` as `paper`, and before a mark no
+shell escapes, since one is as often `【投稿】論文` or `.drafts`. Read the other way round,
+as every character but a letter, `.\études\ ` and then `.\【投稿】論文\ ` were a shell's
+word and a folder not found; both were found in review, before this was on `main`. A
+word of more than 4096 characters or 100
 folders is not a path and is not walked: each step down is a look on disk, `..` exists at
 every step, and 5000 of them in one word took 34 s.
 
@@ -5549,7 +5553,11 @@ Closed since, and why each mattered:
     left is `paper\`. With a space the name is read whole since 2026-10-08, `cp paper\
     \(1\).docx /backup` being `paper (1).docx`, where it used to leave `paper ` and Windows
     dropped the space; not where the line is continued straight after the name, with no
-    space before the backslash that ends it. In quotes it names nothing.
+    space before the backslash that ends it. In quotes it names nothing. The same reading
+    loses a folder on Windows whose name begins with a character a shell escapes, where
+    a backslash and a space follow it: `Copy-Item .\#1-paper\ "D:/sent" -Recurse` reads
+    as the name `.#1-paper ` and names no project, for `#`, `~`, a bracket or `!` in front.
+    With no space after the backslash, `.\#1-paper\build`, or in quotes, it is found.
     A copy into the project, `cp ~/Downloads/edited.docx paper/`, is held to it too, as it
     always was from inside (the word-roundtrip skill says to give the path to `import`).
   - *The check a refusal names can be refused in two shapes.* Written with the folder last

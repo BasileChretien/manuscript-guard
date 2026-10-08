@@ -323,16 +323,20 @@ def _cannot_check(error: Exception) -> str:
 # command, only enough to find the paths written out in one.
 #
 # One kind of word is read as a shell reads it: a word with an escaped space, `\ `, in which
-# no backslash stands before a letter, a digit or an underscore. Git Bash writes
-# `paper (1).docx` as `paper\ \(1\).docx`, and there every backslash makes the character
-# after it part of the name, a bracket or an `&` included, so the word does not end at
-# them. A backslash before a letter, a digit or an underscore is where Windows ends a
-# folder's name, `.\paper\build`, and a word that holds one is read as it always was, by
-# the last pattern: it ends at a bracket, escaped or not. A letter of any script: taken for
-# the letters of English alone, `.\études\ ` was a shell's word and the folder was not
-# found. A shell's own completion escapes no such character. The first look ahead finds
-# the escaped space without trying the word's every split.
-_ESCAPED = r"""\\[^\w\n]|[^\s\\;&|()<>=,{}`"']"""
+# every backslash stands before a space or one of the characters a shell escapes, which
+# are a few of ASCII (`_SHELL_ESCAPES`). Git Bash writes `paper (1).docx` as
+# `paper\ \(1\).docx`, and there every backslash makes the character after it part of the
+# name, a bracket or an `&` included, so the word does not end at them. A backslash before
+# anything else is where Windows ends a folder's name, `.\paper\build`, and a word that
+# holds one is read as it always was, by the last pattern: it ends at a bracket, escaped or
+# not. That is a letter or a digit, of any script, and a mark no shell escapes: taken the
+# other way round, as every character but a letter of English, then as every character
+# but a letter, `.\études\ ` and `.\【投稿】論文\ ` were a shell's word and the folder was not
+# found. What is left is a folder that begins with one of the escaped characters, `#1`,
+# `~old`, `(old)`: the word does not say which shell wrote it (Known gaps). The first look
+# ahead finds the escaped space without trying the word's every split.
+_SHELL_ESCAPES = r""" !"#$&'()*,:;<=>?@\[\\\]^`{|}~"""
+_ESCAPED = rf"""\\[{_SHELL_ESCAPES}]|[^\s\\;&|()<>=,{{}}`"']"""
 _SHELL_WORD = (
     r"""(?=(?:\\[^ \n]|[^\s\\;&|()<>=,{}`"'])*\\ )"""
     rf"""((?:{_ESCAPED})+)(?![^\s;&|()<>=,{{}}`"'])"""
@@ -390,11 +394,11 @@ def _words(command: str) -> list[str]:
     well found it, and twice took a piece of a file's name for the project beside it:
     `paper` in `cp paper\\ draft.docx`, then in `cp Edited\\ paper\\ \\(JD\\).docx`.
 
-    A word with an escaped space and no backslash before a letter, a digit or an underscore
-    is a shell's throughout (`_SHELL_WORD`): each backslash in it is taken off and the
-    character after it kept, so `paper\\ \\(1\\).docx` is the one name `paper (1).docx`. It
-    ended at the bracket, and Windows drops the space then left at the end of `paper `,
-    which named the folder `paper` beside the file.
+    A word with an escaped space, in which every backslash stands before a space or a
+    character a shell escapes, is a shell's throughout (`_SHELL_WORD`): each backslash in
+    it is taken off and the character after it kept, so `paper\\ \\(1\\).docx` is the one
+    name `paper (1).docx`. It ended at the bracket, and Windows drops the space then left
+    at the end of `paper `, which named the folder `paper` beside the file.
     """
     words: list[str] = []
     for double, single, shell, bare in _WORDS.findall(command):

@@ -1435,8 +1435,8 @@ def test_an_escaped_name_inside_the_project_still_names_it(
     assert "failing in paper, which this command names" in reason(result)
 
 
-#: A backslash before a letter, a digit or an underscore is where Windows ends a folder's
-#: name, and a word that holds one is read as before, whatever else is escaped in it.
+#: A backslash before a character no shell escapes is where Windows ends a folder's name,
+#: and a word that holds one is read as before, whatever else is escaped in it.
 AS_WINDOWS_WRITES_IT = [
     "cd ." + ESCAPE + "paper" + ESCAPE + "; manuscript-guard submit",
     "Copy-Item ." + ESCAPE + "paper" + ESCAPE + "build" + ESCAPE + "manuscript.docx sent",
@@ -1453,12 +1453,18 @@ def test_a_path_as_windows_writes_it_is_read_as_before(command: str, above: Path
 
 
 #: A folder's name as its author writes it: in English, with an accent, with an underscore
-#: in front, in another script. Each is a letter to Windows, and none is one a shell escapes.
+#: in front, in another script, and beginning with a mark: a bracket of Japanese, as in a
+#: folder labelled for a submission, a dot, a plus. None begins with a character a shell
+#: escapes.
 FOLDERS = {
     "plain": "paper",
     "accented": chr(233) + "tudes",
     "underscore": "_paper",
     "kanji": chr(35542) + chr(25991),
+    "bracketed": chr(12304) + chr(25237) + chr(31295) + chr(12305) + chr(35542) + chr(25991),
+    "dotted": ".drafts",
+    "plus": "+paper",
+    "hyphen": "-paper-",
 }
 
 
@@ -1479,6 +1485,23 @@ def test_a_folder_ends_at_its_backslash_whatever_script_its_name_is_in(
         result = sent(command, above, capsys)
         assert decision(result) == "deny", command
         assert f"failing in {folder}, which this command names" in reason(result)
+
+
+@ON_WINDOWS
+@pytest.mark.parametrize("folder", ["#1-paper", "~paper", "(old) paper"])
+def test_a_folder_that_begins_with_a_character_a_shell_escapes_is_not_told_apart(
+    folder: str, above: Path, capsys
+) -> None:
+    """A known limit, held here. `.\\#1-paper\\ ` is a folder and a space to PowerShell and
+    the name `.#1-paper ` to a shell, and the word alone does not say which wrote it. It is
+    read as the shell's, which is what lets `paper\\ \\(1\\).docx` be one name."""
+    (above / "paper").rename(above / folder)
+    command = f'Copy-Item .{ESCAPE}{folder}{ESCAPE} "D:/sent/submission" -Recurse'
+    assert sent(command, above, capsys) is None, command
+    # Without the space after it, and in quotes, the folder is found.
+    at = f".{ESCAPE}{folder}{ESCAPE}build{ESCAPE}manuscript.docx"
+    for found in (f"Copy-Item '{at}' sent", f'Copy-Item "{at}" sent'):
+        assert decision(sent(found, above, capsys)) == "deny", found
 
 
 def test_a_project_named_by_its_whole_path_is_found_from_anywhere(

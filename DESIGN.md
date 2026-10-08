@@ -7842,7 +7842,12 @@ Closed since, and why each mattered:
     say it is gone or new and one place of the number, taken in order, lost or gained
     it. A sure sign gone at one place while a dash that may be one is new at another is
     a warning that the dash stands at another place, not a failure. So is a sure sign
-    that went while its clause moved past another place of the same figures.
+    that went while its clause moved past another place of the same figures. Where they
+    stand more or less often, the counts alone decide. And three things at once defeat
+    the places: a sure sign gone, a dash that may be one new at the other place and the
+    two clauses changing places, with no other fact in either, is not told at all; two
+    edits of notation with their clauses changing places, `x * -1` closed up and `*n*-1`
+    made "n-1", are refused as a sign lost.
   - A sign set apart from its number is not read with it: a true minus, a space and "0.3",
     made "0.3", passes, and so does "-$5" made "$5".
   - A figure retyped raised or lowered is told as gone and new, as "3" made "three" is: a
@@ -8044,7 +8049,7 @@ Closed since, and why each mattered:
     it for this. One alone in bold or italics is taken for a compound, so a table's
     header "**24h**" passes. A compound named with neither its word against it nor
     marks of emphasis around it, "3g was the most potent", is reported. Between the
-    word for a compound and the name, a comma, a dash and "and", "or" or "to" may
+    word for a compound and the name, a comma, a hyphen, an en dash, "and", "or" or "to" may
     stand, so "from study entry to 24h" and "of the product, 2g was dried" pass. "6mA",
     the methylated base, is read as milliamperes.
   - A `g` after a number of five figures or more before its decimal point is taken for

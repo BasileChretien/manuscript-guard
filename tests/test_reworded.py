@@ -435,6 +435,22 @@ def test_two_edits_of_notation_on_the_same_figures_do_not_make_a_sign(
     assert report.ok and said_of_it in report.findings[0].message
 
 
+def test_three_things_at_once_on_the_same_figures_are_a_limit() -> None:
+    """Known gaps, pinned so that a change to either is seen: a sign or an edit of notation
+    at one place of a number, an edit of notation at the other, and the two clauses
+    changing places with no other fact in either."""
+    slope, freedom = "It fell by -1 here.\n", "With n-1 degrees.\n"
+    unseen = compare(
+        slope + "\n" + freedom, freedom.replace("n-", "*n*-") + "\n" + slope.replace("-", ""), PATH
+    )
+    assert not unseen.findings, said(unseen)
+    spaced, italic = "We set y = x * -1 here.\n", "With *n*-1 degrees.\n"
+    refused = compare(
+        spaced + "\n" + italic, "With n-1 degrees.\n\n" + spaced.replace(" * ", "*"), PATH
+    )
+    assert told(refused) == [("sign-lost", FAIL)], said(refused)
+
+
 def test_a_sure_sign_that_goes_fails_beside_a_dash_that_may_be_one() -> None:
     """The third review: a dash that may be a sign, standing where it stood, was counted
     among the dashes now and answered for a sure sign that went. A slope of -1 made 1 was

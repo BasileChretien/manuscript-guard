@@ -1404,8 +1404,8 @@ def test_a_plugin_newer_than_the_cli_says_so_with_the_upgrade_command(
     assert result is not None
     shown = result["systemMessage"]
     # Both versions and both upgrade commands. Each takes the release from PyPI, where every
-    # version goes as it is raised, and neither names the repository: `pipx upgrade` would
-    # leave a copy that was installed from git where it is.
+    # version goes within minutes of being raised, and neither names the repository:
+    # `pipx upgrade` would leave a copy that was installed from git where it is.
     for needle in ("99.0.0", __version__, UPGRADE_PIP, UPGRADE_PIPX):
         assert needle in shown, needle
     assert "git+" not in shown, shown

@@ -14,9 +14,12 @@ authors:
   - family-names: "Chrétien"
     given-names: "Basile"
     orcid: "https://orcid.org/0000-0002-7483-2489"
+    # Two affiliations in the one field the format gives an author.
     affiliation: >-
       Department of International Medical Education, Nagoya University Graduate School of
-      Medicine, Nagoya, Japan
+      Medicine, Nagoya, Japan; Neuropresage Team, Normandie University, UNICAEN, INSERM,
+      UMR-S U1237, Physiopathology and Imaging of Neurological Disorders (PhIND), Institute
+      Blood and Brain @ Caen-Normandie (BB@C), GIP Cyceron, 14000 Caen, France
 repository-code: "https://github.com/BasileChretien/manuscript-guard"
 url: "https://github.com/BasileChretien/manuscript-guard"
 license: MIT

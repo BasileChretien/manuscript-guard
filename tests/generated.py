@@ -358,6 +358,21 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+def bindings() -> st.SearchStrategy[str]:
+    """A manuscript with a binding where a line begins: after a line end, of Windows or
+    not, and in some texts as the first thing in the file.
+
+    A binding there stands exactly at the start of its line, the one place where a lookup
+    among the starts of the lines can be a line out. Left to chance, a manuscript seldom
+    holds one: under 27 of the seeds 0 to 299, a rule that put such a binding on the line
+    before was wrong in none of a property's 200 examples, and went unnoticed. Planted, the
+    fewest examples that show that rule under any of those seeds is 131 of 200."""
+    written = ("{{results.cohort.n_reports}}", "{{ lit.incidence }}", "{{oops}}", "{{lit.cut}")
+    opening = tuple(f"{end}{binding}" for end in ("\n", "\r\n") for binding in written)
+    planted = st.sampled_from(("", *written)), st.sampled_from(("", *opening * 2))
+    return st.tuples(planted[0], texts(), planted[1], texts()).map("".join)
+
+
 # What stands between two bounds of an interval: words, and a stop with a space after it,
 # a line break, or nothing.
 _BETWEEN = (

@@ -36,10 +36,12 @@ scale rather than as a checklist, and the scoring is left to the editor or revie
 A scale is also read differently, and its profile says so: a Word table's items are verified
 verbatim, a column-laid-out PDF's by their opening clause, and a scale's not at all, because
 they are read line by line from the form and there is nothing else to compare them with. What
-the reader offers instead is that a line it cannot place stops the transcription — below the
-first heading of its page, and as far as the counts the recipe states can see. Above that
-heading every line is passed over, and a wrapped line changes no count, so no count sees one.
-DESIGN.md's Known gaps carries what that does and does not cover.
+the reader offers instead is its own rules, stated in `reporting/scale.py`: what is read on each
+page, what each line becomes, and what is counted. What those rules refuse and what they let
+through follows from them, and the cases worth knowing are pinned in the tests DESIGN.md's Known
+gaps names — among them the one a one-page form reaches in silence, a wrapped title or a wrapped
+first statement, which is why a new form's first profile is read against the published form by
+eye.
 
 ```bash
 manuscript-guard fetch STROBE
@@ -68,7 +70,8 @@ That builds `profiles/reporting/STROBE.yaml` from the stored document. It keeps 
 guideline's own item numbering, including sub-letters like `6a`, because that is what
 journals and reviewers refer to, and for a checklist it fails if an item cannot be found
 verbatim in the document; for a scale, where that check does not exist, it fails on a line it
-cannot place, within the limits DESIGN.md's Known gaps records. Name the guideline: with no name
+cannot place — within the limits `scale.py`'s rules set, and not on a line those rules place
+wrongly. Name the guideline: with no name
 the command tries every recipe. The profile records how thoroughly it was verified, which
 differs. A Word table lets every item's full
 text be checked, and a PDF laid out in columns only each item's opening clause.

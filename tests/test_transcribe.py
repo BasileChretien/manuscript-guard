@@ -1103,10 +1103,9 @@ def test_a_statement_split_across_a_page_break_loses_its_second_line(
 def test_a_stop_at_line_before_the_last_item_is_caught_only_by_the_item_count(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A pinned limit, recorded under "What each count can see" in DESIGN.md's Known gaps. A form
-    that prints its `stop_at` word twice ends the reading at the first, and only `items` notices
-    that the scale came out short. This is what the item count buys, and it is the whole of what
-    it buys."""
+    """A pinned limit, and one of the tests DESIGN.md's Known gaps names. A form that prints its
+    `stop_at` word twice ends the reading at the first, and only `items` notices that the scale
+    came out short. This is what the item count buys, and it is the whole of what it buys."""
     from manuscript_guard.reporting import columns
     from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
     from manuscript_guard.reporting.transcribe import RecipeError
@@ -1155,3 +1154,46 @@ The thing is not described.                                                   0
             tmp_path / "x.pdf",
             ScaleRecipe(document="x.pdf", pages=(3, 7), stop_at="Sumscore"),
         )
+
+
+def test_a_wrapped_title_or_wrapped_first_statement_is_written_wrong_on_one_page() -> None:
+    """The one shape a one-page form reaches in silence, with both counts stated.
+
+    A count sees a line that changes how many items or options there are. Wrapping changes
+    neither, so the first line under a heading is taken as that item's clarification whatever the
+    counts say — and the item is written, with no refusal and no warning, carrying a topic cut at
+    the line end or a first option that is the end of its own statement.
+
+    This is what to look at when a profile is read against the published form by eye, and it is
+    why that reading is asked for. It is pinned here rather than described because four rounds of
+    review found four written accounts of it, each wrong somewhere.
+    """
+    from manuscript_guard.reporting.scale import parse_scale
+
+    wrapped_title = _SCALE.replace(
+        "1) Clarity of the thing described",
+        "1) Clarity of the thing described, and of the account\ngiven of it",
+    )
+    first = parse_scale(wrapped_title, options=3, stop_at="Sumscore")[0]
+    assert first.topic == "Clarity of the thing described, and of the account"
+    assert first.extras["clarification"] == "given of it"
+    assert first.extras["statements"] == [
+        "The thing is not described.",
+        "The thing is described in passing.",
+        "The thing is described plainly.",
+    ], "three options, so no count can tell that the title lost half of itself"
+
+    wrapped_statement = _SCALE.replace(
+        "The thing is not described.                                                   0",
+        "The thing is not described, or is described so briefly\n"
+        "that a reader could not say what it is.                                       0",
+    )
+    second = parse_scale(wrapped_statement, options=3, stop_at="Sumscore")[0]
+    assert second.extras["clarification"] == (
+        "The thing is not described, or is described so briefly"
+    )
+    assert second.extras["statements"][0] == "that a reader could not say what it is."
+
+    # Both of those are three-option items as far as any count can tell, which is the whole
+    # reason nothing refuses them.
+    assert len(second.extras["statements"]) == 3

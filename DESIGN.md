@@ -72,8 +72,10 @@ a build failure.
 
 Two rules support it. Results are **never hand-written** — one machine-generated file
 stamped with script, git SHA, input hashes and timestamp. And the build **refuses to run
-when results are older than any analysis script or input file**, which is what makes "the
-latest results are always used" mechanical rather than a habit.
+when results are older than the script that wrote them or an input that script
+declared**, which is what makes "the latest results are always used" mechanical rather
+than a habit. A module the script imports counts only where it is listed among the
+inputs (Known gaps).
 
 ## Empirical findings (verified 2026-08-03 on the author's machine)
 
@@ -1609,7 +1611,7 @@ time: `Compress-Archive`, `Send-MailMessage`, `Invoke-WebRequest` and its alias 
 `Invoke-RestMethod`, `Start-BitsTransfer`, `robocopy` and `xcopy`. `Copy-Item` and
 `Move-Item` were held before, since `copy` and `move` stand in them as whole words.
 
-**The command is held to the project at the agent's folder, or to the one it names.**
+**The command is held to the project at the agent's folder, and to each one it names.**
 Recognising `cd example && manuscript-guard submit` is half of catching it. The check runs
 in a project, and the guard took the one at the folder the event names as the agent's, or
 above it. An agent started at the root of a repository, with the paper in `example/`, stands
@@ -1618,6 +1620,12 @@ a project that fails. Where no project is at that folder, the guard now reads th
 the command and holds it to each project that one of them is a path into: `example` after
 `cd` or as the argument of `submit`, `example/build/manuscript.docx` after `scp`. A file
 that is not written yet names the project its folder is in. Each project is checked once.
+
+Where a project is at that folder the words were not read, until 2026-10-08, and that
+project alone was checked: from a paper that passes, `cd ../second && manuscript-guard
+submit` went through though `second` fails. The words are now read there too. The project
+the command was sent from is checked first, as before, and then each other one a word is
+a path into; a path that leads back into the first names nothing new.
 
 The refusal names the project, says that the command named it, and names the check with the
 project's folder after it, `manuscript-guard check --stage submission "example"`, because
@@ -1698,7 +1706,8 @@ gates raise the same error where there is no `paper.yaml` above the folder at al
 a hook has nothing to say: a guard that refused on it would refuse every command that names
 a `.docx` anywhere on the machine. So both look for the project first
 (`hooks._project_root`), stay silent where there is none, and pass on only an error raised
-once one was found. Anything else the gates raise is still a fault of the tool, and still
+once one was found. The guard looks further than the folder it is sent from: with no
+project there, it holds a command to each project the command names by a path (above). Anything else the gates raise is still a fault of the tool, and still
 ends in silence.
 
 **A hook reads its event as UTF-8.** The agent tool writes the event on the hook's standard
@@ -5470,7 +5479,7 @@ Closed since, and why each mattered:
   example/build/manuscript.docx host:` all went through, in a project that fails. `submit`
   then refused on its own account; the copy was held to nothing. Found in the review of #131
   on 2026-10-02 and true before it. Closed for a project the command names (see "The command
-  is held to the project at the agent's folder, or to the one it names"). What is left:
+  is held to the project at the agent's folder, and to each one it names"). What is left:
   - *Not spelt out, so not found.* A folder held in a variable (`cd $PAPER && manuscript-guard
     submit`, `scp $PWD/example/build/manuscript.docx host:`), a glob that stands for the
     folder (`scp */build/*.docx host:`; one for the file, `example/build/*.docx`, is found),
@@ -5492,10 +5501,13 @@ Closed since, and why each mattered:
     and waits if the host does. In Git Bash `/tmp/x` is the user's own temporary folder;
     the guard reads it as `\tmp\x` on the drive the agent is on, so a project kept under
     the one is not found and one under the other would be taken for it.
-  - *Inside a project, only that project.* Where the agent's folder is in a project the
-    guard checks that one, as it always did, and does not read the words: from a project
-    that passes, `cd ../second && manuscript-guard submit` is let through though `second`
-    fails. Not decided.
+  - *Inside a project, that project is held whatever the command submits.* Where the
+    agent's folder is in a project the guard checks that one, as it always did, and since
+    2026-10-08 each other project the command names as well. It does not ask which of
+    them the command submits: from a project that fails, `cd ../second && manuscript-guard
+    submit` is refused for the first, though `second` passes and is the one sent. And a
+    copy out of a second project that fails, `cp ../second/notes.docx .`, is refused for
+    that one, as the same copy is from the folder above.
   - *A message that is not git's, or not in quotes, is read as a command.* Until
     2026-10-08 so was git's: `git add paper/manuscript/main.md && git commit -m "copy-edit
     the abstract before submission"` was refused in a project that fails, from inside it
@@ -5617,9 +5629,13 @@ Closed since, and why each mattered:
   upgrade command, and blocks nothing. The command takes the latest release from PyPI. The
   plugin's number is raised on `main` a few minutes before that release is uploaded, and a
   release can fail: until PyPI has the number, the command finds nothing newer and the
-  next session warns again. It says nothing when the variable is unset, the file
-  is unreadable, or the version is not plain dotted digits. The comparison lives in the
-  tool's own handler, so a tool older than 0.2.260, which is every copy installed before it,
+  next session warns again. The pipx half of the command reinstalls whatever PyPI has,
+  where pip's upgrade only ever goes up: a copy that is ahead of PyPI, one from the
+  repository or an editable one after a release that failed, is put back to the older
+  release. Read from pipx's documentation, not run. It says nothing when the variable is
+  unset, the file is unreadable, or the version is not plain dotted digits. The comparison
+  lives in the tool's own handler, so a tool older than 0.2.260, which is every copy
+  installed before it,
   runs the old handler and never warns: its first upgrade has to be made by hand, as
   `docs/install.md` says. Making the check from the plugin's `hooks.json` instead would reach them,
   since that updates with the plugin. Not observed in a live Claude Code session. The
@@ -6304,10 +6320,15 @@ Closed since, and why each mattered:
   column reader is not shaped for.
 - **ARRIVE's items are verified only at their opening clause**, for the reason above. It is
   the one profile whose tail text rests on the parser rather than on a check.
-- **ARRIVE's page is cut where poppler's `pdftotext` lays it out.** The one from Xpdf, which
-  Git for Windows puts on PATH, sets the two columns at other positions, the recipe's
-  `column_split` does not fit, and the transcription stops at `no items found on pages
-  (2,)` without a word about which `pdftotext` it wants.
+- **ARRIVE's items are found only as poppler's `pdftotext` sets them.** The one from Xpdf,
+  which Git for Windows puts on PATH, sets one space between an item's number and its
+  text where poppler sets several. The line that starts an item (`ITEM_LINE` in
+  `reporting/columns.py`) asks for two or more, so none is found, and the transcription
+  stops at `no items found on pages (2,)` without a word about which `pdftotext` it
+  wants. The recipe's `column_split` clears both layouts, and moving it would not help.
+  Allowing one space is no quick cure either: Xpdf then gives 20 item lines where poppler
+  gives 21. Measured on the checklist's second page with Xpdf 4.00 and poppler 24.04, in
+  the review of #138.
 - **The TRIPOD adherence assessment form is not transcribed.** It is an appraisal
   instrument rather than a reporting checklist, and answering it is a different task from
   the one G5 performs.

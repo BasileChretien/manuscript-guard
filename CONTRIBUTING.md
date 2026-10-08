@@ -53,20 +53,35 @@ skills that call it.
 
 ## Releases on PyPI
 
-Every number on `main` goes to PyPI, with nobody's click. When a push to `main` changes the
-version in `pyproject.toml` to one PyPI does not have, `.github/workflows/publish.yml` tags
-that commit `v` and the number (`v0.2.431` for 0.2.431), makes the GitHub Release, builds the
-wheel and the source distribution, and uploads them. So the maintainer's bump is the
-release, and a pull request, which leaves the version line alone, never is one.
+Every number on `main` goes to PyPI, with nobody's click. When a push to `main` raises the
+version in `pyproject.toml` to one PyPI does not have, `.github/workflows/publish.yml`
+builds the wheel and the source distribution, tags that commit `v` and the number
+(`v0.2.431` for 0.2.431), makes the GitHub Release, and uploads them. So the maintainer's
+bump is the release, and a pull request, which leaves the version line alone, never is one.
 
 A release on PyPI is permanent: a version can be withdrawn, and never replaced or used
-again. A push that leaves the number alone releases nothing, and a number PyPI already has
-is not released twice (`.github/scripts/release_decision.py`, with its cases in
-`tests/test_packaging.py`). A release that stopped half way is finished by re-running the
-failed jobs of its own run, on the Actions page: that builds the same commit, and makes the
-tag and the GitHub Release only where they are missing. The workflow cannot be started by
-hand, because a run by hand builds whatever `main` holds at that moment, and after a later
-merge that is not the commit the number was raised on.
+again. So a push that leaves the number alone releases nothing, nor does one that lowers
+it, as a bump taken back does, and a number PyPI already has is not released twice
+(`.github/scripts/release_decision.py`, with its cases in `tests/test_packaging.py`). The
+workflow runs in this repository only, so a fork does not tag itself. It cannot be started
+by hand, because a run by hand builds whatever `main` holds at that moment, and after a
+later merge that is not the commit the number was raised on.
+
+When a release does not go through:
+
+- A run that failed is finished by re-running its failed jobs, on the Actions page. That
+  builds the same commit, and makes the tag and the GitHub Release only where they are
+  missing. So is a run GitHub cancelled, by re-running all its jobs: one run waits behind
+  the one that is going, and a third push that touches `pyproject.toml` in those minutes
+  cancels the one waiting.
+- A run that says the commit it replaced cannot be read followed a forced push to `main`.
+  It releases nothing, since nothing says that push raised the number. If it did, raise
+  the number again in a commit of its own: that next number is the release, and the one
+  passed over is never published.
+- An upload that stopped after one of its two files is not finished by this workflow.
+  PyPI then has the version, so a later run releases nothing, and a re-run of the failed
+  job fails on the file already there. Raise the number again: the next release carries
+  both files.
 
 The upload carries no password and no token. PyPI trusts that one workflow file, in this
 repository, in the `pypi` environment. That pairing is set on PyPI: as a pending publisher
@@ -77,7 +92,8 @@ told.
 The description PyPI shows is built from the README, with each relative link and picture
 pointed at the repository at the release's tag (`[tool.hatch.metadata.hooks.fancy-pypi-readme]`
 in `pyproject.toml`), since a page on PyPI has nothing beside it. `tests/test_docs.py` builds
-a wheel and holds that no relative target is left.
+a wheel and reads its description for a relative target left in it, in the forms its
+`relative_targets` names.
 
 ## Running it
 

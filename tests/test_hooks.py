@@ -1524,16 +1524,87 @@ def test_a_word_that_cannot_be_a_path_does_not_cost_the_others(above: Path, caps
         assert decision(sent(command, above, capsys)) == "deny", word[:20]
 
 
-def test_inside_a_project_only_that_project_is_held(project: Path, capsys) -> None:
-    """A known limit, held here. Where the folder the command is sent from is in a project,
-    that project is the one checked, as it always was, and a second one the command names is
-    not looked for."""
+def test_inside_a_project_a_second_one_the_command_names_is_held_too(
+    project: Path, capsys
+) -> None:
+    """Where the folder the command is sent from is in a project, that project was the one
+    checked and the words were not read: from a project that passes, a command that entered
+    a second one and submitted from it went through, though the second fails."""
     failing = project.parent / "second"
     shutil.copytree(project, failing)
     _without_a_review(failing)
 
+    for command, cwd in [
+        ("cd ../second && manuscript-guard submit", project),
+        ("scp ../../second/build/manuscript.docx host:", project / "manuscript"),
+        (f"manuscript-guard submit {failing.as_posix()}", project),
+        ("zip sent.zip build/manuscript.docx ../second/build/manuscript.docx", project),
+        # A copy out of the second project is held to it, as it is from the folder above.
+        ("cp ../second/notes.docx .", project),
+    ]:
+        result = sent(command, cwd, capsys)
+        assert decision(result) == "deny", command
+        assert "failing in second, which this command names" in reason(result), command
+        # The project the command was sent from passes, and is not in the refusal.
+        assert "in paper" not in reason(result), command
+        # The check the refusal names finds the second project from there, and is let through.
+        (named,) = _named_commands(reason(result))
+        assert sent(named, cwd, capsys) is None, named
+
+
+def test_inside_a_project_that_fails_a_second_one_that_fails_is_named_beside_it(
+    project: Path, capsys
+) -> None:
+    failing = project.parent / "second"
+    shutil.copytree(project, failing)
+    _without_a_review(failing)
+    _without_a_review(project)
+
+    result = sent("cd ../second && manuscript-guard submit", project, capsys)
+    assert decision(result) == "deny"
+    said = reason(result)
+    # The project the command was sent from first, as before, then the one it names.
+    assert "submission check(s) failing in paper:" in said
+    assert "failing in second, which this command names" in said
+    assert said.index("failing in paper:") < said.index("failing in second,")
+
+
+def test_inside_a_project_a_path_into_that_project_names_no_second_one(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """The project a command is sent from is checked once, however the command spells a
+    path into it, and a path into no project names nothing."""
+    from manuscript_guard import cli
+
+    checked: list[Path] = []
+    real = cli._run_gates
+
+    def counting(root: Path, **kwargs):
+        checked.append(Path(root).resolve())
+        return real(root, **kwargs)
+
+    monkeypatch.setattr(cli, "_run_gates", counting)
+    _without_a_review(project)
+    (project.parent / "sent").mkdir()
+
+    command = (
+        f"zip ../sent/all.zip build/manuscript.docx ../paper/build/supplementary.docx "
+        f"{(project / 'build').as_posix()}/manuscript.docx"
+    )
+    for cwd in (project, project / "manuscript"):
+        checked.clear()
+        result = sent(command, cwd, capsys)
+        assert decision(result) == "deny"
+        assert checked == [project.resolve()], cwd
+        assert "which this command names" not in reason(result)
+
+
+def test_inside_a_project_that_passes_a_second_one_that_passes_changes_nothing(
+    project: Path, capsys
+) -> None:
+    shutil.copytree(project, project.parent / "second")
     assert sent("cd ../second && manuscript-guard submit", project, capsys) is None
-    assert sent("scp ../second/build/manuscript.docx host:", project / "manuscript", capsys) is None
+    assert sent("scp ../second/build/manuscript.docx host:", project, capsys) is None
 
 
 def test_a_command_from_above_is_held_as_a_tool_sends_it(above: Path) -> None:
@@ -1588,8 +1659,8 @@ def test_a_plugin_newer_than_the_cli_says_so_with_the_upgrade_command(
     assert result is not None
     shown = result["systemMessage"]
     # Both versions and both upgrade commands. Each takes the release from PyPI, where every
-    # version goes as it is raised, and neither names the repository: `pipx upgrade` would
-    # leave a copy that was installed from git where it is.
+    # version goes within minutes of being raised, and neither names the repository:
+    # `pipx upgrade` would leave a copy that was installed from git where it is.
     for needle in ("99.0.0", __version__, UPGRADE_PIP, UPGRADE_PIPX):
         assert needle in shown, needle
     assert "git+" not in shown, shown

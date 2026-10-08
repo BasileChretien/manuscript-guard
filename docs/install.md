@@ -22,7 +22,7 @@ manuscript-guard stages
 ## Versions, PyPI and the plugin
 
 The package and the plugin carry one version number. It is raised on `main` after every
-change to either, and each number is released to PyPI as it is raised, so
+change to either, and each number is released to PyPI within minutes of being raised, so
 `manuscript-guard --version` names exactly what you have.
 
 Claude Code and Codex install the plugin from the repository, and its skills describe the

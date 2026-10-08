@@ -211,12 +211,38 @@ def test_a_version_pypi_already_has_is_not_released_again():
     assert not publish and "already on PyPI" in why
 
 
-def test_a_push_whose_commit_before_cannot_be_read_releases_what_pypi_lacks_and_no_more():
-    """As after a forced push, the one case left with no commit to compare with: the
-    workflow cannot be started by hand."""
+def test_a_push_whose_commit_before_cannot_be_read_releases_nothing_and_fails():
+    """As after a forced push, the one case with no commit to compare with. Nothing then
+    says that this push is the one that raised the number, and PyPI's lacking it is no proof
+    of that. So PyPI is not asked, and the run fails, where somebody sees it."""
     decision = load_release_decision()
-    assert decision.decide("0.2.431", None, lambda version: False)[0]
-    assert not decision.decide("0.2.431", None, lambda version: True)[0]
+    with pytest.raises(SystemExit, match="cannot be read"):
+        decision.decide("0.2.431", None, never_asked)
+
+
+@pytest.mark.parametrize(
+    ("now", "before"),
+    [
+        ("0.2.430", "0.2.431"),  # a bump taken back
+        ("0.2.9", "0.2.10"),  # below as numbers, above as text
+        ("0.1.999", "0.2.0"),
+        ("0.2", "0.2.0"),  # the same version written short, and long
+        ("0.2.431.0", "0.2.431"),
+    ],
+)
+def test_a_version_that_did_not_rise_is_not_released_and_pypi_is_not_asked(now: str, before: str):
+    """A number that went down is one PyPI lacks only by chance, or has already: before the
+    first release every number was one it lacked, so a bump taken back was a release."""
+    decision = load_release_decision()
+    publish, why = decision.decide(now, before, never_asked)
+    assert not publish and "not above" in why
+
+
+def test_a_version_is_compared_as_numbers():
+    decision = load_release_decision()
+    assert decision.decide("0.2.10", "0.2.9", lambda version: False)[0]
+    assert decision.decide("0.3", "0.2.999", lambda version: False)[0]
+    assert decision.decide("1.0.0", "0.99", lambda version: False)[0]
 
 
 @pytest.mark.parametrize(("code", "there"), [(200, True), (404, False)])
@@ -267,12 +293,74 @@ def test_the_commit_before_is_read_from_git_and_no_commit_reads_as_none():
     )
 
 
-@needs_git
 def test_the_script_prints_the_two_lines_the_workflow_reads(monkeypatch, capsys):
     decision = load_release_decision()
     monkeypatch.setattr(decision, "on_pypi", lambda version: False)
-    assert decision.main(["release_decision.py", "--before", "", "--checkout", str(REPO)]) == 0
+    monkeypatch.setattr(decision, "version_at", lambda commit, checkout: "0.0.1")
+    assert decision.main(["release_decision.py", "--before", "abc", "--checkout", str(REPO)]) == 0
     printed = capsys.readouterr()
     version = decision.version_in((REPO / "pyproject.toml").read_text(encoding="utf-8"))
     assert printed.out.splitlines() == ["publish=true", f"version={version}"]
     assert "releasing it" in printed.err
+
+
+def test_with_no_commit_before_the_script_prints_nothing_for_the_workflow(monkeypatch, capsys):
+    """What the script prints goes into the workflow's outputs, so a run that cannot decide
+    must leave them empty: the jobs after it then have nothing to build or to upload."""
+    decision = load_release_decision()
+    monkeypatch.setattr(decision, "on_pypi", never_asked)
+    with pytest.raises(SystemExit) as stopped:
+        decision.main(["release_decision.py", "--before", "", "--checkout", str(REPO)])
+    assert stopped.value.code not in (0, None)
+    assert capsys.readouterr().out == ""
+
+
+# ------------------------------------------------------------- where the release may run
+#
+# The upload and the tag are what the workflow file allows, and nothing runs it before a
+# real release, so its shape is held here: when it starts, in which repository, and which
+# job may do what.
+
+
+def release_workflow() -> dict:
+    import yaml
+
+    path = REPO / ".github" / "workflows" / "publish.yml"
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def test_the_release_starts_on_a_push_to_main_of_this_repository_and_on_nothing_else():
+    """Not by hand: a run by hand builds whatever main holds at that moment. Not in a fork:
+    one with Actions on would tag itself and make its own release before PyPI, which trusts
+    this repository alone, refused the upload."""
+    import re
+
+    workflow = release_workflow()
+    # YAML 1.1 reads the key `on` as true.
+    assert workflow[True] == {"push": {"branches": ["main"], "paths": ["pyproject.toml"]}}
+
+    pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    here = re.search(r'^Homepage = "https://github\.com/([^"]+)"$', pyproject, re.MULTILINE)
+    first = workflow["jobs"]["decide"]
+    assert f"github.repository == '{here.group(1)}'" in first["if"]
+    assert "github.ref == 'refs/heads/main'" in first["if"]
+    assert "||" not in first["if"], "either condition alone would let a run start"
+
+    # Every other job waits for the one that decides, so none starts where it did not.
+    for name, job in workflow["jobs"].items():
+        needs = job.get("needs", [])
+        needs = [needs] if isinstance(needs, str) else needs
+        assert name == "decide" or "decide" in needs, name
+
+
+def test_only_the_upload_asks_for_an_identity_and_only_the_release_job_may_write():
+    workflow = release_workflow()
+    assert workflow["permissions"] == {}, "a job is given what it needs, and no more"
+    granted = {name: job.get("permissions", {}) for name, job in workflow["jobs"].items()}
+    assert [name for name, given in granted.items() if "id-token" in given] == ["publish"]
+    assert [name for name, given in granted.items() if "write" in given.values()] == [
+        "release",
+        "publish",
+    ]
+    assert granted["release"] == {"contents": "write"}
+    assert granted["publish"] == {"id-token": "write"}

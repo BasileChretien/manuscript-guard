@@ -31,9 +31,9 @@ tools are optional, and help with the parts that need judgement.
 
 ## What it catches
 
-Each finding names the stage from which it fails the run. Before that stage it is printed
-and counted, and the run passes: a new project starts at `design`, where the manuscript
-can wait ([stages](docs/stages.md)).
+Each row names the stage from which its finding fails the run. Before that stage the
+finding is printed and counted, and the run passes: a new project starts at `design`,
+where the manuscript can wait ([stages](docs/stages.md)).
 
 | What went wrong | What `check` names | Fails from |
 |---|---|---|
@@ -59,7 +59,7 @@ what catches a result that changed while its file did not.
 
 This is the finding for the first of those, on the worked example, after one binding in
 the abstract was replaced by the number it stood for. The line that opens the output and
-the warnings that follow the finding are left out:
+what follows the finding are left out:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/check-dark.svg">
@@ -68,7 +68,7 @@ the warnings that follow the finding are left out:
 </picture>
 
 And for the second, after one value in a results file was changed by hand. `...` stands
-for a line left out, and three more findings follow from the same edit:
+for a line left out, and other findings follow from the same edit:
 
 ```text
   [FAIL] G1 results/01_disproportionality.json
@@ -121,7 +121,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 
 | Gate | Checks |
 |---|---|
-| G1 | results are not older than the code or data that produced them |
+| G1 | results are as the analysis wrote them, and no older than the script that wrote them or the inputs it declared |
 | G2 | every number is classified, and every declared value is quoted |
 | G3 | numbers in a figure's output *and in its source* trace back to results |
 | G4 | word counts, required sections and required statements match the target journal |
@@ -136,9 +136,9 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G13 | every reviewer point is answered, and every claimed revision really happened |
 | G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, and it is spelt in one English (warnings only) |
 
-A finding also carries one of two labels that are no gate of their own: `G0`, for a file
-of the project that cannot be used as it stands, and `BUILD`, for what the build would
-refuse or warn of.
+In place of a gate, a finding can carry one of two labels that are no gate of their own:
+`G0`, for a file of the project that cannot be used as it stands, and `BUILD`, for what
+the build would refuse or warn of.
 
 You do not have to satisfy every gate on the first day. Each finding declares the stage at
 which it starts to matter, from `design` to `submission`, and until then it is printed and

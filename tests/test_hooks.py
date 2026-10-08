@@ -1628,7 +1628,7 @@ def test_a_folder_ends_at_its_backslash_whatever_script_its_name_is_in(
 
 
 @ON_WINDOWS
-@pytest.mark.parametrize("folder", ["#1-paper", "~paper", "(old) paper"])
+@pytest.mark.parametrize("folder", ["#1-paper", "~paper", "[old]", "@paper"])
 def test_a_folder_that_begins_with_a_character_a_shell_escapes_is_not_told_apart(
     folder: str, above: Path, capsys
 ) -> None:
@@ -1638,9 +1638,9 @@ def test_a_folder_that_begins_with_a_character_a_shell_escapes_is_not_told_apart
     (above / "paper").rename(above / folder)
     command = f'Copy-Item .{ESCAPE}{folder}{ESCAPE} "D:/sent/submission" -Recurse'
     assert sent(command, above, capsys) is None, command
-    # Without the space after it, and in quotes, the folder is found.
+    # Without the space after it, in quotes or not, the folder is found.
     at = f".{ESCAPE}{folder}{ESCAPE}build{ESCAPE}manuscript.docx"
-    for found in (f"Copy-Item '{at}' sent", f'Copy-Item "{at}" sent'):
+    for found in (f"Copy-Item {at} sent", f"Copy-Item '{at}' sent", f'Copy-Item "{at}" sent'):
         assert decision(sent(found, above, capsys)) == "deny", found
 
 

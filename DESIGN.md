@@ -5694,9 +5694,14 @@ Closed since, and why each mattered:
     dropped the space; not where the line is continued straight after the name, with no
     space before the backslash that ends it. In quotes it names nothing. The same reading
     loses a folder on Windows whose name begins with a character a shell escapes, where
-    a backslash and a space follow it: `Copy-Item .\#1-paper\ "D:/sent" -Recurse` reads
-    as the name `.#1-paper ` and names no project, for `#`, `~`, a bracket or `!` in front.
+    a backslash and a space follow it: `Copy-Item .\#1-paper\ "D:/sent/submission"
+    -Recurse` reads as the name `.#1-paper ` and names no project, for `#`, `~`, `!`, `@`,
+    `$`, `^` or a square bracket in front; a round bracket ends a word, here as before.
     With no space after the backslash, `.\#1-paper\build`, or in quotes, it is found.
+    The same holds inside a path, for a subfolder that begins so with no `.` + backslash
+    in front (`paper\~old\ `), and for a list of folders each closed by a backslash with
+    no space after the comma: `Compress-Archive -Path paper\,docs\ -DestinationPath
+    submission.zip` is one shell's word and names nothing.
     A copy into the project, `cp ~/Downloads/edited.docx paper/`, is held to it too, as it
     always was from inside (the word-roundtrip skill says to give the path to `import`).
   - *The check a refusal names can be refused in two shapes.* Written with the folder last

@@ -4,45 +4,119 @@
   "title": "manuscript-guard reporting checklist",
   "description": "A reporting guideline's item list, as published. These are retrieved from the guideline's own site and recorded with their source, never written from memory: a checklist whose items are approximately right is worse than no checklist, because it produces confident coverage of the wrong things.",
   "type": "object",
-  "required": ["schema", "name", "source_url", "retrieved_on", "items"],
+  "required": [
+    "schema",
+    "name",
+    "source_url",
+    "retrieved_on",
+    "items"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schema": { "const": "manuscript-guard/reporting/1" },
-    "name": { "type": "string", "minLength": 1 },
-    "long_name": { "type": "string" },
-    "version": { "type": "string" },
-    "source_url": { "type": "string" },
+    "schema": {
+      "const": "manuscript-guard/reporting/1"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "long_name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "source_url": {
+      "type": "string"
+    },
     "source_file": {
       "type": "string",
       "description": "The official document the items were transcribed from, stored under profiles/reporting/sources/. Present so a reader can check the transcription against the original, exactly as a literature quote can be checked against its source."
     },
-    "retrieved_on": { "type": "string", "format": "date" },
-    "retrieved_by": { "type": "string" },
+    "retrieved_on": {
+      "type": "string",
+      "format": "date"
+    },
+    "retrieved_by": {
+      "type": "string"
+    },
     "applies_to": {
       "type": "string",
       "description": "The study designs this checklist covers, in the guideline's own words."
     },
-    "licence": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "",
+        "scale"
+      ],
+      "description": "What kind of instrument this is, where it is not a reporting guideline. \"scale\" means an appraisal instrument whose items are what an editor or a reviewer scores, as SANRA's are: the submission pack then presents it as a scale rather than as a completed reporting checklist, which is a different claim. Absent or empty for every reporting guideline."
+    },
+    "licence": {
+      "type": "string"
+    },
     "verification": {
       "type": "string",
-      "description": "How thoroughly the transcription was checked against the source. Recorded because it differs: a Word table allows every item's full text to be verified, while a column-laid-out PDF allows only each item's opening clause, and the two should not be mistaken for the same guarantee."
+      "description": "How thoroughly the transcription was checked against the source. Recorded because it differs: a Word table allows every item's full text to be verified, a column-laid-out PDF allows only each item's opening clause, and a rating scale read line by line allows no independent check at all — what it offers instead is that a line it cannot place stops the transcription, as far as the counts its recipe states can see. The three should not be mistaken for the same guarantee."
     },
     "items": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["id", "topic", "text"],
+        "required": [
+          "id",
+          "topic",
+          "text"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string", "description": "The guideline's own item number, e.g. 6a." },
-          "section": { "type": "string", "description": "The heading it sits under." },
-          "topic": { "type": "string" },
-          "text": { "type": "string", "minLength": 1 },
+          "id": {
+            "type": "string",
+            "description": "The guideline's own item number, e.g. 6a."
+          },
+          "section": {
+            "type": "string",
+            "description": "The heading it sits under."
+          },
+          "topic": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
           "applies_to": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Study designs this item is restricted to, where the checklist says so (cohort, case-control, cross-sectional)."
+          },
+          "clarification": {
+            "type": "string",
+            "description": "The line a scale prints under an item's title to clarify it, where the form has one — SANRA items 5 and 6 carry \"(e.g., ...)\". Kept apart from the options so the pack can print the item as the form does."
+          },
+          "options": {
+            "type": "array",
+            "description": "A scale item's scored options, in the order the form prints them. The item's text joins them for a reader of the profile; these are the parts, each as published.",
+            "items": {
+              "type": "object",
+              "required": [
+                "score",
+                "statement"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "score": {
+                  "type": "string"
+                },
+                "statement": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
           }
         }
       }

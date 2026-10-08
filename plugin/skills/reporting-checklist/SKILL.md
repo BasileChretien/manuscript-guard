@@ -20,10 +20,24 @@ quote can be checked against its source.
 
 Recipes ship for STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT-2025, PRISMA-2020,
 PRISMA-2020-abstracts, READUS-PV, READUS-PV-abstracts, TRIPOD-development,
-TRIPOD-validation, TRIPOD-development-validation and ARRIVE-2.0. Name the guideline in
-`paper.yaml` as the recipe is named (`reporting_guideline: [STROBE]`, a list). Extensions
-hold only their own items. RECORD adds to STROBE, so a study that follows RECORD lists both,
-and RECORD-PE adds to RECORD, so one that follows it lists STROBE, RECORD and RECORD-PE.
+TRIPOD-validation, TRIPOD-development-validation, ARRIVE-2.0 and SANRA. Name the guideline in
+`paper.yaml` as the recipe is named (`reporting_guideline: [STROBE]`, a list). Extensions hold
+only their own items. RECORD adds to STROBE, so a study that follows RECORD lists both, and
+RECORD-PE adds to RECORD, so one that follows it lists STROBE, RECORD and RECORD-PE.
+
+**SANRA is the one that is not a reporting guideline**, and its own paper says so: it is the
+scale an editor or a reviewer scores a narrative review with. It is there because a narrative
+review has no reporting guideline — PRISMA is for systematic reviews — and because its six items
+are a fair account of what such a review has to do. So write the Methods to claim the narrower
+thing: that the manuscript answers SANRA's six items, not that it followed a reporting standard.
+Its profile records `kind: scale`, the submission pack presents it as a completed appraisal
+scale rather than as a checklist, and the scoring is left to the editor or reviewer who does it.
+
+A scale is also read differently, and its profile says so: a Word table's items are verified
+verbatim, a column-laid-out PDF's by their opening clause, and a scale's not at all, because
+they are read line by line from the form and there is nothing else to compare them with. What
+the reader offers instead is that a line it cannot place stops the transcription, as far as the
+counts the recipe states can see — and a wrapped line changes no count, so none sees one. DESIGN.md's Known gaps carries what that does and does not cover.
 
 ```bash
 manuscript-guard fetch STROBE
@@ -50,8 +64,9 @@ manuscript-guard transcribe STROBE
 
 That builds `profiles/reporting/STROBE.yaml` from the stored document. It keeps the
 guideline's own item numbering, including sub-letters like `6a`, because that is what
-journals and reviewers refer to, and it fails if an item cannot be found verbatim in the
-document. Name the guideline: with no name the command tries every recipe. The profile
+journals and reviewers refer to, and for a checklist it fails if an item cannot be found
+verbatim in the document; for a scale, where that check does not exist, it fails on a line it cannot
+place, within the limits DESIGN.md's Known gaps records. Name the guideline: with no name the command tries every recipe. The profile
 records how thoroughly it was verified, which differs. A Word table lets every item's full
 text be checked, and a PDF laid out in columns only each item's opening clause.
 

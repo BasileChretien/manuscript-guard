@@ -207,6 +207,61 @@ def test_an_unanswered_checklist_item_still_appears_in_the_table(project: Path) 
     assert any(row.startswith(f"| {dropped} |") for row in rows), rows[-4:]
 
 
+def test_a_scale_is_not_sent_as_a_completed_reporting_checklist(project: Path) -> None:
+    """An appraisal scale and a reporting checklist are different claims, and what a journal
+    reads is the file name and the heading. Presented as a checklist, SANRA arrived headed
+    "SANRA checklist" with its scoring anchors in a column called "Recommendation"."""
+    from manuscript_guard.build.submission import assemble_pack, checklist_table
+
+    profile = project / "profiles" / "reporting" / "DEMO-OBS.yaml"
+    published = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    published["kind"] = "scale"
+    published["long_name"] = "Demonstration Observational Appraisal Scale"
+    published["applies_to"] = "Demonstrations; an appraisal scale, not a reporting guideline"
+    first = published["items"][0]
+    first["clarification"] = "(e.g., a clarifying line, as a scale prints one)"
+    first["options"] = [
+        {"score": "0", "statement": "Not done."},
+        {"score": "2", "statement": "Done."},
+    ]
+    profile.write_text(yaml.safe_dump(published, sort_keys=False), encoding="utf-8")
+
+    projekt, _ = load_project(project)
+    completion = project / "reporting" / "DEMO-OBS.yaml"
+    text = checklist_table(projekt, completion)
+
+    assert text.startswith("# DEMO-OBS, completed appraisal scale")
+    assert "| Item | Scoring options | Addressed in | Not applicable because |" in text
+    assert "Recommendation" not in text
+    assert "not a reporting guideline" in text
+    assert "the scoring is the reader's to do" in text
+    # The options as the form prints them: statement first, score after.
+    assert "Not done. (0); Done. (2)" in text
+    assert "(e.g., a clarifying line, as a scale prints one)" in text
+
+    # The fixture copies the example without a build, so a pack test writes the document it
+    # packs, as the others here do. Guarded on its existence instead, this block ran never and
+    # the file names were held by nothing.
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 a placeholder document, as the other pack tests use")
+    pack = assemble_pack(projekt, document)
+    names = [p.name for p in pack.files]
+    assert "scale-DEMO-OBS.md" in names, names
+    assert "scale-DEMO-OBS.yaml" in names, names
+    assert not any(name.startswith("checklist-DEMO-OBS") for name in names), names
+
+    # An answer to an item the published instrument does not have is labelled for what the
+    # instrument is: inside a scale's table, "not in the published checklist" named the wrong
+    # thing, and nothing held either label.
+    answers = yaml.safe_load((project / "reporting" / "DEMO-OBS.yaml").read_text(encoding="utf-8"))
+    answers["items"].append({"id": "not-an-item", "where": "Methods"})
+    (project / "reporting" / "DEMO-OBS.yaml").write_text(
+        yaml.safe_dump(answers, sort_keys=False), encoding="utf-8"
+    )
+    assert "*not in the published scale*" in checklist_table(projekt, completion)
+
+
 def test_a_pipe_in_an_item_does_not_break_the_table(project: Path) -> None:
     """A pipe inside a cell ends the cell, and reporting checklists contain "and/or" lists."""
     from manuscript_guard.build.submission import checklist_table

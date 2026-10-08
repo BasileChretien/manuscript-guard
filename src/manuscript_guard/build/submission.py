@@ -271,6 +271,43 @@ def _escape_cell(text: str) -> str:
     return " ".join(str(text).split()).replace("|", "\\|")
 
 
+def _is_scale(project: Project, completion: Path) -> bool:
+    """Whether the guideline this completion answers is an appraisal scale.
+
+    Read from the transcribed profile, which records what the recipe said it was, so the pack
+    cannot call one thing by the other's name.
+    """
+    from manuscript_guard.contracts._schema import read_structured
+    from manuscript_guard.gates.reporting import checklist_path
+
+    answers = read_structured(completion) or {}
+    source = checklist_path(project, str(answers.get("guideline") or completion.stem))
+    published = (read_structured(source) or {}) if source else {}
+    return str(published.get("kind") or "").strip() == "scale"
+
+
+def _published_text(item: dict, is_scale: bool) -> str:
+    """What the pack prints for one item.
+
+    For a scale, the item's own name, the clarifying line the form prints under some titles,
+    and the options in the order the page has them — statement, then score. The profile's
+    `text` joins them the other way round for a reader of the profile, and that string is in
+    no document.
+    """
+    if not is_scale:
+        return str(item.get("text", ""))
+    head = " — ".join(
+        part
+        for part in (str(item.get("topic") or ""), str(item.get("clarification") or ""))
+        if part
+    )
+    scored = "; ".join(
+        f"{option.get('statement', '')} ({option.get('score', '')})"
+        for option in item.get("options") or ()
+    )
+    return " — ".join(part for part in (head, scored) if part)
+
+
 def checklist_table(project: Project, completion: Path) -> str:
     """A completed checklist as a journal reads it: item, where it is addressed, or why not.
 
@@ -288,24 +325,47 @@ def checklist_table(project: Project, completion: Path) -> str:
     source = checklist_path(project, name)
     published = (read_structured(source) or {}) if source else {}
     items = published.get("items") or []
+    # An appraisal scale is not a reporting checklist, and a journal reads the heading on the
+    # file it is sent. Presented as one, SANRA arrived as a "checklist" whose scoring anchors
+    # sat in a column called "Recommendation", which is the opposite of what adopting a scale
+    # claims. The profile says which it is; `kind` is absent for every reporting guideline.
+    is_scale = str(published.get("kind") or "").strip() == "scale"
+    what = "appraisal scale" if is_scale else "checklist"
 
-    lines = [f"# {name} checklist", ""]
+    lines = [f"# {name}, completed {what}" if is_scale else f"# {name} checklist", ""]
     if source is None:
         lines += [
             f"The {name} item list is not in this project, so this table can only show the "
             "answers, not the items they answer.",
             "",
         ]
+    if is_scale:
+        lines += [
+            f"{published.get('long_name') or name} is an instrument for appraising a "
+            "manuscript, not a reporting guideline: its items are what an editor or a reviewer "
+            "scores, and the options below are the scores they choose between. This table says "
+            "where each item is addressed; the scoring is the reader's to do.",
+            "",
+        ]
+        if applies := published.get("applies_to"):
+            lines += [f"The published scale applies to: {applies}.", ""]
     if licence := published.get("licence"):
-        lines += [f"Item text reproduced from the published {name} checklist ({licence}).", ""]
-    lines += [
-        "| Item | Recommendation | Addressed in | Not applicable because |",
-        "|---|---|---|---|",
-    ]
+        lines += [f"Item text reproduced from the published {name} {what} ({licence}).", ""]
+    lines += (
+        [
+            "| Item | Scoring options | Addressed in | Not applicable because |",
+            "|---|---|---|---|",
+        ]
+        if is_scale
+        else [
+            "| Item | Recommendation | Addressed in | Not applicable because |",
+            "|---|---|---|---|",
+        ]
+    )
 
     answered = {str(entry.get("id")): entry for entry in answers.get("items", [])}
     ids = [str(item["id"]) for item in items] or sorted(answered)
-    text_of = {str(item["id"]): item.get("text", "") for item in items}
+    text_of = {str(item["id"]): _published_text(item, is_scale) for item in items}
 
     for identifier in ids:
         entry = answered.get(identifier, {})
@@ -319,7 +379,8 @@ def checklist_table(project: Project, completion: Path) -> str:
     for identifier in extra:
         entry = answered[identifier]
         lines.append(
-            f"| {_escape_cell(identifier)} | *not in the published checklist* "
+            f"| {_escape_cell(identifier)} | *not in the published "
+            f"{'scale' if is_scale else 'checklist'}* "
             f"| {_escape_cell(entry.get('where', ''))} "
             f"| {_escape_cell(entry.get('not_applicable', ''))} |"
         )
@@ -406,11 +467,12 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
             # because the YAML is what the pack used to offer a journal and a journal cannot
             # read it: an editor asking for a completed STROBE checklist wants to see the
             # items and where each is addressed, not a serialisation of them.
-            target = directory / f"checklist-{path.name}"
+            prefix = "scale" if _is_scale(project, path) else "checklist"
+            target = directory / f"{prefix}-{path.name}"
             shutil.copy2(path, target)
             files.append(target)
 
-            table = directory / f"checklist-{path.stem}.md"
+            table = directory / f"{prefix}-{path.stem}.md"
             table.write_text(checklist_table(project, path), encoding="utf-8", newline="\n")
             files.append(table)
 

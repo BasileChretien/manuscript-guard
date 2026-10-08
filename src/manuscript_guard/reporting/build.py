@@ -28,7 +28,18 @@ def load_recipe(path: Path) -> tuple[Recipe, dict]:
     parse = {k: v for k, v in document.items() if k not in {"schema", "meta"}}
     parse["name"] = meta["name"]
     # Column-mode keys belong to the PDF reader, not to the table reader.
-    layout = {key: parse.pop(key, None) for key in ("format", "pages", "column_split")}
+    layout = {
+        key: parse.pop(key, None)
+        for key in (
+            "format",
+            "pages",
+            "column_split",
+            "min_options",
+            "items",
+            "options",
+            "stop_at",
+        )
+    }
     parse.pop("download_url", None)
     recipe = Recipe.from_dict(parse)
     return recipe, {**meta, "_layout": layout}
@@ -65,7 +76,41 @@ def build_profile(
                 f"recipe, and record the new sha256. Use --allow-changed to transcribe anyway."
             )
 
-    if str(parse_mode).startswith("pdf"):
+    if parse_mode == "pdf-scale":
+        # A rating scale, not a checklist: numbered items with the statements a rater chooses
+        # between. There is nothing here to verify the items against — they are the reader's
+        # output read line by line from its input — so the profile says that in as many words
+        # instead of claiming a check. What stands in for one is that the reader drops nothing:
+        # a line it cannot place stops the transcription, as far as the recipe's counts reach.
+        # See scale.py and DESIGN.md's Known gaps for what no count sees.
+        from manuscript_guard.reporting.scale import (
+            VERIFICATION,
+            VERIFICATION_UNCOUNTED,
+            ScaleRecipe,
+            transcribe_scale,
+        )
+
+        items, _read = transcribe_scale(
+            document,
+            ScaleRecipe(
+                document=recipe.document,
+                pages=tuple(pages or (1,)),
+                min_options=int(layout.get("min_options") or 2),
+                items=layout.get("items"),
+                options=layout.get("options"),
+                stop_at=layout.get("stop_at"),
+            ),
+        )
+        unverified = []
+        # Which of the two true sentences this profile gets. One string for both read as though
+        # counts were held where a recipe states none.
+        counted = layout.get("items") is not None and layout.get("options") is not None
+        meta = {
+            **meta,
+            "verification": VERIFICATION if counted else VERIFICATION_UNCOUNTED,
+            "kind": "scale",
+        }
+    elif str(parse_mode).startswith("pdf"):
         from manuscript_guard.literature.sources import contains
         from manuscript_guard.reporting.columns import ColumnRecipe, transcribe_columns
 
@@ -93,6 +138,9 @@ def build_profile(
         "retrieved_on": str(meta["retrieved_on"]),
         "retrieved_by": meta.get("retrieved_by", "manuscript-guard transcribe"),
         "applies_to": meta.get("applies_to", ""),
+        # "scale" where the items are a rater's, not a journal's: the submission pack presents
+        # those differently, and a reader of the profile should not have to infer it.
+        "kind": meta.get("kind", ""),
         "licence": meta["licence"],
         # What actually happened, not what was hoped for. This was a constant string saying
         # "every item verified verbatim in the source", written whether or not verify()
@@ -115,6 +163,23 @@ def build_profile(
                 "section": item.section,
                 "topic": item.topic or item.section,
                 "text": item.text,
+                # A scale's parts, kept apart as the form prints them: the statements in order
+                # and the score beside each. Absent for a checklist, whose item is one text.
+                **(
+                    {
+                        "clarification": item.extras.get("clarification", ""),
+                        "options": [
+                            {"score": score, "statement": statement}
+                            for statement, score in zip(
+                                item.extras.get("statements", ()),
+                                item.extras.get("scores", ()),
+                                strict=True,
+                            )
+                        ],
+                    }
+                    if item.extras.get("statements")
+                    else {}
+                ),
             }
             for item in items
         ],

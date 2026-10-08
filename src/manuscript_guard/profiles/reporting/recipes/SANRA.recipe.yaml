@@ -1,0 +1,40 @@
+schema: manuscript-guard/recipe/1
+
+# SANRA is the only instrument there is for a narrative review, and it is not a reporting
+# guideline: its own paper says "SANRA is a critical appraisal tool and not a reporting
+# guideline". It is here because a narrative review has nothing else to be held to, and
+# because its six items are what an editor or a reviewer will score the manuscript with.
+#
+# The scale is published as a one-page form, not as a Word checklist or a two-column PDF, so
+# this recipe uses the scale reader: numbered items, each followed by the statements a rater
+# chooses between with their scores. See src/manuscript_guard/reporting/scale.py for what that
+# verifies and what it cannot.
+#
+# The explanations and instructions document is the companion file at id=22861, which a rater
+# needs and a transcription does not.
+
+meta:
+  name: SANRA
+  long_name: "Scale for the Assessment of Narrative Review Articles"
+  version: "2019"
+  applies_to: "Narrative (non-systematic) review articles; a critical appraisal scale, not a reporting guideline"
+  source_url: "https://www.aerzteblatt.de/down.asp?id=22862"
+  retrieved_on: 2026-10-08
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    CC BY 4.0 — via the scale's paper (Baethge C, Goldbeck-Wood S, Mertens S. SANRA — a scale for the quality assessment of narrative review articles. Research Integrity and Peer Review 2019;4:5, PMC6434870), which carries the Creative Commons Attribution 4.0 wording and states that SANRA and its explanations document are available open access at the two addresses on aerzteblatt.de.
+  licence_url: https://researchintegrityjournal.biomedcentral.com/articles/10.1186/s41073-019-0064-8
+  download_url: https://www.aerzteblatt.de/down.asp?id=22862
+  sha256: 07e0fee98f24fa6807463f7ceca518155124eaaf7e2391604141925e28e7f018
+
+document: SANRA-scale.pdf
+format: pdf-scale
+pages: [1]
+# What the published form prints, so a transcription that reads a different page, or loses an
+# item to a layout this reader does not understand, stops instead of writing a short scale.
+items: 6
+options: 3
+# The form prints a "Sumscore" box under the last item. Named here because the reader refuses a
+# line it cannot place rather than discarding it, and only the recipe can say which this is.
+stop_at: Sumscore
+text_column: 0

@@ -751,3 +751,228 @@ def test_a_real_page_with_an_accented_letter_is_read(tmp_path: Path) -> None:
     text = page_text(path, 1)
     assert text.splitlines()[0].strip() == "Describe the naïve and the treated groups."
     assert "\r" not in text
+
+
+# ---------------------------------------------------------------- a scale, as the PDF lays it out
+
+#: An invented rating scale, laid out as `pdftotext -layout` prints one: the rater's
+#: instructions, then numbered items, a clarifying line under some titles, and the statements a
+#: rater chooses between with the score at the end of the line. Invented rather than copied,
+#: because this repository ships recipes and not transcribed checklist text, and because a form
+#: of one's own can hold the cases a published one happens not to.
+_SCALE = """\
+Scale for the Assessment of Imaginary Things - SAIT
+
+Please rate each aspect using categories 0-2. Choose the option which best fits.
+
+1) Clarity of the thing described
+
+The thing is not described.                                                   0
+
+The thing is described in passing.                                            1
+
+The thing is described plainly.                                               2
+
+2) Evidence offered for the thing
+
+(e.g., measurements, where the field has them)
+
+No evidence is offered.                                                       0
+
+Evidence is offered selectively.                                              1
+
+Evidence is offered throughout.                                               2
+
+Sumscore
+"""
+
+
+def test_a_scale_item_carries_its_options_and_its_clarifying_line() -> None:
+    from manuscript_guard.reporting.scale import parse_scale
+
+    items = parse_scale(_SCALE, stop_at="Sumscore")
+    assert [i.id for i in items] == ["1", "2"]
+    assert items[0].topic == "Clarity of the thing described"
+    assert items[0].extras["clarification"] == ""
+    assert items[1].extras["clarification"] == "(e.g., measurements, where the field has them)"
+    assert items[1].extras["statements"] == [
+        "No evidence is offered.",
+        "Evidence is offered selectively.",
+        "Evidence is offered throughout.",
+    ]
+    assert items[1].extras["scores"] == ["0", "1", "2"]
+
+
+def test_the_instructions_above_a_scale_are_not_items() -> None:
+    """A rater's instructions can be numbered; what makes an item is its scored options."""
+    from manuscript_guard.reporting.scale import parse_scale
+
+    text = _SCALE.replace(
+        "Please rate each aspect", "3) Read the whole manuscript first\n\nPlease rate each aspect"
+    )
+    assert [i.id for i in parse_scale(text, stop_at="Sumscore")] == ["1", "2"]
+
+
+def test_a_statement_that_holds_a_number_keeps_it() -> None:
+    """The statements are carried apart from the text for exactly this: taking the scores off a
+    joined string would cut a statement at its own number."""
+    from manuscript_guard.reporting.scale import parse_scale
+
+    text = _SCALE.replace(
+        "Evidence is offered selectively.",
+        "At least 2 measurements are offered.   ",
+    )
+    item = parse_scale(text, stop_at="Sumscore")[1]
+    assert "At least 2 measurements are offered." in item.extras["statements"]
+
+
+def test_a_line_that_is_neither_heading_nor_option_stops_the_transcription() -> None:
+    """A statement that wrapped, or a footer, would otherwise be written wrong in silence. This
+    is the mistake that lost the parenthetical under two of SANRA's items."""
+    from manuscript_guard.reporting.scale import parse_scale
+    from manuscript_guard.reporting.transcribe import RecipeError
+
+    wrapped = _SCALE.replace(
+        "Evidence is offered throughout.                                               2",
+        "Evidence is offered throughout, and in the appendix as well as the      2\nmain text.",
+    )
+    with pytest.raises(RecipeError, match="wrapped"):
+        parse_scale(wrapped, stop_at="Sumscore")
+
+
+def test_an_item_with_too_few_options_stops_the_transcription() -> None:
+    """Dropped silently, an item printed with one option vanished from the profile."""
+    from manuscript_guard.reporting.scale import parse_scale
+    from manuscript_guard.reporting.transcribe import RecipeError
+
+    thin = _SCALE.replace(
+        "Evidence is offered selectively.                                              1\n\n", ""
+    ).replace(
+        "Evidence is offered throughout.                                               2\n\n", ""
+    )
+    with pytest.raises(RecipeError, match="fewer than"):
+        parse_scale(thin, stop_at="Sumscore")
+
+
+def test_a_count_the_recipe_states_is_held() -> None:
+    from manuscript_guard.reporting.scale import parse_scale
+    from manuscript_guard.reporting.transcribe import RecipeError
+
+    with pytest.raises(RecipeError, match="the recipe says every item has 4"):
+        parse_scale(_SCALE, options=4, stop_at="Sumscore")
+
+
+def test_a_second_unscored_line_under_one_item_stops_the_transcription() -> None:
+    from manuscript_guard.reporting.scale import parse_scale
+    from manuscript_guard.reporting.transcribe import RecipeError
+
+    text = _SCALE.replace(
+        "(e.g., measurements, where the field has them)",
+        "(e.g., measurements, where the field has them)\n\nand a second unscored line",
+    )
+    with pytest.raises(RecipeError, match="second unscored line"):
+        parse_scale(text, stop_at="Sumscore")
+
+
+def test_items_that_do_not_run_from_one_are_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A page listed twice, or an item lost, reads as a gap in the numbering."""
+    from manuscript_guard.reporting import columns
+    from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
+    from manuscript_guard.reporting.transcribe import RecipeError
+
+    monkeypatch.setattr(columns, "page_text", lambda _path, _page: _SCALE)
+    with pytest.raises(RecipeError, match="without a gap"):
+        transcribe_scale(
+            tmp_path / "x.pdf",
+            ScaleRecipe(document="x.pdf", pages=(1, 2), stop_at="Sumscore"),
+        )
+
+
+def test_a_document_with_no_scored_items_does_not_fit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A recipe that does not fit says so, where a wrong one would transcribe prose."""
+    from manuscript_guard.reporting import columns
+    from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
+    from manuscript_guard.reporting.transcribe import RecipeError
+
+    monkeypatch.setattr(
+        columns,
+        "page_text",
+        lambda _path, _page: "A page of prose. 1) a number in a sentence, nothing scored.",
+    )
+    with pytest.raises(RecipeError, match="does not fit"):
+        transcribe_scale(tmp_path / "x.pdf", ScaleRecipe(document="x.pdf", pages=(1,)))
+
+
+def test_a_scale_profile_says_it_has_no_independent_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pdf-scale branch of build_profile, which no test reached: the kind, the recorded
+    sentence and the options all come from here, and a profile that claimed a verbatim check
+    was what hid the dropped lines."""
+    import yaml
+
+    from manuscript_guard.reporting import columns
+    from manuscript_guard.reporting.build import build_profile
+
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    (sources / "SAIT.pdf").write_bytes(b"%PDF-1.4 not read, page_text is replaced")
+    recipe = tmp_path / "SAIT.recipe.yaml"
+    recipe.write_text(
+        "schema: manuscript-guard/recipe/1\n"
+        "meta:\n"
+        "  name: SAIT\n"
+        "  long_name: Scale for the Assessment of Imaginary Things\n"
+        "  applies_to: Imaginary things; an appraisal scale, not a reporting guideline\n"
+        "  source_url: https://example.invalid/sait\n"
+        "  retrieved_on: 2026-10-08\n"
+        "  licence: invented for this test\n"
+        "document: SAIT.pdf\n"
+        "format: pdf-scale\n"
+        "pages: [1]\n"
+        "items: 2\n"
+        "options: 3\n"
+        "stop_at: Sumscore\n"
+        "text_column: 0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(columns, "page_text", lambda _path, _page: _SCALE)
+
+    path, count, unverified = build_profile(recipe, sources, tmp_path / "out")
+    assert (count, unverified) == (2, [])
+    profile = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert profile["kind"] == "scale", "the pack tells a scale from a checklist by this"
+    assert "no check independent of the reader" in profile["verification"]
+    assert profile["items"][1]["clarification"].startswith("(e.g., measurements")
+    assert profile["items"][1]["options"][2] == {
+        "score": "2",
+        "statement": "Evidence is offered throughout.",
+    }
+
+
+def test_a_last_item_alone_on_a_second_page_is_refused_not_passed_over(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """"Until the scale has started" began again on every page, so an item printed alone at the
+    top of a second page was read as one of the rater's numbered instructions and dropped in
+    silence, while the profile said every line had been placed."""
+    from manuscript_guard.reporting import columns
+    from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
+    from manuscript_guard.reporting.transcribe import RecipeError
+
+    second = """\
+3) A last item, carried over
+
+The thing is not described.                                                   0
+"""
+    pages = {1: _SCALE, 2: second}
+    monkeypatch.setattr(columns, "page_text", lambda _path, page: pages[page])
+    with pytest.raises(RecipeError, match="fewer than"):
+        transcribe_scale(
+            tmp_path / "x.pdf",
+            ScaleRecipe(document="x.pdf", pages=(1, 2), stop_at="Sumscore"),
+        )

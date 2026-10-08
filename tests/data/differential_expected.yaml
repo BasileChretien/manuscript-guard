@@ -29,3 +29,8 @@ expected:
       a level typed after the letters hard against a negative bound, "CI 95%-0.3 to 0.4",
       is a level again: only a bound in percent after the hyphen makes the number before
       it a first bound
+  - reading: interval order
+    why: >-
+      two intervals quoted backwards in one sentence are reported in the order they are
+      quoted, where they came in the order Python walks a set, which the hash seed of the
+      process decides; which intervals are reported, and on which line, is as it was

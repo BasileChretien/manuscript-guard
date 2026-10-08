@@ -262,12 +262,8 @@ def _interval_order() -> Reading:
 
     def interval_order(text: str) -> dict[str, Any]:
         """The intervals G2 finds quoted upper bound first in a text whose bindings are
-        the bounds of `INTERVALS`. By line and then by what is said, and not in the order
-        the gate gave them: two intervals of one sentence come in the order Python walks a
-        set, which the hash seed decides (DESIGN.md, Known gaps)."""
-        told = _told(order(parse(text)[0], namespace, MAIN, text))
-        told["findings"].sort(key=lambda finding: (finding["line"], finding["message"]))
-        return told
+        the bounds of `INTERVALS`, in the order the gate gives them."""
+        return _told(order(parse(text)[0], namespace, MAIN, text))
 
     return interval_order
 

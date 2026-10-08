@@ -371,18 +371,29 @@ def intervals() -> st.SearchStrategy[str]:
     """A text that quotes the bounds of `INTERVALS` in any order and in any sentence, with
     an estimate that is no bound and a binding that resolves to nothing among them.
 
-    Six texts in seven also hold a sentence with a stop typed against its upper bound.
-    That stop ends a sentence for a search that stops at the binding and none for one that
-    reads the whole text. Left to chance, a stop and then a bound, it changed a finding in
-    so few texts that a reading which lost it went unnoticed under three seeds of twelve."""
+    Most texts also hold two sentences that chance draws too seldom, each in twelve texts
+    of thirteen. One has a stop typed against its upper bound: that stop ends a sentence
+    for a search that stops at the binding and none for one that reads the whole text,
+    and left to chance it changed a finding in so few texts that a reading which lost it
+    went unnoticed under three seeds of twelve. The other quotes every interval
+    backwards, in each order they can be quoted in: the findings have to come in that
+    order, which a set keeps for one order of the six at most."""
+    # Imported here, not at the top, to keep clear of the import block other branches edit.
+    from itertools import permutations
+
     bounds = [
         (f"{{{{results.{low}}}}}", f"{{{{results.{high}}}}}")
         for _estimate, _level, low, high in INTERVALS
     ]
     quoted = (*(bound for both in bounds for bound in both), "{{results.ror.point}}")
     stopped = tuple(f". It ran.{high} to {low}. " for low, high in bounds)
-    around = _in_a_row((*quoted * 3, "{{results.absent}}", *_BETWEEN), few=6, many=30)
-    return st.tuples(around, st.sampled_from(("", *stopped * 2)), around).map("".join)
+    backwards = tuple(
+        ". It ran " + ", ".join(f"{high} to {low}" for low, high in order) + ". "
+        for order in permutations(bounds)
+    )
+    around = _in_a_row((*quoted * 3, "{{results.absent}}", *_BETWEEN), few=4, many=20)
+    planted = [st.sampled_from(("", *kind * 2)) for kind in (stopped, backwards)]
+    return st.tuples(around, planted[0], around, planted[1], around).map("".join)
 
 
 # ------------------------------------------------------------------------ vocabularies

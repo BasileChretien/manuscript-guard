@@ -4093,7 +4093,7 @@ it.
   like any other and is compared: it used to end the process that was answering.
 - **The comparison is held to being one.** Two processes on this source under two hash
   seeds must answer alike on every reading, which also catches a reading that walks a
-  set. And nine lines are changed in a copy of the source, one at a time, and the reading
+  set. And ten lines are changed in a copy of the source, one at a time, and the reading
   that goes through each must differ: among them the mutant the review of #181 found
   alive, the offset of a quotation's lines losing a character at each line break, an
   import that writes no rewording, and a finding that points at another file with its
@@ -7689,12 +7689,14 @@ Closed since, and why each mattered:
   that stop as the search did, so that nothing G2 reports changed with it;
   `test_a_stop_against_a_binding_ends_a_sentence_for_that_binding_alone` holds the three
   cases. It takes a stop with no space after it, directly before a bound.
-- **Two intervals quoted backwards in one sentence are reported in an order that changes
-  from run to run.** The estimates and levels of a sentence are walked as a Python set,
-  whose order turns on the hash seed of the process. Which intervals are reported does not
-  change, nor on which line; `check` sorts by file and line, so two such findings change
-  places only where both are on one line. The generated reading of the order of intervals
-  (`interval order` in `tests/readings.py`) compares them sorted for that reason.
+- **Two intervals quoted backwards in one sentence were reported in an order that changed
+  from run to run.** The estimates and levels of a sentence were walked as a Python set,
+  whose order turns on the hash seed of the process. Which intervals were reported did not
+  change, nor on which line; `check` sorts by file and line, so two such findings changed
+  places only where both were on one line. They are walked in the order each is first
+  quoted now. The generated reading of the order of intervals (`interval order` in
+  `tests/readings.py`) compared them sorted, which hid this from the comparison under two
+  hash seeds; it compares them as the gate gives them, and that comparison holds the order.
 - **A stop in an HTML comment, or after an abbreviation, ends a sentence between two
   bounds.** The sentence ends are read in the file as it is typed. In
   `It ran {{results.ror.ci_high}} <!-- was 7.02. --> to {{results.ror.ci_low}}.` the stop
@@ -8215,7 +8217,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 21 broken rules, and the comparison on nine
+  - The properties were seen to fail on 21 broken rules, and the comparison on ten
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

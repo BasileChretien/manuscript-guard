@@ -115,6 +115,8 @@ def test_a_word_in_the_other_spelling_is_reported_once_with_its_count(project: P
         ("anemia", "anaemia"),
         ("diarrhea", "diarrhoea"),
         ("hemodynamic", "haemodynamic"),  # from a cluster VarCon has not verified
+        ("amebiasis", "amoebiasis"),  # and two more forms taken from such clusters
+        ("pedodontics", "paedodontics"),
         ("bacteremia", "bacteraemia"),
         ("artifact", "artefact"),
         ("skeptical", "sceptical"),
@@ -146,6 +148,8 @@ def test_a_british_paper_hears_of_an_american_spelling(
         ("programme", "program"),
         ("sulphate", "sulfate"),
         ("oestradiol", "estradiol"),
+        ("amoebiasis", "amebiasis"),
+        ("paedomorphosis", "pedomorphosis"),
         ("speciality", "specialty"),
         ("grey", "gray"),
     ],
@@ -417,7 +421,7 @@ def test_a_word_british_usage_also_writes_is_not_american(project: Path, sentenc
         # a variant in both usages is the spelling of neither
         "By the Sobolev imbedding theorem the map is compact, and a useable fraction remained.",
         "Flash vacuum pyrolyses were run, and the pourer was calibrated.",  # two wrong pairings
-        "Entamoeba histolytica was cultured, and paedomorphosis was scored.",  # a genus
+        "Entamoeba histolytica and an Endamoeba were cultured.",  # a genus is Latin
         "Blaise Pascal showed it, and the cloth was cut weftwise.",
     ],
 )
@@ -854,6 +858,8 @@ def test_the_list_agrees_with_itself() -> None:
         ("organise", ("ise", "organize")),
         ("randomisation", ("ise", "randomization")),
         ("hemodynamic", ("us", "haemodynamic")),
+        ("amebiasis", ("us", "amoebiasis")),
+        ("paedodontics", ("gb", "pedodontics")),
         ("anesthetize", ("us", "anaesthetise/anaesthetize")),
         ("sulphate", ("gb", "sulfate")),
     ],
@@ -871,7 +877,7 @@ def test_the_list_holds_what_it_should(word: str, row: tuple[str, str]) -> None:
         "gray", "license", "practice", "focused", "specialty", "rigor", "estradiol",
         "hydrolysate", "et", "ax", "mom", "micelle", "macule", "diene", "raphe", "prev",
         "surprisal", "expertise", "advertise", "exercise", "larvae", "fossae", "homeostasis",
-        "flyer", "adaptor", "pedogenic", "pedology", "paedomorphosis", "entamoeba", "hematite",
+        "flyer", "adaptor", "pedogenic", "pedology", "pedologist", "entamoeba", "hematite",
         "stilbestrol", "imbedding", "useable", "focussed", "pyrolyses", "pourer", "blaise",
         "weftwise", "caulkings",
     ],
@@ -1119,8 +1125,10 @@ def test_the_script_takes_the_rows_it_says_it_takes(derive) -> None:
         "judgement": ("gb", "judgment"),
         "mold": ("us", "mould"),  # four letters are enough
         "mould": ("gb", "mold"),
-        # more from clusters nobody verified: the noun of a verb in -ise, and -aemia. Not
-        # "paedogenesis": `paed-` is no door, since "pedogenesis" is the soil's word
+        # more from clusters nobody verified: the noun of a verb in -ise, and -aemia.
+        # "pedogenesis" is the soil's word and is named in EVERYWHERE, so it has no row;
+        # "paedogenesis", the zoologist's, is British
+        "paedogenesis": ("gb", "pedogenesis"),
         "anonymisation": ("ise", "anonymization"),
         "bacteremia": ("us", "bacteraemia"),
         "bacteraemia": ("gb", "bacteremia"),
@@ -1143,7 +1151,9 @@ def test_the_script_takes_the_rows_it_says_it_takes(derive) -> None:
         # In this sample no other line accepts "gray" in British usage, as VarCon's do
         "gray": ("us", "grey"),
         "grey": ("gb", "gray"),
-        # "amoebiasis" is from a cluster nobody verified, and `amoeb-` is no door
+        # from a cluster nobody verified, through the form amoeb-
+        "amebiasis": ("us", "amoebiasis"),
+        "amoebiasis": ("gb", "amebiasis"),
     }
 
 
@@ -1153,15 +1163,17 @@ def test_the_words_the_script_leaves_out_are_these(derive) -> None:
     above also holds that each of them takes a row out."""
     assert sorted(derive.EVERYWHERE) == [
         "acknowledgment", "acknowledgments", "adaptor", "adaptors", "blaise",
-        "diethylstilbestrol", "estradiol", "estradiols", "estriol", "estriols", "estrone",
-        "estrones", "flyer", "flyers", "hematite", "hematites", "hematitic", "porer",
-        "pourer", "pyrolyses", "rigor", "rigors", "specialties", "specialty",
-        "stilbestrol", "stilbestrols",
+        "diethylstilbestrol", "endamoeba", "endamoebae", "endamoebas", "entamoeba",
+        "entamoebae", "entamoebas", "estradiol", "estradiols", "estriol", "estriols",
+        "estrone", "estrones", "flyer", "flyers", "hematite", "hematites", "hematitic",
+        "pedogeneses", "pedogenesis", "pedogenetic", "pedogenic", "pedological",
+        "pedologist", "pedologists", "porer", "pourer", "pyrolyses", "rigor", "rigors",
+        "scaped", "specialties", "specialty", "stilbestrol", "stilbestrols",
     ]  # fmt: skip
     assert all(derive.EVERYWHERE.values()), "each with its reason"
     assert sorted(derive.DIGRAPHS) == [
-        "aemi", "aetiol", "anaesth", "coeli", "gynaec", "haem", "oedem", "oesoph",
-        "oestr", "palaeo", "pnoea", "rrhoea",
+        "aemi", "aetiol", "amoeb", "anaesth", "coeli", "gynaec", "haem", "oedem",
+        "oesoph", "oestr", "paed", "palaeo", "pnoea", "rrhoea",
     ]  # fmt: skip
 
 

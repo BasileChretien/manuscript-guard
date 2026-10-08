@@ -43,7 +43,7 @@ from typing import Any, TypeVar
 from hypothesis import HealthCheck, Phase, given, seed, settings
 from hypothesis import strategies as st
 from hypothesis.internal.conjecture import providers
-from readings import SAYS, TAGS
+from readings import INTERVALS, SAYS, TAGS
 
 Test = TypeVar("Test", bound=Callable[..., Any])
 
@@ -358,6 +358,33 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+# What stands between two bounds of an interval: words, and a stop with a space after it,
+# a line break, or nothing.
+_BETWEEN = (
+    " to ", " to ", " and ", ", ", "; ", " (95% CI ", "; 90% CI ", ") ", ". ", ". ", ".\n",
+    ".\r\n", ".\N{NO-BREAK SPACE}", ".", "!", "? ", "\n", "\n\n", " 3.5 ", " e.g. ",
+    "It ran ", "The upper bound was ", " <!-- ", " --> ",
+)  # fmt: skip
+
+
+def intervals() -> st.SearchStrategy[str]:
+    """A text that quotes the bounds of `INTERVALS` in any order and in any sentence, with
+    an estimate that is no bound and a binding that resolves to nothing among them.
+
+    Six texts in seven also hold a sentence with a stop typed against its upper bound.
+    That stop ends a sentence for a search that stops at the binding and none for one that
+    reads the whole text. Left to chance, a stop and then a bound, it changed a finding in
+    so few texts that a reading which lost it went unnoticed under three seeds of twelve."""
+    bounds = [
+        (f"{{{{results.{low}}}}}", f"{{{{results.{high}}}}}")
+        for _estimate, _level, low, high in INTERVALS
+    ]
+    quoted = (*(bound for both in bounds for bound in both), "{{results.ror.point}}")
+    stopped = tuple(f". It ran.{high} to {low}. " for low, high in bounds)
+    around = _in_a_row((*quoted * 3, "{{results.absent}}", *_BETWEEN), few=6, many=30)
+    return st.tuples(around, st.sampled_from(("", *stopped * 2)), around).map("".join)
+
+
 # ------------------------------------------------------------------------ vocabularies
 
 
@@ -589,6 +616,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             ),
         }
     ),
+    "interval order": intervals(),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
     "spelling": st.fixed_dictionaries(
         {

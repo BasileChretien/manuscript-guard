@@ -1302,6 +1302,90 @@ def test_the_second_interval_is_still_read_for_order(project: Path) -> None:
     assert any("90%" in (f.message or "") for f in report.failures)
 
 
+def _reversed_in(text: str) -> list[tuple[int, str]]:
+    """The intervals G2 finds quoted upper bound first in `text`, each by its line and its
+    level. `{low}` and `{high}` are the bounds of a 95% interval, `{low90}` and `{high90}`
+    those of a 90% one around the same estimate. Sorted, since two of one sentence come in
+    the order Python walks a set."""
+    from manuscript_guard.contracts.values import RESULTS, Value
+    from manuscript_guard.gates.numbers import _interval_order
+    from manuscript_guard.text.placeholders import parse
+
+    namespace, written = {}, {}
+    for slug, level in (("", None), ("90", "90%")):
+        for end in ("low", "high"):
+            key = f"ror.ci{slug}_{end}"
+            namespace[f"results.{key}"] = Value(
+                key, 1.0, "1.0", RESULTS, bounds="ror.point", bound=end, level=level
+            )
+            written[f"{end}{slug}"] = f"{{{{results.{key}}}}}"
+    text = text.format(**written)
+    report = _interval_order(parse(text)[0], namespace, Path("main.md"), text)
+    assert {f.code for f in report.findings} <= {"interval-reversed"}
+    return sorted(
+        (f.line, "90%" if "the 90% interval" in f.message else "") for f in report.findings
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "backwards"),
+    [
+        ("The bounds were {high} and {low}.\n", [(1, "")]),
+        ("The upper bound was {high}. The lower was {low}.\n", []),
+        ("The upper bound was {high}.\n{low} was the lower.\n", []),
+        ("Was the upper bound {high}? The lower was {low}! No more.\n", []),
+        ("It ran {low} to {high}.\nAt 90% it ran {high90} to {low90}.\n", [(2, "90%")]),
+        ("It ran {high} to {low}. At 90%\nit ran {high90}\nto {low90}.\n", [(1, ""), (2, "90%")]),
+        ("It was (95% CI {low} to {high}; 90% CI {low90} to {high90}).\n", []),
+        ("It was (95% CI {low} to {high}; 90% CI {high90} to {low90}).\n", [(1, "90%")]),
+        ("It was (95% CI {high} to {low}; 90% CI {high90} to {low90}).\n", [(1, ""), (1, "90%")]),
+        ("It was {high} in 3.5 of them and {low} in the rest.\n", [(1, "")]),
+        ("{high} to {low}", [(1, "")]),
+    ],
+    ids=[
+        "one sentence",
+        "successive sentences",
+        "a sentence that ends its line",
+        "a question and an exclamation",
+        "two intervals in successive sentences",
+        "a second sentence over three lines",
+        "two levels in one sentence",
+        "two levels, the second backwards",
+        "two levels, both backwards",
+        "a stop inside a number",
+        "nothing before or after",
+    ],
+)
+def test_bounds_are_compared_within_their_sentence(
+    text: str, backwards: list[tuple[int, str]]
+) -> None:
+    """Which sentence a bound is in was counted from the top of the file for every bound,
+    and is now looked up among the sentence ends of the file. What is compared with what is
+    as it was: these are the sentences `main` grouped the bounds into."""
+    assert _reversed_in(text) == backwards
+
+
+@pytest.mark.parametrize(
+    ("text", "backwards"),
+    [
+        ("It ran {high}.{low} was the lower bound.\n", []),
+        ("It ran.{high} to {low} in all.\n", []),
+        ("Up.{high} came first. The lower bound was {low}.\n", [(1, "")]),
+    ],
+    ids=["between two bounds", "a reversal that passes", "a reversal that is none"],
+)
+def test_a_stop_against_a_binding_ends_a_sentence_for_that_binding_alone(
+    text: str, backwards: list[tuple[int, str]]
+) -> None:
+    """A known limit, held so that it is known. A stop ends a sentence where white space
+    follows it. One typed against a binding, `ran.{{results.ror.ci_high}}`, has none after
+    it, and ends a sentence for that one binding and for nothing after it: the search for
+    sentence ends stopped at each binding, and took the binding for the end of the text. So
+    the binding is counted one sentence on from the rest of its own, among the bindings of
+    the next. DESIGN.md has it under Known gaps."""
+    assert _reversed_in(text) == backwards
+
+
 def _publish_text(project: Path, key: str, text: str, *, quoted: bool = True, **extra) -> None:
     """Add a string value to the fragment, and quote it in the manuscript if it is quoted."""
     fragment = next((project / "results").glob("*.json"))

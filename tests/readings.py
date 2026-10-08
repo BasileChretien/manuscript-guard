@@ -238,6 +238,40 @@ def _numbers() -> Reading:
     return numbers
 
 
+#: The intervals whose bounds a generated text quotes: the estimate, the level where the
+#: estimate has a second interval, and the keys of the lower and of the upper bound.
+INTERVALS = (
+    ("ror.point", None, "ror.ci_low", "ror.ci_high"),
+    ("ror.point", "90%", "ror.ci90_low", "ror.ci90_high"),
+    ("hr.point", None, "hr.ci_low", "hr.ci_high"),
+)
+
+
+@reading("interval order")
+def _interval_order() -> Reading:
+    from manuscript_guard.contracts.values import RESULTS, Value
+    from manuscript_guard.gates.numbers import _interval_order as order
+    from manuscript_guard.text.placeholders import parse
+
+    namespace = {"results.ror.point": Value("ror.point", 1.0, "1.0", RESULTS)}
+    for estimate, level, *keys in INTERVALS:
+        for end, key in zip(("low", "high"), keys, strict=True):
+            namespace[f"results.{key}"] = Value(
+                key, 1.0, "1.0", RESULTS, bounds=estimate, bound=end, level=level
+            )
+
+    def interval_order(text: str) -> dict[str, Any]:
+        """The intervals G2 finds quoted upper bound first in a text whose bindings are
+        the bounds of `INTERVALS`. By line and then by what is said, and not in the order
+        the gate gave them: two intervals of one sentence come in the order Python walks a
+        set, which the hash seed decides (DESIGN.md, Known gaps)."""
+        told = _told(order(parse(text)[0], namespace, MAIN, text))
+        told["findings"].sort(key=lambda finding: (finding["line"], finding["message"]))
+        return told
+
+    return interval_order
+
+
 # ---------------------------------------------------------------------------- language
 
 

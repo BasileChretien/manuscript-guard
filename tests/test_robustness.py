@@ -706,6 +706,38 @@ def test_the_section_chain_is_looked_up_not_rebuilt(assert_linear) -> None:
     assert_linear(parts, look_up, 250, "the section chain at every offset")
 
 
+def test_the_sentence_of_a_bound_is_looked_up_not_counted(assert_linear) -> None:
+    """To know which sentence a bound of an interval is in, G2 listed every sentence end
+    from the top of the file, for every bound: 5,000 bounds, one to a line, took 7.5 s in
+    that alone, and 20,000 took 186 s. The bindings are made off the clock, and not by
+    `parse`, so that only the order of the intervals is timed."""
+    from manuscript_guard.contracts.values import RESULTS, Value
+    from manuscript_guard.gates.numbers import _interval_order
+    from manuscript_guard.text.placeholders import Placeholder
+
+    def bounds(count: int) -> tuple[list, dict, str]:
+        lines, placeholders, namespace, at = [], [], {}, 0
+        for i in range(count):
+            raw = f"{{{{results.v{i}}}}}"
+            line = f"It was {raw} there.\n"
+            start = at + len("It was ")
+            placeholders.append(
+                Placeholder("results", f"v{i}", raw, start, start + len(raw), i + 1, 8)
+            )
+            namespace[f"results.v{i}"] = Value(
+                f"v{i}", 1.0, "1.0", RESULTS, bounds=f"e{i}", bound="low"
+            )
+            lines.append(line)
+            at += len(line)
+        return placeholders, namespace, "".join(lines)
+
+    def order(given: tuple[list, dict, str]) -> None:
+        placeholders, namespace, text = given
+        _interval_order(placeholders, namespace, Path("main.md"), text)
+
+    assert_linear(bounds, order, 250, "the order of intervals, by bound")
+
+
 @pytest.mark.parametrize(
     "tail",
     [" *_" * 3000 + " x", " " * 9000 + "x"],

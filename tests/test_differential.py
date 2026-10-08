@@ -219,6 +219,12 @@ CHANGED = {
         "MANY = 2\n",
         "spelling",
     ),
+    "a stop against a binding that ends no sentence": (
+        "gates/numbers.py",
+        "    return before + 1 if start and text[start - 1] in _STOPS else before\n",
+        "    return before\n",
+        "interval order",
+    ),
     "a trailing sign kept on a number": (
         "text/tokens.py",
         "_TRAIL = \")]}>\\\"'",

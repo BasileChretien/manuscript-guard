@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+from bisect import bisect_left
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier, declarable
@@ -387,7 +388,23 @@ def _paper_yaml_prose(project: Project, classifier: Classifier) -> Report:
 
 #: A sentence, for judging whether two bindings are quoted as one interval. Line breaks do
 #: not end one: every manuscript here is hard-wrapped.
-_SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+_STOPS = ".!?"
+_SENTENCE_END = re.compile(rf"[{_STOPS}](?:\s|$)")
+
+
+def _sentence(text: str, ends: list[int], start: int) -> int:
+    """Which sentence of `text` the binding at `start` is in: how many end before it.
+
+    `ends` is where the sentences of the whole text end, found once for the file. The count
+    was a search from the top of the file for every bound, stopped at the binding: quadratic
+    in the bounds of a file, 186 s for 20,000 of them. Stopped there, the search took the
+    binding for the end of the text, so a stop typed against a binding ended a sentence
+    with no white space after it. It still does, for that binding alone, which is what the
+    last line adds: the bounds are grouped as they were, and DESIGN.md has the limit under
+    Known gaps.
+    """
+    before = bisect_left(ends, start - 1)
+    return before + 1 if start and text[start - 1] in _STOPS else before
 
 
 def unreadable_header(path: Path, reason: str, line: int, gate: str) -> Finding:
@@ -448,12 +465,14 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
         for placeholder in placeholders
         if placeholder.is_value and placeholder.ref in namespace
     ]
+    bounds = [(placeholder, value) for placeholder, value in quoted if value.bounds]
+    if not bounds:
+        return report
+    ends = [match.start() for match in _SENTENCE_END.finditer(text)]
     by_sentence: dict[int, list] = {}
-    for placeholder, value in quoted:
-        if not value.bounds:
-            continue
-        ends = [match.start() for match in _SENTENCE_END.finditer(text, 0, placeholder.start)]
-        by_sentence.setdefault(len(ends), []).append((placeholder, value))
+    for placeholder, value in bounds:
+        sentence = _sentence(text, ends, placeholder.start)
+        by_sentence.setdefault(sentence, []).append((placeholder, value))
 
     for group in by_sentence.values():
         seen: dict[str, int] = {}

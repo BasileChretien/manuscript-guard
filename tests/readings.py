@@ -304,6 +304,17 @@ def _tex() -> Reading:
     return tex
 
 
+@reading("reworded")
+def _reworded() -> Reading:
+    from manuscript_guard.reworded import compare
+
+    def reworded(edit: list[str]) -> dict[str, Any]:
+        before, after = edit
+        return _told(compare(before, after, MAIN))
+
+    return reworded
+
+
 @reading("title")
 def _title() -> Reading:
     from manuscript_guard.contracts.project import outside_maths

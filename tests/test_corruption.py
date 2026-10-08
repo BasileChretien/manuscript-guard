@@ -9441,3 +9441,99 @@ def test_a_name_a_quotation_and_a_citation_key_in_the_other_spelling_are_left_al
     assert edited != text
     main_md(project).write_text(edited, encoding="utf-8")
     assert spelling_findings(project) == []
+
+# --------------------------------------------------------------------------------------
+# A language pass that changed more than the words. `check` passes each of these: both
+# bounds are bindings that resolve, a sentence with one citation fewer is a sentence, and a
+# level of confidence is a number the conventions know. `manuscript-guard reworded` sees
+# them, because it compares the text with what it was.
+# --------------------------------------------------------------------------------------
+
+
+def after_a_language_pass(project: Path, old: str, new: str):
+    """The example's main text after one edit, compared with what it was. The edit is
+    written to the file, so that the gates can be asked about it too."""
+    from manuscript_guard.reworded import compare
+
+    before = main_md(project).read_text(encoding="utf-8")
+    assert before.count(old) == 1, "the fixture changed under this test"
+    after = before.replace(old, new)
+    main_md(project).write_text(after, encoding="utf-8")
+    return after, compare(before, after, main_md(project))
+
+
+def test_a_language_pass_that_wrote_one_bound_for_the_other_is_caught(project: Path) -> None:
+    after, report = after_a_language_pass(
+        project, "{{results.ror.ci_high}}; 90% CI", "{{results.ror.ci_low}}; 90% CI"
+    )
+    assert gate_report(project).ok, "the gates see nothing wrong with it"
+    assert [(f.code, f.severity) for f in report.findings] == [
+        ("fact-lost", "fail"),
+        ("fact-new", "fail"),
+    ]
+    lost, new = report.findings
+    assert lost.message.startswith("the binding {{results.ror.ci_high}} stood twice before")
+    assert new.message.startswith("the binding {{results.ror.ci_low}} stands 3 times now")
+    assert new.line == line_of(after, "{{results.ror.ci_low}}; 90% CI")
+
+
+def test_a_language_pass_that_made_two_counts_change_places_is_shown(project: Path) -> None:
+    """Two bounds that change places G2 reports itself, where they were emitted as one
+    interval. Two counts in a sentence it cannot know apart."""
+    after, report = after_a_language_pass(
+        project,
+        "Of {{results.cohort.n_reports}} reports, {{results.case.n_cases}} described",
+        "Of {{results.case.n_cases}} reports, {{results.cohort.n_reports}} described",
+    )
+    assert gate_report(project).ok, "the gates see nothing wrong with it"
+    (finding,) = report.findings
+    assert (finding.code, finding.severity) == ("order-changed", "warn")
+    assert finding.line == line_of(after, "Of {{results.case.n_cases}} reports")
+    assert finding.message.endswith(
+        "before the edit {{results.cohort.n_reports}}, {{results.case.n_cases}}; "
+        "now {{results.case.n_cases}}, {{results.cohort.n_reports}}"
+    )
+
+
+def test_a_language_pass_that_dropped_a_citation_is_caught(project: Path) -> None:
+    _after, report = after_a_language_pass(
+        project,
+        "{{lit.background.class_ror}} reported previously [@fictionalClassSignal2019], although",
+        "{{lit.background.class_ror}} reported previously, although",
+    )
+    assert gate_report(project).ok, "the gates see nothing wrong with it"
+    (finding,) = report.findings
+    assert finding.code == "fact-lost"
+    assert finding.message.startswith("the citation @fictionalClassSignal2019 stood twice")
+
+
+def test_a_language_pass_that_retyped_a_level_of_confidence_is_caught(project: Path) -> None:
+    after, report = after_a_language_pass(
+        project, "; 90% CI {{results.ror.ci90_low}}", "; 95% CI {{results.ror.ci90_low}}"
+    )
+    assert gate_report(project).ok, "the gates see nothing wrong with it"
+    lost, new = report.findings
+    assert (lost.code, new.code) == ("fact-lost", "fact-new")
+    assert lost.message.startswith("the number '90' is gone: it stood on line ")
+    assert new.message.startswith("the number '95' stands ")
+    assert new.line == line_of(after, "; 95% CI {{results.ror.ci90_low}}")
+
+
+def test_a_language_pass_that_only_reworded_passes(project: Path) -> None:
+    before = main_md(project).read_text(encoding="utf-8")
+    edits = (
+        ("The database contained", "The database held"),
+        ("Reporting of hepatic injury was disproportionate for example-drug, with", "For "
+         "example-drug, hepatic injury was reported out of proportion, with"),
+        ("can reconstruct it.", "can work it out again."),
+    )
+    after = before
+    for old, new in edits:
+        assert old in after, "the fixture changed under this test"
+        after = after.replace(old, new)
+    from manuscript_guard.reworded import compare
+
+    report = compare(before, after, main_md(project))
+    assert not report.findings, report.render(project)
+    assert report.counts["reworded_bindings"] > 10
+    assert report.counts["reworded_citations"] > 2

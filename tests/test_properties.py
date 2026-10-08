@@ -32,6 +32,7 @@ import pytest
 from generated import (
     AGREED,
     FILLER,
+    HELD,
     INPUTS,
     SOURCE_GAPS,
     SOURCE_WORDS,
@@ -52,6 +53,7 @@ from hypothesis import strategies as st
 from hypothesis.database import InMemoryExampleDatabase
 from readings import MAIN, PAPER, READINGS, Unavailable, answer
 
+from manuscript_guard import reworded as reworded_module
 from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.gates import language as language_gate
@@ -67,6 +69,7 @@ from manuscript_guard.gates.vocabulary import (
 )
 from manuscript_guard.literature import sources as literature_sources
 from manuscript_guard.literature.sources import contains, normalise, states_value
+from manuscript_guard.reworded import BINDING, CITATION, NUMBER, compare, facts
 from manuscript_guard.text import tokens
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -750,6 +753,153 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
     assert report.counts["spelling_other"] == sum(len(places) for places in stands.values())
 
 
+# ------------------------------------------------------------------------- a rewording
+
+_SHOWN = {BINDING: "{{results.%s}}", CITATION: "@key%s", NUMBER: "'%s'"}
+_WRITTEN = {
+    BINDING: ("{{results.%s}}", "{{ results.%s }}"),
+    CITATION: ("[@key%s]", "@key%s", "[see @key%s]"),
+}
+_TYPED_NUMBERS = ("12", "3.84", "1,200", "-0.5", "95", "0.05")
+#: What an edit brings that the text before never held.
+_UNSEEN = {BINDING: "added", CITATION: "added", NUMBER: "987654"}
+
+
+@holds(200, texts(HELD), signs())
+def test_a_fact_is_where_it_says_and_a_text_is_what_it_was(manuscript: str, nobodys: str) -> None:
+    """A finding of `reworded` is placed by the line of a fact, and a fact is compared by
+    what was read at its place. And a text holds what it holds: compared with itself it has
+    nothing to report, whatever is in it."""
+    for text in (manuscript, nobodys):
+        folded = text.replace("\r\n", "\n").replace("\r", "\n")
+        last = -1
+        for fact in facts(text):
+            assert last < fact.start < len(folded), (text, fact)
+            assert fact.line == folded.count("\n", 0, fact.start) + 1, (text, fact)
+            here = folded[fact.start :]
+            if fact.kind == BINDING:
+                assert here.startswith("{{"), (text, fact)
+            elif fact.kind == CITATION:
+                assert here.lstrip("-").startswith("@" + fact.text), (text, fact)
+            else:
+                signed = fact.text[0] in "-+"
+                assert not signed or here[0] in "-+\N{MINUS SIGN}\N{EN DASH}", (text, fact)
+                assert here[signed:].startswith(fact.text[signed:]), (text, fact)
+            last = fact.start
+        assert not compare(text, text, MAIN).findings, text
+
+
+@st.composite
+def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
+    """A text, what an edit made of it, what the edit did besides reword it, the facts it
+    did that to as a finding shows them, and the line of the after text it did it on.
+
+    Every sentence is written twice, with other words between its facts each time and each
+    fact in another of the ways it is written: that is the rewording, and it is free. A
+    comment stands in both, and holds other things in each."""
+    did = draw(
+        st.sampled_from(("nothing", "nothing", "lost", "new", "changed", "unsigned", "turned"))
+    )
+
+    def fact() -> tuple[str, str]:
+        kind = draw(st.sampled_from((BINDING, CITATION, NUMBER, NUMBER)))
+        if kind == NUMBER:
+            return kind, draw(st.sampled_from(_TYPED_NUMBERS))
+        return kind, f"k{draw(st.integers(1, 4))}"
+
+    sizes = draw(st.lists(st.integers(0, 3), min_size=1, max_size=6))
+    before = [[fact() for _ in range(size)] for size in sizes]
+    if did == "unsigned":
+        before.append([(NUMBER, "-0.5")])
+    turnable = [at for at, held in enumerate(before) if held != held[::-1]]
+    if did == "turned" and not turnable:
+        before.append([(NUMBER, "12"), (BINDING, "k1")])
+        turnable = [len(before) - 1]
+    holding = [at for at, held in enumerate(before) if held]
+    if did in ("lost", "changed") and not holding:
+        did = "nothing"
+
+    after = [list(held) for held in before]
+    shown: list[str] = []
+    at = 0
+    if did in ("lost", "changed"):
+        at = draw(st.sampled_from(holding))
+        which = draw(st.integers(0, len(after[at]) - 1))
+        kind, text = after[at].pop(which)
+        shown.append(_SHOWN[kind] % text)
+        if did == "changed":
+            after[at].insert(which, (kind, _UNSEEN[kind]))
+            shown.append(_SHOWN[kind] % _UNSEEN[kind])
+    elif did == "new":
+        at = draw(st.integers(0, len(after) - 1))
+        kind = draw(st.sampled_from((BINDING, CITATION, NUMBER)))
+        after[at].insert(draw(st.integers(0, len(after[at]))), (kind, _UNSEEN[kind]))
+        shown.append(_SHOWN[kind] % _UNSEEN[kind])
+    elif did == "unsigned":
+        at = len(after) - 1
+        after[at] = [(NUMBER, "0.5")]
+        shown += ["'-0.5'", "'0.5'"]
+    elif did == "turned":
+        at = draw(st.sampled_from(turnable))
+        after[at].reverse()
+
+    def filler() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+
+    def written(held: list[tuple[str, str]]) -> str:
+        parts = [filler().capitalize()]
+        for kind, text in held:
+            if kind == NUMBER:
+                retyped = text.replace("-", "\N{MINUS SIGN}")
+                parts.append(draw(st.sampled_from((text, retyped))))
+            else:
+                parts.append(draw(st.sampled_from(_WRITTEN[kind])) % text)
+            parts.append(filler())
+        return " ".join(parts) + "."
+
+    comment = draw(st.integers(0, len(before)))
+    texts_of = []
+    for sentences, hidden in (
+        (before, "<!-- was {{results.gone}} in 14 [@gone2001] -->"),
+        (after, "<!-- now 15 -->"),
+    ):
+        paragraphs = [written(held) for held in sentences]
+        paragraphs.insert(comment, hidden)
+        texts_of.append("\n\n".join(paragraphs) + "\n")
+    line = 1 + 2 * (at + (comment <= at))
+    return texts_of[0], texts_of[1], did, shown, line
+
+
+@holds(200, _rewordings())
+def test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands(
+    drawn: tuple[str, str, str, list[str], int],
+) -> None:
+    before, after, did, shown, line = drawn
+    report = compare(before, after, MAIN)
+    said = [(found.code, found.severity, found.line, found.message) for found in report.findings]
+    codes = sorted(found.code for found in report.findings)
+    if did == "turned":
+        assert codes and set(codes) == {"order-changed"}, (before, after, said)
+        assert all(found.severity == "warn" for found in report.findings), said
+        assert {found.line for found in report.findings} == {line}, (before, after, said)
+        assert report.ok
+        return
+    expected = {
+        "nothing": [],
+        "lost": ["fact-lost"],
+        "new": ["fact-new"],
+        "changed": ["fact-lost", "fact-new"],
+        "unsigned": ["fact-lost", "fact-new"],
+    }[did]
+    assert codes == expected, (before, after, did, said)
+    assert report.ok == (not expected)
+    by_code = {found.code: found for found in report.findings}
+    for code, what in zip(expected, shown, strict=True):
+        assert what in by_code[code].message, (before, after, said)
+    if "fact-new" in by_code:
+        assert by_code["fact-new"].line == line, (before, after, said)
+
+
 # -------------------------------------------------------------------------------- quotations
 
 
@@ -878,6 +1028,20 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
 
+def _a_sign_is_no_part_of_its_number(patch: pytest.MonkeyPatch) -> None:
+    unsigned = reworded_module._NUMBER.pattern.replace("(?P<sign>", "(?P<sign>(?!.)", 1)
+    assert unsigned != reworded_module._NUMBER.pattern
+    patch.setattr(reworded_module, "_NUMBER", re.compile(unsigned))
+
+
+def _the_order_is_not_looked_at(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reworded_module, "_reordered", lambda before, after: [])
+
+
+def _a_comment_holds_facts(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reworded_module, "blank_comments", lambda text: text)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -908,6 +1072,18 @@ BROKEN = {
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
+    ),
+    "a number's sign is no part of it": (
+        _a_sign_is_no_part_of_its_number,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "the order of the facts is not looked at": (
+        _the_order_is_not_looked_at,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "what a comment holds is held to its place": (
+        _a_comment_holds_facts,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
     ),
 }
 

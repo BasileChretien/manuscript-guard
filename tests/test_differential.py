@@ -231,6 +231,12 @@ CHANGED = {
         "        if replacement == original:\n",
         "import",
     ),
+    "a sign that is no part of its number": (
+        "reworded.py",
+        "        held = (\"-\" if sign and sign in _MINUS else sign) + number[\"figures\"]\n",
+        "        held = number[\"figures\"]\n",
+        "reworded",
+    ),
     "a finding that points at another file": (
         "gates/vocabulary.py",
         "                path=passage.path,\n",

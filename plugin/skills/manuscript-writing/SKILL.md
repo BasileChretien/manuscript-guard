@@ -209,3 +209,30 @@ constructions above will be in your first draft; that is what the page is for. T
 thing to check for is the one at the top: sentences that assert importance instead of
 stating a result. They are the hardest to notice and the most damaging to a paper, because
 a reviewer reads them as padding and a reader learns nothing from them.
+
+## After a pass that was meant to change only the wording
+
+A language edit, yours or anybody's, is trusted with the words and with nothing else, and
+`check` cannot see whether it kept to them: one confidence bound written where the other
+stood is still a binding that resolves. Prove it, before the edit is committed:
+
+```bash
+manuscript-guard reworded       # the manuscript against the last commit
+```
+
+It holds every binding, every citation key and every typed number to its place. The
+comparison is with the last commit, so what the author changed and has not committed is in
+it too: before a language pass on a text with such changes, ask for them to be committed,
+and the report is then of the pass alone.
+
+- A failure is one of them gone, new or changed. Put it back as it stood. If the change is
+  meant, it is a change to the paper: say so to the author in those words, and do not call
+  the edit a rewording.
+- A warning is the same ones in another order. A clause that moved does that, and so do
+  two values that changed places. Read the sentence the warning names and make sure of
+  which.
+- A number is compared as typed, so "3" spelt out as "three" fails. Leave the figures of a
+  manuscript as the author typed them unless you were asked to change them.
+
+For a text that is not in git, keep a copy before the edit and name it:
+`manuscript-guard reworded manuscript/main.md --before copy-of-main.md`.

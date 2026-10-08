@@ -80,6 +80,10 @@ class CitationUse:
     line: int
     narrative: bool
     raw: str
+    #: Where the key's sign stands in the text, for a reader that needs the uses in the
+    #: order they are written: the groups are listed first here, and the narrative keys
+    #: after them.
+    start: int = -1
 
 
 def find_citations(text: str, path: Path) -> list[CitationUse]:
@@ -108,6 +112,7 @@ def find_citations(text: str, path: Path) -> list[CitationUse]:
                     line=line_of(body_start + key_match.start()),
                     narrative=False,
                     raw=match.group(0),
+                    start=body_start + key_match.start(),
                 )
             )
 
@@ -123,6 +128,7 @@ def find_citations(text: str, path: Path) -> list[CitationUse]:
                 line=line_of(match.start()),
                 narrative=True,
                 raw=match.group(0),
+                start=match.start(),
             )
         )
 

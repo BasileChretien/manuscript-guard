@@ -490,6 +490,36 @@ SPELT = (
 )  # fmt: skip
 
 
+# ---------------------------------------------------------------------- what an edit holds
+
+#: A binding, a citation and a number in each of the ways one is written: what `reworded`
+#: holds to its place.
+HELD = (
+    "{{results.ror.point}}", "{{ results.n.total }}", "{{lit.agency.count}}", "[@smith2020]",
+    "[@smith2020; @lee2019, p. 12]", "@doe2018", "-@lee2019", "3.84", "-0.5", "1,200", "77",
+    "(n = 12)", "5 %",
+)  # fmt: skip
+
+
+@st.composite
+def edits(draw: st.DrawFn) -> tuple[str, str]:
+    """A manuscript and what an edit made of it: the same text, one of its paragraphs moved
+    to the end, one taken out, or another manuscript altogether."""
+    before = draw(texts(HELD))
+    kind = draw(st.sampled_from(("the same", "moved", "cut", "another")))
+    if kind == "the same":
+        return before, before
+    if kind == "another":
+        return before, draw(texts(HELD))
+    paragraphs = before.split("\n\n")
+    at = draw(st.integers(0, len(paragraphs) - 1))
+    if kind == "moved":
+        paragraphs.append(paragraphs.pop(at))
+    else:
+        del paragraphs[at]
+    return before, "\n\n".join(paragraphs)
+
+
 # ------------------------------------------------------------------- a project's settings
 
 # Lines typed at the end of a new project's `paper.yaml`. Half are settings as the schema
@@ -606,4 +636,5 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "import": sessions(),
+    "reworded": edits(),
 }

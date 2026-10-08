@@ -134,6 +134,16 @@ that was verified against dictionaries, and from the rest only verbs in `-ise` a
 medical forms such as `haem-`. Where a field spells a word its own way, the project lists
 the word under `language: accepted_spellings:`.
 
+**A language edit changes the wording and nothing else.** A co-author, an editing service
+or a model that tidies a paragraph is trusted with its words, and `check` cannot see
+whether it kept to them: one confidence bound written for the other is still a binding
+that resolves. `manuscript-guard reworded` compares the manuscript with the last commit and
+holds every binding, every citation key and every typed number to its place. One that is
+gone, new or changed fails. The same ones in another order pass with a warning for each
+place, because a clause that moved and two values that changed places look the same. A
+number is compared as it is typed, so "3" spelt out as "three" is reported too; the space
+before a unit or around a sign is free.
+
 **Exemptions are small, explicit and reviewable.** Conventions live in a narrow shipped
 list pinned to specific values — `p < 0.05` is allowed, `p < 0.37` is not, because a p-value
 you obtained is a result. Project additions require a written reason. Axis ticks are

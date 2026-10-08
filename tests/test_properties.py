@@ -1063,6 +1063,10 @@ def test_a_source_read_twice_is_read_as_it_was_the_first_time(source: str, nobod
         assert normalise(normalise(text)) == normalise(text), text
 
 
+#: The words of a source that a page sets otherwise than a person types them.
+_SET_IN_TYPE = tuple(word for word in SOURCE_WORDS if typed(word) != word)
+
+
 @holds(150, quotations())
 def test_a_quotation_typed_from_its_source_is_found_and_one_it_does_not_hold_is_not(
     drawn: tuple[str, str],
@@ -1074,6 +1078,12 @@ def test_a_quotation_typed_from_its_source_is_found_and_one_it_does_not_hold_is_
     assert contains(source, quote), (source, quote)
     assert contains(source, typed(quote)), (source, typed(quote))
     assert not contains(source, f"{typed(quote)} similar"), (source, quote)
+    # A word set in type is in few of the quotations drawn, and under some seeds one of
+    # them is in none of a run's: with seeds 1 and 3, of twelve tried, a folding that had
+    # lost the ligature of "effect" passed. So each is put after every source drawn, and
+    # looked for there as it is typed.
+    for word in _SET_IN_TYPE:
+        assert contains(f"{source} {word}", typed(word)), (source, word)
 
 
 _WHOLE_NUMBER = re.compile(r"\d+(?:\.\d+)?")

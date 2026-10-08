@@ -523,8 +523,38 @@ NOTATED = (
     "P = 0.03", "p=0.04", "*P* < 0.001", "p-value", "n = 12", "n=3", "N= 40",
     "95% CI 1.2 to 3.4", "95% CI 1.2-3.4", "(95% CI {{results.low}} to {{results.high}})",
     "P = {{results.p}}", "5%", "5 %", "5mg", "5 mg", "{{results.dose}}mL",
-    "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g",
+    "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g", "(CI 95%-0.3 to 0.4)",
 )  # fmt: skip
+
+
+# ---------------------------------------------------------------------- what an edit holds
+
+#: A binding, a citation and a number in each of the ways one is written: what `reworded`
+#: holds to its place.
+HELD = (
+    "{{results.ror.point}}", "{{ results.n.total }}", "{{lit.agency.count}}", "[@smith2020]",
+    "[@smith2020; @lee2019, p. 12]", "@doe2018", "-@lee2019", "3.84", "-0.5", "1,200", "77",
+    "(n = 12)", "5 %",
+)  # fmt: skip
+
+
+@st.composite
+def edits(draw: st.DrawFn) -> tuple[str, str]:
+    """A manuscript and what an edit made of it: the same text, one of its paragraphs moved
+    to the end, one taken out, or another manuscript altogether."""
+    before = draw(texts(HELD))
+    kind = draw(st.sampled_from(("the same", "moved", "cut", "another")))
+    if kind == "the same":
+        return before, before
+    if kind == "another":
+        return before, draw(texts(HELD))
+    paragraphs = before.split("\n\n")
+    at = draw(st.integers(0, len(paragraphs) - 1))
+    if kind == "moved":
+        paragraphs.append(paragraphs.pop(at))
+    else:
+        del paragraphs[at]
+    return before, "\n\n".join(paragraphs)
 
 
 # ------------------------------------------------------------------- a project's settings
@@ -646,4 +676,5 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "import": sessions(),
+    "reworded": edits(),
 }

@@ -106,8 +106,8 @@ the scale a narrative review is appraised with. You supply the official document
 is generated locally. Each profile records how thoroughly it was verified, because that
 differs — a Word table allows every item's full text to be checked, a column-laid-out PDF only
 each item's opening clause, and a rating scale read line by line allows no independent check
-at all, offering instead that a line it cannot place stops the transcription, as far as the
-counts a recipe states can see.
+at all, offering instead that a line it cannot place stops the transcription — below
+the first heading of its page, and as far as the counts a recipe states can see.
 
 The transcribed text is not redistributed, so each guideline's licence stays the guideline's
 business.
@@ -153,6 +153,18 @@ form used less: for the symbol of a P value, the spaces around the sign after `P
 counts as a number, so the notation around `{{results.p}}` is read like any other. One
 thing is no matter of counting: a number that runs into its unit, "5mg", is reported
 wherever it stands, because the SI Brochure sets a space there.
+
+**A language edit changes the wording and nothing else.** A co-author, an editing service
+or a model that tidies a paragraph is trusted with its words, and `check` cannot see
+whether it kept to them: one confidence bound written for the other is still a binding
+that resolves. `manuscript-guard reworded` compares the manuscript with the last commit and
+holds every binding, every citation key and every typed number to its place. One that is
+gone, new or changed fails. The same ones in another order pass with a warning for each
+place, because a clause that moved and two values that changed places look the same. A
+number is compared as it is typed, so "3" spelt out as "three" is reported too; the space
+before a unit or around a sign is free. A minus sign is part of its number where the dash
+can be nothing else; where it may be the dash of a range, after a mark of emphasis or a
+raised figure, one that came or went is shown with a warning.
 
 **Exemptions are small, explicit and reviewable.** Conventions live in a narrow shipped
 list pinned to specific values — `p < 0.05` is allowed, `p < 0.37` is not, because a p-value

@@ -1452,6 +1452,52 @@ def cmd_explain(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reworded(args: argparse.Namespace) -> int:
+    """Compare the manuscript with what it was, and say what changed besides the wording.
+
+    Exit 1 where a binding, a citation or a typed number is gone, new or changed; 0 where
+    they all stand, in the same order or with a warning for each place where it differs; 2
+    where there is no text before to compare with."""
+    from manuscript_guard.reworded import NoBefore, against_commit, against_copy
+
+    try:
+        if args.before is not None:
+            if len(args.paths) != 1:
+                raise NoBefore(
+                    "--before names the text one file had: give that one file, as in "
+                    "`manuscript-guard reworded manuscript/main.md --before main-before.md`"
+                )
+            outcome = against_copy(args.paths[0], args.before)
+        else:
+            outcome = against_commit(args.paths or [Path.cwd()], args.since)
+    except NoBefore as exc:
+        print(f"manuscript-guard reworded: {exc}", file=sys.stderr)
+        return 2
+
+    report = outcome.report
+    if args.json:
+        print(report.to_json())
+        return 0 if report.ok else 1
+
+    def many(count: int, one: str) -> str:
+        return f"{count} {one}" if count == 1 else f"{count} {one}s"
+
+    counts = report.counts
+    print(f"manuscript-guard {__version__} \N{EM DASH} {outcome.root}")
+    print(
+        f"compared with {outcome.against}: {many(counts.get('reworded_files', 0), 'file')}, "
+        f"{many(counts.get('reworded_bindings', 0), 'binding')}, "
+        f"{many(counts.get('reworded_citations', 0), 'citation')} and "
+        f"{many(counts.get('reworded_numbers', 0), 'number')}"
+    )
+    print(Report(report.findings).render(outcome.root))
+    print(
+        f"\n{len(report.failures)} failing, {len(report.warnings)} warning"
+        f"{'' if len(report.warnings) == 1 else 's'}"
+    )
+    return 0 if report.ok else 1
+
+
 def cmd_render(args: argparse.Namespace) -> int:
     """Substitute bindings into build/, without producing a document yet."""
     project, _ = load_project(args.path)
@@ -2457,6 +2503,38 @@ def build_parser() -> argparse.ArgumentParser:
     explain = sub.add_parser("explain", help="show how each number in a file was classified")
     explain.add_argument("file", type=Path)
     explain.set_defaults(func=cmd_explain)
+
+    reworded = sub.add_parser(
+        "reworded",
+        help="check that an edit changed the wording and nothing else",
+        description="Compares the manuscript with what it was and holds every binding, "
+        "citation key and typed number to its place. One that is gone, new or changed "
+        "fails; the same ones in another order pass with a warning for each place. Run it "
+        "after a language edit, by a person, a service or a model, and before committing "
+        "it: the text before is the last commit's unless another is named.",
+    )
+    reworded.add_argument(
+        "paths",
+        nargs="*",
+        type=Path,
+        metavar="PATH",
+        help="manuscript files to compare, or a project's folder for all of its manuscript "
+        "(default: the project of the current folder)",
+    )
+    reworded.add_argument(
+        "--since",
+        default="HEAD",
+        metavar="REVISION",
+        help="the git revision that holds the text before the edit (default: the last commit)",
+    )
+    reworded.add_argument(
+        "--before",
+        type=Path,
+        metavar="COPY",
+        help="a copy of one file as it was before the edit, for a text that is not in git",
+    )
+    reworded.add_argument("--json", action="store_true", help="the report as JSON")
+    reworded.set_defaults(func=cmd_reworded)
 
     render = sub.add_parser("render", help="substitute bindings into build/rendered")
     render.add_argument("path", nargs="?", type=Path, default=Path.cwd())

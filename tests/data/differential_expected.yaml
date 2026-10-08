@@ -26,6 +26,6 @@
 expected:
   - reading: notation
     why: >-
-      a `g` after four figures is a weight again, "2500g", and reported unless a word of
-      centrifuging stands before it; and a first bound in percent with a hyphen after it,
-      "CI 80%-93%; 12 studies", is a bound and no level, so the semicolon is no join
+      a level typed after the letters hard against a negative bound, "CI 95%-0.3 to 0.4",
+      is a level again: only a bound in percent after the hyphen makes the number before
+      it a first bound

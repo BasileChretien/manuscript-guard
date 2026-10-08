@@ -253,6 +253,7 @@ number in the file and the rule that classified it.
 | `review` | show where the review panel stands; `--run` has it read by the models you list |
 | `checker` | send a co-author one file of things to confirm, and record what they answered |
 | `import` | bring a co-author's Word edits back into the manuscript source |
+| `reworded` | check that an edit changed the wording and no binding, citation or typed number |
 | `respond` | open a revision round, or write the point-by-point response |
 | `submit` | assemble the submission pack |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |

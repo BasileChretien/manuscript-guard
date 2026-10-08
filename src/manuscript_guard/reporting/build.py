@@ -80,14 +80,13 @@ def build_profile(
         # A rating scale, not a checklist: numbered items with the statements a rater chooses
         # between. There is nothing here to verify the items against — they are the reader's
         # output read line by line from its input — so the profile says that in as many words
-        # instead of claiming a check. What stands in for one is that the reader drops nothing:
-        # a line it cannot place stops the transcription, as far as the recipe's counts reach.
-        # See scale.py and DESIGN.md's Known gaps for what no count sees.
+        # instead of claiming a check. What stands in for one is that a line below the first
+        # heading of its page is placed or the reading stops — above that heading every line is
+        # passed over, and no count sees a wrapped one. See scale.py and DESIGN.md's Known gaps.
         from manuscript_guard.reporting.scale import (
-            VERIFICATION,
-            VERIFICATION_UNCOUNTED,
             ScaleRecipe,
             transcribe_scale,
+            verification_for,
         )
 
         items, _read = transcribe_scale(
@@ -102,12 +101,12 @@ def build_profile(
             ),
         )
         unverified = []
-        # Which of the two true sentences this profile gets. One string for both read as though
-        # counts were held where a recipe states none.
-        counted = layout.get("items") is not None and layout.get("options") is not None
+        # Which of the four true sentences this profile gets. One string for every recipe said
+        # "with the item counts the recipe states" of a recipe that states none, and the two
+        # that replaced it said "no count" of a recipe that states one.
         meta = {
             **meta,
-            "verification": VERIFICATION if counted else VERIFICATION_UNCOUNTED,
+            "verification": verification_for(layout.get("items"), layout.get("options")),
             "kind": "scale",
         }
     elif str(parse_mode).startswith("pdf"):

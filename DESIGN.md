@@ -1153,8 +1153,8 @@ no gate, because a gate has one text and this needs two. Basile chose its four t
 **The text before is a commit's, or a copy.** By default each manuscript file is compared
 with itself at the last commit, which is where an edit not yet committed is seen; `--since`
 names another revision, and `--before` a copy of one file, for a text that is not in git. A
-file that is new or gone since the commit is reported with the facts that came or went
-with it.
+file that is new or gone since the commit is reported with the count of the facts that came
+or went with it.
 
 **Gone, new or changed fails; another order warns.** A fact that stood and does not, or
 stands and did not, is either more than a rewording or a slip, and whoever reads the edit
@@ -1170,6 +1170,17 @@ and a rule that guessed would have to read "one" as a number or as a pronoun. Wh
 does to the notation around a number is free: the space before a unit or a per cent sign,
 the spaces around a sign of comparison, a hyphen made a true minus sign. So the edits that
 tidy a manuscript's notation pass.
+
+**A dash is a sign or a join by what stands before it.** "-0.3" made "0.3" is a number
+changed, and "1.2-3.4" made "1.2 to 3.4" is a range retyped. The dash joins where what
+stands before it ends something: a letter, a figure, a closing bracket, a bound value, a
+per cent sign, a prime, a currency sign, or a mark of emphasis, maths or superscript that
+closes there. After anything else it is the sign. The first review found both halves
+wrong. "-.30" was read as "30", so a sign and a point could go with nothing said, and
+so could an exponent typed with raised figures. And "10^3^-10^5^", "5'-3'" and "*n*-1"
+had the dash of a range read as a sign, so that making the range "to" was refused. A
+mark that opens as well as closes is told by its own word: the second caret of
+"10^3^" closes, the first of "10^-5^" opens.
 
 **It is read once, with a count.** Whether a fact is gone or new is known from how often it
 stands in each text. Where the order changed is known from a count of what one text has had
@@ -7515,17 +7526,34 @@ Closed since, and why each mattered:
   - A fact moved from one file to another is gone from the first and new in the second.
     So is every fact of a file that was renamed.
   - An address, a link's target and a footnote's mark are not read, so a figure changed
-    in a URL or a DOI passes. Nor is what a comment holds, or the front matter outside its
-    title, abstract and keywords.
+    in a URL or a DOI passes. Nor is what a comment holds, a listing inside it included.
+  - In the front matter a number is read under the keys the build prints (title,
+    subtitle, short and running title, abstract, summary, keywords) and under no other.
+    Bindings and citations are read in all of it, so a key under `nocite:` is held, and
+    so is an `author: '@handle'`.
+  - The title and the keywords the build prints are in `paper.yaml`, which is not
+    compared: a figure changed in the title there passes.
   - In a listing every figure is held, a figure in a name there too. A binding or a
     citation in a listing is held as one, though pandoc prints it as typed.
   - "0,5" is read as two numbers and "1.2.3" as "1.2" and "3". Each is compared as typed
     either way, so only an edit between such forms is told differently: "0,5" made "0.5"
     is two numbers gone and one new.
-  - A dash before a number is its sign unless a letter, a figure, a closing bracket, a
-    per cent sign, a degree sign or a bound value stands before the dash: "x-3" and
-    "80%-93%" keep no sign, "word -3" and "(-3" have one. So a rewording that closes
-    "about -3" up to "about-3" is told the number changed.
+  - A dash before a number is its sign unless what stands before the dash ends
+    something: a letter, a figure, a closing bracket, a bound value, a per cent, per
+    mille or degree sign, a prime, a closing quotation mark, a euro, pound, yen or cent
+    sign, or a mark of emphasis, maths, code, superscript or subscript that closes
+    there. "x-3", "80%-93%", "5'-3'", "*n*-1" and "10^3^-10^5^" keep no sign;
+    "word -3", "(-3", "*-0.3*" and "10^-5^" have one. So a rewording that closes
+    "about -3" up to "about-3" is told the number changed. Which of a pair a mark is,
+    is read in its own word, 80 characters back at most, and a straight quotation mark
+    closes after anything but a space or an opening bracket.
+  - A sign set apart from its number by a space is not read with it: a true minus, a
+    space and "0.3", made "0.3", passes.
+  - A comma before three figures is read as one number's: "100,200 and 400 mg" made
+    "100, 200 and 400 mg" is told '100,200' gone and two numbers new.
+  - Git is given 30 seconds to answer. Through the wrapper Git for Windows puts on the
+    path, a git that never ends is waited on past that, until its output closes: the
+    limit stops the wrapper and not the git it started. `emit.py` asks git the same way.
   - The text before is what git holds for the commit. A file under a
     `working-tree-encoding` or a filter is compared as git stores it.
 

@@ -44,7 +44,14 @@ from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import load_project
 from manuscript_guard.findings import FAIL, WARN, Finding, Report, merge_all
 from manuscript_guard.gates.numbers import SOURCE_GLOB, source_files
-from manuscript_guard.text.masking import blank_comments, fenced_blocks, mask
+from manuscript_guard.text.masking import (
+    NUL,
+    _frontmatter_spans,
+    blank_comments,
+    fenced_blocks,
+    html_comments,
+    mask,
+)
 from manuscript_guard.text.placeholders import NAMESPACES, PLACEHOLDER
 from manuscript_guard.text.tokens import _ENCLOSED, _FRACTIONS
 from manuscript_guard.zotero.citations import find_citations
@@ -55,23 +62,61 @@ BINDING = "binding"
 CITATION = "citation"
 NUMBER = "number"
 
-#: The signs a number is typed with. A hyphen, a true minus sign and an en dash are one
-#: sign: making the first into the second is a language edit.
-_MINUS = "-\N{MINUS SIGN}\N{EN DASH}"
+#: The signs a number is typed with. Every hyphen and dash a keyboard or an editor puts
+#: before a number is one sign with the true minus: making one into another is a language
+#: edit.
+_MINUS = (
+    "-\N{HYPHEN}\N{NON-BREAKING HYPHEN}\N{FIGURE DASH}\N{EN DASH}\N{MINUS SIGN}"
+    "\N{SMALL HYPHEN-MINUS}\N{FULLWIDTH HYPHEN-MINUS}"
+)
 #: After these a dash joins two things and is no sign: a letter or a figure, a closing
-#: bracket, a per cent or a degree sign, and a bound value, which the mask has blanked:
-#: "IL-6", "1.2-3.4", "80%-93%", "{{low}}-3". After anything else it is the sign of the
-#: number it stands against: a space, an opening bracket, a sign of comparison, a mark
-#: of emphasis. Said this way round so that a character nobody listed, an arrow or an
+#: bracket, a bound value, which the mask has blanked, and the marks that only ever close
+#: something: a per cent, a per mille or a degree sign, a prime, a closing quotation mark,
+#: a currency sign. "IL-6", "1.2-3.4", "80%-93%", "{{low}}-3". After anything else it is
+#: the sign of the number it stands against: a space, an opening bracket, a sign of
+#: comparison. Said this way round so that a character nobody listed, an arrow or an
 #: "about" sign, leaves the number its sign: read the other way, rewording "about -0.3"
 #: with such a character took the sign off and reported a number changed.
-_JOINS = r"(?<![^\W_])(?<![)\]}%\N{DEGREE SIGN}\x00])"
-#: A number as it is typed: figures, with commas between groups of three and one decimal
-#: point. "0,5" is two numbers here and "1,2,3" three, so that a space typed after a comma
-#: changes nothing; a fraction or an enclosed figure is one by itself.
+_JOINS = (
+    r"(?<![^\W_])(?<![)\]}%\x00"
+    "\N{DEGREE SIGN}\N{PER MILLE SIGN}\N{PRIME}\N{DOUBLE PRIME}"
+    "\N{RIGHT SINGLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK}"
+    "\N{EURO SIGN}\N{POUND SIGN}\N{YEN SIGN}\N{CENT SIGN}])"
+)
+#: Where a sign may stand: after the "e" of an exponent, "1e-5", and where nothing joins.
+_SIGN_HERE = r"(?:(?<=\d[eE])|" + _JOINS + ")"
+#: The marks that open as well as close, so that what the dash after one is depends on
+#: which it does there. Pandoc's superscript and subscript open against their base, with
+#: no space: in "10^-5^" the first caret of its word opens and the dash is a sign, in
+#: "10^3^-10^5^" the second closes and the dash joins.
+_ATTACHED = "^~"
+#: Emphasis, maths, code and a straight quotation mark open after a space, a bracket or a
+#: sign of comparison and close after anything else: "*-0.3*" has a sign, "*n*-1" and
+#: "5'-3'" have none.
+_SPACED = "*_$`'\""
+_OPENS = "([{=<>\N{LEFT DOUBLE QUOTATION MARK}\N{LEFT SINGLE QUOTATION MARK}"
+#: How far back a mark's own word is read.
+_WORD = 80
+_SUPERSCRIPT = (
+    "\N{SUPERSCRIPT ZERO}\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO}\N{SUPERSCRIPT THREE}"
+    "\N{SUPERSCRIPT FOUR}-\N{SUPERSCRIPT NINE}"
+)
+_SUBSCRIPT = "\N{SUBSCRIPT ZERO}-\N{SUBSCRIPT NINE}"
+#: A number as it is typed. Figures, with commas between groups of three and one decimal
+#: point: "0,5" is two numbers here and "1,2,3" three, so that a space typed after a comma
+#: changes nothing. A point and figures with no nought before them, ".05", where no
+#: letter, figure or point stands before the point: "Fig.5" and "1.2.3" are read as they
+#: were. A run of raised or lowered figures with its own sign, as in ten to the minus
+#: eight typed with the characters, or the fifty of an IC50 typed low: G2 leaves those out
+#: because a square metre claims nothing, and here nothing is claimed, only compared. A
+#: fraction or an enclosed figure is a number by itself.
 _NUMBER = re.compile(
-    "(?:" + _JOINS + "(?P<sign>[" + _MINUS + "+]))?"
-    r"(?P<figures>\d+(?:,\d{3}(?!\d))*(?:[.\N{MIDDLE DOT}]\d+)?|[" + _FRACTIONS + _ENCLOSED + "])"
+    "(?:" + _SIGN_HERE + "(?P<sign>[" + _MINUS + "+]))?(?P<figures>"
+    r"\d+(?:,\d{3}(?!\d))*(?:[.\N{MIDDLE DOT}]\d+)?"
+    r"|(?<![^\W_])(?<!\.)\.\d+"
+    "|[\N{SUPERSCRIPT PLUS SIGN}\N{SUPERSCRIPT MINUS}]?[" + _SUPERSCRIPT + "]+"
+    "|[\N{SUBSCRIPT PLUS SIGN}\N{SUBSCRIPT MINUS}]?[" + _SUBSCRIPT + "]+"
+    "|[" + _FRACTIONS + _ENCLOSED + "])"
 )
 
 #: How many lines or facts a message lists before it says how many more there are.
@@ -110,17 +155,39 @@ class Fact:
 def _numbers_in(text: str) -> str:
     """`text` with everything blanked that prints no number of the author's: comments, the
     keys of the front matter, bindings, citation keys, addresses. A listing is printed, so
-    it is put back: `mask` hides one because G2 reads it by other rules."""
+    it is put back: `mask` hides one because G2 reads it by other rules.
+
+    Not a listing that a comment holds, or one under a key of the front matter that is not
+    printed. `mask` blanks those twice, as a listing and as what holds it, and putting the
+    listing back undid both: a text returned without its comments was told that the seed
+    of a commented listing was gone."""
     hidden = mask(text)
-    parts: list[str] = []
-    position = 0
-    for fence in sorted(fenced_blocks(text), key=lambda found: found.start):
-        if fence.start < position:
-            continue
-        parts += [hidden[position : fence.start], text[fence.start : fence.end]]
-        position = fence.end
-    parts.append(hidden[position:])
-    return "".join(parts)
+    fences = fenced_blocks(text)
+    if not fences:
+        return hidden
+    shown = list(hidden)
+    for fence in fences:
+        shown[fence.start : fence.end] = text[fence.start : fence.end]
+    for start, end in (*html_comments(text, fences), *_frontmatter_spans(text)):
+        shown[start:end] = NUL * (end - start)
+    return "".join(shown)
+
+
+def _ends_something(text: str, at: int) -> bool:
+    """Does the mark at `at` close what it marks, so that a dash after it joins two things
+    and is no sign? False of a character that is no such mark."""
+    mark = text[at]
+    low = max(0, at - _WORD)
+    if mark in _ATTACHED:
+        start = at
+        while start > low and not text[start - 1].isspace():
+            start -= 1
+        return text.count(mark, start, at + 1) % 2 == 0
+    if mark not in _SPACED:
+        return False
+    while at > low and text[at - 1] in _SPACED:
+        at -= 1
+    return at > 0 and not text[at - 1].isspace() and text[at - 1] not in _OPENS
 
 
 def facts(text: str) -> list[Fact]:
@@ -142,10 +209,14 @@ def facts(text: str) -> list[Fact]:
         if binding["ns"] in NAMESPACES
     ]
     found += [fact(CITATION, use.citekey, use.start) for use in find_citations(printed, Path())]
-    for number in _NUMBER.finditer(_numbers_in(text)):
-        sign = number["sign"] or ""
+    shown = _numbers_in(text)
+    for number in _NUMBER.finditer(shown):
+        sign, start = number["sign"] or "", number.start()
+        if sign and start and _ends_something(shown, start - 1):
+            # The dash follows a mark that closes: it joins two things, as after a letter.
+            sign, start = "", number.start("figures")
         held = ("-" if sign and sign in _MINUS else sign) + number["figures"]
-        found.append(fact(NUMBER, held, number.start()))
+        found.append(fact(NUMBER, held, start))
     return sorted(found, key=lambda one: one.start)
 
 

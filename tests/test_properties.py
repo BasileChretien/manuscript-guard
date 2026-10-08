@@ -760,7 +760,16 @@ _WRITTEN = {
     BINDING: ("{{results.%s}}", "{{ results.%s }}"),
     CITATION: ("[@key%s]", "@key%s", "[see @key%s]"),
 }
-_TYPED_NUMBERS = ("12", "3.84", "1,200", "-0.5", "95", "0.05")
+_TYPED_NUMBERS = ("12", "3.84", "1,200", "-0.5", "95", "0.05", ".05", "-.30")
+#: How a number is set in its sentence: bare, in brackets, in emphasis, after a sign. The
+#: sign of a negative one is read in each, and the point of one with no nought.
+_SET = ("%s", "(%s)", "*%s*", "**%s**", "= %s", "\N{ALMOST EQUAL TO}%s")
+#: Each of the hyphens typed for a minus sign.
+_MINUS_TYPED = ("-", "\N{MINUS SIGN}", "\N{NON-BREAKING HYPHEN}")
+#: How the first bound of a range is set: bare, with a per cent sign or a prime, in
+#: emphasis, raised. Each ends something, so the dash after it joins.
+_FIRST_BOUND = ("%s", "%s%%", "%s'", "*%s*", "**%s**", "x^%s^")
+_JOINED = ("-", "\N{EN DASH}", " to ")
 #: What an edit brings that the text before never held.
 _UNSEEN = {BINDING: "added", CITATION: "added", NUMBER: "987654"}
 
@@ -795,8 +804,10 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
     did that to as a finding shows them, and the line of the after text it did it on.
 
     Every sentence is written twice, with other words between its facts each time and each
-    fact in another of the ways it is written: that is the rewording, and it is free. A
-    comment stands in both, and holds other things in each."""
+    fact in another of the ways it is written: a number bare, in brackets, in emphasis or
+    as a bound of a range, joined each of the ways a range is. That is the rewording, and
+    it is free. A comment stands in both, and holds other things in each: a listing in
+    the first."""
     did = draw(
         st.sampled_from(("nothing", "nothing", "lost", "new", "changed", "unsigned", "turned"))
     )
@@ -848,19 +859,35 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
 
     def written(held: list[tuple[str, str]]) -> str:
         parts = [filler().capitalize()]
-        for kind, text in held:
-            if kind == NUMBER:
-                retyped = text.replace("-", "\N{MINUS SIGN}")
-                parts.append(draw(st.sampled_from((text, retyped))))
+        at = 0
+        while at < len(held):
+            kind, text = held[at]
+            follows = held[at + 1] if at + 1 < len(held) else ("", "-")
+            if (
+                kind == follows[0] == NUMBER
+                and text[0] not in "-."
+                and follows[1][0] not in "-."
+                and draw(st.booleans())
+            ):
+                # Two numbers as the bounds of a range, in one of the ways it is joined.
+                # They are read as the two numbers each time: the dash of a range is no sign.
+                low = draw(st.sampled_from(_FIRST_BOUND)) % text
+                parts.append(low + draw(st.sampled_from(_JOINED)) + follows[1])
+                at += 2
+            elif kind == NUMBER:
+                retyped = text.replace("-", draw(st.sampled_from(_MINUS_TYPED)))
+                parts.append(draw(st.sampled_from(_SET)) % retyped)
+                at += 1
             else:
                 parts.append(draw(st.sampled_from(_WRITTEN[kind])) % text)
+                at += 1
             parts.append(filler())
         return " ".join(parts) + "."
 
     comment = draw(st.integers(0, len(before)))
     texts_of = []
     for sentences, hidden in (
-        (before, "<!-- was {{results.gone}} in 14 [@gone2001] -->"),
+        (before, "<!--\n```r\nset.seed(14)\nx <- {{results.gone}} [@gone2001]\n```\n-->"),
         (after, "<!-- now 15 -->"),
     ):
         paragraphs = [written(held) for held in sentences]
@@ -1042,6 +1069,17 @@ def _a_comment_holds_facts(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reworded_module, "blank_comments", lambda text: text)
 
 
+def _every_dash_before_a_figure_is_its_sign(patch: pytest.MonkeyPatch) -> None:
+    loose = reworded_module._NUMBER.pattern.replace(reworded_module._SIGN_HERE, "", 1)
+    assert loose != reworded_module._NUMBER.pattern
+    patch.setattr(reworded_module, "_NUMBER", re.compile(loose))
+    patch.setattr(reworded_module, "_ends_something", lambda text, at: False)
+
+
+def _a_listing_in_a_comment_is_put_back(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reworded_module, "html_comments", lambda text, fences=None: [])
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -1079,6 +1117,14 @@ BROKEN = {
     ),
     "the order of the facts is not looked at": (
         _the_order_is_not_looked_at,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "every dash before a figure is its sign": (
+        _every_dash_before_a_figure_is_its_sign,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "a listing in a comment is put back with the rest": (
+        _a_listing_in_a_comment_is_put_back,
         test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
     ),
     "what a comment holds is held to its place": (

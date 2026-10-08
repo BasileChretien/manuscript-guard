@@ -10,6 +10,7 @@ see that, because it reads the manuscript as it is and both `{{results.ror.lower
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -86,6 +87,36 @@ def test_each_fact_knows_its_line() -> None:
         ("a change of \N{MINUS SIGN}0.3", ["-0.3"]),  # the true minus is the same sign
         ("a change of (\N{EN DASH}0.3 to 0.4)", ["-0.3", "0.4"]),
         ("a rise of +2.5 points", ["+2.5"]),
+        # a number with no nought keeps its point and its sign
+        ("an r of -.30", ["-.30"]),
+        ("a P of .05", [".05"]),
+        ("in Fig.5 and on p.12", ["5", "12"]),
+        ("version 1.2.3", ["1.2", "3"]),
+        # raised and lowered figures are figures
+        ("P < 5 x 10⁻⁸", ["5", "10", "⁻⁸"]),
+        ("10⁶ cells", ["10", "⁶"]),
+        ("an IC₅₀ of 3", ["₅₀", "3"]),
+        ("P < 1e-5", ["1", "-5"]),
+        # the dash of a range after a mark that closes something is no sign
+        ("10^3^-10^5^ cells", ["10", "3", "10", "5"]),
+        ("the 5'-3' direction", ["5", "3"]),
+        ("the 5\N{PRIME}\N{EN DASH}3\N{PRIME} direction", ["5", "3"]),
+        ("with *n*-1 degrees of freedom", ["1"]),
+        ("with $n$-1 degrees of freedom", ["1"]),
+        ("at 50\N{EURO SIGN}-100\N{EURO SIGN} a day", ["50", "100"]),
+        ("PM~2.5~-10 was high", ["2.5", "10"]),
+        ("from 5\N{PER MILLE SIGN}-9\N{PER MILLE SIGN}", ["5", "9"]),
+        ("on days **1**-3", ["1", "3"]),
+        # and after one that opens it is one
+        ("a mean of *-0.3*", ["-0.3"]),
+        ("a mean of **-0.3**", ["-0.3"]),
+        ("a mean of $-0.3$", ["-0.3"]),
+        ("a mean of (*-0.3*)", ["-0.3"]),
+        ("with x~-1~ below", ["-1"]),
+        ("quoted as '-3'", ["-3"]),
+        # every hyphen typed for a minus is the one sign
+        ("a change of \N{NON-BREAKING HYPHEN}0.3", ["-0.3"]),
+        ("a change of \N{FULLWIDTH HYPHEN-MINUS}0.3", ["-0.3"]),
         # a character nobody listed leaves the number its sign
         ("about \N{ALMOST EQUAL TO}-0.3", ["-0.3"]),
         ("down \N{RIGHTWARDS ARROW}-0.3", ["-0.3"]),
@@ -199,7 +230,19 @@ def test_a_fact_that_is_gone_or_new_fails(
 
 @pytest.mark.parametrize(
     ("old", "new"),
-    [("1,200", "1200"), ("0.50", "0.5"), ("-0.3", "0.3"), ("3.84", "3.48"), ("0.05", ".05")],
+    [
+        ("1,200", "1200"),
+        ("0.50", "0.5"),
+        ("-0.3", "0.3"),
+        ("3.84", "3.48"),
+        ("0.05", ".05"),
+        # the first review: each of these passed with nothing said
+        ("-.30", ".30"),
+        (".5 mg", "5 mg"),
+        ("10⁻⁸", "10⁻⁶"),
+        ("an IC₅₀", "an IC₉₀"),
+        ("1e-5", "1e5"),
+    ],
 )
 def test_a_number_is_compared_as_typed(old: str, new: str) -> None:
     report = compare(f"It was {old} in all.\n", f"It was {new} in all.\n", PATH)
@@ -219,6 +262,16 @@ def test_a_number_is_compared_as_typed(old: str, new: str) -> None:
         ("[@smith2020]", "@smith2020"),
         ("{{results.n}}", "{{ results.n }}"),
         ("12 reports", "12\N{NO-BREAK SPACE}reports"),
+        # the first review: each of these was refused with every number left as typed
+        ("10^3^-10^5^ cells", "10^3^ to 10^5^ cells"),
+        ("the 5'-3' direction", "the 5' to 3' direction"),
+        ("n-1 degrees", "*n*-1 degrees"),
+        ("50€-100€", "50€ to 100€"),
+        ("PM~2.5~-10", "PM~2.5~ to 10"),
+        ("5‰-9‰", "5‰ to 9‰"),
+        ("days **1**-3", "days **1** to 3"),
+        ("$n$-1", "$n$ - 1"),
+        ("-0.3", "\N{NON-BREAKING HYPHEN}0.3"),
     ],
 )
 def test_what_a_language_edit_does_to_the_notation_passes(old: str, new: str) -> None:
@@ -309,6 +362,26 @@ def test_a_change_inside_a_comment_is_no_change() -> None:
     assert not compare(before, after, PATH).findings
 
 
+def test_a_listing_inside_a_comment_holds_no_fact() -> None:
+    """A text returned without its comments is a rewording. The listing was put back with
+    the others, comment or no, and its seed and the year in a key were told gone."""
+    listing = "```r\nset.seed(20240115)\nx <- {{results.old}} [@gone2001]\n```"
+    before = f"# Methods\n\nIt held.\n\n<!--\n{listing}\n-->\n\nIt was 12 in all.\n"
+    assert kinds(before) == [(NUMBER, "12")]
+    assert not compare(before, "# Methods\n\nIt held.\n\nIt was 12 in all.\n", PATH).findings
+    assert not compare(before, before.replace("20240115", "7"), PATH).findings
+
+
+def test_a_listing_under_a_key_that_is_not_printed_holds_no_fact() -> None:
+    before = (
+        "---\ntitle: A study of 40 centres\nheader-includes: |\n  ```{=latex}\n"
+        "  documentclass[12pt]\n  ```\n---\n\nIt held in 3 of 4.\n"
+    )
+    assert [text for _kind, text in kinds(before)] == ["40", "3", "4"]
+    assert not compare(before, before.replace("12pt", "6pt"), PATH).findings
+    assert compare(before, before.replace("40 centres", "41 centres"), PATH).findings
+
+
 def test_a_change_inside_a_listing_is_one() -> None:
     before = "# Methods\n\n```r\nset.seed(20240115)\n```\n"
     report = compare(before, before.replace("20240115", "20240116"), PATH)
@@ -363,13 +436,21 @@ def test_a_number_that_stands_everywhere_is_compared_in_linear_time(
 
 needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 
-#: The system's and the user's configuration are kept out, and the file watcher with them:
-#: on a machine that turns it on, git in a repository made a moment ago can wait for ever.
+#: The file watcher is off: on a machine that turns it on, git in a repository made a
+#: moment ago can wait for ever.
 GIT = ("git", "-c", "core.fsmonitor=false", "-c", "user.name=A", "-c", "user.email=a@example.org")
 
 
 def git(root: Path, *args: str) -> None:
-    subprocess.run([*GIT, *args], cwd=root, check=True, capture_output=True, timeout=60)
+    """Git, for the fixture's own commits, with the system's and the user's configuration
+    kept out: a signing key or a folder of hooks of whoever runs the suite has no place in
+    a commit made here."""
+    nobodys = root.parent / "nobodys.gitconfig"
+    nobodys.touch()
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": str(nobodys), "GIT_CONFIG_NOSYSTEM": "1"}
+    subprocess.run(
+        [*GIT, *args], cwd=root, check=True, capture_output=True, timeout=60, env=env
+    )
 
 
 @pytest.fixture

@@ -3866,8 +3866,8 @@ the campaigns are in the suite, on Hypothesis:
 
 - `tests/generated.py` holds the generators: manuscripts, vocabularies, one-line titles,
   sources with quotations of them, the settings typed into a project, a co-author's
-  sessions in Word, texts that quote the bounds of intervals, and a manuscript beside
-  what an edit made of it.
+  sessions in Word, texts that quote the bounds of intervals, the same with comments
+  typed into them, and a manuscript beside what an edit made of it.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its
@@ -3923,13 +3923,13 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So eighteen rules are broken in place, one at a time, and the property that is
+the generators. So nineteen rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, and nine ways `reworded` can misread an edit, from a number's sign taken for no
-part of it to what a comment holds held to its place.
+sentence, a comment read for its stops, and nine ways `reworded` can misread an edit, from
+a number's sign taken for no part of it to what a comment holds held to its place.
 The import is broken three times the same way: a rewording written over the next
 paragraph, one written a second time, and one written over the next paragraph only where
 an identified paragraph did not come back at all. Each is known by the sentence that
@@ -4093,7 +4093,7 @@ it.
   like any other and is compared: it used to end the process that was answering.
 - **The comparison is held to being one.** Two processes on this source under two hash
   seeds must answer alike on every reading, which also catches a reading that walks a
-  set. And ten lines are changed in a copy of the source, one at a time, and the reading
+  set. And eleven lines are changed in a copy of the source, one at a time, and the reading
   that goes through each must differ: among them the mutant the review of #181 found
   alive, the offset of a quotation's lines losing a character at each line break, an
   import that writes no rewording, and a finding that points at another file with its
@@ -7697,12 +7697,18 @@ Closed since, and why each mattered:
   quoted now. The generated reading of the order of intervals (`interval order` in
   `tests/readings.py`) compared them sorted, which hid this from the comparison under two
   hash seeds; it compares them as the gate gives them, and that comparison holds the order.
-- **A stop in an HTML comment, or after an abbreviation, ends a sentence between two
-  bounds.** The sentence ends are read in the file as it is typed. In
+- **A stop after an abbreviation ends a sentence between two bounds.**
+  `{{results.ror.ci_high}}, e.g. {{results.ror.ci_low}}` passes, and so does a reversal
+  with `approx.` or `vs.` between its bounds: a sentence is not parsed, it is cut at each
+  stop before a space. A list of abbreviations would cut ordinary sentences wrongly.
+- **A stop in an HTML comment ended a sentence between two bounds.** The sentences were
+  read in the file as typed. In
   `It ran {{results.ror.ci_high}} <!-- was 7.02. --> to {{results.ror.ci_low}}.` the stop
-  in the comment puts the two bounds in two sentences, so the reversal passes; pandoc drops
-  the comment and prints the interval backwards. `{{results.ror.ci_high}}, e.g.
-  {{results.ror.ci_low}}` passes the same way: a sentence is cut at each stop before a space.
+  in the comment put the two bounds in two sentences, so the reversal passed, and pandoc
+  dropped the comment and printed the interval backwards. And a stop with a comment typed
+  against it, `{{results.ror.ci_high}}.<!-- checked --> The lower bound`, ended none, so
+  the bounds of two sentences were compared. The sentences are read where the bindings
+  are now, in the text with each comment blanked: a comment is white space to both.
 - **A structured abstract cannot state its own signal threshold.** `methods_only` rules need
   a Methods heading, and an abstract's chain is `("Abstract",)`. Treating the whole abstract
   as Methods was considered and rejected: an abstract states results in the same block, and
@@ -8217,7 +8223,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 21 broken rules, and the comparison on ten
+  - The properties were seen to fail on 22 broken rules, and the comparison on eleven
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

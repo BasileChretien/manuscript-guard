@@ -25,6 +25,7 @@ from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.masking import (
+    blank_comments,
     fenced_blocks,
     front_matter_abstract,
     front_matter_end,
@@ -468,10 +469,15 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
     bounds = [(placeholder, value) for placeholder, value in quoted if value.bounds]
     if not bounds:
         return report
-    ends = [match.start() for match in _SENTENCE_END.finditer(text)]
+    # The sentences are read where `parse` read the bindings: with each HTML comment
+    # blanked. Pandoc drops a comment. Read as typed, a stop inside one ended a sentence
+    # between two bounds, and a reversal there passed and was printed; and a stop with a
+    # comment typed against it ended none, so the bounds of two sentences were compared.
+    read = blank_comments(text) if "<!--" in text else text
+    ends = [match.start() for match in _SENTENCE_END.finditer(read)]
     by_sentence: dict[int, list] = {}
     for placeholder, value in bounds:
-        sentence = _sentence(text, ends, placeholder.start)
+        sentence = _sentence(read, ends, placeholder.start)
         by_sentence.setdefault(sentence, []).append((placeholder, value))
 
     for group in by_sentence.values():

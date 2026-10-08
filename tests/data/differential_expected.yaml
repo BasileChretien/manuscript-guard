@@ -31,6 +31,7 @@ expected:
       it a first bound
   - reading: interval order
     why: >-
-      two intervals quoted backwards in one sentence are reported in the order they are
-      quoted, where they came in the order Python walks a set, which the hash seed of the
-      process decides; which intervals are reported, and on which line, is as it was
+      the sentences an interval's bounds are compared in are read with each HTML comment
+      blanked, as the bindings are: a stop inside a comment ends no sentence, so a reversal
+      with such a comment between its bounds is reported, and a stop with a comment typed
+      against it ends one, so the bounds on either side of it are no longer compared

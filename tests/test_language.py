@@ -865,7 +865,7 @@ def test_what_is_hidden_is_a_space_to_the_abbreviations_and_keeps_its_lines(
     file = _file(0, Path("main.md"), text, [], False)
     assert "\x00" not in file.prose
     assert "\x00" in file.printed
-    for reading in (file.prose, file.printed, _hidden(text)):
+    for reading in (file.prose, file.printed, file.spelt, _hidden(text)):
         assert len(reading) == len(text)
         assert [at for at, char in enumerate(reading) if char == "\n"] == file.breaks
     assert "Smith" not in file.printed, "the reference list is hidden from the vocabulary"

@@ -27,9 +27,9 @@ from manuscript_guard.gates.spelling import (
     DATA,
     LISTED,
     MANY,
-    _opens_a_sentence,
     _variants,
     judge_spelling,
+    opens_a_sentence,
 )
 from manuscript_guard.gates.vocabulary import Passage
 
@@ -702,6 +702,21 @@ def test_a_subsection_of_such_a_section_is_left_out_with_it(project: Path) -> No
     assert finding.line == 9
 
 
+def test_a_file_that_continues_such_a_section_is_left_out_with_it(project: Path) -> None:
+    """A file that opens without a heading goes on in the section the one before it
+    ended in, for the spelling as for the abbreviations."""
+    _, found = written(
+        project,
+        "# Methods\n\nNothing here.\n\n# Funding\n\nThe programme paid for it.\n",
+        "en-US",
+        more="Its programme office had no part.\n\n# Data\n\nThe programme data are public.\n",
+    )
+    (finding,) = found
+    assert finding.message.startswith("'programme' is the British spelling of 'program', used once")
+    assert finding.path.name == "more.md"
+    assert finding.line == 5
+
+
 def test_a_slip_in_such_a_section_is_the_price(project: Path) -> None:
     """Written down in Known gaps: the author's own "color" in an acknowledgement passes,
     and so does a whole section of the paper proper whose title holds one of the words."""
@@ -755,7 +770,7 @@ def test_a_slip_in_such_a_section_is_the_price(project: Path) -> None:
 )
 def test_where_a_capital_is_the_sentence_s(before: str, opens: bool) -> None:
     text = before + "Color was noted."
-    assert _opens_a_sentence(text, len(before)) is opens, repr(before)
+    assert opens_a_sentence(text, len(before)) is opens, repr(before)
 
 
 # ---------------------------------------------------------------- reading at any size

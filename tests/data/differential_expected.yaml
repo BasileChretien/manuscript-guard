@@ -24,9 +24,8 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
-  - reading: spelling
+  - reading: check
     why: >-
-      the spelling is no longer read in a contributions, acknowledgements, funding or
-      competing-interests section, whose wording is the CRediT taxonomy's or the
-      funder's, so a word of either usage there is neither counted nor reported; and a
-      word that follows a backslash is a macro's name or a folder's again, not a word
+      G14 reads the notation too, so `check` gains the five counts of that reading on
+      every manuscript, and a warning where one writes a P value, the sign after it, an
+      interval or a percentage in two ways, or runs a number into its unit

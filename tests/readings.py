@@ -277,6 +277,20 @@ def _spelling() -> Reading:
     return spelling
 
 
+@reading("notation")
+def _notation() -> Reading:
+    from manuscript_guard.gates.notation import judge_notation
+    from manuscript_guard.gates.vocabulary import Passage
+
+    def notation(text: str) -> dict[str, Any]:
+        file = _file(text)
+        passage = Passage(file.path, file.text, file.printed, file.line_of)
+        return _told(judge_notation([passage]))
+
+    _file("")
+    return notation
+
+
 @reading("abbreviations")
 def _abbreviations() -> Reading:
     from manuscript_guard.gates.language import _judge, _Known, _shipped

@@ -207,6 +207,46 @@ def test_an_unanswered_checklist_item_still_appears_in_the_table(project: Path) 
     assert any(row.startswith(f"| {dropped} |") for row in rows), rows[-4:]
 
 
+def test_a_scale_is_not_sent_as_a_completed_reporting_checklist(project: Path) -> None:
+    """An appraisal scale and a reporting checklist are different claims, and what a journal
+    reads is the file name and the heading. Presented as a checklist, SANRA arrived headed
+    "SANRA checklist" with its scoring anchors in a column called "Recommendation"."""
+    from manuscript_guard.build.submission import assemble_pack, checklist_table
+
+    profile = project / "profiles" / "reporting" / "DEMO-OBS.yaml"
+    published = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    published["kind"] = "scale"
+    published["long_name"] = "Demonstration Observational Appraisal Scale"
+    published["applies_to"] = "Demonstrations; an appraisal scale, not a reporting guideline"
+    first = published["items"][0]
+    first["clarification"] = "(e.g., a clarifying line, as a scale prints one)"
+    first["options"] = [
+        {"score": "0", "statement": "Not done."},
+        {"score": "2", "statement": "Done."},
+    ]
+    profile.write_text(yaml.safe_dump(published, sort_keys=False), encoding="utf-8")
+
+    projekt, _ = load_project(project)
+    completion = project / "reporting" / "DEMO-OBS.yaml"
+    text = checklist_table(projekt, completion)
+
+    assert text.startswith("# DEMO-OBS, completed appraisal scale")
+    assert "| Item | Scoring options | Addressed in | Not applicable because |" in text
+    assert "Recommendation" not in text
+    assert "not a reporting guideline" in text
+    assert "the scoring is the reader's to do" in text
+    # The options as the form prints them: statement first, score after.
+    assert "Not done. (0); Done. (2)" in text
+    assert "(e.g., a clarifying line, as a scale prints one)" in text
+
+    document = next((project / "build").glob("manuscript.docx"), None)
+    if document is not None:
+        pack = assemble_pack(projekt, document)
+        assert any(p.name == "scale-DEMO-OBS.md" for p in pack.files), [p.name for p in pack.files]
+        assert any(p.name == "scale-DEMO-OBS.yaml" for p in pack.files)
+        assert not any(p.name.startswith("checklist-DEMO-OBS") for p in pack.files)
+
+
 def test_a_pipe_in_an_item_does_not_break_the_table(project: Path) -> None:
     """A pipe inside a cell ends the cell, and reporting checklists contain "and/or" lists."""
     from manuscript_guard.build.submission import checklist_table

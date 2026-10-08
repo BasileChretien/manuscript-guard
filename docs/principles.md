@@ -93,10 +93,12 @@ package, and a recipe of the same name in your project overrides the shipped one
 
 Recipes ship for thirteen checklists: STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT 2025,
 PRISMA 2020 and its abstracts checklist, READUS-PV and its abstracts checklist, TRIPOD in
-its three variants, and ARRIVE 2.0. You supply the official document; the profile is
-generated locally and every item is verified to appear verbatim in it. Each profile records
-how thoroughly it was verified, because that differs — a Word table allows every item's full
-text to be checked, a column-laid-out PDF only each item's opening clause.
+its three variants, and ARRIVE 2.0; and for one instrument that is not a checklist, SANRA,
+the scale a narrative review is appraised with. You supply the official document; the profile
+is generated locally. Each profile records how thoroughly it was verified, because that
+differs — a Word table allows every item's full text to be checked, a column-laid-out PDF only
+each item's opening clause, and a rating scale read line by line allows no independent check
+at all, offering instead that no line of it was dropped.
 
 The transcribed text is not redistributed, so each guideline's licence stays the guideline's
 business.

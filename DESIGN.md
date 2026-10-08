@@ -699,7 +699,11 @@ verbatim in the document, using the same comparison the literature ledger uses f
 Thirteen checklists have recipes: STROBE (34 items), RECORD (13), RECORD-PE (15), CONSORT
 (41), SPIRIT 2025 (53), PRISMA 2020 (42) and its abstracts checklist (12), READUS-PV (32)
 and its abstracts checklist (12), TRIPOD in its three variants (31 development, 31
-validation, 37 both), and ARRIVE 2.0 (21). READUS-PV is the guideline for disproportionality
+validation, 37 both), and ARRIVE 2.0 (21). A fourteenth recipe is not a checklist: SANRA (6
+items), the scale an editor or a reviewer scores a narrative review with, which exists because
+no reporting guideline covers a narrative review and the first manuscript written with this
+toolkit is one. A scale's profile says `kind: scale`, and the submission pack presents it as a
+scale rather than as a completed reporting checklist, because those are different claims. READUS-PV is the guideline for disproportionality
 analyses of spontaneous reports, and is more directly applicable to signal-detection work
 than STROBE.
 
@@ -6323,7 +6327,7 @@ Closed since, and why each mattered:
 - **G9 cannot tell a refactor from a change of meaning.** Every edit to an analysis file
   prompts a re-read, including one that only moved a function. That is the safe direction,
   but it is friction.
-- **Download links rot.** All thirteen work today, verified by a clean-room fetch and
+- **Download links rot.** All fourteen work today, verified by a clean-room fetch and
   transcribe, but two needed a second attempt and none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible
   wrong transcription, which is the best that can be done about it.
@@ -6341,9 +6345,28 @@ Closed since, and why each mattered:
   Allowing one space is no quick cure either: Xpdf then gives 20 item lines where poppler
   gives 21. Measured on the checklist's second page with Xpdf 4.00 and poppler 24.04, in
   the review of #138.
-- **The TRIPOD adherence assessment form is not transcribed.** It is an appraisal
-  instrument rather than a reporting checklist, and answering it is a different task from
-  the one G5 performs.
+- **The TRIPOD adherence assessment form is not transcribed.** It is an appraisal instrument
+  rather than a reporting checklist. One appraisal instrument now is — SANRA, below — because a
+  narrative review has no reporting guideline at all, and G5 answers its items as it answers a
+  checklist's: where each is addressed, or why not. What G5 does not do, for a scale, is score
+  it; the pack presents the options and leaves the scoring to its reader. TRIPOD's form stays
+  out because a study that follows TRIPOD has TRIPOD to be held to.
+- **A rating scale is read line by line, and nothing checks the reading.** `pdf-scale`
+  (`reporting/scale.py`) reads a form of numbered items with scored options: SANRA's. The items
+  are the reader's output read from its own input, so there is nothing to compare them against —
+  a Word table's items are verified verbatim, a column PDF's by their opening clause, and a
+  scale's not at all. The profile says so in those words rather than printing a guarantee.
+  What stands in for one is that nothing may be dropped: a line the reader cannot place stops
+  the transcription, an item with too few options stops it once the scale has started, the
+  numbers must run from one without a gap, and the recipe states how many items and options the
+  form prints. The first version of this reader dropped what did not match, and the
+  parenthetical under two of SANRA's six items vanished from the profile while it reported every
+  statement verbatim. What remains uncaught: a form whose layout is misread from the start, and
+  a statement that ends within one space of its score, which `pdftotext -layout` may lay out
+  differently between builds — SANRA's longest leaves exactly two spaces under Xpdf 4.00 and
+  many more under poppler 24.04, and both are read, but that is a margin and not a guarantee.
+  Where the form prints something that is not an item, the recipe names it (`stop_at`), because
+  only the recipe can tell a footer from a statement that wrapped.
 - **Recipes are tuned to one document each.** A guideline that reformats its checklist
   breaks its recipe, loudly — the transcription fails rather than producing something
   plausible, which is the right failure, but it is still work.

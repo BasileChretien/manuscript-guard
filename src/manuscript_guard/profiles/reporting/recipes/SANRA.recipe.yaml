@@ -23,11 +23,18 @@ meta:
   retrieved_by: "downloaded by the author"
   licence: >-
     CC BY 4.0 — via the scale's paper (Baethge C, Goldbeck-Wood S, Mertens S. SANRA — a scale for the quality assessment of narrative review articles. Research Integrity and Peer Review 2019;4:5, PMC6434870), which carries the Creative Commons Attribution 4.0 wording and states that SANRA and its explanations document are available open access at the two addresses on aerzteblatt.de.
-  licence_url: http://creativecommons.org/licenses/by/4.0/
+  licence_url: https://researchintegrityjournal.biomedcentral.com/articles/10.1186/s41073-019-0064-8
   download_url: https://www.aerzteblatt.de/down.asp?id=22862
   sha256: 07e0fee98f24fa6807463f7ceca518155124eaaf7e2391604141925e28e7f018
 
 document: SANRA-scale.pdf
 format: pdf-scale
 pages: [1]
+# What the published form prints, so a transcription that reads a different page, or loses an
+# item to a layout this reader does not understand, stops instead of writing a short scale.
+items: 6
+options: 3
+# The form prints a "Sumscore" box under the last item. Named here because the reader refuses a
+# line it cannot place rather than discarding it, and only the recipe can say which this is.
+stop_at: Sumscore
 text_column: 0

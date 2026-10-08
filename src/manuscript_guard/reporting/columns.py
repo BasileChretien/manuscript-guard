@@ -59,8 +59,8 @@ def page_text(path: Path, page: int) -> str:
     """
     if shutil.which("pdftotext") is None:
         raise RecipeError(
-            "reading a column-laid-out PDF needs poppler's pdftotext; install it, or "
-            "supply the checklist in another format"
+            "reading a checklist or a scale laid out in a PDF needs poppler's pdftotext; "
+            "install it, or supply the checklist in another format"
         )
     pages = ["-f", str(page), "-l", str(page)]
     try:

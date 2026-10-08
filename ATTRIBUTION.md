@@ -41,6 +41,7 @@ someone looks for it.
 | CONSORT 2025 | **Download and copying explicitly permitted**, with a condition and a restriction, quoted in full below | consort-spirit.org/terms-of-use |
 | SPIRIT 2025 | As CONSORT — same site, same terms page | consort-spirit.org/terms-of-use |
 | READUS-PV | **CC BY-NC** — non-commercial. Cannot be redistributed from an MIT repository | Europe PMC |
+| SANRA | **CC BY 4.0**, via the scale's paper (Baethge C, Goldbeck-Wood S, Mertens S, *Research Integrity and Peer Review* 2019;4:5), which carries the Creative Commons Attribution 4.0 wording and states that SANRA and its explanations document are available open access. The form itself is served from aerzteblatt.de and states no terms of its own | PMC6434870, aerzteblatt.de/down.asp?id=22862 |
 | TRIPOD 2015 | **All rights reserved — free to read, not openly licensed.** The site states only *"Copyright 2020 - Julius Centrum"*. The statement itself carries *"© BMJ Publishing Group Ltd 2014"*, is marked a free article, has no Creative Commons licence and is not deposited in PMC; the explanation and elaboration is *"freely available only on www.annals.org"* with copyright held by *Annals of Internal Medicine*. Free to read is not free to redistribute | tripod-statement.org, PMID 25569120 |
 
 CONSORT and SPIRIT are worth quoting rather than summarising, because the permission is
@@ -67,10 +68,11 @@ than buried in a file nobody opens.
 
 ## Download links
 
-All thirteen recipes carry a direct `download_url`, and every one has been verified the only
+All fourteen recipes carry a direct `download_url`, and every one has been verified the only
 way worth doing: fetched into an empty directory and checked against the sha256 the recipe
 records, then transcribed. Thirteen fetched, thirteen checksums matched, thirteen profiles
-built. Anyone with the recipes and a network connection gets the same documents and the same
+built; SANRA, the fourteenth, was added later and verified the same way against the form
+served by `down.asp?id=22862`. Anyone with the recipes and a network connection gets the same documents and the same
 profiles.
 
 Two of those links took a second attempt, and both failures are the kind that would

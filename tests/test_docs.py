@@ -215,6 +215,58 @@ def test_the_citation_file_reads_and_names_no_version() -> None:
 
 # ----------------------------------------------------------------------------------- PyPI
 
+#: A target that leads somewhere from any page: it names a scheme, or a place on the page.
+ABSOLUTE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:|#")
+#: The forms read, beside the two the build rewrites, which are `](target)` and one `src` or
+#: `srcset`: a link that carries a title; one written as a reference, with its target on the
+#: line of its label (a footnote opens the same way and has no target); an `href`; and each
+#: picture of a `srcset` after the first. An attribute is read as the README writes one, in
+#: lower case and between double quotes: in single quotes, in capitals or with no quotes it
+#: is not seen here, and the build does not rewrite it either.
+TITLED = re.compile(r"\]\(\s*<?([^)\s>]+)")
+DEFINED = re.compile(r"^ {0,3}\[(?!\^)[^\]\n]+\]:[ \t]*<?([^\s>]+)", re.MULTILINE)
+ATTRIBUTE = re.compile(r'(?<![\w-])(?:href|src)="([^"]*)"')
+SET = re.compile(r'(?<![\w-])srcset="([^"]*)"')
+#: Text shown as code within a line: between two runs of backticks of one length.
+CODE = re.compile(r"(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)")
+
+
+def relative_targets(markdown: str) -> list[str]:
+    """Each target in the text, in the forms read above, that is dead on a page with nothing
+    beside it. What is shown as code is no target."""
+    text = CODE.sub("", FENCE.sub("", markdown))
+    pictures = [one.split() for found in SET.findall(text) for one in found.split(",")]
+    several = [picture[0] for picture in pictures if picture]
+    targets = TITLED.findall(text) + DEFINED.findall(text) + ATTRIBUTE.findall(text) + several
+    return [target for target in targets if not ABSOLUTE.match(target)]
+
+
+@pytest.mark.parametrize(
+    ("markdown", "dead"),
+    [
+        ("see [the page](docs/install.md).", ["docs/install.md"]),
+        ('see [the page](docs/install.md "Installing").', ["docs/install.md"]),
+        ("see [the page][install].\n\n[install]: docs/install.md\n", ["docs/install.md"]),
+        ('<a href="docs/install.md">the page</a>', ["docs/install.md"]),
+        ('<img src="docs/img/loop-light.svg" alt="">', ["docs/img/loop-light.svg"]),
+        (
+            '<source srcset="https://example.org/a.svg 1x, docs/img/b.svg 2x">',
+            ["docs/img/b.svg"],
+        ),
+        ("[a](https://example.org/x), [b](#status), [c](mailto:someone@example.org)", []),
+        ('[a]: https://example.org/x\n<a href="#status">b</a>', []),
+        ("```\n[in a listing](docs/install.md)\n```\n", []),
+        # What is no target, and stood to fail the test of the description: a footnote, whose
+        # line opens as a reference's does, and a link shown as code.
+        ("A claim.[^1]\n\n[^1]: See the design notes.\n", []),
+        ('A link with a title is written `[text](file.md "Title")`.', []),
+        ("In two backticks, ``[text](file.md) and a ` too``, it is code as well.", []),
+        ('<img data-src="lazy.png" src="https://example.org/a.png">', []),
+    ],
+)
+def test_a_relative_target_is_found_in_each_form_read(markdown: str, dead: list[str]) -> None:
+    assert relative_targets(markdown) == dead
+
 
 def test_the_description_pypi_shows_has_no_link_that_leads_nowhere(tmp_path: Path) -> None:
     """PyPI shows the README on a page with nothing beside it, so a relative link or picture
@@ -259,3 +311,6 @@ def test_the_description_pypi_shows_has_no_link_that_leads_nowhere(tmp_path: Pat
     assert pictures, "the README shows no picture; the pattern no longer matches"
     assert LINK.findall(in_description) == [becomes(link, page) for link in links]
     assert SOURCE.findall(in_description) == [becomes(picture, file) for picture in pictures]
+    # The build rewrites two forms and sees no other, so a target written any other way
+    # arrives as it was: one that is relative fails here, and has to be written out in full.
+    assert relative_targets(description) == []

@@ -1629,7 +1629,8 @@ a path into; a path that leads back into the first names nothing new.
 
 The refusal names the project, says that the command named it, and names the check with the
 project's folder after it, `manuscript-guard check --stage submission "example"`, because
-from where the agent stands the check alone finds no project. The folder comes last on
+from where the agent stands the check alone finds no project, or, from inside a first
+project, finds that one. The folder comes last on
 purpose. The markers want a verb before the word `submission`, and `copy` is one: a folder
 called `paper-copy`, written after the word, does not make the command submission-shaped,
 where `cd paper-copy && manuscript-guard check --stage submission` is, and would be refused
@@ -4950,6 +4951,10 @@ Closed since, and why each mattered:
     before it.
   - A stage that is only mentioned on a build's line is read as the build's: `build
     --offline  # not --stage submission yet` is refused in a project that fails.
+  - The reading stops at a name of the command followed by white space and a letter,
+    which a path in quotes can hold: `mguard build "mguard papers/p1" --stage submission
+    --skip-checks` goes through.
+
   Found in the review of #136 on 2026-10-02.
 - **Under a name the package does not give it, the command is not a submission the guard
   sees.** The markers for the pack and for a build at the submission stage begin with the
@@ -5511,7 +5516,8 @@ Closed since, and why each mattered:
   - *Not looked at, or looked at in the wrong place.* A folder on another machine written
     `//host/share/...` is not looked at: asking whether it exists waits for the host, and
     the hook fires on a shell command. The same share under a drive letter is looked at,
-    and waits if the host does. In Git Bash `/tmp/x` is the user's own temporary folder;
+    and waits if the host does, from inside a project as from a folder with none, since
+    the words are read in both. In Git Bash `/tmp/x` is the user's own temporary folder;
     the guard reads it as `\tmp\x` on the drive the agent is on, so a project kept under
     the one is not found and one under the other would be taken for it.
   - *Inside a project, that project is held whatever the command submits.* Where the

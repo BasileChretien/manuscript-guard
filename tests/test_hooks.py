@@ -656,6 +656,22 @@ UNDER_ANOTHER_NAME += [
 ]
 
 
+def test_a_quoted_path_named_for_the_command_hides_the_stage_after_it(
+    project: Path, capsys
+) -> None:
+    """A known limit, held here. The reading for a stage stops at a name of the command
+    followed by white space and a letter, which is how an invocation begins, and a path
+    in quotes can hold that too."""
+    _without_a_review(project)
+    for command in (
+        'mguard build "mguard papers/p1" --stage submission --skip-checks',
+        'manuscript-guard build -o "out/mguard draft.docx" --stage submission --skip-checks',
+    ):
+        event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(project)}
+        assert SUBMISSION_MARKERS.search(command) is None, command
+        assert run("guard-submission", event, capsys) is None, command
+
+
 def test_a_line_that_names_the_command_often_is_read_in_linear_time(assert_linear) -> None:
     """After `build` the marker reads on for a stage, and it read to the end of the line
     from each `build`: a line that named the command n times cost n times its length, 9 s
@@ -1513,7 +1529,12 @@ def test_inside_a_project_a_path_into_that_project_names_no_second_one(
     project: Path, monkeypatch, capsys
 ) -> None:
     """The project a command is sent from is checked once, however the command spells a
-    path into it, and a path into no project names nothing."""
+    path into it, and a path into no project names nothing.
+
+    The folder `build/` has to be there: the fixture's project has none, and without it
+    each path stops at a folder that was looked in already, so that the comparison with
+    the project the command was sent from is never reached and the test passes with it
+    taken out."""
     from manuscript_guard import cli
 
     checked: list[Path] = []
@@ -1526,6 +1547,8 @@ def test_inside_a_project_a_path_into_that_project_names_no_second_one(
     monkeypatch.setattr(cli, "_run_gates", counting)
     _without_a_review(project)
     (project.parent / "sent").mkdir()
+    (project / "build").mkdir()
+    assert hooks._named_projects("cp ../paper/build/x.docx /tmp", project) == [project.resolve()]
 
     command = (
         f"zip ../sent/all.zip build/manuscript.docx ../paper/build/supplementary.docx "
@@ -1537,6 +1560,22 @@ def test_inside_a_project_a_path_into_that_project_names_no_second_one(
         assert decision(result) == "deny"
         assert checked == [project.resolve()], cwd
         assert "which this command names" not in reason(result)
+
+
+def test_a_search_for_named_projects_that_fails_costs_the_first_project_nothing(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """Left to the hook's last resort, an error in the search ended in silence, and the
+    project the command was sent from lost a refusal it had before the words were read."""
+
+    def broken(*_args):
+        raise RuntimeError("anything at all")
+
+    _without_a_review(project)
+    monkeypatch.setattr(hooks, "_named_projects", broken)
+    result = sent("cd ../second && manuscript-guard submit", project, capsys)
+    assert decision(result) == "deny"
+    assert "submission check(s) failing in paper:" in reason(result)
 
 
 def test_inside_a_project_that_passes_a_second_one_that_passes_changes_nothing(

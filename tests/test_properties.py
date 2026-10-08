@@ -69,7 +69,16 @@ from manuscript_guard.gates.vocabulary import (
 )
 from manuscript_guard.literature import sources as literature_sources
 from manuscript_guard.literature.sources import contains, normalise, states_value
-from manuscript_guard.reworded import BINDING, CITATION, NUMBER, compare, facts
+from manuscript_guard.reworded import (
+    BINDING,
+    CITATION,
+    MAYBE,
+    NO,
+    NUMBER,
+    SURE,
+    compare,
+    facts,
+)
 from manuscript_guard.text import tokens
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -755,21 +764,29 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
 
 # ------------------------------------------------------------------------- a rewording
 
-_SHOWN = {BINDING: "{{results.%s}}", CITATION: "@key%s", NUMBER: "'%s'"}
+#: A fact as a finding names it. A number by its figures and the mark after them: its
+#: minus sign is named with it only where every one of them has it for sure.
+_SHOWN = {BINDING: "{{results.%s}}", CITATION: "@key%s", NUMBER: "%s'"}
 _WRITTEN = {
     BINDING: ("{{results.%s}}", "{{ results.%s }}"),
     CITATION: ("[@key%s]", "@key%s", "[see @key%s]"),
 }
 _TYPED_NUMBERS = ("12", "3.84", "1,200", "-0.5", "95", "0.05", ".05", "-.30")
-#: How a number is set in its sentence: bare, in brackets, in emphasis, after a sign. The
-#: sign of a negative one is read in each, and the point of one with no nought.
-_SET = ("%s", "(%s)", "*%s*", "**%s**", "= %s", "\N{ALMOST EQUAL TO}%s")
+#: How a number is set in its sentence: bare, in brackets, in emphasis, after a sign, in
+#: a cell, after a comma, after a product. In all but the last the dash of a negative one
+#: is its sign for sure; after the product it is perhaps one, and stands in both texts.
+_SET = (
+    "%s", "(%s)", "*%s*", "**%s**", "= %s", "\N{ALMOST EQUAL TO}%s", "|**%s**|", "(a,*%s*)",
+    "x*%s",
+)  # fmt: skip
 #: Each of the hyphens typed for a minus sign.
 _MINUS_TYPED = ("-", "\N{MINUS SIGN}", "\N{NON-BREAKING HYPHEN}")
-#: How the first bound of a range is set: bare, with a per cent sign or a prime, in
-#: emphasis, raised. Each ends something, so the dash after it joins.
-_FIRST_BOUND = ("%s", "%s%%", "%s'", "*%s*", "**%s**", "x^%s^")
+#: How the first bound of a range is set: bare, with a per cent sign, a prime or a euro
+#: sign, in brackets. Each ends something for sure, so the dash after it joins.
+_FIRST_BOUND = ("%s", "%s%%", "%s\N{PRIME}", "%s\N{EURO SIGN}", "(%s)")
 _JOINED = ("-", "\N{EN DASH}", " to ")
+#: A first bound after which the dash of a range may be a sign: a mark that may close.
+_MAY_CLOSE = ("%s'", "*%s*", "**%s**", "x^%s^", "$%s$")
 #: What an edit brings that the text before never held.
 _UNSEEN = {BINDING: "added", CITATION: "added", NUMBER: "987654"}
 
@@ -791,9 +808,9 @@ def test_a_fact_is_where_it_says_and_a_text_is_what_it_was(manuscript: str, nobo
             elif fact.kind == CITATION:
                 assert here.lstrip("-").startswith("@" + fact.text), (text, fact)
             else:
-                signed = fact.text[0] in "-+"
-                assert not signed or here[0] in "-+\N{MINUS SIGN}\N{EN DASH}", (text, fact)
-                assert here[signed:].startswith(fact.text[signed:]), (text, fact)
+                signed = fact.minus != NO or fact.text[0] == "+"
+                assert not signed or here[0] in reworded_module._MINUS + "+", (text, fact)
+                assert here[signed:].startswith(fact.text.lstrip("+")), (text, fact)
             last = fact.start
         assert not compare(text, text, MAIN).findings, text
 
@@ -809,7 +826,9 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
     it is free. A comment stands in both, and holds other things in each: a listing in
     the first."""
     did = draw(
-        st.sampled_from(("nothing", "nothing", "lost", "new", "changed", "unsigned", "turned"))
+        st.sampled_from(
+            ("nothing", "nothing", "lost", "new", "changed", "unsigned", "turned", "unsure")
+        )
     )
 
     def fact() -> tuple[str, str]:
@@ -837,7 +856,7 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
         at = draw(st.sampled_from(holding))
         which = draw(st.integers(0, len(after[at]) - 1))
         kind, text = after[at].pop(which)
-        shown.append(_SHOWN[kind] % text)
+        shown.append(_SHOWN[kind] % text.lstrip("-"))
         if did == "changed":
             after[at].insert(which, (kind, _UNSEEN[kind]))
             shown.append(_SHOWN[kind] % _UNSEEN[kind])
@@ -857,7 +876,7 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
     def filler() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
 
-    def written(held: list[tuple[str, str]]) -> str:
+    def written(held: list[tuple[str, str]], sure: bool) -> str:
         parts = [filler().capitalize()]
         at = 0
         while at < len(held):
@@ -876,7 +895,7 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
                 at += 2
             elif kind == NUMBER:
                 retyped = text.replace("-", draw(st.sampled_from(_MINUS_TYPED)))
-                parts.append(draw(st.sampled_from(_SET)) % retyped)
+                parts.append(draw(st.sampled_from(_SET[:-1] if sure else _SET)) % retyped)
                 at += 1
             else:
                 parts.append(draw(st.sampled_from(_WRITTEN[kind])) % text)
@@ -890,10 +909,21 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
         (before, "<!--\n```r\nset.seed(14)\nx <- {{results.gone}} [@gone2001]\n```\n-->"),
         (after, "<!-- now 15 -->"),
     ):
-        paragraphs = [written(held) for held in sentences]
+        # Where a sign is to be taken off, every dash of the text before is one for sure:
+        # beside one that is only perhaps a sign, the loss is only perhaps a loss.
+        sure = did == "unsigned" and sentences is before
+        paragraphs = [written(held, sure) for held in sentences]
         paragraphs.insert(comment, hidden)
+        if did == "unsure":
+            # A range whose first bound ends on a mark that may close, joined by a dash in
+            # the text before and by "to" in the text after: the dash may have been a sign.
+            low = draw(st.sampled_from(_MAY_CLOSE)) % 41
+            join = "-" if sentences is before else " to "
+            paragraphs.append(f"{filler().capitalize()} {low}{join}43 {filler()}.")
         texts_of.append("\n\n".join(paragraphs) + "\n")
     line = 1 + 2 * (at + (comment <= at))
+    if did == "unsure":
+        shown, line = ["'43'", "may have lost a minus sign"], 1 + 2 * (len(after) + 1)
     return texts_of[0], texts_of[1], did, shown, line
 
 
@@ -916,11 +946,17 @@ def test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands(
         "lost": ["fact-lost"],
         "new": ["fact-new"],
         "changed": ["fact-lost", "fact-new"],
-        "unsigned": ["fact-lost", "fact-new"],
+        "unsigned": ["sign-lost"],
+        "unsure": ["sign-unsure"],
     }[did]
     assert codes == expected, (before, after, did, said)
-    assert report.ok == (not expected)
+    assert report.ok == (did in ("nothing", "unsure"))
     by_code = {found.code: found for found in report.findings}
+    if did in ("unsigned", "unsure"):
+        (found,) = report.findings
+        assert all(what in found.message for what in shown), (before, after, said)
+        assert found.line == line, (before, after, said)
+        return
     for code, what in zip(expected, shown, strict=True):
         assert what in by_code[code].message, (before, after, said)
     if "fact-new" in by_code:
@@ -1056,9 +1092,7 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_sign_is_no_part_of_its_number(patch: pytest.MonkeyPatch) -> None:
-    unsigned = reworded_module._NUMBER.pattern.replace("(?P<sign>", "(?P<sign>(?!.)", 1)
-    assert unsigned != reworded_module._NUMBER.pattern
-    patch.setattr(reworded_module, "_NUMBER", re.compile(unsigned))
+    patch.setattr(reworded_module, "_sign", lambda text, at: NO)
 
 
 def _the_order_is_not_looked_at(patch: pytest.MonkeyPatch) -> None:
@@ -1070,10 +1104,14 @@ def _a_comment_holds_facts(patch: pytest.MonkeyPatch) -> None:
 
 
 def _every_dash_before_a_figure_is_its_sign(patch: pytest.MonkeyPatch) -> None:
-    loose = reworded_module._NUMBER.pattern.replace(reworded_module._SIGN_HERE, "", 1)
-    assert loose != reworded_module._NUMBER.pattern
-    patch.setattr(reworded_module, "_NUMBER", re.compile(loose))
-    patch.setattr(reworded_module, "_ends_something", lambda text, at: False)
+    patch.setattr(reworded_module, "_sign", lambda text, at: SURE)
+
+
+def _a_dash_that_may_be_a_sign_says_nothing(patch: pytest.MonkeyPatch) -> None:
+    read = reworded_module._sign
+    patch.setattr(
+        reworded_module, "_sign", lambda text, at: NO if read(text, at) == MAYBE else read(text, at)
+    )
 
 
 def _a_listing_in_a_comment_is_put_back(patch: pytest.MonkeyPatch) -> None:
@@ -1121,6 +1159,10 @@ BROKEN = {
     ),
     "every dash before a figure is its sign": (
         _every_dash_before_a_figure_is_its_sign,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "a dash that may be a sign says nothing when it goes": (
+        _a_dash_that_may_be_a_sign_says_nothing,
         test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
     ),
     "a listing in a comment is put back with the rest": (

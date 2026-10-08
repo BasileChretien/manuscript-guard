@@ -231,6 +231,10 @@ and the report is then of the pass alone.
 - A warning is the same ones in another order. A clause that moved does that, and so do
   two values that changed places. Read the sentence the warning names and make sure of
   which.
+- A warning that a number "may have lost a minus sign", or gained one, is a dash before
+  it that came or went where it could be a sign or the dash of a range: after emphasis, a
+  raised figure, a product sign, the "e" of an exponent. A range retyped is nothing; a
+  sign lost is a number changed. Read the place.
 - A number is compared as typed, so "3" spelt out as "three" fails. Leave the figures of a
   manuscript as the author typed them unless you were asked to change them.
 

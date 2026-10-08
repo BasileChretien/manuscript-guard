@@ -16,6 +16,10 @@ binding, every citation key and every typed number. The words between them are f
 - The same ones **in another order** pass with a warning that shows the place. A clause
   moved to the front of its sentence does that and is harmless; so do two values that changed
   places, which is not. No rule tells the two apart, so a person is shown both.
+- A **minus sign** is part of its number where the dash can be nothing else, and one that
+  is gone or new fails. After a mark that can open or close, `*n*-1` or `10^3^-10^5^`,
+  the dash may be that of a range: there one that came or went is shown with a warning,
+  for the same reason.
 
 A number is compared as it is typed. "3" spelt out as "three", "1,200" closed up to "1200"
 and "0.50" cut to "0.5" are each reported: the first two may be a matter of style, the third
@@ -36,7 +40,7 @@ import re
 import subprocess
 from bisect import bisect_left
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,51 +73,48 @@ _MINUS = (
     "-\N{HYPHEN}\N{NON-BREAKING HYPHEN}\N{FIGURE DASH}\N{EN DASH}\N{MINUS SIGN}"
     "\N{SMALL HYPHEN-MINUS}\N{FULLWIDTH HYPHEN-MINUS}"
 )
-#: After these a dash joins two things and is no sign: a letter or a figure, a closing
-#: bracket, a bound value, which the mask has blanked, and the marks that only ever close
-#: something: a per cent, a per mille or a degree sign, a prime, a closing quotation mark,
-#: a currency sign. "IL-6", "1.2-3.4", "80%-93%", "{{low}}-3". After anything else it is
-#: the sign of the number it stands against: a space, an opening bracket, a sign of
-#: comparison. Said this way round so that a character nobody listed, an arrow or an
-#: "about" sign, leaves the number its sign: read the other way, rewording "about -0.3"
-#: with such a character took the sign off and reported a number changed.
-_JOINS = (
-    r"(?<![^\W_])(?<![)\]}%\x00"
+#: What a dash that stands against a number is: its minus sign for sure, perhaps its sign
+#: and perhaps the dash of a range, or no sign.
+SURE, MAYBE, NO = 2, 1, 0
+#: What ends something, as the body of a class: a closing bracket, a bound value, which
+#: the mask has blanked, and the marks that only ever close: a per cent, a per mille or a
+#: degree sign, a prime, a closing quotation mark, a euro, pound, yen or cent sign.
+_CLOSING = (
+    r")\]}%\x00"
     "\N{DEGREE SIGN}\N{PER MILLE SIGN}\N{PRIME}\N{DOUBLE PRIME}"
     "\N{RIGHT SINGLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK}"
-    "\N{EURO SIGN}\N{POUND SIGN}\N{YEN SIGN}\N{CENT SIGN}])"
+    "\N{EURO SIGN}\N{POUND SIGN}\N{YEN SIGN}\N{CENT SIGN}"
 )
-#: Where a sign may stand: after the "e" of an exponent, "1e-5", and where nothing joins.
-_SIGN_HERE = r"(?:(?<=\d[eE])|" + _JOINS + ")"
-#: The marks that open as well as close, so that what the dash after one is depends on
-#: which it does there. Pandoc's superscript and subscript open against their base, with
-#: no space: in "10^-5^" the first caret of its word opens and the dash is a sign, in
-#: "10^3^-10^5^" the second closes and the dash joins.
+#: After one of these a dash joins two things and is no sign: a letter, a figure, or what
+#: ends something. "IL-6", "1.2-3.4", "80%-93%", "{{low}}-3".
+_JOIN = re.compile(r"[^\W_]|[" + _CLOSING + "]")
+#: The marks that open as well as close. After one, a dash before a number is its sign
+#: where the mark opens and may be the dash of a range where it closes, and which it does
+#: is not always to be known: `*n*-1` and `x*-1`, `10^3^-10^5^` and `x^2*y^-1`. Two
+#: reviews found a rule that decided it wrong in a new place each time, so nothing decides
+#: it now: such a dash is perhaps a sign, and one that came or went is shown, not refused.
 _ATTACHED = "^~"
-#: Emphasis, maths, code and a straight quotation mark open after a space, a bracket or a
-#: sign of comparison and close after anything else: "*-0.3*" has a sign, "*n*-1" and
-#: "5'-3'" have none.
 _SPACED = "*_$`'\""
-_OPENS = "([{=<>\N{LEFT DOUBLE QUOTATION MARK}\N{LEFT SINGLE QUOTATION MARK}"
-#: How far back a mark's own word is read.
+#: How far back the word of a mark, or the gap before a dash, is read.
 _WORD = 80
 _SUPERSCRIPT = (
     "\N{SUPERSCRIPT ZERO}\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO}\N{SUPERSCRIPT THREE}"
     "\N{SUPERSCRIPT FOUR}-\N{SUPERSCRIPT NINE}"
 )
 _SUBSCRIPT = "\N{SUBSCRIPT ZERO}-\N{SUBSCRIPT NINE}"
-#: A number as it is typed. Figures, with commas between groups of three and one decimal
+#: A number as it is typed, with the dash or the plus that stands against it, whatever
+#: that turns out to be. Figures, with commas between groups of three and one decimal
 #: point: "0,5" is two numbers here and "1,2,3" three, so that a space typed after a comma
-#: changes nothing. A point and figures with no nought before them, ".05", where no
-#: letter, figure or point stands before the point: "Fig.5" and "1.2.3" are read as they
-#: were. A run of raised or lowered figures with its own sign, as in ten to the minus
-#: eight typed with the characters, or the fifty of an IC50 typed low: G2 leaves those out
-#: because a square metre claims nothing, and here nothing is claimed, only compared. A
-#: fraction or an enclosed figure is a number by itself.
+#: changes nothing. A point and figures with no nought before them, ".05", where nothing
+#: that joins and no point stands before the point: "Fig.5", "1.2.3" and a note's number
+#: after "45%." are read without it. A run of raised or lowered figures with its own sign,
+#: as in ten to the minus eight typed with the characters, or the fifty of an IC50 typed
+#: low: G2 leaves those out because a square metre claims nothing, and here nothing is
+#: claimed, only compared. A fraction or an enclosed figure is a number by itself.
 _NUMBER = re.compile(
-    "(?:" + _SIGN_HERE + "(?P<sign>[" + _MINUS + "+]))?(?P<figures>"
+    "(?P<sign>[" + _MINUS + "+])?(?P<figures>"
     r"\d+(?:,\d{3}(?!\d))*(?:[.\N{MIDDLE DOT}]\d+)?"
-    r"|(?<![^\W_])(?<!\.)\.\d+"
+    r"|(?<![^\W_])(?<![." + _CLOSING + r"])\.\d+"
     "|[\N{SUPERSCRIPT PLUS SIGN}\N{SUPERSCRIPT MINUS}]?[" + _SUPERSCRIPT + "]+"
     "|[\N{SUBSCRIPT PLUS SIGN}\N{SUBSCRIPT MINUS}]?[" + _SUBSCRIPT + "]+"
     "|[" + _FRACTIONS + _ENCLOSED + "])"
@@ -134,10 +135,12 @@ class Fact:
     """One thing a rewording leaves alone, and where it stands."""
 
     kind: str
-    #: What is compared: a binding's name, a citation's key, a number as typed.
+    #: What is compared: a binding's name, a citation's key, a number's figures as typed.
     text: str
     start: int
     line: int
+    #: Of a number: whether a dash stands against it as its minus sign, for sure or perhaps.
+    minus: int = NO
 
     @property
     def key(self) -> tuple[str, str]:
@@ -149,7 +152,7 @@ class Fact:
             return "{{" + self.text + "}}"
         if self.kind == CITATION:
             return "@" + self.text
-        return f"'{self.text}'"
+        return f"'{'-' if self.minus == SURE else ''}{self.text}'"
 
 
 def _numbers_in(text: str) -> str:
@@ -173,21 +176,53 @@ def _numbers_in(text: str) -> str:
     return "".join(shown)
 
 
-def _ends_something(text: str, at: int) -> bool:
-    """Does the mark at `at` close what it marks, so that a dash after it joins two things
-    and is no sign? False of a character that is no such mark."""
+def _opens(text: str, at: int) -> bool:
+    """Can the mark at `at` only open what it marks? Then a dash after it is a sign.
+
+    A caret or a tilde opens against its base, with no space, so it is counted in its own
+    word: the first and the third open. The other marks open where their run stands at the
+    start or after something that does not join. Where this says no, the mark may close, or
+    may be a sign of its own, a product or a power, and the dash after it may be either."""
     mark = text[at]
     low = max(0, at - _WORD)
     if mark in _ATTACHED:
         start = at
         while start > low and not text[start - 1].isspace():
             start -= 1
-        return text.count(mark, start, at + 1) % 2 == 0
-    if mark not in _SPACED:
-        return False
+        return text.count(mark, start, at + 1) % 2 == 1
     while at > low and text[at - 1] in _SPACED:
         at -= 1
-    return at > 0 and not text[at - 1].isspace() and text[at - 1] not in _OPENS
+    return at == 0 or _JOIN.match(text[at - 1]) is None
+
+
+def _sign(text: str, at: int) -> int:
+    """What the dash at `at` is to the number it stands against: SURE, MAYBE or NO.
+
+    Sure where nothing stands before it that it could join: at the start, after a space, an
+    opening bracket, a comma, a sign of comparison, a mark that opens there. No sign after
+    what `_JOIN` lists. Perhaps one after a mark that may close, after the "e" of an
+    exponent, which is also the E of a panel in "Figures 1E-1G", and after a figure and one
+    space or line end, which is a range typed with a space on one side as often as a
+    negative number."""
+    if at == 0:
+        return SURE
+    before = text[at - 1]
+    if before == "-" == text[at]:
+        # Two or three hyphens are the dash pandoc prints for them: one dash, read by what
+        # stands before the first.
+        while at and text[at - 1] == "-":
+            at -= 1
+        return NO if at and _JOIN.match(text[at - 1]) else SURE
+    if before in _ATTACHED or before in _SPACED:
+        return SURE if _opens(text, at - 1) else MAYBE
+    if before in " \n":
+        # One space, or the end of a line: a text is wrapped where a space stood.
+        ended = text[at - 2] if at >= 2 else " "
+        return MAYBE if not ended.isalpha() and _JOIN.match(ended) else SURE
+    if _JOIN.match(before):
+        exponent = before in "eE" and at >= 2 and text[at - 2].isdecimal()
+        return MAYBE if exponent else NO
+    return SURE
 
 
 def facts(text: str) -> list[Fact]:
@@ -196,8 +231,8 @@ def facts(text: str) -> list[Fact]:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     breaks = [found.start() for found in re.finditer("\n", text)]
 
-    def fact(kind: str, held: str, start: int) -> Fact:
-        return Fact(kind, held, start, bisect_left(breaks, start) + 1)
+    def fact(kind: str, held: str, start: int, minus: int = NO) -> Fact:
+        return Fact(kind, held, start, bisect_left(breaks, start) + 1, minus)
 
     # What pandoc drops holds no binding and no citation. The bindings are the ones
     # `placeholders.parse` calls well formed, found here without its line of each, which it
@@ -211,12 +246,14 @@ def facts(text: str) -> list[Fact]:
     found += [fact(CITATION, use.citekey, use.start) for use in find_citations(printed, Path())]
     shown = _numbers_in(text)
     for number in _NUMBER.finditer(shown):
-        sign, start = number["sign"] or "", number.start()
-        if sign and start and _ends_something(shown, start - 1):
-            # The dash follows a mark that closes: it joins two things, as after a letter.
-            sign, start = "", number.start("figures")
-        held = ("-" if sign and sign in _MINUS else sign) + number["figures"]
-        found.append(fact(NUMBER, held, start))
+        sign, figures = number["sign"], number["figures"]
+        start, minus = number.start("figures"), NO
+        read = _sign(shown, number.start()) if sign else NO
+        if sign == "+" and read == SURE:
+            figures, start = "+" + figures, number.start()
+        elif sign and sign != "+" and read != NO:
+            minus, start = read, number.start()
+        found.append(fact(NUMBER, figures, start, minus))
     return sorted(found, key=lambda one: one.start)
 
 
@@ -249,8 +286,17 @@ _PUT_BACK = (
 )
 
 
-def _lost(fact: Fact, before: Sequence[Fact], now: int, path: Path | None) -> Finding:
-    what = f"the {fact.kind} {fact.shown}"
+def _what(found: Sequence[Fact]) -> str:
+    """The fact these all are, named for a message: a number with its minus sign where
+    every one of them has it for sure."""
+    first = found[0]
+    if first.kind == NUMBER and not all(fact.minus == SURE for fact in found):
+        return f"the number '{first.text}'"
+    return f"the {first.kind} {first.shown}"
+
+
+def _lost(before: Sequence[Fact], now: int, path: Path | None) -> Finding:
+    what = _what(before)
     if now == 0 and len(before) == 1:
         message = f"{what} is gone: it stood on {_lines(before)} before the edit"
     elif now == 0:
@@ -265,8 +311,8 @@ def _lost(fact: Fact, before: Sequence[Fact], now: int, path: Path | None) -> Fi
     return Finding(GATE, "fact-lost", message, FAIL, path, hint=_PUT_BACK)
 
 
-def _new(fact: Fact, after: Sequence[Fact], was: int, path: Path | None, line: int) -> Finding:
-    what = f"the {fact.kind} {fact.shown}"
+def _new(after: Sequence[Fact], was: int, path: Path | None, line: int) -> Finding:
+    what = _what(after)
     if was == 0 and len(after) == 1:
         message = f"{what} is new: it did not stand in the text before the edit"
     elif was == 0:
@@ -338,41 +384,132 @@ def _listed_plain(found: Sequence[Fact]) -> str:
     return ", ".join(shown)
 
 
+_UNSURE = (
+    'after *, _, $, ^, ~, a quotation mark, the "e" of an exponent or a figure and a space, '
+    "a dash before a number is its minus sign or the dash of a range, and nothing here can "
+    "tell which: read the place"
+)
+
+
+def _signed(found: Sequence[Fact]) -> tuple[list[Fact], list[Fact]]:
+    """Those with a minus sign for sure, and those with a dash that is one for sure or perhaps."""
+    return (
+        [fact for fact in found if fact.minus == SURE],
+        [fact for fact in found if fact.minus != NO],
+    )
+
+
+def _sign_change(
+    figures: str,
+    was: Sequence[Fact],
+    now: Sequence[Fact],
+    placed: Callable[[Sequence[Fact]], int | None],
+    path: Path | None,
+) -> Finding | None:
+    """What an edit did to the minus signs of one number that both texts may hold.
+
+    From counts, as the rest is. A sign is gone for sure where more of them had one for
+    sure than have a dash at all now, beyond those that are gone themselves, and it fails.
+    Short of that, a dash that came or went may have been a sign, and is shown. A dash that
+    is read another way and stands as it stood, `x*-1` made `x * -1`, is no change."""
+    (sure, dashed), (sure_now, dashed_now) = _signed(was), _signed(now)
+    plain_now = [fact for fact in now if fact.minus == NO]
+    gone, come = max(len(was) - len(now), 0), max(len(now) - len(was), 0)
+    number, signed = f"the number '{figures}'", f"'-{figures}'"
+    if len(sure) - gone > len(dashed_now):
+        message = (
+            f"{number} has lost its minus sign: {signed} stood on {_lines(sure)} before the edit"
+        )
+        if dashed_now:
+            message = (
+                f"{number} stood as {signed} {_times(len(sure))} before the edit, on "
+                f"{_lines(sure)}, and has a dash before it {_times(len(dashed_now))} now"
+            )
+        line = placed(plain_now or now)
+        return Finding(GATE, "sign-lost", message, FAIL, path, line, hint=_PUT_BACK)
+    if len(sure_now) - come > len(dashed):
+        message = (
+            f"{number} has a minus sign it did not have: {signed} stands on {_lines(sure_now)}"
+        )
+        if dashed:
+            message = (
+                f"{number} stands as {signed} {_times(len(sure_now))} now, on {_lines(sure_now)}, "
+                f"and had a dash before it {_times(len(dashed))} before the edit"
+            )
+        return Finding(GATE, "sign-new", message, FAIL, path, placed(sure_now), hint=_PUT_BACK)
+    if len(was) != len(now) or len(dashed) == len(dashed_now):
+        return None
+    if len(dashed) > len(dashed_now):
+        then = f"stands before it {_times(len(dashed_now))} now" if dashed_now else "does not now"
+        message = (
+            f"{number} may have lost a minus sign: a dash stood before it {_times(len(dashed))} "
+            f"before the edit, on {_lines(dashed)}, and {then}"
+        )
+        line = placed(plain_now or now)
+    else:
+        then = f"stood before it {_times(len(dashed))}" if dashed else "none stood before it"
+        message = (
+            f"{number} may have gained a minus sign: a dash stands before it "
+            f"{_times(len(dashed_now))} now, on {_lines(dashed_now)}, and {then} before the edit"
+        )
+        line = placed(dashed_now)
+    return Finding(GATE, "sign-unsure", message, WARN, path, line, hint=_UNSURE)
+
+
+def _by_key(found: Sequence[Fact]) -> dict[tuple[str, str], list[Fact]]:
+    held: dict[tuple[str, str], list[Fact]] = {}
+    for fact in found:
+        held.setdefault(fact.key, []).append(fact)
+    return held
+
+
+def _placer(was: Sequence[Fact], now: Sequence[Fact]) -> Callable[[Sequence[Fact]], int | None]:
+    """Where a finding about some of the facts of the text as it is now is placed.
+
+    Where a fact stands more often than it did, which of them is the new one is not known
+    from the facts alone. A finding is placed at the first that lies past what the two
+    texts open with in common and before what they close with: after one edit that is the
+    one. The message gives every line."""
+    head, tail = _untouched(was, now)
+    first, last = 0, -1
+    if head + tail < len(now):
+        first, last = now[head].start, now[len(now) - tail - 1].start
+
+    def placed(found: Sequence[Fact]) -> int | None:
+        between = [fact for fact in found if first <= fact.start <= last]
+        return (between or found)[0].line if found else None
+
+    return placed
+
+
 def compare(before: str, after: str, path: Path | None = None) -> Report:
     """What an edit did to the bindings, the citations and the typed numbers of one file.
 
     The counts are of the text as it is now."""
     was, now = facts(before), facts(after)
-    stood: dict[tuple[str, str], list[Fact]] = {}
-    stands: dict[tuple[str, str], list[Fact]] = {}
-    for found, into in ((was, stood), (now, stands)):
-        for fact in found:
-            into.setdefault(fact.key, []).append(fact)
-
+    stood, stands = _by_key(was), _by_key(now)
+    placed = _placer(was, now)
     findings = [
-        _lost(held[0], held, len(stands.get(key, ())), path)
+        _lost(held, len(stands.get(key, ())), path)
         for key, held in stood.items()
         if len(held) > len(stands.get(key, ()))
     ]
-    # Where a fact stands more often than it did, which of them is the new one is not known
-    # from the facts alone. The finding is placed at the first that lies past what the two
-    # texts open with in common and before what they close with: after one edit that is the
-    # one. The message gives every line.
-    head, tail = _untouched(was, now)
-    first, last = 0, -1
-    if head + tail < len(now):
-        first, last = now[head].start, now[len(now) - tail - 1].start
-    for key, held in stands.items():
-        if len(held) > len(stood.get(key, ())):
-            between = [fact for fact in held if first <= fact.start <= last]
-            line = (between or held)[0].line
-            findings.append(_new(held[0], held, len(stood.get(key, ())), path, line))
+    findings += [
+        _new(held, len(stood.get(key, ())), path, placed(held))
+        for key, held in stands.items()
+        if len(held) > len(stood.get(key, ()))
+    ]
     if not findings:
         # With one gone there is no saying which of the rest moved: the loss is told, and
         # the order once the loss is settled.
         findings = [
             _moved(was[start:end], now[start:end], path) for start, end in _reordered(was, now)
         ]
+    # Only a number with a dash against it somewhere, in either text, can have had its sign
+    # changed.
+    for key in dict.fromkeys(fact.key for fact in (*was, *now) if fact.minus != NO):
+        change = _sign_change(key[1], stood.get(key, ()), stands.get(key, ()), placed, path)
+        findings += [change] if change else []
     kinds = Counter(fact.kind for fact in now)
     return Report(tuple(findings)).with_counts(
         reworded_files=1,

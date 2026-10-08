@@ -20,7 +20,16 @@ import pytest
 
 from manuscript_guard.cli import main
 from manuscript_guard.findings import FAIL, WARN, Report
-from manuscript_guard.reworded import BINDING, CITATION, NUMBER, compare, facts
+from manuscript_guard.reworded import (
+    BINDING,
+    CITATION,
+    MAYBE,
+    NO,
+    NUMBER,
+    SURE,
+    compare,
+    facts,
+)
 
 PATH = Path("manuscript/main.md")
 
@@ -34,7 +43,10 @@ BEFORE = (
 
 
 def kinds(text: str) -> list[tuple[str, str]]:
-    return [(fact.kind, fact.text) for fact in facts(text)]
+    """Each fact as it is read: a number with "-" before it where a dash is its sign for
+    sure, and "?" where it is perhaps one."""
+    marks = {SURE: "-", MAYBE: "?", NO: ""}
+    return [(fact.kind, marks[fact.minus] + fact.text) for fact in facts(text)]
 
 
 def told(report: Report) -> list[tuple[str, str]]:
@@ -81,57 +93,83 @@ def test_each_fact_knows_its_line() -> None:
         ("grades 1,2,3 and 1, 2, 3", ["1", "2", "3", "1", "2", "3"]),
         ("a ratio of 3.84", ["3.84"]),
         ("a share of 0,5", ["0", "5"]),  # a decimal comma is not read as one number
-        ("from 1.2-3.4", ["1.2", "3.4"]),  # a range, and no sign
-        ("from 80%-93%", ["80", "93"]),
-        ("a change of -0.3", ["-0.3"]),
-        ("a change of \N{MINUS SIGN}0.3", ["-0.3"]),  # the true minus is the same sign
-        ("a change of (\N{EN DASH}0.3 to 0.4)", ["-0.3", "0.4"]),
-        ("a rise of +2.5 points", ["+2.5"]),
-        # a number with no nought keeps its point and its sign
-        ("an r of -.30", ["-.30"]),
+        ("COVID-19 and IL-6 through CYP3A4", ["19", "6", "3", "4"]),
+        ("on 2019-03-12", ["2019", "03", "12"]),
+        ("\N{VULGAR FRACTION ONE HALF} of them", ["\N{VULGAR FRACTION ONE HALF}"]),
+        ("three of twelve", []),  # a number in words is not held
+        # a number with no nought keeps its point
         ("a P of .05", [".05"]),
         ("in Fig.5 and on p.12", ["5", "12"]),
         ("version 1.2.3", ["1.2", "3"]),
+        ("seen in 45%.12 We then", ["45", "12"]),  # a note's number after a sentence
         # raised and lowered figures are figures
         ("P < 5 x 10⁻⁸", ["5", "10", "⁻⁸"]),
         ("10⁶ cells", ["10", "⁶"]),
         ("an IC₅₀ of 3", ["₅₀", "3"]),
-        ("P < 1e-5", ["1", "-5"]),
-        # the dash of a range after a mark that closes something is no sign
-        ("10^3^-10^5^ cells", ["10", "3", "10", "5"]),
-        ("the 5'-3' direction", ["5", "3"]),
-        ("the 5\N{PRIME}\N{EN DASH}3\N{PRIME} direction", ["5", "3"]),
-        ("with *n*-1 degrees of freedom", ["1"]),
-        ("with $n$-1 degrees of freedom", ["1"]),
-        ("at 50\N{EURO SIGN}-100\N{EURO SIGN} a day", ["50", "100"]),
-        ("PM~2.5~-10 was high", ["2.5", "10"]),
-        ("from 5\N{PER MILLE SIGN}-9\N{PER MILLE SIGN}", ["5", "9"]),
-        ("on days **1**-3", ["1", "3"]),
-        # and after one that opens it is one
+    ],
+)
+def test_a_number_is_read_as_it_is_typed(typed: str, read: list[str]) -> None:
+    assert [text for kind, text in kinds(f"It was {typed}.\n") if kind == NUMBER] == read
+
+
+@pytest.mark.parametrize(
+    ("typed", "read"),
+    [
+        # for sure a sign: nothing stands before the dash that it could join
+        ("a change of -0.3", ["-0.3"]),
+        ("a change of \N{MINUS SIGN}0.3", ["-0.3"]),
+        ("a change of (\N{EN DASH}0.3 to 0.4)", ["-0.3", "0.4"]),
+        ("a change of \N{NON-BREAKING HYPHEN}0.3", ["-0.3"]),
+        ("a change of \N{FULLWIDTH HYPHEN-MINUS}0.3", ["-0.3"]),
+        ("an r of -.30", ["-.30"]),
+        ("the pair (0.5,-0.3)", ["0.5", "-0.3"]),
+        ("about \N{ALMOST EQUAL TO}-0.3", ["-0.3"]),
+        ("down \N{RIGHTWARDS ARROW}-0.3", ["-0.3"]),
+        ("a cell |-0.3|", ["-0.3"]),
+        ("a range from 5\N{EN DASH}-3", ["5", "-3"]),
+        ("a rise of +2.5 points", ["+2.5"]),
+        # and after a mark that can only open there
         ("a mean of *-0.3*", ["-0.3"]),
         ("a mean of **-0.3**", ["-0.3"]),
         ("a mean of $-0.3$", ["-0.3"]),
         ("a mean of (*-0.3*)", ["-0.3"]),
+        ("a cell |**-0.3**|", ["-0.3"]),
+        ("the pair (0.5,*-0.3*)", ["0.5", "-0.3"]),
+        ("P < 10^-5^", ["10", "-5"]),
         ("with x~-1~ below", ["-1"]),
         ("quoted as '-3'", ["-3"]),
-        # every hyphen typed for a minus is the one sign
-        ("a change of \N{NON-BREAKING HYPHEN}0.3", ["-0.3"]),
-        ("a change of \N{FULLWIDTH HYPHEN-MINUS}0.3", ["-0.3"]),
-        # a character nobody listed leaves the number its sign
-        ("about \N{ALMOST EQUAL TO}-0.3", ["-0.3"]),
-        ("down \N{RIGHTWARDS ARROW}-0.3", ["-0.3"]),
-        # and what joins two things takes it off: a bound value, a bracket, a degree
+        ('the vector c("-3","-5")', ["-3", "-5"]),
+        # no sign: the dash joins two things
+        ("from 1.2-3.4", ["1.2", "3.4"]),
+        ("from 80%-93%", ["80", "93"]),
         ("between {{results.low}}-3", ["3"]),
         ("groups (1)-3", ["1", "3"]),
         ("from 37\N{DEGREE SIGN}-39\N{DEGREE SIGN}", ["37", "39"]),
-        ("COVID-19 and IL-6 through CYP3A4", ["19", "6", "3", "4"]),
-        ("on 2019-03-12", ["2019", "03", "12"]),
-        ("P < 10^-5^", ["10", "-5"]),
-        ("\N{VULGAR FRACTION ONE HALF} of them", ["\N{VULGAR FRACTION ONE HALF}"]),
-        ("three of twelve", []),  # a number in words is not held
+        ("the 5\N{PRIME}\N{EN DASH}3\N{PRIME} direction", ["5", "3"]),
+        ("at 50€-100€ a day", ["50", "100"]),
+        ("from 5‰-9‰", ["5", "9"]),
+        ("pages 1--3", ["1", "3"]),  # the dash pandoc prints for two hyphens
+        ("from 0.5-.7", ["0.5", ".7"]),
+        # perhaps a sign: after a mark that may close, a product or a power, an "e"
+        ("10^3^-10^5^ cells", ["10", "3", "?10", "5"]),
+        ("the 5'-3' direction", ["5", "?3"]),
+        ("with *n*-1 degrees of freedom", ["?1"]),
+        ("with $n$-1 degrees of freedom", ["?1"]),
+        ("PM~2.5~-10 was high", ["2.5", "?10"]),
+        ("on days **1**-3", ["1", "?3"]),
+        ("P < 1e-5", ["1", "?5"]),
+        ("in Figures 1E\N{EN DASH}1G", ["1", "?1"]),
+        ("tol = 10**-6", ["10", "?6"]),
+        ("y = x*-1", ["?1"]),
+        ("z <- x^2*y^-1", ["2", "?1"]),
+        ("struck ~~-3~~ out", ["?3"]),
+        ("pages 12 \N{EN DASH}15", ["12", "?15"]),  # a range with a space on one side
+        ("pages 12\n\N{EN DASH}15", ["12", "?15"]),  # or wrapped there
     ],
 )
-def test_a_number_is_read_as_it_is_typed(typed: str, read: list[str]) -> None:
+def test_a_dash_before_a_number_is_its_sign_for_sure_perhaps_or_not(
+    typed: str, read: list[str]
+) -> None:
     assert [text for kind, text in kinds(f"It was {typed}.\n") if kind == NUMBER] == read
 
 
@@ -233,15 +271,11 @@ def test_a_fact_that_is_gone_or_new_fails(
     [
         ("1,200", "1200"),
         ("0.50", "0.5"),
-        ("-0.3", "0.3"),
         ("3.84", "3.48"),
         ("0.05", ".05"),
-        # the first review: each of these passed with nothing said
-        ("-.30", ".30"),
         (".5 mg", "5 mg"),
         ("10⁻⁸", "10⁻⁶"),
         ("an IC₅₀", "an IC₉₀"),
-        ("1e-5", "1e5"),
     ],
 )
 def test_a_number_is_compared_as_typed(old: str, new: str) -> None:
@@ -252,31 +286,118 @@ def test_a_number_is_compared_as_typed(old: str, new: str) -> None:
 @pytest.mark.parametrize(
     ("old", "new"),
     [
+        ("-0.3", "0.3"),
+        ("-.30", ".30"),
+        ("(-3)", "(3)"),
+        ("a cell |**-0.3**|", "a cell |**0.3**|"),
+        ("(0.5,*-0.3*)", "(0.5,*0.3*)"),
+        ("10^-5^", "10^5^"),
+        ('c("-3")', 'c("3")'),
+    ],
+)
+def test_a_minus_sign_that_is_sure_fails_when_it_goes_or_comes(old: str, new: str) -> None:
+    gone = compare(f"It was {old} in all.\n", f"In all, it was {new}.\n", PATH)
+    assert told(gone) == [("sign-lost", FAIL)], said(gone)
+    assert "has lost its minus sign" in gone.findings[0].message
+    come = compare(f"It was {new} in all.\n", f"In all, it was {old}.\n", PATH)
+    assert told(come) == [("sign-new", FAIL)], said(come)
+    assert come.findings[0].line == 1
+    assert "has a minus sign it did not have" in come.findings[0].message
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("1e-5", "1e5"),
+        ("10**-6", "10**6"),
+        ("x*-1", "x*1"),
+        ("2*-0.5", "2*0.5"),
+        ("x^2*y^-1", "x^2*y^1"),
+        ("~~-3~~", "~~3~~"),
+    ],
+)
+def test_a_dash_that_may_be_a_sign_is_shown_when_it_goes_or_comes(old: str, new: str) -> None:
+    """After a product, a power, a mark that may close or the "e" of an exponent, the dash
+    is a sign or it is not, and nothing here knows. Said nothing of, a sign went unseen;
+    read as a sign, a range retyped was refused. So it is put before a person."""
+    gone = compare(f"It was {old} in all.\n", f"In all, it was {new}.\n", PATH)
+    assert told(gone) == [("sign-unsure", WARN)], said(gone)
+    assert gone.ok and "may have lost a minus sign" in gone.findings[0].message
+    come = compare(f"It was {new} in all.\n", f"In all, it was {old}.\n", PATH)
+    assert told(come) == [("sign-unsure", WARN)], said(come)
+    assert come.ok and "may have gained a minus sign" in come.findings[0].message
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
         ("5 %", "5%"),
         ("(n=12)", "(n = 12)"),
         ("P<0.05", "*P* < 0.05"),
         ("-0.3", "\N{MINUS SIGN}0.3"),
+        ("-0.3", "\N{NON-BREAKING HYPHEN}0.3"),
         ("1.2-3.4", "1.2 to 3.4"),
         ("1.2-3.4", "1.2\N{EN DASH}3.4"),
+        ("pages 1--3", "pages 1\N{EN DASH}3"),
         ("5mg", "5 mg"),
         ("[@smith2020]", "@smith2020"),
         ("{{results.n}}", "{{ results.n }}"),
         ("12 reports", "12\N{NO-BREAK SPACE}reports"),
-        # the first review: each of these was refused with every number left as typed
-        ("10^3^-10^5^ cells", "10^3^ to 10^5^ cells"),
-        ("the 5'-3' direction", "the 5' to 3' direction"),
-        ("n-1 degrees", "*n*-1 degrees"),
         ("50€-100€", "50€ to 100€"),
-        ("PM~2.5~-10", "PM~2.5~ to 10"),
         ("5‰-9‰", "5‰ to 9‰"),
-        ("days **1**-3", "days **1** to 3"),
-        ("$n$-1", "$n$ - 1"),
-        ("-0.3", "\N{NON-BREAKING HYPHEN}0.3"),
+        # the dash stands as it stood, and is only read another way
+        ("a row |A|**-0.3**|", "a row | A | **-0.3** |"),
+        ("x*-1", "x * -1"),
+        # a line wrapped before a negative number, and unwrapped
+        ("a change of\n-0.3", "a change of -0.3"),
+        ("0.5\n-0.3", "0.5 -0.3"),
+        ("2*-0.5", "2 \N{MULTIPLICATION SIGN} \N{MINUS SIGN}0.5"),
     ],
 )
 def test_what_a_language_edit_does_to_the_notation_passes(old: str, new: str) -> None:
     report = compare(f"It was {old} in all.\n", f"In all, it was {new}.\n", PATH)
     assert not report.findings, said(report)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("10^3^-10^5^ cells", "10^3^ to 10^5^ cells"),
+        ("the 5'-3' direction", "the 5' to 3' direction"),
+        ("n-1 degrees", "*n*-1 degrees"),
+        ("PM~2.5~-10", "PM~2.5~ to 10"),
+        ("days **1**-3", "days **1** to 3"),
+        ("$n$-1", "$n$ - 1"),
+        ("Figures 1E\N{EN DASH}1G", "Figures 1E to 1G"),
+        ("pages 12 \N{EN DASH}15", "pages 12\N{EN DASH}15"),
+    ],
+)
+def test_a_range_retyped_where_its_dash_may_be_a_sign_passes_with_a_warning(
+    old: str, new: str
+) -> None:
+    """The first review found each of these refused, and the fix of that let a sign go
+    unseen. They pass, and the place is shown."""
+    report = compare(f"It was {old} in all.\n", f"In all, it was {new}.\n", PATH)
+    assert told(report) == [("sign-unsure", WARN)], said(report)
+    assert report.ok
+
+
+def test_a_sign_lost_beside_the_same_number_kept_is_counted() -> None:
+    before = "It fell by -0.3 here.\n\nIt fell by -0.3 there.\n"
+    report = compare(before, before.replace("-0.3 there", "0.3 there"), PATH)
+    assert told(report) == [("sign-lost", FAIL)]
+    assert report.findings[0].message == (
+        "the number '0.3' stood as '-0.3' twice before the edit, on lines 1 and 3, and has a "
+        "dash before it once now"
+    )
+    assert report.findings[0].line == 3
+
+
+def test_a_negative_number_that_is_gone_is_named_with_its_sign() -> None:
+    report = compare("It fell by -0.3 here, in 4.\n", "It fell here, in 4.\n", PATH)
+    assert [finding.message for finding in report.findings] == [
+        "the number '-0.3' is gone: it stood on line 1 before the edit"
+    ]
 
 
 def test_a_fact_that_stood_several_times_is_counted() -> None:

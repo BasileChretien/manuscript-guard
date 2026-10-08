@@ -142,7 +142,9 @@ holds every binding, every citation key and every typed number to its place. One
 gone, new or changed fails. The same ones in another order pass with a warning for each
 place, because a clause that moved and two values that changed places look the same. A
 number is compared as it is typed, so "3" spelt out as "three" is reported too; the space
-before a unit or around a sign is free.
+before a unit or around a sign is free. A minus sign is part of its number where the dash
+can be nothing else; where it may be the dash of a range, after a mark of emphasis or a
+raised figure, one that came or went is shown with a warning.
 
 **Exemptions are small, explicit and reviewable.** Conventions live in a narrow shipped
 list pinned to specific values — `p < 0.05` is allowed, `p < 0.37` is not, because a p-value

@@ -1171,16 +1171,33 @@ does to the notation around a number is free: the space before a unit or a per c
 the spaces around a sign of comparison, a hyphen made a true minus sign. So the edits that
 tidy a manuscript's notation pass.
 
-**A dash is a sign or a join by what stands before it.** "-0.3" made "0.3" is a number
-changed, and "1.2-3.4" made "1.2 to 3.4" is a range retyped. The dash joins where what
-stands before it ends something: a letter, a figure, a closing bracket, a bound value, a
-per cent sign, a prime, a currency sign, or a mark of emphasis, maths or superscript that
-closes there. After anything else it is the sign. The first review found both halves
-wrong. "-.30" was read as "30", so a sign and a point could go with nothing said, and
-so could an exponent typed with raised figures. And "10^3^-10^5^", "5'-3'" and "*n*-1"
-had the dash of a range read as a sign, so that making the range "to" was refused. A
-mark that opens as well as closes is told by its own word: the second caret of
-"10^3^" closes, the first of "10^-5^" opens.
+**A minus sign fails where it is sure, and is shown where it is not.** "-0.3" made "0.3" is
+a number changed, and "1.2-3.4" made "1.2 to 3.4" is a range retyped. Which of the two a
+dash is, is known by what stands before it, and only sometimes. After a space, an opening
+bracket, a comma or a sign of comparison nothing stands that it could join: it is the
+number's sign, and one that is gone or new fails. After a letter, a figure, a closing
+bracket, a per cent sign or a bound value it joins, and is no sign. After a mark that can
+open or close, an asterisk, an underscore, a dollar, a caret, a tilde, a quotation mark, it
+is a sign where the mark opens and may be the dash of a range where it closes: "*-0.3*"
+and "*n*-1", "10^-5^" and "10^3^-10^5^". And a mark that looks as if it closes may be a
+product or a power, "x*-1".
+
+Two reviews read that last case by rule and found the rule wrong each time. The first rule
+took every such mark to open, and refused a range made "to" after one. The second took a
+mark after a letter or a figure to close, and let the sign of "10**-6" go with nothing
+said. It also read the sign of an exponent after "e", and so refused "Figures 1E-1G" made
+"1E to 1G". Shown this, Basile chose on 2026-10-08 what the order already does: where it
+is sure it fails, and where it is not the place is shown and the command passes. A mark
+that can only open leaves the sign sure: one whose run stands at the start or after
+something that does not join, or the first caret of its word. After any other, after a
+figure and "e", and after a figure and one space or a line end, a dash that came or went
+is a warning. A
+dash that stands as it stood and is only read another way, "x*-1" made "x * -1", is no
+change.
+
+A number with no nought keeps its point, ".05", and raised and lowered figures are
+figures: the first review found "-.30" read as "30", and ten to the minus eight typed with
+the characters made ten to the minus six with nothing said.
 
 **It is read once, with a count.** Whether a fact is gone or new is known from how often it
 stands in each text. Where the order changed is known from a count of what one text has had
@@ -7538,17 +7555,18 @@ Closed since, and why each mattered:
   - "0,5" is read as two numbers and "1.2.3" as "1.2" and "3". Each is compared as typed
     either way, so only an edit between such forms is told differently: "0,5" made "0.5"
     is two numbers gone and one new.
-  - A dash before a number is its sign unless what stands before the dash ends
-    something: a letter, a figure, a closing bracket, a bound value, a per cent, per
-    mille or degree sign, a prime, a closing quotation mark, a euro, pound, yen or cent
-    sign, or a mark of emphasis, maths, code, superscript or subscript that closes
-    there. "x-3", "80%-93%", "5'-3'", "*n*-1" and "10^3^-10^5^" keep no sign;
-    "word -3", "(-3", "*-0.3*" and "10^-5^" have one. So a rewording that closes
-    "about -3" up to "about-3" is told the number changed. Which of a pair a mark is,
-    is read in its own word, 80 characters back at most, and a straight quotation mark
-    closes after anything but a space or an opening bracket.
-  - A sign set apart from its number by a space is not read with it: a true minus, a
-    space and "0.3", made "0.3", passes.
+  - Where a dash before a number may be its sign or the dash of a range, one that is gone
+    or new is a warning and the command passes. That is after `*`, `_`, `$`, a backtick or
+    a straight quotation mark whose run has a letter, a figure or a closing mark before
+    it; after the second caret or tilde of a word, counted 80 characters back at most;
+    after a figure and "e"; and after a figure or a closing mark and one space or a line
+    end. So "x*-1" made "x*1", "10**-6" made "10**6" and "1e-5" made "1e5" are shown and
+    not refused, and so is the sign of a negative number that follows another number after
+    one space, "0.5 -0.3". A listing is read by the same rule as the prose.
+  - A sign set apart from its number is not read with it: a true minus, a space and "0.3",
+    made "0.3", passes, and so does "-$5" made "$5".
+  - A figure retyped raised or lowered is told as gone and new, as "3" made "three" is: a
+    square metre typed with the raised character made `m^2^`, or "CO2" given a lowered 2.
   - A comma before three figures is read as one number's: "100,200 and 400 mg" made
     "100, 200 and 400 mg" is told '100,200' gone and two numbers new.
   - Git is given 30 seconds to answer. Through the wrapper Git for Windows puts on the

@@ -20,8 +20,15 @@ quote can be checked against its source.
 
 Recipes ship for STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT-2025, PRISMA-2020,
 PRISMA-2020-abstracts, READUS-PV, READUS-PV-abstracts, TRIPOD-development,
-TRIPOD-validation, TRIPOD-development-validation and ARRIVE-2.0. Name the guideline in
-`paper.yaml` as the recipe is named (`reporting_guideline: [STROBE]`, a list). Extensions
+TRIPOD-validation, TRIPOD-development-validation, ARRIVE-2.0 and SANRA. Name the guideline in
+`paper.yaml` as the recipe is named (`reporting_guideline: [STROBE]`, a list).
+
+**SANRA is not a reporting guideline**, and its own paper says so: it is the scale an editor
+or a reviewer scores a narrative review with. It is here because a narrative review has
+nothing else to be held to — PRISMA is for systematic reviews — and because its six items
+are a fair account of what such a review has to do. Adopting it says the manuscript answers
+those six items, not that it followed a reporting standard, and the Methods should say which
+of the two it means. Extensions
 hold only their own items. RECORD adds to STROBE, so a study that follows RECORD lists both,
 and RECORD-PE adds to RECORD, so one that follows it lists STROBE, RECORD and RECORD-PE.
 

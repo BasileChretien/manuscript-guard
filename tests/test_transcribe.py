@@ -751,3 +751,101 @@ def test_a_real_page_with_an_accented_letter_is_read(tmp_path: Path) -> None:
     text = page_text(path, 1)
     assert text.splitlines()[0].strip() == "Describe the naïve and the treated groups."
     assert "\r" not in text
+
+
+# ---------------------------------------------------------------- a scale, as the PDF lays it out
+
+#: The opening of SANRA's form (CC BY 4.0), as `pdftotext -layout` prints it: a numbered item,
+#: then the statements a rater chooses between with the score at the end of the line. The
+#: instructions above the scale are there too, because a numbered sentence in them must not be
+#: read as an item.
+_SCALE = """\
+Scale for the Assessment of Narrative Review Articles - SANRA
+
+Please rate the quality of the narrative review article in question, using categories 0-2 on
+the following scale.
+
+1) Justification of the article's importance for the readership
+
+The importance is not justified.                                              0
+
+The importance is alluded to, but not explicitly justified.                    1
+
+The importance is explicitly justified.                                        2
+
+2) Description of the literature search
+
+The search strategy is not presented.                                         0
+
+The literature search is described briefly.                                   1
+
+The literature search is described in detail, including search terms.          2
+"""
+
+
+def test_a_scale_item_carries_its_scored_statements() -> None:
+    from manuscript_guard.reporting.scale import parse_scale
+
+    items = parse_scale(_SCALE)
+    assert [i.id for i in items] == ["1", "2"]
+    assert items[0].topic == "Justification of the article's importance for the readership"
+    assert items[0].text.startswith("0 The importance is not justified.")
+    assert "2 The importance is explicitly justified." in items[0].text
+    assert items[1].extras["statements"] == [
+        "The search strategy is not presented.",
+        "The literature search is described briefly.",
+        "The literature search is described in detail, including search terms.",
+    ]
+
+
+def test_the_instructions_above_a_scale_are_not_items() -> None:
+    """A rater's instructions can be numbered too; what makes an item is its options."""
+    from manuscript_guard.reporting.scale import parse_scale
+
+    text = _SCALE.replace(
+        "Please rate the quality", "3) Read the whole manuscript first\n\nPlease rate the quality"
+    )
+    assert [i.id for i in parse_scale(text)] == ["1", "2"]
+
+
+def test_a_statement_that_holds_a_number_keeps_it() -> None:
+    """The statements are carried apart from the text for exactly this: taking the scores off
+    a joined string would cut a statement at its own number."""
+    from manuscript_guard.reporting.scale import parse_scale
+
+    text = _SCALE.replace(
+        "The literature search is described briefly.",
+        "At least 2 databases are named, briefly.      ",
+    )
+    item = parse_scale(text)[1]
+    assert "At least 2 databases are named, briefly." in item.extras["statements"]
+
+
+def test_a_document_with_no_scored_items_does_not_fit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A recipe that does not fit says so, where a wrong one would transcribe prose."""
+    from manuscript_guard.reporting import columns
+    from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
+    from manuscript_guard.reporting.transcribe import RecipeError
+
+    monkeypatch.setattr(
+        columns,
+        "page_text",
+        lambda _path, _page: "A page of prose. 1) a number in a sentence, nothing scored.",
+    )
+    with pytest.raises(RecipeError, match="does not fit"):
+        transcribe_scale(tmp_path / "x.pdf", ScaleRecipe(document="x.pdf", pages=(1,)))
+
+
+def test_one_page_read_twice_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two pages that both hold item 1 means the recipe names a page it should not."""
+    from manuscript_guard.reporting import columns
+    from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
+    from manuscript_guard.reporting.transcribe import RecipeError
+
+    monkeypatch.setattr(columns, "page_text", lambda _path, _page: _SCALE)
+    with pytest.raises(RecipeError, match="appears twice"):
+        transcribe_scale(tmp_path / "x.pdf", ScaleRecipe(document="x.pdf", pages=(1, 2)))

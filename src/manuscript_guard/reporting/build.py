@@ -65,7 +65,24 @@ def build_profile(
                 f"recipe, and record the new sha256. Use --allow-changed to transcribe anyway."
             )
 
-    if str(parse_mode).startswith("pdf"):
+    if parse_mode == "pdf-scale":
+        # A rating scale, not a checklist: numbered items with the statements a rater chooses
+        # between. Verified by the item's own name and each of its statements, which is what
+        # the page holds; `scale.py` says what that does and does not catch.
+        from manuscript_guard.literature.sources import contains
+        from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
+
+        items, haystack = transcribe_scale(
+            document, ScaleRecipe(document=recipe.document, pages=tuple(pages or (1,)))
+        )
+        unverified = [
+            item.id
+            for item in items
+            if not contains(haystack, item.topic)
+            or not all(contains(haystack, said) for said in item.extras.get("statements", ()))
+        ]
+        meta = {**meta, "verification": "each item's name and every scored statement, verbatim"}
+    elif str(parse_mode).startswith("pdf"):
         from manuscript_guard.literature.sources import contains
         from manuscript_guard.reporting.columns import ColumnRecipe, transcribe_columns
 

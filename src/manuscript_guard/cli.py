@@ -1824,12 +1824,21 @@ def _checking_items(project, named: Path | None):
             raise ItemsError(
                 f"{source}: schema is {contributed.get('schema')!r}, and this reads {SCHEMA!r}"
             )
+        # And checked against the schema **before** the merge. The merge reads each item's `id`
+        # and `group`, so an item written without one — the ordinary authoring mistake this
+        # schema exists to report — raised a `KeyError` from inside the merge instead.
+        items_from(contributed, source)
     elif named is not None:
         # A file named on the command line and not there is a mistake worth saying, where the
         # default being absent only means this project contributes nothing of its own.
         raise ItemsError(f"{named} does not exist")
 
-    document, skipped = merge(produce(project), contributed)
+    produced, unread = produce(project)
+    for said in unread:
+        # A ledger the contract cannot read takes every value in it out of the round. Printed
+        # rather than left to be noticed as a page that is suspiciously short.
+        print(f"not read, so nothing from it is in this round — {said}", file=sys.stderr)
+    document, skipped = merge(produced, contributed)
     for group, count in sorted(skipped.items()):
         print(
             f"{group}: {count} item(s) the toolkit found are left out, because this project "
@@ -1885,9 +1894,14 @@ def cmd_checker(args: argparse.Namespace) -> int:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2
         asked = len(items.outstanding)
+        # From the record as well as from the items file. "0 already checked by someone" was
+        # printed after a whole round had come back and been imported, because this counted only
+        # the `already` field a project may write.
+        standing = status(project.root, items)
+        checked = len(items.items) - asked + len(standing.answered)
         print(f"wrote {written} ({size // 1024} kB)")
         print(
-            f"{asked} item(s) to check, {len(items.items) - asked} already checked by someone, "
+            f"{asked} item(s) to check, {checked} already checked by someone, "
             f"for {args.name}."
         )
         print(
@@ -1897,6 +1911,15 @@ def cmd_checker(args: argparse.Namespace) -> int:
         return 0
 
     if args.verb == "import":
+        if args.answers is None:
+            # Without this the missing flag reached `Path.read_text` on `None` and the author
+            # got an AttributeError. A forgotten flag is not a bug in the project.
+            print(
+                "manuscript-guard: checker import needs the file a co-author sent back: "
+                "`checker import --answers answers-<name>.json`",
+                file=sys.stderr,
+            )
+            return 2
         try:
             brought = import_answers(project.root, args.answers, items)
         except AnswersError as exc:
@@ -1913,6 +1936,18 @@ def cmd_checker(args: argparse.Namespace) -> int:
     print(f"{len(items.items)} item(s); {standing.outstanding} nobody has answered")
     if standing.already:
         print(f"{standing.already} were already checked before this round")
+    if standing.stale:
+        print(
+            f"{len(standing.stale)} answer(s) are about text that has changed since, so those "
+            f"items are outstanding again:"
+        )
+        for decision in standing.stale:
+            print(f"  {decision.by} on {decision.title or decision.id}")
+    if standing.orphaned:
+        print(
+            f"{len(standing.orphaned)} answer(s) are about items this project no longer has; "
+            f"they stay in the record and count for nothing"
+        )
     for person in standing.people:
         counts = standing.by_person[person]
         said = ", ".join(f"{n} {name}" for name, n in sorted(counts.items()))

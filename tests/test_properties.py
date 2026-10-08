@@ -368,6 +368,59 @@ def _found_in_order(text: str) -> None:
         before = heading.start
 
 
+# ------------------------------------------------------- the sentences a co-author is shown
+
+
+@holds(200, texts())
+def test_every_citation_lies_in_one_sentence_and_no_sentence_is_only_a_citation(
+    manuscript: str,
+) -> None:
+    """The claim items a co-author checks are the sentences of the manuscript that cite
+    something, so two things have to hold of the splitter.
+
+    **Every citation the toolkit finds is in a sentence**, or the claim it belongs to is on no
+    item and nobody is asked about it.
+
+    **Within a paragraph, only the first piece may carry no word of its own.** A piece with none
+    is joined to the piece before it, so somebody is never asked whether a source supports a
+    claim they have not been shown. One split broke both at once: "described by Okada et al.
+    [@key]." was cut at the stop in "al.", which left a second piece reading "[@key]." and put
+    the half carrying the claim on no item at all.
+
+    The first piece is the exception because a paragraph that is nothing but a citation has
+    nothing before it to join to. The producer drops that one rather than ask about it, which is
+    held in `tests/test_checking.py`, not here.
+    """
+    from manuscript_guard.zotero.citations import find_citations
+
+    planted = (
+        manuscript
+        + "\n\nThe risk was described by Okada et al. [@planted2020]. A later study agreed.\n"
+        + "\nSee Fig. 2 and e.g. St. John's wort [@planted2021]; the effect was small.\n"
+        + "\nA cohort reached the same conclusion as @planted2022.\n"
+    )
+    read = READINGS["checker sentences"]()(planted)
+
+    for use in find_citations(planted, Path("main.md")):
+        if use.citekey.startswith("planted"):
+            holding = [sentence for _line, sentence in read if use.citekey in sentence]
+            assert holding, f"{use.citekey} is in no sentence: {read}"
+
+    def wordless(sentence: str) -> bool:
+        return not any(
+            character.isalpha()
+            for character in re.sub(r"@[A-Za-z][\w:.#$%&+?<>~/-]*", "", sentence)
+        )
+
+    # Pieces of one paragraph share the line it starts on, which is how they are grouped here.
+    by_paragraph: dict[int, list[str]] = {}
+    for line, sentence in read:
+        by_paragraph.setdefault(line, []).append(sentence)
+    for line, pieces in by_paragraph.items():
+        for piece in pieces[1:]:
+            assert not wordless(piece), f"line {line}: a piece with no claim in it: {piece!r}"
+
+
 # ------------------------------------------------------------------ the sentence of a bound
 
 

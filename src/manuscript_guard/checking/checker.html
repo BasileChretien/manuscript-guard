@@ -116,8 +116,20 @@ const BUNDLE = __BUNDLE__;
 const KEY = "mg-checks-" + BUNDLE.bundle;
 const S = { group: null, filter: "todo", list: [], pos: 0, answers: {} };
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// The local clock with its offset, not UTC without one. `toISOString()` gave "10:00:21" for an
+// answer written at 19:00 in Japan, so a morning's work was recorded on the day before.
+function stamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  const off = -d.getTimezoneOffset();
+  const sign = off < 0 ? "-" : "+";
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
+    `T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` +
+    `${sign}${p(Math.floor(Math.abs(off) / 60))}:${p(Math.abs(off) % 60)}`;
+}
 
 try { S.answers = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { S.answers = {}; }
 function keep() { try { localStorage.setItem(KEY, JSON.stringify(S.answers)); } catch (e) {} }
@@ -175,9 +187,13 @@ function evidence(e) {
   const head = `<div class="evhead">${esc(e.caption || e.kind)}${inhead}</div>`;
   let body = "";
   if (e.kind === "image") {
-    const src = (BUNDLE.images || {})[e.img] || e.src || "";
+    // The builder's own map and nothing else. An `src` on the evidence is not a field of the
+    // schema and nothing in the toolkit writes one; it went into this attribute unescaped, so a
+    // quote in it closed the attribute. Escaped as well, since this page runs on other people's
+    // machines and a data URI loses nothing by it.
+    const src = (BUNDLE.images || {})[e.img] || "";
     body = src
-      ? `<img src="${src}" alt="${esc(e.caption || "source page")}">`
+      ? `<img src="${esc(src)}" alt="${esc(e.caption || "source page")}">`
       : `<p class="warn">This page's image did not travel with the file. Answer "not sure".</p>`;
   } else if (e.kind === "table") {
     const labels = e.row_labels || [];
@@ -189,7 +205,9 @@ function evidence(e) {
       ).join("") + `</tr>`).join("") + `</table>`;
   } else if (e.kind === "text") {
     body = `<pre class="lines">` + (e.lines || []).map(([n, t]) =>
-      `<span class="${n === e.line ? "tl" : ""}">${String(n).padStart(5)}  ${marks(t, e.mark)}</span>`
+      // The line number is escaped too: it is a value out of the items file like any other.
+      `<span class="${n === e.line ? "tl" : ""}">${esc(String(n).padStart(5))}  ` +
+      `${marks(t, e.mark)}</span>`
     ).join("\n") + `</pre>`;
   } else if (e.kind === "quote") {
     body = `<blockquote class="quote">${marks(e.text || "", e.mark)}</blockquote>`;
@@ -230,7 +248,7 @@ function answer(status) {
   if (!it) return;
   S.answers[it.id] = {
     id: it.id, digest: it.digest, status,
-    note: $("note").value.trim(), at: new Date().toISOString().slice(0, 19),
+    note: $("note").value.trim(), at: stamp(),
   };
   keep();
   if (S.pos < S.list.length - 1) S.pos += 1;
@@ -241,7 +259,7 @@ function answersFile() {
   return JSON.stringify({
     schema: "manuscript-guard/checking-answers/1",
     bundle: BUNDLE.bundle, by: BUNDLE.by, built_on: BUNDLE.built_on,
-    saved_on: new Date().toISOString().slice(0, 19),
+    saved_on: stamp(),
     answers: Object.values(S.answers),
   }, null, 1);
 }

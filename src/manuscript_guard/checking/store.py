@@ -52,7 +52,7 @@ class Imported:
 
     by: str
     recorded: tuple[Decision, ...]
-    stale: tuple[tuple[str, str], ...]       # (item id, why)
+    stale: tuple[tuple[str, str], ...]       # (what to call the item, why)
     unknown: tuple[str, ...]                 # ids this project does not have
 
 
@@ -114,14 +114,17 @@ def import_answers(project_root: Path, answers_file: Path, items: Items) -> Impo
         if item is None:
             unknown.append(identifier)
             continue
+        # The title, not the twelve hex characters of the id: the person reading this refusal has
+        # to find the thing and ask somebody about it again.
+        called = str(item.get("title") or identifier)
         status = str(answer.get("status") or "").strip()
         if status not in STATUSES:
-            stale.append((identifier, f"answered {status!r}, which is not one of {STATUSES}"))
+            stale.append((called, f"answered {status!r}, which is not one of {STATUSES}"))
             continue
         if str(answer.get("digest") or "") != item["digest"]:
             stale.append(
                 (
-                    identifier,
+                    called,
                     "the item changed after it was checked, so the answer is about text this "
                     "project no longer has",
                 )
@@ -157,6 +160,11 @@ class Standing:
     disagreements: tuple[tuple[str, tuple[Decision, ...]], ...]
     outstanding: int
     already: int
+    #: Decisions whose item has changed since: the person answered about text nobody has now, so
+    #: the item is outstanding again and their answer counts for nothing.
+    stale: tuple[Decision, ...] = ()
+    #: Decisions about an id this project no longer has at all.
+    orphaned: tuple[Decision, ...] = ()
 
     @property
     def unanswered(self) -> int:
@@ -167,17 +175,39 @@ def status(project_root: Path, items: Items) -> Standing:
     """Who has answered what, where two people disagree, and what nobody has answered.
 
     Only the latest decision per person per item counts; the superseded ones stay in the file.
+
+    **Every decision is held against the item as it is now**, not only as it was at import. The
+    first version compared the digest once, when the answers came in, and never again: a value
+    edited the day after a round still read as answered by everybody, which is the opposite of
+    what the digest is for. A decision whose item has changed since is `stale` — the item is
+    outstanding again — and one about an id the project no longer has is `orphaned`.
+
+    An "unsure" is not an answer. The question was put and the person could not settle it, so the
+    item stays outstanding for someone else, which is what this toolkit says of it in three
+    places and did not do.
     """
+    now = {str(item["id"]): str(item.get("digest") or "") for item in items.items}
+
     latest: dict[tuple[str, str], Decision] = {}
     for decision in read_decisions(project_root):
         latest[(decision.by, decision.id)] = decision
 
     answered: dict[str, set[str]] = {}
     by_person: dict[str, dict[str, int]] = {}
-    for (person, identifier), decision in latest.items():
-        answered.setdefault(identifier, set()).add(person)
+    stale: list[Decision] = []
+    orphaned: list[Decision] = []
+    for (person, identifier), decision in sorted(latest.items()):
+        held = now.get(identifier)
+        if held is None:
+            orphaned.append(decision)
+            continue
+        if decision.digest and held and decision.digest != held:
+            stale.append(decision)
+            continue
         counts = by_person.setdefault(person, {})
         counts[decision.status] = counts.get(decision.status, 0) + 1
+        if decision.status != "unsure":
+            answered.setdefault(identifier, set()).add(person)
 
     outstanding = [
         item for item in items.outstanding if not answered.get(str(item["id"]))
@@ -189,12 +219,19 @@ def status(project_root: Path, items: Items) -> Standing:
             disagreements.append(
                 (identifier, tuple(latest[(person, identifier)] for person in sorted(people)))
             )
+    counted = {(d.by, d.id) for d in stale} | {(d.by, d.id) for d in orphaned}
     return Standing(
         people=tuple(sorted(by_person)),
         by_person=by_person,
         answered=answered,
-        wrong=tuple(d for d in latest.values() if d.status in ("wrong", "unsure")),
+        wrong=tuple(
+            d
+            for (person, identifier), d in sorted(latest.items())
+            if d.status in ("wrong", "unsure") and (person, identifier) not in counted
+        ),
         disagreements=tuple(disagreements),
         outstanding=len(outstanding),
         already=len(items.items) - len(items.outstanding),
+        stale=tuple(stale),
+        orphaned=tuple(orphaned),
     )

@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from manuscript_guard.checking.items import SCHEMA
+from manuscript_guard.text.placeholders import PLACEHOLDER
 
 #: What is asked of each kind, in words needing no instructions.
 GROUPS = (
@@ -57,13 +58,24 @@ GROUPS = (
     },
 )
 
-#: A binding, as the manuscript writes it.
-BINDING = re.compile(r"\{\{\s*(?P<key>[a-z][a-z0-9_.]*)\s*\}\}")
+#: A binding, as the manuscript writes it. The toolkit's own pattern, from
+#: `text/placeholders.py`: it accepts `{{ lit.x }}` with spaces, which the renderer resolves and
+#: an exact-string search here did not, so that value's sentences were neither shown nor digested.
+BINDING = PLACEHOLDER
 #: A citation as the manuscript writes it, bracketed or narrative.
 CITEKEY = re.compile(r"@([A-Za-z][\w:.#$%&+?<>~/-]*)")
-#: One sentence, ended by a stop and a space. Good enough to show a reader the claim in context;
-#: nothing here depends on the split being exactly right.
+#: A stop, then a space, then something that can start a sentence. The opening bracket matters:
+#: a numbered-citation style writes "Okada et al. [@key]." and the stop in "al." is not an end.
 SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'(\[])")
+#: Words that end in a stop and do not end a sentence. Lower-cased, without their stops. Short on
+#: purpose: each one is a word a manuscript really writes before a citation or a figure.
+NOT_AN_END = frozenset({
+    "al", "e.g", "i.e", "cf", "ca", "approx", "ibid", "viz", "vs", "etc", "fig", "figs",
+    "tab", "tabs", "eq", "eqs", "ref", "refs", "no", "nos", "vol", "vols", "pp", "ed", "eds",
+    "st", "dr", "prof", "mr", "mrs", "ms", "sr", "jr", "inc", "ltd", "dept", "univ",
+})
+#: The last word before a stop, with any stops of its own: "al." of "et al.", "e.g." whole.
+LAST_WORD = re.compile(r"([A-Za-z][A-Za-z.]*)\.$")
 
 #: A reference's fields as a reader wants them, each under every name a .bib file calls it.
 #: Better BibTeX exports biblatex (`journaltitle`, `date`) and a hand-kept file is often plain
@@ -148,18 +160,58 @@ def _identifier(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:12]
 
 
+def _ends_a_sentence(before: str) -> bool:
+    """Whether the stop at the end of `before` ends a sentence.
+
+    It does not after "et al.", "e.g." or "Fig.", nor after a single initial — and the split that
+    matters most is exactly there, because a numbered-citation style writes "described by Okada
+    et al. [@key]." and cutting it leaves one item reading "[@key]." with no claim in it.
+    """
+    found = LAST_WORD.search(before)
+    if found is None:
+        return True
+    word = found.group(1).rstrip(".").lower()
+    return not (word in NOT_AN_END or len(word) == 1)
+
+
+def _split(flat: str) -> list[str]:
+    """One paragraph's sentences.
+
+    Two rules beyond the stop: a stop after an abbreviation is not an end, and a piece carrying
+    no word of its own belongs to the piece before it — so a citation left alone by a split this
+    reader did not foresee is put back rather than shown to a co-author as a claim to judge.
+    """
+    pieces: list[str] = []
+    at = 0
+    for found in SENTENCE_END.finditer(flat):
+        if not _ends_a_sentence(flat[:found.start()]):
+            continue
+        pieces.append(flat[at : found.start()])
+        at = found.end()
+    pieces.append(flat[at:])
+
+    joined: list[str] = []
+    for piece in (p.strip() for p in pieces):
+        if not piece:
+            continue
+        if joined and not any(ch.isalpha() for ch in CITEKEY.sub("", piece)):
+            joined[-1] = f"{joined[-1]} {piece}"
+            continue
+        joined.append(piece)
+    return joined
+
+
 def _sentences_of(text: str) -> list[tuple[int, str]]:
-    """Each sentence with the line it starts on."""
+    """Each sentence of each paragraph, with the line the **paragraph** starts on.
+
+    The paragraph's line, not the sentence's: it is how a reader finds the passage, and nothing
+    is keyed on it.
+    """
     out: list[tuple[int, str]] = []
     line = 1
     for paragraph in text.split("\n\n"):
-        start = line
-        flat = " ".join(paragraph.split())
-        if flat:
-            offset = start
-            for sentence in SENTENCE_END.split(flat):
-                if sentence.strip():
-                    out.append((offset, sentence.strip()))
+        for sentence in _split(" ".join(paragraph.split())):
+            out.append((line, sentence))
         line += paragraph.count("\n") + 2
     return out
 
@@ -168,6 +220,13 @@ def _without_bindings(sentence: str) -> str:
     """A sentence as a reader sees it: a binding stands for the value, which a co-author checking
     the claim does not need resolved and could not check from here."""
     return BINDING.sub(lambda found: f"[{found.group('key').split('.')[-1]}]", sentence)
+
+
+def _uses_binding(text: str, key: str) -> bool:
+    """Whether this text writes that binding, however it spaces it."""
+    return any(
+        f"{found.group('ns')}.{found.group('key')}" == key for found in BINDING.finditer(text)
+    )
 
 
 def _plain(fact: Any) -> str:
@@ -189,29 +248,34 @@ Document = tuple[Path, str, list[tuple[int, str]]]
 
 
 def _manuscript(project) -> list[Document]:
-    """Every manuscript file, split into sentences once.
+    """Every manuscript file, split into sentences once, with its comments blanked.
 
     Once, because every value's uses are looked for in these: splitting inside that loop is a
     whole manuscript re-read per key, and a real paper has a hundred or more of them.
+
+    Blanked, with `text/masking.py`'s own function, because a sentence a draft has commented out
+    is not a sentence of the paper — and a co-author sent "Dropped from this draft: the risk
+    doubles in adults over 65 [@key]" as a claim to check has been asked about nothing. Blanking
+    keeps every offset and line ending, so the lines a reader is pointed at stay right.
     """
     from manuscript_guard.gates.numbers import source_files
+    from manuscript_guard.text.masking import blank_comments
 
     documents: list[Document] = []
     for path in source_files(project.path("manuscript")):
-        body = path.read_text(encoding="utf-8", errors="replace")
+        body = blank_comments(path.read_text(encoding="utf-8", errors="replace"))
         documents.append((path, body, _sentences_of(body)))
     return documents
 
 
 def _uses_of(key: str, documents: list[Document]) -> list[dict]:
     """Where the manuscript uses one binding, as sentences a reader can judge."""
-    wanted = "{{" + key + "}}"
     found: list[dict] = []
     for path, text, sentences in documents:
-        if wanted not in text:
+        if not _uses_binding(text, key):
             continue
         for line, sentence in sentences:
-            if wanted in sentence:
+            if _uses_binding(sentence, key):
                 found.append(
                     {
                         "text": _without_bindings(sentence),
@@ -222,8 +286,124 @@ def _uses_of(key: str, documents: list[Document]) -> list[dict]:
     return found[:8]
 
 
+#: What a CSL record calls the fields this page shows, and what this module calls them. pandoc
+#: writes CSL JSON, which is the same information under other names.
+FROM_CSL = (
+    ("type", "type"),
+    ("title", "title"),
+    ("container-title", "journaltitle"),
+    ("volume", "volume"),
+    ("issue", "number"),
+    ("page", "pages"),
+    ("DOI", "doi"),
+    ("URL", "url"),
+)
+
+
+def _name_of(person: dict) -> str:
+    """One CSL name as a bibliography prints it: "van der Eijk, Yvette"."""
+    if person.get("literal"):
+        return str(person["literal"])
+    family = " ".join(
+        part for part in (person.get("non-dropping-particle"), person.get("family")) if part
+    )
+    given = " ".join(
+        part for part in (person.get("given"), person.get("suffix")) if part
+    )
+    return f"{family}, {given}".strip().strip(",") if given else family
+
+
+def _date_of(issued: dict) -> str:
+    """A CSL date as the year, or the year and month, or the whole of it."""
+    if issued.get("literal"):
+        return str(issued["literal"])
+    parts = (issued.get("date-parts") or [[]])[0]
+    return "-".join(f"{int(part):02d}" if n else str(int(part)) for n, part in enumerate(parts))
+
+
+def _records_from_pandoc(path: Path) -> dict[str, dict[str, str]] | None:
+    """Every entry, parsed by pandoc, or `None` where pandoc cannot be used.
+
+    `pandoc -f biblatex -t csljson` understands the format properly: `M{\"u}ller` comes back as
+    Müller, a biblatex extended name as its parts, a `@string` macro expanded, and an `@` inside
+    a value as what it is. The reader below this does none of that and says so.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    found = shutil.which("pandoc")
+    if not found:
+        return None
+    try:
+        done = subprocess.run(
+            [found, "-f", "biblatex", "-t", "csljson", str(path)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0 or not (done.stdout or "").strip():
+        # A bibliography pandoc refuses is read by the small reader instead, which shows the
+        # fields as written rather than nothing at all.
+        return None
+    try:
+        entries = json.loads(done.stdout)
+    except ValueError:
+        return None
+    if not isinstance(entries, list):
+        return None
+
+    records: dict[str, dict[str, str]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or not entry.get("id"):
+            continue
+        fields: dict[str, str] = {}
+        for csl, ours in FROM_CSL:
+            value = entry.get(csl)
+            if isinstance(value, str) and value.strip():
+                fields[ours] = " ".join(value.split())
+            elif isinstance(value, (int, float)):
+                fields[ours] = str(value)
+        for csl, ours in (("author", "author"), ("editor", "editor")):
+            people = [
+                _name_of(person) for person in entry.get(csl) or [] if isinstance(person, dict)
+            ]
+            if any(people):
+                fields[ours] = " and ".join(name for name in people if name)
+        issued = entry.get("issued")
+        if isinstance(issued, dict):
+            said = _date_of(issued)
+            if said:
+                fields["date"] = said
+        records[str(entry["id"])] = fields
+    return records
+
+
 def _bib_records(project) -> dict[str, dict[str, str]]:
-    """Every entry of `references.bib`, as fields.
+    """Every entry of `references.bib`, as fields, by pandoc where there is one.
+
+    Two readers, and the better one is not always there. `checker build` must work in a project
+    that has no pandoc, so `_records_read_here` stays; where pandoc is on the path it parses
+    instead, because what it reads is the format and what the small reader reads is the shape
+    that format usually takes.
+
+    **The two do not agree in every detail, and pandoc's reading is the one to prefer**: it gives
+    a page range as `425-440` where the small reader keeps the file's en dash, and a title in the
+    sentence case biblatex stores rather than the title case the file types. Both identify the
+    same work, which is what a co-author is asked about, and the printed bibliography is pandoc's
+    reading of the same file under a style.
+    """
+    path = project.path("literature") / "references.bib"
+    if not path.is_file():
+        return {}
+    parsed = _records_from_pandoc(path)
+    if parsed is not None:
+        return parsed
+    return _records_read_here(path)
+
+
+def _records_read_here(path: Path) -> dict[str, dict[str, str]]:
+    """Every entry of a `.bib` file, read without pandoc: the fields as they are written.
 
     A small reader rather than a dependency: a .bib entry is `@type{key, field = {value},}`, and
     what a co-author checks is the fields as they are written. Nested braces are counted, so a
@@ -236,14 +416,19 @@ def _bib_records(project) -> dict[str, dict[str, str]]:
     string, `n` out of "(n = 866)" in an abstract, `given` and `family` out of a biblatex
     extended name — and a URL carrying `&title=` overwrote the entry's real title, which a
     co-author would have been shown as the thing to check.
+
+    What it does not do, where pandoc does: decode a TeX accent, expand a `@string` macro, join
+    a `#` concatenation, or read a biblatex extended name into its parts. DESIGN.md's Known gaps
+    carries that.
     """
-    path = project.path("literature") / "references.bib"
-    if not path.is_file():
-        return {}
     text = path.read_text(encoding="utf-8", errors="replace")
     records: dict[str, dict[str, str]] = {}
-    for start in re.finditer(r"@(\w+)\s*\{\s*([^,\s]+)\s*,", text):
+    # Anchored at a line start, so an `@` inside a value is not the start of an entry, and
+    # `@comment` is skipped: both were entries of their own before.
+    for start in re.finditer(r"^@(\w+)\s*\{\s*([^,\s]+)\s*,", text, re.MULTILINE):
         kind, key = start.group(1), start.group(2)
+        if kind.lower() in {"comment", "preamble", "string"}:
+            continue
         depth, index = 1, start.end()
         while index < len(text) and depth:
             depth += {"{": 1, "}": -1}.get(text[index], 0)
@@ -363,6 +548,7 @@ def _claim_items(project, literature, documents) -> list[dict]:
 
     records = _bib_records(project)
     items = []
+    seen: set[str] = set()
     for path, text, sentences in documents:
         # The toolkit's own reader says whether this file cites anything at all, and which keys
         # it knows; which of them a given sentence carries is read from the sentence, because a
@@ -373,13 +559,27 @@ def _claim_items(project, literature, documents) -> list[dict]:
         for line, sentence in sentences:
             keys = sorted(
                 {
-                    found.group(1)
+                    # `.rstrip(".,;:")` as `zotero/citations.py` does it: a narrative citation
+                    # that ends a sentence is written "as @key." and the stop is not part of the
+                    # key, so without this the sentence was on no item at all.
+                    found.group(1).rstrip(".,;:")
                     for found in CITEKEY.finditer(sentence)
-                    if found.group(1) in known
+                    if found.group(1).rstrip(".,;:") in known
                 }
             )
             if not keys:
                 continue
+            if not any(ch.isalpha() for ch in CITEKEY.sub("", sentence)):
+                # A paragraph that is nothing but a citation — the splitter joins a claimless
+                # piece to the one before it, but a whole paragraph has nothing before it. There
+                # is no claim in it to judge, so nobody is asked about it.
+                continue
+            identifier = _identifier("claim", str(path.name), sentence)
+            if identifier in seen:
+                # One sentence written twice in a file is one claim, and asking it twice would
+                # also give two items one id, which the schema refuses for the whole build.
+                continue
+            seen.add(identifier)
             facts = [["Cites", ", ".join("@" + k for k in keys)]]
             evidence: list[dict] = []
             for key in keys:
@@ -399,9 +599,13 @@ def _claim_items(project, literature, documents) -> list[dict]:
                     )
             items.append(
                 {
-                    # The identifier is keyed on the sentence as written, so a binding's value
-                    # changing does not invalidate an answer about what the sentence claims.
-                    "id": _identifier("claim", str(path.name), str(line), sentence[:80]),
+                    # Keyed on the file and the sentence as written, and on nothing else.
+                    # The line was in it, so adding one paragraph to the Introduction threw away
+                    # every claim answer below — the case DESIGN.md said had been removed, which
+                    # had been removed from the digest and left here. The sentence is taken whole
+                    # rather than cut at 80 characters, so two long sentences with the same
+                    # opening are two items.
+                    "id": identifier,
                     "group": "claim",
                     "title": _short(_without_bindings(sentence)),
                     "facts": facts,
@@ -471,7 +675,14 @@ def _author_items(project) -> list[dict]:
             facts.append(["Competing interests", _plain(person["competing_interests"])])
         items.append(
             {
-                "id": _identifier("author", name),
+                # Name, identifier and address: two authors of one name would otherwise share an
+                # id, and the schema refuses the whole build for it.
+                "id": _identifier(
+                    "author",
+                    name,
+                    str(person.get("orcid") or ""),
+                    str(person.get("email") or ""),
+                ),
                 "group": "author",
                 "title": name or "an author with no name",
                 "facts": facts,
@@ -489,11 +700,18 @@ def _author_items(project) -> list[dict]:
     return items
 
 
-def produce(project) -> dict[str, Any]:
-    """Everything the toolkit can offer a co-author for this project, as an items document."""
+def produce(project) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """Everything the toolkit can offer a co-author for this project, and what it could not read.
+
+    The second half matters: one ledger entry that fails its schema takes **every** literature
+    value out of the round, because the contract reads the file as a whole. That used to happen
+    in silence — a page with two items instead of a hundred and thirty, and three ordinary lines
+    of output. The warnings come back with the document now, and `build` prints them.
+    """
     from manuscript_guard.contracts.literature import load_literature
 
-    literature, _report = load_literature(project.path("literature"))
+    literature, report = load_literature(project.path("literature"))
+    unread = tuple(f"{finding.code}: {finding.message}" for finding in report.failures)
     documents = _manuscript(project)
 
     items = (
@@ -507,7 +725,7 @@ def produce(project) -> dict[str, Any]:
         "title": str(project.paper.get("short_title") or project.paper.get("title") or ""),
         "groups": [dict(group) for group in GROUPS],
         "items": items,
-    }
+    }, unread
 
 
 def merge(

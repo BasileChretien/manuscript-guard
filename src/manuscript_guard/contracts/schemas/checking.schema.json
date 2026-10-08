@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "The items a co-author is asked to check",
-  "description": "What a project offers for human verification: one entry per thing to confirm, with the sentences it appears in and the evidence to confirm it against. A project writes this file (checks/items.json); `manuscript-guard checker build` turns it into one self-contained page a co-author can be sent, and `checker import` takes their answers back. Finding the items is the project's work, because only the project knows where its numbers came from; carrying them to a co-author and recording what came back is the toolkit's.",
+  "description": "What a project offers for human verification: one entry per thing to confirm, with the sentences it appears in and the evidence to confirm it against. A project writes this file (checks/items.json); `manuscript-guard checker build` turns it into one self-contained page a co-author can be sent, and `checker import` takes their answers back. The toolkit finds four kinds of item from files every project keeps — values quoted from the literature, sentences that cite something, the references and the authors — and this file is what a project adds to them: the numbers only it can place, such as one transcribed from a row of a source document, with the evidence rendered. A group this file fills is taken whole, so the toolkit offers none of its own in that group.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -123,6 +123,7 @@
             "description": "What to check it against, in the order to try. Everything here is carried into the page: an image by its file, a table or a text excerpt by its content. Nothing is fetched when the page is opened.",
             "items": {
               "type": "object",
+              "additionalProperties": false,
               "required": [
                 "kind"
               ],

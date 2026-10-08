@@ -28,7 +28,8 @@ manuscript-guard checker status
 
 `build` writes **one file**: a page carrying every item, the sentences each value appears in, and
 the evidence rendered into the file itself — images as data URIs, tables and text excerpts as
-data. It opens by double-clicking, in any browser, offline. Nothing is installed, no account is
+data. It opens by double-clicking, in any current browser, offline. Nothing is installed, no
+account is
 made, no network is used, and nothing is sent anywhere by the page. Its own buttons save the
 answers file and copy the answers, and the person sends that one file back however they already
 send files.
@@ -63,8 +64,10 @@ Three things worth saying explicitly, because people assume the opposite:
 
 Two people reading the same items is how a disagreement is found, and `status` reports those.
 Two people reading different items is how a long list gets finished. Both are worth doing, and
-the choice is the author's, not this skill's: `build` sends every outstanding item to whoever it
-is built for, and the author decides who to ask for what.
+the choice is the author's, not this skill's: **`build` sends every item**, whatever anyone has
+already answered, and says how many of them have been answered already; the author decides who
+to ask for what. Only an `already` field written into a project's own items file keeps an item
+off the page.
 
 What the toolkit finds on its own, with no file written by the project:
 

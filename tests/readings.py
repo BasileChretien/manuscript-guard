@@ -338,6 +338,22 @@ def _abbreviations() -> Reading:
     return abbreviations
 
 
+@reading("checker sentences")
+def _checker_sentences() -> Reading:
+    """How a co-author's items are cut out of a manuscript: the sentences of each paragraph.
+
+    Registered because it is a reading of text like any other, and because what it gets wrong
+    reaches a person rather than a gate: a sentence cut at "et al." was sent to a co-author as an
+    item whose whole content was a citation.
+    """
+    from manuscript_guard.checking.produce import _sentences_of
+
+    def checker_sentences(text: str) -> list[list[Any]]:
+        return [[line, sentence] for line, sentence in _sentences_of(text)]
+
+    return checker_sentences
+
+
 # ------------------------------------------------------------------- titles and quotes
 
 

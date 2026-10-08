@@ -4029,7 +4029,8 @@ loses most of them.
 
 **Chosen:** `checker build --for "<name>"` writes one self-contained page. Every item, every
 sentence, and every piece of evidence is inside that file — images as data URIs, tables and text
-excerpts as data. It opens by double-clicking, offline, in any browser. Nothing is installed, no
+excerpts as data. It opens by double-clicking, offline, in any current browser. Nothing is
+installed, no
 account is made, no network is touched, and the page sends nothing anywhere. A button writes the
 answers file; the person sends it back however they already send files.
 
@@ -4080,14 +4081,29 @@ Every answer carries the digest of the item as its maker saw it. An answer whose
 matches is not recorded as agreement: the sentence moved after they looked, so their yes is about
 text nobody has now, and the item is outstanding again.
 
-The digest therefore covers the words — the title, the facts, and each sentence's text and
-section — and deliberately not:
+The digest therefore covers the words — the title, the facts, each sentence's text and
+section, **and the words of each piece of evidence**: a quote's text, a table's cells, an
+excerpt's lines, a facts table's rows, and the caption and note that frame them. The evidence
+was left out of the first version, on the argument that a page re-rendered larger is the same
+page — true of an image and false of words, and applied to both. For the literature group the
+evidence *is* the question, "Does the quoted passage say this number?", so a quote replaced
+between build and import left a co-author's yes recorded against a sentence they never read.
 
-- **how the evidence was drawn.** A page re-rendered larger is the same page.
+Deliberately not in it:
+
+- **how a piece of evidence was drawn, or where to look in it.** An image's file, a table's
+  outlined cell, an excerpt's line numbers, the substrings highlighted. A page re-rendered
+  larger is the same page.
 - **where the sentence sits.** The line is how to find it, not what it says, and a manuscript
   gains and loses lines every working day. With the line in the digest, adding one paragraph to
   the Introduction would refuse every answer about every sentence below it, none of which
-  changed. That was in the first implementation and is out.
+  changed. That was in the first implementation, and it survived there twice: out of the digest
+  in the first fix, and left in a claim item's **identifier**, where it did the same thing by
+  another route until a review found it.
+- **the question the group asks.** Rewording "Does the quoted passage say this number?" would
+  otherwise discard every answer in that group, and the questions are prose about what a group
+  is rather than about any one item. The cost is that a group asked a materially different
+  question keeps its old answers, and nothing notices.
 
 ### Append-only, and a person's name on it
 
@@ -4123,20 +4139,42 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   progress, and one that changes any item does not. So import what someone has before rebuilding
   a round they are part of, or that part of their reading is done twice. Nothing is lost that was
   saved and sent.
-- **A sentence is split by punctuation, so a co-author is sometimes shown half of one.** The
-  split is a full stop, question mark or exclamation mark, then a space, then a capital letter or
-  an opening quote or bracket — so "et al. Smith" and "e.g. Table 2" start a new sentence.
-  Nothing in the round depends on the split being right: the rest of the sentence is in the file
-  either way, as the item before or after. But it reads as a typo in the paper, and an author
-  seeing one should not go looking for it in the manuscript.
+- **A sentence is split by punctuation, and the list of abbreviations is finite.** The split is
+  a stop, a space, then a capital letter or an opening quote or bracket — except after a word in
+  `NOT_AN_END` ("et al.", "e.g.", "Fig.", "No.", "St." and about thirty more) or after a single
+  initial, and except where the piece that results carries no word of its own, which is joined
+  back to the piece before it. Both rules exist because of one shape: a numbered-citation style
+  writes "described by Okada et al. [@key]." and the first version cut it there, so the item a
+  co-author was asked about read `[@key].` and the half carrying the claim was on no item at all.
+  An abbreviation not in that list still splits a sentence, and a reader is then shown a half of
+  one; what cannot happen any more is an item with no claim in it. The earlier text here said
+  "the rest of the sentence is in the file either way", which was false: a claim item exists only
+  where a citekey is.
 - **A claim is one sentence citing something.** An argument made across two sentences is asked as
   two questions, and a sentence citing three papers is one question about all three, which a
   person can only answer as a whole or decline. A paper whose claims need finer grain writes its
   own items.
-- **The `.bib` reader handles fields, not the whole format.** It reads `@type{key, field = {...}}`
-  with nested braces counted, and both dialects' names for a journal and a date. `@string` macros,
-  `#` concatenation and `@preamble` are not expanded: a field written with one is shown as it is
-  written, which is wrong in front of a co-author.
+- **Two readers of the bibliography, and the fallback handles fields rather than the format.**
+  Where pandoc is on the path — it is already required for `build` and `submit` — the file is
+  parsed with `pandoc -f biblatex -t csljson`, which decodes a TeX accent, expands a `@string`
+  macro and reads a biblatex extended name into its parts. Where it is not, a small reader reads
+  the fields as they are written: `M{\"u}ller` stays as it is typed, a `@string` macro is shown
+  unexpanded, and a `#` concatenation is shown with its hashes. It no longer makes an entry of an
+  `@` inside a value or of an `@comment`, both of which it did.
+  **The two do not agree in every detail**, and pandoc's reading is the one to prefer: it writes
+  a page range with a plain hyphen where the small reader keeps the file's en dash, and a title
+  in the sentence case biblatex stores rather than the title case a file often types. Both
+  identify the same work, which is what a co-author is asked about, and the printed bibliography
+  is pandoc's reading of the same file under a style.
+- **No test runs the page's JavaScript.** The template is checked by reading it and by opening a
+  built page in a browser by hand; its storage, its download, its dialog, its clipboard and its
+  keyboard handling are held by nothing. A defect there reaches a co-author and not the suite.
+- **"Any browser" means a current one.** The page uses `??` and `<dialog>`, so a browser older
+  than about 2022 shows it wrongly or not at all. What a co-author sees then is untested.
+- **The browser's storage is a convenience, not a record.** A note typed and not yet attached to
+  an answer is lost on closing the tab, and everything unsent is lost where storage is refused —
+  in a private window, for instance — with nothing said. What is saved and sent is the answers
+  file.
 - **The whole file must fit in mail.** A page is refused over 24 MB, and an image over 4 MB, since
   a mail server will usually carry no more. A project with many page images sends a round in parts
   rather than raising the limit.

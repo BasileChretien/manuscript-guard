@@ -7,7 +7,9 @@ One file has nothing to go wrong.
 
 The page is served from nowhere. It makes no request, loads no font, no script and no stylesheet
 from a network, and works on a laptop in a hospital with no connection. The two things it writes
-are the viewer's own browser storage (so closing the tab loses nothing) and the answers file they
+are the viewer's own browser storage (which keeps their answers across a closed tab, though not
+a note they have typed and not yet attached to one, and nothing at all where a browser refuses
+storage) and the answers file they
 send back.
 """
 

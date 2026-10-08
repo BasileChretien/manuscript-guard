@@ -12,12 +12,13 @@ and run a server. So:
 
 * `checker build --for "<name>"` writes **one file**: a page carrying every item, the sentences
   each appears in, and the evidence already rendered into it. It opens by double-clicking, in
-  any browser, offline, with nothing installed, no account and no network.
+  any current browser, offline, with nothing installed, no account and no network.
 * The co-author clicks through the items and saves their answers — a few kilobytes — or copies
   them to the clipboard where a download is blocked.
-* `checker import <answers>` records them under their name, refusing any answer whose item has
-  changed since they saw it, and `checker status` says who has answered what and where two
-  people disagree.
+* `checker import --answers <file>` records them under their name, refusing any answer whose
+  item has changed since they saw it; and `checker status` says who has answered what, which
+  answers are about text that has changed since — those items are outstanding again — and where
+  two people disagree.
 
 **What is the toolkit's and what is the project's.** The toolkit finds four kinds of item from
 files every project keeps (`produce.py`): values quoted from the literature with the passage

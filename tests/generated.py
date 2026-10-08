@@ -604,6 +604,7 @@ def _quotation_asked(drawn: tuple[tuple[str, str], str, str]) -> dict[str, str]:
 
 #: What each reading of `tests/readings.py` is given, by the reading's name.
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
+    "checker sentences": texts(),
     "mask": texts(TERMS),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),

@@ -51,17 +51,49 @@ class Items:
         return tuple(item for item in self.items if not str(item.get("already") or "").strip())
 
 
+def _words_of(block: dict) -> dict:
+    """One piece of evidence as a reader reads it: its words, not its rendering.
+
+    A quote's text, a table's cells, a text excerpt's lines, a facts table's rows, and the
+    caption and note that frame them. Left out: `file`, `img`, `target`, `line` and `mark`,
+    which say how it was drawn or where to look, and change nothing a person reads.
+    """
+    return {
+        "kind": block.get("kind"),
+        "caption": block.get("caption"),
+        "note": block.get("note"),
+        "text": block.get("text"),
+        "grid": block.get("grid"),
+        "row_labels": block.get("row_labels"),
+        "rows": block.get("rows"),
+        # The texts of a text excerpt, without their line numbers, by the same argument as a
+        # sentence's line: a value that moved down a page is the same value.
+        "lines": [pair[1] for pair in block.get("lines") or [] if len(pair) > 1],
+    }
+
+
 def digest_of(item: dict) -> str:
     """The item as a co-author sees its words: its own text, not its pictures.
 
     Keyed on the fields that carry meaning, in a fixed order, so the same item digests the same
     on any machine and a reordered JSON file does not invalidate a co-author's work.
 
-    A sentence's line number is deliberately **not** in it. The line is where to find the
-    sentence, not what the sentence says, and a manuscript gains and loses lines every working
-    day: with the line in the digest, adding one paragraph to the Introduction would refuse every
-    answer about every sentence below it, none of which had changed. The same argument as the
-    image file name, below.
+    **The words of the evidence are in it**, because for most groups the evidence *is* the
+    question: "Does the quoted passage say this number?" is a question about the passage, and an
+    answer recorded against a passage the person never read is the thing this digest exists to
+    prevent. The first version left all evidence out, on the argument that "a page re-rendered
+    larger is the same page" — true of an image and false of words, and applied to both.
+
+    What stays out, for that same argument: how a piece of evidence was drawn or where to look in
+    it — an image's file, a table's outlined cell, a text excerpt's line numbers, the substrings
+    to highlight. And a sentence's line number, because the line is where to find the sentence,
+    not what it says, and a manuscript gains and loses lines every working day: with the line in
+    the digest, adding one paragraph to the Introduction would refuse every answer about every
+    sentence below it, none of which had changed.
+
+    Not in it either, deliberately: the group's `ask`. Rewording the question put to a reader
+    would otherwise discard every answer in that group, and the questions are fixed prose about
+    what a group is, not about any one item. DESIGN.md's Known gaps records it.
     """
     core = {
         "id": item.get("id"),
@@ -72,6 +104,7 @@ def digest_of(item: dict) -> str:
             {"text": sentence.get("text"), "section": sentence.get("section")}
             for sentence in item.get("sentences") or []
         ],
+        "evidence": [_words_of(block) for block in item.get("evidence") or []],
     }
     canonical = json.dumps(core, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]

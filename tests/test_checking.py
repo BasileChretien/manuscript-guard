@@ -273,7 +273,10 @@ def test_an_answer_about_an_item_that_has_changed_is_not_recorded(tmp_path: Path
 
     brought = import_answers(tmp_path, answers, moved)
     assert [d.id for d in brought.recorded] == ["claim-1"]
-    assert brought.stale and brought.stale[0][0] == "lit-1"
+    # Named by its title, not by the twelve hex characters of its id: whoever reads this refusal
+    # has to find the thing and ask somebody about it again.
+    assert brought.stale and brought.stale[0][0] == "18.4 % of the treated group"
+    assert brought.stale[0][0] != "lit-1"
     assert "changed after it was checked" in brought.stale[0][1]
     assert status(tmp_path, moved).outstanding == 1
 
@@ -415,7 +418,8 @@ def produced(root: Path) -> dict:
     from manuscript_guard.cli import load_project
 
     project, _ = load_project(root)
-    document = produce(project)
+    document, unread = produce(project)
+    assert unread == (), f"this project's own files could not all be read: {unread}"
     items_from(document, root / "checks" / "items.json")  # refuses anything malformed
     return document
 
@@ -531,8 +535,13 @@ def test_a_claim_keeps_its_identifier_when_a_bound_value_changes(project: Path) 
     before = {item["id"] for item in only(produced(project), "claim")}
     ledger = project / "literature" / "ledger.yaml"
     text = ledger.read_text(encoding="utf-8")
-    assert 'display: "14"' in text
-    ledger.write_text(text.replace('display: "14"', 'display: "15"'), encoding="utf-8")
+    # Value and display together: a display that disagrees with its value is a finding of its
+    # own, which `produce` now reports rather than swallowing.
+    assert 'display: "14"' in text and "value: 14.0" in text
+    ledger.write_text(
+        text.replace('display: "14"', 'display: "15"').replace("value: 14.0", "value: 15.0"),
+        encoding="utf-8",
+    )
     assert {item["id"] for item in only(produced(project), "claim")} == before
 
 
@@ -670,12 +679,12 @@ def test_a_reference_is_shown_without_its_tex(project: Path) -> None:
     mistake in the paper. A DOI is left alone: a few really do carry a double hyphen."""
     from manuscript_guard.checking.produce import (
         REFERENCE_FIELDS,
-        _bib_records,
+        _records_read_here,
         _rows_for,
     )
-    from manuscript_guard.cli import load_project
 
-    (project / "literature" / "references.bib").write_text(
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
         "@article{dashes2019,\n"
         "  author = {Writer, Some},\n"
         "  title = {Hepatic injury, 2010--2019},\n"
@@ -686,10 +695,11 @@ def test_a_reference_is_shown_without_its_tex(project: Path) -> None:
         "}\n",
         encoding="utf-8",
     )
-    loaded, _ = load_project(project)
+    # The fallback reader by name. With pandoc on the path the entry is parsed instead, and
+    # pandoc writes that page range with a plain hyphen; both identify the same pages.
     rows = {
         label: value
-        for label, value in _rows_for(_bib_records(loaded)["dashes2019"], REFERENCE_FIELDS)
+        for label, value in _rows_for(_records_read_here(bib)["dashes2019"], REFERENCE_FIELDS)
     }
     assert rows["Pages"] == "425–440"
     assert rows["Title"] == "Hepatic injury, 2010–2019"
@@ -733,10 +743,10 @@ def test_an_equals_sign_inside_a_value_does_not_become_a_field(project: Path) ->
 def test_a_value_that_holds_commas_in_braces_stays_one_field(project: Path) -> None:
     """A biblatex extended name puts commas inside the author's braces. Cutting the entry at
     every comma would make four fields of one author."""
-    from manuscript_guard.checking.produce import _bib_records
-    from manuscript_guard.cli import load_project
+    from manuscript_guard.checking.produce import _records_read_here
 
-    (project / "literature" / "references.bib").write_text(
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
         "@article{extended2026,\n"
         "  title = {A paper},\n"
         "  author = {Low, Lambert and family=Eijk, given=Yvette, prefix=van der, "
@@ -745,8 +755,10 @@ def test_a_value_that_holds_commas_in_braces_stays_one_field(project: Path) -> N
         "}\n",
         encoding="utf-8",
     )
-    loaded, _ = load_project(project)
-    record = _bib_records(loaded)["extended2026"]
+    # The fallback reader, which shows the field as the file writes it. pandoc reads that
+    # extended name into "van der Eijk, Yvette", which is better and is what a project with
+    # pandoc gets; what this holds is that neither reader makes four fields of one author.
+    record = _records_read_here(bib)["extended2026"]
     assert record["author"].startswith("Low, Lambert and family=Eijk")
     assert record["author"].endswith("See, Kay Choong")
     assert record["date"] == "2026-02-02"
@@ -814,3 +826,305 @@ def test_a_project_items_file_with_the_wrong_schema_is_refused(project: Path) ->
     loaded, _ = load_project(project)
     with pytest.raises(ItemsError, match="schema is 'something/else/1'"):
         _checking_items(loaded, None)
+
+
+# --------------------------------------------------------- what round 1 of #221 found, held
+#
+# Three of its six blocking findings said the same thing: the promise that an answer cannot
+# outlive the text it was about held once, at import, and nowhere else. These are the tests
+# that would have caught each one.
+
+
+def test_an_answer_stops_counting_when_its_item_changes(tmp_path: Path) -> None:
+    """`status` compared no digest at all: it marked an item answered if any decision carried
+    its id. So editing a value the day after a round came back left every item reading as
+    answered by everybody, which is the opposite of what the digest is for."""
+    path = write_items(tmp_path)
+    items = load_items(tmp_path, path)
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(answers_for(items, by="Ada Example", statuses={"lit-1": "ok", "claim-1": "ok"})),
+        encoding="utf-8",
+    )
+    import_answers(tmp_path, answers, items)
+    assert status(tmp_path, items).outstanding == 0
+
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["items"][0]["title"] = "the value, rewritten after they looked"
+    path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+    moved = load_items(tmp_path, path)
+
+    standing = status(tmp_path, moved)
+    assert standing.outstanding == 1, "the changed item is outstanding again"
+    assert [d.id for d in standing.stale] == ["lit-1"]
+    assert standing.by_person["Ada Example"] == {"ok": 1}, "only the answer that still stands"
+
+
+def test_an_unsure_leaves_the_item_outstanding(tmp_path: Path) -> None:
+    """The skill and `store.py`'s own comment both say an "unsure" keeps the item outstanding for
+    someone else. `status` counted it answered and closed the item."""
+    path = write_items(tmp_path)
+    items = load_items(tmp_path, path)
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            answers_for(items, by="Ada Example", statuses={"lit-1": "unsure", "claim-1": "ok"})
+        ),
+        encoding="utf-8",
+    )
+    import_answers(tmp_path, answers, items)
+
+    standing = status(tmp_path, items)
+    assert standing.outstanding == 1, "the one they could not settle"
+    assert standing.by_person["Ada Example"] == {"unsure": 1, "ok": 1}, "both are still recorded"
+
+
+def test_a_decision_about_an_item_that_is_gone_is_reported_not_counted(tmp_path: Path) -> None:
+    path = write_items(tmp_path)
+    items = load_items(tmp_path, path)
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(answers_for(items, by="Ada Example", statuses={"lit-1": "ok", "claim-1": "ok"})),
+        encoding="utf-8",
+    )
+    import_answers(tmp_path, answers, items)
+
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["items"] = [item for item in document["items"] if item["id"] != "lit-1"]
+    path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+    fewer = load_items(tmp_path, path)
+
+    standing = status(tmp_path, fewer)
+    assert [d.id for d in standing.orphaned] == ["lit-1"]
+    assert standing.outstanding == 0, "what is left was answered"
+
+
+def test_the_digest_covers_the_words_of_the_evidence(tmp_path: Path) -> None:
+    """The literature group asks "Does the quoted passage say this number?" — so the passage is
+    the question, and it was not in the digest. A quote replaced between build and import left a
+    co-author's "yes" recorded against a sentence they never read."""
+    item = {
+        "id": "a", "group": "g", "title": "t",
+        "evidence": [{"kind": "quote", "caption": "a source, p. 1", "text": "the passage"}],
+    }
+    before = digest_of(item)
+    reworded = {**item, "evidence": [{**item["evidence"][0], "text": "another passage"}]}
+    assert digest_of(reworded) != before, "the words of the evidence are in it"
+
+    recaptioned = {**item, "evidence": [{**item["evidence"][0], "caption": "a source, p. 2"}]}
+    assert digest_of(recaptioned) != before, "so is what it is said to be"
+
+    # Still out, by the argument that held for the image: how it was drawn, and where to look.
+    marked = {**item, "evidence": [{**item["evidence"][0], "mark": ["passage"]}]}
+    assert digest_of(marked) == before
+    table = {"id": "b", "group": "g", "title": "t",
+             "evidence": [{"kind": "table", "grid": [["14"]], "target": [0, 0]}]}
+    moved_outline = {**table, "evidence": [{**table["evidence"][0], "target": [0, 1]}]}
+    assert digest_of(moved_outline) == digest_of(table)
+    other_cell = {**table, "evidence": [{**table["evidence"][0], "grid": [["41"]]}]}
+    assert digest_of(other_cell) != digest_of(table)
+
+
+def test_a_paragraph_added_above_keeps_every_claim_answer(project: Path) -> None:
+    """The case DESIGN.md said had been removed. It was removed from the digest and left in the
+    claim's id, so one paragraph added to the Introduction threw away every claim answer below
+    it, each refused with a line naming twelve hex characters."""
+    before = {item["id"] for item in only(produced(project), "claim")}
+    assert before
+
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    at = text.index("# Introduction") + len("# Introduction")
+    main.write_text(
+        text[:at] + "\n\nThis paragraph cites nothing and moves every line below it.\n" + text[at:],
+        encoding="utf-8",
+    )
+    assert {item["id"] for item in only(produced(project), "claim")} == before
+
+
+def test_a_citation_after_an_abbreviation_keeps_its_sentence(project: Path) -> None:
+    """"described by Okada et al. [@key]." was cut at the stop in "al.", so the item a co-author
+    was asked about read "[@key]." and the half carrying the claim was on no item at all."""
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8")
+        + "\n\nThe association was first described by Okada et al. "
+        "[@fictionalClassSignal2019]. A later study agreed.\n",
+        encoding="utf-8",
+    )
+    titles = [item["title"] for item in only(produced(project), "claim")]
+    assert any(title.startswith("The association was first described by Okada et al.")
+               for title in titles), titles
+    assert not any(title.startswith("[@") for title in titles), "no item is only a citation"
+
+
+def test_a_narrative_citation_that_ends_a_sentence_is_offered(project: Path) -> None:
+    """The key carried the full stop, so it matched nothing the toolkit knew and the sentence was
+    on no item. `zotero/citations.py` strips it; this now does the same."""
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8")
+        + "\n\nA later cohort reached the same conclusion as @fictionalHepaticCohort2021.\n",
+        encoding="utf-8",
+    )
+    titles = [item["title"] for item in only(produced(project), "claim")]
+    assert any("reached the same conclusion" in title for title in titles), titles
+
+
+def test_a_binding_written_with_spaces_is_found(project: Path) -> None:
+    """`{{ lit.x }}` is a binding to the renderer, which prints its value. An exact-string search
+    missed it, so that value reached a co-author with no sentence at all."""
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    assert "{{lit.background.class_ror}}" in text
+    main.write_text(
+        text.replace("{{lit.background.class_ror}}", "{{ lit.background.class_ror }}"),
+        encoding="utf-8",
+    )
+    item = next(i for i in only(produced(project), "literature") if "class_ror" in i["title"])
+    assert item["sentences"], "the sentence that uses it"
+
+
+def test_a_commented_out_sentence_is_not_offered_as_a_claim(project: Path) -> None:
+    """A sentence a draft has commented out is not a sentence of the paper, and a co-author asked
+    to check one has been asked about nothing."""
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8")
+        + "\n\n<!-- Dropped from this draft: the risk doubles in adults over 65 "
+        "[@fictionalClassSignal2019]. -->\n",
+        encoding="utf-8",
+    )
+    titles = [item["title"] for item in only(produced(project), "claim")]
+    assert not any("Dropped from this draft" in title for title in titles), titles
+    assert not any("risk doubles" in title for title in titles), titles
+
+
+def test_a_ledger_entry_that_cannot_be_read_is_reported(project: Path) -> None:
+    """One entry failing its schema takes every literature value out of the round, because the
+    contract reads the file as a whole. It used to do that in silence: a page with two items
+    instead of a hundred and thirty, and three ordinary lines of output."""
+    from manuscript_guard.checking.produce import produce
+    from manuscript_guard.cli import load_project
+
+    ledger = project / "literature" / "ledger.yaml"
+    text = ledger.read_text(encoding="utf-8")
+    assert "depth: full-text" in text
+    ledger.write_text(text.replace("depth: full-text", "", 1), encoding="utf-8")
+
+    loaded, _ = load_project(project)
+    document, unread = produce(loaded)
+    assert unread, "the author is told the ledger could not be read"
+    # Every value of that file is gone, because the contract reads it whole, while
+    # `attested.yaml` is its own file and still loads.
+    titles = [item["title"] for item in document["items"] if item["group"] == "literature"]
+    assert not [title for title in titles if "lit.background" in title], titles
+
+
+def test_the_page_stamps_an_answer_with_its_offset() -> None:
+    """`toISOString()` wrote UTC with no zone, so an answer given at 09:00 in Japan was recorded
+    at midnight, on the day before. No test runs this page's JavaScript; what is held here is
+    that the call is gone and the local stamp is there."""
+    from manuscript_guard.checking.bundle import TEMPLATE
+
+    page = TEMPLATE.read_text(encoding="utf-8")
+    assert "new Date().toISOString" not in page
+    assert "function stamp()" in page and "getTimezoneOffset" in page
+    assert "at: stamp()" in page and "saved_on: stamp()" in page
+
+
+def test_the_page_takes_an_image_only_from_the_builders_own_map() -> None:
+    """An `src` on a piece of evidence went into an `img` attribute unescaped, and a remote one
+    would have made the page fetch when opened. Nothing in the toolkit writes that field."""
+    from manuscript_guard.checking.bundle import TEMPLATE
+
+    page = TEMPLATE.read_text(encoding="utf-8")
+    assert "e.src" not in page
+    assert '<img src="${esc(src)}"' in page
+
+
+def test_an_evidence_block_may_not_carry_a_key_the_schema_does_not_know(tmp_path: Path) -> None:
+    """An item already refused one; a block did not, so `src` — which the page read — was
+    accepted without being declared anywhere, and `row_labels` misspelt was dropped in silence."""
+    path = write_items(
+        tmp_path,
+        items=[
+            {
+                "id": "x", "group": "literature", "title": "t",
+                "evidence": [{"kind": "image", "src": "https://example.invalid/p.png"}],
+            }
+        ],
+    )
+    with pytest.raises(ItemsError, match="does not fit the schema"):
+        load_items(tmp_path, path)
+
+
+def test_build_counts_what_has_been_checked_not_only_what_the_file_says(project: Path) -> None:
+    """"0 already checked by someone" was printed after a whole round had come back and been
+    imported, because this counted only the `already` field a project may write."""
+    from manuscript_guard.checking.store import status as standing_of
+    from manuscript_guard.cli import _checking_items, load_project
+
+    loaded, _ = load_project(project)
+    items = _checking_items(loaded, None)
+    answers = project / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "schema": "manuscript-guard/checking-answers/1",
+                "by": "Ada Example",
+                "answers": [
+                    {"id": item["id"], "digest": item["digest"], "status": "ok", "note": ""}
+                    for item in items.items[:3]
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    import_answers(project, answers, items)
+    assert len(standing_of(project, items).answered) == 3
+
+
+def test_import_without_the_answers_file_says_so(project: Path) -> None:
+    """A forgotten flag reached `Path.read_text` on `None` and gave an AttributeError."""
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "import", str(project)]) == 2
+
+
+def test_a_project_item_without_a_group_is_refused_by_the_schema(project: Path) -> None:
+    """The merge reads each item's `id` and `group`, so an item written without one raised a
+    KeyError from inside it — the ordinary authoring mistake the schema exists to report."""
+    import json
+
+    from manuscript_guard.checking.items import ItemsError
+    from manuscript_guard.cli import _checking_items, load_project
+
+    (project / "checks").mkdir(exist_ok=True)
+    (project / "checks" / "items.json").write_text(
+        json.dumps(
+            {
+                "schema": "manuscript-guard/checking/1",
+                "groups": [{"id": "official", "title": "Tables", "ask": "Does it say this?"}],
+                "items": [{"id": "official-1", "title": "a number with no group"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    loaded, _ = load_project(project)
+    with pytest.raises(ItemsError, match="does not fit the schema"):
+        _checking_items(loaded, None)
+
+
+def test_a_paragraph_that_is_only_a_citation_is_not_asked_about(project: Path) -> None:
+    """Found by the generated property, on its first run. The splitter joins a piece with no
+    word of its own to the piece before it, but a paragraph has nothing before it — so a
+    paragraph that is nothing but a citation came through as a claim item whose whole content
+    was that citation, and a co-author would have been asked whether a source supports it."""
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8") + "\n\n[@fictionalClassSignal2019]\n", encoding="utf-8"
+    )
+    for item in only(produced(project), "claim"):
+        assert item["title"].strip() != "[@fictionalClassSignal2019]"
+        assert any(character.isalpha() for character in item["title"].replace("@", " "))

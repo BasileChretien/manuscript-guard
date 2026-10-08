@@ -157,12 +157,13 @@ co-author reading one item against one quote is what found it.
 ```bash
 manuscript-guard checker build --for "A Co-Author"      # one file to send them
 manuscript-guard checker import --answers answers.json  # what they said, into checks/decisions.csv
-manuscript-guard checker status                         # what is outstanding, and who disagrees
+manuscript-guard checker status                         # outstanding, stale, and who disagrees
 ```
 
 `build` writes **one file**. It carries every item, the sentences each value appears in, and the
 evidence rendered into the file itself: images as data URIs, tables and excerpts as data. It
-opens by double-clicking, in any browser, offline — nothing installed, no account, no network,
+opens by double-clicking, in any current browser, offline — nothing installed, no account, no
+network,
 and nothing sent anywhere by the page. The person presses a button and sends back the answers
 file.
 

@@ -55,12 +55,12 @@ guard in the project this one learned from. It reads a command whichever tool ru
 (`Bash`, `PowerShell` or `Monitor` under Claude Code), and knows the PowerShell words for
 its verbs, `Compress-Archive` and `Send-MailMessage` among them.
 
-The command is held to the project at the folder the agent is in. Where that folder has
-none, as at the root of a repository with the paper in a folder below, it is held to each
-project the command names: `cd example && manuscript-guard submit`, `manuscript-guard submit
-example` and `scp example/build/manuscript.docx host:` are all checked against `example`. A
-project the command does not name is left alone, and a folder held in a variable is not
-followed.
+The command is held to the project at the folder the agent is in, and to each other
+project it names by a path. So from the root of a repository with the paper in a folder
+below, `cd example && manuscript-guard submit`, `manuscript-guard submit example` and `scp
+example/build/manuscript.docx host:` are all checked against `example`, and from inside
+one paper `cd ../second && manuscript-guard submit` is checked against both. A project the
+command does not name is left alone, and a folder held in a variable is not followed.
 
 A hook never breaks a session. Anything unexpected exits silently, because a guard that
 crashes on a half-configured project gets removed, taking the guards that worked with it.

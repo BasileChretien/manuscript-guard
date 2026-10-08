@@ -1611,7 +1611,7 @@ time: `Compress-Archive`, `Send-MailMessage`, `Invoke-WebRequest` and its alias 
 `Invoke-RestMethod`, `Start-BitsTransfer`, `robocopy` and `xcopy`. `Copy-Item` and
 `Move-Item` were held before, since `copy` and `move` stand in them as whole words.
 
-**The command is held to the project at the agent's folder, or to the one it names.**
+**The command is held to the project at the agent's folder, and to each one it names.**
 Recognising `cd example && manuscript-guard submit` is half of catching it. The check runs
 in a project, and the guard took the one at the folder the event names as the agent's, or
 above it. An agent started at the root of a repository, with the paper in `example/`, stands
@@ -1620,6 +1620,12 @@ a project that fails. Where no project is at that folder, the guard now reads th
 the command and holds it to each project that one of them is a path into: `example` after
 `cd` or as the argument of `submit`, `example/build/manuscript.docx` after `scp`. A file
 that is not written yet names the project its folder is in. Each project is checked once.
+
+Where a project is at that folder the words were not read, until 2026-10-08, and that
+project alone was checked: from a paper that passes, `cd ../second && manuscript-guard
+submit` went through though `second` fails. The words are now read there too. The project
+the command was sent from is checked first, as before, and then each other one a word is
+a path into; a path that leads back into the first names nothing new.
 
 The refusal names the project, says that the command named it, and names the check with the
 project's folder after it, `manuscript-guard check --stage submission "example"`, because
@@ -5466,7 +5472,7 @@ Closed since, and why each mattered:
   example/build/manuscript.docx host:` all went through, in a project that fails. `submit`
   then refused on its own account; the copy was held to nothing. Found in the review of #131
   on 2026-10-02 and true before it. Closed for a project the command names (see "The command
-  is held to the project at the agent's folder, or to the one it names"). What is left:
+  is held to the project at the agent's folder, and to each one it names"). What is left:
   - *Not spelt out, so not found.* A folder held in a variable (`cd $PAPER && manuscript-guard
     submit`, `scp $PWD/example/build/manuscript.docx host:`), a glob that stands for the
     folder (`scp */build/*.docx host:`; one for the file, `example/build/*.docx`, is found),
@@ -5488,10 +5494,13 @@ Closed since, and why each mattered:
     and waits if the host does. In Git Bash `/tmp/x` is the user's own temporary folder;
     the guard reads it as `\tmp\x` on the drive the agent is on, so a project kept under
     the one is not found and one under the other would be taken for it.
-  - *Inside a project, only that project.* Where the agent's folder is in a project the
-    guard checks that one, as it always did, and does not read the words: from a project
-    that passes, `cd ../second && manuscript-guard submit` is let through though `second`
-    fails. Not decided.
+  - *Inside a project, that project is held whatever the command submits.* Where the
+    agent's folder is in a project the guard checks that one, as it always did, and since
+    2026-10-08 each other project the command names as well. It does not ask which of
+    them the command submits: from a project that fails, `cd ../second && manuscript-guard
+    submit` is refused for the first, though `second` passes and is the one sent. And a
+    copy out of a second project that fails, `cp ../second/notes.docx .`, is refused for
+    that one, as the same copy is from the folder above.
   - *A commit that stages a file of the paper is refused when its message reads as a
     submission.* `git add paper/manuscript/main.md && git commit -m "copy-edit the abstract
     before submission"`, sent from the folder above, is refused in a project that fails:

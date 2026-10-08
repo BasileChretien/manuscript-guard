@@ -104,10 +104,11 @@ _INTERVAL = re.compile(
     # row shared a run of spaces out among themselves in every way: 800 spaces after
     # "CI" took 24 seconds.
     r"(?:" + _GAP + r"[\[(](?:CI|CrI)s?[\])])?"  # "confidence interval (CI)"
-    # "CI 95%". Not where a hyphen or a minus sign follows the percent sign at once: in
-    # "CI 80%-93%; 12 studies" the 80% is the first bound. Taken for a level, it left
-    # "-93" for a bound and the semicolon for the join.
-    r"(?:" + _GAP + r"\d{2}(?:\.\d)?" + _SPACE + r"?%(?![-\u2212]))?"
+    # "CI 95%". Not where a bound in percent follows the percent sign after a hyphen or a
+    # minus sign: in "CI 80%-93%; 12 studies" the 80% is the first bound. Taken for a level,
+    # it left "-93" for a bound and the semicolon for the join. A level hard against a
+    # negative bound, "CI 95%-0.3 to 0.4", is still a level.
+    r"(?:" + _GAP + r"\d{2}(?:\.\d)?" + _SPACE + r"?%(?![-\u2212]\d[\d.,]*" + _SPACE + r"?%))?"
     r"(?:" + _GAP + r"(?:(?:of|from|was|were|is|are)\b|[:,=]))?"
     r"(?:" + _GAP + r"[\[(])?"
     + _GAP + r"(?P<low>" + _NUMBER + r")(?P<percent>" + _SPACE + r"?%)?"

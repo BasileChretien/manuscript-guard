@@ -728,6 +728,12 @@ def test_a_level_after_the_letters_is_one_before_a_negative_bound() -> None:
     )
     assert codes(report) == ["notation-interval"]
     assert "a comma once" in report.findings[0].message, told(report)
+    # And hard against it, where what follows the sign is no bound in percent.
+    hard = read(
+        "# Results\n\nIt rose (95% CI 1.2 to 1.9) and again (95% CI 1.1 to 2.0), by 0.1 "
+        "(CI 95%-0.3 to 0.4).\n"
+    )
+    assert not hard.findings, told(hard)
 
 
 def test_a_number_too_long_to_be_one_is_read_and_nothing_raises() -> None:

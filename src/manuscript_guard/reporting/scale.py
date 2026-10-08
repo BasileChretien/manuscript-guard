@@ -30,9 +30,9 @@ silently, and each with a profile that claimed every statement was there. So:
 
 * a line directly under a heading, before any option, is that item's clarification, which is
   what the parenthetical is, and is kept;
-* a line that is neither a heading nor an option is a `RecipeError` naming it — anywhere
-  below the first heading of its page, since above that heading every line is passed over as
-  the form's title and the rater's instructions;
+* any *other* line that is neither a heading nor an option is a `RecipeError` naming it —
+  anywhere below the first heading of its page, since above that heading every line is passed
+  over as the form's title and the rater's instructions;
 * an item with fewer than `min_options` options is a heading mistaken for one while no item
   has been read yet, anywhere in the document — the rater's numbered instructions sit above
   the scale — and a `RecipeError` once the scale has started;
@@ -45,9 +45,14 @@ rather than claiming a verbatim check it cannot perform. What stands in for one 
 is placed or the reading stops — within two limits, both narrower than that sentence sounds.
 
 **The first is the page.** Every line before the first numbered heading *of each page* is passed
-over, because that is where a form prints its title and the rater's instructions. So a statement
-whose second line sits at the top of the next page loses that line in silence, whatever counts
-the recipe states.
+over, because that is where a form prints its title and the rater's instructions. The line is
+lost whatever the counts say; whether its loss is noticed afterwards is another matter. A
+statement whose second line sits at the top of the next page goes through **in silence** where
+the score is on the statement's own first line and the statement is its item's last — the shape
+the test pins. Anywhere else the counts or the line rules catch what is left: a wrap before the
+item's other scored lines leaves the item an option short, a wrapped first statement leaves it
+with none, and a statement after the first is refused outright as a line after that item's
+options.
 
 **The second is what a count can see.** `options` refuses a dropped option, an extra one read
 from a running foot, and an item whose scored lines carry on to the next page; `items` refuses a
@@ -59,7 +64,8 @@ by a count: any statement after the first, a first statement with its score on i
 any wrap under an item that already carries a clarifying line.
 
 DESIGN.md's Known gaps carries the cases, and a recipe for a new form states its counts and has
-its first profile read against the form once, by eye.
+its first profile read against the form once, by eye. Two limits, then: the page, which no count
+reaches, and what a count can see.
 """
 
 from __future__ import annotations

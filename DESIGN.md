@@ -6510,10 +6510,18 @@ Closed since, and why each mattered:
 
   **Above the first heading of a page, nothing is placed.** Every line before it is passed over,
   because that is where a form prints its title and the rater's instructions. So a statement
-  whose second line sits at the top of the next page loses that line in silence, **with both
-  counts stated** — the same wrap on one page is refused. Nothing shipped reaches it: SANRA's
-  recipe reads one page. It is the one case where "a line is placed or the reading stops" is
-  simply not true, and the sentence above should be read with this paragraph beside it.
+  whose second line sits at the top of the next page loses it, with both counts stated, where
+  the same wrap on one page is refused. Whether that loss is then noticed depends on where the
+  wrap falls: it goes through **in silence** where the score is on the statement's own first
+  line and the statement is its item's last, and otherwise leaves the item an option short or
+  none at all, which the counts refuse. Nothing shipped reaches any of it: SANRA's recipe reads
+  one page.
+
+  It is not the only place "a line is placed or the reading stops" does not hold. A line under
+  one of the rater's numbered instructions, before the scale has started, goes with the
+  instruction; every line after `stop_at` is left by the recipe's own word; and the first
+  unscored line under a heading is kept as that item's clarification. The sentence above should
+  be read with this paragraph beside it.
 
   **What each count can see.** `options` refuses a line that changes how many options an item
   has: a statement printed within one space of its score (`pdftotext -layout` may lay that out
@@ -6523,10 +6531,12 @@ Closed since, and why each mattered:
   next page. `items` refuses a scale read short: a line equal to `stop_at` printed before the
   last item, and a page the recipe's `pages` leaves out. Neither count catches the other's cases.
 
-  Two things that list used to carry and should not. A one-space statement is refused with no
-  counts at all in every position but one — first line under a title, of an item with no
-  clarifying line — where it is read as the clarification. And a last item alone on a page is
-  read correctly, or refused for too few options, with and without counts alike.
+  One thing that list used to carry and should not: a last item alone on a page, which is read
+  correctly, or refused for too few options, with and without counts alike. And one it still
+  carries, correctly, though not for the reason first given — a one-space statement is refused by
+  the line rules with no counts at all in every position but one, first line under a title of an
+  item with no clarifying line, where it is read as the clarification; it is there because that
+  one position is `options`' to catch.
 
   **No count sees a wrapped line**, because wrapping changes nothing's number. A title that runs
   onto a second line is read as a title cut at the line end and a clarifying line; a first

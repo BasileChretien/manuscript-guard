@@ -35,6 +35,7 @@ pages: [1]
 items: 6
 options: 3
 # The form prints a "Sumscore" box under the last item. Named here because the reader refuses a
-# line it cannot place rather than discarding it, and only the recipe can say which this is.
+# line it cannot place rather than discarding it — below the first heading of its page, and with
+# the exceptions DESIGN.md's Known gaps lists — and only the recipe can say which this is.
 stop_at: Sumscore
 text_column: 0

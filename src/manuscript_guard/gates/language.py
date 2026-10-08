@@ -116,7 +116,8 @@ _ARTICLES = ("the ", "a ", "an ")
 # Sections where capitals are people and institutions, not abbreviations a reader needs
 # defined: initials in a contributions statement, a funder's name, a society's. Found by a
 # word anywhere in the title, because publishers word these headings their own way:
-# "CRediT authorship contribution statement", "Role of the funding source".
+# "CRediT authorship contribution statement", "Role of the funding source". The spelling
+# is not read in them either: their wording is the taxonomy's and the funder's.
 _QUIET = re.compile(
     r"\b(?:"
     r"contributions?|contributors?(?:hip)?"
@@ -610,6 +611,9 @@ class _File:
     #: The text the vocabulary is read in: sentences and headings, less the reference
     #: list, everything else NUL.
     printed: str = ""
+    #: The text the spelling is read in: `printed` less the sections whose wording is
+    #: somebody else's, the ones `_QUIET` finds.
+    spelt: str = ""
     starts: list[int] = field(default_factory=list)
     breaks: list[int] = field(default_factory=list)
 
@@ -634,11 +638,10 @@ def _file(order: int, path: Path, text: str, chain: list[Section], supplementary
     )
     regions = _regions(headings, chain, supplementary=supplementary)
     ends = [*(region.start for region in regions[1:]), len(text)]
-    references = [
-        (region.start, end)
-        for region, end in zip(regions, ends, strict=True)
-        if region.scope is None
-    ]
+    spans = list(zip(regions, ends, strict=True))
+    references = [(region.start, end) for region, end in spans if region.scope is None]
+    # A reference list is quiet too, so this hides it with the rest.
+    quiet = [(region.start, end) for region, end in spans if region.quiet]
     return _File(
         order=order,
         path=path,
@@ -647,6 +650,7 @@ def _file(order: int, path: Path, text: str, chain: list[Section], supplementary
         definitions=_definitions(prose),
         prose=prose,
         printed=_hide(hidden, references),
+        spelt=_hide(hidden, quiet),
     )
 
 
@@ -836,13 +840,15 @@ def check_language(project: Project) -> Report:
     and its spelling."""
     files = _read(project)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
+    # A contributions statement names its roles as CRediT spells them and a funding
+    # statement is worded by the funder, so the spelling is read without those sections.
+    # The vocabulary is read in them: a term the author gave up is the author's there too.
+    spelt = [Passage(file.path, file.text, file.spelt, file.line_of) for file in files]
     paper = project.root / PAPER_FILE
     return (
         _judge(files, _known(project), project.root)
         .merge(judge_vocabulary(passages, project.vocabulary, paper))
         .merge(
-            judge_spelling(
-                passages, project.english_variant, project.accepted_spellings, paper
-            )
+            judge_spelling(spelt, project.english_variant, project.accepted_spellings, paper)
         )
     )

@@ -246,6 +246,10 @@ _WHOLE = (
     "\n\n# Abstract\n\n",
     "\n\n# References\n\n",
     "\n\n## Statistical analysis\n\n",
+    # Sections whose wording is somebody else's: G14 reports no undefined abbreviation
+    # in them and does not read their spelling.
+    "\n\n# Acknowledgements\n\n",
+    "\n\n## Funding\n\n",
     f"\n\n{_FENCE}r\nset.seed(20240115)\nx <- 1.96\n{_FENCE}\n\n",
     "\n\n<!--\nA note of 12 words.\n-->\n\n",
     "\n\n| Group | Reports |\n|---|---|\n| exposed | 412 |\n\n",

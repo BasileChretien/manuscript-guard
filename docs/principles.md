@@ -126,11 +126,13 @@ of synonyms of its own.
 **One English, the one the paper declares.** `english_variant` in `paper.yaml` says
 British or American, and G14 reports the words spelt the other way: "color" in a British
 paper, "randomised" in an American one, and both `-ise` and `-ize` in a British one. A
-name keeps its spelling, and so do a quotation and the reference list. The list of words
-is derived from [VarCon](http://wordlist.aspell.net/): from the part of it that was
-verified against dictionaries, and from the rest only verbs in `-ise` and a few medical
-forms such as `haem-`. Where a field spells a word its own way, the project lists the
-word under `language: accepted_spellings:`.
+name keeps its spelling, and so do a quotation, the reference list and the sections whose
+wording is somebody else's: contributions, acknowledgements, funding and competing
+interests, where the role names are CRediT's and a funder's sentence is the funder's. The
+list of words is derived from [VarCon](http://wordlist.aspell.net/): from the part of it
+that was verified against dictionaries, and from the rest only verbs in `-ise` and a few
+medical forms such as `haem-`. Where a field spells a word its own way, the project lists
+the word under `language: accepted_spellings:`.
 
 **Exemptions are small, explicit and reviewable.** Conventions live in a narrow shipped
 list pinned to specific values — `p < 0.05` is allowed, `p < 0.37` is not, because a p-value

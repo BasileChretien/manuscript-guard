@@ -267,7 +267,10 @@ def _spelling() -> Reading:
 
     def spelling(given: dict[str, Any]) -> dict[str, Any]:
         file = _file(given["text"])
-        passage = Passage(file.path, file.text, file.printed, file.line_of)
+        # The text the gate hands this reading: without the sections whose wording is
+        # somebody else's, where the source has that text.
+        read = getattr(file, "spelt", file.printed)
+        passage = Passage(file.path, file.text, read, file.line_of)
         return _told(judge_spelling([passage], given["variant"], given["accepted"], PAPER))
 
     _file("")

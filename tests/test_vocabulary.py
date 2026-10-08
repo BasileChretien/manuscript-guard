@@ -744,6 +744,18 @@ def test_one_entry_written_wrongly_does_not_take_the_others_with_it(project: Pat
     ]
 
 
+def test_a_term_given_up_is_found_in_an_acknowledgement_too(project: Path) -> None:
+    """The spelling is not read in the contributions, acknowledgements, funding and
+    competing-interests sections, whose wording is other people's. A term the author gave
+    up is the author's wherever it stands, so this reading keeps them."""
+    _, found = written(
+        project,
+        "# Methods\n\nNothing here.\n\n# Acknowledgements\n\nWe thank the subjects of the study."
+        "\n\n# Funding\n\nNo subjects were paid.\n",
+    )
+    assert messages(found) == ["'subjects' is used 2 times; this paper's term is 'participants'"]
+
+
 def test_the_example_keeps_to_its_own_vocabulary(project: Path) -> None:
     """Dogfooding: the example declares a vocabulary and its text has to keep to it."""
     projekt, _ = load_project(project)

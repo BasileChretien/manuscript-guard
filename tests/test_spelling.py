@@ -92,7 +92,7 @@ def test_a_word_in_the_other_spelling_is_reported_once_with_its_count(project: P
     )
     assert first.line == 3, "where it first stands"
     assert "The color of each sample" in first.context
-    assert "accepted_spellings" in first.hint
+    assert "list that one word under `language: accepted_spellings:`" in first.hint
     assert second.message == (
         "'tumor' is the American spelling of 'tumour', used once; this paper is in "
         "British English"
@@ -478,6 +478,9 @@ def test_only_the_first_word_of_a_heading_in_title_case_is_read(project: Path) -
         'The [value]{style="text-align: center; color: red"} was high.',
         '::: {style="text-align: center"}\nThe value was high.\n:::',
         "Write to info@color-lab.org or to center@example.org, or read color.csv.",
+        # a word after a backslash: a macro named for a word, a folder in a path
+        "\\providecommand{\\center}{c}\n\nThe value was high.",
+        "Outputs are written to C:\\\\study\\\\color\\\\results.csv.",
     ],
 )
 def test_what_is_not_the_paper_s_prose_is_not_read(project: Path, text: str) -> None:
@@ -610,6 +613,95 @@ def test_the_example_is_in_the_english_it_declares(project: Path) -> None:
     assert not [f for f in report.findings if f.code.startswith("spelling-")]
     assert report.counts["spelling_own"] >= 1
     assert report.counts["spelling_other"] == 0
+
+
+@pytest.mark.parametrize(
+    ("heading", "variant", "sentence"),
+    [
+        (
+            "Author contributions",
+            "en-GB",
+            "Conceptualization: AB. Formal analysis: CD. Visualization: EF.",
+        ),
+        (
+            "CRediT authorship contribution statement",
+            "en-GB",
+            "AB: Conceptualization, Visualization. CD: Formal analysis, Organization.",
+        ),
+        (
+            "Funding",
+            "en-US",
+            "This project has received funding from the European Union's Horizon 2020 "
+            "research and innovation programme under grant agreement No 101000000.",
+        ),
+        (
+            "Role of the funding source",
+            "en-US",
+            "The funder's programme office had no part in the analysis.",
+        ),
+        (
+            "Acknowledgements",
+            "en-US",
+            "We thank the staff of the centre and the paediatric nurses of the programme.",
+        ),
+        ("Acknowledgments", "en-GB", "We thank the center's staff for the color charts."),
+        (
+            "Declaration of competing interests",
+            "en-GB",
+            "AB has received honoraria from a tumor program of the manufacturer.",
+        ),
+    ],
+)
+def test_a_section_whose_wording_is_somebody_else_s_is_not_read(
+    project: Path, heading: str, variant: str, sentence: str
+) -> None:
+    """The role names of a contributions statement are the CRediT taxonomy's, a funding
+    statement is worded by the funder, and an acknowledgement names people's institutions.
+    Read like the rest, the first gave a British paper in -ise a `spelling-mixed` for
+    "Conceptualization", and the second an American one a finding for "programme"."""
+    own = {
+        "en-GB": "We randomised the patients and recorded the colour.",
+        "en-US": "We randomized the patients and recorded the color.",
+    }[variant]
+    _, found = written(project, f"# Methods\n\n{own}\n\n# {heading}\n\n{sentence}\n", variant)
+    assert not found, messages(found)
+
+
+def test_what_stands_in_such_a_section_is_out_of_the_count_and_the_next_is_read(
+    project: Path,
+) -> None:
+    report, found = written(
+        project,
+        "# Methods\n\nThe color was noted.\n\n# Acknowledgements\n\nWe thank the color "
+        "laboratory. Its color charts were lent to us.\n\n# Appendix\n\nThe color chart is "
+        "reproduced here.\n",
+    )
+    (finding,) = found
+    assert finding.message.startswith("'color' is the American spelling of 'colour', used 2 ")
+    assert finding.line == 3
+    assert report.counts["spelling_other"] == 2
+
+
+def test_a_subsection_of_such_a_section_is_left_out_with_it(project: Path) -> None:
+    _, found = written(
+        project,
+        "# Funding\n\n## Grants\n\nThe programme was funded.\n\n# Data\n\nThe programme "
+        "data are public.\n",
+        "en-US",
+    )
+    (finding,) = found
+    assert finding.message.startswith("'programme' is the British spelling of 'program', used once")
+    assert finding.line == 9
+
+
+def test_a_slip_in_such_a_section_is_the_price(project: Path) -> None:
+    """Written down in Known gaps: the author's own "color" in an acknowledgement passes,
+    and so does a whole section of the paper proper whose title holds one of the words."""
+    _, found = written(
+        project,
+        "# Methods\n\nNothing here.\n\n# Funding of primary care\n\nThe color of money.\n",
+    )
+    assert not found
 
 
 # ---------------------------------------------------------------- where a sentence opens
@@ -987,6 +1079,12 @@ A Z: mize / B: mise
 
 # weftwize (level 80)
 A Z: weftwize / B: weftwise
+
+# gray <verified> (level 10)
+A Cv: gray / AV B C: grey
+
+# amebiasis (level 70)
+A: amebiasis / B: amoebiasis
 """
 
 
@@ -1040,7 +1138,31 @@ def test_the_script_takes_the_rows_it_says_it_takes(derive) -> None:
         # has no American tag and is British. "Caesarean" has a capital, "adaptor" is in
         # EVERYWHERE, and "surprise", "mise" and "weftwise" are no verbs in -ize
         "foetus": ("gb", "fetus"),
+        # "grey" is tagged for both usages and they prefer different spellings, so it is
+        # British: the rule above is for a word both have as a variant of the same one.
+        # In this sample no other line accepts "gray" in British usage, as VarCon's do
+        "gray": ("us", "grey"),
+        "grey": ("gb", "gray"),
+        # "amoebiasis" is from a cluster nobody verified, and `amoeb-` is no door
     }
+
+
+def test_the_words_the_script_leaves_out_are_these(derive) -> None:
+    """The table by name, so that a word cannot leave it, or join it, unseen where the
+    source is not at hand to derive the list again: on CI. With the source, the test
+    above also holds that each of them takes a row out."""
+    assert sorted(derive.EVERYWHERE) == [
+        "acknowledgment", "acknowledgments", "adaptor", "adaptors", "blaise",
+        "diethylstilbestrol", "estradiol", "estradiols", "estriol", "estriols", "estrone",
+        "estrones", "flyer", "flyers", "hematite", "hematites", "hematitic", "porer",
+        "pourer", "pyrolyses", "rigor", "rigors", "specialties", "specialty",
+        "stilbestrol", "stilbestrols",
+    ]  # fmt: skip
+    assert all(derive.EVERYWHERE.values()), "each with its reason"
+    assert sorted(derive.DIGRAPHS) == [
+        "aemi", "aetiol", "anaesth", "coeli", "gynaec", "haem", "oedem", "oesoph",
+        "oestr", "palaeo", "pnoea", "rrhoea",
+    ]  # fmt: skip
 
 
 def test_the_script_refuses_a_source_that_is_not_the_pinned_one(

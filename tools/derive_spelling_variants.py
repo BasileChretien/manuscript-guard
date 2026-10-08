@@ -45,7 +45,9 @@ What is kept, and why each rule is there:
   `paed-` gave the "pedogenic" of soil science to American usage as a spelling of
   "paedogenic"; `amoeb-` respelt a genus, "Entamoeba". Where a line of VarCon pairs such
   a word through a form, the word is named in `EVERYWHERE` and the form stays, since
-  without it "pedodontics" and "amebiasis" pass in a British paper.
+  without it "pedodontics" and "amebiasis" pass in a British paper. The British halves
+  of the same lines are named too where American usage writes them: "amoebiasis"
+  beside the "amoebic" VarCon verified for both, and the zoologist's "paedomorphosis".
 * A word of fewer than four letters writes no row. "ax" and "mom" are spellings, and in
   a manuscript a word that short is more often a symbol or a variable.
 * Only words of lower-case ASCII letters are written. Possessives repeat their base word,
@@ -94,6 +96,15 @@ EVERYWHERE = {
     "adaptor": "the spelling of molecular biology in either English, and of the MeSH "
     "heading for adaptor proteins",
     "adaptors": "as adaptor",
+    "amoeban": "as amoebiasis",
+    "amoebean": "as amoebiasis",
+    "amoebiases": "as amoebiasis",
+    "amoebiasis": "American usage writes amoeb- too: VarCon's verified lines give "
+    "amoeba, amoebic and amoeboid to both usages, and only its unverified ones call "
+    "this British",
+    "amoebiform": "as amoebiasis",
+    "amoebocyte": "as amoebiasis",
+    "amoebocytes": "as amoebiasis",
     "blaise": "a given name, and nobody writes the verb VarCon has",
     "diethylstilbestrol": "as estradiol",
     "endamoeba": "as entamoeba",
@@ -115,6 +126,19 @@ EVERYWHERE = {
     "hematite": "the name the International Mineralogical Association gives the mineral",
     "hematites": "as hematite",
     "hematitic": "as hematite",
+    "myxamoeba": "as amoebiasis",
+    "paedogeneses": "as paedomorphosis",
+    "paedogenesis": "as paedomorphosis",
+    "paedogenetic": "as paedomorphosis",
+    "paedogenic": "as paedomorphosis",
+    "paedomorphic": "as paedomorphosis",
+    "paedomorphism": "as paedomorphosis",
+    "paedomorphisms": "as paedomorphosis",
+    "paedomorphoses": "as paedomorphosis",
+    "paedomorphosis": "a zoologist's word that American zoology writes so too",
+    "pedagogism": "British usage writes pedagogy and pedagogue, and this like them",
+    "pederastic": "British usage prefers pederast, by VarCon's own verified line",
+    "pederastically": "as pederastic",
     "pedogeneses": "as pedogenesis",
     "pedogenesis": "the forming of soil, from the Greek for ground: no word of the "
     "child's root, and spelt so in any English",
@@ -128,6 +152,7 @@ EVERYWHERE = {
     "pyrolyses": "the plural of pyrolysis, which VarCon has only as a form of the verb",
     "rigor": "the clinical sign, and rigor mortis, are spelt so in British medicine",
     "rigors": "as rigor",
+    "scapaed": "the word nobody writes that the form paed- pairs with scaped",
     "scaped": "having a scape, which the form paed- pairs with a word nobody writes",
     "specialty": "the word of British medicine for a branch of practice",
     "specialties": "as specialty",
@@ -141,9 +166,9 @@ IUPAC = "sulf"
 SHORTEST = 4
 
 #: From a cluster VarCon has not verified: the combining forms British spelling writes
-#: with a digraph, and what American spelling writes for each. Two of them reach words of
-#: another root, which `EVERYWHERE` names: `paed-` the soil's "pedogenic", and `amoeb-`
-#: the genus "Entamoeba".
+#: with a digraph, and what American spelling writes for each. Two of them reach words
+#: they should not respell, which `EVERYWHERE` names: `paed-` the soil's "pedogenic", and
+#: `amoeb-` the genus "Entamoeba" and the spellings American usage writes too.
 DIGRAPHS = {
     "aemi": "emi",
     "aetiol": "etiol",

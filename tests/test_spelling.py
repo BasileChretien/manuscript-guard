@@ -148,8 +148,8 @@ def test_a_british_paper_hears_of_an_american_spelling(
         ("programme", "program"),
         ("sulphate", "sulfate"),
         ("oestradiol", "estradiol"),
-        ("amoebiasis", "amebiasis"),
-        ("paedomorphosis", "pedomorphosis"),
+        ("paedodontics", "pedodontics"),  # British only, through the form paed-
+        ("logopaedics", "logopedics"),
         ("speciality", "specialty"),
         ("grey", "gray"),
     ],
@@ -399,6 +399,7 @@ def test_an_american_paper_is_not_told_its_endings_are_mixed(project: Path) -> N
         # the soil's words, from another root than the child's: never "paedogenic"
         "Pedogenic carbonate and slow pedogenesis were described by the pedologist.",
         "Hematite and stilbestrol were weighed.",  # the mineral's name, and the drug's
+        "A pederastic theme and a dry pedagogism were noted.",  # as British usage has them
     ],
 )
 def test_a_word_british_usage_also_writes_is_not_american(project: Path, sentence: str) -> None:
@@ -421,7 +422,10 @@ def test_a_word_british_usage_also_writes_is_not_american(project: Path, sentenc
         # a variant in both usages is the spelling of neither
         "By the Sobolev imbedding theorem the map is compact, and a useable fraction remained.",
         "Flash vacuum pyrolyses were run, and the pourer was calibrated.",  # two wrong pairings
-        "Entamoeba histolytica and an Endamoeba were cultured.",  # a genus is Latin
+        "Entamoeba histolytica was cultured. Endamoeba was not.",  # a genus is Latin
+        # what American usage writes too, beside the amoebic that VarCon gives to both
+        "Intestinal amoebiasis was excluded and the amoebocyte lysate assay was run.",
+        "The paedomorphic salamanders showed paedomorphosis, and paedogenesis is rarer.",
         "Blaise Pascal showed it, and the cloth was cut weftwise.",
     ],
 )
@@ -878,6 +882,8 @@ def test_the_list_holds_what_it_should(word: str, row: tuple[str, str]) -> None:
         "hydrolysate", "et", "ax", "mom", "micelle", "macule", "diene", "raphe", "prev",
         "surprisal", "expertise", "advertise", "exercise", "larvae", "fossae", "homeostasis",
         "flyer", "adaptor", "pedogenic", "pedology", "pedologist", "entamoeba", "hematite",
+        "endamoeba", "amoebiasis", "amoebocyte", "paedomorphosis", "paedogenesis",
+        "pederastic", "pedagogism", "scaped", "scapaed",
         "stilbestrol", "imbedding", "useable", "focussed", "pyrolyses", "pourer", "blaise",
         "weftwise", "caulkings",
     ],
@@ -1126,9 +1132,8 @@ def test_the_script_takes_the_rows_it_says_it_takes(derive) -> None:
         "mold": ("us", "mould"),  # four letters are enough
         "mould": ("gb", "mold"),
         # more from clusters nobody verified: the noun of a verb in -ise, and -aemia.
-        # "pedogenesis" is the soil's word and is named in EVERYWHERE, so it has no row;
-        # "paedogenesis", the zoologist's, is British
-        "paedogenesis": ("gb", "pedogenesis"),
+        # "pedogenesis" is the soil's word and "paedogenesis" the zoologist's in either
+        # usage: both are named in EVERYWHERE, and neither has a row
         "anonymisation": ("ise", "anonymization"),
         "bacteremia": ("us", "bacteraemia"),
         "bacteraemia": ("gb", "bacteremia"),
@@ -1151,9 +1156,9 @@ def test_the_script_takes_the_rows_it_says_it_takes(derive) -> None:
         # In this sample no other line accepts "gray" in British usage, as VarCon's do
         "gray": ("us", "grey"),
         "grey": ("gb", "gray"),
-        # from a cluster nobody verified, through the form amoeb-
+        # from a cluster nobody verified, through the form amoeb-. Its British half is
+        # named in EVERYWHERE, since American usage writes amoeb- too
         "amebiasis": ("us", "amoebiasis"),
-        "amoebiasis": ("gb", "amebiasis"),
     }
 
 
@@ -1162,12 +1167,16 @@ def test_the_words_the_script_leaves_out_are_these(derive) -> None:
     source is not at hand to derive the list again: on CI. With the source, the test
     above also holds that each of them takes a row out."""
     assert sorted(derive.EVERYWHERE) == [
-        "acknowledgment", "acknowledgments", "adaptor", "adaptors", "blaise",
+        "acknowledgment", "acknowledgments", "adaptor", "adaptors", "amoeban", "amoebean",
+        "amoebiases", "amoebiasis", "amoebiform", "amoebocyte", "amoebocytes", "blaise",
         "diethylstilbestrol", "endamoeba", "endamoebae", "endamoebas", "entamoeba",
         "entamoebae", "entamoebas", "estradiol", "estradiols", "estriol", "estriols",
         "estrone", "estrones", "flyer", "flyers", "hematite", "hematites", "hematitic",
-        "pedogeneses", "pedogenesis", "pedogenetic", "pedogenic", "pedological",
-        "pedologist", "pedologists", "porer", "pourer", "pyrolyses", "rigor", "rigors",
+        "myxamoeba", "paedogeneses", "paedogenesis", "paedogenetic", "paedogenic",
+        "paedomorphic", "paedomorphism", "paedomorphisms", "paedomorphoses",
+        "paedomorphosis", "pedagogism", "pederastic", "pederastically", "pedogeneses",
+        "pedogenesis", "pedogenetic", "pedogenic", "pedological", "pedologist",
+        "pedologists", "porer", "pourer", "pyrolyses", "rigor", "rigors", "scapaed",
         "scaped", "specialties", "specialty", "stilbestrol", "stilbestrols",
     ]  # fmt: skip
     assert all(derive.EVERYWHERE.values()), "each with its reason"

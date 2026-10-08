@@ -1041,11 +1041,14 @@ another root's: `ped-` is the child's and also the soil's, and through `paed-` t
 review found "pedogenic", the soil's word in any English, given to American usage as a
 spelling of "paedogenic"; through `amoeb-` a genus, *Entamoeba*, was respelt. For a
 day both forms were taken out, and "pedodontics" and "amebiasis" passed in a British
-paper. Basile chose on 2026-10-08 to keep the forms and name the words: the seven of
-the soil, the six of the two genera and one more are in the script's table of
-exceptions, each with its reason. `hem-` is also the root of "hemisphere", and no line
-of VarCon makes that a spelling of anything, so it needs no entry. ATTRIBUTION.md has
-VarCon's terms and how the derived file meets them.
+paper. Basile chose on 2026-10-08 to keep the forms and name the words, each with its
+reason in the script's table of exceptions: the seven of the soil and the six of the
+two genera; then, after the review of that change, the British halves American usage
+writes too, "amoebiasis" beside the "amoebic" VarCon verified for both and the
+zoologist's "paedomorphosis", and a handful a line pairs wrongly. Thirty-five words
+for two forms is what keeping them costs. `hem-` is also the root of "hemisphere", and
+no line of VarCon makes that a spelling of anything, so it needs no entry.
+ATTRIBUTION.md has VarCon's terms and how the derived file meets them.
 
 **A variant in both usages is the spelling of neither.** VarCon gives "embedding" to
 both and "imbedding" as a variant in British usage and a seldom-used one in American.
@@ -7527,13 +7530,12 @@ Closed since, and why each mattered:
   - A word the list does not hold is not read. It has "haemoglobin", "oedema" and
     "randomise", and not "hyperglycaemia", "leucocyte" or "operationalise"; a spelling of
     the other usage that it lacks passes in silence.
-  - Fourteen words that a form taken from unverified clusters would pair wrongly are
-    named in the script and never reported: the soil's "pedogenic", "pedogenesis" and
-    "pedologist", the genera *Entamoeba* and *Endamoeba*, and "scaped". A word of the
-    same kind that nobody has met yet is reported until it is named there. The
-    zoologist's "paedogenesis" and "paedomorphosis" are told "pedogenesis" and
-    "pedomorphosis" in an American paper, as VarCon has them, though American
-    zoology writes both.
+  - Thirty-five words that the forms `paed-` and `amoeb-` would pair wrongly are named
+    in the script and never reported: the soil's "pedogenic" and "pedologist", the
+    genera *Entamoeba* and *Endamoeba*, and the British halves that American usage
+    writes too, "amoebiasis", "amoebocyte", "paedomorphosis". So an American paper
+    that mixes "amebiasis" with "amoebic" passes, and a word of the same kind that
+    nobody has met yet is reported until it is named there.
   - A word some line of VarCon accepts in the paper's English is never reported, whatever
     it means where it stands: "meter" for the unit, "program" for a schedule and
     "practise" used as a noun all pass in a British paper.

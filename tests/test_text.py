@@ -603,9 +603,10 @@ def _placed(text: str) -> tuple[list[tuple[str, int, int]], list[tuple[str, int]
 def test_a_binding_is_placed_by_the_line_and_the_column_it_stands_at(line_end: str) -> None:
     """A finding names a binding by its line and column, both counted from 1, and a
     malformed one by its line. They are looked up among the starts of the lines now, and
-    have to come out as they did when each was counted from the top of the file. `render`
-    hands `parse` a text nobody folded: the carriage return before each line feed is the
-    last character of its line, and moves nothing."""
+    have to come out as they did when each was counted from the top of the file. Every
+    caller folds the line ends of Windows before `parse` reads a text. Left in, the
+    carriage return before each line feed is the last character of its line, and moves
+    nothing: that case is a guard, and no path a command takes."""
     assert _placed(line_end.join(_PLACED)) == (_BINDINGS, _MALFORMED)
 
 

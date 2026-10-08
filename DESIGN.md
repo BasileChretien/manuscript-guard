@@ -7585,7 +7585,11 @@ Closed since, and why each mattered:
   on its line, which the placeholder pattern tries from each `{{` to the line's end (2.7 s
   at 32,000 characters), and a long run of backslashes with no `<` or `>` after it, which
   `comparison_escapes` backtracks through from each backslash (about 74 s at 80,000, on one
-  machine). Low priority, and not fixed.
+  machine). `parse()` has the first of the two as well, in its pattern for a malformed
+  binding: 2,000 bindings with no closing brace on one line took 0.85 s, before and after
+  the line of each was looked up among the line starts (#213). One such binding to a line
+  is linear, as measured then; the test that times `parse` holds a binding with one closing
+  brace, not this one. Low priority, and not fixed.
 - **The linear-time tests measure time, so they see a quadratic only once it shows.** Each
   times a scan on eight times its input, taking each size's best of three in alternation,
   and fails at sixteen times the time (`check_linear` in `tests/conftest.py`). A scan whose

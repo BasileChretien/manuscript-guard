@@ -134,7 +134,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G11 | a recorded panel has reviewed the manuscript, and its major findings are answered |
 | G12 | there was an analysis plan, and its sections say something |
 | G13 | every reviewer point is answered, and every claimed revision really happened |
-| G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, and it is spelt in one English (warnings only) |
+| G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, it is spelt in one English, and a P value, an interval and a percentage are each written one way (warnings only) |
 
 In place of a gate, a finding can carry one of two labels that are no gate of their own:
 `G0`, for a file of the project that cannot be used as it stands, and `BUILD`, for what

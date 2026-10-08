@@ -239,7 +239,7 @@ All deterministic, all runnable in CI without Claude.
 | G11 | Panel review | no review round, a stale review, a file nobody read, or an unanswered major finding |
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
 | G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
-| G14 | Abbreviations, terms and spelling | never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, and when a word is in the spelling of the English the paper does not declare |
+| G14 | Abbreviations, terms, spelling and notation | never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, when a word is in the spelling of the English the paper does not declare, when a P value, an interval or a percentage is written in two ways, and when a number runs into its unit |
 
 Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
 is in no stage's deferral list and so fails everywhere, because a checker that could not
@@ -1036,13 +1036,19 @@ route. So a row comes from a verified cluster, or from another only for a corres
 the spelling itself shows: a verb in `-ise` and its noun, and the combining forms British
 spelling writes with a digraph, `haem-`, `-aemia`, `-rrhoea`. Without that second door
 "haemodynamic" and "bacteraemia" would be missing, and four rows in ten come through it.
-It is narrow because it let the same fault back in once: `paed-` was among the forms, and
-the first review found "pedogenic", which is the soil's word in any English, given to
-American usage as a spelling of "paedogenic". A form is kept only where no line of
-VarCon pairs a word of another root through it: `hem-` is also the root of
-"hemisphere", and no line makes that a spelling of anything. `amoeb-` went with
-`paed-`, since it respelt a genus, *Entamoeba*. ATTRIBUTION.md has VarCon's terms and
-how the derived file meets them.
+It is narrow because it let the same fault back in once. The letters of a form can be
+another root's: `ped-` is the child's and also the soil's, and through `paed-` the first
+review found "pedogenic", the soil's word in any English, given to American usage as a
+spelling of "paedogenic"; through `amoeb-` a genus, *Entamoeba*, was respelt. For a
+day both forms were taken out, and "pedodontics" and "amebiasis" passed in a British
+paper. Basile chose on 2026-10-08 to keep the forms and name the words, each with its
+reason in the script's table of exceptions: the seven of the soil and the six of the
+two genera; then, after the review of that change, the British halves American usage
+writes too, "amoebiasis" beside the "amoebic" VarCon verified for both and the
+zoologist's "paedomorphosis", and a handful a line pairs wrongly. Thirty-five words
+for two forms is what keeping them costs. `hem-` is also the root of "hemisphere", and
+no line of VarCon makes that a spelling of anything, so it needs no entry.
+ATTRIBUTION.md has VarCon's terms and how the derived file meets them.
 
 **A variant in both usages is the spelling of neither.** VarCon gives "embedding" to
 both and "imbedding" as a variant in British usage and a seldom-used one in American.
@@ -1090,8 +1096,9 @@ a slip of the author's own in an acknowledgement, which passes. This reading als
 hides a little more, because markup is written in American: an HTML tag, so that
 `<span style="color:red">` is no word of the paper; a block of attributes that holds a
 key, `{fig-align="center"}`; and the label of a reference link. A LaTeX command is not
-hidden: where pandoc is installed, `check` fails a manuscript that holds one, whatever it
-spells. A word joined to a digit or to an underscore, `color2`, `tumor_size`, is a
+hidden: from `drafting` on, and where pandoc is installed, `check` fails a manuscript
+that holds one, unless it is a macro's definition or a layout command, which it passes.
+A word joined to a digit or to an underscore, `color2`, `tumor_size`, is a
 variable's name; one that stands beside an `@`, or that a dot and a letter follow, is
 part of an address or a file's name; and one that follows a backslash is a macro's name
 or a folder's in a path. The second review found that last rule gone with the pattern
@@ -1112,6 +1119,96 @@ no such choice, so an `-ise` there is a `spelling-variant`.
 
 A journal that insists on one English says so in its profile, and G4 already reports a
 paper that declares the other. G14 holds the manuscript to what the paper declares.
+
+## One notation is the manuscript's own, and the space before a unit is the SI's
+
+"P = 0.03" in the Methods, "p=0.04" in the Results and "*P* <0.001" under a table are one
+statistic written three ways. Which way is right is a journal's to say: one house prints a
+capital italic *P* and another a lower-case p, one joins the bounds of an interval with
+"to" and another with an en dash. That the manuscript writes each thing one way is a fact
+about the manuscript, the same in any field. It is the distinction the abbreviations
+started from, and G14's fourth reading applies it to four things:
+
+| Code | What is held to one form |
+|---|---|
+| `notation-p-symbol` | the symbol of a P value: "P", "p", "*P*", "*p*" |
+| `notation-sign-spacing` | the spaces around the sign after `P` or `n`: "P = 0.03" or "P=0.03" |
+| `notation-interval` | what joins the two bounds of an interval: "to", an en dash, a hyphen, a comma |
+| `notation-percent` | "5%" or "5 %" |
+
+**The manuscript's convention is the form it uses most.** Each other form is reported
+once, where it first stands, with both counts: "the P value is written 'p' 3 times; the
+manuscript writes 'P' 12 times". Where two forms are used as often, the later one is the
+one shown, and the finding says they are level. A count cannot say which form the journal
+prints, and the hint says so: the instructions decide, and where they are silent the
+majority is as good a convention as any. A space on one side of a sign only, "P= 0.03",
+is no convention anywhere and is reported whatever the rest of the manuscript does.
+
+**A value is a value, typed or bound.** In a manuscript of this toolkit the numbers are
+bindings, so "(95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}})" has no digit
+in it after "95". The reading takes each binding that stands in a sentence for a number,
+and reads the notation around it. A binding with something hidden on both sides of it
+stands in a listing, a comment or an equation, and is no number of the prose.
+
+**Only what is typed is read.** How a bound value is printed, its decimals, its leading
+zero and its thousands separator, is the emitter's doing and a journal's rule, and
+consistency says little there: an odds ratio and a P value are rightly printed to
+different precisions. Basile left that out of this reading on 2026-10-08.
+
+**Only where the reading is sure.** The sign is read after `P` and after `n` and nowhere
+else: "aged <65 years" is written closed in papers that space "P < 0.05", because there
+the sign is a modifier and not a comparison between two things. An interval is one that
+"CI", "CrI" or the words "confidence interval" introduce. Known gaps lists what that
+leaves unread.
+
+**What a house style does on purpose is not a second form.** The first review of this
+reading found four things it had counted against a manuscript that was right. A house
+that joins the bounds of an interval with a hyphen, as JAMA does, writes "to" where a
+bound is negative, so that the dash is not read as its sign: an interval joined by "to"
+with a typed negative bound says nothing of the rest and is not counted. A `P` with a
+typed value above 1 is a pressure, a partition coefficient or a number of predictors,
+and no P value, unless a power of ten follows its figures or it is ten itself to a
+negative power, "P = 3.2 x 10-9", "P < 10^-5^". The figures are read and never made a
+number:
+the first fix converted them, and Python refuses more than 4,300 digits, so a line of
+sevens after `P =` made the gate raise. A capital `P` that opens a sentence has its
+capital from the sentence,
+in "P < 0.05 was considered significant" as in "P values were two-sided"; the spacing
+of its sign is still read. And a level of confidence stated after the letters, "a
+confidence interval of 95%, 5% margin of error", is no bound.
+
+**The space before a unit is not a matter of counting.** `notation-unit` reports a number
+that runs into its unit, "5mg", "10mL", "37°C", wherever it stands, in a manuscript that
+always writes it so too. Here a field-neutral authority speaks: the SI Brochure (9th
+edition, section 5.4.3) sets a space between a numerical value and its unit symbol, with
+the one exception of the degree, minute and second of plane angle. One finding carries the
+count and the first few examples, since the remedy is one habit and not a list of places.
+The Brochure asks for the same space before "%" (section 5.4.7), and there most medical
+journals do otherwise, so "%" is held to consistency alone. Basile chose both on
+2026-10-08.
+
+**A unit is known by name, and the short names are few.** The symbols read are listed in
+`gates/notation.py`. Of those of one letter only `g` and `h` are among them: "5m" is as
+often five months, "1L" a first line of treatment, "30s" an age and "3A" a grade. And
+those two are not read where a number and a letter are a name: in a sentence that has
+named a figure, a table or a scheme before them, where "3g" is a panel; standing
+against the word for a compound, a product or a derivative, alone or in a list of its
+kind, "compounds 3g and 4h"; or alone between marks of emphasis, where "**3g**" is the
+seventh of a series. Those words are ordinary prose too, and the second review found
+"each compound was incubated for 24h" passed over, so a name has to stand against its
+word. Nor is `g` read as a gram where it is a force: after a number of four figures or
+more, or after a word of centrifuging in its sentence. "12,000g" is printed closed, and
+"12,000 g" would be twelve kilograms.
+
+**It is read where the manuscript speaks**, as the vocabulary is, the contributions and
+acknowledgements included: a P value there is the author's. Not in a quotation set as a
+block, the reference list, or anything the masking hides.
+
+**Every finding is a warning**, at every stage. A `p` can be a proportion, and a majority
+is not a rule.
+
+The example joins the bounds of its five intervals with "to", sets "%" against its number
+and states no P value with a sign, so it has nothing to report.
 
 ## Methods drift is a reconciliation ledger
 
@@ -1739,7 +1836,18 @@ narrowed to Windows and to a run holding another backslash, in `cp Edited\ paper
 \(JD\).docx /backup`, where the other backslash is a shell's escape. Both were found by
 #137's review, and the reading was dropped (Basile, 2026-10-02): a path not found is a
 limit that is written down, and a document refused for a project it has nothing to do with
-is what this change was decided against. A word of more than 4096 characters or 100
+is what this change was decided against. One kind of word has since been read as a shell
+reads it, whole and not by its pieces (2026-10-08): a word with an escaped space in which
+every backslash stands before a space or one of the characters a shell escapes, which
+are a few of ASCII: brackets, quotation marks, `&`, `#`, `~` and their like. There every
+backslash is the shell's, so `paper\ \(1\).docx` is the one name `paper (1).docx` and
+does not end at the bracket. A backslash before anything else is where Windows ends a
+folder's name, and a word that holds one is read as before: before a letter or a digit
+of any script, since a folder is as often `études` as `paper`, and before a mark no
+shell escapes, since one is as often `【投稿】論文` or `.drafts`. Read the other way round,
+as every character but a letter, `.\études\ ` and then `.\【投稿】論文\ ` were a shell's
+word and a folder not found; both were found in review, before this was on `main`. A
+word of more than 4096 characters or 100
 folders is not a path and is not walked: each step down is a look on disk, `..` exists at
 every step, and 5000 of them in one word took 34 s.
 
@@ -5617,25 +5725,52 @@ Closed since, and why each mattered:
     submit` is refused for the first, though `second` passes and is the one sent. And a
     copy out of a second project that fails, `cp ../second/notes.docx .`, is refused for
     that one, as the same copy is from the folder above.
-  - *A commit that stages a file of the paper is refused when its message reads as a
-    submission.* `git add paper/manuscript/main.md && git commit -m "copy-edit the abstract
-    before submission"`, sent from the folder above, is refused in a project that fails:
-    the markers match the message, a verb and then the word, and the staged path names the
-    project. Nothing leaves the machine. Inside the project the same commit was always
-    refused; from above it used to go through, and so did `git add paper && git commit -m
-    "..." && git push origin submission-v2`. The message alone, with no path, names nothing
-    and goes through. The remedy is in the markers, which should not read a verb inside a
-    quoted string, and is not this change's. Found in the review of #137.
+  - *A message that is not git's, or not in quotes, is read as a command.* Until
+    2026-10-08 so was git's: `git add paper/manuscript/main.md && git commit -m "copy-edit
+    the abstract before submission"` was refused in a project that fails, from inside it
+    and from the folder above, because the markers matched the message, a verb and then
+    the word. What a `git` command is told to record is now blanked before the markers
+    are asked and before the words are read: the value of `-m` or `--message`, in quotes
+    or as the heredoc an agent writes a long one through, where `git` is the first word
+    of its command. Blanked to its own length, line ends kept, so that what stands on
+    either side of it is read as it was. Not every quoted string, which was the remedy
+    first thought of: `bash -c "manuscript-guard submit"` and `ssh host "scp
+    build/manuscript.docx elsewhere:"` are commands in quotes, and are held. And not
+    wherever the letters `git` stand: after `--exclude=.git` or `python
+    ~/git/tools/send.py`, what follows `-m` is a path or a text to act on, and is read.
+    What is left:
+    - Text given any other way: a title or a body handed to `gh`, an `echo`, the message
+      of another version control tool, and a git message with no quotes round it, in a
+      PowerShell here-string (`-m @'...'@`), written `$'...'`, on the line after a
+      continued `-m`, or read from a heredoc by `-F -`.
+    - A message with a quote escaped inside it is blanked as far as that quote, and the
+      rest is read: `git commit -m "say \"copy\" before submission"` is refused.
+    - A message is not git's to the guard where `git` is not the first word of its
+      command (`/usr/bin/git`, `sudo git`, `(git commit ...)`), or where a quoted `;`,
+      `&` or `|` stands between `git` and the option, as in `git commit --author="A & B
+      <a@b.example>" -m "..."`.
+    - What the line goes on to do is read: after the commit, `git push origin
+      submission-v2` is still held, and a verb before the commit with `submission` or
+      `.docx` after it, on one line and within 120 characters, reads as a submission as
+      it did before.
+    Found in the review of #137.
   - *A word that is the folder's name is taken for the folder.* With the paper in `paper/`,
     `git push origin paper  # submission` from the folder above is held to it, though the
     word is a branch. So is `Paper` on Windows, which ignores case, `paper.` there too,
     since Windows drops a dot or a space at the end of a name, and the end of
     `https://example.org/dl?f=paper`, since a word ends at `=`, at a comma and at a brace.
     So is what follows the last `@` of any word and the last `=` of a quoted one, which
-    are read for curl's sake: `mail -s "submission" editor@paper`, and a commit message
-    that ends `p=paper` or `thanks @paper`. And on Windows a file called `paper (1).docx`,
-    written `cp paper\ \(1\).docx /backup`: a word ends at a bracket, escaped or not, and
-    Windows drops the space left at the end of `paper `. In quotes it names nothing.
+    are read for curl's sake: `mail -s "submission" editor@paper`. And on Windows a file
+    whose name is the folder's and then a bracket, with no space between, written
+    `cp paper\(1\).docx /backup`: a word ends at a bracket, escaped or not, and what is
+    left is `paper\`. With a space the name is read whole since 2026-10-08, `cp paper\
+    \(1\).docx /backup` being `paper (1).docx`, where it used to leave `paper ` and Windows
+    dropped the space; not where the line is continued straight after the name, with no
+    space before the backslash that ends it. In quotes it names nothing. The same reading
+    loses a folder on Windows whose name begins with a character a shell escapes, where
+    a backslash and a space follow it: `Copy-Item .\#1-paper\ "D:/sent" -Recurse` reads
+    as the name `.#1-paper ` and names no project, for `#`, `~`, a bracket or `!` in front.
+    With no space after the backslash, `.\#1-paper\build`, or in quotes, it is found.
     A copy into the project, `cp ~/Downloads/edited.docx paper/`, is held to it too, as it
     always was from inside (the word-roundtrip skill says to give the path to `import`).
   - *The check a refusal names can be refused in two shapes.* Written with the folder last
@@ -7651,11 +7786,13 @@ Closed since, and why each mattered:
 - **G14's spelling is a list of general English, and reads a capital as a name's.**
   - A word the list does not hold is not read. It has "haemoglobin", "oedema" and
     "randomise", and not "hyperglycaemia", "leucocyte" or "operationalise"; a spelling of
-    the other usage that it lacks passes in silence. Two families are left out on
-    purpose, where VarCon has not verified the word: `paed-` with `ped-`, and `amoeb-`
-    with `ameb-`. So "pedodontics", "pedomorphosis" and "amebiasis" pass in a British
-    paper and their British spellings in an American one, while "pediatric",
-    "orthopedic" and "amebic", which VarCon verified, are reported.
+    the other usage that it lacks passes in silence.
+  - Thirty-five words that the forms `paed-` and `amoeb-` would pair wrongly are named
+    in the script and never reported: the soil's "pedogenic" and "pedologist", the
+    genera *Entamoeba* and *Endamoeba*, and the British halves that American usage
+    writes too, "amoebiasis", "amoebocyte", "paedomorphosis". So an American paper
+    that mixes "amebiasis" with "amoebic" passes, and a word of the same kind that
+    nobody has met yet is reported until it is named there.
   - A word some line of VarCon accepts in the paper's English is never reported, whatever
     it means where it stands: "meter" for the unit, "program" for a schedule and
     "practise" used as a noun all pass in a British paper.
@@ -7674,13 +7811,17 @@ Closed since, and why each mattered:
     *color* was recorded" has to be read. Each goes under `accepted_spellings`.
   - The spelling is not read in a contributions, acknowledgements, funding or
     competing-interests section, nor in its subsections: a word of the author's own
-    that is misspelt there passes. Those sections are found by a word in their titles,
-    so a section of the paper proper whose title holds one, "Funding of primary care",
-    is not read either. A funder's sentence or a CRediT role name written anywhere
-    else, in a footnote to the title page or in the Methods, is read as the paper's own.
-  - A word that follows a backslash is not read. Where pandoc is not installed to fail
-    the manuscript for it, the label inside a LaTeX command is: the `color` of
-    `\label{tab:color}`.
+    that is misspelt there passes. Those sections are found by the words listed above
+    for the abbreviations, "disclosure", "financial support" and "author statement"
+    among them, anywhere in a title. So a section of the paper proper whose title
+    holds one, "Funding of primary care" or "Barriers to disclosure", is not read
+    either. A funder's sentence or a CRediT role name written anywhere else, in a
+    footnote to the title page or in the Methods, is read as the paper's own.
+  - A word that follows a backslash is not read. What a LaTeX command holds in its
+    braces is: the `color` of `\label{tab:color}`, in a manuscript that `check`
+    fails for the command only from `drafting` on and where pandoc is installed, and a
+    word in a macro's definition, `\newcommand{\vol}{\mathrm{tumor}}`, which
+    `check` passes.
   - Words quoted inside a sentence are read as the manuscript's own, as for the
     vocabulary; only a quotation set as a block keeps its author's spelling.
   - A capital after a colon is taken for a sentence's, so in "the journal: Color Research"
@@ -7715,6 +7856,65 @@ Closed since, and why each mattered:
     wrong for everyone is put right in the script that derives the list, with its
     authority, and not in the data file.
   - The hook that runs after a manuscript file is saved does not run this reading either.
+
+- **G14's notation is counted, in the four places where counting is safe.**
+  - The sign is read only after `P` and `n`. "r = 0.31", "OR=2.1", "t(58)=2.41" and a
+    comparison with no symbol before it, "aged <65 years", are not read, so a manuscript
+    that mixes "r = 0.31" with "r=0.42" passes.
+  - A `p` that is a proportion or a probability, "where p = 0.5 is the expected share", is
+    counted as a P value. A pressure or a count is told from one by a typed value above
+    1, which a binding hides: `P~plat~ < {{results.limit}}` is counted. So is a pressure
+    whose figures are followed by a power of ten, "P = 2.5 x 10^5^ Pa". A threshold whose
+    caret was lost and whose minus sign is a hyphen, "P < 10-8", is not counted.
+  - Words between the symbol and its sign hide the sign: "P for trend = 0.03" counts
+    neither the symbol nor the spacing. A subscript written as pandoc's, `P~trend~`, is
+    read.
+  - "p-value" spelt out counts as the symbol "p", so a manuscript that writes "P = 0.03"
+    and "the p-value" is told. A capital that opens a sentence, "P values were
+    two-sided" or "P < 0.05 was considered significant", is not counted, so a paper
+    that writes "P" only there and "p" elsewhere passes. The hyphen of "p-value" against
+    "p value" is not read.
+  - An interval is read only where "CI", "CrI" or the words for it stand before its
+    bounds. A range, "IQR 3-7" or "aged 18 to 65", is not, and neither is what stands
+    between the letters and the first bound, "95% CI 1.2" against "95% CI: 1.2". An
+    interval printed by one binding is not read. "CI" for a cardiac index followed by two
+    numbers is counted as an interval.
+  - An interval joined by "to" is left out of the count where a typed bound is
+    negative, as a house that joins with a dash writes it. Where both bounds are
+    bindings their sign is not seen, and that "to" is counted as a second form. And a
+    manuscript that joins with "to" throughout is not counted where a bound is negative,
+    which changes no finding.
+  - Two or three hyphens are read as the dash pandoc prints for them. "95%, 5%" after
+    the letters, with no level before them, is taken for a level and a margin only
+    where the first number is 80, 90, 95, 99 or 99.9 and a comma or a semicolon
+    follows it, so an interval written "CI 95%, 99%" with no level before it is not
+    counted.
+  - The convention is the majority. A manuscript that is mostly in the form its journal
+    does not print is told of the places where it is right.
+  - Only the units listed in `gates/notation.py` are read, and of the symbols of one
+    letter only `g` and `h`: "5m", "5L", "30s" and "4V" pass. A `g` or an `h` after the
+    word for a figure, a table, a panel or a scheme in the same sentence is taken for a
+    name, so "In Figure 2, a dose of 2g" and "Table 1 gives the doses at 24h" pass. A
+    sentence that opens with a figure, a binding or a bracket does not end the one before
+    it for this. One alone in bold or italics is taken for a compound, so a table's
+    header "**24h**" passes. A compound named with neither its word against it nor
+    marks of emphasis around it, "3g was the most potent", is reported. "6mA", the
+    methylated base, is read as milliamperes.
+  - A `g` after a number of four figures or more is taken for a force, so "1000g of
+    soil" passes; so is one after a word of centrifuging in its sentence, "the pellet
+    weighed 2g". A smaller force with no such word before it, "at 800g, the cells were
+    pelleted", is reported.
+  - "37°C" is reported, as the SI Brochure has it, in a manuscript for a journal that
+    prints it closed. There is no setting to say so; the journal profile's style block is
+    where one will go.
+  - A space where the SI has none, "30 °" for an angle, is not reported.
+  - How a bound value is printed is not read: ".05" beside "0.05", "4,100" beside "4100",
+    a decimal comma.
+  - A binding in a sentence is taken for a number whatever it holds.
+  - A table typed into the manuscript is read with the prose, so its own compact
+    notation, "n=12" in a header, counts against the text's.
+  - A block set off by four spaces is read, as it is for the spelling.
+  - The hook that runs after a manuscript file is saved does not run this reading.
 
 - **G14's vocabulary is a list of words, and reads them as words.**
   - Nothing is reported that the author did not declare. Two words for one thing that are

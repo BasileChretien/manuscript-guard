@@ -60,6 +60,7 @@ from manuscript_guard.gates import language as language_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
 from manuscript_guard.gates.language import _file, _hidden
+from manuscript_guard.gates.notation import VALUE, _counted
 from manuscript_guard.gates.spelling import MANY, _prose, _variants, judge_spelling
 from manuscript_guard.gates.vocabulary import (
     Passage,
@@ -334,6 +335,11 @@ def _hidden_in_place(text: str) -> None:
     _in_place(text, _prose(hidden), "the prose the spelling is read in")
     file = _file(0, MAIN, text, [], False)
     _in_place(text, file.printed, "the text the vocabulary is read in")
+    _in_place(text, file.spelt, "the text the spelling is read in")
+    passage = Passage(file.path, file.text, file.printed, file.line_of)
+    _in_place(
+        text, _counted(passage).replace(VALUE, NUL), "the text the notation is read in"
+    )
     _in_place(text, file.prose, "the text the abbreviations are read in", fill=" ")
     masked = mask(text)
     assert len(masked) == len(text)

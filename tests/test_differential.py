@@ -393,7 +393,7 @@ def test_what_stops_a_reading_being_made_is_told_apart() -> None:
     assert why_not(AttributeError("module has no attribute")) == "broken"
 
 
-#: The helper three readings go through, given one argument more: what a pull request does
+#: The helper four readings go through, given one argument more: what a pull request does
 #: that changes it, with `tests/readings.py` brought up to date in the same pull request.
 _ANOTHER_ARGUMENT = (
     "gates/language.py",
@@ -408,13 +408,14 @@ def test_a_base_that_cannot_make_a_reading_fails_unless_the_change_says_so(
     here: Reader, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The base here is a copy whose `_file` takes an argument this suite's readings do
-    not give. It cannot make the three readings that go through it, and that is not the
+    not give. It cannot make the four readings that go through it, and that is not the
     base lacking them: nothing was compared, so the run fails, unless the pull request
     says in `differential_expected.yaml` that it changed what those readings go through.
     A reading that does not go through `_file` is compared as ever."""
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     with _copy_with(*_ANOTHER_ARGUMENT, tmp_path) as base:
-        assert set(base.broken) == {"vocabulary", "spelling", "abbreviations"}, base.broken
+        through_it = {"vocabulary", "spelling", "notation", "abbreviations"}
+        assert set(base.broken) == through_it, base.broken
         assert all(why.startswith("TypeError: ") for why in base.broken.values()), base.broken
         assert not [why for why in base.absent.values() if not _unavailable(why)], base.absent
         with pytest.raises(AssertionError, match="the base cannot make the reading 'vocabulary'"):

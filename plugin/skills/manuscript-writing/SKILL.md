@@ -1,6 +1,6 @@
 ---
 name: manuscript-writing
-description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict or a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared), or when revising text that was drafted quickly.
+description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit), or when revising text that was drafted quickly.
 ---
 
 # Writing prose that reads as written
@@ -187,6 +187,32 @@ hyphen, matches nothing and the schema refuses it.
 
 The list is of general English. It does not hold every technical word, so it is no
 substitute for reading the text: "hyperglycemia" in a British paper passes.
+
+## One notation
+
+A manuscript writes each statistic one way. G14 counts four things and reports the form
+used less, once, where it first stands, with both counts:
+
+- `notation-p-symbol`: "P", "p", "*P*" or "*p*". "p-value" spelt out counts as "p".
+- `notation-sign-spacing`: "P = 0.03" or "P=0.03", and the same after `n`. A space on one
+  side only, "P= 0.03", is reported whatever the rest does.
+- `notation-interval`: the two bounds joined by "to", an en dash, a hyphen or a comma.
+- `notation-percent`: "5%" or "5 %".
+
+The count says which form the manuscript uses most, not which is right. Look at the
+target journal's instructions, or its profile, before changing anything: if the journal
+prints the form used less, change the others. If the instructions are silent, keep the
+majority. Then search for every use and change them together; the finding names one place.
+
+`notation-unit` is not a count. A number that runs into its unit, "5mg" or
+"37°C", is reported wherever it stands: the SI Brochure sets a space there. Write "5 mg".
+A unit joined by a hyphen to make an adjective, "a 5-mg dose", is left alone.
+
+A value written as a binding is read as a number, so write the notation around a binding
+as you would around a figure: `(P = {{results.model.p}})`,
+`(95% CI {{results.or.low}} to {{results.or.high}})`. How the value itself prints, its
+decimals and its leading zero, is set where the analysis emits it and is not checked
+here.
 
 ## Checking your work
 

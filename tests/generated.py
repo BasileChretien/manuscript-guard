@@ -490,6 +490,15 @@ SPELT = (
 )  # fmt: skip
 
 
+#: A statistic in each of the ways one is written, typed and bound, and a number with
+#: its unit: what the notation reading must count apart.
+NOTATED = (
+    "P = 0.03", "p=0.04", "*P* < 0.001", "p-value", "n = 12", "n=3", "N= 40",
+    "95% CI 1.2 to 3.4", "95% CI 1.2-3.4", "(95% CI {{results.low}} to {{results.high}})",
+    "P = {{results.p}}", "5%", "5 %", "5mg", "5 mg", "{{results.dose}}mL",
+)  # fmt: skip
+
+
 # ---------------------------------------------------------------------- what an edit holds
 
 #: A binding, a citation and a number in each of the ways one is written: what `reworded`
@@ -618,6 +627,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             "accepted": st.lists(st.sampled_from(("color", "Tumour", "centre")), max_size=2),
         }
     ),
+    "notation": texts(NOTATED),
     "abbreviations": st.fixed_dictionaries(
         {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}
     ),

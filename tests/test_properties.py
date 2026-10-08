@@ -39,6 +39,7 @@ from generated import (
     SOURCE_WORDS,
     TERMS,
     TYPOGRAPHY,
+    bindings,
     commented,
     generated,
     holds,
@@ -480,15 +481,17 @@ def _seen_and_judged(text: str) -> None:
 # --------------------------------------------------------------------------------- bindings
 
 
-@holds(200, texts(), signs())
-def test_a_binding_is_placed_where_it_stands(manuscript: str, nobodys: str) -> None:
+@holds(200, texts(), signs(), bindings())
+def test_a_binding_is_placed_where_it_stands(manuscript: str, nobodys: str, opened: str) -> None:
     """A binding that does not resolve is reported by its line and column, and a malformed
     one by its line. `parse` looks them up among the starts of the file's lines, and they
     have to be what counting gives: the line feeds before the binding and one more, and the
     characters since the last of them and one more, in a file whose lines Windows ended as
-    in any other. What else Python ends a line at, a form feed for one, is too seldom drawn
-    before a binding to be held here: `tests/test_text.py` names each."""
-    for text in (manuscript, nobodys):
+    in any other. The third text has a binding planted where a line begins, since the other
+    two seldom hold one and that is where the lookup is out, if it is. What else Python
+    ends a line at, a form feed for one, is too seldom drawn before a binding to be held
+    here: `tests/test_text.py` names each."""
+    for text in (manuscript, nobodys, opened):
         bound, malformed = parse_bindings(text)
         for found in bound:
             line_start = text.rfind("\n", 0, found.start) + 1

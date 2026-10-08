@@ -134,6 +134,15 @@ that was verified against dictionaries, and from the rest only verbs in `-ise` a
 medical forms such as `haem-`. Where a field spells a word its own way, the project lists
 the word under `language: accepted_spellings:`.
 
+**One notation, the manuscript's own.** Whether a P value is a capital italic *P* or a
+lower-case p, and whether an interval runs "1.2 to 3.4" or "1.2-3.4", is a journal's to
+say. That the manuscript writes each one way is the manuscript's, and G14 reports the
+form used less: for the symbol of a P value, the spaces around the sign after `P` or
+`n`, what joins the bounds of an interval, and the space before "%". A bound value
+counts as a number, so the notation around `{{results.p}}` is read like any other. One
+thing is no matter of counting: a number that runs into its unit, "5mg", is reported
+wherever it stands, because the SI Brochure sets a space there.
+
 **Exemptions are small, explicit and reviewable.** Conventions live in a narrow shipped
 list pinned to specific values — `p < 0.05` is allowed, `p < 0.37` is not, because a p-value
 you obtained is a result. Project additions require a written reason. Axis ticks are

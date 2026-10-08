@@ -9441,3 +9441,104 @@ def test_a_name_a_quotation_and_a_citation_key_in_the_other_spelling_are_left_al
     assert edited != text
     main_md(project).write_text(edited, encoding="utf-8")
     assert spelling_findings(project) == []
+
+
+# --------------------------------------------------------------------------------------
+# G14, the notation: the example joins the bounds of its intervals with "to", sets "%"
+# against its number and states no P value with a sign. Each test below lets another way
+# of writing one of these into the text, as a co-author's sentence or a retyped line does,
+# and the gate has to say which, and where.
+# --------------------------------------------------------------------------------------
+
+
+def notation_findings(root: Path) -> list[tuple[str, int | None, str]]:
+    from manuscript_guard.gates import check_language
+
+    report = check_language(load_project(root)[0])
+    assert report.ok, "G14 warns; it does not fail"
+    return [
+        (f.code, f.line, f.message) for f in report.findings if f.code.startswith("notation-")
+    ]
+
+
+def test_the_example_writes_its_statistics_one_way(project: Path) -> None:
+    """The baseline for what follows."""
+    assert notation_findings(project) == []
+
+
+def test_an_interval_retyped_with_a_hyphen_is_caught(project: Path) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "{{results.ror.ci_low}} to {{results.ror.ci_high}})."
+    assert text.count(old) == 1, "the fixture changed under this test"
+    edited = text.replace(old, "{{results.ror.ci_low}}-{{results.ror.ci_high}}).")
+    main_md(project).write_text(edited, encoding="utf-8")
+    ((code, line, message),) = notation_findings(project)
+    assert code == "notation-interval"
+    assert line == line_of(edited, "{{results.ror.ci_low}}-{{results.ror.ci_high}}")
+    assert message.startswith(
+        "the two bounds of an interval are joined by a hyphen once, as in "
+        "'CI {{\N{HORIZONTAL ELLIPSIS}}}-{{\N{HORIZONTAL ELLIPSIS}}}'; the manuscript "
+        "joins them by 'to' "
+    )
+
+
+def test_a_co_author_s_p_value_in_another_notation_is_caught(project: Path) -> None:
+    """The example writes "p-value" once, in lower case. A sentence with a capital P makes
+    two forms, used as often, and the later one is shown."""
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    assert old in text, "the fixture changed under this test"
+    edited = text.replace(old, old + " The association held (P={{results.ror.point}}).")
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert notation_findings(project) == [
+        (
+            "notation-p-symbol",
+            line_of(edited, "The association held"),
+            "the P value is written 'P' once; the manuscript writes 'p' once",
+        )
+    ]
+
+
+def test_a_percent_sign_set_off_by_a_space_is_caught(project: Path) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(old, old + " In {{results.case.pct_serious}} % the report was serious.")
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    ((code, line, message),) = notation_findings(project)
+    assert code == "notation-percent"
+    assert line == line_of(edited, "Several limitations")
+    assert message.startswith(
+        "'%' stands after a space once, as in '{{\N{HORIZONTAL ELLIPSIS}}} %'; the "
+        "manuscript sets it against its number "
+    )
+
+
+def test_a_dose_typed_without_its_space_is_caught(project: Path) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(old, old + " A dose of 5mg daily is usual, and 10mg is not rare.")
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert notation_findings(project) == [
+        (
+            "notation-unit",
+            line_of(edited, "Several limitations"),
+            "a number runs into its unit 2 times: '5mg', '10mg'",
+        )
+    ]
+
+
+def test_another_notation_in_a_comment_a_listing_or_a_quotation_is_not_the_manuscript_s(
+    project: Path,
+) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    edited = text.replace(
+        old,
+        old + " <!-- P=0.03, 95% CI 1-2, 5 %, 5mg --> The script sets `p=0.05`.\n\n"
+        "> The label gives 5mg (95% CI 1-2; P=0.04) in 5 % of users.\n",
+    )
+    assert edited != text
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert notation_findings(project) == []

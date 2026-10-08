@@ -78,8 +78,9 @@ _REACH = 200
 # with `.` or `#`; the label of a reference link and the line that defines it, which a
 # footnote's text is not. Each alternative stops at the next character that could open
 # another of its kind, so a line of unclosed ones is read once. A LaTeX command is not
-# here: where pandoc is installed `check` fails a manuscript that holds one, whatever
-# its spelling, and the command's own name is skipped as any word after a backslash is.
+# here: from `drafting` on, and where pandoc is installed, `check` fails a manuscript
+# that holds one other than a macro's definition or a layout command. Its own name is
+# skipped as any word after a backslash is; what it holds in its braces is read.
 _MARKUP = re.compile(
     r"</?[A-Za-z][^<>\n]*>"
     r"|\{[^{}=\n]*=[^{}\n]*\}"
@@ -104,7 +105,7 @@ def _variants() -> tuple[dict[str, tuple[str, str]], frozenset[str]]:
     return words, frozenset(instead for kind, instead in words.values() if kind == "ise")
 
 
-def _opens_a_sentence(text: str, start: int) -> bool:
+def opens_a_sentence(text: str, start: int) -> bool:
     """Does the word at `start` open a sentence, a heading, a list item or a table cell?
     A capital there is the sentence's; anywhere else it is taken for a name's."""
     floor = max(0, start - _REACH)
@@ -184,7 +185,7 @@ def judge_spelling(
             if (row is None and key not in with_ize) or key in kept or not word.isascii():
                 continue
             if not word.islower() and not (
-                word[1:].islower() and _opens_a_sentence(text, found.start())
+                word[1:].islower() and opens_a_sentence(text, found.start())
             ):
                 continue
             if _in_an_identifier(text, found.start(), found.end()):

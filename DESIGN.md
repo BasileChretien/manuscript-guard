@@ -1642,10 +1642,12 @@ narrowed to Windows and to a run holding another backslash, in `cp Edited\ paper
 limit that is written down, and a document refused for a project it has nothing to do with
 is what this change was decided against. One kind of word has since been read as a shell
 reads it, whole and not by its pieces (2026-10-08): a word with an escaped space in which
-no backslash stands before a letter or a digit. There every backslash is the shell's, so
-`paper\ \(1\).docx` is the one name `paper (1).docx` and does not end at the bracket. A
-backslash before a letter or a digit is where Windows ends a folder's name, and a word that
-holds one is read as before. A word of more than 4096 characters or 100
+no backslash stands before a letter, a digit or an underscore. There every backslash is
+the shell's, so `paper\ \(1\).docx` is the one name `paper (1).docx` and does not end at
+the bracket. A backslash before a letter, a digit or an underscore is where Windows ends a
+folder's name, and a word that holds one is read as before; a letter of any script, since
+a folder is as often `études` as `paper`, and `.\études\ ` read as a shell's word was a
+folder not found. A word of more than 4096 characters or 100
 folders is not a path and is not walked: each step down is a look on disk, `..` exists at
 every step, and 5000 of them in one word took 34 s.
 
@@ -5498,16 +5500,31 @@ Closed since, and why each mattered:
     2026-10-08 so was git's: `git add paper/manuscript/main.md && git commit -m "copy-edit
     the abstract before submission"` was refused in a project that fails, from inside it
     and from the folder above, because the markers matched the message, a verb and then
-    the word. What a `git` command is told to record is now left out before the markers
+    the word. What a `git` command is told to record is now blanked before the markers
     are asked and before the words are read: the value of `-m` or `--message`, in quotes
-    or as the heredoc an agent writes a long one through. Not every quoted string, which
-    was the remedy first thought of: `bash -c "manuscript-guard submit"` and `ssh host
-    "scp build/manuscript.docx elsewhere:"` are commands in quotes, and are held. What is
-    left is text given any other way: a title or a body handed to `gh`, an `echo`, a
-    message with no quotes round it, the message of another version control tool, and a
-    git message whose own line holds a quoted `;`, `&` or `|` before it (`git -c
-    "alias.x=!a; b" commit -m "..."`). And what the line goes on to do is read: after
-    the commit, `git push origin submission-v2` is still held. Found in the review of #137.
+    or as the heredoc an agent writes a long one through, where `git` is the first word
+    of its command. Blanked to its own length, line ends kept, so that what stands on
+    either side of it is read as it was. Not every quoted string, which was the remedy
+    first thought of: `bash -c "manuscript-guard submit"` and `ssh host "scp
+    build/manuscript.docx elsewhere:"` are commands in quotes, and are held. And not
+    wherever the letters `git` stand: after `--exclude=.git` or `python
+    ~/git/tools/send.py`, what follows `-m` is a path or a text to act on, and is read.
+    What is left:
+    - Text given any other way: a title or a body handed to `gh`, an `echo`, the message
+      of another version control tool, and a git message with no quotes round it, in a
+      PowerShell here-string (`-m @'...'@`), written `$'...'`, on the line after a
+      continued `-m`, or read from a heredoc by `-F -`.
+    - A message with a quote escaped inside it is blanked as far as that quote, and the
+      rest is read: `git commit -m "say \"copy\" before submission"` is refused.
+    - A message is not git's to the guard where `git` is not the first word of its
+      command (`/usr/bin/git`, `sudo git`, `(git commit ...)`), or where a quoted `;`,
+      `&` or `|` stands between `git` and the option, as in `git commit --author="A & B
+      <a@b.example>" -m "..."`.
+    - What the line goes on to do is read: after the commit, `git push origin
+      submission-v2` is still held, and a verb before the commit with `submission` or
+      `.docx` after it, on one line and within 120 characters, reads as a submission as
+      it did before.
+    Found in the review of #137.
   - *A word that is the folder's name is taken for the folder.* With the paper in `paper/`,
     `git push origin paper  # submission` from the folder above is held to it, though the
     word is a branch. So is `Paper` on Windows, which ignores case, `paper.` there too,
@@ -5519,7 +5536,8 @@ Closed since, and why each mattered:
     `cp paper\(1\).docx /backup`: a word ends at a bracket, escaped or not, and what is
     left is `paper\`. With a space the name is read whole since 2026-10-08, `cp paper\
     \(1\).docx /backup` being `paper (1).docx`, where it used to leave `paper ` and Windows
-    dropped the space. In quotes it names nothing.
+    dropped the space; not where the line is continued straight after the name, with no
+    space before the backslash that ends it. In quotes it names nothing.
     A copy into the project, `cp ~/Downloads/edited.docx paper/`, is held to it too, as it
     always was from inside (the word-roundtrip skill says to give the path to `import`).
   - *The check a refusal names can be refused in two shapes.* Written with the folder last

@@ -1130,8 +1130,46 @@ MESSAGES = [
     'git commit -m "tables & figures" -m "copy edits before submission"',
     'git -C . commit --amend -m "copy edits before submission"',
     'git tag -a v2 -m "the copy sent with the submission"',
+    'GIT_AUTHOR_DATE=now git commit -m "copy edits before submission"',
     IN_A_HEREDOC,
 ]
+
+#: A long message on one line, and what an agent sends as one command: a rename, the commit
+#: in a heredoc, and then the check a refusal names, or a pull request whose title has the
+#: word. `main` lets each through: the verb and the word are on two lines, or more than 120
+#: characters apart. With the message taken out and not blanked they came together.
+LONG = "refs: take the shared bibliography as of today, with the three entries the reviewers "
+ACROSS_A_MESSAGE = [
+    "git mv docs/old.md docs/new.md && git commit -m \"$(cat <<'EOF'\ndocs: rename\nEOF\n)\""
+    " && manuscript-guard check --stage submission",
+    "git mv docs/old.md docs/new.md && git commit -m \"$(cat <<'EOF'\ndocs: rename\nEOF\n)\""
+    ' && gh pr create --title "docs: say what the submission check asks for" --body "x"',
+    f'cp ../shared/refs.bib references.bib && git add references.bib && git commit -m "{LONG}'
+    'asked for added" && manuscript-guard check --stage submission',
+]
+
+
+@pytest.mark.parametrize("command", ACROSS_A_MESSAGE)
+def test_a_message_keeps_what_stands_on_either_side_of_it_apart(
+    command: str, above: Path, capsys
+) -> None:
+    assert SUBMISSION_MARKERS.search(command) is None, "not submission-shaped on main either"
+    assert sent(command, above / "paper", capsys) is None, command
+
+
+def test_a_message_is_blanked_to_its_own_length_and_keeps_its_line_ends() -> None:
+    """The markers count characters on a line, a verb and then the word within 120 of it.
+    So what is put in a message's place has its length and its line ends: everything
+    outside the message is then read as it was."""
+    for commit in MESSAGES:
+        for command in (commit, f"git mv a b && {commit} && echo done"):
+            blanked = hooks._without_messages(command)
+            assert [len(line) for line in blanked.split("\n")] == [
+                len(line) for line in command.split("\n")
+            ], command
+            changed = [at for at, was in enumerate(command) if blanked[at] != was]
+            assert changed and all(blanked[at] == " " for at in changed), command
+        assert SUBMISSION_MARKERS.search(hooks._without_messages(commit)) is None, commit
 
 
 @pytest.mark.parametrize("commit", MESSAGES)
@@ -1159,8 +1197,15 @@ BESIDE_A_MESSAGE = [
     'bash -c "manuscript-guard submit"',
     'ssh host "scp build/manuscript.docx elsewhere:"',
     'mail -s "the submission" -a build/manuscript.docx editor@journal.example',
-    # Not git's: the value of another command's `-m` is read as before.
+    # Not git's: the value of another command's `-m` is read as before, after a commit too,
+    # and where the letters `git` stand in that command without being the command: in an
+    # exclusion, in the path of a script, in a string that is searched for.
     'tool -m "copy build/manuscript.docx to the editor"',
+    'git commit -m "tables" && tool -m "copy build/manuscript.docx to the editor"',
+    'rsync --exclude=.git -avm "build/manuscript.docx" host:journal/',
+    "zip -x '*.git*' -rm \"submission.zip\" build",
+    'python ~/git/tools/send.py -m "copy build/manuscript.docx to the editor"',
+    'grep -rn "git commit -m" docs && cp "build/manuscript.docx" /backup',
 ]
 
 
@@ -1168,6 +1213,17 @@ BESIDE_A_MESSAGE = [
 def test_what_stands_beside_a_message_is_still_read(command: str, above: Path, capsys) -> None:
     result = sent(command, above / "paper", capsys)
     assert decision(result) == "deny", command
+
+
+def test_a_command_with_many_values_is_read_in_linear_time(assert_linear) -> None:
+    """The messages are looked for in every command that holds the letters `git`, a long
+    script written through the shell among them. Each value found used to split all that
+    was kept so far: a second for 2,000 lines with a value each."""
+
+    def script(lines: int) -> str:
+        return "git status\n" + "tool --dry-run -am 'x1' a-b-c\n" * lines
+
+    assert_linear(script, hooks._without_messages, 200, "the messages of a command, by value")
 
 
 def test_a_word_too_long_to_be_a_path_is_not_walked(above: Path) -> None:
@@ -1379,8 +1435,8 @@ def test_an_escaped_name_inside_the_project_still_names_it(
     assert "failing in paper, which this command names" in reason(result)
 
 
-#: A backslash before a letter or a digit is where Windows ends a folder's name, and a word
-#: that holds one is read as before, whatever else is escaped in it.
+#: A backslash before a letter, a digit or an underscore is where Windows ends a folder's
+#: name, and a word that holds one is read as before, whatever else is escaped in it.
 AS_WINDOWS_WRITES_IT = [
     "cd ." + ESCAPE + "paper" + ESCAPE + "; manuscript-guard submit",
     "Copy-Item ." + ESCAPE + "paper" + ESCAPE + "build" + ESCAPE + "manuscript.docx sent",
@@ -1394,6 +1450,35 @@ def test_a_path_as_windows_writes_it_is_read_as_before(command: str, above: Path
     result = sent(command, above, capsys)
     assert decision(result) == "deny", command
     assert "failing in paper, which this command names" in reason(result)
+
+
+#: A folder's name as its author writes it: in English, with an accent, with an underscore
+#: in front, in another script. Each is a letter to Windows, and none is one a shell escapes.
+FOLDERS = {
+    "plain": "paper",
+    "accented": chr(233) + "tudes",
+    "underscore": "_paper",
+    "kanji": chr(35542) + chr(25991),
+}
+
+
+@ON_WINDOWS
+@pytest.mark.parametrize("folder", FOLDERS.values(), ids=FOLDERS.keys())
+def test_a_folder_ends_at_its_backslash_whatever_script_its_name_is_in(
+    folder: str, above: Path, capsys
+) -> None:
+    """A path that ends in a backslash, a space after it, and no backslash before a letter
+    of English: the two shapes PowerShell's completion writes. Read as a shell's word, with
+    every backslash taken off, the folder was not found and the copy went through."""
+    (above / "paper").rename(above / folder)
+    at = "." + ESCAPE + folder + ESCAPE
+    for command in (
+        f"Get-ChildItem {at} | Compress-Archive -DestinationPath submission.zip",
+        f'Copy-Item {at} "D:/sent/submission" -Recurse',
+    ):
+        result = sent(command, above, capsys)
+        assert decision(result) == "deny", command
+        assert f"failing in {folder}, which this command names" in reason(result)
 
 
 def test_a_project_named_by_its_whole_path_is_found_from_anywhere(

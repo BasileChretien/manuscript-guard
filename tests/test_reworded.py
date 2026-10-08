@@ -193,8 +193,8 @@ def test_a_binding_is_one_however_it_is_spaced() -> None:
 
 
 def test_a_binding_here_is_one_the_gates_call_well_formed() -> None:
-    """The bindings are read here without `placeholders.parse`, which counts each one's
-    line from the top of the file. This holds the two to one definition."""
+    """The bindings are read here by the pattern of `placeholders.parse` and not through
+    it. This holds the two to one definition."""
     from manuscript_guard.text.placeholders import parse
 
     text = (
@@ -394,6 +394,45 @@ def test_a_sign_lost_beside_the_same_number_kept_is_counted() -> None:
         "as '-0.3' once now"
     )
     assert report.findings[0].line == 3
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "said_of_it"),
+    [
+        (
+            "We set y = x*-1 here.\n\nWith n-1 degrees of freedom.",
+            "We set y = x * -1 here.\n\nWith *n*-1 degrees of freedom.",
+            "may have gained a minus sign",
+        ),
+        (
+            "We set y = 2*-1 here.\n\nWith n-1 degrees of freedom.",
+            "We set y = 2 \N{MULTIPLICATION SIGN} \N{MINUS SIGN}1 here.\n\n"
+            "With *n*-1 degrees of freedom.",
+            "may have gained a minus sign",
+        ),
+        (
+            "We set y = x * -1 here.\n\nWith *n*-1 degrees of freedom.",
+            "We set y = x*-1 here.\n\nWith n-1 degrees of freedom.",
+            "may have lost a minus sign",
+        ),
+        (
+            "It was 2*-10 here.\n\nPM2.5-10 was high.",
+            "It was 2 * -10 here.\n\nPM~2.5~-10 was high.",
+            "may have gained a minus sign",
+        ),
+    ],
+)
+def test_two_edits_of_notation_on_the_same_figures_do_not_make_a_sign(
+    before: str, after: str, said_of_it: str
+) -> None:
+    """The fourth review: each of the two edits passes by itself, a dash that was perhaps a
+    sign read as a sure one and a dash that joined read as perhaps one. Together the counts
+    are those of a sign that came, and it was refused with "has a minus sign it did not
+    have" of a dash that stood on that line before. No place of the number went from no
+    dash to a sure sign, so it is shown and passes."""
+    report = compare(before + "\n", after + "\n", PATH)
+    assert told(report) == [("sign-unsure", WARN)], said(report)
+    assert report.ok and said_of_it in report.findings[0].message
 
 
 def test_a_sure_sign_that_goes_fails_beside_a_dash_that_may_be_one() -> None:

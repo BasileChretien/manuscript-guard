@@ -834,7 +834,7 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
     did = draw(
         st.sampled_from(
             ("nothing", "nothing", "lost", "new", "changed", "unsigned", "turned", "unsure",
-             "beside", "swapped")
+             "beside", "swapped", "both")
         )
     )
 
@@ -931,6 +931,11 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
             # The same figures with a sign and without, and the sign at the other one after.
             signs = ("-", "") if sentences is before else ("", "-")
             paragraphs.append(f"{filler().capitalize()} {signs[0]}53 {filler()} {signs[1]}53.")
+        if did == "both":
+            # Two edits of notation on the same figures: a dash that is perhaps a sign
+            # read as a sure one, and a dash that joins read as perhaps one.
+            forms = ("x*-61", "n-61") if sentences is before else ("x * -61", "*n*-61")
+            paragraphs.append(f"{filler().capitalize()} {forms[0]} {filler()} {forms[1]}.")
         if did == "unsure":
             # A range whose first bound ends on a mark that may close, joined by a dash in
             # the text before and by "to" in the text after: the dash may have been a sign.
@@ -946,6 +951,8 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
         shown, line = ["'47'", "'-47'", "has lost its minus sign"], last
     if did == "swapped":
         shown, line = ["'53'", "at the 1st", "at the 2nd"], last
+    if did == "both":
+        shown, line = ["'61'", "may have gained a minus sign"], last
     return texts_of[0], texts_of[1], did, shown, line
 
 
@@ -972,11 +979,12 @@ def test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands(
         "unsure": ["sign-unsure"],
         "beside": ["sign-lost"],
         "swapped": ["sign-moved"],
+        "both": ["sign-unsure"],
     }[did]
     assert codes == expected, (before, after, did, said)
-    assert report.ok == (did in ("nothing", "unsure", "swapped"))
+    assert report.ok == (did in ("nothing", "unsure", "swapped", "both"))
     by_code = {found.code: found for found in report.findings}
-    if did in ("unsigned", "unsure", "beside", "swapped"):
+    if did in ("unsigned", "unsure", "beside", "swapped", "both"):
         (found,) = report.findings
         assert all(what in found.message for what in shown), (before, after, said)
         assert found.line == line, (before, after, said)
@@ -1142,6 +1150,10 @@ def _an_old_dash_answers_for_a_sign_that_went(patch: pytest.MonkeyPatch) -> None
     patch.setattr(reworded_module, "_newly", lambda now, before: now)
 
 
+def _a_sign_is_new_by_the_counts_alone(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reworded_module, "_at_a_place", lambda was, now, then, here: True)
+
+
 def _the_places_of_a_dash_are_not_compared(patch: pytest.MonkeyPatch) -> None:
     compared = reworded_module._sign_warning
 
@@ -1205,6 +1217,10 @@ BROKEN = {
     ),
     "a dash that stood and may be a sign answers for a sure one that went": (
         _an_old_dash_answers_for_a_sign_that_went,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "a sign is new or gone by the counts alone, whatever its places say": (
+        _a_sign_is_new_by_the_counts_alone,
         test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
     ),
     "the places of a number's dashes are not compared": (

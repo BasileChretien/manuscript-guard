@@ -1302,6 +1302,14 @@ compared nothing was said of it. Two signs that changed places and two clauses t
 look the same, so it is the order's case and a warning, `sign-moved`. And a number is
 named with its sign only where the other text holds none of it.
 
+The fourth review found the counts wrong the other way. Two edits of notation on the
+same figures, `x*-1` spaced out to `x * -1` and "n-1" made `*n*-1`, each pass by
+themselves, and together have the counts of a sign that came: one sure sign more, and
+no fewer dashes that may be one. So where a number stands as often as it did, a sign
+fails only if the counts say so and one of the number's places, taken in order, went
+from a sure sign to no dash or from no dash to a sure sign. Beside the slope one does;
+here none does, and the warning has it.
+
 Two or three hyphens before a number are the dash pandoc prints for them, and are read
 as one dash by what stands before the first: "1--3" is a range, and "-5 to -3" made
 "-5--3" has lost the sign of the 3. A plus sign is part of the figures where a minus
@@ -1320,8 +1328,9 @@ takes the square of a manuscript's length on a text where one number stands on e
 
 The readings of a binding and of a citation are the gates' own: `placeholders.PLACEHOLDER`
 with what pandoc drops blanked, and `find_citations`. A test holds the bindings to the ones
-`placeholders.parse` calls well formed, which this does not call: it counts each binding's
-line from the top of the file, and a comparison of two long texts showed it.
+`placeholders.parse` calls well formed, which this does not call. When this was written
+`parse` counted each binding's line from the top of the file, and a comparison of two long
+texts showed it; #213 has since put that right.
 
 ## Review panels: the record is the contract
 
@@ -7718,10 +7727,11 @@ Closed since, and why each mattered:
     it is a sign for sure and one where it joins: "about -3" closed up to "about-3",
     "Day-1" opened to "Day -1", and a range typed with a space on one side after a
     word or a unit, "5 mg -10 mg" made "5 mg-10 mg".
-  - Where the same figures stand in several places, what is sure of their signs is
-    counted and not placed. A sure sign gone at one place while a dash that may be one
-    is new at another is a warning that the dash stands at another place, not a
-    failure.
+  - Where the same figures stand in several places, a sign fails only where the counts
+    say it is gone or new and one place of the number, taken in order, lost or gained
+    it. A sure sign gone at one place while a dash that may be one is new at another is
+    a warning that the dash stands at another place, not a failure. So is a sure sign
+    that went while its clause moved past another place of the same figures.
   - A sign set apart from its number is not read with it: a true minus, a space and "0.3",
     made "0.3", passes, and so does "-$5" made "$5".
   - A figure retyped raised or lowered is told as gone and new, as "3" made "three" is: a

@@ -234,8 +234,8 @@ def facts(text: str) -> list[Fact]:
         return Fact(kind, held, start, bisect_left(breaks, start) + 1, minus)
 
     # What pandoc drops holds no binding and no citation. The bindings are the ones
-    # `placeholders.parse` calls well formed, found here without its line of each, which it
-    # counts from the top of the file every time.
+    # `placeholders.parse` calls well formed, found here by its pattern: every fact's line
+    # is looked up once, among the line breaks above.
     printed = blank_comments(text) if "<!--" in text else text
     found = [
         fact(BINDING, f"{binding['ns']}.{binding['key']}", binding.start())
@@ -410,6 +410,12 @@ def _newly(now: int, before: int) -> int:
     return max(now - before, 0)
 
 
+def _at_a_place(was: Sequence[Fact], now: Sequence[Fact], then: int, here: int) -> bool:
+    """Did one place of a number that stands as often as it did, taken in order, go from
+    `then` to `here`?"""
+    return any(old.minus == then and new.minus == here for old, new in zip(was, now, strict=True))
+
+
 def _nth(places: Sequence[int]) -> str:
     """"1st", "2nd and 4th": which of a number's places, counted from the top of the file."""
     endings = {1: "st", 2: "nd", 3: "rd"}
@@ -432,12 +438,22 @@ def _sign_failure(
     the dashes that may be a sign and are new: `x * -1` made `x*-1` has the same sign in a
     place where it is no longer sure. A dash that may be a sign and stood before the edit is
     itself, and answers for nothing: counted with the dashes now, as it was at first, the
-    `*n*-1` of a later paragraph answered for a slope of -1 made 1."""
+    `*n*-1` of a later paragraph answered for a slope of -1 made 1.
+
+    And where the number stands as often as it did, one of its places, taken in order,
+    has to have lost the sign or gained it. The counts alone took two edits of notation
+    on the same figures for a sign that came: `x*-1` spaced out to `x * -1`, where the
+    dash that was perhaps a sign is a sure one, and "n-1" made `*n*-1`, where a dash
+    that joined is perhaps one. No place went from no dash to a sure sign, and it is
+    left to the warning."""
+    same = len(was) == len(now)
     (sure, dashed), (sure_now, dashed_now) = _signed(was), _signed(now)
     maybe, maybe_now = len(dashed) - len(sure), len(dashed_now) - len(sure_now)
     gone, come = max(len(was) - len(now), 0), max(len(now) - len(was), 0)
     number, signed = f"the number '{figures}'", f"'-{figures}'"
-    if len(sure) - gone > len(sure_now) + _newly(maybe_now, maybe):
+    lost = len(sure) - gone > len(sure_now) + _newly(maybe_now, maybe)
+    come_sure = len(sure_now) - come > len(sure) + _newly(maybe, maybe_now)
+    if lost and (not same or _at_a_place(was, now, SURE, NO)):
         message = (
             f"{number} has lost its minus sign: {signed} stood on {_lines(sure)} before the edit"
         )
@@ -448,7 +464,7 @@ def _sign_failure(
             )
         plain = [fact for fact in now if fact.minus == NO]
         return Finding(GATE, "sign-lost", message, FAIL, path, placed(plain or now), hint=_PUT_BACK)
-    if len(sure_now) - come > len(sure) + _newly(maybe, maybe_now):
+    if come_sure and (not same or _at_a_place(was, now, NO, SURE)):
         message = (
             f"{number} has a minus sign it did not have: {signed} stands on {_lines(sure_now)}"
         )

@@ -554,7 +554,8 @@ def test_a_comparison_that_is_not_a_statistic_s_is_not_read(sentence: str) -> No
         "Cells were pelleted at 300g.",
         # by its size, with no word of centrifuging before it
         "The supernatant was cleared at 16,000g for 20 min.",
-        "After 10 min at 12,000g, the pellet was resuspended; 3000g was enough.",
+        "After 10 min at 12,000g, the pellet was resuspended.",
+        "The lysate was cleared at 100,000g.",
         # a compound of a series, by the word before it or by its bold type
         "Compounds 3g and 4h were inactive, and the product 5g was not isolated.",
         "The most potent was **3g**, followed by **4h** and *5g*.",
@@ -581,6 +582,11 @@ def test_what_only_looks_like_a_number_and_its_unit_is_left_alone(sentence: str)
         "At study entry, patients had fasted for 8h.",
         "An intermediate dose of 2g was used.",
         "Rats weighing 250g were used.",  # three figures are a weight
+        # and so are four: a birth weight is no force
+        "Birth weight was below 2500g in 12 infants.",
+        "Infants under 1500g were excluded.",
+        # four figures with no word of centrifuging before them: Known gaps
+        "The supernatant was cleared at 3000g for 20 min.",
     ],
 )
 def test_a_unit_is_a_unit_outside_those_sentences(sentence: str) -> None:
@@ -700,6 +706,28 @@ def test_an_interval_whose_first_bound_is_a_level_s_number_is_an_interval() -> N
     )
     assert codes(report) == ["notation-interval"]
     assert report.counts["notation_intervals"] == 3
+
+
+def test_a_first_bound_in_percent_is_no_level() -> None:
+    """In "(95% CI 80%-93%; 12 studies)" the 80% is the first bound. It was taken for a
+    level stated after the letters, "-93" for a bound and the semicolon for the join, so
+    a manuscript that joined every interval with a hyphen was told of a semicolon."""
+    report = read(
+        "# Results\n\nSensitivity was 87% (95% CI 80%-93%; 12 studies) and specificity "
+        "91% (95% CI 85%-95%).\n\nThe ratio was 1.5 (95% CI 1.2-1.9).\n"
+    )
+    assert not report.findings, told(report)
+    assert report.counts["notation_intervals"] == 3
+
+
+def test_a_level_after_the_letters_is_one_before_a_negative_bound() -> None:
+    """The level is refused only where the sign stands against its percent sign."""
+    report = read(
+        "# Results\n\nIt rose by 0.2 (CI 95% 0.1 to 0.3) and by 0.4 (CI 95% 0.2 to 0.6)."
+        "\n\nThe difference was 0.1 (CI 95% -0.3, 0.4).\n"
+    )
+    assert codes(report) == ["notation-interval"]
+    assert "a comma once" in report.findings[0].message, told(report)
 
 
 def test_a_number_too_long_to_be_one_is_read_and_nothing_raises() -> None:

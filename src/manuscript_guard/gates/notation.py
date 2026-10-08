@@ -71,6 +71,13 @@ _POWER_OF_TEN = re.compile(
     r"[ \u00a0\u2009]?[x*\u00d7\u00b7\u22c5][ \u00a0\u2009]?10"
     r"|[eE][-+\u2212]?\d"
 )
+# What follows a ten that is itself raised to a negative power, "P < 10^-5^": a minus
+# sign after a caret, raised, or after the tag that raises it, or a true minus sign
+# alone. Not a hyphen alone, which makes "10-15 mmHg" a range, and no power above
+# nought: "P = 10^3^ Pa" is a pressure.
+_RAISED = re.compile(
+    r"\^[-\u2212]\d|\u2212\d|\u207b[\u2070\u00b9\u00b2\u00b3\u2074-\u2079]|<sup>[-\u2212]\d"
+)
 # A typed number above 1: its whole part, and whether anything but zeros follows it.
 _WHOLE_AND_REST = re.compile(
     r"[-+\u2212]?(?P<whole>\d*)(?:[.,\u00b7](?P<rest>[\d.,\u00b7]*))?"
@@ -159,23 +166,32 @@ _UNIT = re.compile(
 # ends it only before a capital, so that "Fig. 2f vs. 2g" is one, and a line may be
 # wrapped in it.
 _SAME_SENTENCE = r"(?:[^.;\n]|\.(?![ \t\n]+(?-i:[A-Z]))|\n(?!\n))*\Z"
-# The words after which a number and a letter name a part of something or a member of a
-# series: Figure 3g, Table 2h, compound 4g. Looked for back to the start of the sentence,
-# so that "Figures 2g and 3h" is two panels.
-_NAMED = re.compile(
-    r"\b(?:figs?\.?|figures?|tables?|panels?|schemes?|compounds?|products?|analogues?"
-    r"|analogs?|derivatives?|intermediates?|ligands?|substrates?|entry|entries)(?!\w)"
-    + _SAME_SENTENCE,
+# The words after which a number and a letter name a part of something: Figure 3g, Table
+# 2h. Looked for back to the start of the sentence, so that "Figures 2g and 3h" is two
+# panels.
+_PANEL = re.compile(
+    r"\b(?:figs?\.?|figures?|tables?|panels?|schemes?)(?!\w)" + _SAME_SENTENCE, re.IGNORECASE
+)
+# The words after which they name a member of a series: compound 4g, products 5g and 6h.
+# These are words of ordinary prose too, "each compound was incubated for 24h", so the
+# name has to stand against its word, alone or in a list of its kind.
+_SERIES = re.compile(
+    r"\b(?:compounds?|products?|analogues?|analogs?|derivatives?|intermediates?|ligands?"
+    r"|substrates?|entry|entries)"
+    r"(?:[\s,*_\u2013-]|\b(?:and|or|to)\b|\b\d{1,3}[a-z]{0,2}\b)*\Z",
     re.IGNORECASE,
 )
 # A relative centrifugal force is written closed, "centrifuged at 12,000g": that g is no
-# gram.
+# gram. It is known by a word of centrifuging before it in its sentence, or by its size:
+# nobody types twelve kilograms as 12,000g.
 _SPUN = re.compile(
     r"(?:centrifug|\bspun\b|\bspin(?:s|ning)?\b|\bpellet|\bsediment)" + _SAME_SENTENCE,
     re.IGNORECASE,
 )
 #: How far back that word is looked for.
 _BACK = 80
+#: From this many figures in its whole part, a number before `g` is a force.
+FORCE = 4
 
 
 @dataclass(frozen=True)
@@ -239,8 +255,12 @@ def _above_one(value: str) -> bool:
     found = _WHOLE_AND_REST.fullmatch(value)
     if found is None:
         return False
-    whole = int(found["whole"] or 0)
-    return whole > 1 or (whole == 1 and any(char in "123456789" for char in found["rest"] or ""))
+    # Read as figures and never made a number: Python refuses to convert more than 4,300
+    # digits, and a gate does not raise on what a manuscript holds.
+    whole = (found["whole"] or "").lstrip("0")
+    if whole in ("", "1"):
+        return whole == "1" and any(char in "123456789" for char in found["rest"] or "")
+    return True
 
 
 def _negative(bound: str) -> bool:
@@ -251,8 +271,16 @@ def _a_name(text: str, start: int, end: int) -> bool:
     """Is the number and letter at `start` a name and no quantity: a panel, a compound of
     a series, or the two alone between marks of emphasis, as a compound is set?"""
     before = text[max(0, start - _BACK) : start]
-    marked = before[-1:] in ("*", "_") and text[end : end + 1] in ("*", "_")
-    return marked or _NAMED.search(before) is not None
+    if before[-1:] in ("*", "_") and text[end : end + 1] in ("*", "_"):
+        return True
+    return _PANEL.search(before) is not None or _SERIES.search(before) is not None
+
+
+def _a_force(value: str, before: str) -> bool:
+    """Is this number before `g` a relative centrifugal force: one of four figures or more,
+    or one in a sentence that has spoken of centrifuging?"""
+    figures = sum(char.isdigit() for char in value.partition(".")[0])
+    return figures >= FORCE or _SPUN.search(before) is not None
 
 
 def _spacing(before: str, after: str) -> str:
@@ -321,14 +349,13 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
             if sign is None and word is None and bare is None:
                 continue
             symbol = found["symbol"]
-            if (
-                sign is not None
-                and _above_one(found["value"])
-                and not _POWER_OF_TEN.match(text, found.end())
-            ):
-                # A pressure, a partition coefficient, a number of predictors. Not
-                # "P = 3.2 x 10-9", whose figures are above 1 and whose value is not.
-                continue
+            if sign is not None and _above_one(found["value"]):
+                ten = found["value"] == "10" and _RAISED.match(text, found.end())
+                if not ten and not _POWER_OF_TEN.match(text, found.end()):
+                    # A pressure, a partition coefficient, a number of predictors. Not
+                    # "P = 3.2 x 10-9" or "P < 10^-5^", whose figures are above 1 and
+                    # whose value is not.
+                    continue
             use = _Use(place, found.start(), passage, found.end() - found.start())
             if sign is not None:
                 signs.add(_spacing(found["before"], found["after"]), use)
@@ -350,7 +377,8 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
                 # that the dash is not read as its sign: this one says nothing of the rest.
                 continue
             if (
-                found["percent"]
+                join in (",", ";")
+                and found["percent"]
                 and found["low"] in _LEVELS
                 and not _LEVEL_BEFORE.search(text[max(0, found.start() - _BACK) : found.start()])
             ):
@@ -367,7 +395,7 @@ def judge_notation(passages: Iterable[Passage]) -> Report:
             if len(unit) == 1 and _a_name(text, found.start(), found.end()):
                 continue  # "Figure 3g" is a panel and "compound 3g" a compound
             before = text[max(0, found.start() - _BACK) : found.start()]
-            if unit == "g" and _SPUN.search(before):
+            if unit == "g" and _a_force(found["value"], before):
                 continue  # "centrifuged at 12,000g" is a force, not twelve kilograms
             use = _Use(place, found.start(), passage, found.end() - found.start())
             closed.append((use, unit))

@@ -1161,7 +1161,12 @@ that joins the bounds of an interval with a hyphen, as JAMA does, writes "to" wh
 bound is negative, so that the dash is not read as its sign: an interval joined by "to"
 with a typed negative bound says nothing of the rest and is not counted. A `P` with a
 typed value above 1 is a pressure, a partition coefficient or a number of predictors,
-and no P value. A capital `P` that opens a sentence has its capital from the sentence,
+and no P value, unless a power of ten follows its figures or it is ten itself to a
+negative power, "P = 3.2 x 10-9", "P < 10^-5^". The figures are read and never made a
+number:
+the first fix converted them, and Python refuses more than 4,300 digits, so a line of
+sevens after `P =` made the gate raise. A capital `P` that opens a sentence has its
+capital from the sentence,
 in "P < 0.05 was considered significant" as in "P values were two-sided"; the spacing
 of its sign is still read. And a level of confidence stated after the letters, "a
 confidence interval of 95%, 5% margin of error", is no bound.
@@ -1180,10 +1185,14 @@ journals do otherwise, so "%" is held to consistency alone. Basile chose both on
 `gates/notation.py`. Of those of one letter only `g` and `h` are among them: "5m" is as
 often five months, "1L" a first line of treatment, "30s" an age and "3A" a grade. And
 those two are not read where a number and a letter are a name: in a sentence that has
-named a figure, a table or a scheme before them, where "3g" is a panel; after the word
-for a compound, a product or a derivative, or alone between marks of emphasis, where
-"**3g**" is the seventh of a series. Nor is `g` read in a sentence of centrifuging:
-"12,000g" is a force, printed closed, and "12,000 g" would be twelve kilograms.
+named a figure, a table or a scheme before them, where "3g" is a panel; standing
+against the word for a compound, a product or a derivative, alone or in a list of its
+kind, "compounds 3g and 4h"; or alone between marks of emphasis, where "**3g**" is the
+seventh of a series. Those words are ordinary prose too, and the second review found
+"each compound was incubated for 24h" passed over, so a name has to stand against its
+word. Nor is `g` read as a gram where it is a force: after a number of four figures or
+more, or after a word of centrifuging in its sentence. "12,000g" is printed closed, and
+"12,000 g" would be twelve kilograms.
 
 **It is read where the manuscript speaks**, as the vocabulary is, the contributions and
 acknowledgements included: a P value there is the author's. Not in a quotation set as a
@@ -7680,7 +7689,9 @@ Closed since, and why each mattered:
     that mixes "r = 0.31" with "r=0.42" passes.
   - A `p` that is a proportion or a probability, "where p = 0.5 is the expected share", is
     counted as a P value. A pressure or a count is told from one by a typed value above
-    1, which a binding hides: `P~plat~ < {{results.limit}}` is counted.
+    1, which a binding hides: `P~plat~ < {{results.limit}}` is counted. So is a pressure
+    whose figures are followed by a power of ten, "P = 2.5 x 10^5^ Pa". A threshold whose
+    caret was lost and whose minus sign is a hyphen, "P < 10-8", is not counted.
   - Words between the symbol and its sign hide the sign: "P for trend = 0.03" counts
     neither the symbol nor the spacing. A subscript written as pandoc's, `P~trend~`, is
     read.
@@ -7701,17 +7712,24 @@ Closed since, and why each mattered:
     which changes no finding.
   - Two or three hyphens are read as the dash pandoc prints for them. "95%, 5%" after
     the letters, with no level before them, is taken for a level and a margin only
-    where the first number is 80, 90, 95, 99 or 99.9.
+    where the first number is 80, 90, 95, 99 or 99.9 and a comma or a semicolon
+    follows it, so an interval written "CI 95%, 99%" with no level before it is not
+    counted.
   - The convention is the majority. A manuscript that is mostly in the form its journal
     does not print is told of the places where it is right.
   - Only the units listed in `gates/notation.py` are read, and of the symbols of one
     letter only `g` and `h`: "5m", "5L", "30s" and "4V" pass. A `g` or an `h` after the
-    word for a figure, a table, a scheme, a compound, a product or a derivative in the
-    same sentence is taken for a name, so "In Figure 2, a dose of 2g" and "the product
-    weighed 2g" pass; so does a `g` after a word of centrifuging, "the pellet weighed
-    2g". A compound named with neither such a word nor marks of emphasis around it, "3g
-    was the most potent", is reported. "6mA", the methylated base, is read as
-    milliamperes.
+    word for a figure, a table, a panel or a scheme in the same sentence is taken for a
+    name, so "In Figure 2, a dose of 2g" and "Table 1 gives the doses at 24h" pass. A
+    sentence that opens with a figure, a binding or a bracket does not end the one before
+    it for this. One alone in bold or italics is taken for a compound, so a table's
+    header "**24h**" passes. A compound named with neither its word against it nor
+    marks of emphasis around it, "3g was the most potent", is reported. "6mA", the
+    methylated base, is read as milliamperes.
+  - A `g` after a number of four figures or more is taken for a force, so "1000g of
+    soil" passes; so is one after a word of centrifuging in its sentence, "the pellet
+    weighed 2g". A smaller force with no such word before it, "at 800g, the cells were
+    pelleted", is reported.
   - "37°C" is reported, as the SI Brochure has it, in a manuscript for a journal that
     prints it closed. There is no setting to say so; the journal profile's style block is
     where one will go.

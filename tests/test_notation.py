@@ -260,6 +260,8 @@ def test_a_bound_that_is_a_binding_cannot_be_seen_to_be_negative() -> None:
     ],
 )
 def test_a_level_of_confidence_is_no_bound(sentence: str) -> None:
+    """A level is followed by a comma. Bounds joined by "to" or a dash are bounds,
+    whatever their numbers: "(CI 95% to 99%)" under a specificity of 96%."""
     report = read(f"# Methods\n\n{sentence}\n\n# Results\n\nIt was 2 (95% CI 1 to 3).\n")
     assert not report.findings, told(report)
     assert report.counts["notation_intervals"] == 1
@@ -468,6 +470,11 @@ def test_a_capital_that_opens_a_sentence_is_the_sentence_s_with_a_sign_after_it_
         "Lipophilicity was high (log P = 3.2).",
         "The model was fitted with P = 10 predictors.",
         "The order was P = 2 and the lag P = 1.5.",
+        "Pressure was kept at P = 10-15 mmHg.",  # a range, and no power of ten
+        # ten to a power above nought is no P value either
+        "Pressure rose to P = 10^3^ Pa.",
+        "Pressure rose to P = 10\N{SUPERSCRIPT THREE} Pa.",
+        "Pressure rose to P = 10<sup>3</sup> Pa.",
     ],
 )
 def test_a_p_with_a_value_above_one_is_no_p_value(sentence: str) -> None:
@@ -485,6 +492,9 @@ def test_a_p_with_a_value_above_one_is_no_p_value(sentence: str) -> None:
         "= 1", "= 1.0", "= 1.00", "= 0.99", "= .99", "= 0.05", "< 0.001", "> 0.99",
         # the figures are above 1 and the value is not: a power of ten follows them
         "= 3.2 x 10-9", "= 3.2 \N{MULTIPLICATION SIGN} 10^-9^", "= 5e-8", "< 1.2E-10",
+        # and ten itself to a negative power, as a threshold is stated in genetics
+        "< 10^-5^", "< 10^\N{MINUS SIGN}8^", "< 10\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT EIGHT}",
+        "< 10<sup>-5</sup>",
     ],
 )  # fmt: skip
 def test_a_p_value_of_one_or_less_is_one(stated: str) -> None:
@@ -542,6 +552,9 @@ def test_a_comparison_that_is_not_a_statistic_s_is_not_read(sentence: str) -> No
         "Samples were centrifuged at 12,000g for 10 min and the pellet was kept.",
         "The lysate was spun at 800g, and after centrifugation at 3000g it was frozen.",
         "Cells were pelleted at 300g.",
+        # by its size, with no word of centrifuging before it
+        "The supernatant was cleared at 16,000g for 20 min.",
+        "After 10 min at 12,000g, the pellet was resuspended; 3000g was enough.",
         # a compound of a series, by the word before it or by its bold type
         "Compounds 3g and 4h were inactive, and the product 5g was not isolated.",
         "The most potent was **3g**, followed by **4h** and *5g*.",
@@ -562,6 +575,12 @@ def test_what_only_looks_like_a_number_and_its_unit_is_left_alone(sentence: str)
         "A dose of **2 g** or of 3g was given.",  # the marks are not around it
         "The dose was 24h apart, by 5mg steps.",  # no word of these, and no force in mg
         "Samples were centrifuged for 10min.",  # only g is a force
+        # a word of a series that is here a word of ordinary prose
+        "Each compound was incubated for 24h.",
+        "The medicinal product was given every 8h.",
+        "At study entry, patients had fasted for 8h.",
+        "An intermediate dose of 2g was used.",
+        "Rats weighing 250g were used.",  # three figures are a weight
     ],
 )
 def test_a_unit_is_a_unit_outside_those_sentences(sentence: str) -> None:
@@ -672,6 +691,28 @@ def test_a_line_that_never_ends_what_it_starts_is_read_in_linear_time(
         judge_notation(passages)
 
     assert_linear(manuscript, judge, 2000, f"the notation, on a line of {piece!r}")
+
+
+def test_an_interval_whose_first_bound_is_a_level_s_number_is_an_interval() -> None:
+    report = read(
+        "# Results\n\nSensitivity was 90% (CI 85%-94%) and 88% (CI 80%-93%).\n\nSpecificity "
+        "was 96% (CI 95% to 99%).\n"
+    )
+    assert codes(report) == ["notation-interval"]
+    assert report.counts["notation_intervals"] == 3
+
+
+def test_a_number_too_long_to_be_one_is_read_and_nothing_raises() -> None:
+    """Python refuses to make a number of more than 4,300 digits. The first fix of the
+    value above 1 asked it to, and a `P = ` before 4,301 sevens made the gate raise,
+    taking the abbreviations, the terms and the spelling with it."""
+    long = "7" * 5000
+    report = read(f"# Results\n\nIt held (p = {X}) and again (p = {X}).\n\nThen P = {long}.\n")
+    assert not report.findings, "above 1, so no P value"
+    report = read(f"# Results\n\nIt held (p = {X}) and again (p = {X}).\n\nThen P = 0.{long}.\n")
+    assert codes(report) == ["notation-p-symbol"]
+    report = read(f"# Methods\n\nA dose of {long}g and {long}mg in {long}% of {long} to {long}.\n")
+    assert codes(report) == ["notation-unit"], "the g is a force by its size; the mg is not"
 
 
 @pytest.mark.parametrize(

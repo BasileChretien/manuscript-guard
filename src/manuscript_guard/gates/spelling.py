@@ -27,6 +27,11 @@ project lists the spellings it keeps under `language: accepted_spellings:`.
 where a sentence, a heading, a list item or a table cell starts. "World Health
 Organization" and "Centers for Disease Control" are written as they call themselves, in
 any paper.
+
+**So does a wording that is somebody else's.** The gate hands this reading the manuscript
+without its contributions, acknowledgements, funding and competing-interests sections:
+the role names there are CRediT's ("Conceptualization"), and a funder's sentence is the
+funder's.
 """
 
 from __future__ import annotations
@@ -73,7 +78,8 @@ _REACH = 200
 # with `.` or `#`; the label of a reference link and the line that defines it, which a
 # footnote's text is not. Each alternative stops at the next character that could open
 # another of its kind, so a line of unclosed ones is read once. A LaTeX command is not
-# here: `check` fails a manuscript that holds one, whatever its spelling.
+# here: where pandoc is installed `check` fails a manuscript that holds one, whatever
+# its spelling, and the command's own name is skipped as any word after a backslash is.
 _MARKUP = re.compile(
     r"</?[A-Za-z][^<>\n]*>"
     r"|\{[^{}=\n]*=[^{}\n]*\}"
@@ -124,12 +130,13 @@ def _prose(printed: str) -> str:
 
 def _in_an_identifier(text: str, start: int, end: int) -> bool:
     """`tumor_size` and `color2` are names somebody gave a variable, `color.csv` is a file,
-    `info@color-lab.org` and `center@example.org` are addresses: none is a word of the
-    paper. `_color_`, with the underscores of emphasis around it, is one."""
+    `info@color-lab.org` and `center@example.org` are addresses, and a word after a
+    backslash is a macro's name or a folder's in a path: none is a word of the paper.
+    `_color_`, with the underscores of emphasis around it, is one."""
     before = text[start - 1] if start else ""
     after = text[end] if end < len(text) else ""
     beyond = text[end + 1] if end + 1 < len(text) else ""
-    if before.isdigit() or after.isdigit() or "@" in (before, after):
+    if before.isdigit() or after.isdigit() or "@" in (before, after) or before == "\\":
         return True
     if before == "_" and start > 1 and text[start - 2].isalnum():
         return True

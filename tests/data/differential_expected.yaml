@@ -23,4 +23,10 @@
 # An entry for a reading that does not differ fails, and so does one that names no reading.
 # Spent entries may stay as a record or go; the list is not read for them.
 
-expected: []
+expected:
+  - reading: spelling
+    why: >-
+      the spelling is no longer read in a contributions, acknowledgements, funding or
+      competing-interests section, whose wording is the CRediT taxonomy's or the
+      funder's, so a word of either usage there is neither counted nor reported; and a
+      word that follows a backslash is a macro's name or a folder's again, not a word

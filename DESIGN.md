@@ -1038,9 +1038,11 @@ spelling writes with a digraph, `haem-`, `-aemia`, `-rrhoea`. Without that secon
 "haemodynamic" and "bacteraemia" would be missing, and four rows in ten come through it.
 It is narrow because it let the same fault back in once: `paed-` was among the forms, and
 the first review found "pedogenic", which is the soil's word in any English, given to
-American usage as a spelling of "paedogenic". A form is kept only where its letters
-cannot be another root. ATTRIBUTION.md has VarCon's terms and how the derived file meets
-them.
+American usage as a spelling of "paedogenic". A form is kept only where no line of
+VarCon pairs a word of another root through it: `hem-` is also the root of
+"hemisphere", and no line makes that a spelling of anything. `amoeb-` went with
+`paed-`, since it respelt a genus, *Entamoeba*. ATTRIBUTION.md has VarCon's terms and
+how the derived file meets them.
 
 **A variant in both usages is the spelling of neither.** VarCon gives "embedding" to
 both and "imbedding" as a variant in British usage and a seldom-used one in American.
@@ -1073,13 +1075,27 @@ not, and a name that opens a sentence is taken for a word. Both are in Known gap
 
 **It is read where the manuscript speaks**, as the vocabulary is: the sentences and
 headings of every file and of the supplement, not the reference list, not a quotation set
-as a block, whose spelling is its author's, and nothing the masking hides. This reading
+as a block, whose spelling is its author's, and nothing the masking hides.
+
+**And not where the wording is somebody else's.** A contributions statement names its
+roles as the CRediT taxonomy spells them, "Conceptualization" and "Visualization", and a
+funding statement is the funder's sentence, "the Horizon 2020 research and innovation
+programme". Read like the rest, the first gave a British paper in `-ise` a
+`spelling-mixed` and the second gave an American one a finding for a word it may not
+change. So the spelling is not read in the sections where G14 already reports no
+undefined abbreviation: contributions, acknowledgements, funding, competing interests,
+found by a word in their titles, with their subsections. The vocabulary is still read
+there, since a term the author gave up is the author's wherever it stands. The price is
+a slip of the author's own in an acknowledgement, which passes. This reading also
 hides a little more, because markup is written in American: an HTML tag, so that
 `<span style="color:red">` is no word of the paper; a block of attributes that holds a
 key, `{fig-align="center"}`; and the label of a reference link. A LaTeX command is not
-hidden: `check` fails a manuscript that holds one, whatever it spells. A word joined to a
-digit or to an underscore, `color2`, `tumor_size`, is a variable's name; one that stands
-beside an `@`, or that a dot and a letter follow, is part of an address or a file's name.
+hidden: where pandoc is installed, `check` fails a manuscript that holds one, whatever it
+spells. A word joined to a digit or to an underscore, `color2`, `tumor_size`, is a
+variable's name; one that stands beside an `@`, or that a dot and a letter follow, is
+part of an address or a file's name; and one that follows a backslash is a macro's name
+or a folder's in a path. The second review found that last rule gone with the pattern
+that hid LaTeX commands, and a macro named `center` read as a word.
 
 **Three findings.** `spelling-variant` is one word in the other spelling: once for the
 word, where it first stands, with how many times it is used and what to write. When the
@@ -7507,7 +7523,11 @@ Closed since, and why each mattered:
 - **G14's spelling is a list of general English, and reads a capital as a name's.**
   - A word the list does not hold is not read. It has "haemoglobin", "oedema" and
     "randomise", and not "hyperglycaemia", "leucocyte" or "operationalise"; a spelling of
-    the other usage that it lacks passes in silence.
+    the other usage that it lacks passes in silence. Two families are left out on
+    purpose, where VarCon has not verified the word: `paed-` with `ped-`, and `amoeb-`
+    with `ameb-`. So "pedodontics", "pedomorphosis" and "amebiasis" pass in a British
+    paper and their British spellings in an American one, while "pediatric",
+    "orthopedic" and "amebic", which VarCon verified, are reported.
   - A word some line of VarCon accepts in the paper's English is never reported, whatever
     it means where it stands: "meter" for the unit, "program" for a schedule and
     "practise" used as a noun all pass in a British paper.
@@ -7524,12 +7544,15 @@ Closed since, and why each mattered:
     the species in "*Castor fiber*", the Latin of "rubor, tumor, calor and dolor", the
     genes *dishevelled* and *colourless*. Emphasis cannot excuse them, since "the
     *color* was recorded" has to be read. Each goes under `accepted_spellings`.
-  - A wording somebody else prescribes is read as the paper's own. A funder's sentence,
-    "the European Union's Horizon 2020 research and innovation programme", reports
-    "programme" in an American paper; the role names of the CRediT taxonomy,
-    "Conceptualization" and "Visualization", each opening its line of a contributions
-    section, give a British paper in `-ise` a `spelling-mixed`. The sections where G14
-    reports no undefined abbreviation are read for spelling like any other.
+  - The spelling is not read in a contributions, acknowledgements, funding or
+    competing-interests section, nor in its subsections: a word of the author's own
+    that is misspelt there passes. Those sections are found by a word in their titles,
+    so a section of the paper proper whose title holds one, "Funding of primary care",
+    is not read either. A funder's sentence or a CRediT role name written anywhere
+    else, in a footnote to the title page or in the Methods, is read as the paper's own.
+  - A word that follows a backslash is not read. Where pandoc is not installed to fail
+    the manuscript for it, the label inside a LaTeX command is: the `color` of
+    `\label{tab:color}`.
   - Words quoted inside a sentence are read as the manuscript's own, as for the
     vocabulary; only a quotation set as a block keeps its author's spelling.
   - A capital after a colon is taken for a sentence's, so in "the journal: Color Research"

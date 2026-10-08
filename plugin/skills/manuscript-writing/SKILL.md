@@ -173,11 +173,17 @@ a quotation set as a block, the reference list, and code set in backticks or in 
 Quoted words inside a sentence are read, so a quotation whose spelling must stand is set
 as a block.
 
+The spelling is not read at all in the contributions, acknowledgements, funding and
+competing-interests sections, because their wording is not the author's to change: the
+CRediT role names ("Conceptualization"), a funder's prescribed sentence (the Horizon
+2020 "programme"). Leave those as they are given. The author's own sentences there get
+no check, so read them yourself.
+
 What is read and should not be changed: a species (*Castor fiber*), a gene
-(*dishevelled*), Latin (rubor, tumor, calor, dolor), a funder's prescribed sentence (the
-Horizon 2020 "programme"), the CRediT role names ("Conceptualization"). Do not respell
-these. List the word under `accepted_spellings`, one word to an entry, letters only: a
-whole name, or a word with a hyphen, matches nothing and the schema refuses it.
+(*dishevelled*), Latin (rubor, tumor, calor, dolor), and a funder's sentence or a role
+name written outside those sections. Do not respell these. List the word under
+`accepted_spellings`, one word to an entry, letters only: a whole name, or a word with a
+hyphen, matches nothing and the schema refuses it.
 
 The list is of general English. It does not hold every technical word, so it is no
 substitute for reading the text: "hyperglycemia" in a British paper passes.

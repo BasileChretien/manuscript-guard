@@ -6508,21 +6508,34 @@ Closed since, and why each mattered:
   version dropped what did not match, and the parenthetical under two of SANRA's six items
   vanished from the profile while it reported every statement verbatim.
 
-  **What the recipe's counts can see, and what no count can.** `items` and `options` catch a
-  line that changes how many items or options there are: a statement printed within one space of
-  its score (`pdftotext -layout` may lay that out differently between builds — SANRA's longest
-  leaves exactly two spaces under Xpdf 4.00 and many more under poppler 24.04, which is a margin
-  and not a guarantee), a running foot ending in a page number where the recipe gives no
-  `stop_at`, an item whose options continue on the next page, and a last item alone on one.
-  Without the counts each of those is written wrongly or dropped in silence; with them it is
-  refused.
+  **Above the first heading of a page, nothing is placed.** Every line before it is passed over,
+  because that is where a form prints its title and the rater's instructions. So a statement
+  whose second line sits at the top of the next page loses that line in silence, **with both
+  counts stated** — the same wrap on one page is refused. Nothing shipped reaches it: SANRA's
+  recipe reads one page. It is the one case where "a line is placed or the reading stops" is
+  simply not true, and the sentence above should be read with this paragraph beside it.
+
+  **What each count can see.** `options` refuses a line that changes how many options an item
+  has: a statement printed within one space of its score (`pdftotext -layout` may lay that out
+  differently between builds — SANRA's longest leaves exactly two spaces under Xpdf 4.00 and many
+  more under poppler 24.04, which is a margin and not a guarantee), a running foot ending in a
+  page number where the recipe gives no `stop_at`, and an item whose scored lines carry on to the
+  next page. `items` refuses a scale read short: a line equal to `stop_at` printed before the
+  last item, and a page the recipe's `pages` leaves out. Neither count catches the other's cases.
+
+  Two things that list used to carry and should not. A one-space statement is refused with no
+  counts at all in every position but one — first line under a title, of an item with no
+  clarifying line — where it is read as the clarification. And a last item alone on a page is
+  read correctly, or refused for too few options, with and without counts alike.
 
   **No count sees a wrapped line**, because wrapping changes nothing's number. A title that runs
   onto a second line is read as a title cut at the line end and a clarifying line; a first
-  statement that wraps with its score on the second line is read the same way, its end becoming
-  the first option. Both are written in silence with SANRA's own counts stated. The item that
-  already carries a clarifying line is the exception, where a second unscored line is refused.
-  A form whose layout is misread from the start is uncaught in any case.
+  statement that wraps with its score on the second line is read as a clarification and a
+  shortened first option. Both are written in silence with SANRA's own counts stated. Elsewhere
+  on a page the line rules refuse a wrap without help from any count: any statement after the
+  first, a first statement with its score on its own line, and any wrap under an item that
+  already carries a clarifying line. A form whose layout is misread from the start is uncaught in
+  any case.
 
   So a new recipe states its counts, and — the part no machine does — its first profile is read
   against the published form once, item by item. For the form this ships a recipe for, that was

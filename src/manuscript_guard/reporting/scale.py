@@ -30,9 +30,9 @@ silently, and each with a profile that claimed every statement was there. So:
 
 * a line directly under a heading, before any option, is that item's clarification, which is
   what the parenthetical is, and is kept;
-* a line that is neither a heading nor an option anywhere else is a `RecipeError` naming it,
-  because the only honest reading of a line this reader does not understand is that the recipe
-  does not fit the document;
+* a line that is neither a heading nor an option is a `RecipeError` naming it — anywhere
+  below the first heading of its page, since above that heading every line is passed over as
+  the form's title and the rater's instructions;
 * an item with fewer than `min_options` options is a heading mistaken for one while no item
   has been read yet, anywhere in the document — the rater's numbered instructions sit above
   the scale — and a `RecipeError` once the scale has started;
@@ -42,11 +42,22 @@ silently, and each with a profile that claimed every statement was there. So:
 **What is checked, and what is not.** The reader's output is its input, read line by line, so
 there is nothing here to compare the items against: the profile says so in as many words
 rather than claiming a verbatim check it cannot perform. What stands in for one is that a line
-is placed or the reading stops — as far as the recipe's counts reach, and no further. `items`
-and `options` catch whatever changes a number: a dropped option, an extra one read from a
-footer, an item continued on the next page. Nothing catches a wrapped line, because wrapping
-changes no number: a title running onto a second line, or a first statement whose score sits on
-its second line, is read as a title and a clarification with SANRA's own counts stated.
+is placed or the reading stops — within two limits, both narrower than that sentence sounds.
+
+**The first is the page.** Every line before the first numbered heading *of each page* is passed
+over, because that is where a form prints its title and the rater's instructions. So a statement
+whose second line sits at the top of the next page loses that line in silence, whatever counts
+the recipe states.
+
+**The second is what a count can see.** `options` refuses a dropped option, an extra one read
+from a running foot, and an item whose scored lines carry on to the next page; `items` refuses a
+scale read short. No count sees a wrapped line, because a wrap changes nothing's number: a title
+running onto a second line is read as a title and a clarification, and a first statement whose
+score sits on its second line as a clarification and a shortened first option — both with
+SANRA's own counts stated. Elsewhere on a page a wrapped line is refused by the line rules, not
+by a count: any statement after the first, a first statement with its score on its own line, and
+any wrap under an item that already carries a clarifying line.
+
 DESIGN.md's Known gaps carries the cases, and a recipe for a new form states its counts and has
 its first profile read against the form once, by eye.
 """
@@ -72,20 +83,46 @@ HEADING = re.compile(r"^\s*(?P<id>\d{1,2})\)\s+(?P<topic>\S.*?)\s*$")
 OPTION = re.compile(r"^\s*(?P<statement>\S.*?)\s{2,}(?P<score>\d{1,2})\s*$")
 
 #: What a scale's profile records in place of a verification, because there is none to record.
-#: It says what is true and no more: the reader places every line or stops, *where the recipe
-#: says how many items and options the form prints*. Without those counts a line can still be
-#: filed in the wrong place — a wrapped title, a statement whose score is on the next line —
-#: and DESIGN.md's Known gaps carries the cases.
-VERIFICATION = (
-    "read line by line from the published form, with the item counts the recipe states; no "
-    "check independent of the reader, and none of the item text against anything else"
+#: Four sentences, because which is true depends on the counts the recipe states, and one string
+#: for every recipe claimed more of some than was done. What each count buys:
+#:
+#: * `options` refuses a dropped option, an extra one read from a running foot, and an item whose
+#:   scored lines carry on to the next page;
+#: * `items` refuses a scale read short — a `stop_at` line printed before the last item, a page
+#:   the recipe's `pages` leaves out;
+#: * neither sees a wrapped line, because a wrap changes nothing's number, nor a statement's
+#:   second line at the top of a later page, which is passed over whatever the counts say.
+#:
+#: "May not be caught" rather than "is not", because the line rules refuse a good deal with no
+#: counts at all: an unscored line after an item's options, a second unscored line, too few
+#: options once the scale has started, and a gap in the numbering. DESIGN.md's Known gaps
+#: carries the cases.
+_READ = "read line by line from the published form"
+_NO_CHECK = "no check independent of the reader, and none of the item text against anything else"
+VERIFICATION_BOTH = f"{_READ}, held to the item and option counts the recipe states; {_NO_CHECK}"
+VERIFICATION_ITEMS_ONLY = (
+    f"{_READ}, held to the item count the recipe states and to no option count, so a dropped or "
+    f"invented option may not be caught; {_NO_CHECK}"
 )
-#: The same for a recipe that states no counts, where not even a dropped option is caught.
-VERIFICATION_UNCOUNTED = (
-    "read line by line from the published form, and the recipe states no item or option count, "
-    "so a line dropped or read as the wrong thing is not caught either; no check independent of "
-    "the reader"
+VERIFICATION_OPTIONS_ONLY = (
+    f"{_READ}, held to the option count the recipe states and to no item count, so a scale read "
+    f"short may not be caught; {_NO_CHECK}"
 )
+VERIFICATION_NEITHER = (
+    f"{_READ}, held to no item or option count, so a dropped option or a scale read short may "
+    f"not be caught; {_NO_CHECK}"
+)
+
+
+def verification_for(items: int | None, options: int | None) -> str:
+    """Which of the four sentences is true of a recipe stating these counts."""
+    if items is not None and options is not None:
+        return VERIFICATION_BOTH
+    if items is not None:
+        return VERIFICATION_ITEMS_ONLY
+    if options is not None:
+        return VERIFICATION_OPTIONS_ONLY
+    return VERIFICATION_NEITHER
 
 
 @dataclass(frozen=True)
@@ -127,14 +164,17 @@ def parse_scale(
     stop_at: str | None = None,
     started: bool = False,
 ) -> list[Item]:
-    """The items on one page of a scale. Raises rather than drop a line it cannot place.
+    """The items on one page of a scale. Raises rather than drop a line it cannot place, except
+    above the first heading of the page, where every line is passed over.
+
+    That exception is the form's title and the rater's instructions, and it is also why a
+    statement's second line at the top of a later page is lost without a word.
 
     `started` says whether an item has been read already, on an earlier page of the same form.
     An item with too few options is then refused rather than passed over as one of the rater's
-    numbered instructions, which is what "dropped" means in the test that holds this.
-    Without it the rule "a numbered line with too few options is one of the rater's
-    instructions, until the scale has started" began again on every page, so a last item alone
-    at the top of a second page was dropped in silence.
+    numbered instructions. Without it the rule "a numbered line with too few options is one of
+    the rater's instructions, until the scale has started" began again on every page, so a last
+    item alone at the top of a second page was passed over in silence.
     """
     items: list[Item] = []
     reading: _Reading | None = None
@@ -210,16 +250,21 @@ def transcribe_scale(path: Path, recipe: ScaleRecipe) -> tuple[list[Item], str]:
 
     pages = [page_text(path, page) for page in recipe.pages]
     items: list[Item] = []
-    for text in pages:
-        items.extend(
-            parse_scale(
-                text,
-                min_options=recipe.min_options,
-                options=recipe.options,
-                stop_at=recipe.stop_at,
-                started=bool(items),
+    for number, text in zip(recipe.pages, pages, strict=True):
+        try:
+            items.extend(
+                parse_scale(
+                    text,
+                    min_options=recipe.min_options,
+                    options=recipe.options,
+                    stop_at=recipe.stop_at,
+                    started=bool(items),
+                )
             )
-        )
+        except RecipeError as refused:
+            # `parse_scale` counts lines within the page it was given, so on a form of several
+            # pages "line 12" named two places. The page goes in front here, where it is known.
+            raise RecipeError(f"{path.name}, page {number}: {refused}") from refused
     if not items:
         raise RecipeError(
             f"{path.name}: no numbered item with scored options on page(s) "

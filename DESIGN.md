@@ -1243,6 +1243,105 @@ The lock can also carry parameters that must appear in the prose — the signifi
 threshold, the software version. Presence, not correctness, but those are exactly what a
 reviewer queries and exactly what is left behind when an analysis is redone.
 
+## A rewording is held to the words
+
+A language pass is trusted with the words: a co-author tidying a paragraph, an editing
+service, a model asked to make the English read well. `check` cannot say whether it kept to
+them, because `check` reads the manuscript as it is. An edit that writes
+`{{results.ror.ci_low}}` where `{{results.ror.ci_high}}` stood leaves two bindings that
+resolve. One that drops a citation leaves a sentence. One that retypes "90% CI" as "95% CI"
+leaves a number the conventions know. Every gate passes all three.
+
+`manuscript-guard reworded` compares the text with what it was and holds three things to
+their places: every binding, every citation key and every typed number. It is a command and
+no gate, because a gate has one text and this needs two. Basile chose its four terms on
+2026-10-08.
+
+**The text before is a commit's, or a copy.** By default each manuscript file is compared
+with itself at the last commit, which is where an edit not yet committed is seen; `--since`
+names another revision, and `--before` a copy of one file, for a text that is not in git. A
+file that is new or gone since the commit is reported with the count of the facts that came
+or went with it.
+
+**Gone, new or changed fails; another order warns.** A fact that stood and does not, or
+stands and did not, is either more than a rewording or a slip, and whoever reads the edit
+should know which. The same facts in another order are a clause moved to the front of its
+sentence, which is harmless, or two values that changed places, which is not. Nothing here
+can tell those apart, so each place is shown and the command passes. G2 reports two bounds
+that changed places where they were emitted as one interval; two counts in a sentence it
+cannot know apart.
+
+**A number is compared as typed.** "3" spelt out as "three", "1,200" closed up to "1200"
+and "0.50" cut to "0.5" are each reported. The first two may be style and the third is not,
+and a rule that guessed would have to read "one" as a number or as a pronoun. What an edit
+does to the notation around a number is free: the space before a unit or a per cent sign,
+the spaces around a sign of comparison, a hyphen made a true minus sign. So the edits that
+tidy a manuscript's notation pass.
+
+**A minus sign fails where it is sure, and is shown where it is not.** "-0.3" made "0.3" is
+a number changed, and "1.2-3.4" made "1.2 to 3.4" is a range retyped. Which of the two a
+dash is, is known by what stands before it, and only sometimes. After a space, an opening
+bracket, a comma or a sign of comparison nothing stands that it could join: it is the
+number's sign, and one that is gone or new fails. After a letter, a figure, a closing
+bracket, a per cent sign or a bound value it joins, and is no sign. After a mark that can
+open or close, an asterisk, an underscore, a dollar, a caret, a tilde, a quotation mark, it
+is a sign where the mark opens and may be the dash of a range where it closes: "*-0.3*"
+and "*n*-1", "10^-5^" and "10^3^-10^5^". And a mark that looks as if it closes may be a
+product or a power, "x*-1".
+
+Two reviews read that last case by rule and found the rule wrong each time. The first rule
+took every such mark to open, and refused a range made "to" after one. The second took a
+mark after a letter or a figure to close, and let the sign of "10**-6" go with nothing
+said. It also read the sign of an exponent after "e", and so refused "Figures 1E-1G" made
+"1E to 1G". Shown this, Basile chose on 2026-10-08 what the order already does: where it
+is sure it fails, and where it is not the place is shown and the command passes. A mark
+that can only open leaves the sign sure: one whose run stands at the start or after
+something that does not join, or the first caret of its word. After any other, after a
+figure and "e", and after a figure and one space or a line end, a dash that came or went
+is a warning. A dash that stands as it stood and is read as a sure sign in one text and
+as perhaps one in the other, "x*-1" made "x * -1", is no change.
+
+The third review found what was concluded from this wrong where a number stands in
+several places. All of it is from counts, and three things had to be counted apart. A
+dash that may be a sign and stood before the edit is itself: counted among the dashes
+now, the `*n*-1` of a later paragraph answered for a slope of -1 made 1, which only
+warned. Only a dash that may be a sign and is new can be the sure one in another place.
+The places count too: "fell by -0.3 and rose by 0.3" made "fell by 0.3 and rose by
+-0.3" has the same figures and as many dashes, and with the sign no part of what is
+compared nothing was said of it. Two signs that changed places and two clauses that did
+look the same, so it is the order's case and a warning, `sign-moved`. And a number is
+named with its sign only where the other text holds none of it.
+
+The fourth review found the counts wrong the other way. Two edits of notation on the
+same figures, `x*-1` spaced out to `x * -1` and "n-1" made `*n*-1`, each pass by
+themselves, and together have the counts of a sign that came: one sure sign more, and
+no fewer dashes that may be one. So where a number stands as often as it did, a sign
+fails only if the counts say so and one of the number's places, taken in order, went
+from a sure sign to no dash or from no dash to a sure sign. Beside the slope one does;
+here none does, and the warning has it.
+
+Two or three hyphens before a number are the dash pandoc prints for them, and are read
+as one dash by what stands before the first: "1--3" is a range, and "-5 to -3" made
+"-5--3" has lost the sign of the 3. A plus sign is part of the figures where a minus
+would be a sure sign, and is not read elsewhere: "0.5, +0.3" made "0.5 +0.3" is told
+as one number gone and one new.
+
+A number with no nought keeps its point, ".05", and raised and lowered figures are
+figures: the first review found "-.30" read as "30", and ten to the minus eight typed with
+the characters made ten to the minus six with nothing said.
+
+**It is read once, with a count.** Whether a fact is gone or new is known from how often it
+stands in each text. Where the order changed is known from a count of what one text has had
+that the other has not: each stretch ends where the count is settled, so two clauses moved
+in two sentences are two warnings. Lining the texts up fact by fact, as `difflib` does,
+takes the square of a manuscript's length on a text where one number stands on every line.
+
+The readings of a binding and of a citation are the gates' own: `placeholders.PLACEHOLDER`
+with what pandoc drops blanked, and `find_citations`. A test holds the bindings to the ones
+`placeholders.parse` calls well formed, which this does not call. When this was written
+`parse` counted each binding's line from the top of the file, and a comparison of two long
+texts showed it; #213 has since put that right.
+
 ## Review panels: the record is the contract
 
 Every other gate checks a property of the text. G11 checks that somebody competent
@@ -7595,7 +7694,11 @@ Closed since, and why each mattered:
   on its line, which the placeholder pattern tries from each `{{` to the line's end (2.7 s
   at 32,000 characters), and a long run of backslashes with no `<` or `>` after it, which
   `comparison_escapes` backtracks through from each backslash (about 74 s at 80,000, on one
-  machine). Low priority, and not fixed.
+  machine). `parse()` has the first of the two as well, in its pattern for a malformed
+  binding: 2,000 bindings with no closing brace on one line took 0.85 s, before and after
+  the line of each was looked up among the line starts (#213). One such binding to a line
+  is linear, as measured then; the test that times `parse` holds a binding with one closing
+  brace, not this one. Low priority, and not fixed.
 - **The linear-time tests measure time, so they see a quadratic only once it shows.** Each
   times a scan on eight times its input, taking each size's best of three in alternation,
   and fails at sixteen times the time (`check_linear` in `tests/conftest.py`). A scan whose
@@ -7670,6 +7773,63 @@ Closed since, and why each mattered:
   one scan at a time. Two costs fall outside the CPU ratio too: a scan whose result is
   cached by content runs once, on the untimed first check, and garbage collection is off
   while timing. Both are left to the wall clock.
+
+- **`reworded` holds bindings, citation keys and typed numbers, and nothing else.**
+  - A unit, a sign of comparison, a "not" and "increased" for "decreased" are words, and
+    are not held: "5 mg" made "5 g", "P < 0.05" made "P > 0.05" and "did not differ" made
+    "differed" all pass. So does a number written in words: "three" made "four".
+  - A number spelt out, "3" made "three", is reported as gone, and so is a thousands
+    separator taken out. The edit may be harmless; nothing here decides that.
+  - Where a fact stands more often or less often than it did, which of them came or went
+    is not known from the facts. The message gives every line it stood or stands on, and a
+    new one is placed at the first that lies between what the two texts open and close
+    with in common, which is the one after a single edit.
+  - The order is not told while a fact is gone or new, since there is then no saying which
+    of the rest moved. It is told once the loss is settled.
+  - Two values that changed places and a clause that moved give the same warning.
+  - A fact moved from one file to another is gone from the first and new in the second.
+    So is every fact of a file that was renamed.
+  - An address, a link's target and a footnote's mark are not read, so a figure changed
+    in a URL or a DOI passes. Nor is what a comment holds, a listing inside it included.
+  - In the front matter a number is read under the keys the build prints (title,
+    subtitle, short and running title, abstract, summary, keywords) and under no other.
+    Bindings and citations are read in all of it, so a key under `nocite:` is held, and
+    so is an `author: '@handle'`.
+  - The title and the keywords the build prints are in `paper.yaml`, which is not
+    compared: a figure changed in the title there passes.
+  - In a listing every figure is held, a figure in a name there too. A binding or a
+    citation in a listing is held as one, though pandoc prints it as typed.
+  - "0,5" is read as two numbers and "1.2.3" as "1.2" and "3". Each is compared as typed
+    either way, so only an edit between such forms is told differently: "0,5" made "0.5"
+    is two numbers gone and one new.
+  - Where a dash before a number may be its sign or the dash of a range, one that is gone
+    or new is a warning and the command passes. That is after `*`, `_`, `$`, a backtick or
+    a straight quotation mark whose run has a letter, a figure or a closing mark before
+    it; after the second caret or tilde of a word, counted 80 characters back at most;
+    after a figure and "e"; and after a figure or a closing mark and one space or a line
+    end. So "x*-1" made "x*1", "10**-6" made "10**6" and "1e-5" made "1e5" are shown and
+    not refused, and so is the sign of a negative number that follows another number after
+    one space, "0.5 -0.3". A listing is read by the same rule as the prose.
+  - A dash that stands as it stood fails where the edit moves it between a place where
+    it is a sign for sure and one where it joins: "about -3" closed up to "about-3",
+    "Day-1" opened to "Day -1", and a range typed with a space on one side after a
+    word or a unit, "5 mg -10 mg" made "5 mg-10 mg".
+  - Where the same figures stand in several places, a sign fails only where the counts
+    say it is gone or new and one place of the number, taken in order, lost or gained
+    it. A sure sign gone at one place while a dash that may be one is new at another is
+    a warning that the dash stands at another place, not a failure. So is a sure sign
+    that went while its clause moved past another place of the same figures.
+  - A sign set apart from its number is not read with it: a true minus, a space and "0.3",
+    made "0.3", passes, and so does "-$5" made "$5".
+  - A figure retyped raised or lowered is told as gone and new, as "3" made "three" is: a
+    square metre typed with the raised character made `m^2^`, or "CO2" given a lowered 2.
+  - A comma before three figures is read as one number's: "100,200 and 400 mg" made
+    "100, 200 and 400 mg" is told '100,200' gone and two numbers new.
+  - Git is given 30 seconds to answer. Through the wrapper Git for Windows puts on the
+    path, a git that never ends is waited on past that, until its output closes: the
+    limit stops the wrapper and not the git it started. `emit.py` asks git the same way.
+  - The text before is what git holds for the commit. A file under a
+    `working-tree-encoding` or a filter is compared as git stores it.
 
 - **G14 reads a definition by its shape, and an abbreviation by its capitals.**
   - A definition written as a sentence is not seen: "hereafter ROR", "which we call the

@@ -3866,13 +3866,14 @@ the campaigns are in the suite, on Hypothesis:
 
 - `tests/generated.py` holds the generators: manuscripts, vocabularies, one-line titles,
   sources with quotations of them, the settings typed into a project, a co-author's
-  sessions in Word, and texts that quote the bounds of intervals.
+  sessions in Word, texts that quote the bounds of intervals, and a manuscript beside
+  what an edit made of it.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its
   sentence, the quotation check, `check --json` on a new project, and the round trip: a
-  paper typed into a new project, built, edited in Word and imported. G2's reading of the
-  order of an interval's bounds has a name of its own there, `interval order`.
+  paper typed into a new project, built, edited in Word and imported. And two more: the
+  order an interval's bounds are quoted in, and what `reworded` makes of an edit.
 - `tests/test_properties.py` holds what a reading owes its input, and
   `tests/test_generated_sessions.py` what an import owes the source.
 - `tests/test_differential.py` puts each input through the base branch's source and
@@ -3922,12 +3923,13 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So nine rules are broken in place, one at a time, and the property that is
+the generators. So eighteen rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
-the line break with it, every finding on line 1, a binding that opens a line put on the
-line before, a ligature not folded, a value found inside a longer number, a stop against a
-binding that ends no sentence, a nought trimmed off a number, a variable's name read as a
-word.
+the line break with it, every finding on line 1, a ligature not folded, a value found
+inside a longer number, a nought trimmed off a number, a variable's name read as a word,
+a binding that opens a line put on the line before, a stop against a binding that ends no
+sentence, and nine ways `reworded` can misread an edit, from a number's sign taken for no
+part of it to what a comment holds held to its place.
 The import is broken three times the same way: a rewording written over the next
 paragraph, one written a second time, and one written over the next paragraph only where
 an identified paragraph did not come back at all. Each is known by the sentence that
@@ -4091,7 +4093,7 @@ it.
   like any other and is compared: it used to end the process that was answering.
 - **The comparison is held to being one.** Two processes on this source under two hash
   seeds must answer alike on every reading, which also catches a reading that walks a
-  set. And eight lines are changed in a copy of the source, one at a time, and the reading
+  set. And nine lines are changed in a copy of the source, one at a time, and the reading
   that goes through each must differ: among them the mutant the review of #181 found
   alive, the offset of a quotation's lines losing a character at each line break, an
   import that writes no rewording, and a finding that points at another file with its
@@ -7675,8 +7677,7 @@ Closed since, and why each mattered:
   `It ran {{results.ror.ci_high}} <!-- was 7.02. --> to {{results.ror.ci_low}}.` the stop
   in the comment puts the two bounds in two sentences, so the reversal passes; pandoc drops
   the comment and prints the interval backwards. `{{results.ror.ci_high}}, e.g.
-  {{results.ror.ci_low}}` passes the same way, as it does after any abbreviation that ends
-  in a stop: a sentence is not parsed, it is cut at each stop that white space follows.
+  {{results.ror.ci_low}}` passes the same way: a sentence is cut at each stop before a space.
 - **A structured abstract cannot state its own signal threshold.** `methods_only` rules need
   a Methods heading, and an abstract's chain is `("Abstract",)`. Treating the whole abstract
   as Methods was considered and rejected: an abstract states results in the same block, and
@@ -8186,7 +8187,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on ten broken rules, and the comparison on seven
+  - The properties were seen to fail on 21 broken rules, and the comparison on nine
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

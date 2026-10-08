@@ -24,8 +24,8 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
-  - reading: check
+  - reading: notation
     why: >-
-      G14 reads the notation too, so `check` gains the five counts of that reading on
-      every manuscript, and a warning where one writes a P value, the sign after it, an
-      interval or a percentage in two ways, or runs a number into its unit
+      a `g` after four figures is a weight again, "2500g", and reported unless a word of
+      centrifuging stands before it; and a first bound in percent with a hyphen after it,
+      "CI 80%-93%; 12 studies", is a bound and no level, so the semicolon is no join

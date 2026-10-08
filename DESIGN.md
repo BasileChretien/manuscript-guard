@@ -1175,7 +1175,10 @@ sevens after `P =` made the gate raise. A capital `P` that opens a sentence has 
 capital from the sentence,
 in "P < 0.05 was considered significant" as in "P values were two-sided"; the spacing
 of its sign is still read. And a level of confidence stated after the letters, "a
-confidence interval of 95%, 5% margin of error", is no bound.
+confidence interval of 95%, 5% margin of error", is no bound. Nor is a first bound a
+level: in "(95% CI 80%-93%; 12 studies)" the 80% was taken for one, "-93" for a bound
+and the semicolon for the join, until the third review. A level has no hyphen and no
+minus sign against its percent sign.
 
 **The space before a unit is not a matter of counting.** `notation-unit` reports a number
 that runs into its unit, "5mg", "10mL", "37°C", wherever it stands, in a manuscript that
@@ -1196,9 +1199,12 @@ against the word for a compound, a product or a derivative, alone or in a list o
 kind, "compounds 3g and 4h"; or alone between marks of emphasis, where "**3g**" is the
 seventh of a series. Those words are ordinary prose too, and the second review found
 "each compound was incubated for 24h" passed over, so a name has to stand against its
-word. Nor is `g` read as a gram where it is a force: after a number of four figures or
-more, or after a word of centrifuging in its sentence. "12,000g" is printed closed, and
-"12,000 g" would be twelve kilograms.
+word. Nor is `g` read as a gram where it is a force: after a number of five figures or
+more before its decimal point, or after a word of centrifuging in its sentence.
+"12,000g" is printed closed, and "12,000 g" would be twelve kilograms. Four figures
+was the rule for a day and took a birth weight, "2500g", for a force. Shown both,
+Basile chose five on 2026-10-08: the word of centrifuging is nearly always there, and a
+birth weight never has one.
 
 **It is read where the manuscript speaks**, as the vocabulary is, the contributions and
 acknowledgements included: a P value there is the author's. Not in a quotation set as a
@@ -7669,8 +7675,8 @@ Closed since, and why each mattered:
     in the script and never reported: the soil's "pedogenic" and "pedologist", the
     genera *Entamoeba* and *Endamoeba*, and the British halves that American usage
     writes too, "amoebiasis", "amoebocyte", "paedomorphosis". So an American paper
-    that mixes "amebiasis" with "amoebic" passes, and a word of the same kind that
-    nobody has met yet is reported until it is named there.
+    that writes "amoebiasis" on one page and "amebiasis" on the next passes, and a word
+    of the same kind that nobody has met yet is reported until it is named there.
   - A word some line of VarCon accepts in the paper's English is never reported, whatever
     it means where it stands: "meter" for the unit, "program" for a schedule and
     "practise" used as a noun all pass in a British paper.
@@ -7776,12 +7782,14 @@ Closed since, and why each mattered:
     sentence that opens with a figure, a binding or a bracket does not end the one before
     it for this. One alone in bold or italics is taken for a compound, so a table's
     header "**24h**" passes. A compound named with neither its word against it nor
-    marks of emphasis around it, "3g was the most potent", is reported. "6mA", the
-    methylated base, is read as milliamperes.
-  - A `g` after a number of four figures or more is taken for a force, so "1000g of
-    soil" passes; so is one after a word of centrifuging in its sentence, "the pellet
-    weighed 2g". A smaller force with no such word before it, "at 800g, the cells were
-    pelleted", is reported.
+    marks of emphasis around it, "3g was the most potent", is reported. Between the
+    word for a compound and the name, a comma, a dash and "and", "or" or "to" may
+    stand, so "from study entry to 24h" and "of the product, 2g was dried" pass. "6mA",
+    the methylated base, is read as milliamperes.
+  - A `g` after a number of five figures or more before its decimal point is taken for
+    a force, so "25,000g of feed" passes; so is one after a word of centrifuging in its
+    sentence, "the pellet weighed 2g". A smaller force with no such word before it,
+    "cleared at 3000g" or "at 800g, the cells were pelleted", is reported.
   - "37°C" is reported, as the SI Brochure has it, in a manuscript for a journal that
     prints it closed. There is no setting to say so; the journal profile's style block is
     where one will go.

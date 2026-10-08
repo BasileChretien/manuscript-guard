@@ -104,7 +104,10 @@ _INTERVAL = re.compile(
     # row shared a run of spaces out among themselves in every way: 800 spaces after
     # "CI" took 24 seconds.
     r"(?:" + _GAP + r"[\[(](?:CI|CrI)s?[\])])?"  # "confidence interval (CI)"
-    r"(?:" + _GAP + r"\d{2}(?:\.\d)?" + _SPACE + r"?%)?"  # "CI 95%"
+    # "CI 95%". Not where a hyphen or a minus sign follows the percent sign at once: in
+    # "CI 80%-93%; 12 studies" the 80% is the first bound. Taken for a level, it left
+    # "-93" for a bound and the semicolon for the join.
+    r"(?:" + _GAP + r"\d{2}(?:\.\d)?" + _SPACE + r"?%(?![-\u2212]))?"
     r"(?:" + _GAP + r"(?:(?:of|from|was|were|is|are)\b|[:,=]))?"
     r"(?:" + _GAP + r"[\[(])?"
     + _GAP + r"(?P<low>" + _NUMBER + r")(?P<percent>" + _SPACE + r"?%)?"
@@ -140,7 +143,7 @@ _PERCENT = re.compile(
 #: The unit symbols a number is not to run into. Of the symbols of one letter only `g` and
 #: `h` are here: "5m" is as often five months, "1L" a first line of treatment, "30s" an
 #: age, "5M" five million and "3A" a grade. And those two are not read where a number and
-#: a letter are a name or a force: `_NAMED` and `_SPUN`.
+#: a letter are a name or a force: `_a_name` and `_a_force`.
 UNITS = (
     "kg", "mg", "\u00b5g", "\u03bcg", "mcg", "ng", "pg", "g",
     "mL", "ml", "dL", "dl", "\u00b5L", "\u03bcL", "\u00b5l", "\u03bcl", "nL",
@@ -190,8 +193,9 @@ _SPUN = re.compile(
 )
 #: How far back that word is looked for.
 _BACK = 80
-#: From this many figures in its whole part, a number before `g` is a force.
-FORCE = 4
+#: From this many figures before its decimal point, a number before `g` is a force
+#: wherever it stands. Four took a birth weight, "2500g", for one.
+FORCE = 5
 
 
 @dataclass(frozen=True)
@@ -277,8 +281,8 @@ def _a_name(text: str, start: int, end: int) -> bool:
 
 
 def _a_force(value: str, before: str) -> bool:
-    """Is this number before `g` a relative centrifugal force: one of four figures or more,
-    or one in a sentence that has spoken of centrifuging?"""
+    """Is this number before `g` a relative centrifugal force: one of five figures or more
+    before its decimal point, or one in a sentence that has spoken of centrifuging?"""
     figures = sum(char.isdigit() for char in value.partition(".")[0])
     return figures >= FORCE or _SPUN.search(before) is not None
 

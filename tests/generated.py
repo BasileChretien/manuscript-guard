@@ -496,6 +496,7 @@ NOTATED = (
     "P = 0.03", "p=0.04", "*P* < 0.001", "p-value", "n = 12", "n=3", "N= 40",
     "95% CI 1.2 to 3.4", "95% CI 1.2-3.4", "(95% CI {{results.low}} to {{results.high}})",
     "P = {{results.p}}", "5%", "5 %", "5mg", "5 mg", "{{results.dose}}mL",
+    "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g",
 )  # fmt: skip
 
 

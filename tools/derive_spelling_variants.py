@@ -167,8 +167,8 @@ SHORTEST = 4
 
 #: From a cluster VarCon has not verified: the combining forms British spelling writes
 #: with a digraph, and what American spelling writes for each. Two of them reach words
-#: they should not respell, which `EVERYWHERE` names: `paed-` the soil's "pedogenic", and
-#: `amoeb-` the genus "Entamoeba" and the spellings American usage writes too.
+#: they should not respell, which `EVERYWHERE` names: `paed-` the soil's "pedogenic",
+#: `amoeb-` the genus "Entamoeba", and both the spellings American usage writes too.
 DIGRAPHS = {
     "aemi": "emi",
     "aetiol": "etiol",

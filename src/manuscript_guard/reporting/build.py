@@ -81,8 +81,14 @@ def build_profile(
         # between. There is nothing here to verify the items against — they are the reader's
         # output read line by line from its input — so the profile says that in as many words
         # instead of claiming a check. What stands in for one is that the reader drops nothing:
-        # a line it cannot place stops the transcription. See scale.py.
-        from manuscript_guard.reporting.scale import VERIFICATION, ScaleRecipe, transcribe_scale
+        # a line it cannot place stops the transcription, as far as the recipe's counts reach.
+        # See scale.py and DESIGN.md's Known gaps for what no count sees.
+        from manuscript_guard.reporting.scale import (
+            VERIFICATION,
+            VERIFICATION_UNCOUNTED,
+            ScaleRecipe,
+            transcribe_scale,
+        )
 
         items, _read = transcribe_scale(
             document,
@@ -96,7 +102,14 @@ def build_profile(
             ),
         )
         unverified = []
-        meta = {**meta, "verification": VERIFICATION, "kind": "scale"}
+        # Which of the two true sentences this profile gets. One string for both read as though
+        # counts were held where a recipe states none.
+        counted = layout.get("items") is not None and layout.get("options") is not None
+        meta = {
+            **meta,
+            "verification": VERIFICATION if counted else VERIFICATION_UNCOUNTED,
+            "kind": "scale",
+        }
     elif str(parse_mode).startswith("pdf"):
         from manuscript_guard.literature.sources import contains
         from manuscript_guard.reporting.columns import ColumnRecipe, transcribe_columns

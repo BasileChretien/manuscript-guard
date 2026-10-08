@@ -6362,18 +6362,26 @@ Closed since, and why each mattered:
   version dropped what did not match, and the parenthetical under two of SANRA's six items
   vanished from the profile while it reported every statement verbatim.
 
-  **How far that reaches depends on the recipe.** A recipe that states `items` and `options`, as
-  SANRA's does, is held to them, and every case below is refused rather than written. A recipe
-  that states neither is not, and these are then written wrongly and in silence: a title that
-  wraps onto a second line, whose remainder is filed as the item's clarifying line; a first
-  statement that wraps, whose beginning is filed the same way and whose end becomes an option; a
-  statement printed within one space of its score where it is the first line under a title,
-  which `pdftotext -layout` may lay out differently between builds (SANRA's longest leaves
-  exactly two spaces under Xpdf 4.00 and many more under poppler 24.04, which is a margin and
-  not a guarantee); and a running foot ending in a page number where the recipe gives no
-  `stop_at`, which is read as one more option. A form whose layout is misread from the start is
-  uncaught in any case. So a new recipe states its counts, and its first profile is compared
-  with the published form once, by eye.
+  **What the recipe's counts can see, and what no count can.** `items` and `options` catch a
+  line that changes how many items or options there are: a statement printed within one space of
+  its score (`pdftotext -layout` may lay that out differently between builds — SANRA's longest
+  leaves exactly two spaces under Xpdf 4.00 and many more under poppler 24.04, which is a margin
+  and not a guarantee), a running foot ending in a page number where the recipe gives no
+  `stop_at`, an item whose options continue on the next page, and a last item alone on one.
+  Without the counts each of those is written wrongly or dropped in silence; with them it is
+  refused.
+
+  **No count sees a wrapped line**, because wrapping changes nothing's number. A title that runs
+  onto a second line is read as a title cut at the line end and a clarifying line; a first
+  statement that wraps with its score on the second line is read the same way, its end becoming
+  the first option. Both are written in silence with SANRA's own counts stated. The item that
+  already carries a clarifying line is the exception, where a second unscored line is refused.
+  A form whose layout is misread from the start is uncaught in any case.
+
+  So a new recipe states its counts, and — the part no machine does — its first profile is read
+  against the published form once, item by item. For the form this ships a recipe for, that was
+  done: under Xpdf 4.00 and poppler 24.04 every one of SANRA's six titles and six first
+  statements is on one line, and both builds transcribe it identically.
 
   Where the form prints something that is not an item, the recipe names it (`stop_at`), because
   only the recipe can tell a footer from a statement that wrapped. A numbered line in the

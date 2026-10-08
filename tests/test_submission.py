@@ -251,6 +251,16 @@ def test_a_scale_is_not_sent_as_a_completed_reporting_checklist(project: Path) -
     assert "scale-DEMO-OBS.yaml" in names, names
     assert not any(name.startswith("checklist-DEMO-OBS") for name in names), names
 
+    # An answer to an item the published instrument does not have is labelled for what the
+    # instrument is: inside a scale's table, "not in the published checklist" named the wrong
+    # thing, and nothing held either label.
+    answers = yaml.safe_load((project / "reporting" / "DEMO-OBS.yaml").read_text(encoding="utf-8"))
+    answers["items"].append({"id": "not-an-item", "where": "Methods"})
+    (project / "reporting" / "DEMO-OBS.yaml").write_text(
+        yaml.safe_dump(answers, sort_keys=False), encoding="utf-8"
+    )
+    assert "*not in the published scale*" in checklist_table(projekt, completion)
+
 
 def test_a_pipe_in_an_item_does_not_break_the_table(project: Path) -> None:
     """A pipe inside a cell ends the cell, and reporting checklists contain "and/or" lists."""

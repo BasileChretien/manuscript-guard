@@ -954,7 +954,7 @@ def test_a_scale_profile_says_it_has_no_independent_check(
     }
 
 
-def test_a_last_item_alone_on_a_second_page_is_not_dropped(
+def test_a_last_item_alone_on_a_second_page_is_refused_not_passed_over(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """"Until the scale has started" began again on every page, so an item printed alone at the

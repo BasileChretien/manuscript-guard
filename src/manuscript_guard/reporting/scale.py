@@ -3,7 +3,9 @@
 SANRA is the case this exists for. A narrative review has no reporting guideline — PRISMA is
 for systematic reviews — and the instrument editors and reviewers score one with is published
 as a one-page form: numbered items, each with a clarifying line under some of the titles, then
-the statements a rater chooses between with the score at the right-hand end of each line.
+the statements a rater chooses between with the score at the right-hand end of each line. Laid
+out, with an invented item rather than a published one, since no transcribed item text is
+committed here:
 
     3) Clarity of the thing described
 
@@ -17,8 +19,11 @@ That is neither a Word table nor two columns of a checklist, so neither of the o
 can read it, and the alternative — retyping six items and eighteen statements — is the one
 thing this package exists to refuse.
 
-**A line is placed or the transcription stops**, which is the whole of what this reader
-offers in place of a check. The first version dropped whatever did not match: the parenthetical
+**A line is placed, or the reading stops where a count can see it** — which is the whole of
+what this reader offers in place of a check, and less than it sounds: see the end of this
+docstring, and DESIGN.md's Known gaps, for what no count sees.
+
+The first version dropped whatever did not match: the parenthetical
 under two items of SANRA's own form vanished from the profile, a wrapped statement would have
 been cut at the line end, and an item printed with one option would have disappeared — each
 silently, and each with a profile that claimed every statement was there. So:
@@ -37,11 +42,13 @@ silently, and each with a profile that claimed every statement was there. So:
 **What is checked, and what is not.** The reader's output is its input, read line by line, so
 there is nothing here to compare the items against: the profile says so in as many words
 rather than claiming a verbatim check it cannot perform. What stands in for one is that a line
-is placed or the reading stops — and that holds as far as the recipe's counts reach. A recipe
-that states neither `items` nor `options` can still have a wrapped title read as a title and a
-clarification, or a statement whose score sits on its second line read as a clarification and
-an option. DESIGN.md's Known gaps carries both, and a recipe for a new form should state its
-counts and be compared with the form once by eye.
+is placed or the reading stops — as far as the recipe's counts reach, and no further. `items`
+and `options` catch whatever changes a number: a dropped option, an extra one read from a
+footer, an item continued on the next page. Nothing catches a wrapped line, because wrapping
+changes no number: a title running onto a second line, or a first statement whose score sits on
+its second line, is read as a title and a clarification with SANRA's own counts stated.
+DESIGN.md's Known gaps carries the cases, and a recipe for a new form states its counts and has
+its first profile read against the form once, by eye.
 """
 
 from __future__ import annotations
@@ -52,16 +59,16 @@ from pathlib import Path
 
 from manuscript_guard.reporting.transcribe import Item, RecipeError
 
-#: "1) Justification of the article's importance for the readership". The number is the item's
-#: own, as the scale prints it, because that is what a rater and an editor refer to.
+#: "1) Clarity of the thing described". The number is the item's own, as the scale prints it,
+#: because that is what a rater and an editor refer to.
 HEADING = re.compile(r"^\s*(?P<id>\d{1,2})\)\s+(?P<topic>\S.*?)\s*$")
 
-#: "The importance is not justified.          0" — a statement, then its score at the end of
-#: the line. Two spaces at least, so a sentence that merely ends in a number is not an option.
+#: "The thing is not described.          0" — a statement, then its score at the end of the
+#: line. Two spaces at least, so a sentence that merely ends in a number is not an option.
 #: Where a
 #: build of pdftotext leaves one space, the line is refused wherever an option is expected, and
-#: read as the item's clarification when it is the first line under a title and the recipe
-#: states no option count: Known gaps carries that case.
+#: read as the item's clarification when it is the first line under a title and the recipe states
+#: no option count: Known gaps carries that case.
 OPTION = re.compile(r"^\s*(?P<statement>\S.*?)\s{2,}(?P<score>\d{1,2})\s*$")
 
 #: What a scale's profile records in place of a verification, because there is none to record.
@@ -72,6 +79,12 @@ OPTION = re.compile(r"^\s*(?P<statement>\S.*?)\s{2,}(?P<score>\d{1,2})\s*$")
 VERIFICATION = (
     "read line by line from the published form, with the item counts the recipe states; no "
     "check independent of the reader, and none of the item text against anything else"
+)
+#: The same for a recipe that states no counts, where not even a dropped option is caught.
+VERIFICATION_UNCOUNTED = (
+    "read line by line from the published form, and the recipe states no item or option count, "
+    "so a line dropped or read as the wrong thing is not caught either; no check independent of "
+    "the reader"
 )
 
 
@@ -117,6 +130,8 @@ def parse_scale(
     """The items on one page of a scale. Raises rather than drop a line it cannot place.
 
     `started` says whether an item has been read already, on an earlier page of the same form.
+    An item with too few options is then refused rather than passed over as one of the rater's
+    numbered instructions, which is what "dropped" means in the test that holds this.
     Without it the rule "a numbered line with too few options is one of the rater's
     instructions, until the scale has started" began again on every page, so a last item alone
     at the top of a second page was dropped in silence.

@@ -8175,12 +8175,18 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
-    """One record a reviewer, no readers named: nothing about them changed."""
+    """One record a reviewer, no readers named: nothing about them changed. The third round
+    read the revision that bound the Methods' parameters, with the earlier rounds in front of
+    it, so it supersedes them and says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
-    assert report.ok and not report.findings, report.render(project)
-    assert report.counts["review_rounds_complete"] == 2
+    assert report.ok, report.render(project)
+    said = sorted((f.code, f.path.parent.name) for f in report.findings)
+    assert said == [("review-superseded", "round-1")] * 3 + [
+        ("review-superseded", "round-2")
+    ] * 2 + [("round-not-blinded", "review")], report.render(project)
+    assert report.counts["review_rounds_complete"] == 3
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:

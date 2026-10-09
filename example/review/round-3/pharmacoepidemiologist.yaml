@@ -1,0 +1,31 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 3
+reviewer: pharmacoepidemiologist
+reviewed_by: Claude Code
+reviewed_on: '2026-10-09'
+manuscript_sha256: 9ed5b12b5cebe94bfb7fdef27246cfc740a565af28d110c24a8d28c806dec432
+file_sha256:
+  main.md: 0922d855c86b471ef84ecefb1ae1cce6cd03e9f14fccaa05e03899a43ce28518
+  supplementary/S1_code_lists.md: 1a96a28afb119203d8fc24daad63fc46ae36451175cd419c810dad7e49293bc5
+verdict: pass
+summary: The revision is confined to the Methods and does not change what the paper claims.
+  The signal criterion is now one the analysis applies rather than one it only states, and
+  the Results claim disproportionate reporting, which is what that criterion establishes and
+  no more. Nothing in my remit needs changing; one point would make the criterion easier to
+  check against the literature.
+findings:
+- id: r3-pe-01
+  severity: comment
+  where: Methods, signal criterion
+  finding: '"The classical criterion" is common usage for at least three cases with the lower
+    bound of the ROR''s interval above 1, but it is one of several (Evans'' PRR criteria,
+    the IC025, EB05), and the text names none of them. A citation for the one used would let
+    a reader compare this signal with published ones on the same terms.'
+- id: r3-pe-02
+  severity: comment
+  where: Results and Conclusions
+  finding: The claim stays one of disproportionate reporting, and the abstract and Discussion
+    still say that disproportionality is not incidence. The revision adds no claim about
+    risk, which is what I checked it for.

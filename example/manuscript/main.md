@@ -46,15 +46,21 @@ injury with all other reported events, for example-drug against all other drugs 
 database. Confidence intervals were derived from the standard error of the log odds ratio
 and are 95% confidence intervals, two-sided at an alpha of {{results.param.alpha}}; the
 main estimate is also given with its 90% confidence interval, for comparison with
-signal-detection practice. A signal was defined by the classical criterion: at least
-{{results.param.signal.min_cases}} cases together with a lower
-bound of the confidence interval of the reporting odds ratio above 1. No p-value threshold
-was used as a decision rule, which is not how a disproportionality analysis reaches its
-conclusion. The reporting odds ratio was also estimated adjusted for age group and sex, the
-two patient characteristics the database records for every report, by
-{{results.model.adjusted.kind}} of hepatic injury on exposure to example-drug, with both
-characteristics entered as categories. Table S2 describes the model as it was fitted. The
-analysis was run in Python {{results.software.python}} with statsmodels
+signal-detection practice. {{method.ror}} {{method.ci}}
+
+A signal was defined by the classical criterion: at least
+{{results.param.signal.min_cases}} cases together with a lower bound of the 95% confidence
+interval of the reporting odds ratio above 1. No p-value threshold was used as a decision
+rule, which is not how a disproportionality analysis reaches its conclusion.
+{{method.signal}}
+
+Adjusted for age group and sex, the two patient characteristics the database records for
+every report, the reporting odds ratio was also estimated by {{results.model.adjusted.kind}}
+of hepatic injury on exposure to example-drug, with both characteristics entered as
+categories. Its interval is the model's Wald interval for the exposure coefficient, at the
+same alpha. Table S2 describes the model as it was fitted. {{method.adjusted}}
+
+The analysis was run in Python {{results.software.python}} with statsmodels
 {{results.software.statsmodels}}.
 
 Reporting follows the checklist declared in `paper.yaml`.

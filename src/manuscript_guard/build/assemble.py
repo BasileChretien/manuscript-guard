@@ -1,10 +1,11 @@
 """Turning manuscript source into a document pandoc can read.
 
-Three substitutions, all of which resolve to something machine-written:
+Three substitutions, all of which resolve to something machine-written, and one removal:
 
 * `{{results.key}}` and `{{lit.key}}` become the value's display string;
 * `{{table.key}}` becomes a pipe table built from the emitted table;
-* `{{figure.key}}` becomes an image reference to the rendered figure.
+* `{{figure.key}}` becomes an image reference to the rendered figure;
+* `{{method.key}}`, an anchor pointing Methods text at a step of the code, prints nothing.
 
 Citations are left exactly as they are. `[@key]` has to survive into pandoc untouched, so
 that the Zotero filter can turn it into a live field.
@@ -313,6 +314,8 @@ def assemble(
                 value = namespace.get(placeholder.ref)
                 if value is not None:
                     replacement = value.display
+            elif placeholder.is_anchor:
+                replacement = ""
             elif placeholder.namespace == "table":
                 table = results.tables.get(placeholder.key)
                 if table is None:

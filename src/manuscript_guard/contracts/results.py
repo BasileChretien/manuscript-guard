@@ -70,6 +70,27 @@ class Table:
 
 
 @dataclass(frozen=True)
+class Step:
+    """A step of the analysis that ran, marked with `step()`: where its code is, and a digest
+    of that code read as code. The Methods point at it with `{{method.<name>}}`."""
+
+    name: str
+    script: str
+    digest: str
+    source: Path
+    lines: tuple[int, int] | None = None
+    follows: tuple[str, ...] = ()
+
+    @property
+    def where(self) -> str:
+        """The script and its lines, as an editor opens them: `analysis/a.py:12-15`."""
+        if self.lines is None:
+            return self.script
+        first, last = self.lines
+        return f"{self.script}:{first}" + (f"-{last}" if last != first else "")
+
+
+@dataclass(frozen=True)
 class Results:
     values: dict[str, Value]
     fragments: tuple[Fragment, ...]
@@ -81,6 +102,8 @@ class Results:
     # reads them. G15 holds the two to each other.
     variables: dict[str, Variable] = field(default_factory=dict)
     models: dict[str, Model] = field(default_factory=dict)
+    # The steps that ran, which the Methods point at; G9 holds each to its claim.
+    steps: dict[str, Step] = field(default_factory=dict)
 
     def get(self, key: str) -> Value | None:
         return self.values.get(key)
@@ -132,6 +155,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
     table_owner: dict[str, Path] = {}
     variables: dict[str, Variable] = {}
     models: dict[str, Model] = {}
+    steps: dict[str, Step] = {}
 
     for path in paths:
         document = read_structured(path)
@@ -227,6 +251,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 composed=tuple(spec.get("composed") or ()),
             )
         reports.append(_read_cards(document, path, variables, models))
+        reports.append(_read_steps(document, path, steps))
 
     models_report, values, tables = _models_into(
         models, variables, values, tables
@@ -238,7 +263,38 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
         results_values=len(values),
         results_tables=len(tables),
     )
-    return Results(values, tuple(fragments), tables, code_lists, variables, models), merged
+    results = Results(values, tuple(fragments), tables, code_lists, variables, models, steps)
+    return results, merged
+
+
+def _read_steps(document: dict, path: Path, steps: dict[str, Step]) -> Report:
+    """A fragment's steps, into the project's. A step's name is one step: the Methods could
+    not say which of two they describe."""
+    findings = []
+    script = document["provenance"]["generated_by"]
+    for name, spec in (document.get("steps") or {}).items():
+        if name in steps:
+            findings.append(
+                Finding(
+                    gate="G0",
+                    code="duplicate-step",
+                    message=f"step {name!r} is marked by two scripts",
+                    path=path,
+                    context=f"also marked by {steps[name].script}",
+                    hint="give each step its own name: {{method.<name>}} points at one",
+                )
+            )
+            continue
+        lines = spec.get("lines")
+        steps[name] = Step(
+            name=name,
+            script=script,
+            digest=spec["digest"],
+            source=path,
+            lines=(lines[0], lines[1]) if lines else None,
+            follows=tuple(spec.get("follows") or ()),
+        )
+    return Report(tuple(findings))
 
 
 def _read_cards(

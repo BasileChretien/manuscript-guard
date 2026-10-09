@@ -132,7 +132,7 @@ def _run_gates(
         ("G4", lambda: check_journal(project)),
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project)),
-        ("G9", lambda: check_methods(project, namespace)),
+        ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project)),
         ("G8", lambda: check_consistency(results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
@@ -1890,11 +1890,25 @@ def cmd_checklist(args: argparse.Namespace) -> int:
 def cmd_methods(args: argparse.Namespace) -> int:
     """Report or record the state of the Methods against the analysis."""
     project, _ = load_project(args.path)
-    if not args.reconcile:
+    if args.explain:
+        from manuscript_guard.gates.methods import explain_methods
+
+        print("\n".join(explain_methods(project)))
+        return 0
+    if args.reconcile is None:
         report = check_methods(project)
         print(report.render(project.root))
         return 0 if report.ok else 1
 
+    if args.reconcile:
+        try:
+            path, count = reconcile(project, steps=args.reconcile)
+        except ValueError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        print(f"recorded {count} pair(s) of step {', '.join(args.reconcile)} in {path}")
+        print("This says the text pointing at each step has been read against its code.")
+        return 0
     path, count = reconcile(project)
     print(f"recorded {count} analysis file(s) in {path}")
     print("This says the Methods have been read against the code as it now stands.")
@@ -2472,8 +2486,15 @@ def build_parser() -> argparse.ArgumentParser:
     methods.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     methods.add_argument(
         "--reconcile",
+        nargs="*",
+        metavar="STEP",
+        help="record the analysis as it stands, after reading the Methods against it; with "
+        "step names, record only the pairs of those steps, after reading each against its text",
+    )
+    methods.add_argument(
+        "--explain",
         action="store_true",
-        help="record the analysis as it stands, after reading the Methods against it",
+        help="list each Methods claim with the step it points at and how the pair stands",
     )
     methods.set_defaults(func=cmd_methods)
 

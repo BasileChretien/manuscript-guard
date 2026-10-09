@@ -8182,18 +8182,18 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
-    """One record a reviewer, no readers named: nothing about them changed. Rounds three and
-    four read revisions with the earlier rounds in front of them, so the fourth supersedes
-    the three before it and each says it was not blinded."""
+    """One record a reviewer, no readers named: nothing about them changed. Rounds three to
+    five read revisions with the earlier rounds in front of them, so the fifth supersedes
+    the four before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok, report.render(project)
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
-    superseded = [("review-superseded", f"round-{n}") for n, many in ((1, 3), (2, 2), (3, 2))
-                  for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 2, report.render(project)
-    assert report.counts["review_rounds_complete"] == 4
+    superseded = [("review-superseded", f"round-{n}")
+                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2)) for _ in range(many)]  # fmt: skip
+    assert said == superseded + [("round-not-blinded", "review")] * 3, report.render(project)
+    assert report.counts["review_rounds_complete"] == 5
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -9984,3 +9984,96 @@ def test_an_outcome_declared_continuous_under_a_logistic_model_fails(project: Pa
     )
     _rerun_disproportionality(project)
     assert "model-outcome-kind" in {f.code for f in _models_report(project).failures}
+
+
+# -------------------------------------------------------------- the Methods, pair by pair
+
+
+def _methods_report(project: Path):
+    from manuscript_guard.gates import check_methods
+
+    loaded = load_project(project)[0]
+    namespace, results, _literature, _loaded = load_namespace(loaded)
+    return check_methods(loaded, namespace, results)
+
+
+def _line_of(root: Path, text: str) -> int:
+    lines = main_md(root).read_text(encoding="utf-8").splitlines()
+    return next(n for n, line in enumerate(lines, 1) if text in line)
+
+
+def test_the_example_s_methods_point_at_steps_that_ran_and_were_read(project: Path) -> None:
+    report = _methods_report(project)
+    assert report.ok and not report.findings, report.render(project)
+    # Four steps, three texts: the estimate and its intervals share one paragraph.
+    assert (report.counts["method_steps"], report.counts["method_claims"]) == (4, 3)
+    assert report.counts["method_pairs_stale"] == 0
+
+
+def test_a_change_inside_a_step_names_the_paragraph_to_read_again(project: Path) -> None:
+    """The 90% interval's quantile moved. The file-level drift says a file changed; the pair
+    says which paragraph of the Methods describes the code that did."""
+    _replace_once(_analysis(project), "1.645 * se)\n        high90", "1.64 * se)\n        high90")
+    _rerun_disproportionality(project)
+    report = _methods_report(project)
+    found = [f for f in report.failures if f.code == "method-step-changed"]
+    assert [(f.message, f.line) for f in found] == [
+        (
+            "step 'ci' changed after the text pointing at it was last read against it",
+            _line_of(project, "{{method.ci}}"),
+        )
+    ]
+    assert found[0].context.startswith("The reporting odds ratio was computed")
+    assert "methods-drift" in {f.code for f in report.failures}
+
+
+def test_a_comment_added_inside_a_step_leaves_its_pair_read(project: Path) -> None:
+    _replace_once(_analysis(project), "        ror = (a / b) / (c / d)\n",
+                  "        # the ratio of the two odds\n        ror = (a / b) / (c / d)\n")
+    _rerun_disproportionality(project)
+    report = _methods_report(project)
+    assert not [f for f in report.findings if f.code.startswith("method-")], report.render(
+        project
+    )
+
+
+def test_a_claim_about_a_branch_the_run_never_took_fails(project: Path) -> None:
+    """A sensitivity analysis described in the Methods, whose code sits in a branch no run
+    takes: the step is never recorded, and the anchor names nothing that ran."""
+    _replace_once(
+        _analysis(project),
+        '    em.software("python")\n',
+        '    if serious < 0:\n        with em.step("sensitivity"):\n'
+        '            em.value("sensitivity.ror", ror, quoted=False)\n'
+        '    em.software("python")\n',
+    )
+    _rerun_disproportionality(project)
+    _replace_once(
+        main_md(project),
+        "The analysis was run in Python",
+        "A sensitivity analysis left out the serious reports. {{method.sensitivity}}\n\n"
+        "The analysis was run in Python",
+    )
+    report = _methods_report(project)
+    found = [f for f in report.failures if f.code == "method-step-unknown"]
+    assert [f.line for f in found] == [_line_of(project, "{{method.sensitivity}}")]
+
+
+def test_a_methods_paragraph_reworded_is_named_with_what_it_said(project: Path) -> None:
+    _replace_once(main_md(project), "odds ratio was computed from a 2 x 2 table",
+                  "odds ratio was computed from a 2 by 2 table")
+    report = _methods_report(project)
+    found = [f for f in report.failures if f.code == "method-claim-changed"]
+    assert [f.message.split("'")[1] for f in found] == ["ror", "ci"], report.render(project)
+    assert all(
+        f.context.startswith("was: The reporting odds ratio was computed from a 2 x 2 table")
+        for f in found
+    ), "one text, pointing at two steps, read against each"
+
+
+def test_an_anchor_deleted_leaves_its_step_described_by_nothing(project: Path) -> None:
+    _replace_once(main_md(project), "\n{{method.signal}}", "")
+    report = _methods_report(project)
+    assert [f.message for f in report.warnings if f.code == "method-step-undescribed"] == [
+        "step 'signal' ran, and no text in the manuscript points at it"
+    ]

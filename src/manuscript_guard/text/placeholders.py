@@ -1,4 +1,5 @@
-"""The binding syntax: `{{results.key}}`, `{{lit.key}}`, `{{table.key}}`, `{{figure.key}}`.
+"""The binding syntax: `{{results.key}}`, `{{lit.key}}`, `{{table.key}}`, `{{figure.key}}`,
+and `{{method.step}}`, the anchor that points a Methods claim at the code step it describes.
 
 There is deliberately no formatting option. How a value is written is decided once, at emit
 time, by the script that computed it, and every place that quotes the value gets the same
@@ -16,7 +17,10 @@ from manuscript_guard.text.masking import blank_comments
 
 VALUE_NAMESPACES = ("results", "lit")
 BLOCK_NAMESPACES = ("table", "figure")
-NAMESPACES = VALUE_NAMESPACES + BLOCK_NAMESPACES
+#: An anchor prints nothing. It says which step of the analysis the text before it describes,
+#: back to the anchor before it or the start of its paragraph (`gates/methods.py`).
+ANCHOR_NAMESPACE = "method"
+NAMESPACES = VALUE_NAMESPACES + BLOCK_NAMESPACES + (ANCHOR_NAMESPACE,)
 
 PLACEHOLDER = re.compile(
     r"\{\{\s*(?P<ns>[a-z]+)\.(?P<key>[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*)\s*\}\}"
@@ -55,6 +59,10 @@ class Placeholder:
     @property
     def is_value(self) -> bool:
         return self.namespace in VALUE_NAMESPACES
+
+    @property
+    def is_anchor(self) -> bool:
+        return self.namespace == ANCHOR_NAMESPACE
 
 
 def _without_comments(text: str) -> str:
@@ -119,13 +127,16 @@ def parse(text: str) -> tuple[list[Placeholder], list[tuple[str, int, int]]]:
 
 
 def substitute(text: str, rendered: dict[str, str]) -> str:
-    """Replace every placeholder whose ref is in `rendered`. Others are left untouched.
+    """Replace every placeholder whose ref is in `rendered`, and every anchor with nothing.
+    Others are left untouched.
 
     Substitution walks backwards so that earlier offsets stay valid.
     """
     placeholders, _ = parse(text)
     out = text
     for placeholder in sorted(placeholders, key=lambda p: p.start, reverse=True):
-        if placeholder.ref in rendered:
+        if placeholder.is_anchor:
+            out = out[: placeholder.start] + out[placeholder.end :]
+        elif placeholder.ref in rendered:
             out = out[: placeholder.start] + rendered[placeholder.ref] + out[placeholder.end :]
     return out

@@ -85,6 +85,9 @@ The database held {{results.cohort.n_reports}} reports. The reporting odds ratio
   `{{figure.key}}` inserts `figures/<key>.<ext>`. Neither is numbered for you. A mistyped
   figure key passes `check` and fails at `build`; a mistyped table key is named only at
   `build`, though `check` reports the intended table as `unplaced-table`.
+- `{{method.key}}` prints nothing. It ends Methods text and points it at a step the
+  analysis marked with `em.step("key")`; the [methods-writer](../methods-writer/SKILL.md)
+  skill covers it.
 - Cross-references such as "Table 2" and "Figure 1" are accepted as structural and never
   checked against the real numbering. Number them by hand and look.
 - Text inside HTML comments is ignored and never reaches the document. A number inside a

@@ -211,6 +211,8 @@ def annotate(
     pieces = [
         *_value_pieces(placeholders, namespace, counter, unmarkable),
         *_block_pieces(placeholders, results, project, counter),
+        # An anchor prints nothing, here as in the build.
+        *(_Piece(p.start, p.end, "") for p in placeholders if p.is_anchor),
         *_number_pieces(text, masked, classifier, counter, unmarkable),
     ]
     pieces.sort(key=lambda piece: piece.start)
@@ -280,7 +282,7 @@ def _block_pieces(placeholders, results, project, counter) -> list[_Piece]:
     """Each table, its numbers marked, and each figure."""
     pieces = []
     for placeholder in placeholders:
-        if placeholder.is_value or results is None:
+        if placeholder.is_value or placeholder.is_anchor or results is None:
             continue
         if placeholder.namespace == "table":
             table = results.tables.get(placeholder.key)

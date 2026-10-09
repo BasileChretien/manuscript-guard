@@ -46,20 +46,25 @@ def main() -> None:
     # this run applied, and G2 fails either one typed instead.
     alpha = em.parameter("alpha", 0.05)
     min_cases = em.parameter("signal.min_cases", 3)
-    # The normal quantile for that alpha, to two places as the textbook writes it: 1.96.
-    z = round(NormalDist().inv_cdf(1 - alpha / 2), 2)
 
-    a = sum(1 for r in rows if r["drug"] == DRUG and r["event"] == EVENT)
-    b = sum(1 for r in rows if r["drug"] == DRUG and r["event"] != EVENT)
-    c = sum(1 for r in rows if r["drug"] != DRUG and r["event"] == EVENT)
-    d = sum(1 for r in rows if r["drug"] != DRUG and r["event"] != EVENT)
+    # Each step the Methods describe is marked, and the paragraph describing it ends with
+    # {{method.<name>}}. G9 keeps each step and its paragraph as a pair that a person read
+    # together, and names the pair when either changes.
+    with em.step("ror"):
+        a = sum(1 for r in rows if r["drug"] == DRUG and r["event"] == EVENT)
+        b = sum(1 for r in rows if r["drug"] == DRUG and r["event"] != EVENT)
+        c = sum(1 for r in rows if r["drug"] != DRUG and r["event"] == EVENT)
+        d = sum(1 for r in rows if r["drug"] != DRUG and r["event"] != EVENT)
+        ror = (a / b) / (c / d)
 
-    ror = (a / b) / (c / d)
-    se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
-    low = math.exp(math.log(ror) - z * se)
-    high = math.exp(math.log(ror) + z * se)
-    low90 = math.exp(math.log(ror) - 1.645 * se)
-    high90 = math.exp(math.log(ror) + 1.645 * se)
+    with em.step("ci"):
+        # The normal quantile for that alpha, to two places as the textbook writes it: 1.96.
+        z = round(NormalDist().inv_cdf(1 - alpha / 2), 2)
+        se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+        low = math.exp(math.log(ror) - z * se)
+        high = math.exp(math.log(ror) + z * se)
+        low90 = math.exp(math.log(ror) - 1.645 * se)
+        high90 = math.exp(math.log(ror) + 1.645 * se)
 
     years = sorted({int(r["year"]) for r in rows})
     serious = sum(
@@ -68,7 +73,8 @@ def main() -> None:
 
     # The signal criterion of the Methods, applied. It was stated there and computed nowhere
     # until the threshold had to be declared: a parameter nobody reads is a G2 failure.
-    em.value("signal.met", a >= min_cases and low > 1, quoted=False)
+    with em.step("signal"):
+        em.value("signal.met", a >= min_cases and low > 1, quoted=False)
     em.software("python")
     em.software("statsmodels")
 
@@ -76,34 +82,36 @@ def main() -> None:
     # recorded as the fit describes itself, and each variable it reads is declared with the
     # kind it is meant to be: G15 holds the two to each other, and the paper's table of the
     # model is made from them rather than typed.
-    frame = pd.DataFrame(rows)
-    frame["hepatic"] = (frame["event"] == EVENT).astype(int)
-    frame["exposed"] = (frame["drug"] == DRUG).astype(int)
-    em.variable("hepatic", "binary", label="hepatic injury", levels=[0, 1],
-                values=frame["hepatic"])
-    em.variable("exposed", "binary", label="example-drug", levels=[0, 1],
-                values=frame["exposed"])
-    em.variable("age_group", "categorical", label="age group",
-                levels=["18-44", "45-64", "65-74", "75+"], reference="18-44",
-                values=frame["age_group"])
-    em.variable("sex", "binary", label="sex", levels=["F", "M"], reference="F",
-                values=frame["sex"])
-    fit = smf.glm(
-        "hepatic ~ exposed + C(age_group, Treatment('18-44')) + C(sex, Treatment('F'))",
-        frame,
-        family=sm.families.Binomial(),
-    ).fit()
-    em.model(
-        "adjusted",
-        fit,
-        name="Adjusted model",
-        description="The reporting odds ratio of the primary analysis, adjusted for the two "
-        "patient characteristics the database records for every report.",
-    )
-    adjusted_low, adjusted_high = (math.exp(b) for b in fit.conf_int(alpha=alpha).loc["exposed"])
-    em.interval(
-        "ror_adjusted", math.exp(fit.params["exposed"]), adjusted_low, adjusted_high, digits=3
-    )
+    with em.step("adjusted"):
+        frame = pd.DataFrame(rows)
+        frame["hepatic"] = (frame["event"] == EVENT).astype(int)
+        frame["exposed"] = (frame["drug"] == DRUG).astype(int)
+        em.variable("hepatic", "binary", label="hepatic injury", levels=[0, 1],
+                    values=frame["hepatic"])
+        em.variable("exposed", "binary", label="example-drug", levels=[0, 1],
+                    values=frame["exposed"])
+        em.variable("age_group", "categorical", label="age group",
+                    levels=["18-44", "45-64", "65-74", "75+"], reference="18-44",
+                    values=frame["age_group"])
+        em.variable("sex", "binary", label="sex", levels=["F", "M"], reference="F",
+                    values=frame["sex"])
+        fit = smf.glm(
+            "hepatic ~ exposed + C(age_group, Treatment('18-44')) + C(sex, Treatment('F'))",
+            frame,
+            family=sm.families.Binomial(),
+        ).fit()
+        em.model(
+            "adjusted",
+            fit,
+            name="Adjusted model",
+            description="The reporting odds ratio of the primary analysis, adjusted for the "
+            "two patient characteristics the database records for every report.",
+        )
+        bounds = fit.conf_int(alpha=alpha).loc["exposed"]
+        adjusted_low, adjusted_high = (math.exp(bound) for bound in bounds)
+        em.interval(
+            "ror_adjusted", math.exp(fit.params["exposed"]), adjusted_low, adjusted_high, digits=3
+        )
 
     em.value("cohort.n_reports", len(rows))
     em.value("cohort.n_drug_reports", a + b)

@@ -127,6 +127,10 @@ BINDS_AT = {
     "checklist-item-unanswered": INTERNAL_REVIEW,
     "checklist-non-reason": INTERNAL_REVIEW,
     "methods-drift": INTERNAL_REVIEW,
+    # The same reading kept pair by pair: a step and the text pointing at it.
+    "method-pair-unread": INTERNAL_REVIEW,
+    "method-step-changed": INTERNAL_REVIEW,
+    "method-claim-changed": INTERNAL_REVIEW,
     # A stale build is normal while drafting — you rebuild when you need the document. It
     # stops being normal once the draft is something other people read.
     "document-stale": INTERNAL_REVIEW,

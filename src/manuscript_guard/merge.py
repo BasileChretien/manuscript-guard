@@ -38,6 +38,7 @@ from manuscript_guard.docxtext import Block, spaced
 from manuscript_guard.roundtrip import (
     Alignment,
     align,
+    anchors_apart,
     marked_blocks,
     moves,
     only_definitions_between,
@@ -1919,14 +1920,18 @@ def plan_import(
             refused.append(Refusal(name, now, (_MAY_HOLD.format(how=how),)))
         elif part := _split_off(was, now, fresh):
             refused.append(Refusal(name, now, (_SPLIT_OFF.format(text=_squashed(part)[:60]),)))
+        elif (apart := anchors_apart(source)) is None:
+            refused.append(Refusal(name, now, (_ANCHORED,)))
         else:
-            aligned = align(source, was, now, extents.get(name), abbreviations)
-            if aligned.rebuilt == source:
+            # The anchors that end the paragraph print nothing, and go back where they were.
+            bare, anchors = apart
+            aligned = align(bare, was, now, extents.get(name), abbreviations)
+            if aligned.rebuilt == bare:
                 # Only pandoc's typesetting was undone in Word - a no-break space it put after
                 # "e.g." taken out again - and the next build puts it back. Nothing to merge.
                 continue
             if aligned.rebuilt:
-                merged[name] = aligned.rebuilt
+                merged[name] = aligned.rebuilt + anchors
             else:
                 refused.append(Refusal(name, now, why(aligned)))
 
@@ -2156,6 +2161,11 @@ _STRANDED = (
 _STRANDS = (
     "with this change, another paragraph in the file would reach the next build without its "
     "identifier, so the rewordings in this file are not applied. Make them in the .md."
+)
+_ANCHORED = (
+    "it holds a Methods anchor, {{method.<step>}}, before the end of the paragraph. An anchor "
+    "prints nothing, so Word's text cannot say where it goes in the new wording. Make the edit "
+    "in the .md."
 )
 _BESIDE_LOST = (
     "the paragraph after it in the document as sent did not come back, and is not compared, "

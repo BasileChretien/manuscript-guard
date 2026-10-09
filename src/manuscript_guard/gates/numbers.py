@@ -157,8 +157,8 @@ def check_numbers(
                     message=f"{raw} is not a valid binding and will be printed literally",
                     path=path,
                     line=line,
-                    hint="the form is {{results.key}}, {{lit.key}}, {{table.key}} "
-                    "or {{figure.key}}",
+                    hint="the form is {{results.key}}, {{lit.key}}, {{table.key}}, "
+                    "{{figure.key}} or {{method.step}}",
                 )
             )
 

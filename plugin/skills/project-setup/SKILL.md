@@ -146,7 +146,7 @@ Each finding names a code. The code says where to go:
 | `no-analysis-plan`, `plan-section-*` | [analysis-plan](../analysis-plan/SKILL.md) |
 | `unclassified-number`, `unresolved-binding`, `unquoted-result`, `typed-parameter`, `parameter-unread`, `hand-authored-table`, G1 and G8 codes | [results-binding](../results-binding/SKILL.md) |
 | `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact`, `abbreviation-*`, `term-avoided`, `vocabulary-conflict`, `spelling-*`, `notation-*` | [manuscript-writing](../manuscript-writing/SKILL.md) |
-| `methods-drift`, `methods-never-reconciled`, G15 codes (`model-…`, `variable-…`) | [methods-writer](../methods-writer/SKILL.md) |
+| `methods-drift`, `methods-never-reconciled`, `method-…`, G15 codes (`model-…`, `variable-…`) | [methods-writer](../methods-writer/SKILL.md) |
 | `literature-source-missing`, `quote-not-in-source`, `value-not-in-quote` | [literature-verify](../literature-verify/SKILL.md) |
 | `figure-unreviewed`, `figure-review-stale` | [figure-review](../figure-review/SKILL.md) |
 | `journal-profile-missing`, `over-journal-limit`, `missing-required-*` | [journal-profile](../journal-profile/SKILL.md) |

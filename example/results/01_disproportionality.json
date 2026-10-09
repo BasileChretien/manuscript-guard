@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "afa321e802045d12094afc4134d0f2cb09058b39a011e0183af24f23a9c08b72",
-    "generated_at": "2026-10-09T02:38:57+00:00",
+    "generated_by_sha256": "32a57aca0fe3858a5ceb829265c4f546bed8829567437a9061511e84a08d7ef4",
+    "generated_at": "2026-10-09T05:46:35+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.2.435"
     },
     "vcs": {
-      "sha": "c52ad2139f49d5ca564a109f4233220c45eaf778",
+      "sha": "7d3b5e8288e7be72f49f4fb19199d8658d8b4937",
       "dirty": true,
-      "branch": "models-wip"
+      "branch": "claude/ecstatic-shannon-ja5omd"
     },
     "inputs": [
       {
@@ -633,6 +633,36 @@
       },
       "name": "Adjusted model",
       "description": "The reporting odds ratio of the primary analysis, adjusted for the two patient characteristics the database records for every report."
+    }
+  },
+  "steps": {
+    "ror": {
+      "lines": [
+        54,
+        58
+      ],
+      "digest": "43994ea0f861fd9c11dd95e974d11a8092dac8245846d047087c06a0e4464051"
+    },
+    "ci": {
+      "lines": [
+        62,
+        67
+      ],
+      "digest": "341304bd156666d20b98966338e40a99de96809c7d95a808720cc8043ee94978"
+    },
+    "signal": {
+      "lines": [
+        77,
+        77
+      ],
+      "digest": "1a1195ebf7080fea38f6312f1009ecdaf5ce423026ab5573b99fc1ef338e5bd9"
+    },
+    "adjusted": {
+      "lines": [
+        86,
+        114
+      ],
+      "digest": "ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf"
     }
   }
 }

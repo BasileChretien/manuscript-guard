@@ -393,6 +393,30 @@ VARIABLE_KINDS = ("binary", "categorical", "ordinal", "continuous", "count")
 _MOST_LEVELS = 50
 
 
+def _modules_of(name: str) -> set[str]:
+    """The top-level modules an installed distribution provides.
+
+    `packages_distributions` answers from each distribution's `top_level.txt`, and in Python
+    3.10 from nothing else. A wheel built without one (statsmodels 0.15, by meson-python) then
+    provides no module at all, and `software("statsmodels")` was refused in a run that had
+    imported it. The distribution's own list of files says the same thing in every version.
+    """
+    modules = {
+        module
+        for module, owners in importlib.metadata.packages_distributions().items()
+        if any(owner.lower() == name.lower() for owner in owners)
+    }
+    for file in importlib.metadata.distribution(name).files or ():
+        top = file.parts[0] if file.parts else ""
+        if not top or top.startswith(".") or top.endswith((".dist-info", ".data", ".pth")):
+            continue
+        modules.add(top.removesuffix(".py"))
+    # A distribution installed by a system package manager may list no files either; its
+    # module is then most often its own name.
+    modules.add(re.sub(r"[-.]", "_", name.lower()))
+    return modules
+
+
 def _level(level: object) -> str:
     """A level as the fragment writes it: the text a reader sees, whatever its type."""
     if isinstance(level, bool):
@@ -766,12 +790,7 @@ class Emitter:
                 raise ValueError(
                     f"software {name!r}: no installed distribution has that name"
                 ) from None
-            modules = {
-                module
-                for module, owners in importlib.metadata.packages_distributions().items()
-                if any(owner.lower() == name.lower() for owner in owners)
-            }
-            if not modules & set(sys.modules):
+            if not _modules_of(name) & set(sys.modules):
                 raise ValueError(
                     f"software {name!r}: version {version} is installed, but this run has not "
                     f"imported it, so it computed none of these results"

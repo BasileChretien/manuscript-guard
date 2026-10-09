@@ -1262,7 +1262,10 @@ Methods bind both. A version is the environment and not a result, so `verify`, r
 analysis on another machine, reports a version other than the one on disk as a warning
 (`rerun-other-software`) and holds every other value to agreeing. Which values are versions
 it reads from the re-run, so a fragment edited to call a changed result "software" is still
-a difference. G2 fails a declared value typed instead: a Methods-only convention whose
+a difference. A fitted model's last digits are the machine's too: an iterative fit
+on macOS and on Linux agree to about fifteen digits and not to the last bit. So verify holds
+a float to agreeing in nine significant digits, and its display, which is what the paper
+prints, to agreeing exactly. G2 fails a declared value typed instead: a Methods-only convention whose
 number equals a parameter, or a software version equal to a declared one. Only the
 Methods-only conventions count, because they are the thresholds an author chooses in advance;
 the `2` of a `2 x 2` table names a structure whatever a parameter equals.

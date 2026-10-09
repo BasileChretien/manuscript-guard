@@ -86,6 +86,9 @@ class Comparison:
     only_on_disk: tuple[str, ...] = ()
     only_on_rerun: tuple[str, ...] = ()
     error: str | None = None
+    # Software versions (`em.software`) the re-run found other than the ones on disk. The
+    # environment, not a result: the re-run is reported, and not as a failure to reproduce.
+    environment: tuple[tuple[str, object, object], ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -374,16 +377,25 @@ def verify(project, *, only: list[str] | None = None) -> VerifyReport:
 
 def _compare(name: str, on_disk: dict, rerun: dict) -> Comparison:
     before, after = _values_of(on_disk), _values_of(rerun)
-    agreed, differed = [], []
+    # A version is the software the run found, and a re-run on another machine finds its
+    # own. Read from the re-run, which this command just made: a fragment edited to call a
+    # result "software" does not turn its changed value into a note about the environment.
+    software = {
+        key for key, spec in rerun.get("values", {}).items() if spec.get("role") == "software"
+    }
+    agreed, differed, environment = [], [], []
     for key in sorted(set(before) & set(after)):
         if _same(before[key], after[key]):
             agreed.append(key)
+        elif key in software:
+            environment.append((key, before[key], after[key]))
         else:
             differed.append((key, before[key], after[key]))
     return Comparison(
         fragment=name,
         agreed=tuple(agreed),
         differed=tuple(differed),
+        environment=tuple(environment),
         only_on_disk=tuple(sorted(set(before) - set(after))),
         only_on_rerun=tuple(sorted(set(after) - set(before))),
     )
@@ -414,6 +426,19 @@ def to_report(result: VerifyReport) -> Report:
                     f"the analysis produced {now!r}",
                     hint="either the fragment was edited after it was written, or the "
                     "analysis is not deterministic — set a seed and try again",
+                )
+            )
+        for key, was, now in comparison.environment:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="rerun-other-software",
+                    severity=WARN,
+                    message=f"{comparison.fragment}: the re-run found "
+                    f"{key.removeprefix('software.')} {now[1]}, and the results on disk were "
+                    f"written with {was[1]}",
+                    hint="the values agree or are reported above; the Methods name the version "
+                    "on disk, so re-run the analysis where the paper's results are made",
                 )
             )
         for key in comparison.only_on_disk:

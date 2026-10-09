@@ -1257,7 +1257,11 @@ signal at all.
 So the analysis declares them, in both emitters: `alpha = em.parameter("alpha", 0.05)` records
 `param.alpha` and hands the value back for the code to use. `em.software("statsmodels")`
 records the version the run imported, and refuses a distribution the run never imported. The
-Methods bind both. G2 fails a declared value typed instead: a Methods-only convention whose
+Methods bind both. A version is the environment and not a result, so `verify`, re-running the
+analysis on another machine, reports a version other than the one on disk as a warning
+(`rerun-other-software`) and holds every other value to agreeing. Which values are versions
+it reads from the re-run, so a fragment edited to call a changed result "software" is still
+a difference. G2 fails a declared value typed instead: a Methods-only convention whose
 number equals a parameter, or a software version equal to a declared one. Only the
 Methods-only conventions count, because they are the thresholds an author chooses in advance;
 the `2` of a `2 x 2` table names a structure whatever a parameter equals.

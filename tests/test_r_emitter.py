@@ -459,3 +459,124 @@ def test_both_emitters_digest_a_script_the_same_way(tmp_path: Path) -> None:
     # And the normalisation must be real on both sides, not agreement on doing nothing.
     assert from_r["lf.py"] == from_r["crlf.py"] == from_r["cr.py"]
     assert from_r["changed.py"] != from_r["lf.py"]
+
+
+PARAMETERS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+alpha <- em$parameter("alpha", 0.025)
+z <- qnorm(1 - alpha / 2)
+min_cases <- em$parameter("signal.min_cases", 3L)
+em$parameter("forgotten", 7L)
+signal <- 5 >= em$parameter("inline", 2L)
+ratio <- em$parameter("ratio", 0.123456, digits = 2)
+em$software("R")
+em$software("stats")
+em$write()
+"""
+
+PARAMETERS_PY = """
+from statistics import NormalDist
+from manuscript_guard.emit import Emitter
+em = Emitter(__file__)
+alpha = em.parameter("alpha", 0.025)
+z = NormalDist().inv_cdf(1 - alpha / 2)
+min_cases = em.parameter("signal.min_cases", 3)
+em.parameter("forgotten", 7)
+signal = 5 >= em.parameter("inline", 2)
+ratio = em.parameter("ratio", 0.123456, digits=2)
+em.software("python")
+em.write()
+"""
+
+
+def _parameter_project(tmp_path: Path) -> Path:
+    root = tmp_path / "paper"
+    (root / "analysis").mkdir(parents=True)
+    (root / "paper.yaml").write_text(
+        'schema: manuscript-guard/paper/1\ntitle: "P"\nenglish_variant: en-GB\n', encoding="utf-8"
+    )
+    return root
+
+
+def _run_r(script: Path, root: Path) -> subprocess.CompletedProcess:
+    out = subprocess.run(
+        [RSCRIPT, "--vanilla", str(script)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=root,
+    )  # fmt: skip
+    if out.returncode == 3:
+        pytest.skip("R packages jsonlite and digest are not installed")
+    return out
+
+
+def test_r_and_python_declare_and_read_parameters_alike(tmp_path: Path) -> None:
+    """One meaning in two languages: the same calls give the same keys, values, displays,
+    and the same answer to whether the script reads what it declared."""
+    import runpy
+
+    root = _parameter_project(tmp_path)
+    r_script = root / "analysis" / "params.R"
+    r_script.write_text(
+        PARAMETERS_R % {"emit": EMIT_R.as_posix(), "script": r_script.as_posix()},
+        encoding="utf-8",
+    )
+    out = _run_r(r_script, root)
+    assert out.returncode == 0, f"{out.stdout}\n{out.stderr}"
+    py_script = root / "analysis" / "params.py"
+    py_script.write_text(PARAMETERS_PY, encoding="utf-8")
+
+    def written(name: str) -> dict:
+        path = root / "results" / name
+        document = json.loads(path.read_text(encoding="utf-8"))
+        validate(document, "results", path)
+        return document["values"]
+
+    from_r = written("params.json")
+    runpy.run_path(str(py_script), run_name="__main__")
+    from_python = written("params.json")
+    params_r = {k: v for k, v in from_r.items() if k.startswith("param.")}
+    params_py = {k: v for k, v in from_python.items() if k.startswith("param.")}
+    assert params_r == params_py
+    assert params_py["param.alpha"] == {
+        "value": 0.025, "display": "0.025", "role": "parameter", "read": True,
+    }  # fmt: skip
+    assert [params_py[f"param.{k}"]["read"] for k in ("signal.min_cases", "forgotten")] == [
+        False,
+        False,
+    ]
+
+
+def test_r_software_is_the_version_the_session_loaded(tmp_path: Path) -> None:
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "soft.R"
+    script.write_text(
+        PARAMETERS_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    values = json.loads((root / "results" / "soft.json").read_text(encoding="utf-8"))["values"]
+    for key in ("software.r", "software.stats"):
+        assert values[key]["role"] == "software" and values[key]["label"] is True
+        assert values[key]["value"] == values[key]["display"]
+
+
+@pytest.mark.parametrize(
+    ("call", "refusal"),
+    [
+        ('em$software("splines")', "has not loaded it"),
+        ('em$parameter("Alpha", 0.05)', "lowercase letters"),
+    ],
+)
+def test_r_refuses_what_python_refuses(tmp_path: Path, call: str, refusal: str) -> None:
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "refused.R"
+    script.write_text(
+        f'source("{EMIT_R.as_posix()}")\nem <- mg_emitter("{script.as_posix()}")\n{call}\n',
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode != 0 and refusal in out.stderr, out.stderr

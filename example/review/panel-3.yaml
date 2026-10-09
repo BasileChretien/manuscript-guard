@@ -1,0 +1,24 @@
+schema: manuscript-guard/panel/1
+round: 3
+opened_on: 2026-10-09
+manuscript_sha256: 9ed5b12b5cebe94bfb7fdef27246cfc740a565af28d110c24a8d28c806dec432
+blinded: false
+rationale: 'A revision round. The Methods now bind the alpha and the signal threshold to
+  the parameters the analysis declares, no longer say the intervals are 95% throughout,
+  and name the Python version; the analysis now applies the signal criterion it states.
+  Nothing outside the Methods changed. The two remits from round one whose subject
+  changed read the paper again, with the earlier rounds in front of them: the estimator
+  and its interval, and the signal criterion as a design choice.'
+reviewers:
+- id: pharmacoepidemiologist
+  role: Pharmacoepidemiologist
+  remit: Whether the design can answer the question asked. Case and exposure definitions,
+    denominators, the difference between disproportionate reporting and risk, and
+    the biases specific to spontaneous reporting.
+  why: The revision changes how the signal criterion is stated and applied.
+- id: biostatistician
+  role: Biostatistician
+  remit: Whether the estimator is right and stated fully enough to reproduce. Interval
+    construction, small-cell behaviour, multiplicity, and whether the reader can reconstruct
+    the estimate from what is reported.
+  why: The revision changes how the interval and its alpha are stated.

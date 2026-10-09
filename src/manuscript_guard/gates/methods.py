@@ -30,10 +30,12 @@ import yaml
 
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
+from manuscript_guard.contracts.values import Value
 from manuscript_guard.emit import sha256_of
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SOURCE_SUFFIXES
+from manuscript_guard.text.placeholders import substitute
 from manuscript_guard.text.sections import split_sections
 
 GATE = "G9"
@@ -104,7 +106,7 @@ def methods_text(project: Project) -> str:
     return ""
 
 
-def check_methods(project: Project) -> Report:
+def check_methods(project: Project, namespace: dict[str, Value] | None = None) -> Report:
     current = analysis_digests(project)
     if not current:
         return Report(counts={"analysis_files": 0})
@@ -144,19 +146,28 @@ def check_methods(project: Project) -> Report:
             )
         )
 
-    report = report.merge(_compare_parameters(project, lock))
+    report = report.merge(_compare_parameters(project, lock, namespace))
     return report.with_counts(
         analysis_files=len(current),
         analysis_changed=len(drift.changed) + len(drift.added) + len(drift.removed),
     )
 
 
-def _compare_parameters(project: Project, lock: dict) -> Report:
-    """The few things both sides state explicitly, and where disagreement is checkable."""
+def _compare_parameters(project: Project, lock: dict, namespace: dict[str, Value] | None) -> Report:
+    """The few things both sides state explicitly, and where disagreement is checkable.
+
+    Read as the Methods print: a value bound there, `{{results.param.alpha}}`, is stated in
+    them, and the source alone does not hold the number.
+    """
     report = Report()
     prose = methods_text(project)
     if not prose:
         return report
+    if namespace is None:
+        from manuscript_guard.contracts import load_namespace
+
+        namespace = load_namespace(project)[0]
+    prose = substitute(prose, {ref: value.display for ref, value in namespace.items()})
 
     declared = lock.get("parameters", {})
     for name, expected in declared.items():

@@ -376,6 +376,50 @@ mg_git <- function(root, args) {
 #' em$write()
 #' }
 #' @export
+# Whether the value `parameter(key, ...)` hands back is read again by the script, mirroring
+# the Python emitter's `parameter_read`. FALSE when the call is a statement of its own or
+# assigns a name no other line reads; TRUE when the name is read, or when the call sits inside
+# a larger expression. NULL when the script cannot be parsed, the call is not found, or the
+# value goes somewhere this does not follow. A name read again is all this establishes.
+mg_parameter_read <- function(path, key) {
+  parsed <- tryCatch(parse(path, keep.source = TRUE), error = function(e) NULL)
+  if (is.null(parsed)) return(NULL)
+  pd <- utils::getParseData(parsed)
+  if (is.null(pd) || nrow(pd) == 0) return(NULL)
+  pd <- pd[order(pd$line1, pd$col1), , drop = FALSE]
+  parent_of <- function(id) pd$parent[pd$id == id]
+  children <- function(id) pd[pd$parent == id, , drop = FALSE]
+  quoted <- c(sprintf('"%s"', key), sprintf("'%s'", key))
+  calls <- integer()
+  for (symbol in pd$id[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == "parameter"]) {
+    call <- parent_of(parent_of(symbol))
+    strings <- pd$id[pd$token == "STR_CONST" & pd$text %in% quoted]
+    if (any(vapply(strings, function(s) parent_of(parent_of(s)) == call, logical(1)))) {
+      calls <- c(calls, call)
+    }
+  }
+  if (length(calls) != 1) return(NULL)
+  call <- calls[[1]]
+  around <- parent_of(call)
+  if (around == 0) return(FALSE)
+  siblings <- children(around)
+  if ("'{'" %in% siblings$token) {
+    # The last expression of a block is its value, which a function returns.
+    exprs <- siblings$id[siblings$token != "'{'" & siblings$token != "'}'"]
+    return(if (utils::tail(exprs, 1) == call) NULL else FALSE)
+  }
+  arrows <- c("LEFT_ASSIGN", "EQ_ASSIGN", "RIGHT_ASSIGN")
+  if (!any(siblings$token %in% arrows)) return(TRUE)
+  exprs <- siblings$id[!siblings$terminal]
+  rightwards <- "RIGHT_ASSIGN" %in% siblings$token
+  value <- if (rightwards) exprs[[1]] else utils::tail(exprs, 1)
+  if (value != call) return(TRUE)
+  target <- if (rightwards) utils::tail(exprs, 1) else exprs[[1]]
+  name <- children(target)
+  if (nrow(name) != 1 || name$token != "SYMBOL") return(NULL)
+  any(pd$token == "SYMBOL" & pd$text == name$text & pd$id != name$id)
+}
+
 mg_emitter <- function(script, inputs = character(), root = NULL) {
   script_path <- normalizePath(script, winslash = "/", mustWork = TRUE)
   project_root <- if (is.null(root)) mg_find_root(dirname(script_path)) else normalizePath(root, winslash = "/")
@@ -415,6 +459,56 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     if (!is.null(level)) entry$level <- level
     state$values[[key]] <- entry
     invisible(NULL)
+  }
+
+  # Record a choice the analysis made, and hand it back for the analysis to use, mirroring
+  # the Python `parameter()`:
+  #
+  #   alpha <- em$parameter("alpha", 0.05)
+  #   z <- qnorm(1 - alpha / 2)
+  #
+  # Writes `param.alpha`, which the Methods quote as {{results.param.alpha}}. The script is
+  # read where the call stands, and the fragment records whether the value handed back is
+  # read again: declared is not used, and G2 fails a parameter never read.
+  parameter <- function(key, value, display = NULL, digits = NULL, unit = NULL,
+                        note = NULL) {
+    if (!grepl("^[a-z0-9_]+(\\.[a-z0-9_]+)*$", key)) {
+      stop("parameter ", key, ": a key is lowercase letters, digits and underscores, in ",
+           "parts joined by dots, so that the Methods can bind it", call. = FALSE)
+    }
+    full <- paste0("param.", key)
+    # Written as typed, as the Python emitter writes it: a threshold is not rounded.
+    if (is.double(value) && is.null(display) && is.null(digits)) {
+      display <- trimws(formatC(value, digits = 15, format = "g"))
+    }
+    value(full, value, display = display, digits = digits, unit = unit, note = note)
+    state$values[[full]]$role <- "parameter"
+    read <- mg_parameter_read(script_path, key)
+    if (!is.null(read)) state$values[[full]]$read <- read
+    invisible(value)
+  }
+
+  # The version of a piece of software this run used, as the run found it, mirroring the
+  # Python `software()`. "R" is the interpreter; any other name must be a package this
+  # session has loaded, because the Methods would otherwise name software that computed
+  # nothing.
+  software <- function(name) {
+    if (identical(name, "R")) {
+      version <- paste(R.version$major, R.version$minor, sep = ".")
+    } else {
+      if (!(name %in% loadedNamespaces())) {
+        stop("software ", name, ": this session has not loaded it, so it computed none ",
+             "of these results", call. = FALSE)
+      }
+      version <- as.character(utils::packageVersion(name))
+    }
+    key <- paste0("software.", gsub("[^a-z0-9_]", "_", tolower(name)))
+    if (!is.null(state$values[[key]])) {
+      stop(key, " emitted twice by ", script_path, call. = FALSE)
+    }
+    state$values[[key]] <- list(value = version, display = version, label = TRUE,
+                                role = "software")
+    invisible(version)
   }
 
   # Publish an estimate and its interval as one thing, mirroring the Python `interval()`.
@@ -725,6 +819,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
 
   list(
     value = value,
+    parameter = parameter,
+    software = software,
     interval = interval,
     cell = mg_cell,
     table = table_,

@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import math
 from pathlib import Path
+from statistics import NormalDist
 
 from manuscript_guard.emit import Emitter
 
@@ -34,6 +35,16 @@ def main() -> None:
     with DATA.open(encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
 
+    em = Emitter(__file__, inputs=[DATA])
+
+    # The choices the Methods state, declared where the code makes them and used from here.
+    # The Methods bind them, so the alpha and the signal criterion they print are the ones
+    # this run applied, and G2 fails either one typed instead.
+    alpha = em.parameter("alpha", 0.05)
+    min_cases = em.parameter("signal.min_cases", 3)
+    # The normal quantile for that alpha, to two places as the textbook writes it: 1.96.
+    z = round(NormalDist().inv_cdf(1 - alpha / 2), 2)
+
     a = sum(1 for r in rows if r["drug"] == DRUG and r["event"] == EVENT)
     b = sum(1 for r in rows if r["drug"] == DRUG and r["event"] != EVENT)
     c = sum(1 for r in rows if r["drug"] != DRUG and r["event"] == EVENT)
@@ -41,8 +52,8 @@ def main() -> None:
 
     ror = (a / b) / (c / d)
     se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
-    low = math.exp(math.log(ror) - 1.96 * se)
-    high = math.exp(math.log(ror) + 1.96 * se)
+    low = math.exp(math.log(ror) - z * se)
+    high = math.exp(math.log(ror) + z * se)
     low90 = math.exp(math.log(ror) - 1.645 * se)
     high90 = math.exp(math.log(ror) + 1.645 * se)
 
@@ -51,7 +62,11 @@ def main() -> None:
         1 for r in rows if r["drug"] == DRUG and r["event"] == EVENT and r["serious"] == "Y"
     )
 
-    em = Emitter(__file__, inputs=[DATA])
+    # The signal criterion of the Methods, applied. It was stated there and computed nowhere
+    # until the threshold had to be declared: a parameter nobody reads is a G2 failure.
+    em.value("signal.met", a >= min_cases and low > 1, quoted=False)
+    em.software("python")
+
     em.value("cohort.n_reports", len(rows))
     em.value("cohort.n_drug_reports", a + b)
     em.value("cohort.period_start", years[0], display=str(years[0]))

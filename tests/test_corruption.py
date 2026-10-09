@@ -521,7 +521,11 @@ def test_an_escaped_threshold_is_still_a_convention(project: Path) -> None:
         r"Significance was set at p \< 0.05; a signal needed ROR \> 2, IC025 \> 0 and \>3 cases.",
     )
     report = gate_report(project)
-    assert report.ok, report.render(project)
+    # The example declares its alpha and its case threshold, so the two that equal them fail
+    # as typed parameters: a verdict only a number read as a convention can get.
+    typed = sorted(f.message.split()[0] for f in report.failures if f.code == "typed-parameter")
+    assert typed == ["'0.05'", "'3'"], report.render(project)
+    assert codes(report) == {"typed-parameter"}, report.render(project)
 
 
 @pytest.mark.parametrize(
@@ -5568,12 +5572,12 @@ def test_a_note_in_another_file_is_judged_where_it_stands(project: Path) -> None
         (
             (_IN_RESULTS,),
             _IN_METHODS,
-            "[^n]: A note.\n\nSignificance was set at p < 0.05.\n",
+            "[^n]: A note.\n\nSignificance was set at p < 0.01.\n",
         ),
         (
             (_IN_RESULTS,),
             _IN_METHODS,
-            "[^n]: A note.\n\n   Significance was set at p < 0.05.\n",
+            "[^n]: A note.\n\n   Significance was set at p < 0.01.\n",
         ),
     ],
 )
@@ -8171,12 +8175,18 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
-    """One record a reviewer, no readers named: nothing about them changed."""
+    """One record a reviewer, no readers named: nothing about them changed. The third round
+    read the revision that bound the Methods' parameters, with the earlier rounds in front of
+    it, so it supersedes them and says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
-    assert report.ok and not report.findings, report.render(project)
-    assert report.counts["review_rounds_complete"] == 2
+    assert report.ok, report.render(project)
+    said = sorted((f.code, f.path.parent.name) for f in report.findings)
+    assert said == [("review-superseded", "round-1")] * 3 + [
+        ("review-superseded", "round-2")
+    ] * 2 + [("round-not-blinded", "review")], report.render(project)
+    assert report.counts["review_rounds_complete"] == 3
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -9793,7 +9803,8 @@ def test_a_language_pass_that_retyped_a_level_of_confidence_is_caught(project: P
     assert gate_report(project).ok, "the gates see nothing wrong with it"
     lost, new = report.findings
     assert (lost.code, new.code) == ("fact-lost", "fact-new")
-    assert lost.message.startswith("the number '90' is gone: it stood on line ")
+    # The Methods name the 90% interval too, so the number is one of two that stood.
+    assert lost.message.startswith("the number '90' stood twice before the edit, on lines ")
     assert new.message.startswith("the number '95' stands ")
     assert new.line == line_of(after, "; 95% CI {{results.ror.ci90_low}}")
 
@@ -9816,3 +9827,115 @@ def test_a_language_pass_that_only_reworded_passes(project: Path) -> None:
     assert not report.findings, report.render(project)
     assert report.counts["reworded_bindings"] > 10
     assert report.counts["reworded_citations"] > 2
+
+
+# --------------------------------------------------------------------------------------
+# Parameters: a threshold the analysis declares is bound in the Methods, and read by the code.
+# --------------------------------------------------------------------------------------
+
+
+def _analysis(root: Path) -> Path:
+    return root / "analysis" / "01_disproportionality.py"
+
+
+def _rerun_disproportionality(root: Path) -> None:
+    import subprocess
+    import sys
+
+    out = subprocess.run(
+        [sys.executable, str(_analysis(root))], capture_output=True, text=True, cwd=root
+    )
+    assert out.returncode == 0, out.stderr
+
+
+def _replace_once(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert text.count(old) == 1, old
+    path.write_text(text.replace(old, new), encoding="utf-8", newline="")
+
+
+def test_the_example_reads_the_parameters_it_declares(project: Path) -> None:
+    namespace, *_ = load_namespace(load_project(project)[0])
+    for key in ("results.param.alpha", "results.param.signal.min_cases"):
+        assert namespace[key].role == "parameter" and namespace[key].read is True, key
+    assert namespace["results.software.python"].role == "software"
+
+
+@pytest.mark.parametrize(
+    ("binding", "typed"),
+    [("{{results.param.alpha}}", "0.05"), ("{{results.param.signal.min_cases}}", "3")],
+)
+def test_a_declared_threshold_typed_in_the_methods_fails(
+    project: Path, binding: str, typed: str
+) -> None:
+    """Typed, it passes as a convention, and stays one after the code has moved on."""
+    _replace_once(main_md(project), binding, typed)
+    report = gate_report(project)
+    found = [f for f in report.failures if f.code == "typed-parameter"]
+    assert len(found) == 1, report.render(project)
+    text = main_md(project).read_text(encoding="utf-8").splitlines()
+    assert text[found[0].line - 1][found[0].col - 1 :].startswith(typed), found
+    assert binding in found[0].hint
+
+
+def test_a_typed_software_version_fails(project: Path) -> None:
+    namespace, *_ = load_namespace(load_project(project)[0])
+    version = namespace["results.software.python"].display
+    _replace_once(main_md(project), "{{results.software.python}}", version)
+    assert "typed-software-version" in codes(gate_report(project))
+
+
+def test_a_parameter_declared_and_never_read_fails(project: Path) -> None:
+    """The example's signal criterion before this check: stated, declared, bound, and
+    applied nowhere. Binding the threshold printed the right number for a step that was not
+    there."""
+    _replace_once(_analysis(project), "a >= min_cases and low > 1", "a >= 3 and low > 1")
+    _rerun_disproportionality(project)
+    found = [f for f in gate_report(project).failures if f.code == "parameter-unread"]
+    assert [f.message.split()[0] for f in found] == ["param.signal.min_cases"]
+
+
+def test_a_changed_parameter_reaches_the_methods_and_a_typed_copy_is_named(
+    project: Path,
+) -> None:
+    """Bound, the Methods print the value the code now runs with. Typed, the copy no longer
+    equals the parameter, so it is named as a threshold no parameter has."""
+    _replace_once(_analysis(project), '"signal.min_cases", 3)', '"signal.min_cases", 5)')
+    _rerun_disproportionality(project)
+    namespace, *_ = load_namespace(load_project(project)[0])
+    assert namespace["results.param.signal.min_cases"].display == "5"
+    assert gate_report(project).ok
+
+    _replace_once(main_md(project), "{{results.param.signal.min_cases}}", "3")
+    report = gate_report(project)
+    assert "typed-parameter" not in codes(report)
+    assert [f.code for f in report.warnings if f.code == "threshold-undeclared"] == [
+        "threshold-undeclared"
+    ]
+
+
+def test_a_parameter_equal_to_a_name_is_not_a_typed_threshold(project: Path) -> None:
+    """`2 x 2` names a structure, whatever a parameter equals: only the conventions that
+    hold in the Methods alone are thresholds an analysis chooses."""
+    _replace_once(
+        _analysis(project),
+        '    min_cases = em.parameter("signal.min_cases", 3)\n',
+        '    min_cases = em.parameter("signal.min_cases", 3)\n'
+        '    rows_per_table = em.parameter("rows_per_table", 2)\n'
+        "    assert rows_per_table == 2\n",
+    )
+    _rerun_disproportionality(project)
+    assert "typed-parameter" not in codes(gate_report(project))
+
+
+def test_explain_says_a_declared_threshold_is_typed(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`explain` is what an author reads when a finding surprises them, so it fails what
+    `check` fails, and names the binding to write."""
+    from manuscript_guard.cli import main
+
+    _replace_once(main_md(project), "{{results.param.alpha}}", "0.05")
+    main(["explain", str(main_md(project))])
+    row = next(line for line in capsys.readouterr().out.splitlines() if " 0.05 " in line)
+    assert row.startswith("FAIL") and "typed: write {{results.param.alpha}}" in row, row

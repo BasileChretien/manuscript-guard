@@ -1,0 +1,40 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 3
+reviewer: biostatistician
+reviewed_by: Claude Code
+reviewed_on: '2026-10-09'
+manuscript_sha256: 9ed5b12b5cebe94bfb7fdef27246cfc740a565af28d110c24a8d28c806dec432
+file_sha256:
+  main.md: 0922d855c86b471ef84ecefb1ae1cce6cd03e9f14fccaa05e03899a43ce28518
+  supplementary/S1_code_lists.md: 1a96a28afb119203d8fc24daad63fc46ae36451175cd419c810dad7e49293bc5
+verdict: minor-revision
+summary: 'The revision does what it says: the alpha and the case threshold in the Methods
+  are the values the analysis ran with, and the signal criterion the Methods define is now
+  applied in the code. The estimate and both intervals are unchanged and reconstructable from
+  Table 3. One ambiguity is new with the revision: two intervals are now reported, and the
+  signal definition does not say which one''s lower bound it uses.'
+findings:
+- id: r3-bs-01
+  severity: minor
+  where: Methods, signal criterion
+  finding: The criterion asks for "a lower bound of the confidence interval of the reporting
+    odds ratio above 1", and the paper now reports two intervals for that estimate. The
+    analysis applies the 95% lower bound; the sentence should say so, since the 90% bound
+    is the one signal-detection practice often uses and a reader could take either. Both
+    exclude 1 here, so the conclusion does not depend on it, but the definition should not
+    need the data to disambiguate it.
+- id: r3-bs-02
+  severity: minor
+  where: Results
+  finding: The Methods define a signal and the Results never say whether it was met. "Reporting
+    was disproportionate" is the conclusion the criterion supports, and a reader can check
+    77 cases and a lower bound of 2.89 against it, but the paper should state the outcome of
+    the rule it defined rather than leave it to be inferred.
+- id: r3-bs-03
+  severity: comment
+  where: Methods, interval construction
+  finding: The interval uses 1.96 for an alpha of 0.05, the normal quantile to two places.
+    That is the usual Wald interval and matches every bound reported; the round-one point
+    about naming it Wald was left deliberately and I see no reason to reopen it.

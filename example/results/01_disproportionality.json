@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "0e86c1ed4b7a15d989fbd205a2f6365369941c5f4bc5af778893500afea43e80",
-    "generated_at": "2026-08-05T04:47:49+00:00",
+    "generated_by_sha256": "a34868c776c5688dac6084a8d303ff1e04aa23b133bb3538d38cb9ef9de91eca",
+    "generated_at": "2026-10-09T00:55:07+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.1.0"
+      "version": "0.2.435"
     },
     "vcs": {
-      "sha": "7ebdc4de04156549a4771568adef6f8ec5d424a4",
+      "sha": "8fa76ac1b5cfe428306a5ff500702949d6ee89de",
       "dirty": true,
-      "branch": "feat/interval-levels"
+      "branch": "claude/ecstatic-shannon-ja5omd"
     },
     "inputs": [
       {
@@ -22,11 +22,34 @@
     ],
     "session": {
       "language": "Python",
-      "version": "3.12.3",
-      "platform": "Windows-11-10.0.26200-SP0"
+      "version": "3.13.16",
+      "platform": "Linux-6.18.44-fc-v80-x86_64-with-glibc2.39"
     }
   },
   "values": {
+    "param.alpha": {
+      "value": 0.05,
+      "display": "0.05",
+      "role": "parameter",
+      "read": true
+    },
+    "param.signal.min_cases": {
+      "value": 3,
+      "display": "3",
+      "role": "parameter",
+      "read": true
+    },
+    "signal.met": {
+      "value": true,
+      "display": "True",
+      "quoted": false
+    },
+    "software.python": {
+      "value": "3.13.16",
+      "display": "3.13.16",
+      "label": true,
+      "role": "software"
+    },
     "cohort.n_reports": {
       "value": 4000,
       "display": "4000"

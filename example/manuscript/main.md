@@ -44,11 +44,13 @@ RECORD 6.1 asks for and what makes a case definition checkable.
 The reporting odds ratio was computed from a 2 x 2 table contrasting reports of hepatic
 injury with all other reported events, for example-drug against all other drugs in the
 database. Confidence intervals were derived from the standard error of the log odds ratio
-and are reported as 95% confidence intervals throughout, two-sided at an alpha of 0.05.
-A signal was defined by the classical criterion: at least 3 cases together with a lower
+and are 95% confidence intervals, two-sided at an alpha of {{results.param.alpha}}; the
+main estimate is also given with its 90% confidence interval, for comparison with
+signal-detection practice. A signal was defined by the classical criterion: at least
+{{results.param.signal.min_cases}} cases together with a lower
 bound of the confidence interval of the reporting odds ratio above 1. No p-value threshold
 was used as a decision rule, which is not how a disproportionality analysis reaches its
-conclusion.
+conclusion. The analysis was run in Python {{results.software.python}}.
 
 Reporting follows the checklist declared in `paper.yaml`.
 

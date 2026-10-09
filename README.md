@@ -42,6 +42,8 @@ where the manuscript can wait ([stages](docs/stages.md)).
 | The script that wrote a results file, or an input it declared, changed afterwards | which of them, and the script to run again | `analysis` |
 | A value taken from a paper is not in the sentence quoted as evidence for it | the value and the quote; the quote itself has to be in the stored source | `drafting` |
 | A number was typed into text that a figure draws | the line of the figure's script | `drafting` |
+| A threshold or software version the analysis declares was typed into the Methods | the number, with its line and column, and the binding to write | `drafting` |
+| The analysis declares a parameter and never reads it | the parameter | `analysis` |
 | The analysis changed after the Methods were last read against it | the files that changed | `internal-review` |
 | A reporting checklist item (STROBE, CONSORT, PRISMA and others) is not addressed | each item still open | `internal-review` |
 | The journal's word limit, a required section or a required statement is missed | which one | `internal-review` |

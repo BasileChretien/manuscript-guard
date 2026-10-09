@@ -67,9 +67,32 @@ manuscript-guard methods --reconcile
 claim that a person read the code. Reconciling without reading makes it a lie, and a
 lie that is machine-checkable is worse than no check at all, because it will be trusted.
 
+## Declaring the choices the code makes
+
+A threshold, a confidence level, a minimum number of cases: these are choices made in the
+code and stated in the Methods, and typed in the Methods they pass as conventions, so they
+stay behind when the code changes. Declare them in the analysis and bind them:
+
+```python
+alpha = em.parameter("alpha", 0.05)          # use the returned value in the computation
+min_cases = em.parameter("signal.min_cases", 3)
+em.software("statsmodels")                   # the version this run imported
+```
+
+```markdown
+two-sided at an alpha of {{results.param.alpha}}, and at least
+{{results.param.signal.min_cases}} cases. Analyses used statsmodels {{results.software.statsmodels}}.
+```
+
+G2 then fails the value typed instead of bound, and fails a parameter the script never reads
+again. That second check is the one that matters most: a parameter declared and bound, and
+applied nowhere, prints the right number for a step the code does not take. What it cannot
+tell is whether a value that is read changes a result; that is still your reading.
+
 ## Locking the parameters worth checking
 
-`methods.lock` can carry parameters that must appear in the prose:
+For a value that is not computed by the code (a software version from outside Python or R,
+for instance), `methods.lock` can carry parameters that must appear in the prose:
 
 ```yaml
 parameters:

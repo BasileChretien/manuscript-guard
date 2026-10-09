@@ -46,6 +46,7 @@ wrote code to deceive their own toolkit. It does not reach the second.
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import stat
@@ -86,6 +87,9 @@ class Comparison:
     only_on_disk: tuple[str, ...] = ()
     only_on_rerun: tuple[str, ...] = ()
     error: str | None = None
+    # Software versions (`em.software`) the re-run found other than the ones on disk. The
+    # environment, not a result: the re-run is reported, and not as a failure to reproduce.
+    environment: tuple[tuple[str, object, object], ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -124,15 +128,28 @@ def runner_for(script: Path) -> list[str] | None:
     return template
 
 
+#: Significant digits two floats must share to be the same result. An iterative fit's last
+#: digits depend on the machine's linear algebra (CI on macOS found an adjusted ratio of
+#: 3.844764571463991 where Linux had written 3.844764571464015), so exact equality made
+#: every model a failed reproduction on another machine. Nine digits is far past anything a
+#: paper prints, and the display, compared exactly, is what it prints.
+RELATIVE_TOLERANCE = 1e-9
+
+
 def _same(before: object, after: object) -> bool:
-    """Equality that treats two NaNs as agreeing.
+    """Equality that treats two NaNs as agreeing, and two floats sharing nine significant
+    digits as the same value.
 
     `float('nan') == float('nan')` is False, so a results value that is legitimately NaN
     both on disk and on re-run was reported as a difference every single time — a permanent
     red that teaches an author to stop reading this command.
     """
     if isinstance(before, float) and isinstance(after, float):
-        return before == after or (before != before and after != after)
+        return (
+            before == after
+            or (before != before and after != after)
+            or math.isclose(before, after, rel_tol=RELATIVE_TOLERANCE)
+        )
     if isinstance(before, tuple) and isinstance(after, tuple) and len(before) == len(after):
         return all(_same(a, b) for a, b in zip(before, after, strict=True))
     return bool(before == after)
@@ -374,16 +391,25 @@ def verify(project, *, only: list[str] | None = None) -> VerifyReport:
 
 def _compare(name: str, on_disk: dict, rerun: dict) -> Comparison:
     before, after = _values_of(on_disk), _values_of(rerun)
-    agreed, differed = [], []
+    # A version is the software the run found, and a re-run on another machine finds its
+    # own. Read from the re-run, which this command just made: a fragment edited to call a
+    # result "software" does not turn its changed value into a note about the environment.
+    software = {
+        key for key, spec in rerun.get("values", {}).items() if spec.get("role") == "software"
+    }
+    agreed, differed, environment = [], [], []
     for key in sorted(set(before) & set(after)):
         if _same(before[key], after[key]):
             agreed.append(key)
+        elif key in software:
+            environment.append((key, before[key], after[key]))
         else:
             differed.append((key, before[key], after[key]))
     return Comparison(
         fragment=name,
         agreed=tuple(agreed),
         differed=tuple(differed),
+        environment=tuple(environment),
         only_on_disk=tuple(sorted(set(before) - set(after))),
         only_on_rerun=tuple(sorted(set(after) - set(before))),
     )
@@ -414,6 +440,19 @@ def to_report(result: VerifyReport) -> Report:
                     f"the analysis produced {now!r}",
                     hint="either the fragment was edited after it was written, or the "
                     "analysis is not deterministic — set a seed and try again",
+                )
+            )
+        for key, was, now in comparison.environment:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="rerun-other-software",
+                    severity=WARN,
+                    message=f"{comparison.fragment}: the re-run found "
+                    f"{key.removeprefix('software.')} {now[1]}, and the results on disk were "
+                    f"written with {was[1]}",
+                    hint="the values agree or are reported above; the Methods name the version "
+                    "on disk, so re-run the analysis where the paper's results are made",
                 )
             )
         for key in comparison.only_on_disk:

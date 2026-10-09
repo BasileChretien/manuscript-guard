@@ -39,6 +39,8 @@ from generated import (
     SOURCE_WORDS,
     TERMS,
     TYPOGRAPHY,
+    bindings,
+    commented,
     generated,
     holds,
     lines,
@@ -57,7 +59,11 @@ from readings import MAIN, PAPER, READINGS, Unavailable, answer
 from manuscript_guard import reworded as reworded_module
 from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.project import outside_maths
+from manuscript_guard.contracts.values import RESULTS, Value, number_in
 from manuscript_guard.gates import language as language_gate
+from manuscript_guard.gates import methods as methods_gate
+from manuscript_guard.gates import models as models_gate
+from manuscript_guard.gates import numbers as numbers_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
 from manuscript_guard.gates.language import _file, _hidden
@@ -490,6 +496,19 @@ def _looked_up_as_counted(text: str) -> None:
         assert numbers_gate._sentence(text, ends, start) == counted, (text, start)
 
 
+@holds(200, commented())
+def test_a_comment_is_white_space_to_the_order_of_intervals(drawn: tuple[str, str]) -> None:
+    """Pandoc drops an HTML comment, and the bindings are read in the text with each
+    comment blanked. The sentences an interval's bounds are compared in are read in that
+    text too. So what G2 finds in a text with comments typed into it is what it finds, on
+    the same lines and in the same order, in that text with white space where each comment
+    stood: a stop inside a comment ends no sentence, and one with a comment typed against
+    it ends one."""
+    typed_with, blanked = drawn
+    read = READINGS["interval order"]()
+    assert read(typed_with) == read(blanked), (typed_with, blanked)
+
+
 # ---------------------------------------------------------------------------------- numbers
 
 CLASSIFIER = Classifier.load()
@@ -549,18 +568,255 @@ def _seen_and_judged(text: str) -> None:
             assert with_scan.kind in (TERM, STRUCTURAL, CONVENTION, UNCLASSIFIED)
 
 
+# ------------------------------------------------------------------------------ parameters
+
+#: What an analysis declares in the property below: a threshold, a count, a version, and a
+#: parameter that equals the name of a structure.
+_DECLARED = (
+    Value("param.alpha", 0.05, "0.05", RESULTS, role="parameter", read=True),
+    Value("param.signal.min_cases", 3, "3", RESULTS, role="parameter", read=True),
+    Value("param.rows", 2, "2", RESULTS, role="parameter", read=True),
+    Value("software.r", "4.6.0", "4.6.0", RESULTS, label=True, role="software"),
+)
+
+#: One of every kind G2 reads a typed parameter in, with `|` where its atom starts, the key it
+#: states, and whether it is a version, which is read wherever it stands. A threshold is
+#: read in the Methods alone, and `2 x 2` is read nowhere, whatever a parameter equals.
+_TYPED = (
+    ("an alpha of |0.05", "param.alpha", False),
+    ("p < |.05", "param.alpha", False),
+    ("|p<0.05", "param.alpha", False),
+    ("at least |3 cases", "param.signal.min_cases", False),
+    ("R |4.6.0", "software.r", True),
+    ("a |2 x 2 table", None, False),
+)
+
+_METHODS_HEADINGS = ("# Methods", "# Materials and methods", "# Methods\n\n## Statistical analysis")
+_OTHER_HEADINGS = ("# Results", "# Discussion", "# Results\n\n## Sensitivity analyses")
+
+
+@st.composite
+def _planted_choices(draw: st.DrawFn) -> tuple[str, set[tuple[int, int, str]]]:
+    """Filler words with every kind of typed parameter planted under a Methods heading and
+    again under another one, in an order and among words drawn each time, and where each
+    stands that G2 must find."""
+    parts: list[str] = []
+    found: set[tuple[int, int, str]] = set()
+
+    def filler() -> str:
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=5))
+        return "".join(draw(st.sampled_from((" ", " ", "\n"))) + word for word in words)
+
+    for heading, methods in (
+        (draw(st.sampled_from(_METHODS_HEADINGS)), True),
+        (draw(st.sampled_from(_OTHER_HEADINGS)), False),
+    ):
+        parts.append(f"{heading}\n\n{filler().strip().capitalize()}")
+        for written, key, version in draw(st.permutations(_TYPED)):
+            parts.append(filler() + " ")
+            before, _bar, after = written.partition("|")
+            parts.append(before)
+            if key is not None and (methods or version):
+                text = "".join(parts)
+                found.add(
+                    (text.count("\n") + 1, len(text) - (text.rfind("\n") + 1) + 1, key)
+                )
+            parts.append(after)
+        parts.append(f"{filler()}.\n\n")
+    return "".join(parts), found
+
+
+@holds(150, _planted_choices())
+def test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not(
+    planted: tuple[str, set[tuple[int, int, str]]],
+) -> None:
+    """A threshold the analysis declares is found typed in the Methods, written with or
+    without its nought and with or without spaces round its comparison, and a declared
+    version wherever it stands. Nothing else is: not the same threshold in the Results,
+    where it is no convention, and not the `2` of a `2 x 2` table that equals a parameter."""
+    text, expected = planted
+    headings, notes = heading_index(text), footnote_index(text)
+    scan = CLASSIFIER.scan(text)
+    chosen = numbers_gate.chosen_rules(CLASSIFIER)
+    found = set()
+    for atom in find_atoms(text, mask(text)):
+        verdict = CLASSIFIER.classify_under(atom, chains_at(headings, notes, atom.start), scan)
+        typed = numbers_gate.typed_choice(atom.text, verdict, list(_DECLARED), chosen)
+        if typed is not None:
+            found.add((atom.line, atom.col, typed.key))
+    assert found == expected, text
+
+
+# --------------------------------------------------------------------------- models named
+
+#: One of every way G15 reads a model named in the Methods, with the kind it names, and
+#: one of every place it must not: hidden from the page, inside a longer word, or in the
+#: Results, where `found` is false.
+_NAMED = (
+    ("logistic regression", "logistic regression", True),
+    ("Logistic Regression", "logistic regression", True),
+    ("log binomial regression", "log-binomial regression", True),
+    ("negative\nbinomial model", "negative binomial regression", True),
+    ("probit models", "probit regression", True),
+    ("<!-- Poisson regression -->", None, False),
+    ("`gamma regression`", None, False),
+    ("quasilogistic regression", None, False),
+)
+
+
+@st.composite
+def _planted_names(draw: st.DrawFn) -> tuple[str, list[tuple[int, str]]]:
+    """Filler words with every way of naming a model planted under a Methods heading, and
+    the same names again under the Results, in an order and among words drawn each time."""
+    parts: list[str] = []
+    found: list[tuple[int, str]] = []
+
+    def filler() -> str:
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=5))
+        return "".join(draw(st.sampled_from((" ", " ", "\n"))) + word for word in words)
+
+    for heading, methods in (
+        (draw(st.sampled_from(_METHODS_HEADINGS)), True),
+        (draw(st.sampled_from(_OTHER_HEADINGS)), False),
+    ):
+        parts.append(f"{heading}\n\n{filler().strip().capitalize()}")
+        for written, kind, counted in draw(st.permutations(_NAMED)):
+            parts.append(filler() + " ")
+            if methods and counted:
+                found.append((len("".join(parts)), kind))
+            parts.append(written)
+        parts.append(f"{filler()}.\n\n")
+    return "".join(parts), found
+
+
+@holds(150, _planted_names())
+def test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not(
+    planted: tuple[str, list[tuple[int, str]]],
+) -> None:
+    """A model named in the Methods is found in any case, with a space, a hyphen or a line
+    break between its words, and in the plural, with the kind it names. Nothing is found in
+    a comment, in code, inside a longer word, or in the Results."""
+    text, expected = planted
+    found = [(start, kind) for start, _end, kind in models_gate.named_in_methods(text)]
+    assert found == expected, text
+
+
+# --------------------------------------------------------------------------- Methods claims
+
+#: Every kind of paragraph the claims of `{{method.x}}` are read in. Each example holds one of
+#: each, in an order drawn each time: what a property draws first is what Hypothesis varies
+#: least, and a kind drawn as one among several is, under some seeds, never drawn at all.
+_CLAIM_KINDS = (
+    "ends", "inside", "side by side", "comment line", "comment inline", "heading above",
+    "bare", "anchor in a comment",
+)  # fmt: skip
+
+
+#: Headings a Methods section is divided by, each still the Methods to `is_methods`.
+_SUBHEADINGS = ("## Statistical analysis", "## Definitions", "### Data sources")
+
+
+@st.composite
+def _planted_claims(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[tuple[str, ...], str, int, int]], list[int]]:
+    """A Methods section of every kind of paragraph, its words drawn each time, with the
+    claims its anchors make (their steps, their words, the lines of the first word and of the
+    anchors) and the lines of the paragraphs that point at no step."""
+    text = ["# Methods\n\n"]
+    claims: list[tuple[tuple[str, ...], str, int, int]] = []
+    bare: list[int] = []
+    names = (f"step{n}" for n in range(100))
+
+    def at() -> int:
+        return "".join(text).count("\n") + 1
+
+    def words() -> str:
+        drawn = draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=6))
+        return "".join(
+            (draw(st.sampled_from((" ", " ", "\n"))) if n else "") + word
+            for n, word in enumerate(drawn)
+        )
+
+    def sentence() -> str:
+        said = words()
+        return said[0].upper() + said[1:] + "."
+
+    def claim(*pieces: str, said: str | None = None) -> None:
+        """Write `pieces` as one claim, then its anchors, from the second piece on."""
+        first = at()
+        text.append(pieces[0])
+        anchors = pieces[1:]
+        steps = tuple(re.findall(r"method\.([a-z0-9_.]+)", "".join(anchors)))
+        line = at() + len(re.match(r"\s*", "".join(anchors)).group().split("\n")) - 1
+        text.extend(anchors)
+        shown = said if said is not None else pieces[0]
+        claims.append((steps, " ".join(shown.split()), first, line))
+
+    def anchor() -> str:
+        return f"{{{{method.{next(names)}}}}}"
+
+    for kind in draw(st.permutations(_CLAIM_KINDS)):
+        if kind == "ends":
+            claim(f"{words()}\n{sentence()}", f"\n{anchor()}")
+        elif kind == "inside":
+            claim(sentence(), f" {anchor()}")
+            first, second = sentence(), anchor()
+            text.append(" ")
+            claim(first, f" {second}")
+        elif kind == "side by side":
+            gap = draw(st.sampled_from(("", " ", "\n")))
+            claim(sentence(), f"{draw(st.sampled_from((' ', chr(10))))}{anchor()}{gap}{anchor()}")
+        elif kind == "comment line":
+            before, after = words(), sentence()
+            note = f"<!-- {words()} -->"
+            claim(f"{before}\n{note}\n{after}", f" {anchor()}", said=f"{before} {after}")
+        elif kind == "comment inline":
+            before, after = words(), sentence()
+            note = f"<!-- {words()} -->"
+            claim(f"{before} {note} {after}", f" {anchor()}", said=f"{before} {after}")
+        elif kind == "heading above":
+            text.append(f"{draw(st.sampled_from(_SUBHEADINGS))}\n")
+            claim(sentence(), f" {anchor()}")
+        elif kind == "bare":
+            bare.append(at())
+            text.append(sentence())
+        else:
+            bare.append(at())
+            text.append(f"{sentence()} <!-- {anchor()} -->")
+        text.append("\n\n")
+    return "".join(text), claims, bare
+
+
+@holds(150, _planted_claims())
+def test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph(
+    planted: tuple[str, list[tuple[tuple[str, ...], str, int, int]], list[int]],
+) -> None:
+    """An anchor claims what stands before it, back to the anchor before it or the start of
+    its paragraph, its spaces and line breaks each read as one space: not past a heading,
+    not the words of a comment, and the same text for anchors side by side. A comment on a
+    line of its own does not end the paragraph, and an anchor in a comment is none. A
+    Methods paragraph with no anchor is one that points at no step."""
+    text, expected, bare = planted
+    claims, open_ = methods_gate._anchored_in(Path("main.md"), text)
+    assert [(c.steps, c.text, c.line, c.anchor_line) for c in claims] == expected, text
+    assert [paragraph.line for paragraph in open_] == bare, text
+
+
 # --------------------------------------------------------------------------------- bindings
 
 
-@holds(200, texts(), signs())
-def test_a_binding_is_placed_where_it_stands(manuscript: str, nobodys: str) -> None:
+@holds(200, texts(), signs(), bindings())
+def test_a_binding_is_placed_where_it_stands(manuscript: str, nobodys: str, opened: str) -> None:
     """A binding that does not resolve is reported by its line and column, and a malformed
     one by its line. `parse` looks them up among the starts of the file's lines, and they
     have to be what counting gives: the line feeds before the binding and one more, and the
     characters since the last of them and one more, in a file whose lines Windows ended as
-    in any other. What else Python ends a line at, a form feed for one, is too seldom drawn
-    before a binding to be held here: `tests/test_text.py` names each."""
-    for text in (manuscript, nobodys):
+    in any other. The third text has a binding planted where a line begins, since the other
+    two seldom hold one and that is where the lookup is out, if it is. What else Python
+    ends a line at, a form feed for one, is too seldom drawn before a binding to be held
+    here: `tests/test_text.py` names each."""
+    for text in (manuscript, nobodys, opened):
         bound, malformed = parse_bindings(text)
         for found in bound:
             line_start = text.rfind("\n", 0, found.start) + 1
@@ -955,21 +1211,16 @@ def test_a_fact_is_where_it_says_and_a_text_is_what_it_was(manuscript: str, nobo
 
 
 @st.composite
-def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
-    """A text, what an edit made of it, what the edit did besides reword it, the facts it
-    did that to as a finding shows them, and the line of the after text it did it on.
+def _rewordings(draw: st.DrawFn, did: str) -> tuple[str, str, str, list[str], int]:
+    """A text, what an edit made of it, what the edit did besides reword it, which is `did`,
+    the facts it did that to as a finding shows them, and the line of the after text it did
+    it on.
 
     Every sentence is written twice, with other words between its facts each time and each
     fact in another of the ways it is written: a number bare, in brackets, in emphasis or
     as a bound of a range, joined each of the ways a range is. That is the rewording, and
     it is free. A comment stands in both, and holds other things in each: a listing in
     the first."""
-    did = draw(
-        st.sampled_from(
-            ("nothing", "nothing", "lost", "new", "changed", "unsigned", "turned", "unsure",
-             "beside", "swapped", "both")
-        )
-    )
 
     def fact() -> tuple[str, str]:
         kind = draw(st.sampled_from((BINDING, CITATION, NUMBER, NUMBER)))
@@ -985,9 +1236,9 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
     if did == "turned" and not turnable:
         before.append([(NUMBER, "12"), (BINDING, "k1")])
         turnable = [len(before) - 1]
+    if did in ("lost", "changed") and not any(before):
+        before.append([fact()])
     holding = [at for at, held in enumerate(before) if held]
-    if did in ("lost", "changed") and not holding:
-        did = "nothing"
 
     after = [list(held) for held in before]
     shown: list[str] = []
@@ -1089,10 +1340,27 @@ def _rewordings(draw: st.DrawFn) -> tuple[str, str, str, list[str], int]:
     return texts_of[0], texts_of[1], did, shown, line
 
 
-@holds(200, _rewordings())
+#: Everything an edit does that the property plants, one of each in every example. Drawn
+#: one to an example, as they were at first, a kind could go undrawn for a whole run: under
+#: `MANUSCRIPT_GUARD_SEED=5` no text had its order turned in 200 examples, and under 8 none
+#: had a sign taken off beside a dash that may be one, so the rule broken for each of those
+#: passed. What Hypothesis draws first in an example it varies least.
+_EDITS = (
+    "nothing", "lost", "new", "changed", "unsigned", "turned", "unsure", "beside", "swapped",
+    "both",
+)  # fmt: skip
+
+
+@holds(40, st.tuples(*(_rewordings(did) for did in _EDITS)))
 def test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands(
-    drawn: tuple[str, str, str, list[str], int],
+    drawn: tuple[tuple[str, str, str, list[str], int], ...],
 ) -> None:
+    assert [did for _before, _after, did, _shown, _line in drawn] == list(_EDITS)
+    for one in drawn:
+        _held_to_its_edit(one)
+
+
+def _held_to_its_edit(drawn: tuple[str, str, str, list[str], int]) -> None:
     before, after, did, shown, line = drawn
     report = compare(before, after, MAIN)
     said = [(found.code, found.severity, found.line, found.message) for found in report.findings]
@@ -1149,6 +1417,10 @@ def test_a_source_read_twice_is_read_as_it_was_the_first_time(source: str, nobod
         assert normalise(normalise(text)) == normalise(text), text
 
 
+#: The words of a source that a page sets otherwise than a person types them.
+_SET_IN_TYPE = tuple(word for word in SOURCE_WORDS if typed(word) != word)
+
+
 @holds(150, quotations())
 def test_a_quotation_typed_from_its_source_is_found_and_one_it_does_not_hold_is_not(
     drawn: tuple[str, str],
@@ -1160,6 +1432,12 @@ def test_a_quotation_typed_from_its_source_is_found_and_one_it_does_not_hold_is_
     assert contains(source, quote), (source, quote)
     assert contains(source, typed(quote)), (source, typed(quote))
     assert not contains(source, f"{typed(quote)} similar"), (source, quote)
+    # A word set in type is in few of the quotations drawn, and under some seeds one of
+    # them is in none of a run's: with seeds 1 and 3, of twelve tried, a folding that had
+    # lost the ligature of "effect" passed. So each is put after every source drawn, and
+    # looked for there as it is typed.
+    for word in _SET_IN_TYPE:
+        assert contains(f"{source} {word}", typed(word)), (source, word)
 
 
 _WHOLE_NUMBER = re.compile(r"\d+(?:\.\d+)?")
@@ -1252,12 +1530,80 @@ def _a_value_is_some_characters_of_a_number(patch: pytest.MonkeyPatch) -> None:
     )
 
 
+def _a_comment_is_read_for_its_stops(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import numbers as numbers_gate
+
+    patch.setattr(numbers_gate, "blank_comments", lambda text: text)
+
+
 def _a_stop_against_a_binding_ends_no_sentence(patch: pytest.MonkeyPatch) -> None:
     from bisect import bisect_left
 
     from manuscript_guard.gates import numbers as numbers_gate
 
     patch.setattr(numbers_gate, "_sentence", lambda text, ends, start: bisect_left(ends, start))
+
+
+def _names_with(**changes: Any):
+    """`models._names` rebuilt with one of its readings taken away."""
+    import functools
+
+    @functools.cache
+    def names() -> re.Pattern[str]:
+        listed = sorted(
+            {name for entry in models_gate.engines() for name in entry.synonyms},
+            key=len, reverse=True,
+        )  # fmt: skip
+        if changes.get("as_written"):
+            words = [re.escape(name) for name in listed]
+        else:
+            words = [r"[\s-]+".join(map(re.escape, re.split(r"[\s-]+", n))) for n in listed]
+        plural = changes.get("plural", "s?")
+        return re.compile(
+            r"(?<![\w-])(?:" + "|".join(words) + ")" + plural + r"(?![\w-])",
+            changes.get("flags", re.IGNORECASE),
+        )
+
+    return names
+
+
+def _a_model_is_named_in_one_case(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "_names", _names_with(flags=0))
+
+
+def _a_hyphen_is_no_space_in_a_models_name(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "_names", _names_with(as_written=True))
+
+
+def _a_model_is_never_named_in_the_plural(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "_names", _names_with(plural=""))
+
+
+def _a_model_named_anywhere_is_named_in_the_methods(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "is_methods", lambda chain: True)
+
+
+def _a_model_named_in_a_comment_is_named(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "_hidden", lambda text: text)
+
+
+def _any_convention_is_a_threshold(patch: pytest.MonkeyPatch) -> None:
+    def every(classifier: Classifier) -> frozenset[str]:
+        return frozenset(rule.id for rule in classifier.conventions)
+
+    patch.setattr(numbers_gate, "chosen_rules", every)
+
+
+def _the_figure_is_read_with_what_is_before_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(numbers_gate, "stated_number", number_in)
+
+
+def _a_figure_without_its_nought_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    def stated(text: str) -> float | None:
+        at = re.search(r"\d|\.\d", text)
+        return None if at is None else number_in(text[at.start() :])
+
+    patch.setattr(numbers_gate, "stated_number", stated)
 
 
 def _a_nought_is_trimmed_off_a_number(patch: pytest.MonkeyPatch) -> None:
@@ -1356,6 +1702,57 @@ def _a_wordless_piece_is_left_alone(patch: pytest.MonkeyPatch) -> None:
         return [piece for piece in [*pieces, flat[at:].strip()] if piece]
 
     patch.setattr(produce, "_split", split)
+def _a_claim_runs_back_to_its_paragraph(patch: pytest.MonkeyPatch) -> None:
+    real = methods_gate.claims_in
+
+    def claims_in(text: str) -> Any:
+        found, bare = real(text)
+        starts = [start for start, _end in methods_gate._paragraphs(text)]
+        return [
+            (steps, max(s for s in starts if s <= start), end, anchor)
+            for steps, start, end, anchor in found
+        ], bare
+
+    patch.setattr(methods_gate, "claims_in", claims_in)
+
+
+def _anchors_side_by_side_claim_apart(patch: pytest.MonkeyPatch) -> None:
+    real = methods_gate.claims_in
+
+    def claims_in(text: str) -> Any:
+        found, bare = real(text)
+        apart = []
+        for steps, start, end, anchor in found:
+            apart.append((steps[:1], start, end, anchor))
+            apart += [((step,), end, end, anchor) for step in steps[1:]]
+        return apart, bare
+
+    patch.setattr(methods_gate, "claims_in", claims_in)
+
+
+def _a_comment_line_ends_a_paragraph(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.masking import blank_comments
+
+    real = methods_gate._paragraphs
+    patch.setattr(methods_gate, "_paragraphs", lambda text: real(blank_comments(text)))
+
+
+def _a_claim_keeps_the_words_of_a_comment(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(methods_gate, "blank_comments", lambda text: text)
+
+
+def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
+
+
+def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
+
+
+def _an_anchor_in_a_comment_is_an_anchor(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import placeholders
+
+    patch.setattr(placeholders, "_without_comments", lambda text: text)
 
 
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
@@ -1380,6 +1777,34 @@ BROKEN = {
     "a piece with no word of its own is left alone": (
         _a_wordless_piece_is_left_alone,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
+    "a claim runs back to the start of its paragraph, past the anchor before it": (
+        _a_claim_runs_back_to_its_paragraph,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "anchors side by side claim apart": (
+        _anchors_side_by_side_claim_apart,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a comment on a line of its own ends a paragraph": (
+        _a_comment_line_ends_a_paragraph,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a claim keeps the words of a comment inside it": (
+        _a_claim_keeps_the_words_of_a_comment,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a heading is part of the paragraph under it": (
+        _a_heading_is_part_of_the_paragraph_under_it,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a claim keeps its line breaks": (
+        _a_claim_keeps_its_line_breaks,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "an anchor in a comment is an anchor": (
+        _an_anchor_in_a_comment_is_an_anchor,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
     ),
     "a quotation is read as the paper's own words": (
         _a_quotation_is_the_papers_own,
@@ -1408,6 +1833,42 @@ BROKEN = {
     "a stop against a binding ends no sentence": (
         _a_stop_against_a_binding_ends_no_sentence,
         test_a_sentence_is_looked_up_as_it_was_counted,
+    ),
+    "a comment is read for its stops": (
+        _a_comment_is_read_for_its_stops,
+        test_a_comment_is_white_space_to_the_order_of_intervals,
+    ),
+    "a model is named in one case only": (
+        _a_model_is_named_in_one_case,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a hyphen is no space in a model's name": (
+        _a_hyphen_is_no_space_in_a_models_name,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a model is never named in the plural": (
+        _a_model_is_never_named_in_the_plural,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a model named anywhere is named in the Methods": (
+        _a_model_named_anywhere_is_named_in_the_methods,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a model named in a comment is named": (
+        _a_model_named_in_a_comment_is_named,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a parameter is matched by any convention": (
+        _any_convention_is_a_threshold,
+        test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "the figure of a typed parameter is read with what is typed before it": (
+        _the_figure_is_read_with_what_is_before_it,
+        test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a typed parameter written without its nought is not read": (
+        _a_figure_without_its_nought_is_not_read,
+        test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
     ),
     "a nought is trimmed off a number": (
         _a_nought_is_trimmed_off_a_number,

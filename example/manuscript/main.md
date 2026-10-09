@@ -44,11 +44,24 @@ RECORD 6.1 asks for and what makes a case definition checkable.
 The reporting odds ratio was computed from a 2 x 2 table contrasting reports of hepatic
 injury with all other reported events, for example-drug against all other drugs in the
 database. Confidence intervals were derived from the standard error of the log odds ratio
-and are reported as 95% confidence intervals throughout, two-sided at an alpha of 0.05.
-A signal was defined by the classical criterion: at least 3 cases together with a lower
-bound of the confidence interval of the reporting odds ratio above 1. No p-value threshold
-was used as a decision rule, which is not how a disproportionality analysis reaches its
-conclusion.
+and are 95% confidence intervals, two-sided at an alpha of {{results.param.alpha}}; the
+main estimate is also given with its 90% confidence interval, for comparison with
+signal-detection practice. {{method.ror}} {{method.ci}}
+
+A signal was defined by the classical criterion: at least
+{{results.param.signal.min_cases}} cases together with a lower bound of the 95% confidence
+interval of the reporting odds ratio above 1. No p-value threshold was used as a decision
+rule, which is not how a disproportionality analysis reaches its conclusion.
+{{method.signal}}
+
+Adjusted for age group and sex, the two patient characteristics the database records for
+every report, the reporting odds ratio was also estimated by {{results.model.adjusted.kind}}
+of hepatic injury on exposure to example-drug, with both characteristics entered as
+categories. Its interval is the model's Wald interval for the exposure coefficient, at the
+same alpha. Table S2 describes the model as it was fitted. {{method.adjusted}}
+
+The analysis was run in Python {{results.software.python}} with statsmodels
+{{results.software.statsmodels}}.
 
 Reporting follows the checklist declared in `paper.yaml`.
 
@@ -80,7 +93,10 @@ Reporting of hepatic injury was disproportionate for example-drug, with a report
 ratio of {{results.ror.point}} (95% CI {{results.ror.ci_low}} to
 {{results.ror.ci_high}}; 90% CI {{results.ror.ci90_low}} to {{results.ror.ci90_high}}). The
 estimate is shown in Figure 1, and the counts it was computed from in Table 3, so a reader
-can reconstruct it.
+can reconstruct it. Adjusted for age group and sex, the reporting odds ratio was
+{{results.ror_adjusted.point}} (95% CI {{results.ror_adjusted.ci_low}} to
+{{results.ror_adjusted.ci_high}}), given to three decimal places because to two it is the
+crude estimate: the data generator draws both characteristics independently of the drug.
 
 {{table.two_by_two}}
 

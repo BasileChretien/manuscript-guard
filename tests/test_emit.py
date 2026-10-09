@@ -737,3 +737,149 @@ def test_the_tolerance_follows_the_exponent(scratch: Path) -> None:
     em.value("ok", 1.2e-6, display="1.2 × 10⁻⁶")
     with pytest.raises(DisplayError, match="reads as"):
         em.value("bad", 1.2e-6, display="9.99 × 10⁻⁶")
+
+
+# ---------------------------------------------------------------- parameters and software
+
+
+def _run(scratch: Path, body: str) -> dict:
+    """Run `body` as the project's analysis script and return the values it wrote."""
+    import runpy
+
+    script = scratch / "analysis" / "run.py"
+    script.write_text(
+        "from statistics import NormalDist\n"
+        "from manuscript_guard.emit import Emitter\n"
+        "em = Emitter(__file__)\n" + body + "em.write()\n",
+        encoding="utf-8",
+    )
+    runpy.run_path(str(script), run_name="__main__")
+    return json.loads((scratch / "results" / "run.json").read_text(encoding="utf-8"))["values"]
+
+
+def test_a_parameter_is_handed_back_and_published_as_typed(scratch: Path) -> None:
+    """The value the Methods quote is the value the code ran with, and a threshold is not
+    rounded: 0.025 at two places is 0.03, a different test."""
+    values = _run(
+        scratch,
+        'alpha = em.parameter("alpha", 0.025)\n'
+        "z = NormalDist().inv_cdf(1 - alpha / 2)\n"
+        'em.value("z", z, digits=2)\n',
+    )
+    assert values["param.alpha"] == {
+        "value": 0.025, "display": "0.025", "role": "parameter", "read": True,
+    }  # fmt: skip
+    assert values["z"]["display"] == "2.24"
+
+
+def test_a_parameter_still_rounds_when_asked(scratch: Path) -> None:
+    em = emitter(scratch)
+    assert em.parameter("ratio", 1 / 3, digits=2) == 1 / 3
+    assert em.document()["values"]["param.ratio"]["display"] == "0.33"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # Declared and thrown away.
+        'em.parameter("signal.min_cases", 3)\n',
+        # Declared, named, and the name never read: the example's signal criterion, stated
+        # in the Methods and applied nowhere.
+        'min_cases = em.parameter("signal.min_cases", 3)\n',
+        # Read in another function, where the same name is somebody else's.
+        'def f():\n    min_cases = em.parameter("signal.min_cases", 3)\n'
+        "def g(min_cases=0):\n    return 1\n"
+        "f()\n",
+    ],
+)
+def test_a_parameter_declared_and_never_read_says_so(scratch: Path, body: str) -> None:
+    assert _run(scratch, body)["param.signal.min_cases"]["read"] is False
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        'min_cases = em.parameter("signal.min_cases", 3)\nsignal = 5 >= min_cases\n',
+        'signal = 5 >= em.parameter("signal.min_cases", 3)\n',
+        'def f():\n    min_cases = em.parameter("signal.min_cases", 3)\n    return min_cases\n'
+        "f()\n",
+        'if (min_cases := em.parameter("signal.min_cases", 3)) > 0:\n    pass\n',
+    ],
+)
+def test_a_parameter_read_again_says_so(scratch: Path, body: str) -> None:
+    assert _run(scratch, body)["param.signal.min_cases"]["read"] is True
+
+
+def test_where_a_parameter_goes_unfollowed_nothing_is_claimed(scratch: Path) -> None:
+    """An attribute is a place the reading does not follow, so it records nothing rather
+    than a guess either way."""
+    values = _run(
+        scratch,
+        "class Settings:\n    pass\n"
+        "settings = Settings()\n"
+        'settings.min_cases = em.parameter("signal.min_cases", 3)\n',
+    )
+    assert "read" not in values["param.signal.min_cases"]
+
+
+@pytest.mark.parametrize("key", ["Alpha", "alpha level", "alpha-level", ".alpha", "alpha."])
+def test_a_parameter_key_the_methods_cannot_bind_is_refused(scratch: Path, key: str) -> None:
+    with pytest.raises(ValueError, match="lowercase letters"):
+        emitter(scratch).parameter(key, 0.05)
+
+
+def test_a_parameter_is_one_key_like_any_value(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.parameter("alpha", 0.05)
+    with pytest.raises(ValueError, match="emitted twice"):
+        em.parameter("alpha", 0.01)
+
+
+def test_software_is_the_version_the_run_imported(scratch: Path) -> None:
+    import importlib.metadata
+    import platform
+
+    import yaml  # noqa: F401 - imported so that the run has used it
+
+    em = emitter(scratch)
+    assert em.software("python") == platform.python_version()
+    assert em.software("PyYAML") == importlib.metadata.version("PyYAML")
+    values = em.document()["values"]
+    assert values["software.pyyaml"]["role"] == "software"
+    assert values["software.pyyaml"]["label"] is True
+    assert values["software.python"]["display"] == platform.python_version()
+
+
+def test_software_is_found_imported_without_a_top_level_txt(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Python 3.10 maps modules to distributions through `top_level.txt` alone, and a wheel
+    built without one maps to nothing: statsmodels 0.15 was refused there in a run that had
+    imported it. The distribution's list of files names its modules either way."""
+    import importlib.metadata
+
+    import hypothesis  # noqa: F401 - imported so that the run has used it
+
+    monkeypatch.setattr(importlib.metadata, "packages_distributions", lambda: {})
+    assert emitter(scratch).software("hypothesis") == importlib.metadata.version("hypothesis")
+
+
+def test_software_installed_and_never_imported_is_refused(scratch: Path) -> None:
+    """The Methods would name software that computed nothing."""
+    import sys
+
+    saved = {
+        name: sys.modules.pop(name)
+        for name in list(sys.modules)
+        if name == "pip" or name.startswith("pip.")
+    }
+    try:
+        with pytest.raises(ValueError, match="has not imported it"):
+            emitter(scratch).software("pip")
+    finally:
+        sys.modules.update(saved)
+
+
+def test_software_that_is_not_installed_is_refused(scratch: Path) -> None:
+    with pytest.raises(ValueError, match="no installed distribution"):
+        emitter(scratch).software("no-such-distribution-anywhere")

@@ -459,3 +459,301 @@ def test_both_emitters_digest_a_script_the_same_way(tmp_path: Path) -> None:
     # And the normalisation must be real on both sides, not agreement on doing nothing.
     assert from_r["lf.py"] == from_r["crlf.py"] == from_r["cr.py"]
     assert from_r["changed.py"] != from_r["lf.py"]
+
+
+PARAMETERS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+alpha <- em$parameter("alpha", 0.025)
+z <- qnorm(1 - alpha / 2)
+min_cases <- em$parameter("signal.min_cases", 3L)
+em$parameter("forgotten", 7L)
+signal <- 5 >= em$parameter("inline", 2L)
+ratio <- em$parameter("ratio", 0.123456, digits = 2)
+em$software("R")
+em$software("stats")
+em$write()
+"""
+
+PARAMETERS_PY = """
+from statistics import NormalDist
+from manuscript_guard.emit import Emitter
+em = Emitter(__file__)
+alpha = em.parameter("alpha", 0.025)
+z = NormalDist().inv_cdf(1 - alpha / 2)
+min_cases = em.parameter("signal.min_cases", 3)
+em.parameter("forgotten", 7)
+signal = 5 >= em.parameter("inline", 2)
+ratio = em.parameter("ratio", 0.123456, digits=2)
+em.software("python")
+em.write()
+"""
+
+
+def _parameter_project(tmp_path: Path) -> Path:
+    root = tmp_path / "paper"
+    (root / "analysis").mkdir(parents=True)
+    (root / "paper.yaml").write_text(
+        'schema: manuscript-guard/paper/1\ntitle: "P"\nenglish_variant: en-GB\n', encoding="utf-8"
+    )
+    return root
+
+
+def _run_r(script: Path, root: Path) -> subprocess.CompletedProcess:
+    out = subprocess.run(
+        [RSCRIPT, "--vanilla", str(script)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=root,
+    )  # fmt: skip
+    if out.returncode == 3:
+        pytest.skip("R packages jsonlite and digest are not installed")
+    return out
+
+
+def test_r_and_python_declare_and_read_parameters_alike(tmp_path: Path) -> None:
+    """One meaning in two languages: the same calls give the same keys, values, displays,
+    and the same answer to whether the script reads what it declared."""
+    import runpy
+
+    root = _parameter_project(tmp_path)
+    r_script = root / "analysis" / "params.R"
+    r_script.write_text(
+        PARAMETERS_R % {"emit": EMIT_R.as_posix(), "script": r_script.as_posix()},
+        encoding="utf-8",
+    )
+    out = _run_r(r_script, root)
+    assert out.returncode == 0, f"{out.stdout}\n{out.stderr}"
+    py_script = root / "analysis" / "params.py"
+    py_script.write_text(PARAMETERS_PY, encoding="utf-8")
+
+    def written(name: str) -> dict:
+        path = root / "results" / name
+        document = json.loads(path.read_text(encoding="utf-8"))
+        validate(document, "results", path)
+        return document["values"]
+
+    from_r = written("params.json")
+    runpy.run_path(str(py_script), run_name="__main__")
+    from_python = written("params.json")
+    params_r = {k: v for k, v in from_r.items() if k.startswith("param.")}
+    params_py = {k: v for k, v in from_python.items() if k.startswith("param.")}
+    assert params_r == params_py
+    assert params_py["param.alpha"] == {
+        "value": 0.025, "display": "0.025", "role": "parameter", "read": True,
+    }  # fmt: skip
+    assert [params_py[f"param.{k}"]["read"] for k in ("signal.min_cases", "forgotten")] == [
+        False,
+        False,
+    ]
+
+
+def test_r_software_is_the_version_the_session_loaded(tmp_path: Path) -> None:
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "soft.R"
+    script.write_text(
+        PARAMETERS_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    values = json.loads((root / "results" / "soft.json").read_text(encoding="utf-8"))["values"]
+    for key in ("software.r", "software.stats"):
+        assert values[key]["role"] == "software" and values[key]["label"] is True
+        assert values[key]["value"] == values[key]["display"]
+
+
+@pytest.mark.parametrize(
+    ("call", "refusal"),
+    [
+        ('em$software("splines")', "has not loaded it"),
+        ('em$parameter("Alpha", 0.05)', "lowercase letters"),
+    ],
+)
+def test_r_refuses_what_python_refuses(tmp_path: Path, call: str, refusal: str) -> None:
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "refused.R"
+    script.write_text(
+        f'source("{EMIT_R.as_posix()}")\nem <- mg_emitter("{script.as_posix()}")\n{call}\n',
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode != 0 and refusal in out.stderr, out.stderr
+
+
+MODEL_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+data <- read.csv("%(data)s", stringsAsFactors = FALSE)
+em$variable("g", "categorical", label = "group", levels = c("a", "b", "c"), reference = "a",
+            values = data$g)
+fit <- glm(y ~ x + g, data = data, family = binomial())
+em$model("adjusted", fit, name = "Adjusted model", description = "The primary analysis.")
+em$write()
+"""
+
+
+def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> None:
+    """One card in two languages: how each variable entered, the counts, the events by level
+    and the kind of model agree; only the formula's spelling is each language's own."""
+    pd = pytest.importorskip("pandas")
+    sm = pytest.importorskip("statsmodels.api")
+    smf = pytest.importorskip("statsmodels.formula.api")
+    import random
+
+    from manuscript_guard.contracts.models import engine_of
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    draw = random.Random(2)
+    rows = [{"y": int(draw.random() < 0.3), "x": i % 10, "g": "abc"[i % 3]} for i in range(300)]
+    data = pd.DataFrame(rows)
+    data["x"] = data["x"].astype(float)
+    data.loc[7, "x"] = float("nan")
+    csv = root / "data.csv"
+    data.to_csv(csv, index=False, na_rep="NA")
+
+    script = root / "analysis" / "model.R"
+    script.write_text(
+        MODEL_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(), "data": csv.as_posix()},
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    path = root / "results" / "model.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    validate(document, "results", path)
+    from_r = document["models"]["adjusted"]
+
+    em = Emitter(root / "analysis" / "model.R", root=root)
+    fit = smf.glm("y ~ x + C(g, Treatment('a'))", data, family=sm.families.Binomial()).fit()
+    em.model("adjusted", fit, name="Adjusted model", description="The primary analysis.")
+    from_python = em.document()["models"]["adjusted"]
+
+    def facts(card: dict) -> dict:
+        entered = sorted(
+            (r["variables"][0], r["as"], tuple(r.get("levels", ())), r.get("reference"))
+            for t in card["terms"] for r in t["entered"]
+        )  # fmt: skip
+        keep = ("parameters", "n_input", "n_used", "n_dropped", "converged", "events",
+                "events_by_level", "name", "description")  # fmt: skip
+        return {
+            "kind": engine_of(card["engine"]).kind,
+            "outcome": card["outcome"]["variables"],
+            "entered": entered,
+            **{key: card.get(key) for key in keep},
+        }
+
+    assert facts(from_r) == facts(from_python)
+    assert document["variables"]["g"]["observed"] == {
+        "distinct": 3, "missing": 0, "levels": ["a", "b", "c"],
+    }  # fmt: skip
+
+
+STEPS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+half <- function(x) x / 2
+em <- mg_emitter("%(script)s")
+a <- 10
+b <- 20
+em$step("ror", {
+  # the ratio
+  ror <- a / b
+})
+em$step("ci", {
+  se <- half(sqrt(1 / a + 1 / b))
+})
+em$value("ror", ror, digits = 2)
+em$value("se", se, digits = 3)
+em$write()
+"""
+
+STEPS_PY = """
+import math
+from manuscript_guard.emit import Emitter
+
+
+def half(x):
+    return x / 2
+
+
+em = Emitter(__file__)
+a, b = 10, 20
+with em.step("ror"):
+    # the ratio
+    ror = a / b
+with em.step("ci"):
+    se = half(math.sqrt(1 / a + 1 / b))
+em.value("ror", ror, digits=2)
+em.value("se", se, digits=3)
+em.write()
+"""
+
+
+def _steps_from_r(root: Path, text: str) -> dict:
+    script = root / "analysis" / "steps.R"
+    script.write_text(
+        text % {"emit": EMIT_R.as_posix(), "script": script.as_posix()}, encoding="utf-8"
+    )
+    out = _run_r(script, root)
+    assert out.returncode == 0, f"{out.stdout}\n{out.stderr}"
+    path = root / "results" / "steps.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert validate(document, "results", path).ok
+    return document["steps"]
+
+
+def test_r_and_python_mark_steps_alike(tmp_path: Path) -> None:
+    """The same steps in either language: the lines of the code inside the step, a digest,
+    and the analysis's own functions it calls. The digests are each language's own."""
+    import runpy
+
+    root = _parameter_project(tmp_path)
+    from_r = _steps_from_r(root, STEPS_R)
+    (root / "analysis" / "steps.py").write_text(STEPS_PY, encoding="utf-8")
+    runpy.run_path(str(root / "analysis" / "steps.py"))
+    from_python = json.loads((root / "results" / "steps.json").read_text(encoding="utf-8"))
+    from_python = from_python["steps"]
+    shape = {name: {k: v for k, v in s.items() if k != "digest"} for name, s in from_r.items()}
+    assert shape == {"ror": {"lines": [12, 12]}, "ci": {"lines": [15, 15], "follows": ["half"]}}
+    assert {name: {k: v for k, v in step.items() if k not in ("digest", "lines")}
+            for name, step in from_python.items()} == {"ror": {}, "ci": {"follows": ["half"]}}
+
+
+def test_r_reads_a_step_as_code(tmp_path: Path) -> None:
+    root = _parameter_project(tmp_path)
+    before = _steps_from_r(root, STEPS_R)
+    commented = _steps_from_r(root, STEPS_R.replace("# the ratio", "# the ratio of a to b"))
+    assert commented["ror"]["digest"] == before["ror"]["digest"]
+    changed = _steps_from_r(root, STEPS_R.replace("ror <- a / b", "ror <- b / a"))
+    assert changed["ror"]["digest"] != before["ror"]["digest"]
+    assert changed["ci"]["digest"] == before["ci"]["digest"]
+    helper = _steps_from_r(root, STEPS_R.replace("x / 2", "x / 3"))
+    assert helper["ci"]["digest"] != before["ci"]["digest"], "a function it calls is its code"
+
+
+@pytest.mark.parametrize(
+    ("call", "refusal"),
+    [
+        ('em$step("CI", { x <- 1 })', "lowercase letters"),
+        ('em$step("a", { x <- 1 })\nem$step("a", { x <- 2 })', "two different blocks"),
+    ],
+)
+def test_r_refuses_the_steps_python_refuses(tmp_path: Path, call: str, refusal: str) -> None:
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "refused.R"
+    # A step's digest needs the digest package, which an R without it cannot compute.
+    needs = PARAMETERS_R.split("source(")[0]
+    script.write_text(
+        f'{needs}source("{EMIT_R.as_posix()}")\nem <- mg_emitter("{script.as_posix()}")\n{call}\n',
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode != 0 and refusal in out.stderr, out.stderr

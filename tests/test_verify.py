@@ -73,6 +73,54 @@ def test_a_re_signed_edit_is_caught_even_though_g1_passes(project: Path) -> None
     assert "rerun-differs" in {f.code for f in to_report(result).failures}
 
 
+def test_a_version_found_on_another_machine_is_reported_and_reproduces(project: Path) -> None:
+    """The example records the Python it ran under, and a re-run elsewhere runs under its own:
+    that is the environment, said in a warning, and every result still has to agree."""
+    path = fragment_of(project)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["values"]["software.python"].update(value="2.7.18", display="2.7.18")
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(path)
+
+    result = run(project)
+    assert result.ok, to_report(result).render(project)
+    found = [f for f in to_report(result).warnings if f.code == "rerun-other-software"]
+    assert len(found) == 1 and "written with 2.7.18" in found[0].message
+
+
+def test_a_fit_s_last_digits_from_another_machine_reproduce(project: Path) -> None:
+    """An iterative fit's last digits depend on the machine's linear algebra: CI on macOS
+    found the adjusted ratio as 3.844764571463991 where Linux had written 3.844764571464015.
+    Both print 3.845, and that is a reproduction; a change in the ninth digit is not."""
+    path = fragment_of(project)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    on_disk = document["values"]["ror_adjusted.point"]
+    on_disk["value"] *= 1 + 6e-15
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(path)
+    result = run(project)
+    assert result.ok, to_report(result).render(project)
+
+    on_disk["value"] *= 1 + 1e-7
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(path)
+    differed = {key for c in run(project).comparisons for key, _was, _now in c.differed}
+    assert differed == {"ror_adjusted.point"}
+
+
+def test_a_result_relabelled_as_software_on_disk_is_still_a_difference(project: Path) -> None:
+    """Which values are versions is read from the re-run, so a fragment edited to call a
+    changed result "software" is caught like any other edit."""
+    path = fragment_of(project)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["values"]["ror.point"].update(value=9.99, display="9.99", role="software")
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(path)
+
+    result = run(project)
+    assert "rerun-differs" in {f.code for f in to_report(result).failures}
+
+
 def test_edited_input_data_with_a_rewritten_hash_is_caught(project: Path) -> None:
     """The same attack one level up: the declared input hash lives in the file it protects."""
     from manuscript_guard.emit import sha256_of

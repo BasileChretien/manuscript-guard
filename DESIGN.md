@@ -234,12 +234,13 @@ All deterministic, all runnable in CI without Claude.
 | G6 | AI-writing lint | banned constructions and cadence tells |
 | G7 | Citation integrity | unpinned or unresolvable citation key; literature claim with no stored source |
 | G8 | Cross-artifact consistency | a quantity differs between abstract, results, table and figure |
-| G9 | Methods drift | analysis code changed since the Methods text was last reconciled |
+| G9 | Methods drift | analysis code changed since the Methods text was last reconciled; per step, a step or the text pointing at it changed since the pair was read |
 | G10 | Figure review | a figure has no current review, or its review raised concerns |
 | G11 | Panel review | no review round, a stale review, a file nobody read, or an unanswered major finding |
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
 | G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
 | G14 | Abbreviations, terms, spelling and notation | never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, when a word is in the spelling of the English the paper does not declare, when a P value, an interval or a percentage is written in two ways, and when a number runs into its unit |
+| G15 | Models and their variables | a model of an outcome its kind is not for, a variable entered as another kind than it was declared, a reference or a level other than the declared one, an undeclared variable, a fit that did not converge or has a level without events, rows dropped and never stated (warnings: few events for each coefficient, an ordinal variable entered as a trend, a model the Methods name and the analysis did not fit) |
 
 Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
 is in no stage's deferral list and so fails everywhere, because a checker that could not
@@ -1242,6 +1243,170 @@ check.
 The lock can also carry parameters that must appear in the prose — the significance
 threshold, the software version. Presence, not correctness, but those are exactly what a
 reviewer queries and exactly what is left behind when an analysis is redone.
+
+## A choice the code makes is declared, bound and read
+
+The ledger records that someone looked. Some of what they look for needs no reading: the
+alpha, the minimum number of cases, the software version. These are choices made in the
+code and stated in the Methods, and typed there they pass G2 as conventions or as the name of
+a thing. `explain` on the example showed `0.05 convention alpha-level` and `3 convention
+disproportionality-criterion`: the gate had agreed not to look at the two numbers in the
+Methods most likely to drift from the code. The example's own Methods had already drifted.
+They defined a signal as at least 3 cases with a lower bound above 1, and the code computed no
+signal at all.
+
+So the analysis declares them, in both emitters: `alpha = em.parameter("alpha", 0.05)` records
+`param.alpha` and hands the value back for the code to use. `em.software("statsmodels")`
+records the version the run imported, and refuses a distribution the run never imported. The
+Methods bind both. A version is the environment and not a result, so `verify`, re-running the
+analysis on another machine, reports a version other than the one on disk as a warning
+(`rerun-other-software`) and holds every other value to agreeing. Which values are versions
+it reads from the re-run, so a fragment edited to call a changed result "software" is still
+a difference. A fitted model's last digits are the machine's too: an iterative fit
+on macOS and on Linux agree to about fifteen digits and not to the last bit. So verify holds
+a float to agreeing in nine significant digits, and its display, which is what the paper
+prints, to agreeing exactly. G2 fails a declared value typed instead: a Methods-only convention whose
+number equals a parameter, or a software version equal to a declared one. Only the
+Methods-only conventions count, because they are the thresholds an author chooses in advance;
+the `2` of a `2 x 2` table names a structure whatever a parameter equals.
+
+**Declared is not used.** A parameter bound in the Methods prints the right number for a step
+the code may not take, which is exactly what the example's signal criterion was. Each
+emitter therefore reads its own script where `parameter()` is called, with Python's `ast`
+and R's parse data, and records whether the value handed back is read again (`read`). The
+value thrown away, or assigned to a name nothing in its scope reads, is `false`, and G2 fails
+it from the `analysis` stage. A value read again is not shown to change anything. It can be
+read in a `print`, or in a branch that never runs, or compared with data it never decides
+for. Perturbing it and re-running would not settle that either: a threshold of 3 cases with 77
+cases in the data changes no result whether or not the code applies it. The record says what
+was established, a read, and nothing more.
+
+**A copy that no longer agrees is named, not failed.** The rule above finds a typed copy only
+while it still equals the parameter. Once the analysis declares parameters, a Methods
+threshold equal to none of them is reported as `threshold-undeclared`, a warning. It is either a
+choice the code makes and does not declare, or the copy left behind by a change, and which
+one is a question for the author.
+
+A threshold is not a measurement, so a float parameter is written as typed (fifteen
+significant digits, in both languages) unless `digits` or `display` says otherwise: 0.025
+rounded to two places is 0.03, a different test.
+
+## A model is read from its fit, and each variable says what it is
+
+A parameter is one number. A model is a set of decisions: which outcome, which kind of
+model for it, which variables, each entered how, against which reference, on which rows. A
+Methods section states them in a sentence, and the sentence is written once and never read
+against the fit again.
+
+So the analysis records the model as the fit describes itself. `em.model("adjusted", fit,
+name=..., description=...)` reads a statsmodels fit made through the formula API, and
+`em$model()` an R `lm` or `glm`. Each records the engine (language, class, family, link), the
+formula, every term with how each variable entered it (as a number, or as categories with
+their levels and reference), the rows used and dropped, the events of a binary outcome by
+level of each categorical term, and convergence. A fit the emitter cannot read is refused,
+not described: a model typed by hand is the thing this replaces.
+
+The data cannot say what a variable is meant to be. 1 to 4 is a grade, a code or a count,
+and an identifier looks like an integer. `em.variable("age_group", "categorical", label=...,
+levels=..., reference=..., values=...)` says it, beside the code that derives the variable,
+and records what the data held: the levels, the distinct values, the missing ones.
+
+**Facts in the fragment, names derived once.** The emitters write facts and nothing else.
+What a model is called (`logistic regression`), the sentence that describes it and the
+table that prints it are derived when the results are read, from `data/models.yaml`, in
+Python, for both languages. Two emitters naming models would be two lists to keep equal.
+The model has two names and two descriptions. Its name (`Adjusted model`) and its
+description (what it is for) are the author's, since no fit knows them. Its kind and the
+generated sentence come from the fit, and that is what G15 checks the author's words
+against. `{{results.model.<key>.kind}}` binds the kind, and `{{table.model_<key>}}` places the
+table: the outcome and each variable with the kind it was declared, how it entered, and its
+levels with the reference marked. A table the toolkit made from facts is not held to the
+rule for typed cells, and is placed or reported like any emitted table.
+
+**What G15 settles.** The comparisons a reader would make if they had the card in front of
+them: the outcome is a kind the model is for (a binary outcome under a linear model fails);
+each variable entered as the kind it was declared (a nominal code entered as one slope
+fails, an ordinal one entered as a trend is a warning); the reference and levels the fit
+used are the declared ones; every variable a model reads was declared; the fit converged
+and no level of a categorical term is without events; rows dropped for missing values are
+stated in the manuscript. Few events for each coefficient is a warning, at ten, Peduzzi's
+rule, which the literature has argued over since. The kind of a model the analysis fitted, typed in
+the Methods, fails as a typed parameter does, since it is the copy left behind when the model
+changes; a kind it did not fit is a warning. Both are read in the prose G14 reads, in any
+case, across a hyphen or a line break, and in the plural.
+
+**What it leaves to people.** Whether the adjustment set is the right one, whether an
+assumption holds, whether the model answers the question. `manuscript-guard models` prints
+each card for that reading: the author's name and description beside the kind and the
+generated sentence, and the table of variables. Once a co-author page can carry items, the
+card is the item, and its digest covers both descriptions.
+
+## A step of the code and the text that points at it
+
+The ledger of G9 records that a person read the Methods against the analysis, file by file.
+A file is a coarse thing to have read. A comment edited in it asks for the whole Methods to be
+read again, and the report cannot say which paragraph describes the code that changed.
+
+So the reading can be kept pair by pair. The analysis marks a step of its code, in either
+language:
+
+```python
+with em.step("ci"):                          # R: em$step("ci", { ... })
+    se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+    low = math.exp(math.log(ror) - z * se)
+```
+
+The Methods end the text that describes it with `{{method.ci}}`, an anchor that prints nothing,
+in the document or the annotated copy, or to a review panel.
+
+**What an anchor claims.** The text before it, back to the anchor before it or the start of
+its paragraph. A blank line or a heading starts a paragraph, and a comment on a line of its own
+does not. Anchors side by side claim the same text, for a sentence that describes two steps.
+The extent is where the author put the anchors. A rule that found the sentence an anchor ends
+would have to know where sentences end, after "e.g." and "et al." and a number, and a pandoc
+span around the claim would make every Methods paragraph harder to read in the source. An
+anchor that opens its paragraph claims nothing and fails.
+
+**What a step records.** The lines of its block and a digest of its code read as code: the
+Python AST without positions, docstrings or the type of each string, and R's `deparse`, so a
+comment, a blank line or a re-wrapped call changes nothing. Functions the step calls that the
+analysis defined itself are followed, through the functions they call, and are part of the
+digest; a package's function is not. A step that never runs, in a branch the run did not take,
+is not recorded. The Python digest is not `ast.dump`, which writes the same tree differently
+from one Python to the next.
+
+**What the lock records.** Each step and the claim pointing at it, as a pair: the step's name,
+the claim as written with its spaces read as one, the digest of the code, and the day it was
+read. `methods --reconcile` records every pair and every file; `methods --reconcile ci` only
+the pairs of `ci`, leaving the files and the other pairs as they were, since nobody read those.
+
+**What is checked.**
+
+- An anchor that names no step the run recorded fails, at every stage. A sensitivity analysis
+  described in the Methods and left in a branch no run takes is found this way.
+- From `internal-review`, a pair fails when its step's code changed since it was read, when its
+  text changed (the finding says what it was), or when it was never read. A second text
+  pointing at a step is a pair never read, not the first one changed.
+- A step no text points at is a warning.
+- A Methods paragraph that points at no step is counted, and listed by
+  `manuscript-guard methods --explain`, not reported as a finding. A paragraph on ethics
+  approval or on the data source has no step to point at, and a warning nobody can clear is
+  one that gets ignored.
+
+`methods --explain` prints every claim with the lines of the step that backs it and how the
+pair stands, then the open paragraphs, then the steps nothing describes. That is what a person
+reads to check the Methods against the code. Whether the text describes the code correctly is
+still theirs to say: an anchor shows that someone pointed a sentence at some code.
+
+**In Word.** An anchor prints nothing, so a co-author never sees it. The round trip does not
+place it by Word's words. Anchors that end their paragraph are set aside before the paragraph
+is aligned and put back after it, so a rewording in Word comes back with them. An edit to a
+paragraph with an anchor anywhere else is refused, with the reason, since Word's text cannot
+say where the anchor goes in the new wording.
+
+**In the example**, reading each pair turned up the ambiguity a review round had already named:
+the signal criterion spoke of "a lower bound of the confidence interval" where the analysis
+computes two intervals and uses the 95% one. The text now says which.
 
 ## A rewording is held to the words
 
@@ -3866,8 +4031,8 @@ the campaigns are in the suite, on Hypothesis:
 
 - `tests/generated.py` holds the generators: manuscripts, vocabularies, one-line titles,
   sources with quotations of them, the settings typed into a project, a co-author's
-  sessions in Word, texts that quote the bounds of intervals, and a manuscript beside
-  what an edit made of it.
+  sessions in Word, texts that quote the bounds of intervals, the same with comments
+  typed into them, and a manuscript beside what an edit made of it.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its
@@ -3923,13 +4088,13 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So eighteen rules are broken in place, one at a time, and the property that is
+the generators. So nineteen rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, and nine ways `reworded` can misread an edit, from a number's sign taken for no
-part of it to what a comment holds held to its place.
+sentence, a comment read for its stops, and nine ways `reworded` can misread an edit, from
+a number's sign taken for no part of it to what a comment holds held to its place.
 The import is broken three times the same way: a rewording written over the next
 paragraph, one written a second time, and one written over the next paragraph only where
 an identified paragraph did not come back at all. Each is known by the sentence that
@@ -4093,7 +4258,7 @@ it.
   like any other and is compared: it used to end the process that was answering.
 - **The comparison is held to being one.** Two processes on this source under two hash
   seeds must answer alike on every reading, which also catches a reading that walks a
-  set. And nine lines are changed in a copy of the source, one at a time, and the reading
+  set. And eleven lines are changed in a copy of the source, one at a time, and the reading
   that goes through each must differ: among them the mutant the review of #181 found
   alive, the offset of a quotation's lines losing a character at each line break, an
   import that writes no rewording, and a finding that points at another file with its
@@ -6770,7 +6935,40 @@ Closed since, and why each mattered:
   of human and machine writing. They are a starting point.
 - **G9 cannot tell a refactor from a change of meaning.** Every edit to an analysis file
   prompts a re-read, including one that only moved a function. That is the safe direction,
-  but it is friction.
+  but it is friction. A step's digest leaves comments and layout out, but a variable renamed
+  inside a step still changes it, and the whole file's digest changes with any edit, so
+  `methods --reconcile <step>` clears the pair and not the file.
+- **A step follows only the analysis's own functions, in its own script.** In Python, a
+  function defined at the top level of the same script and called by name; in R, a function
+  defined outside a package and found from where the step runs. A method of an object, a
+  function imported from a helper module and anything a package does are not followed, so a
+  change there leaves the step's digest as it was. The R digest is R's `deparse`, which can
+  write the same code differently in another version of R.
+- **An anchor inside a paragraph stops the round trip for that paragraph.** An edit made in
+  Word to a paragraph with an anchor before its end is refused, and has to be made in the .md.
+- **A claim's extent is the author's.** An anchor at the end of a paragraph of five sentences
+  claims all five, and the gate cannot tell whether the step backs them all.
+- **A parameter that is read is not shown to be used.** The emitters record whether the value
+  `parameter()` returns is read again in its scope, by name. A read inside a `print` or in a
+  branch that never runs counts, so does a name of the same spelling read elsewhere in the
+  same function, and a value passed into an attribute or a tuple is not followed at all (the
+  record then says nothing either way). In R, a call that is the last expression of a block
+  is its value and is not followed. A parameter declared in a helper module is read in the
+  script the emitter was given, not the helper.
+- **G15 reads two kinds of fit.** The statsmodels formula API in Python and `lm`/`glm` in R.
+  Anything else (a Cox model, a mixed model, scikit-learn) cannot be recorded with
+  `em.model` yet. A fit `data/models.yaml` has no entry for is a warning, and its outcome is
+  not checked. Whether a variance was made robust, or an assumption holds, is not read.
+- **Events by level are counted for a term of one categorical variable.** An interaction's
+  cells are not, so a cell of an interaction with no events is not found.
+- **A model's terms are those of its formula.** A variable transformed in the formula
+  (`np.log(x)`) is recorded with its expression and checked as the variable it reads; one
+  derived before the formula is a variable of its own, and must be declared as one.
+- **Only an equal typed copy fails.** A threshold typed in the Methods fails as a typed
+  parameter while it equals one; once the code has moved on it is a warning,
+  `threshold-undeclared`, and only in an analysis that declares parameters. A confidence level
+  ("95% CI") is a convention everywhere and is never read for a parameter. A software version
+  is matched by its text, so `Python 3.13` beside a declared `3.13.16` is not found.
 - **Download links rot.** All fourteen work today, verified by a clean-room fetch and
   transcribe, but two needed a second attempt and none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible
@@ -6799,62 +6997,64 @@ Closed since, and why each mattered:
   (`reporting/scale.py`) reads a form of numbered items with scored options: SANRA's. The items
   are the reader's output read from its own input, so there is nothing to compare them against —
   a Word table's items are verified verbatim, a column PDF's by their opening clause, and a
-  scale's not at all. The profile says so in those words rather than printing a guarantee.
-  What stands in for one is that a line is placed or the reading stops: a line the reader cannot
-  place stops the transcription, an item with too few options stops it once the scale has
-  started anywhere in the document, and the numbers must run from one without a gap. The first
-  version dropped what did not match, and the parenthetical under two of SANRA's six items
-  vanished from the profile while it reported every statement verbatim.
+  scale's not at all. The profile says so in those words rather than printing a guarantee, and
+  records which of `items` and `options` its recipe stated.
 
-  **Above the first heading of a page, nothing is placed.** Every line before it is passed over,
-  because that is where a form prints its title and the rater's instructions. So a statement
-  whose second line sits at the top of the next page loses it, with both counts stated, where
-  the same wrap on one page is refused. Whether that loss is then noticed depends on where the
-  wrap falls: it goes through **in silence** where the score is on the statement's own first
-  line and the statement is its item's last, and otherwise leaves the item an option short or
-  none at all, which the counts refuse. Nothing shipped reaches any of it: SANRA's recipe reads
-  one page.
+  What stands in for a verification is the reading's own rules, which `scale.py`'s docstring
+  states in three short paragraphs: what is read on each page, what each line becomes, and what
+  is counted. The first version of this reader dropped what did not match, and the parenthetical
+  under two of SANRA's six items vanished from the profile while it reported every statement
+  verbatim.
 
-  It is not the only place "a line is placed or the reading stops" does not hold. A line under
-  one of the rater's numbered instructions, before the scale has started, goes with the
-  instruction; every line after `stop_at` is left by the recipe's own word; and the first
-  unscored line under a heading is kept as that item's clarification. The sentence above should
-  be read with this paragraph beside it.
+  **The consequences are pinned, not described.** Four rounds of review, by two readers of this
+  code, each corrected a case-by-case account of which misprints and which wrapped lines are
+  refused and wrote a new one that was wrong somewhere. Of the silent cases listed below, one
+  page reaches three: the wrapped title or first statement with both counts stated, a one-space
+  first statement or a running foot with no option count, and a scale cut short by an early
+  `stop_at` with no item count. The enumeration has more cases than prose keeps straight, so the ones worth
+  knowing are pinned in `tests/test_transcribe.py` instead of written out. These five hold what
+  is not obvious from the rules, each by its own name:
 
-  **What each count can see.** `options` refuses a line that changes how many options an item
-  has: a statement printed within one space of its score (`pdftotext -layout` may lay that out
-  differently between builds — SANRA's longest leaves exactly two spaces under Xpdf 4.00 and many
-  more under poppler 24.04, which is a margin and not a guarantee), a running foot ending in a
-  page number where the recipe gives no `stop_at`, and an item whose scored lines carry on to the
-  next page. `items` refuses a scale read short: a line equal to `stop_at` printed before the
-  last item, and a page the recipe's `pages` leaves out. Neither count catches the other's cases.
+  - `test_a_wrapped_title_or_wrapped_first_statement_is_written_wrong_on_one_page` — **what a
+    one-page form reaches in silence where its recipe states both counts**, and the reason a
+    first profile is read against the published form by eye;
+  - `test_a_statement_split_across_a_page_break_loses_its_second_line`;
+  - `test_a_stop_at_line_before_the_last_item_is_caught_only_by_the_item_count`;
+  - `test_a_last_item_alone_on_a_second_page_is_refused_not_passed_over` — a *one-option* last
+    item on a later page; a complete one is read correctly, which no test pins;
+  - `test_the_profile_carries_the_sentence_for_its_recipes_counts`.
 
-  One thing that list used to carry and should not: a last item alone on a page, which is read
-  correctly, or refused for too few options, with and without counts alike. And one it still
-  carries, correctly, though not for the reason first given — a one-space statement is refused by
-  the line rules with no counts at all in every position but one, first line under a title of an
-  item with no clarifying line, where it is read as the clarification; it is there because that
-  one position is `options`' to catch.
+  Those five are not the whole of it, and this list does not claim to be: twelve other scale
+  tests are in the same file, nine of them holding the reading — a line that can be placed
+  nowhere, a second unscored line, too few options, the rater's instructions above the scale,
+  numbers that do not run from one — and three the sentence a profile records.
+  Four shapes are in no test at all, and are written or dropped without a word, each where no
+  option count is stated except the last: a one-space first statement, kept as the item's
+  clarification so that the item is written an option short; a running foot read as one more
+  option; an item whose scored lines carry on to the next page, written short; and, where no
+  item count is stated, a page the recipe's `pages` leaves out, so the scale is written short.
 
-  **No count sees a wrapped line**, because wrapping changes nothing's number. A title that runs
-  onto a second line is read as a title cut at the line end and a clarifying line; a first
-  statement that wraps with its score on the second line is read as a clarification and a
-  shortened first option. Both are written in silence with SANRA's own counts stated. Elsewhere
-  on a page the line rules refuse a wrap without help from any count: any statement after the
-  first, a first statement with its score on its own line, and any wrap under an item that
-  already carries a clarifying line. A form whose layout is misread from the start is uncaught in
-  any case.
+  [#219][scale-219] records ten sentences found inexact, each with what is true instead, for
+  anyone who wants that account as it stood.
+
+  Two things prose can carry. Whether a statement is printed within one space of its score
+  depends on the build of `pdftotext`, and such a line is no option: it is refused where an
+  option is expected, and read as the item's clarification where it is the first line under a
+  title. SANRA's longest leaves exactly two spaces under Xpdf 4.00 and many more under poppler
+  24.04, which is a margin and not a guarantee. And a form whose layout is misread from the start
+  is uncaught in any case.
+
+  Where the form prints something that is not an item, the recipe names it (`stop_at`), because
+  only the recipe can tell a footer from a statement that wrapped. A numbered line in the rater's
+  instructions that runs to a second unscored line is refused with a message about a second
+  clarification, which names the wrong cause; the recipe cannot yet say where the scale begins.
 
   So a new recipe states its counts, and — the part no machine does — its first profile is read
   against the published form once, item by item. For the form this ships a recipe for, that was
   done: under Xpdf 4.00 and poppler 24.04 every one of SANRA's six titles and six first
   statements is on one line, and both builds transcribe it identically.
 
-  Where the form prints something that is not an item, the recipe names it (`stop_at`), because
-  only the recipe can tell a footer from a statement that wrapped. A numbered line in the
-  rater's instructions that runs to a second unscored line is refused with a message about a
-  second clarification, which names the wrong cause; the recipe cannot yet say where the scale
-  begins.
+  [scale-219]: https://github.com/BasileChretien/manuscript-guard/pull/219
 - **Recipes are tuned to one document each.** A guideline that reformats its checklist
   breaks its recipe, loudly — the transcription fails rather than producing something
   plausible, which is the right failure, but it is still work.
@@ -7883,18 +8083,26 @@ Closed since, and why each mattered:
   that stop as the search did, so that nothing G2 reports changed with it;
   `test_a_stop_against_a_binding_ends_a_sentence_for_that_binding_alone` holds the three
   cases. It takes a stop with no space after it, directly before a bound.
-- **Two intervals quoted backwards in one sentence are reported in an order that changes
-  from run to run.** The estimates and levels of a sentence are walked as a Python set,
-  whose order turns on the hash seed of the process. Which intervals are reported does not
-  change, nor on which line; `check` sorts by file and line, so two such findings change
-  places only where both are on one line. The generated reading of the order of intervals
-  (`interval order` in `tests/readings.py`) compares them sorted for that reason.
-- **A stop in an HTML comment, or after an abbreviation, ends a sentence between two
-  bounds.** The sentence ends are read in the file as it is typed. In
+- **Two intervals quoted backwards in one sentence were reported in an order that changed
+  from run to run.** The estimates and levels of a sentence were walked as a Python set,
+  whose order turns on the hash seed of the process. Which intervals were reported did not
+  change, nor on which line; `check` sorts by file and line, so two such findings changed
+  places only where both were on one line. They are walked in the order each is first
+  quoted now. The generated reading of the order of intervals (`interval order` in
+  `tests/readings.py`) compared them sorted, which hid this from the comparison under two
+  hash seeds; it compares them as the gate gives them, and that comparison holds the order.
+- **A stop after an abbreviation ends a sentence between two bounds.**
+  `{{results.ror.ci_high}}, e.g. {{results.ror.ci_low}}` passes, and so does a reversal
+  with `approx.` or `vs.` between its bounds: a sentence is not parsed, it is cut at each
+  stop before a space. A list of abbreviations would cut ordinary sentences wrongly.
+- **A stop in an HTML comment ended a sentence between two bounds.** The sentences were
+  read in the file as typed. In
   `It ran {{results.ror.ci_high}} <!-- was 7.02. --> to {{results.ror.ci_low}}.` the stop
-  in the comment puts the two bounds in two sentences, so the reversal passes; pandoc drops
-  the comment and prints the interval backwards. `{{results.ror.ci_high}}, e.g.
-  {{results.ror.ci_low}}` passes the same way: a sentence is cut at each stop before a space.
+  in the comment put the two bounds in two sentences, so the reversal passed, and pandoc
+  dropped the comment and printed the interval backwards. And a stop with a comment typed
+  against it, `{{results.ror.ci_high}}.<!-- checked --> The lower bound`, ended none, so
+  the bounds of two sentences were compared. The sentences are read where the bindings
+  are now, in the text with each comment blanked: a comment is white space to both.
 - **A structured abstract cannot state its own signal threshold.** `methods_only` rules need
   a Methods heading, and an abstract's chain is `("Abstract",)`. Treating the whole abstract
   as Methods was considered and rejected: an abstract states results in the same block, and
@@ -8409,7 +8617,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 21 broken rules, and the comparison on nine
+  - The properties were seen to fail on 22 broken rules, and the comparison on eleven
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

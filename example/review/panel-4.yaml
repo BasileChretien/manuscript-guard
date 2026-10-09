@@ -1,0 +1,23 @@
+schema: manuscript-guard/panel/1
+round: 4
+opened_on: 2026-10-09
+manuscript_sha256: 99d4125cde6f06a2c4cb3be4e26db1f8fa6fa3f98e8ae3f764293041823bf9f0
+blinded: false
+rationale: 'A revision round. The analysis now also estimates the reporting odds ratio adjusted
+  for age group and sex by logistic regression, the Methods describe that model, the Results
+  report it, and Table S2 in the supplement prints the model as it was fitted. The two
+  remits whose subject this is read the paper again, with the earlier rounds in front of
+  them: the estimator, and the adjustment as a design choice for spontaneous reports.'
+reviewers:
+- id: pharmacoepidemiologist
+  role: Pharmacoepidemiologist
+  remit: Whether the design can answer the question asked. Case and exposure definitions,
+    denominators, the difference between disproportionate reporting and risk, and
+    the biases specific to spontaneous reporting.
+  why: The revision adds an adjusted estimate, which is a design choice.
+- id: biostatistician
+  role: Biostatistician
+  remit: Whether the estimator is right and stated fully enough to reproduce. Interval
+    construction, small-cell behaviour, multiplicity, and whether the reader can reconstruct
+    the estimate from what is reported.
+  why: The revision adds a model and its interval.

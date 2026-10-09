@@ -16,15 +16,23 @@ import re
 from bisect import bisect_left
 from pathlib import Path
 
-from manuscript_guard.classify import UNCLASSIFIED, Classifier, declarable
+from manuscript_guard.classify import (
+    CONVENTION,
+    STRUCTURAL,
+    UNCLASSIFIED,
+    Classifier,
+    Verdict,
+    declarable,
+)
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.literature import Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
-from manuscript_guard.contracts.values import Value
+from manuscript_guard.contracts.values import Value, number_in
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.masking import (
+    blank_comments,
     fenced_blocks,
     front_matter_abstract,
     front_matter_end,
@@ -117,6 +125,9 @@ def check_numbers(
     # every run: `conventions:` and `terms:` are self-service on purpose, but a project that
     # exempts half its numbers should not read exactly like one that exempts none.
     by_project: dict[str, int] = {}
+    choices = [value for value in namespace.values() if value.role]
+    chosen = chosen_rules(classifier)
+    declares = any(value.role == "parameter" for value in choices)
 
     for path in source_files(project.path("manuscript")):
         totals["files"] += 1
@@ -146,8 +157,8 @@ def check_numbers(
                     message=f"{raw} is not a valid binding and will be printed literally",
                     path=path,
                     line=line,
-                    hint="the form is {{results.key}}, {{lit.key}}, {{table.key}} "
-                    "or {{figure.key}}",
+                    hint="the form is {{results.key}}, {{lit.key}}, {{table.key}}, "
+                    "{{figure.key}} or {{method.step}}",
                 )
             )
 
@@ -201,6 +212,11 @@ def check_numbers(
                     totals["project"] += 1
                     label = verdict.rule if verdict.rule != "terms" else f"terms: {verdict.detail}"
                     by_project[label] = by_project.get(label, 0) + 1
+                typed = typed_choice(atom.text, verdict, choices, chosen)
+                if typed is not None:
+                    report = report.with_findings(_typed_finding(typed, atom, path))
+                elif declares and verdict.kind == CONVENTION and verdict.rule in chosen:
+                    report = report.with_findings(_undeclared_threshold(atom, path))
                 continue
             loose += 1
             if loose > PER_FILE_CAP:
@@ -247,6 +263,7 @@ def check_numbers(
     report = report.merge(_paper_yaml_prose(project, classifier))
     report = report.merge(_emitted_tables(results, classifier))
     report = report.merge(_declared_intervals(namespace))
+    report = report.merge(_unread_parameters(namespace))
     report = report.merge(_prose_as_value(namespace, referenced))
 
     if by_project:
@@ -468,10 +485,15 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
     bounds = [(placeholder, value) for placeholder, value in quoted if value.bounds]
     if not bounds:
         return report
-    ends = [match.start() for match in _SENTENCE_END.finditer(text)]
+    # The sentences are read where `parse` read the bindings: with each HTML comment
+    # blanked. Pandoc drops a comment. Read as typed, a stop inside one ended a sentence
+    # between two bounds, and a reversal there passed and was printed; and a stop with a
+    # comment typed against it ended none, so the bounds of two sentences were compared.
+    read = blank_comments(text) if "<!--" in text else text
+    ends = [match.start() for match in _SENTENCE_END.finditer(read)]
     by_sentence: dict[int, list] = {}
     for placeholder, value in bounds:
-        sentence = _sentence(text, ends, placeholder.start)
+        sentence = _sentence(read, ends, placeholder.start)
         by_sentence.setdefault(sentence, []).append((placeholder, value))
 
     for group in by_sentence.values():
@@ -486,7 +508,11 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
             # lower bound of 2.10 excludes unity" — was reported as reversed, and a genuinely
             # reversed one restated the other way round went unreported.
             seen.setdefault(f"{value.bounds}@{value.level or ''}:{value.bound}", placeholder.start)
-        for estimate, level in {(value.bounds, value.level or "") for _p, value in group}:
+        # In the order each interval is first quoted. They were walked as a set, whose order
+        # the hash seed of the process decides: two intervals reversed on one line changed
+        # places in the report from one run of `check` to the next.
+        intervals = dict.fromkeys((value.bounds, value.level or "") for _p, value in group)
+        for estimate, level in intervals:
             low = seen.get(f"{estimate}@{level}:low")
             high = seen.get(f"{estimate}@{level}:high")
             if low is None or high is None or low < high:
@@ -502,6 +528,117 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
                     line=text.count("\n", 0, high) + 1,
                     hint="write the lower bound first; both bindings resolve either way, "
                     "which is why nothing else catches this",
+                )
+            )
+    return report
+
+
+# Where the figure starts in an atom: `P<0.05` is one atom, and `.05` has no nought.
+_FIGURE = re.compile(r"\d|\.\d")
+
+
+def stated_number(text: str) -> float | None:
+    """The number an atom states, read past what is typed before its figure: `P<0.05` and
+    `p<.05` state 0.05. A sign is not read; a threshold has none."""
+    at = _FIGURE.search(text)
+    if at is None:
+        return None
+    figure = text[at.start() :]
+    return number_in("0" + figure if figure.startswith(".") else figure)
+
+
+def chosen_rules(classifier: Classifier) -> frozenset[str]:
+    """The conventions that hold only in the Methods: the thresholds an author chooses in
+    advance, which are the ones an analysis can declare as parameters."""
+    return frozenset(rule.id for rule in classifier.conventions if rule.methods_only)
+
+
+def typed_choice(
+    text: str, verdict: Verdict, choices: list[Value], chosen: frozenset[str]
+) -> Value | None:
+    """The declared parameter or software version a typed number states, if it states one.
+
+    A threshold typed in the Methods passes as a convention, and a version as the name of a
+    thing. Once the analysis declares the value it ran with, a typed copy is the one that
+    stays behind when the code changes, so it has to be bound. Only the Methods-only
+    conventions are read for a parameter: "2" in "a 2 x 2 table" is the name of a structure
+    whatever a parameter equals. A parameter is compared by the number it states, a version
+    by its text.
+    """
+    if verdict.kind == CONVENTION and verdict.rule in chosen:
+        stated = stated_number(text)
+        if stated is None:
+            return None
+        for value in choices:
+            if value.role == "parameter" and number_in(value.display) == stated:
+                return value
+    elif verdict.kind == STRUCTURAL and verdict.rule == "software-version":
+        for value in choices:
+            if value.role == "software" and value.display == text:
+                return value
+    return None
+
+
+def _typed_finding(value: Value, atom, path: Path) -> Finding:
+    if value.role == "software":
+        code = "typed-software-version"
+        what = f"the version of {value.key.removeprefix('software.')} this analysis ran with"
+    else:
+        code = "typed-parameter"
+        what = f"the analysis parameter {value.key}"
+    return Finding(
+        gate=GATE,
+        code=code,
+        message=f"{atom.text!r} is {what}, typed rather than bound",
+        path=path,
+        line=atom.line,
+        col=atom.col,
+        context=atom.line_text.strip()[:160],
+        hint=f"write {value.reference}: the analysis declares the value it ran with, and a "
+        "typed copy is what stays behind when the code changes",
+    )
+
+
+def _undeclared_threshold(atom, path: Path) -> Finding:
+    """A threshold typed in the Methods of an analysis that declares its parameters, and
+    equal to none of them. Either the code chose it and does not say so, or the code chose
+    another value and this is the copy left behind: the typed-parameter rule finds a copy
+    only while it still agrees."""
+    return Finding(
+        gate=GATE,
+        code="threshold-undeclared",
+        severity=WARN,
+        message=f"{atom.text!r} is a threshold typed in the Methods, and no parameter the "
+        f"analysis declares has this value",
+        path=path,
+        line=atom.line,
+        col=atom.col,
+        context=atom.line_text.strip()[:160],
+        hint="if the code applies it, declare it with parameter() and bind it; if the code "
+        "applies another value, the Methods and the code disagree",
+    )
+
+
+def _unread_parameters(namespace: dict[str, Value]) -> Report:
+    """A parameter the script declares and never reads describes a method it did not run.
+
+    Binding it in the Methods would print the right number for a step that is not there:
+    the example's signal criterion, at least 3 cases, was stated and never applied. What the
+    emitter records is only whether the value handed back is read again, so this finds the
+    parameter declared and forgotten, and not one read and then ignored.
+    """
+    report = Report()
+    for value in namespace.values():
+        if value.role == "parameter" and value.read is False:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="parameter-unread",
+                    message=f"{value.key} is declared, and the analysis never reads the value "
+                    f"parameter() handed back",
+                    path=value.source,
+                    hint="use the returned value in the step it stands for, or remove the "
+                    "parameter: the Methods would state a choice the code never applied",
                 )
             )
     return report
@@ -781,6 +918,8 @@ def _emitted_tables(results: Results, classifier: Classifier) -> Report:
     known |= {shown.replace(",", "") for shown in known}
 
     for key, table in results.tables.items():
+        if table.generated:
+            continue
         spec = {
             "columns": list(table.columns),
             "rows": [list(row) for row in table.rows],

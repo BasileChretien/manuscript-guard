@@ -317,7 +317,9 @@ def test_an_existing_panel_gains_its_readers_and_loses_nothing(
 
     report = check_review(loaded(project), submission=True)
     assert report.ok, report.render(project)
-    assert report.counts["review_readings"] == 9
+    # The five readings of rounds one and two, the two each of rounds three to five, and
+    # the four new ones.
+    assert report.counts["review_readings"] == 15
 
 
 def test_a_local_model_needs_no_key(project: Path, providers: Providers, monkeypatch) -> None:

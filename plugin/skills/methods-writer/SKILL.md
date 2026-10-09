@@ -1,6 +1,6 @@
 ---
 name: methods-writer
-description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when check reports methods-drift or methods-never-reconciled, or after the analysis changes.
+description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding or a G15 model-… or variable-… finding, or after the analysis changes.
 ---
 
 # Writing Methods that describe what was done
@@ -67,9 +67,110 @@ manuscript-guard methods --reconcile
 claim that a person read the code. Reconciling without reading makes it a lie, and a
 lie that is machine-checkable is worse than no check at all, because it will be trusted.
 
+## Pointing each paragraph at the step it describes
+
+A whole file is a coarse thing to have read. Mark the steps of the analysis that the Methods
+describe, and end the text that describes each one with an anchor that prints nothing:
+
+```python
+with em.step("ci"):                       # R: em$step("ci", { ... })
+    se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+    low = math.exp(math.log(ror) - z * se)
+```
+
+```markdown
+Confidence intervals were derived from the standard error of the log odds ratio.
+{{method.ci}}
+```
+
+The anchor claims the text before it, back to the anchor before it or the start of its
+paragraph. Put it at the **end of the paragraph** where you can: give each step its own short
+paragraph. A co-author's edit in Word then comes back with the anchor in place, and an edit to
+a paragraph with an anchor in the middle is refused and has to be made in the .md. Two anchors
+side by side claim the same text. Write the step's name out in the `with` statement; a step in
+a branch the run does not take is not recorded, and an anchor naming it fails.
+
+`manuscript-guard methods --explain` lists every claim beside the lines of its step, the
+Methods paragraphs that point at no step, and the steps nothing describes. Read each claim
+against its lines. When the claim and the code agree, record that pair:
+
+```bash
+manuscript-guard methods --reconcile ci       # this step's pairs only
+manuscript-guard methods --reconcile          # every pair, and every file
+```
+
+From `internal-review`, `check` fails a pair whose code changed (`method-step-changed`), whose
+text changed (`method-claim-changed`, which says what it was) or which was never read
+(`method-pair-unread`), and names the paragraph to read again. A comment or a re-wrapped line
+inside a step changes nothing. `method-step-unknown` is an anchor naming no step the run
+recorded; `method-step-undescribed` is a step no text points at. The same rule holds as for
+the whole file: reconcile a pair after you read it, never to clear the finding.
+
+## Declaring the choices the code makes
+
+A threshold, a confidence level, a minimum number of cases: these are choices made in the
+code and stated in the Methods, and typed in the Methods they pass as conventions, so they
+stay behind when the code changes. Declare them in the analysis and bind them:
+
+```python
+alpha = em.parameter("alpha", 0.05)          # use the returned value in the computation
+min_cases = em.parameter("signal.min_cases", 3)
+em.software("statsmodels")                   # the version this run imported
+```
+
+```markdown
+two-sided at an alpha of {{results.param.alpha}}, and at least
+{{results.param.signal.min_cases}} cases. Analyses used statsmodels {{results.software.statsmodels}}.
+```
+
+G2 then fails the value typed instead of bound, and fails a parameter the script never reads
+again. That second check is the one that matters most: a parameter declared and bound, and
+applied nowhere, prints the right number for a step the code does not take. What it cannot
+tell is whether a value that is read changes a result; that is still your reading.
+
+## Describing a model
+
+Record the model from its fit and declare every variable it reads, in the analysis:
+
+```python
+em.variable("age_group", "categorical", label="age group",
+            levels=["18-44", "45-64", "65-74", "75+"], reference="18-44", values=data["age_group"])
+fit = smf.glm("hepatic ~ exposed + C(age_group, Treatment('18-44'))", data,
+              family=sm.families.Binomial()).fit()
+em.model("adjusted", fit, name="Adjusted model", description="What the model is for.")
+```
+
+(R: `em$variable(...)` and `em$model("adjusted", glm(...), name = ...)`.) The kind a variable
+is declared is the one thing the data cannot tell G15: an ordinal grade and a nominal code
+are both integers. Declare what the variable means, not what its storage is.
+
+Then, in the Methods, name the model by binding `{{results.model.adjusted.kind}}`, and place
+`{{table.model_adjusted}}` (in the supplement if the journal is short of tables): the outcome
+and each variable with its declared kind, how it entered and its reference. If the model
+dropped rows for missing values, bind `{{results.model.adjusted.n_dropped}}` where the Methods
+say how missing data were handled.
+
+`manuscript-guard models` prints each model as its card. Read it before writing the
+paragraph, and give it to a co-author: the author's description beside the sentence made from
+the fit is where a model that answers a different question shows.
+
+What G15 reports, and what to do:
+
+| Code | Ask |
+|---|---|
+| `model-outcome-kind` | the model is not for this kind of outcome: fit one that is, or declare the outcome's real kind |
+| `model-categories-as-number` | a categorical variable entered as one slope: enter it as categories |
+| `model-reference`, `model-level-undeclared`, `variable-level-undeclared` | the fit and the declaration disagree about levels: fix whichever is wrong |
+| `model-variable-undeclared` | declare it with `variable()` |
+| `model-not-converged`, `model-empty-level` | a sparse level or separation: merge levels or refit, and say what you did |
+| `model-rows-dropped` | bind the number dropped where missing data are described |
+| `typed-model-kind` | the Methods type the kind of the model fitted: bind `{{results.model.<key>.kind}}` |
+| `model-ordinal-as-trend`, `model-number-as-categories`, `model-few-events`, `model-kind-unfitted` | warnings: say in the Methods why, or change the model |
+
 ## Locking the parameters worth checking
 
-`methods.lock` can carry parameters that must appear in the prose:
+For a value that is not computed by the code (a software version from outside Python or R,
+for instance), `methods.lock` can carry parameters that must appear in the prose:
 
 ```yaml
 parameters:

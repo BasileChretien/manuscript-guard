@@ -4,8 +4,25 @@
 # is that a person looked.
 
 schema: manuscript-guard/methods-lock/1
-reconciled_on: '2026-08-05'
+reconciled_on: '2026-10-09'
 parameters: {}
 analysis:
   analysis/00_simulate.py: 1597ab87090780aebfb9560def1d5e7c9d46c6c90aecc824ebd0ecd84383e299
-  analysis/01_disproportionality.py: 0e86c1ed4b7a15d989fbd205a2f6365369941c5f4bc5af778893500afea43e80
+  analysis/01_disproportionality.py: 32a57aca0fe3858a5ceb829265c4f546bed8829567437a9061511e84a08d7ef4
+pairs:
+- step: adjusted
+  claim: Adjusted for age group and sex, the two patient characteristics the database records for every report, the reporting odds ratio was also estimated by {{results.model.adjusted.kind}} of hepatic injury on exposure to example-drug, with both characteristics entered as categories. Its interval is the model's Wald interval for the exposure coefficient, at the same alpha. Table S2 describes the model as it was fitted.
+  code: ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf
+  read_on: '2026-10-09'
+- step: ci
+  claim: The reporting odds ratio was computed from a 2 x 2 table contrasting reports of hepatic injury with all other reported events, for example-drug against all other drugs in the database. Confidence intervals were derived from the standard error of the log odds ratio and are 95% confidence intervals, two-sided at an alpha of {{results.param.alpha}}; the main estimate is also given with its 90% confidence interval, for comparison with signal-detection practice.
+  code: 341304bd156666d20b98966338e40a99de96809c7d95a808720cc8043ee94978
+  read_on: '2026-10-09'
+- step: ror
+  claim: The reporting odds ratio was computed from a 2 x 2 table contrasting reports of hepatic injury with all other reported events, for example-drug against all other drugs in the database. Confidence intervals were derived from the standard error of the log odds ratio and are 95% confidence intervals, two-sided at an alpha of {{results.param.alpha}}; the main estimate is also given with its 90% confidence interval, for comparison with signal-detection practice.
+  code: 43994ea0f861fd9c11dd95e974d11a8092dac8245846d047087c06a0e4464051
+  read_on: '2026-10-09'
+- step: signal
+  claim: 'A signal was defined by the classical criterion: at least {{results.param.signal.min_cases}} cases together with a lower bound of the 95% confidence interval of the reporting odds ratio above 1. No p-value threshold was used as a decision rule, which is not how a disproportionality analysis reaches its conclusion.'
+  code: 1a1195ebf7080fea38f6312f1009ecdaf5ce423026ab5573b99fc1ef338e5bd9
+  read_on: '2026-10-09'

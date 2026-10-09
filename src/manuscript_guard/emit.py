@@ -15,7 +15,10 @@ API that omits it.
 
 from __future__ import annotations
 
+import ast
+import contextlib
 import hashlib
+import importlib.metadata
 import json
 import platform
 import re
@@ -376,6 +379,326 @@ def _git(root: Path, *args: str) -> str | None:
         return None
 
 
+#: The part of a parameter's key the author writes; `param.` is put in front of it.
+_PARAMETER_KEY = re.compile(r"[a-z0-9_]+(?:\.[a-z0-9_]+)*")
+
+#: A model's key names its values and its table, and a table key takes no dots.
+_TABLE_SAFE_KEY = re.compile(r"[a-z][a-z0-9_]*")
+
+#: What a variable can be meant to be. The data hold numbers and strings, and cannot say
+#: whether 1 to 4 is a grade, a code or a count.
+VARIABLE_KINDS = ("binary", "categorical", "ordinal", "continuous", "count")
+
+#: More distinct values than this, and the levels a variable was observed to take are not
+#: listed: a continuous variable has as many as it has rows.
+_MOST_LEVELS = 50
+
+
+def _modules_of(name: str) -> set[str]:
+    """The top-level modules an installed distribution provides.
+
+    `packages_distributions` answers from each distribution's `top_level.txt`, and in Python
+    3.10 from nothing else. A wheel built without one (statsmodels 0.15, by meson-python) then
+    provides no module at all, and `software("statsmodels")` was refused in a run that had
+    imported it. The distribution's own list of files says the same thing in every version.
+    """
+    modules = {
+        module
+        for module, owners in importlib.metadata.packages_distributions().items()
+        if any(owner.lower() == name.lower() for owner in owners)
+    }
+    for file in importlib.metadata.distribution(name).files or ():
+        top = file.parts[0] if file.parts else ""
+        if not top or top.startswith(".") or top.endswith((".dist-info", ".data", ".pth")):
+            continue
+        modules.add(top.removesuffix(".py"))
+    # A distribution installed by a system package manager may list no files either; its
+    # module is then most often its own name.
+    modules.add(re.sub(r"[-.]", "_", name.lower()))
+    return modules
+
+
+def _level(level: object) -> str:
+    """A level as the fragment writes it: the text a reader sees, whatever its type."""
+    if isinstance(level, bool):
+        return str(level)
+    if isinstance(level, float) and level.is_integer():
+        return str(int(level))
+    return str(level)
+
+
+def _observed(values: object, kind: str) -> dict:
+    """What the data hold of a variable: levels (where few), distinct values, missing."""
+    items = list(values)
+    missing = [item for item in items if item is None or (isinstance(item, float) and item != item)]
+    present = {_level(item) for item in items if item not in missing}
+    out: dict = {"distinct": len(present), "missing": len(missing)}
+    if kind in ("binary", "categorical", "ordinal") or len(present) <= _MOST_LEVELS:
+        out["levels"] = sorted(present)
+    return out
+
+
+def _variables_in(code: str, columns: set[str]) -> list[str]:
+    """The data's columns a formula's factor reads: `C(age, Treatment('18-44'))` reads age."""
+    try:
+        tree = ast.parse(code, mode="eval")
+    except SyntaxError:
+        return [code] if code in columns else []
+    return sorted({node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} & columns)
+
+
+def read_statsmodels(fit: object) -> dict:
+    """The model card of a statsmodels fit made through the formula API.
+
+    Raises ValueError for anything else: a card is read from the fit or not written, since
+    a model described by hand is the thing this exists to replace.
+    """
+    model = getattr(fit, "model", None)
+    data = getattr(model, "data", None)
+    spec = getattr(data, "design_info", None) or getattr(data, "model_spec", None)
+    frame = getattr(data, "frame", None)
+    if model is None or spec is None or frame is None or not hasattr(spec, "term_codings"):
+        raise ValueError(
+            "model: not a statsmodels fit made through the formula API (smf.glm, smf.logit, "
+            "smf.ols and the like), so the terms cannot be read from it"
+        )
+    columns = {str(column) for column in frame.columns}
+    family = getattr(model, "family", None)
+    engine = {
+        "language": "Python",
+        "package": "statsmodels",
+        "class": type(model).__name__,
+    }
+    if family is not None:
+        engine["family"] = type(family).__name__
+        engine["link"] = type(family.link).__name__
+
+    slices = dict(spec.term_name_slices)
+    exog = model.exog
+    endog = [float(value) for value in model.endog]
+    binary = engine.get("family") == "Binomial" or engine["class"] in ("Logit", "Probit")
+    terms, events_by_level = [], {}
+    for term in spec.terms:
+        if not term.factors:
+            continue
+        entered = []
+        for coding in spec.term_codings[term]:
+            for factor in coding.factors:
+                info = spec.factor_infos[factor]
+                variables = _variables_in(factor.code, columns)
+                record: dict = {"expression": factor.code, "variables": variables}
+                if info.type == "categorical":
+                    record["as"] = "categorical"
+                    record["levels"] = [_level(level) for level in info.categories]
+                    contrast = coding.contrast_matrices.get(factor)
+                    suffixes = list(contrast.column_suffixes) if contrast is not None else []
+                    shown = {suffix[3:-1] for suffix in suffixes if suffix.startswith("[T.")}
+                    if suffixes and len(shown) == len(suffixes):
+                        left = [level for level in record["levels"] if level not in shown]
+                        if len(left) == 1:
+                            record["reference"] = left[0]
+                    if binary and len(term.factors) == 1 and "reference" in record:
+                        columns_at = range(*slices[term.name()].indices(exog.shape[1]))
+                        by_level = {record["reference"]: 0.0}
+                        for row, outcome in zip(exog, endog, strict=True):
+                            hit = [
+                                suffix[3:-1]
+                                for suffix, column in zip(suffixes, columns_at, strict=True)
+                                if row[column] == 1
+                            ]
+                            level = hit[0] if hit else record["reference"]
+                            by_level[level] = by_level.get(level, 0.0) + outcome
+                        for variable in variables:
+                            events_by_level[variable] = {
+                                level: int(by_level.get(level, 0)) for level in record["levels"]
+                            }
+                else:
+                    record["as"] = "numerical"
+                entered.append(record)
+        terms.append({"term": term.name(), "entered": entered})
+
+    outcome = str(model.endog_names)
+    missing = list(getattr(data, "missing_row_idx", None) or [])
+    if hasattr(fit, "converged"):
+        converged = bool(fit.converged)
+    elif isinstance(getattr(fit, "mle_retvals", None), dict):
+        converged = bool(fit.mle_retvals.get("converged", True))
+    else:
+        converged = True
+    card: dict = {
+        "engine": engine,
+        "formula": str(model.formula),
+        "outcome": {"expression": outcome, "variables": _variables_in(outcome, columns)},
+        "terms": terms,
+        "parameters": int(exog.shape[1] - getattr(model, "k_constant", 0)),
+        "n_input": len(frame),
+        "n_used": len(endog),
+        "n_dropped": len(missing),
+        "converged": converged,
+    }
+    if binary:
+        card["events"] = int(sum(endog))
+        if events_by_level:
+            card["events_by_level"] = events_by_level
+    return card
+
+
+def parameter_read(script: Path, line: int, key: str) -> bool | None:
+    """Whether the value `parameter(key, ...)` hands back on `line` of `script` is read.
+
+    False when the call is a statement of its own, or assigns a name that nothing in its
+    scope reads. True when a name it assigns is read, or when the call sits inside a larger
+    expression, an argument or an operand. None when the script cannot be read or the call
+    cannot be found, or when the value goes somewhere this does not follow (an attribute,
+    a tuple). A name read again is all this establishes.
+    """
+    try:
+        tree = ast.parse(script.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError):
+        return None
+    parents: dict[ast.AST, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[child] = node
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "parameter"
+    ]
+    named = [
+        call
+        for call in calls
+        if call.args and isinstance(call.args[0], ast.Constant) and call.args[0].value == key
+    ]
+    if len(named) != 1:
+        named = [call for call in calls if call.lineno <= line <= (call.end_lineno or line)]
+    if len(named) != 1:
+        return None
+    call = named[0]
+    parent = parents[call]
+    if isinstance(parent, ast.Expr):
+        return False
+    if isinstance(parent, ast.NamedExpr):
+        target, call = parent.target, parent
+        if not isinstance(parents[parent], ast.Expr):
+            return True
+    elif isinstance(parent, (ast.Assign, ast.AnnAssign)) and parent.value is call:
+        targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
+        if len(targets) != 1 or not isinstance(targets[0], ast.Name):
+            return None
+        target = targets[0]
+    else:
+        return True
+    scope = parent
+    while scope in parents and not isinstance(
+        scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+    ):
+        scope = parents[scope]
+    return any(
+        isinstance(node, ast.Name) and node.id == target.id and isinstance(node.ctx, ast.Load)
+        for node in ast.walk(scope)
+    )
+
+
+#: A step's name, which the Methods bind as `{{method.<name>}}`.
+_STEP_NAME = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*")
+
+#: Fields of a node that say nothing about what the code does: how a string was prefixed,
+#: a type comment, and whether a name is read or written, which its place already says.
+_UNSAID = frozenset({"kind", "type_comment", "ctx"})
+
+
+def _canonical(node: object) -> object:
+    """A node as data, without its positions, so the digest leaves layout and comments out.
+
+    Not `ast.dump`, which writes a node differently from one Python to the next (3.13 drops
+    empty fields): a step re-run on another Python would read as changed. Empty fields are
+    left out here on every version, and a function's docstring with them.
+    """
+    if isinstance(node, ast.AST):
+        fields = []
+        for name, value in ast.iter_fields(node):
+            if name in _UNSAID or value is None or value == []:
+                continue
+            if name == "body" and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                value = value[1:] if ast.get_docstring(node, clean=False) is not None else value
+            fields.append([name, _canonical(value)])
+        return [type(node).__name__, fields]
+    if isinstance(node, list):
+        return [_canonical(item) for item in node]
+    return repr(node)
+
+
+def _names_step(node: ast.AST, name: str) -> bool:
+    """Whether `node` is a call `<anything>.step(name)` with the name written out."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "step"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == name
+    )
+
+
+def step_code(script: Path, line: int, name: str) -> dict | None:
+    """What `with em.step(name):` on `line` of `script` runs, as the fragment records it.
+
+    The first and last line of its body; the functions of the script it calls, followed
+    through the functions they call; and a digest of the body and those functions read as
+    code, so that a comment, a blank line or a re-wrapped call changes nothing. None when
+    the script cannot be read or holds no such `with` there.
+    """
+    try:
+        tree = ast.parse(script.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError):
+        return None
+    blocks = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.With, ast.AsyncWith))
+        and any(_names_step(item.context_expr, name) for item in node.items)
+    ]
+    if len(blocks) > 1:
+        blocks = [
+            block
+            for block in blocks
+            for item in block.items
+            if _names_step(item.context_expr, name)
+            and item.context_expr.lineno <= line <= (item.context_expr.end_lineno or line)
+        ]
+    if len(blocks) != 1:
+        return None
+    body = blocks[0].body
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    follows: set[str] = set()
+    waiting: list[list[ast.stmt]] = [body]
+    while waiting:
+        for node in (n for stmt in waiting.pop() for n in ast.walk(stmt)):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in functions
+                and node.func.id not in follows
+            ):
+                follows.add(node.func.id)
+                waiting.append([functions[node.func.id]])
+    code = [_canonical(body), *(_canonical(functions[f]) for f in sorted(follows))]
+    record: dict = {
+        "lines": [body[0].lineno, body[-1].end_lineno or body[-1].lineno],
+        "digest": hashlib.sha256(json.dumps(code).encode("utf-8")).hexdigest(),
+    }
+    if follows:
+        record["follows"] = sorted(follows)
+    return record
+
+
 @dataclass
 class Emitter:
     """Collects values, then writes one fragment with its provenance.
@@ -411,6 +734,13 @@ class Emitter:
     # Code lists as data, beside the table that prints them: RECORD 6.1 asks for the list,
     # and a list is more useful to a reader and to a later check than its rendering.
     _code_lists: dict[str, list[dict]] = field(default_factory=dict, init=False)
+    # The variables the analysis declares, with the kind each is meant to be, and the models
+    # it fitted, as read from the fit. Facts only: the name a model goes by, its description
+    # and its table are derived from them when the results are read, once for both languages.
+    _variables: dict[str, dict] = field(default_factory=dict, init=False)
+    _models: dict[str, dict] = field(default_factory=dict, init=False)
+    # The steps of the analysis that ran, each with where its code is and a digest of it.
+    _steps: dict[str, dict] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
@@ -490,6 +820,197 @@ class Emitter:
         elif level is not None:
             raise ValueError(f"{key!r} declares a level without being a bound of anything")
         self._values[key] = spec
+
+    def parameter(
+        self,
+        key: str,
+        value: object,
+        *,
+        display: str | None = None,
+        digits: int | None = None,
+        unit: str | None = None,
+        note: str | None = None,
+    ) -> object:
+        """Record a choice the analysis made, and hand it back for the analysis to use.
+
+            alpha = em.parameter("alpha", 0.05)
+            z = NormalDist().inv_cdf(1 - alpha / 2)
+
+        Writes `param.alpha`, which the Methods quote as `{{results.param.alpha}}`. The value
+        the prose states is then the value the code ran with: a threshold typed in the Methods
+        passes G2 as a convention, and it stays a convention after the code has moved on to
+        another one. G2 fails a Methods number that equals a declared parameter and is typed
+        rather than bound.
+
+        A float is written as it was typed unless `digits` or `display` says otherwise:
+        a threshold is not rounded.
+
+        Declared is not used. The script is read where the call stands, and the fragment
+        records whether the value handed back is read again (`read`): `false` when it is
+        thrown away or assigned to a name nothing reads, which G2 fails, and absent when the
+        reading cannot tell. A read is not proof that the value changes a result. It can be
+        read inside a `print` or in a branch that never runs, and nothing here looks.
+        """
+        if not _PARAMETER_KEY.fullmatch(key):
+            raise ValueError(
+                f"parameter {key!r}: a key is lowercase letters, digits and underscores, in "
+                f"parts joined by dots, so that the Methods can bind it"
+            )
+        full = f"param.{key}"
+        if isinstance(value, float) and display is None and digits is None:
+            # Written as typed. A threshold is not a measurement to round: 0.025 to two
+            # places is 0.03, a different test. Fifteen significant digits give back any
+            # constant typed in the code, and are what the R emitter writes too.
+            display = f"{value:.15g}"
+        self.value(full, value, display=display, digits=digits, unit=unit, note=note)
+        self._values[full]["role"] = "parameter"
+        caller = sys._getframe(1)
+        read = parameter_read(Path(caller.f_code.co_filename), caller.f_lineno, key)
+        if read is not None:
+            self._values[full]["read"] = read
+        return value
+
+    def step(self, name: str) -> contextlib.AbstractContextManager[None]:
+        """Mark the code a Methods claim describes, and record that it ran.
+
+            with em.step("ci"):
+                se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+                low = math.exp(math.log(ror) - z * se)
+
+        The Methods point at it by ending the claim with `{{method.ci}}`, which prints
+        nothing. The fragment records the lines of the block and a digest of its code, read
+        as code: a comment or a re-wrapped line leaves the digest as it was. Functions the
+        block calls that are defined in this script are part of the digest too; a function
+        from a package is not followed. G9 compares the digest with the one recorded when a
+        person last read the step against its claim.
+
+        A step that never runs, in a branch not taken, is not recorded, so a claim pointing
+        at it fails. The name must be written out in the `with` statement, where the script
+        can be read for the block.
+        """
+        if not _STEP_NAME.fullmatch(name):
+            raise ValueError(
+                f"step {name!r}: a name is lowercase letters, digits and underscores, starting "
+                f"with a letter, in parts joined by dots, so that the Methods can bind it"
+            )
+        caller = sys._getframe(1)
+        script = Path(caller.f_code.co_filename)
+        record = step_code(script, caller.f_lineno, name)
+        if record is None:
+            raise ValueError(
+                f"step {name!r}: no `with ....step({name!r}):` block was found in {script} "
+                f"where it was called; write the name out in the `with` statement"
+            )
+        if self._steps.get(name, record) != record:
+            raise ValueError(f"step {name!r} marks two different blocks of code")
+        self._steps[name] = record
+        return contextlib.nullcontext()
+
+    def software(self, name: str) -> str:
+        """Record the version of a piece of software this run used, as the run found it.
+
+            em.software("python")         # writes software.python
+            em.software("statsmodels")    # writes software.statsmodels
+
+        The Methods quote it as `{{results.software.statsmodels}}`, so the version they name
+        is the one that computed the results rather than the one installed when the sentence
+        was written. A distribution the run never imported is refused: the Methods would name
+        software that computed nothing.
+        """
+        if name.lower() == "python":
+            version = platform.python_version()
+        else:
+            try:
+                version = importlib.metadata.version(name)
+            except importlib.metadata.PackageNotFoundError:
+                raise ValueError(
+                    f"software {name!r}: no installed distribution has that name"
+                ) from None
+            if not _modules_of(name) & set(sys.modules):
+                raise ValueError(
+                    f"software {name!r}: version {version} is installed, but this run has not "
+                    f"imported it, so it computed none of these results"
+                )
+        key = "software." + re.sub(r"[^a-z0-9_]", "_", name.lower())
+        self.value(key, version, label=True)
+        self._values[key]["role"] = "software"
+        return version
+
+    def variable(
+        self,
+        name: str,
+        kind: str,
+        *,
+        label: str,
+        levels: list | None = None,
+        reference: object = None,
+        unit: str | None = None,
+        values: object = None,
+    ) -> None:
+        """Declare a variable a model uses, with the kind it is meant to be.
+
+            em.variable("age_group", "categorical", label="age group",
+                        levels=["18-44", "45-64", "65-74", "75+"], reference="18-44",
+                        values=data["age_group"])
+
+        `kind` is one of binary, categorical, ordinal, continuous or count. The data cannot
+        say which: an ordinal grade and a nominal code are both integers. G15 compares the
+        kind with how each model entered the variable, and `values`, when given, with what
+        the data hold: the levels observed, how many distinct values, how many missing.
+        """
+        if kind not in VARIABLE_KINDS:
+            raise ValueError(f"variable {name!r}: kind is one of {', '.join(VARIABLE_KINDS)}")
+        if name in self._variables:
+            raise ValueError(f"variable {name!r} declared twice by {self.script}")
+        entry: dict = {"kind": kind, "label": label}
+        if levels is not None:
+            entry["levels"] = [_level(level) for level in levels]
+        if reference is not None:
+            entry["reference"] = _level(reference)
+            if levels is not None and entry["reference"] not in entry["levels"]:
+                raise ValueError(f"variable {name!r}: reference {reference!r} is not a level")
+        if unit is not None:
+            entry["unit"] = unit
+        if values is not None:
+            entry["observed"] = _observed(values, kind)
+        self._variables[name] = entry
+
+    def model(
+        self,
+        key: str,
+        fit: object,
+        *,
+        name: str,
+        description: str | None = None,
+    ) -> None:
+        """Record a fitted model as the fit itself describes it.
+
+            fit = smf.glm("hepatic ~ exposed + C(age_group)", data,
+                          family=sm.families.Binomial()).fit()
+            em.model("adjusted", fit, name="Adjusted model",
+                     description="The primary analysis: the crude ratio, adjusted for age group.")
+
+        Read from the fit, not described: the engine, family and link, the formula, each term
+        with how every variable entered it (as a number, or as categories with their levels
+        and reference), the rows used and dropped, the events of a binary outcome, by level of
+        each categorical term, and whether the fit converged. `name` is what the paper calls
+        the model and `description` what it is for, which no fit can say.
+
+        The statsmodels formula API is read. A fit it cannot read is refused rather than
+        guessed at.
+        """
+        if not _TABLE_SAFE_KEY.fullmatch(key):
+            raise ValueError(
+                f"model {key!r}: a key is lowercase letters, digits and underscores, so that its "
+                f"values and its table can be bound"
+            )
+        if key in self._models:
+            raise ValueError(f"model {key!r} recorded twice by {self.script}")
+        card = read_statsmodels(fit)
+        card["name"] = name
+        if description is not None:
+            card["description"] = description
+        self._models[key] = card
 
     def interval(
         self,
@@ -745,6 +1266,12 @@ class Emitter:
             # RECORD 6.1 asks the reader for; the list is what a later check, or the next
             # study reusing the definition, actually wants.
             document["code_lists"] = dict(self._code_lists)
+        if self._variables:
+            document["variables"] = dict(self._variables)
+        if self._models:
+            document["models"] = dict(self._models)
+        if self._steps:
+            document["steps"] = dict(self._steps)
         return document
 
     def _composition_of(self, key: str) -> dict:

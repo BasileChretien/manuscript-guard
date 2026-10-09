@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "0e86c1ed4b7a15d989fbd205a2f6365369941c5f4bc5af778893500afea43e80",
-    "generated_at": "2026-08-05T04:47:49+00:00",
+    "generated_by_sha256": "32a57aca0fe3858a5ceb829265c4f546bed8829567437a9061511e84a08d7ef4",
+    "generated_at": "2026-10-09T05:46:35+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.1.0"
+      "version": "0.2.435"
     },
     "vcs": {
-      "sha": "7ebdc4de04156549a4771568adef6f8ec5d424a4",
+      "sha": "7d3b5e8288e7be72f49f4fb19199d8658d8b4937",
       "dirty": true,
-      "branch": "feat/interval-levels"
+      "branch": "claude/ecstatic-shannon-ja5omd"
     },
     "inputs": [
       {
@@ -22,11 +22,59 @@
     ],
     "session": {
       "language": "Python",
-      "version": "3.12.3",
-      "platform": "Windows-11-10.0.26200-SP0"
+      "version": "3.13.16",
+      "platform": "Linux-6.18.44-fc-v80-x86_64-with-glibc2.39"
     }
   },
   "values": {
+    "param.alpha": {
+      "value": 0.05,
+      "display": "0.05",
+      "role": "parameter",
+      "read": true
+    },
+    "param.signal.min_cases": {
+      "value": 3,
+      "display": "3",
+      "role": "parameter",
+      "read": true
+    },
+    "signal.met": {
+      "value": true,
+      "display": "True",
+      "quoted": false
+    },
+    "software.python": {
+      "value": "3.13.16",
+      "display": "3.13.16",
+      "label": true,
+      "role": "software"
+    },
+    "software.statsmodels": {
+      "value": "0.15.0",
+      "display": "0.15.0",
+      "label": true,
+      "role": "software"
+    },
+    "ror_adjusted.point": {
+      "value": 3.844764571464015,
+      "display": "3.845",
+      "digits": 3
+    },
+    "ror_adjusted.ci_low": {
+      "value": 2.8852237873895215,
+      "display": "2.885",
+      "digits": 3,
+      "bounds": "ror_adjusted.point",
+      "bound": "low"
+    },
+    "ror_adjusted.ci_high": {
+      "value": 5.123420469009598,
+      "display": "5.123",
+      "digits": 3,
+      "bounds": "ror_adjusted.point",
+      "bound": "high"
+    },
     "cohort.n_reports": {
       "value": 4000,
       "display": "4000"
@@ -426,5 +474,195 @@
         ]
       }
     ]
+  },
+  "variables": {
+    "hepatic": {
+      "kind": "binary",
+      "label": "hepatic injury",
+      "levels": [
+        "0",
+        "1"
+      ],
+      "observed": {
+        "distinct": 2,
+        "missing": 0,
+        "levels": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    "exposed": {
+      "kind": "binary",
+      "label": "example-drug",
+      "levels": [
+        "0",
+        "1"
+      ],
+      "observed": {
+        "distinct": 2,
+        "missing": 0,
+        "levels": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    "age_group": {
+      "kind": "categorical",
+      "label": "age group",
+      "levels": [
+        "18-44",
+        "45-64",
+        "65-74",
+        "75+"
+      ],
+      "reference": "18-44",
+      "observed": {
+        "distinct": 4,
+        "missing": 0,
+        "levels": [
+          "18-44",
+          "45-64",
+          "65-74",
+          "75+"
+        ]
+      }
+    },
+    "sex": {
+      "kind": "binary",
+      "label": "sex",
+      "levels": [
+        "F",
+        "M"
+      ],
+      "reference": "F",
+      "observed": {
+        "distinct": 2,
+        "missing": 0,
+        "levels": [
+          "F",
+          "M"
+        ]
+      }
+    }
+  },
+  "models": {
+    "adjusted": {
+      "engine": {
+        "language": "Python",
+        "package": "statsmodels",
+        "class": "GLM",
+        "family": "Binomial",
+        "link": "Logit"
+      },
+      "formula": "hepatic ~ exposed + C(age_group, Treatment('18-44')) + C(sex, Treatment('F'))",
+      "outcome": {
+        "expression": "hepatic",
+        "variables": [
+          "hepatic"
+        ]
+      },
+      "terms": [
+        {
+          "term": "C(age_group, Treatment('18-44'))",
+          "entered": [
+            {
+              "expression": "C(age_group, Treatment('18-44'))",
+              "variables": [
+                "age_group"
+              ],
+              "as": "categorical",
+              "levels": [
+                "18-44",
+                "45-64",
+                "65-74",
+                "75+"
+              ],
+              "reference": "18-44"
+            }
+          ]
+        },
+        {
+          "term": "C(sex, Treatment('F'))",
+          "entered": [
+            {
+              "expression": "C(sex, Treatment('F'))",
+              "variables": [
+                "sex"
+              ],
+              "as": "categorical",
+              "levels": [
+                "F",
+                "M"
+              ],
+              "reference": "F"
+            }
+          ]
+        },
+        {
+          "term": "exposed",
+          "entered": [
+            {
+              "expression": "exposed",
+              "variables": [
+                "exposed"
+              ],
+              "as": "numerical"
+            }
+          ]
+        }
+      ],
+      "parameters": 5,
+      "n_input": 4000,
+      "n_used": 4000,
+      "n_dropped": 0,
+      "converged": true,
+      "events": 271,
+      "events_by_level": {
+        "age_group": {
+          "18-44": 56,
+          "45-64": 81,
+          "65-74": 77,
+          "75+": 57
+        },
+        "sex": {
+          "F": 134,
+          "M": 137
+        }
+      },
+      "name": "Adjusted model",
+      "description": "The reporting odds ratio of the primary analysis, adjusted for the two patient characteristics the database records for every report."
+    }
+  },
+  "steps": {
+    "ror": {
+      "lines": [
+        54,
+        58
+      ],
+      "digest": "43994ea0f861fd9c11dd95e974d11a8092dac8245846d047087c06a0e4464051"
+    },
+    "ci": {
+      "lines": [
+        62,
+        67
+      ],
+      "digest": "341304bd156666d20b98966338e40a99de96809c7d95a808720cc8043ee94978"
+    },
+    "signal": {
+      "lines": [
+        77,
+        77
+      ],
+      "digest": "1a1195ebf7080fea38f6312f1009ecdaf5ce423026ab5573b99fc1ef338e5bd9"
+    },
+    "adjusted": {
+      "lines": [
+        86,
+        114
+      ],
+      "digest": "ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf"
+    }
   }
 }

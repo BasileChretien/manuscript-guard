@@ -1,0 +1,24 @@
+schema: manuscript-guard/panel/1
+round: 5
+opened_on: 2026-10-09
+manuscript_sha256: a13ae9c276e0d0327b30724e16570aed54fe1351b65b8c8b32293effd56ec67b
+blinded: false
+rationale: 'A revision round. Each paragraph of the statistical Methods now points at the step
+  of the analysis it describes, and was read against that step: the estimate with its intervals,
+  the signal criterion, and the adjusted model. Reading them turned up two changes. The signal
+  criterion now names the 95% interval whose lower bound it uses, and the adjusted model''s
+  paragraph says how its interval was obtained. The two remits whose subject this is read the
+  paper again, with the earlier rounds in front of them.'
+reviewers:
+- id: pharmacoepidemiologist
+  role: Pharmacoepidemiologist
+  remit: Whether the design can answer the question asked. Case and exposure definitions,
+    denominators, the difference between disproportionate reporting and risk, and
+    the biases specific to spontaneous reporting.
+  why: The Methods were restructured, and the signal criterion reworded.
+- id: biostatistician
+  role: Biostatistician
+  remit: Whether the estimator is right and stated fully enough to reproduce. Interval
+    construction, small-cell behaviour, multiplicity, and whether the reader can reconstruct
+    the estimate from what is reported.
+  why: The revision answers two of the earlier rounds' points on the intervals.

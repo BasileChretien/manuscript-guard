@@ -358,6 +358,21 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+def bindings() -> st.SearchStrategy[str]:
+    """A manuscript with a binding where a line begins: after a line end, of Windows or
+    not, and in some texts as the first thing in the file.
+
+    A binding there stands exactly at the start of its line, the one place where a lookup
+    among the starts of the lines can be a line out. Left to chance, a manuscript seldom
+    holds one: under 27 of the seeds 0 to 299, a rule that put such a binding on the line
+    before was wrong in none of a property's 200 examples, and went unnoticed. Planted, the
+    fewest examples that show that rule under any of those seeds is 131 of 200."""
+    written = ("{{results.cohort.n_reports}}", "{{ lit.incidence }}", "{{oops}}", "{{lit.cut}")
+    opening = tuple(f"{end}{binding}" for end in ("\n", "\r\n") for binding in written)
+    planted = st.sampled_from(("", *written)), st.sampled_from(("", *opening * 2))
+    return st.tuples(planted[0], texts(), planted[1], texts()).map("".join)
+
+
 # What stands between two bounds of an interval: words, and a stop with a space after it,
 # a line break, or nothing.
 _BETWEEN = (
@@ -371,18 +386,63 @@ def intervals() -> st.SearchStrategy[str]:
     """A text that quotes the bounds of `INTERVALS` in any order and in any sentence, with
     an estimate that is no bound and a binding that resolves to nothing among them.
 
-    Six texts in seven also hold a sentence with a stop typed against its upper bound.
-    That stop ends a sentence for a search that stops at the binding and none for one that
-    reads the whole text. Left to chance, a stop and then a bound, it changed a finding in
-    so few texts that a reading which lost it went unnoticed under three seeds of twelve."""
-    bounds = [
+    Most texts also hold three sentences that chance draws too seldom, with shorter runs
+    of the rest between them than a text had before they were planted, so that it stays
+    about as long. The first, in six texts of seven, has a stop typed against its upper
+    bound: that stop ends a sentence for a search that stops at the binding and none for
+    one that reads the whole text, and left to chance it changed a finding in so few texts
+    that a reading which lost it went unnoticed under three seeds of twelve. The second,
+    in twelve texts of thirteen, quotes every interval backwards, in each order they can
+    be quoted in: the findings have to come in that order, which a set keeps for few of
+    the six. The third, in six of seven, quotes an interval backwards with a comment
+    between its bounds that holds a stop, which ends no sentence."""
+    # Imported here, not at the top, to keep clear of the import block other branches edit.
+    from itertools import permutations
+
+    bounds = _bounds()
+    quoted = (*(bound for both in bounds for bound in both), "{{results.ror.point}}")
+    stopped = tuple(f". It ran.{high} to {low}. " for low, high in bounds)
+    backwards = tuple(
+        ". It ran " + ", ".join(f"{high} to {low}" for low, high in order) + ". "
+        for order in permutations(bounds)
+    )
+    noted = tuple(f". It ran {high} <!-- was 7.02. --> to {low}. " for low, high in bounds)
+    around = _in_a_row((*quoted * 3, "{{results.absent}}", *_BETWEEN), few=4, many=20)
+    planted = [st.sampled_from(("", *kind * 2)) for kind in (stopped, backwards, noted)]
+    return st.tuples(around, planted[0], around, planted[1], around, planted[2]).map("".join)
+
+
+def _bounds() -> list[tuple[str, str]]:
+    """The lower and the upper bound of each interval of `INTERVALS`, as bindings."""
+    return [
         (f"{{{{results.{low}}}}}", f"{{{{results.{high}}}}}")
         for _estimate, _level, low, high in INTERVALS
     ]
-    quoted = (*(bound for both in bounds for bound in both), "{{results.ror.point}}")
-    stopped = tuple(f". It ran.{high} to {low}. " for low, high in bounds)
-    around = _in_a_row((*quoted * 3, "{{results.absent}}", *_BETWEEN), few=6, many=30)
-    return st.tuples(around, st.sampled_from(("", *stopped * 2)), around).map("".join)
+
+
+@st.composite
+def commented(draw: st.DrawFn) -> tuple[str, str]:
+    """A text that quotes the bounds of intervals with HTML comments typed into it, and
+    the same text with white space where each comment stands and its line breaks kept:
+    what G2 has to read the first as. A comment holds what the text around it holds,
+    stops and bounds among it, and nothing that would end it before its own `-->`.
+
+    Somewhere in each, an interval is quoted backwards with a comment between its bounds
+    that holds two stops. Left to chance, a comment changed a finding in so few texts that
+    a reading which read the comments went unnoticed under six seeds of twelve."""
+    quoted = [bound for both in _bounds() for bound in both]
+    said = _in_a_row((*quoted * 3, *(p for p in _BETWEEN if "--" not in p)), few=3, many=8)
+    parts = draw(st.lists(st.tuples(st.booleans(), said), max_size=6))
+    low, high = draw(st.sampled_from(_bounds()))
+    at = draw(st.integers(0, len(parts)))
+    between = [(False, f". It ran {high} "), (True, "was 7.02. Check."), (False, f" to {low}. ")]
+    parts[at:at] = between
+    typed = [f"<!-- {part} -->" if hidden else part for hidden, part in parts]
+    blanked = [
+        "".join(c if c == "\n" else " " for c in part) if hidden else part
+        for (hidden, _said), part in zip(parts, typed, strict=True)
+    ]
+    return "".join(typed), "".join(blanked)
 
 
 # ------------------------------------------------------------------------ vocabularies

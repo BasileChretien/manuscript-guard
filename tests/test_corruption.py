@@ -29,7 +29,13 @@ import yaml
 from manuscript_guard.contracts import load_namespace, load_project
 from manuscript_guard.emit import write_digest
 from manuscript_guard.findings import merge_all
-from manuscript_guard.gates import check_consistency, check_figures, check_freshness, check_numbers
+from manuscript_guard.gates import (
+    check_consistency,
+    check_figures,
+    check_freshness,
+    check_models,
+    check_numbers,
+)
 
 
 def gate_report(root: Path):
@@ -43,6 +49,7 @@ def gate_report(root: Path):
             check_numbers(project, namespace, results, literature),
             check_figures(project, results),
             check_consistency(results),
+            check_models(project, results),
         ]
     )
 
@@ -521,7 +528,11 @@ def test_an_escaped_threshold_is_still_a_convention(project: Path) -> None:
         r"Significance was set at p \< 0.05; a signal needed ROR \> 2, IC025 \> 0 and \>3 cases.",
     )
     report = gate_report(project)
-    assert report.ok, report.render(project)
+    # The example declares its alpha and its case threshold, so the two that equal them fail
+    # as typed parameters: a verdict only a number read as a convention can get.
+    typed = sorted(f.message.split()[0] for f in report.failures if f.code == "typed-parameter")
+    assert typed == ["'0.05'", "'3'"], report.render(project)
+    assert codes(report) == {"typed-parameter"}, report.render(project)
 
 
 @pytest.mark.parametrize(
@@ -1305,8 +1316,7 @@ def test_the_second_interval_is_still_read_for_order(project: Path) -> None:
 def _reversed_in(text: str) -> list[tuple[int, str]]:
     """The intervals G2 finds quoted upper bound first in `text`, each by its line and its
     level. `{low}` and `{high}` are the bounds of a 95% interval, `{low90}` and `{high90}`
-    those of a 90% one around the same estimate. Sorted, since two of one sentence come in
-    the order Python walks a set."""
+    those of a 90% one around the same estimate. In the order the gate reports them."""
     from manuscript_guard.contracts.values import RESULTS, Value
     from manuscript_guard.gates.numbers import _interval_order
     from manuscript_guard.text.placeholders import parse
@@ -1322,9 +1332,7 @@ def _reversed_in(text: str) -> list[tuple[int, str]]:
     text = text.format(**written)
     report = _interval_order(parse(text)[0], namespace, Path("main.md"), text)
     assert {f.code for f in report.findings} <= {"interval-reversed"}
-    return sorted(
-        (f.line, "90%" if "the 90% interval" in f.message else "") for f in report.findings
-    )
+    return [(f.line, "90%" if "the 90% interval" in f.message else "") for f in report.findings]
 
 
 @pytest.mark.parametrize(
@@ -1339,6 +1347,9 @@ def _reversed_in(text: str) -> list[tuple[int, str]]:
         ("It was (95% CI {low} to {high}; 90% CI {low90} to {high90}).\n", []),
         ("It was (95% CI {low} to {high}; 90% CI {high90} to {low90}).\n", [(1, "90%")]),
         ("It was (95% CI {high} to {low}; 90% CI {high90} to {low90}).\n", [(1, ""), (1, "90%")]),
+        ("It was (90% CI {high90} to {low90}; 95% CI {high} to {low}).\n", [(1, "90%"), (1, "")]),
+        ("It was {high90} (95%: {high} to {low}) to {low90}.\n", [(1, "90%"), (1, "")]),
+        ("It was {low} and {high90} to {high} and {low90}.\n", [(1, "90%")]),
         ("It was {high} in 3.5 of them and {low} in the rest.\n", [(1, "")]),
         ("{high} to {low}", [(1, "")]),
     ],
@@ -1352,6 +1363,9 @@ def _reversed_in(text: str) -> list[tuple[int, str]]:
         "two levels in one sentence",
         "two levels, the second backwards",
         "two levels, both backwards",
+        "two levels, both backwards, the 90% first",
+        "two levels, both backwards, one inside the other",
+        "two levels, one backwards and quoted second",
         "a stop inside a number",
         "nothing before or after",
     ],
@@ -1384,6 +1398,62 @@ def test_a_stop_against_a_binding_ends_a_sentence_for_that_binding_alone(
     the binding is counted one sentence on from the rest of its own, among the bindings of
     the next. DESIGN.md has it under Known gaps."""
     assert _reversed_in(text) == backwards
+
+
+@pytest.mark.parametrize(
+    ("text", "backwards"),
+    [
+        ("It ran {high} <!-- was 7.02. --> to {low}.\n", [(1, "")]),
+        ("It ran {high} <!-- was 7.02 --> to {low}.\n", [(1, "")]),
+        ("It ran {high}\n<!--\nA note. Another!\n\nAnd a third?\n-->\nto {low}.\n", [(1, "")]),
+        ("<!-- A draft. Of two sentences. -->\nIt ran {high} to {low}.\n", [(2, "")]),
+        ("It ran {high}.<!-- checked --> The lower bound was {low}.\n", []),
+        ("It ran {high}. <!-- checked -->The lower bound was {low}.\n", []),
+        ("It ran {high}.<!-- checked -->{low} was the lower bound.\n", []),
+        ("It ran.<!-- checked -->{high} to {low} in all.\n", [(1, "")]),
+        ("It ran {high} `<!-- was 7.02. -->` to {low}.\n", []),
+        ("It ran {high} <!-- was 7.02. to {low}.\n", []),
+    ],
+    ids=[
+        "a stop in a comment",
+        "a comment with no stop",
+        "a comment of several lines",
+        "a comment above the sentence",
+        "a comment between a stop and its space",
+        "a comment after a stop and its space",
+        "a comment between a stop and a binding",
+        "a comment between a stop and the upper bound",
+        "a comment that is code",
+        "a comment nobody closed",
+    ],
+)
+def test_a_comment_is_white_space_to_the_sentences(
+    text: str, backwards: list[tuple[int, str]]
+) -> None:
+    """Pandoc drops an HTML comment, and the bindings are read in the text with each
+    comment blanked. The sentences were read in the text as typed. So a stop inside a
+    comment ended a sentence between the two bounds of an interval, and the reversal
+    passed with the paper printing it; and a stop with a comment typed against it ended
+    none, so the bounds of two sentences were compared. The sentences are read where the
+    bindings are now: a comment is white space to both. What is no comment, code or a
+    `<!--` nobody closed, is read as it is typed."""
+    assert _reversed_in(text) == backwards
+
+
+def test_a_stop_in_a_comment_hides_no_reversed_interval(project: Path) -> None:
+    """The example's interval quoted backwards, with a note between its bounds that holds
+    a stop. Both bindings resolve, the note reaches no document, and the paper prints the
+    interval backwards: `check` said nothing."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    swapped = text.replace(
+        "{{results.ror.ci_low}} to {{results.ror.ci_high}}",
+        "{{results.ror.ci_high}} <!-- was 7.02. Check. --> to {{results.ror.ci_low}}",
+        1,
+    )
+    assert swapped != text, "the example must still quote the interval in one sentence"
+    path.write_text(swapped, encoding="utf-8")
+    assert "interval-reversed" in codes(gate_report(project))
 
 
 def _publish_text(project: Path, key: str, text: str, *, quoted: bool = True, **extra) -> None:
@@ -5509,12 +5579,12 @@ def test_a_note_in_another_file_is_judged_where_it_stands(project: Path) -> None
         (
             (_IN_RESULTS,),
             _IN_METHODS,
-            "[^n]: A note.\n\nSignificance was set at p < 0.05.\n",
+            "[^n]: A note.\n\nSignificance was set at p < 0.01.\n",
         ),
         (
             (_IN_RESULTS,),
             _IN_METHODS,
-            "[^n]: A note.\n\n   Significance was set at p < 0.05.\n",
+            "[^n]: A note.\n\n   Significance was set at p < 0.01.\n",
         ),
     ],
 )
@@ -8112,12 +8182,18 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
-    """One record a reviewer, no readers named: nothing about them changed."""
+    """One record a reviewer, no readers named: nothing about them changed. Rounds three to
+    five read revisions with the earlier rounds in front of them, so the fifth supersedes
+    the four before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
-    assert report.ok and not report.findings, report.render(project)
-    assert report.counts["review_rounds_complete"] == 2
+    assert report.ok, report.render(project)
+    said = sorted((f.code, f.path.parent.name) for f in report.findings)
+    superseded = [("review-superseded", f"round-{n}")
+                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2)) for _ in range(many)]  # fmt: skip
+    assert said == superseded + [("round-not-blinded", "review")] * 3, report.render(project)
+    assert report.counts["review_rounds_complete"] == 5
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -9734,7 +9810,8 @@ def test_a_language_pass_that_retyped_a_level_of_confidence_is_caught(project: P
     assert gate_report(project).ok, "the gates see nothing wrong with it"
     lost, new = report.findings
     assert (lost.code, new.code) == ("fact-lost", "fact-new")
-    assert lost.message.startswith("the number '90' is gone: it stood on line ")
+    # The Methods name the 90% interval too, so the number is one of two that stood.
+    assert lost.message.startswith("the number '90' stood twice before the edit, on lines ")
     assert new.message.startswith("the number '95' stands ")
     assert new.line == line_of(after, "; 95% CI {{results.ror.ci90_low}}")
 
@@ -9757,3 +9834,246 @@ def test_a_language_pass_that_only_reworded_passes(project: Path) -> None:
     assert not report.findings, report.render(project)
     assert report.counts["reworded_bindings"] > 10
     assert report.counts["reworded_citations"] > 2
+
+
+# --------------------------------------------------------------------------------------
+# Parameters: a threshold the analysis declares is bound in the Methods, and read by the code.
+# --------------------------------------------------------------------------------------
+
+
+def _analysis(root: Path) -> Path:
+    return root / "analysis" / "01_disproportionality.py"
+
+
+def _rerun_disproportionality(root: Path) -> None:
+    import subprocess
+    import sys
+
+    out = subprocess.run(
+        [sys.executable, str(_analysis(root))], capture_output=True, text=True, cwd=root
+    )
+    assert out.returncode == 0, out.stderr
+
+
+def _replace_once(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert text.count(old) == 1, old
+    path.write_text(text.replace(old, new), encoding="utf-8", newline="")
+
+
+def test_the_example_reads_the_parameters_it_declares(project: Path) -> None:
+    namespace, *_ = load_namespace(load_project(project)[0])
+    for key in ("results.param.alpha", "results.param.signal.min_cases"):
+        assert namespace[key].role == "parameter" and namespace[key].read is True, key
+    assert namespace["results.software.python"].role == "software"
+
+
+@pytest.mark.parametrize(
+    ("binding", "typed"),
+    [("{{results.param.alpha}}", "0.05"), ("{{results.param.signal.min_cases}}", "3")],
+)
+def test_a_declared_threshold_typed_in_the_methods_fails(
+    project: Path, binding: str, typed: str
+) -> None:
+    """Typed, it passes as a convention, and stays one after the code has moved on."""
+    _replace_once(main_md(project), binding, typed)
+    report = gate_report(project)
+    found = [f for f in report.failures if f.code == "typed-parameter"]
+    assert len(found) == 1, report.render(project)
+    text = main_md(project).read_text(encoding="utf-8").splitlines()
+    assert text[found[0].line - 1][found[0].col - 1 :].startswith(typed), found
+    assert binding in found[0].hint
+
+
+def test_a_typed_software_version_fails(project: Path) -> None:
+    namespace, *_ = load_namespace(load_project(project)[0])
+    version = namespace["results.software.python"].display
+    _replace_once(main_md(project), "{{results.software.python}}", version)
+    assert "typed-software-version" in codes(gate_report(project))
+
+
+def test_a_parameter_declared_and_never_read_fails(project: Path) -> None:
+    """The example's signal criterion before this check: stated, declared, bound, and
+    applied nowhere. Binding the threshold printed the right number for a step that was not
+    there."""
+    _replace_once(_analysis(project), "a >= min_cases and low > 1", "a >= 3 and low > 1")
+    _rerun_disproportionality(project)
+    found = [f for f in gate_report(project).failures if f.code == "parameter-unread"]
+    assert [f.message.split()[0] for f in found] == ["param.signal.min_cases"]
+
+
+def test_a_changed_parameter_reaches_the_methods_and_a_typed_copy_is_named(
+    project: Path,
+) -> None:
+    """Bound, the Methods print the value the code now runs with. Typed, the copy no longer
+    equals the parameter, so it is named as a threshold no parameter has."""
+    _replace_once(_analysis(project), '"signal.min_cases", 3)', '"signal.min_cases", 5)')
+    _rerun_disproportionality(project)
+    namespace, *_ = load_namespace(load_project(project)[0])
+    assert namespace["results.param.signal.min_cases"].display == "5"
+    assert gate_report(project).ok
+
+    _replace_once(main_md(project), "{{results.param.signal.min_cases}}", "3")
+    report = gate_report(project)
+    assert "typed-parameter" not in codes(report)
+    assert [f.code for f in report.warnings if f.code == "threshold-undeclared"] == [
+        "threshold-undeclared"
+    ]
+
+
+def test_a_parameter_equal_to_a_name_is_not_a_typed_threshold(project: Path) -> None:
+    """`2 x 2` names a structure, whatever a parameter equals: only the conventions that
+    hold in the Methods alone are thresholds an analysis chooses."""
+    _replace_once(
+        _analysis(project),
+        '    min_cases = em.parameter("signal.min_cases", 3)\n',
+        '    min_cases = em.parameter("signal.min_cases", 3)\n'
+        '    rows_per_table = em.parameter("rows_per_table", 2)\n'
+        "    assert rows_per_table == 2\n",
+    )
+    _rerun_disproportionality(project)
+    assert "typed-parameter" not in codes(gate_report(project))
+
+
+def test_explain_says_a_declared_threshold_is_typed(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`explain` is what an author reads when a finding surprises them, so it fails what
+    `check` fails, and names the binding to write."""
+    from manuscript_guard.cli import main
+
+    _replace_once(main_md(project), "{{results.param.alpha}}", "0.05")
+    main(["explain", str(main_md(project))])
+    row = next(line for line in capsys.readouterr().out.splitlines() if " 0.05 " in line)
+    assert row.startswith("FAIL") and "typed: write {{results.param.alpha}}" in row, row
+
+
+# --------------------------------------------------------------------------------------
+# Models: the example's adjusted model is the model its variables call for.
+# --------------------------------------------------------------------------------------
+
+
+def _models_report(root: Path):
+    from manuscript_guard.gates import check_models
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, _loaded = load_namespace(project)
+    return check_models(project, results)
+
+
+def test_the_example_s_model_is_the_model_its_variables_call_for(project: Path) -> None:
+    report = _models_report(project)
+    assert not report.findings, report.render(project)
+    assert report.counts["models"] == 1
+
+
+def test_a_reference_moved_in_the_formula_and_not_in_the_declaration_fails(project: Path) -> None:
+    _replace_once(_analysis(project), "C(sex, Treatment('F'))", "C(sex, Treatment('M'))")
+    _rerun_disproportionality(project)
+    found = [f for f in _models_report(project).failures if f.code == "model-reference"]
+    assert [f.message for f in found] == [
+        "model 'adjusted': 'sex' has reference 'M' in the fit and 'F' in its declaration"
+    ]
+
+
+def test_an_outcome_declared_continuous_under_a_logistic_model_fails(project: Path) -> None:
+    _replace_once(
+        _analysis(project),
+        'em.variable("hepatic", "binary", label="hepatic injury", levels=[0, 1],',
+        'em.variable("hepatic", "continuous", label="hepatic injury",',
+    )
+    _rerun_disproportionality(project)
+    assert "model-outcome-kind" in {f.code for f in _models_report(project).failures}
+
+
+# -------------------------------------------------------------- the Methods, pair by pair
+
+
+def _methods_report(project: Path):
+    from manuscript_guard.gates import check_methods
+
+    loaded = load_project(project)[0]
+    namespace, results, _literature, _loaded = load_namespace(loaded)
+    return check_methods(loaded, namespace, results)
+
+
+def _line_of(root: Path, text: str) -> int:
+    lines = main_md(root).read_text(encoding="utf-8").splitlines()
+    return next(n for n, line in enumerate(lines, 1) if text in line)
+
+
+def test_the_example_s_methods_point_at_steps_that_ran_and_were_read(project: Path) -> None:
+    report = _methods_report(project)
+    assert report.ok and not report.findings, report.render(project)
+    # Four steps, three texts: the estimate and its intervals share one paragraph.
+    assert (report.counts["method_steps"], report.counts["method_claims"]) == (4, 3)
+    assert report.counts["method_pairs_stale"] == 0
+
+
+def test_a_change_inside_a_step_names_the_paragraph_to_read_again(project: Path) -> None:
+    """The 90% interval's quantile moved. The file-level drift says a file changed; the pair
+    says which paragraph of the Methods describes the code that did."""
+    _replace_once(_analysis(project), "1.645 * se)\n        high90", "1.64 * se)\n        high90")
+    _rerun_disproportionality(project)
+    report = _methods_report(project)
+    found = [f for f in report.failures if f.code == "method-step-changed"]
+    assert [(f.message, f.line) for f in found] == [
+        (
+            "step 'ci' changed after the text pointing at it was last read against it",
+            _line_of(project, "{{method.ci}}"),
+        )
+    ]
+    assert found[0].context.startswith("The reporting odds ratio was computed")
+    assert "methods-drift" in {f.code for f in report.failures}
+
+
+def test_a_comment_added_inside_a_step_leaves_its_pair_read(project: Path) -> None:
+    _replace_once(_analysis(project), "        ror = (a / b) / (c / d)\n",
+                  "        # the ratio of the two odds\n        ror = (a / b) / (c / d)\n")
+    _rerun_disproportionality(project)
+    report = _methods_report(project)
+    assert not [f for f in report.findings if f.code.startswith("method-")], report.render(
+        project
+    )
+
+
+def test_a_claim_about_a_branch_the_run_never_took_fails(project: Path) -> None:
+    """A sensitivity analysis described in the Methods, whose code sits in a branch no run
+    takes: the step is never recorded, and the anchor names nothing that ran."""
+    _replace_once(
+        _analysis(project),
+        '    em.software("python")\n',
+        '    if serious < 0:\n        with em.step("sensitivity"):\n'
+        '            em.value("sensitivity.ror", ror, quoted=False)\n'
+        '    em.software("python")\n',
+    )
+    _rerun_disproportionality(project)
+    _replace_once(
+        main_md(project),
+        "The analysis was run in Python",
+        "A sensitivity analysis left out the serious reports. {{method.sensitivity}}\n\n"
+        "The analysis was run in Python",
+    )
+    report = _methods_report(project)
+    found = [f for f in report.failures if f.code == "method-step-unknown"]
+    assert [f.line for f in found] == [_line_of(project, "{{method.sensitivity}}")]
+
+
+def test_a_methods_paragraph_reworded_is_named_with_what_it_said(project: Path) -> None:
+    _replace_once(main_md(project), "odds ratio was computed from a 2 x 2 table",
+                  "odds ratio was computed from a 2 by 2 table")
+    report = _methods_report(project)
+    found = [f for f in report.failures if f.code == "method-claim-changed"]
+    assert [f.message.split("'")[1] for f in found] == ["ror", "ci"], report.render(project)
+    assert all(
+        f.context.startswith("was: The reporting odds ratio was computed from a 2 x 2 table")
+        for f in found
+    ), "one text, pointing at two steps, read against each"
+
+
+def test_an_anchor_deleted_leaves_its_step_described_by_nothing(project: Path) -> None:
+    _replace_once(main_md(project), "\n{{method.signal}}", "")
+    report = _methods_report(project)
+    assert [f.message for f in report.warnings if f.code == "method-step-undescribed"] == [
+        "step 'signal' ran, and no text in the manuscript points at it"
+    ]

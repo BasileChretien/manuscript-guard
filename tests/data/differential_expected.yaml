@@ -29,3 +29,9 @@ expected:
       a level typed after the letters hard against a negative bound, "CI 95%-0.3 to 0.4",
       is a level again: only a bound in percent after the hyphen makes the number before
       it a first bound
+  - reading: interval order
+    why: >-
+      the sentences an interval's bounds are compared in are read with each HTML comment
+      blanked, as the bindings are: a stop inside a comment ends no sentence, so a reversal
+      with such a comment between its bounds is reported, and a stop with a comment typed
+      against it ends one, so the bounds on either side of it are no longer compared

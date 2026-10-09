@@ -56,6 +56,19 @@ BINDS_AT = {
     "script-newer": ANALYSIS,
     "results-edited": ANALYSIS,
     "no-digest": ANALYSIS,
+    # A parameter the analysis declares and never reads is wrong as soon as it is written.
+    "parameter-unread": ANALYSIS,
+    # A model that is the wrong model is wrong as soon as it is fitted.
+    "model-variable-undeclared": ANALYSIS,
+    "model-outcome-kind": ANALYSIS,
+    "model-categories-as-number": ANALYSIS,
+    "model-binary-as-number": ANALYSIS,
+    "model-level-undeclared": ANALYSIS,
+    "model-reference": ANALYSIS,
+    "model-not-converged": ANALYSIS,
+    "model-empty-level": ANALYSIS,
+    "variable-level-undeclared": ANALYSIS,
+    "variable-not-binary": ANALYSIS,
     # -- drafting ---------------------------------------------------------------
     # Numbers in prose only exist once there is prose.
     "no-results-dir": DRAFTING,
@@ -71,6 +84,9 @@ BINDS_AT = {
     "malformed-placeholder": DRAFTING,
     "unresolved-binding": DRAFTING,
     "unquoted-result": DRAFTING,
+    "typed-parameter": DRAFTING,
+    "typed-software-version": DRAFTING,
+    "typed-model-kind": DRAFTING,
     "unplaced-table": DRAFTING,
     "divergent-display": DRAFTING,
     # Figures are still being redrawn while the text is drafted; their numbers must
@@ -97,6 +113,8 @@ BINDS_AT = {
     "figure-review-concerns": INTERNAL_REVIEW,
     "figure-review-finding": INTERNAL_REVIEW,
     "journal-profile-missing": INTERNAL_REVIEW,
+    # How many rows a model lost to missing values is for the finished draft to say.
+    "model-rows-dropped": INTERNAL_REVIEW,
     "over-journal-limit": INTERNAL_REVIEW,
     "missing-required-section": INTERNAL_REVIEW,
     "missing-abstract": INTERNAL_REVIEW,
@@ -109,6 +127,10 @@ BINDS_AT = {
     "checklist-item-unanswered": INTERNAL_REVIEW,
     "checklist-non-reason": INTERNAL_REVIEW,
     "methods-drift": INTERNAL_REVIEW,
+    # The same reading kept pair by pair: a step and the text pointing at it.
+    "method-pair-unread": INTERNAL_REVIEW,
+    "method-step-changed": INTERNAL_REVIEW,
+    "method-claim-changed": INTERNAL_REVIEW,
     # A stale build is normal while drafting — you rebuild when you need the document. It
     # stops being normal once the draft is something other people read.
     "document-stale": INTERNAL_REVIEW,

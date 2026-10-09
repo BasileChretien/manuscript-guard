@@ -1,0 +1,25 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 4
+reviewer: pharmacoepidemiologist
+reviewed_by: Claude Code
+reviewed_on: '2026-10-09'
+manuscript_sha256: 99d4125cde6f06a2c4cb3be4e26db1f8fa6fa3f98e8ae3f764293041823bf9f0
+file_sha256:
+  main.md: 682bd10ab580e29457b802edecc5c6bc0216e61624c3c406838655fb54d09461
+  supplementary/S1_code_lists.md: 0424bddf5bebf482147a5579ea720fbfe9e701fadfb0b6898cdb21aa34fc0708
+verdict: minor-revision
+summary: Adjusting a case/non-case ratio for age and sex is the usual first adjustment, and
+  the paper keeps the adjusted estimate a measure of reporting, not of risk. The explanation
+  for why adjustment changed nothing is specific to the synthetic data and says so. One covariate
+  the data do hold, the reporting year, is not used and not discussed.
+findings:
+- id: r4-pe-01
+  severity: minor
+  where: Methods, adjusted model
+  finding: Every report carries its year, and calendar time is a common adjustment in
+    disproportionality analyses, since reporting of a drug changes with time on the market
+    and with publicity. The paper adjusts for patient characteristics only and does not say
+    why year was left out; one sentence would do, and here the generator draws the year
+    independently of the drug as well.

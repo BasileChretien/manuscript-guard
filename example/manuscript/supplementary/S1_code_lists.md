@@ -14,6 +14,14 @@ code applied cannot come apart.
 
 {{table.outcome_codes}}
 
+## Table S2. The adjusted model
+
+The model as it was fitted: the outcome, and each variable with the kind it was declared and
+how the model entered it. The table is made from the fit and from those declarations, not
+typed, so it cannot describe a model other than the one that produced the estimate.
+
+{{table.model_adjusted}}
+
 ## Sensitivity of the estimate to the interval quoted
 
 The primary analysis reports a 95% confidence interval of {{results.ror.ci_low}} to

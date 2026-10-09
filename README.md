@@ -18,7 +18,7 @@ not something left for a reviewer to notice.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/loop-dark.svg">
   <img src="docs/img/loop-light.svg" width="860"
-       alt="The analysis writes results; the manuscript binds to them and to a literature ledger; check runs fourteen gates against the journal's rules and a reporting checklist; build writes the .docx; import brings a co-author's Word edits back to the manuscript.">
+       alt="The analysis writes results; the manuscript binds to them and to a literature ledger; check runs fifteen gates against the journal's rules and a reporting checklist; build writes the .docx; import brings a co-author's Word edits back to the manuscript.">
 </picture>
 
 It is a command line tool written in Python, for a manuscript written in Markdown and built
@@ -42,7 +42,12 @@ where the manuscript can wait ([stages](docs/stages.md)).
 | The script that wrote a results file, or an input it declared, changed afterwards | which of them, and the script to run again | `analysis` |
 | A value taken from a paper is not in the sentence quoted as evidence for it | the value and the quote; the quote itself has to be in the stored source | `drafting` |
 | A number was typed into text that a figure draws | the line of the figure's script | `drafting` |
+| A threshold or software version the analysis declares was typed into the Methods | the number, with its line and column, and the binding to write | `drafting` |
+| The analysis declares a parameter and never reads it | the parameter | `analysis` |
+| A model does not suit its variables: a binary outcome under a linear model, a categorical code entered as one slope, a reference other than the one declared, a level with no events | the model and the variable | `analysis` |
 | The analysis changed after the Methods were last read against it | the files that changed | `internal-review` |
+| A marked step of the code, or the Methods text pointing at it, changed after the two were read together | the step and the paragraph to read again | `internal-review` |
+| The Methods point at a step the run never took | the anchor, with its line | `design` |
 | A reporting checklist item (STROBE, CONSORT, PRISMA and others) is not addressed | each item still open | `internal-review` |
 | The journal's word limit, a required section or a required statement is missed | which one | `internal-review` |
 | A reply to a reviewer claims a revision that was not made | the point | `submission` |
@@ -129,12 +134,13 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G6 | model artefacts, AI phrasing, and unsupported appeals to authority |
 | G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote |
 | G8 | one quantity is not emitted twice under two names |
-| G9 | the analysis has not changed since the Methods were last read against it |
+| G9 | the analysis has not changed since the Methods were last read against it, and, step by step, neither a marked step nor the text pointing at it has |
 | G10 | every figure has a current review by someone who looked at it |
 | G11 | a recorded panel has reviewed the manuscript, and its major findings are answered |
 | G12 | there was an analysis plan, and its sections say something |
 | G13 | every reviewer point is answered, and every claimed revision really happened |
 | G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, it is spelt in one English, and a P value, an interval and a percentage are each written one way (warnings only) |
+| G15 | each model is the model its variables call for: the outcome is one its kind of model is for, each variable entered as the kind it was declared, with its declared reference and levels, the fit converged with events at every level, and the Methods name the model that was fitted |
 
 In place of a gate, a finding can carry one of two labels that are no gate of their own:
 `G0`, for a file of the project that cannot be used as it stands, and `BUILD`, for what
@@ -249,7 +255,8 @@ number in the file and the rule that classified it.
 | `transcribe` | build checklist profiles from those documents |
 | `checklist` | write the completion file for a checklist |
 | `sync-bib` | rewrite `references.bib` from Zotero |
-| `methods` | check or record that the Methods were read against the code |
+| `methods` | check or record that the Methods were read against the code; `--explain` lists each claim beside the step that backs it |
+| `models` | print each fitted model as its card, with what G15 says of it |
 | `review` | show where the review panel stands; `--run` has it read by the models you list |
 | `checker` | send a co-author one file of things to confirm, and record what they answered |
 | `import` | bring a co-author's Word edits back into the manuscript source |

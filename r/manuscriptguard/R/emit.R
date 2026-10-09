@@ -376,6 +376,187 @@ mg_git <- function(root, args) {
 #' em$write()
 #' }
 #' @export
+# Whether the value `parameter(key, ...)` hands back is read again by the script, mirroring
+# the Python emitter's `parameter_read`. FALSE when the call is a statement of its own or
+# assigns a name no other line reads; TRUE when the name is read, or when the call sits inside
+# a larger expression. NULL when the script cannot be parsed, the call is not found, or the
+# value goes somewhere this does not follow. A name read again is all this establishes.
+mg_parameter_read <- function(path, key) {
+  parsed <- tryCatch(parse(path, keep.source = TRUE), error = function(e) NULL)
+  if (is.null(parsed)) return(NULL)
+  pd <- utils::getParseData(parsed)
+  if (is.null(pd) || nrow(pd) == 0) return(NULL)
+  pd <- pd[order(pd$line1, pd$col1), , drop = FALSE]
+  parent_of <- function(id) pd$parent[pd$id == id]
+  children <- function(id) pd[pd$parent == id, , drop = FALSE]
+  quoted <- c(sprintf('"%s"', key), sprintf("'%s'", key))
+  calls <- integer()
+  for (symbol in pd$id[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == "parameter"]) {
+    call <- parent_of(parent_of(symbol))
+    strings <- pd$id[pd$token == "STR_CONST" & pd$text %in% quoted]
+    if (any(vapply(strings, function(s) parent_of(parent_of(s)) == call, logical(1)))) {
+      calls <- c(calls, call)
+    }
+  }
+  if (length(calls) != 1) return(NULL)
+  call <- calls[[1]]
+  around <- parent_of(call)
+  if (around == 0) return(FALSE)
+  siblings <- children(around)
+  if ("'{'" %in% siblings$token) {
+    # The last expression of a block is its value, which a function returns.
+    exprs <- siblings$id[siblings$token != "'{'" & siblings$token != "'}'"]
+    return(if (utils::tail(exprs, 1) == call) NULL else FALSE)
+  }
+  arrows <- c("LEFT_ASSIGN", "EQ_ASSIGN", "RIGHT_ASSIGN")
+  if (!any(siblings$token %in% arrows)) return(TRUE)
+  exprs <- siblings$id[!siblings$terminal]
+  rightwards <- "RIGHT_ASSIGN" %in% siblings$token
+  value <- if (rightwards) exprs[[1]] else utils::tail(exprs, 1)
+  if (value != call) return(TRUE)
+  target <- if (rightwards) utils::tail(exprs, 1) else exprs[[1]]
+  name <- children(target)
+  if (nrow(name) != 1 || name$token != "SYMBOL") return(NULL)
+  any(pd$token == "SYMBOL" & pd$text == name$text & pd$id != name$id)
+}
+
+# The first and last line of the code `step(name, { ... })` runs, read from the script as
+# `mg_parameter_read` reads it: the expressions inside the braces, or the expression given.
+# NULL when the script cannot be parsed or the call is not found once.
+mg_step_lines <- function(path, name) {
+  parsed <- tryCatch(parse(path, keep.source = TRUE), error = function(e) NULL)
+  if (is.null(parsed)) return(NULL)
+  pd <- utils::getParseData(parsed)
+  if (is.null(pd) || nrow(pd) == 0) return(NULL)
+  parent_of <- function(id) pd$parent[pd$id == id]
+  quoted <- c(sprintf('"%s"', name), sprintf("'%s'", name))
+  calls <- integer()
+  for (symbol in pd$id[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == "step"]) {
+    call <- parent_of(parent_of(symbol))
+    strings <- pd$id[pd$token == "STR_CONST" & pd$text %in% quoted]
+    if (any(vapply(strings, function(s) parent_of(parent_of(s)) == call, logical(1)))) {
+      calls <- c(calls, call)
+    }
+  }
+  if (length(calls) != 1) return(NULL)
+  arguments <- pd[pd$parent == calls[[1]] & pd$token == "expr", , drop = FALSE]
+  block <- arguments[order(arguments$line1, arguments$col1), , drop = FALSE]
+  block <- block[nrow(block), , drop = FALSE]
+  inside <- pd[pd$parent == block$id & !pd$terminal, , drop = FALSE]
+  if (nrow(inside) > 0 && any(pd$parent == block$id & pd$token == "'{'")) {
+    return(c(min(inside$line1), max(inside$line2)))
+  }
+  c(block$line1, block$line2)
+}
+
+# The code a step runs, and the functions it calls that the analysis defined itself (not a
+# package's), followed through the functions they call, mirroring the Python `step_code`.
+# Read as code, by deparsing: a comment or a re-wrapped line changes nothing.
+mg_step_code <- function(expr, env) {
+  follows <- character()
+  waiting <- list(expr)
+  while (length(waiting) > 0) {
+    names <- all.names(waiting[[1]])
+    waiting <- waiting[-1]
+    for (n in setdiff(unique(names), follows)) {
+      f <- get0(n, envir = env, mode = "function")
+      if (is.null(f) || !is.function(f) || is.primitive(f)) next
+      home <- environment(f)
+      if (is.null(home) || isNamespace(home) || identical(home, baseenv())) next
+      follows <- c(follows, n)
+      waiting <- c(waiting, list(body(f)))
+    }
+  }
+  follows <- sort(follows, method = "radix")
+  shown <- function(x) paste(deparse(x, width.cutoff = 500L), collapse = "\n")
+  text <- paste(c(shown(expr), vapply(follows, function(n) {
+    paste0(n, " <- ", shown(get0(n, envir = env, mode = "function")))
+  }, character(1))), collapse = "\n")
+  list(digest = digest::digest(text, algo = "sha256", serialize = FALSE), follows = follows)
+}
+
+# What a variable can be meant to be, as the Python emitter has it.
+mg_variable_kinds <- c("binary", "categorical", "ordinal", "continuous", "count")
+
+# What the data hold of a variable: levels (where few), distinct values, missing. Sorted in
+# code-point order, as Python sorts, whatever the locale.
+mg_observed <- function(values, kind) {
+  present <- unique(as.character(values[!is.na(values)]))
+  present <- sort(present, method = "radix")
+  out <- list(distinct = length(present), missing = sum(is.na(values)))
+  if (kind %in% c("binary", "categorical", "ordinal") || length(present) <= 50) {
+    out$levels <- I(present)
+  }
+  out
+}
+
+# The model card of an lm or glm fit, read from the fit, mirroring the Python emitter's
+# `read_statsmodels`. Facts only; the name a model goes by is derived when results are read.
+mg_read_fit <- function(fit) {
+  if (!inherits(fit, "lm")) {
+    stop("model: only lm and glm fits are read, so the terms cannot be read from this one",
+         call. = FALSE)
+  }
+  tt <- stats::terms(fit)
+  engine <- list(language = "R", package = "stats", class = class(fit)[[1]])
+  if (inherits(fit, "glm")) {
+    engine$family <- fit$family$family
+    engine$link <- fit$family$link
+  }
+  factors <- attr(tt, "factors")
+  xlevels <- fit$xlevels
+  contrasts <- fit$contrasts
+  binary <- identical(engine$family, "binomial")
+  frame <- stats::model.frame(fit)
+  y <- if (binary) fit$y else NULL
+  terms <- list()
+  events_by_level <- list()
+  for (label in attr(tt, "term.labels")) {
+    used <- rownames(factors)[factors[, label] != 0]
+    entered <- lapply(used, function(expression) {
+      record <- list(expression = expression, variables = I(all.vars(str2lang(expression))))
+      if (!is.null(xlevels[[expression]])) {
+        record$as <- "categorical"
+        record$levels <- I(as.character(xlevels[[expression]]))
+        coding <- contrasts[[expression]]
+        if (is.null(coding) || identical(coding, "contr.treatment")) {
+          record$reference <- as.character(xlevels[[expression]][[1]])
+        }
+      } else {
+        record$as <- "numerical"
+      }
+      record
+    })
+    if (binary && length(used) == 1 && !is.null(xlevels[[used[[1]]]])) {
+      levels <- as.character(xlevels[[used[[1]]]])
+      sums <- tapply(y, factor(as.character(frame[[used[[1]]]]), levels = levels), sum)
+      sums[is.na(sums)] <- 0
+      for (variable in all.vars(str2lang(used[[1]]))) {
+        events_by_level[[variable]] <- as.list(stats::setNames(as.integer(sums), levels))
+      }
+    }
+    terms[[length(terms) + 1]] <- list(term = label, entered = entered)
+  }
+  outcome <- paste(deparse(stats::formula(fit)[[2]]), collapse = " ")
+  dropped <- length(fit$na.action)
+  card <- list(
+    engine = engine,
+    formula = paste(deparse(stats::formula(fit)), collapse = " "),
+    outcome = list(expression = outcome, variables = I(all.vars(stats::formula(fit)[[2]]))),
+    terms = terms,
+    parameters = length(stats::coef(fit)) - attr(tt, "intercept"),
+    n_input = stats::nobs(fit) + dropped,
+    n_used = stats::nobs(fit),
+    n_dropped = dropped,
+    converged = if (inherits(fit, "glm")) isTRUE(fit$converged) else TRUE
+  )
+  if (binary) {
+    card$events <- as.integer(sum(y))
+    if (length(events_by_level) > 0) card$events_by_level <- events_by_level
+  }
+  card
+}
+
 mg_emitter <- function(script, inputs = character(), root = NULL) {
   script_path <- normalizePath(script, winslash = "/", mustWork = TRUE)
   project_root <- if (is.null(root)) mg_find_root(dirname(script_path)) else normalizePath(root, winslash = "/")
@@ -384,6 +565,9 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   state$inputs <- as.character(inputs)
   state$tables <- list()
   state$code_lists <- list()
+  state$variables <- list()
+  state$models <- list()
+  state$steps <- list()
   # Which cells this emitter produced from numbers, per table, in the shape the fragment
   # publishes. G2 reads it and applies the same rule to a fragment from either language;
   # without it, a composed cell and a typed one are the same characters on disk.
@@ -414,6 +598,129 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     if (!is.null(bound)) entry$bound <- match.arg(bound, c("low", "high"))
     if (!is.null(level)) entry$level <- level
     state$values[[key]] <- entry
+    invisible(NULL)
+  }
+
+  # Record a choice the analysis made, and hand it back for the analysis to use, mirroring
+  # the Python `parameter()`:
+  #
+  #   alpha <- em$parameter("alpha", 0.05)
+  #   z <- qnorm(1 - alpha / 2)
+  #
+  # Writes `param.alpha`, which the Methods quote as {{results.param.alpha}}. The script is
+  # read where the call stands, and the fragment records whether the value handed back is
+  # read again: declared is not used, and G2 fails a parameter never read.
+  parameter <- function(key, value, display = NULL, digits = NULL, unit = NULL,
+                        note = NULL) {
+    if (!grepl("^[a-z0-9_]+(\\.[a-z0-9_]+)*$", key)) {
+      stop("parameter ", key, ": a key is lowercase letters, digits and underscores, in ",
+           "parts joined by dots, so that the Methods can bind it", call. = FALSE)
+    }
+    full <- paste0("param.", key)
+    # Written as typed, as the Python emitter writes it: a threshold is not rounded.
+    if (is.double(value) && is.null(display) && is.null(digits)) {
+      display <- trimws(formatC(value, digits = 15, format = "g"))
+    }
+    value(full, value, display = display, digits = digits, unit = unit, note = note)
+    state$values[[full]]$role <- "parameter"
+    read <- mg_parameter_read(script_path, key)
+    if (!is.null(read)) state$values[[full]]$read <- read
+    invisible(value)
+  }
+
+  # Mark the code a Methods claim describes, run it, and record that it ran, mirroring the
+  # Python `step()`:
+  #
+  #   em$step("ci", {
+  #     se <- sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+  #     low <- exp(log(ror) - z * se)
+  #   })
+  #
+  # The code runs where the call stands, as if the braces were not there. The Methods point
+  # at it with {{method.ci}}. The fragment records its lines and a digest of its code, read
+  # as code, with the functions it calls that the analysis defined itself.
+  step <- function(name, code) {
+    if (!grepl("^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$", name)) {
+      stop("step ", name, ": a name is lowercase letters, digits and underscores, starting ",
+           "with a letter, in parts joined by dots, so that the Methods can bind it",
+           call. = FALSE)
+    }
+    expr <- substitute(code)
+    env <- parent.frame()
+    read <- mg_step_code(expr, env)
+    record <- list()
+    lines <- mg_step_lines(script_path, name)
+    if (!is.null(lines)) record$lines <- as.integer(lines)
+    record$digest <- read$digest
+    if (length(read$follows) > 0) record$follows <- I(read$follows)
+    if (!is.null(state$steps[[name]]) && !identical(state$steps[[name]], record)) {
+      stop("step ", name, " marks two different blocks of code", call. = FALSE)
+    }
+    state$steps[[name]] <- record
+    invisible(eval(expr, env))
+  }
+
+  # The version of a piece of software this run used, as the run found it, mirroring the
+  # Python `software()`. "R" is the interpreter; any other name must be a package this
+  # session has loaded, because the Methods would otherwise name software that computed
+  # nothing.
+  software <- function(name) {
+    if (identical(name, "R")) {
+      version <- paste(R.version$major, R.version$minor, sep = ".")
+    } else {
+      if (!(name %in% loadedNamespaces())) {
+        stop("software ", name, ": this session has not loaded it, so it computed none ",
+             "of these results", call. = FALSE)
+      }
+      version <- as.character(utils::packageVersion(name))
+    }
+    key <- paste0("software.", gsub("[^a-z0-9_]", "_", tolower(name)))
+    if (!is.null(state$values[[key]])) {
+      stop(key, " emitted twice by ", script_path, call. = FALSE)
+    }
+    state$values[[key]] <- list(value = version, display = version, label = TRUE,
+                                role = "software")
+    invisible(version)
+  }
+
+  # Declare a variable a model uses, with the kind it is meant to be, mirroring the Python
+  # `variable()`. The data cannot say whether 1 to 4 is a grade, a code or a count.
+  variable <- function(name, kind, label, levels = NULL, reference = NULL, unit = NULL,
+                       values = NULL) {
+    if (!(kind %in% mg_variable_kinds)) {
+      stop("variable ", name, ": kind is one of ", paste(mg_variable_kinds, collapse = ", "),
+           call. = FALSE)
+    }
+    if (!is.null(state$variables[[name]])) {
+      stop("variable ", name, " declared twice by ", script_path, call. = FALSE)
+    }
+    entry <- list(kind = kind, label = label)
+    if (!is.null(levels)) entry$levels <- I(as.character(levels))
+    if (!is.null(reference)) {
+      entry$reference <- as.character(reference)
+      if (!is.null(levels) && !(entry$reference %in% entry$levels)) {
+        stop("variable ", name, ": reference ", reference, " is not a level", call. = FALSE)
+      }
+    }
+    if (!is.null(unit)) entry$unit <- unit
+    if (!is.null(values)) entry$observed <- mg_observed(values, kind)
+    state$variables[[name]] <- entry
+    invisible(NULL)
+  }
+
+  # Record a fitted model as the fit describes it, mirroring the Python `model()`.
+  model <- function(key, fit, name, description = NULL) {
+    if (!grepl("^[a-z][a-z0-9_]*$", key)) {
+      stop("model ", key, ": a key is lowercase letters, digits and underscores, so that ",
+           "its values and its table can be bound", call. = FALSE)
+    }
+    if (!is.null(state$models[[key]])) {
+      stop("model ", key, " recorded twice by ", script_path, call. = FALSE)
+    }
+    card <- mg_read_fit(fit)
+    card$name <- name
+    if (!is.null(description)) card$description <- description
+    state$models[[key]] <- card
     invisible(NULL)
   }
 
@@ -713,6 +1020,9 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
       names(document$tables) <- names(state$tables)
     }
     if (length(state$code_lists) > 0) document$code_lists <- state$code_lists
+    if (length(state$variables) > 0) document$variables <- state$variables
+    if (length(state$models) > 0) document$models <- state$models
+    if (length(state$steps) > 0) document$steps <- state$steps
     json <- jsonlite::toJSON(document, auto_unbox = TRUE, pretty = 2, digits = NA, null = "null")
     mg_write_lf(as.character(json), path)
 
@@ -725,6 +1035,11 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
 
   list(
     value = value,
+    parameter = parameter,
+    software = software,
+    variable = variable,
+    model = model,
+    step = step,
     interval = interval,
     cell = mg_cell,
     table = table_,

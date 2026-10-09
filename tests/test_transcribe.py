@@ -1103,10 +1103,9 @@ def test_a_statement_split_across_a_page_break_loses_its_second_line(
 def test_a_stop_at_line_before_the_last_item_is_caught_only_by_the_item_count(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A pinned limit, recorded under "What each count can see" in DESIGN.md's Known gaps. A form
-    that prints its `stop_at` word twice ends the reading at the first, and only `items` notices
-    that the scale came out short. This is what the item count buys, and it is the whole of what
-    it buys."""
+    """A pinned limit, and one of the tests DESIGN.md's Known gaps names. A form that prints its
+    `stop_at` word twice ends the reading at the first, and only `items` notices that the scale
+    came out short. This is what the item count buys, and it is the whole of what it buys."""
     from manuscript_guard.reporting import columns
     from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
     from manuscript_guard.reporting.transcribe import RecipeError
@@ -1155,3 +1154,61 @@ The thing is not described.                                                   0
             tmp_path / "x.pdf",
             ScaleRecipe(document="x.pdf", pages=(3, 7), stop_at="Sumscore"),
         )
+
+
+def test_a_wrapped_title_or_wrapped_first_statement_is_written_wrong_on_one_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What a one-page form reaches in silence, where its recipe states **both** counts.
+
+    A count sees a line that changes how many items or options there are. Wrapping changes
+    neither, so the first line under a heading is taken as that item's clarification whatever the
+    counts say — and the item is written, with no refusal and no warning, carrying a topic cut at
+    the line end or a first option that is the end of its own statement.
+
+    Both counts are stated here, through `transcribe_scale`, because that is the claim: it is
+    what the shipped recipe states, and stating fewer catches less rather than more. Each shape
+    is silent only under an item that has no clarifying line of its own — under one that has, the
+    wrap is refused as a second unscored line.
+
+    This is what to look at when a profile is read against the published form by eye, and it is
+    why that reading is asked for. It is pinned here rather than described because four rounds of
+    review found four written accounts of it, each wrong somewhere.
+    """
+    from manuscript_guard.reporting import columns
+    from manuscript_guard.reporting.scale import ScaleRecipe, transcribe_scale
+
+    def read(page: str):
+        monkeypatch.setattr(columns, "page_text", lambda _path, _number: page)
+        items, _text = transcribe_scale(
+            tmp_path / "x.pdf",
+            ScaleRecipe(document="x.pdf", pages=(1,), items=2, options=3, stop_at="Sumscore"),
+        )
+        return items
+
+    first = read(
+        _SCALE.replace(
+            "1) Clarity of the thing described",
+            "1) Clarity of the thing described, and of the account\ngiven of it",
+        )
+    )[0]
+    assert first.topic == "Clarity of the thing described, and of the account"
+    assert first.extras["clarification"] == "given of it"
+    assert first.extras["statements"] == [
+        "The thing is not described.",
+        "The thing is described in passing.",
+        "The thing is described plainly.",
+    ], "three options under two items, so neither count can tell anything is wrong"
+
+    second = read(
+        _SCALE.replace(
+            "The thing is not described.                                                   0",
+            "The thing is not described, or is described so briefly\n"
+            "that a reader could not say what it is.                                       0",
+        )
+    )[0]
+    assert second.extras["clarification"] == (
+        "The thing is not described, or is described so briefly"
+    )
+    assert second.extras["statements"][0] == "that a reader could not say what it is."
+    assert len(second.extras["statements"]) == 3

@@ -167,7 +167,12 @@ re-run, so the profile stays a function of the published checklist.
   `tests/test_properties.py`; a generator in a scratch folder goes with the folder. A review
   reads the diff and runs these, and builds no campaign of its own: where a change needs one
   the suite lacks, that is the finding. A property is not finished until a broken rule fails
-  it (`BROKEN` in `tests/test_properties.py`, `CHANGED` in `tests/test_differential.py`).
+  it (`BROKEN` in `tests/test_properties.py`, `CHANGED` in `tests/test_differential.py`),
+  and fails it under other draws than the pinned one: run the broken rule under a dozen
+  values of `MANUSCRIPT_GUARD_SEED` before keeping the case. Where a property is about
+  several kinds of edit or input, each example holds one of every kind. What a property
+  draws first is what Hypothesis varies least, so a kind drawn first, one among several, is
+  under some seeds never drawn, and a rule broken for that kind then passes.
 - Tests never open a connection to a provider. The client takes its transport as an
   argument; `tests/test_review_transport.py` runs the real one against a server it
   starts on a loopback port.

@@ -52,6 +52,13 @@ class Value:
     # compared within a level and never across, because a 90% interval nested inside a 95%
     # one is correct rather than a contradiction.
     level: str | None = None
+    # "parameter" for a choice the analysis made (`em.parameter`), "software" for the
+    # version of what it ran on (`em.software`). Either is a thing the text states and
+    # would otherwise type, and G2 fails it typed where it should be bound.
+    role: str | None = None
+    # For a parameter, whether the script reads the value handed back; None when the
+    # emitter could not tell. Declared is not used, and G2 fails one never read.
+    read: bool | None = None
 
     @property
     def namespace(self) -> str:
@@ -195,6 +202,29 @@ def _exponent_of(match: re.Match) -> str:
     return written.translate(_SUPERSCRIPT).replace("−", "-")
 
 
+def _number_of(match: re.Match) -> tuple[str, str]:
+    """The number a display carries, as Python reads one, and its exponent."""
+    text = match.group("number")
+    for separator in (",", " ", " ", " ", " "):
+        text = text.replace(separator, "")
+    if match.group("sign") in ("-", "−"):
+        text = f"-{text}"
+    exponent_text = _exponent_of(match)
+    if exponent_text:
+        text = f"{text}e{exponent_text}"
+    return text, exponent_text
+
+
+def number_in(display: str) -> float | None:
+    """The number a display or a typed number states, read as `_check_display_matches`
+    reads a display; None for anything that is not one number with at most a unit after
+    it. "0.050", "5e-2" and "5 × 10⁻²" all state 0.05."""
+    match = _NUMERIC_DISPLAY.match(display)
+    if match is None or match.group("compare"):
+        return None
+    return float(_number_of(match)[0])
+
+
 def _check_display_matches(key: str, value: object, display: str) -> None:
     """An explicit `display` must be a rendering of its own value.
 
@@ -221,15 +251,7 @@ def _check_display_matches(key: str, value: object, display: str) -> None:
             f"separate keys, so each part can be quoted and checked on its own"
         )
 
-    text = match.group("number")
-    for separator in (",", " ", " ", " ", " "):
-        text = text.replace(separator, "")
-    if match.group("sign") in ("-", "−"):
-        text = f"-{text}"
-    exponent_text = _exponent_of(match)
-    if exponent_text:
-        text = f"{text}e{exponent_text}"
-
+    text, exponent_text = _number_of(match)
     shown = float(text)
     compare = match.group("compare")
     if compare:

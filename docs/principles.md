@@ -106,8 +106,9 @@ the scale a narrative review is appraised with. You supply the official document
 is generated locally. Each profile records how thoroughly it was verified, because that
 differs — a Word table allows every item's full text to be checked, a column-laid-out PDF only
 each item's opening clause, and a rating scale read line by line allows no independent check
-at all, offering instead that a line it cannot place stops the transcription — below
-the first heading of its page, and as far as the counts a recipe states can see.
+at all, offering instead the rules it reads by — what is read on each page, what each line
+becomes, and what is counted — with the cases worth knowing pinned in named tests rather than
+described, and the ones pinned by nothing named too.
 
 The transcribed text is not redistributed, so each guideline's licence stays the guideline's
 business.

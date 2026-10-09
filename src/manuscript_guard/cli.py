@@ -50,6 +50,7 @@ from manuscript_guard.gates import (
     check_language,
     check_literature_chain,
     check_methods,
+    check_models,
     check_numbers,
     check_reporting,
     check_review,
@@ -63,6 +64,7 @@ from manuscript_guard.gates import (
     source_files,
     sync_bib,
 )
+from manuscript_guard.gates.numbers import chosen_rules, typed_choice
 from manuscript_guard.policy import (
     DESCRIPTIONS,
     STAGES,
@@ -130,11 +132,12 @@ def _run_gates(
         ("G4", lambda: check_journal(project)),
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project)),
-        ("G9", lambda: check_methods(project)),
+        ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project)),
         ("G8", lambda: check_consistency(results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
         ("G14", lambda: check_language(project)),
+        ("G15", lambda: check_models(project, results)),
         ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
     ):
         report = _guarded(name, gate, unreadable)
@@ -1438,18 +1441,61 @@ def cmd_explain(args: argparse.Namespace) -> int:
     # `conventions:` exemption, which is the one mechanism that makes G2 vacuous.
     headings = heading_index(text)
     notes = footnote_index(text)
+    # A threshold the analysis declares is accepted by its convention and still fails
+    # `check` typed, so this says so too, with the binding to write instead.
+    namespace, _results, _literature, _loaded = load_namespace(project)
+    choices = [value for value in namespace.values() if value.role]
+    chosen = chosen_rules(classifier)
     rows = []
     for atom in find_atoms(text, mask(text)):
         verdict = classifier.classify_under(atom, chains_at(headings, notes, atom.start))
-        rows.append((atom.line, atom.text, verdict.kind, verdict.rule or "-"))
+        typed = typed_choice(atom.text, verdict, choices, chosen)
+        rule = verdict.rule or "-"
+        if typed is not None:
+            rule = f"{rule}, typed: write {typed.reference}"
+        rows.append((atom.line, atom.text, verdict.kind, rule, typed is not None))
     if not rows:
         print("no numeric atoms outside masked regions")
         return 0
     width = max(len(r[1]) for r in rows)
-    for line, atom_text, kind, rule in rows:
-        marker = "FAIL" if kind == UNCLASSIFIED else "ok  "
+    for line, atom_text, kind, rule, typed in rows:
+        marker = "FAIL" if kind == UNCLASSIFIED or typed else "ok  "
         print(f"{marker} {line:>5}  {atom_text:<{width}}  {kind:<12} {rule}")
     return 0
+
+
+def cmd_models(args: argparse.Namespace) -> int:
+    """Print each model the analysis fitted as its card, with what G15 says of it.
+
+    The card is what a co-author reads to say whether the model is the right one: what it is
+    called, what the author says it is for, the sentence made from the fit, and each variable
+    with the kind it was declared and how it entered."""
+    from manuscript_guard.contracts.models import describe, table_rows
+
+    project, _ = load_project(args.path)
+    _namespace, results, _literature, _loaded = load_namespace(project)
+    if not results.models:
+        print("no models: an analysis records one with em.model() in Python, em$model() in R")
+        return 0
+    report = check_models(project, results)
+    for key, model in results.models.items():
+        print(f"{model.name}  (model.{key}, {model.source.name})")
+        print(f"  fitted:      {model.kind or 'a model the toolkit has no name for'}")
+        print(f"  formula:     {model.formula}")
+        print(f"  from fit:    {describe(model, results.variables)}")
+        print(f"  author says: {model.description or '(nothing)'}")
+        rows = [["Variable", "Declared as", "Entered as", "Levels"]]
+        rows += table_rows(model, results.variables)
+        widths = [max(len(row[i]) for row in rows) for i in range(4)]
+        for row in rows:
+            cells = zip(row, widths, strict=True)
+            print("    " + "  ".join(cell.ljust(width) for cell, width in cells))
+        print(f"  converged:   {'yes' if model.converged else 'NO'}")
+        mine = [f for f in report.findings if f.message.startswith(f"model {key!r}:")]
+        for finding in mine:
+            print(f"  [{finding.severity.upper()}] {finding.message.split(': ', 1)[1]}")
+        print()
+    return 0 if report.ok else 1
 
 
 def cmd_reworded(args: argparse.Namespace) -> int:
@@ -2025,11 +2071,25 @@ def cmd_checker(args: argparse.Namespace) -> int:
 def cmd_methods(args: argparse.Namespace) -> int:
     """Report or record the state of the Methods against the analysis."""
     project, _ = load_project(args.path)
-    if not args.reconcile:
+    if args.explain:
+        from manuscript_guard.gates.methods import explain_methods
+
+        print("\n".join(explain_methods(project)))
+        return 0
+    if args.reconcile is None:
         report = check_methods(project)
         print(report.render(project.root))
         return 0 if report.ok else 1
 
+    if args.reconcile:
+        try:
+            path, count = reconcile(project, steps=args.reconcile)
+        except ValueError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        print(f"recorded {count} pair(s) of step {', '.join(args.reconcile)} in {path}")
+        print("This says the text pointing at each step has been read against its code.")
+        return 0
     path, count = reconcile(project)
     print(f"recorded {count} analysis file(s) in {path}")
     print("This says the Methods have been read against the code as it now stands.")
@@ -2520,6 +2580,12 @@ def build_parser() -> argparse.ArgumentParser:
     explain.add_argument("file", type=Path)
     explain.set_defaults(func=cmd_explain)
 
+    models = sub.add_parser(
+        "models", help="print each fitted model as its card, with what G15 says of it"
+    )
+    models.add_argument("path", nargs="?", type=Path, default=Path("."))
+    models.set_defaults(func=cmd_models)
+
     reworded = sub.add_parser(
         "reworded",
         help="check that an edit changed the wording and nothing else",
@@ -2618,8 +2684,15 @@ def build_parser() -> argparse.ArgumentParser:
     methods.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     methods.add_argument(
         "--reconcile",
+        nargs="*",
+        metavar="STEP",
+        help="record the analysis as it stands, after reading the Methods against it; with "
+        "step names, record only the pairs of those steps, after reading each against its text",
+    )
+    methods.add_argument(
+        "--explain",
         action="store_true",
-        help="record the analysis as it stands, after reading the Methods against it",
+        help="list each Methods claim with the step it points at and how the pair stands",
     )
     methods.set_defaults(func=cmd_methods)
 

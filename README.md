@@ -46,6 +46,8 @@ where the manuscript can wait ([stages](docs/stages.md)).
 | The analysis declares a parameter and never reads it | the parameter | `analysis` |
 | A model does not suit its variables: a binary outcome under a linear model, a categorical code entered as one slope, a reference other than the one declared, a level with no events | the model and the variable | `analysis` |
 | The analysis changed after the Methods were last read against it | the files that changed | `internal-review` |
+| A marked step of the code, or the Methods text pointing at it, changed after the two were read together | the step and the paragraph to read again | `internal-review` |
+| The Methods point at a step the run never took | the anchor, with its line | `design` |
 | A reporting checklist item (STROBE, CONSORT, PRISMA and others) is not addressed | each item still open | `internal-review` |
 | The journal's word limit, a required section or a required statement is missed | which one | `internal-review` |
 | A reply to a reviewer claims a revision that was not made | the point | `submission` |
@@ -132,7 +134,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G6 | model artefacts, AI phrasing, and unsupported appeals to authority |
 | G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote |
 | G8 | one quantity is not emitted twice under two names |
-| G9 | the analysis has not changed since the Methods were last read against it |
+| G9 | the analysis has not changed since the Methods were last read against it, and, step by step, neither a marked step nor the text pointing at it has |
 | G10 | every figure has a current review by someone who looked at it |
 | G11 | a recorded panel has reviewed the manuscript, and its major findings are answered |
 | G12 | there was an analysis plan, and its sections say something |
@@ -212,7 +214,7 @@ number in the file and the rule that classified it.
 | `transcribe` | build checklist profiles from those documents |
 | `checklist` | write the completion file for a checklist |
 | `sync-bib` | rewrite `references.bib` from Zotero |
-| `methods` | check or record that the Methods were read against the code |
+| `methods` | check or record that the Methods were read against the code; `--explain` lists each claim beside the step that backs it |
 | `models` | print each fitted model as its card, with what G15 says of it |
 | `review` | show where the review panel stands; `--run` has it read by the models you list |
 | `import` | bring a co-author's Word edits back into the manuscript source |

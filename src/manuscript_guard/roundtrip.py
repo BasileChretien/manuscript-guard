@@ -48,7 +48,7 @@ from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.docxtext import TOKEN, spaced
 from manuscript_guard.safexml import UnsafeDocument, read_member
 from manuscript_guard.text.fences import fenced_spans
-from manuscript_guard.text.placeholders import PLACEHOLDER, VALUE_NAMESPACES
+from manuscript_guard.text.placeholders import PLACEHOLDER, VALUE_NAMESPACES, parse
 
 #: Where the source digest travels. A sidecar cannot survive being emailed, and the whole
 #: point is to recognise a document that came back from somebody else's machine.
@@ -2286,8 +2286,36 @@ def _protected_spans(
             cites = [(s, e) for s, e in cites if not (group[0] <= s and e <= group[1])]
             end = group[1]
         cites.append((start, end))
-    bindings = [m.span() for m in _BINDING.finditer(text) if not within(m.start(), cites)]
+    bindings = [
+        m.span()
+        for m in _BINDING.finditer(text)
+        if not within(m.start(), cites) and not _ANCHOR.fullmatch(m.group())
+    ]
     return sorted(cites + bindings)
+
+
+#: A Methods anchor, `{{method.ci}}`. It prints nothing, so it is no token of the paragraph:
+#: a token is placed back by the words Word shows for it, and an anchor shows none. One that
+#: ends its paragraph is set aside before the paragraph is aligned and put back after it
+#: (`anchors_apart`); an edit to a paragraph with one anywhere else is refused.
+_ANCHOR = re.compile(r"\{\{\s*method\.[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*\s*\}\}")
+_ENDING_ANCHORS = re.compile(rf"(?:\s*{_ANCHOR.pattern})+\s*\Z")
+
+
+def anchors_apart(paragraph: str) -> tuple[str, str] | None:
+    """The paragraph without the anchors that end it, and those anchors as written, with the
+    spaces around them; None when an anchor stands anywhere else in it.
+
+    Only an anchor the build reads counts: one in a comment is not an anchor, and is prose
+    like the rest of the comment.
+    """
+    anchors = [found for found in parse(paragraph)[0] if found.is_anchor]
+    if not anchors:
+        return paragraph, ""
+    ending = _ENDING_ANCHORS.search(paragraph)
+    if ending is None or anchors[0].start < ending.start():
+        return None
+    return paragraph[: ending.start()], paragraph[ending.start() :]
 
 
 def paragraph_text(document: Path) -> dict[str, str]:

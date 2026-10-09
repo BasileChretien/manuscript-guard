@@ -234,7 +234,7 @@ All deterministic, all runnable in CI without Claude.
 | G6 | AI-writing lint | banned constructions and cadence tells |
 | G7 | Citation integrity | unpinned or unresolvable citation key; literature claim with no stored source |
 | G8 | Cross-artifact consistency | a quantity differs between abstract, results, table and figure |
-| G9 | Methods drift | analysis code changed since the Methods text was last reconciled |
+| G9 | Methods drift | analysis code changed since the Methods text was last reconciled; per step, a step or the text pointing at it changed since the pair was read |
 | G10 | Figure review | a figure has no current review, or its review raised concerns |
 | G11 | Panel review | no review round, a stale review, a file nobody read, or an unanswered major finding |
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
@@ -1340,6 +1340,73 @@ assumption holds, whether the model answers the question. `manuscript-guard mode
 each card for that reading: the author's name and description beside the kind and the
 generated sentence, and the table of variables. Once a co-author page can carry items, the
 card is the item, and its digest covers both descriptions.
+
+## A step of the code and the text that points at it
+
+The ledger of G9 records that a person read the Methods against the analysis, file by file.
+A file is a coarse thing to have read. A comment edited in it asks for the whole Methods to be
+read again, and the report cannot say which paragraph describes the code that changed.
+
+So the reading can be kept pair by pair. The analysis marks a step of its code, in either
+language:
+
+```python
+with em.step("ci"):                          # R: em$step("ci", { ... })
+    se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+    low = math.exp(math.log(ror) - z * se)
+```
+
+The Methods end the text that describes it with `{{method.ci}}`, an anchor that prints nothing,
+in the document or the annotated copy, or to a review panel.
+
+**What an anchor claims.** The text before it, back to the anchor before it or the start of
+its paragraph. A blank line or a heading starts a paragraph, and a comment on a line of its own
+does not. Anchors side by side claim the same text, for a sentence that describes two steps.
+The extent is where the author put the anchors. A rule that found the sentence an anchor ends
+would have to know where sentences end, after "e.g." and "et al." and a number, and a pandoc
+span around the claim would make every Methods paragraph harder to read in the source. An
+anchor that opens its paragraph claims nothing and fails.
+
+**What a step records.** The lines of its block and a digest of its code read as code: the
+Python AST without positions, docstrings or the type of each string, and R's `deparse`, so a
+comment, a blank line or a re-wrapped call changes nothing. Functions the step calls that the
+analysis defined itself are followed, through the functions they call, and are part of the
+digest; a package's function is not. A step that never runs, in a branch the run did not take,
+is not recorded. The Python digest is not `ast.dump`, which writes the same tree differently
+from one Python to the next.
+
+**What the lock records.** Each step and the claim pointing at it, as a pair: the step's name,
+the claim as written with its spaces read as one, the digest of the code, and the day it was
+read. `methods --reconcile` records every pair and every file; `methods --reconcile ci` only
+the pairs of `ci`, leaving the files and the other pairs as they were, since nobody read those.
+
+**What is checked.**
+
+- An anchor that names no step the run recorded fails, at every stage. A sensitivity analysis
+  described in the Methods and left in a branch no run takes is found this way.
+- From `internal-review`, a pair fails when its step's code changed since it was read, when its
+  text changed (the finding says what it was), or when it was never read. A second text
+  pointing at a step is a pair never read, not the first one changed.
+- A step no text points at is a warning.
+- A Methods paragraph that points at no step is counted, and listed by
+  `manuscript-guard methods --explain`, not reported as a finding. A paragraph on ethics
+  approval or on the data source has no step to point at, and a warning nobody can clear is
+  one that gets ignored.
+
+`methods --explain` prints every claim with the lines of the step that backs it and how the
+pair stands, then the open paragraphs, then the steps nothing describes. That is what a person
+reads to check the Methods against the code. Whether the text describes the code correctly is
+still theirs to say: an anchor shows that someone pointed a sentence at some code.
+
+**In Word.** An anchor prints nothing, so a co-author never sees it. The round trip does not
+place it by Word's words. Anchors that end their paragraph are set aside before the paragraph
+is aligned and put back after it, so a rewording in Word comes back with them. An edit to a
+paragraph with an anchor anywhere else is refused, with the reason, since Word's text cannot
+say where the anchor goes in the new wording.
+
+**In the example**, reading each pair turned up the ambiguity a review round had already named:
+the signal criterion spoke of "a lower bound of the confidence interval" where the analysis
+computes two intervals and uses the 95% one. The text now says which.
 
 ## A rewording is held to the words
 
@@ -6674,7 +6741,19 @@ Closed since, and why each mattered:
   of human and machine writing. They are a starting point.
 - **G9 cannot tell a refactor from a change of meaning.** Every edit to an analysis file
   prompts a re-read, including one that only moved a function. That is the safe direction,
-  but it is friction.
+  but it is friction. A step's digest leaves comments and layout out, but a variable renamed
+  inside a step still changes it, and the whole file's digest changes with any edit, so
+  `methods --reconcile <step>` clears the pair and not the file.
+- **A step follows only the analysis's own functions, in its own script.** In Python, a
+  function defined at the top level of the same script and called by name; in R, a function
+  defined outside a package and found from where the step runs. A method of an object, a
+  function imported from a helper module and anything a package does are not followed, so a
+  change there leaves the step's digest as it was. The R digest is R's `deparse`, which can
+  write the same code differently in another version of R.
+- **An anchor inside a paragraph stops the round trip for that paragraph.** An edit made in
+  Word to a paragraph with an anchor before its end is refused, and has to be made in the .md.
+- **A claim's extent is the author's.** An anchor at the end of a paragraph of five sentences
+  claims all five, and the gate cannot tell whether the step backs them all.
 - **A parameter that is read is not shown to be used.** The emitters record whether the value
   `parameter()` returns is read again in its scope, by name. A read inside a `print` or in a
   branch that never runs counts, so does a name of the same spelling read elsewhere in the

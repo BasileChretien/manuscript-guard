@@ -9352,7 +9352,7 @@ def test_a_paragraph_retyped_whole_and_ended_with_enter_keeps_its_identifier(
     retyped = "Every word of this paragraph was retyped here."
 
     def edit(xml: str) -> str:
-        paragraph = tagged_xml(xml)[6]
+        paragraph = next(p for p in tagged_xml(xml) if "Reporting follows the checklist" in p)
         props, mark, runs = _parts(paragraph)
         new = _tracked_runs(f"<w:r><w:t>{retyped}</w:t></w:r>", "ins")
         rewritten = f"<w:p>{_tracked_mark(props, 'ins')}{mark}{_tracked_runs(runs, 'del')}{new}"

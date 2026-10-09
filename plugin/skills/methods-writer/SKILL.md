@@ -1,6 +1,6 @@
 ---
 name: methods-writer
-description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when check reports methods-drift, methods-never-reconciled or a G15 model-… or variable-… finding, or after the analysis changes.
+description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding or a G15 model-… or variable-… finding, or after the analysis changes.
 ---
 
 # Writing Methods that describe what was done
@@ -66,6 +66,45 @@ manuscript-guard methods --reconcile
 **Do not run that command merely to clear the finding.** The file's only content is the
 claim that a person read the code. Reconciling without reading makes it a lie, and a
 lie that is machine-checkable is worse than no check at all, because it will be trusted.
+
+## Pointing each paragraph at the step it describes
+
+A whole file is a coarse thing to have read. Mark the steps of the analysis that the Methods
+describe, and end the text that describes each one with an anchor that prints nothing:
+
+```python
+with em.step("ci"):                       # R: em$step("ci", { ... })
+    se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+    low = math.exp(math.log(ror) - z * se)
+```
+
+```markdown
+Confidence intervals were derived from the standard error of the log odds ratio.
+{{method.ci}}
+```
+
+The anchor claims the text before it, back to the anchor before it or the start of its
+paragraph. Put it at the **end of the paragraph** where you can: give each step its own short
+paragraph. A co-author's edit in Word then comes back with the anchor in place, and an edit to
+a paragraph with an anchor in the middle is refused and has to be made in the .md. Two anchors
+side by side claim the same text. Write the step's name out in the `with` statement; a step in
+a branch the run does not take is not recorded, and an anchor naming it fails.
+
+`manuscript-guard methods --explain` lists every claim beside the lines of its step, the
+Methods paragraphs that point at no step, and the steps nothing describes. Read each claim
+against its lines. When the claim and the code agree, record that pair:
+
+```bash
+manuscript-guard methods --reconcile ci       # this step's pairs only
+manuscript-guard methods --reconcile          # every pair, and every file
+```
+
+From `internal-review`, `check` fails a pair whose code changed (`method-step-changed`), whose
+text changed (`method-claim-changed`, which says what it was) or which was never read
+(`method-pair-unread`), and names the paragraph to read again. A comment or a re-wrapped line
+inside a step changes nothing. `method-step-unknown` is an anchor naming no step the run
+recorded; `method-step-undescribed` is a step no text points at. The same rule holds as for
+the whole file: reconcile a pair after you read it, never to clear the finding.
 
 ## Declaring the choices the code makes
 

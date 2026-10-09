@@ -196,6 +196,8 @@ def _as_read(text: str, namespace: dict, results) -> tuple[str, int]:
         if placeholder.is_value:
             value = namespace.get(placeholder.ref)
             replacement = value.display if value is not None else None
+        elif placeholder.is_anchor:
+            replacement = ""
         elif placeholder.namespace == "table":
             table = results.tables.get(placeholder.key)
             replacement = render_table(table) if table is not None else None

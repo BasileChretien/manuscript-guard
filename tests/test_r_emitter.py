@@ -652,3 +652,106 @@ def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> 
     assert document["variables"]["g"]["observed"] == {
         "distinct": 3, "missing": 0, "levels": ["a", "b", "c"],
     }  # fmt: skip
+
+
+STEPS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+half <- function(x) x / 2
+em <- mg_emitter("%(script)s")
+a <- 10
+b <- 20
+em$step("ror", {
+  # the ratio
+  ror <- a / b
+})
+em$step("ci", {
+  se <- half(sqrt(1 / a + 1 / b))
+})
+em$value("ror", ror, digits = 2)
+em$value("se", se, digits = 3)
+em$write()
+"""
+
+STEPS_PY = """
+import math
+from manuscript_guard.emit import Emitter
+
+
+def half(x):
+    return x / 2
+
+
+em = Emitter(__file__)
+a, b = 10, 20
+with em.step("ror"):
+    # the ratio
+    ror = a / b
+with em.step("ci"):
+    se = half(math.sqrt(1 / a + 1 / b))
+em.value("ror", ror, digits=2)
+em.value("se", se, digits=3)
+em.write()
+"""
+
+
+def _steps_from_r(root: Path, text: str) -> dict:
+    script = root / "analysis" / "steps.R"
+    script.write_text(
+        text % {"emit": EMIT_R.as_posix(), "script": script.as_posix()}, encoding="utf-8"
+    )
+    out = _run_r(script, root)
+    assert out.returncode == 0, f"{out.stdout}\n{out.stderr}"
+    path = root / "results" / "steps.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert validate(document, "results", path).ok
+    return document["steps"]
+
+
+def test_r_and_python_mark_steps_alike(tmp_path: Path) -> None:
+    """The same steps in either language: the lines of the code inside the step, a digest,
+    and the analysis's own functions it calls. The digests are each language's own."""
+    import runpy
+
+    root = _parameter_project(tmp_path)
+    from_r = _steps_from_r(root, STEPS_R)
+    (root / "analysis" / "steps.py").write_text(STEPS_PY, encoding="utf-8")
+    runpy.run_path(str(root / "analysis" / "steps.py"))
+    from_python = json.loads((root / "results" / "steps.json").read_text(encoding="utf-8"))
+    from_python = from_python["steps"]
+    shape = {name: {k: v for k, v in s.items() if k != "digest"} for name, s in from_r.items()}
+    assert shape == {"ror": {"lines": [12, 12]}, "ci": {"lines": [15, 15], "follows": ["half"]}}
+    assert {name: {k: v for k, v in step.items() if k not in ("digest", "lines")}
+            for name, step in from_python.items()} == {"ror": {}, "ci": {"follows": ["half"]}}
+
+
+def test_r_reads_a_step_as_code(tmp_path: Path) -> None:
+    root = _parameter_project(tmp_path)
+    before = _steps_from_r(root, STEPS_R)
+    commented = _steps_from_r(root, STEPS_R.replace("# the ratio", "# the ratio of a to b"))
+    assert commented["ror"]["digest"] == before["ror"]["digest"]
+    changed = _steps_from_r(root, STEPS_R.replace("ror <- a / b", "ror <- b / a"))
+    assert changed["ror"]["digest"] != before["ror"]["digest"]
+    assert changed["ci"]["digest"] == before["ci"]["digest"]
+    helper = _steps_from_r(root, STEPS_R.replace("x / 2", "x / 3"))
+    assert helper["ci"]["digest"] != before["ci"]["digest"], "a function it calls is its code"
+
+
+@pytest.mark.parametrize(
+    ("call", "refusal"),
+    [
+        ('em$step("CI", { x <- 1 })', "lowercase letters"),
+        ('em$step("a", { x <- 1 })\nem$step("a", { x <- 2 })', "two different blocks"),
+    ],
+)
+def test_r_refuses_the_steps_python_refuses(tmp_path: Path, call: str, refusal: str) -> None:
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "refused.R"
+    script.write_text(
+        f'source("{EMIT_R.as_posix()}")\nem <- mg_emitter("{script.as_posix()}")\n{call}\n',
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode != 0 and refusal in out.stderr, out.stderr

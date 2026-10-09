@@ -61,6 +61,7 @@ from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
 from manuscript_guard.gates import language as language_gate
+from manuscript_guard.gates import methods as methods_gate
 from manuscript_guard.gates import models as models_gate
 from manuscript_guard.gates import numbers as numbers_gate
 from manuscript_guard.gates import spelling as spelling_gate
@@ -612,6 +613,108 @@ def test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_do
     text, expected = planted
     found = [(start, kind) for start, _end, kind in models_gate.named_in_methods(text)]
     assert found == expected, text
+
+
+# --------------------------------------------------------------------------- Methods claims
+
+#: Every kind of paragraph the claims of `{{method.x}}` are read in. Each example holds one of
+#: each, in an order drawn each time: what a property draws first is what Hypothesis varies
+#: least, and a kind drawn as one among several is, under some seeds, never drawn at all.
+_CLAIM_KINDS = (
+    "ends", "inside", "side by side", "comment line", "comment inline", "heading above",
+    "bare", "anchor in a comment",
+)  # fmt: skip
+
+
+#: Headings a Methods section is divided by, each still the Methods to `is_methods`.
+_SUBHEADINGS = ("## Statistical analysis", "## Definitions", "### Data sources")
+
+
+@st.composite
+def _planted_claims(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[tuple[str, ...], str, int, int]], list[int]]:
+    """A Methods section of every kind of paragraph, its words drawn each time, with the
+    claims its anchors make (their steps, their words, the lines of the first word and of the
+    anchors) and the lines of the paragraphs that point at no step."""
+    text = ["# Methods\n\n"]
+    claims: list[tuple[tuple[str, ...], str, int, int]] = []
+    bare: list[int] = []
+    names = (f"step{n}" for n in range(100))
+
+    def at() -> int:
+        return "".join(text).count("\n") + 1
+
+    def words() -> str:
+        drawn = draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=6))
+        return "".join(
+            (draw(st.sampled_from((" ", " ", "\n"))) if n else "") + word
+            for n, word in enumerate(drawn)
+        )
+
+    def sentence() -> str:
+        said = words()
+        return said[0].upper() + said[1:] + "."
+
+    def claim(*pieces: str, said: str | None = None) -> None:
+        """Write `pieces` as one claim, then its anchors, from the second piece on."""
+        first = at()
+        text.append(pieces[0])
+        anchors = pieces[1:]
+        steps = tuple(re.findall(r"method\.([a-z0-9_.]+)", "".join(anchors)))
+        line = at() + len(re.match(r"\s*", "".join(anchors)).group().split("\n")) - 1
+        text.extend(anchors)
+        shown = said if said is not None else pieces[0]
+        claims.append((steps, " ".join(shown.split()), first, line))
+
+    def anchor() -> str:
+        return f"{{{{method.{next(names)}}}}}"
+
+    for kind in draw(st.permutations(_CLAIM_KINDS)):
+        if kind == "ends":
+            claim(f"{words()}\n{sentence()}", f"\n{anchor()}")
+        elif kind == "inside":
+            claim(sentence(), f" {anchor()}")
+            first, second = sentence(), anchor()
+            text.append(" ")
+            claim(first, f" {second}")
+        elif kind == "side by side":
+            gap = draw(st.sampled_from(("", " ", "\n")))
+            claim(sentence(), f"{draw(st.sampled_from((' ', chr(10))))}{anchor()}{gap}{anchor()}")
+        elif kind == "comment line":
+            before, after = words(), sentence()
+            note = f"<!-- {words()} -->"
+            claim(f"{before}\n{note}\n{after}", f" {anchor()}", said=f"{before} {after}")
+        elif kind == "comment inline":
+            before, after = words(), sentence()
+            note = f"<!-- {words()} -->"
+            claim(f"{before} {note} {after}", f" {anchor()}", said=f"{before} {after}")
+        elif kind == "heading above":
+            text.append(f"{draw(st.sampled_from(_SUBHEADINGS))}\n")
+            claim(sentence(), f" {anchor()}")
+        elif kind == "bare":
+            bare.append(at())
+            text.append(sentence())
+        else:
+            bare.append(at())
+            text.append(f"{sentence()} <!-- {anchor()} -->")
+        text.append("\n\n")
+    return "".join(text), claims, bare
+
+
+@holds(150, _planted_claims())
+def test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph(
+    planted: tuple[str, list[tuple[tuple[str, ...], str, int, int]], list[int]],
+) -> None:
+    """An anchor claims what stands before it, back to the anchor before it or the start of
+    its paragraph, its spaces and line breaks each read as one space: not past a heading,
+    not the words of a comment, and the same text for anchors side by side. A comment on a
+    line of its own does not end the paragraph, and an anchor in a comment is none. A
+    Methods paragraph with no anchor is one that points at no step."""
+    text, expected, bare = planted
+    claims, open_ = methods_gate._anchored_in(Path("main.md"), text)
+    assert [(c.steps, c.text, c.line, c.anchor_line) for c in claims] == expected, text
+    assert [paragraph.line for paragraph in open_] == bare, text
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -1470,9 +1573,90 @@ def _a_listing_in_a_comment_is_put_back(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reworded_module, "html_comments", lambda text, fences=None: [])
 
 
+def _a_claim_runs_back_to_its_paragraph(patch: pytest.MonkeyPatch) -> None:
+    real = methods_gate.claims_in
+
+    def claims_in(text: str) -> Any:
+        found, bare = real(text)
+        starts = [start for start, _end in methods_gate._paragraphs(text)]
+        return [
+            (steps, max(s for s in starts if s <= start), end, anchor)
+            for steps, start, end, anchor in found
+        ], bare
+
+    patch.setattr(methods_gate, "claims_in", claims_in)
+
+
+def _anchors_side_by_side_claim_apart(patch: pytest.MonkeyPatch) -> None:
+    real = methods_gate.claims_in
+
+    def claims_in(text: str) -> Any:
+        found, bare = real(text)
+        apart = []
+        for steps, start, end, anchor in found:
+            apart.append((steps[:1], start, end, anchor))
+            apart += [((step,), end, end, anchor) for step in steps[1:]]
+        return apart, bare
+
+    patch.setattr(methods_gate, "claims_in", claims_in)
+
+
+def _a_comment_line_ends_a_paragraph(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.masking import blank_comments
+
+    real = methods_gate._paragraphs
+    patch.setattr(methods_gate, "_paragraphs", lambda text: real(blank_comments(text)))
+
+
+def _a_claim_keeps_the_words_of_a_comment(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(methods_gate, "blank_comments", lambda text: text)
+
+
+def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
+
+
+def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
+
+
+def _an_anchor_in_a_comment_is_an_anchor(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import placeholders
+
+    patch.setattr(placeholders, "_without_comments", lambda text: text)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a claim runs back to the start of its paragraph, past the anchor before it": (
+        _a_claim_runs_back_to_its_paragraph,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "anchors side by side claim apart": (
+        _anchors_side_by_side_claim_apart,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a comment on a line of its own ends a paragraph": (
+        _a_comment_line_ends_a_paragraph,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a claim keeps the words of a comment inside it": (
+        _a_claim_keeps_the_words_of_a_comment,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a heading is part of the paragraph under it": (
+        _a_heading_is_part_of_the_paragraph_under_it,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a claim keeps its line breaks": (
+        _a_claim_keeps_its_line_breaks,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "an anchor in a comment is an anchor": (
+        _an_anchor_in_a_comment_is_an_anchor,
+        test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
     "a quotation is read as the paper's own words": (
         _a_quotation_is_the_papers_own,
         test_a_term_given_up_is_found_where_it_stands_and_nowhere_it_does_not,

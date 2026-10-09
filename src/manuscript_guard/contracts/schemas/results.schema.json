@@ -41,6 +41,12 @@
         "$ref": "#/$defs/model"
       }
     },
+    "steps": {
+      "type": "object",
+      "description": "The steps of the analysis that ran, each marked in the code with `step()` and pointed at from the Methods by {{method.<name>}}. Each records where its code is and a digest of that code with comments and layout left out, and of the functions of the script it calls. G9 compares the digest with the one recorded when a person last read the step against the Methods text that points at it.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$" },
+      "additionalProperties": { "$ref": "#/$defs/step" }
+    },
     "code_lists": {
       "type": "object",
       "description": "The code lists the analysis selected on, keyed by the table that prints them. RECORD 6.1 requires these to be published; keeping them as data beside the rendered table means the paper prints the list the code actually used, and the next study can reuse the definition rather than retyping it.",
@@ -66,6 +72,26 @@
     }
   },
   "$defs": {
+    "step": {
+      "type": "object",
+      "required": ["digest"],
+      "additionalProperties": false,
+      "properties": {
+        "lines": {
+          "type": "array",
+          "description": "The first and last line of the step's code in the script, where the emitter could read them.",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "follows": {
+          "type": "array",
+          "description": "The functions the step calls that are defined in the analysis itself, whose code the digest covers too. A function from a package is not followed.",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "table": {
       "type": "object",
       "required": ["columns", "rows"],

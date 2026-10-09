@@ -420,6 +420,61 @@ mg_parameter_read <- function(path, key) {
   any(pd$token == "SYMBOL" & pd$text == name$text & pd$id != name$id)
 }
 
+# The first and last line of the code `step(name, { ... })` runs, read from the script as
+# `mg_parameter_read` reads it: the expressions inside the braces, or the expression given.
+# NULL when the script cannot be parsed or the call is not found once.
+mg_step_lines <- function(path, name) {
+  parsed <- tryCatch(parse(path, keep.source = TRUE), error = function(e) NULL)
+  if (is.null(parsed)) return(NULL)
+  pd <- utils::getParseData(parsed)
+  if (is.null(pd) || nrow(pd) == 0) return(NULL)
+  parent_of <- function(id) pd$parent[pd$id == id]
+  quoted <- c(sprintf('"%s"', name), sprintf("'%s'", name))
+  calls <- integer()
+  for (symbol in pd$id[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == "step"]) {
+    call <- parent_of(parent_of(symbol))
+    strings <- pd$id[pd$token == "STR_CONST" & pd$text %in% quoted]
+    if (any(vapply(strings, function(s) parent_of(parent_of(s)) == call, logical(1)))) {
+      calls <- c(calls, call)
+    }
+  }
+  if (length(calls) != 1) return(NULL)
+  arguments <- pd[pd$parent == calls[[1]] & pd$token == "expr", , drop = FALSE]
+  block <- arguments[order(arguments$line1, arguments$col1), , drop = FALSE]
+  block <- block[nrow(block), , drop = FALSE]
+  inside <- pd[pd$parent == block$id & !pd$terminal, , drop = FALSE]
+  if (nrow(inside) > 0 && any(pd$parent == block$id & pd$token == "'{'")) {
+    return(c(min(inside$line1), max(inside$line2)))
+  }
+  c(block$line1, block$line2)
+}
+
+# The code a step runs, and the functions it calls that the analysis defined itself (not a
+# package's), followed through the functions they call, mirroring the Python `step_code`.
+# Read as code, by deparsing: a comment or a re-wrapped line changes nothing.
+mg_step_code <- function(expr, env) {
+  follows <- character()
+  waiting <- list(expr)
+  while (length(waiting) > 0) {
+    names <- all.names(waiting[[1]])
+    waiting <- waiting[-1]
+    for (n in setdiff(unique(names), follows)) {
+      f <- get0(n, envir = env, mode = "function")
+      if (is.null(f) || !is.function(f) || is.primitive(f)) next
+      home <- environment(f)
+      if (is.null(home) || isNamespace(home) || identical(home, baseenv())) next
+      follows <- c(follows, n)
+      waiting <- c(waiting, list(body(f)))
+    }
+  }
+  follows <- sort(follows, method = "radix")
+  shown <- function(x) paste(deparse(x, width.cutoff = 500L), collapse = "\n")
+  text <- paste(c(shown(expr), vapply(follows, function(n) {
+    paste0(n, " <- ", shown(get0(n, envir = env, mode = "function")))
+  }, character(1))), collapse = "\n")
+  list(digest = digest::digest(text, algo = "sha256", serialize = FALSE), follows = follows)
+}
+
 # What a variable can be meant to be, as the Python emitter has it.
 mg_variable_kinds <- c("binary", "categorical", "ordinal", "continuous", "count")
 
@@ -512,6 +567,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   state$code_lists <- list()
   state$variables <- list()
   state$models <- list()
+  state$steps <- list()
   # Which cells this emitter produced from numbers, per table, in the shape the fragment
   # publishes. G2 reads it and applies the same rule to a fragment from either language;
   # without it, a composed cell and a typed one are the same characters on disk.
@@ -570,6 +626,38 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     read <- mg_parameter_read(script_path, key)
     if (!is.null(read)) state$values[[full]]$read <- read
     invisible(value)
+  }
+
+  # Mark the code a Methods claim describes, run it, and record that it ran, mirroring the
+  # Python `step()`:
+  #
+  #   em$step("ci", {
+  #     se <- sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+  #     low <- exp(log(ror) - z * se)
+  #   })
+  #
+  # The code runs where the call stands, as if the braces were not there. The Methods point
+  # at it with {{method.ci}}. The fragment records its lines and a digest of its code, read
+  # as code, with the functions it calls that the analysis defined itself.
+  step <- function(name, code) {
+    if (!grepl("^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$", name)) {
+      stop("step ", name, ": a name is lowercase letters, digits and underscores, starting ",
+           "with a letter, in parts joined by dots, so that the Methods can bind it",
+           call. = FALSE)
+    }
+    expr <- substitute(code)
+    env <- parent.frame()
+    read <- mg_step_code(expr, env)
+    record <- list()
+    lines <- mg_step_lines(script_path, name)
+    if (!is.null(lines)) record$lines <- as.integer(lines)
+    record$digest <- read$digest
+    if (length(read$follows) > 0) record$follows <- I(read$follows)
+    if (!is.null(state$steps[[name]]) && !identical(state$steps[[name]], record)) {
+      stop("step ", name, " marks two different blocks of code", call. = FALSE)
+    }
+    state$steps[[name]] <- record
+    invisible(eval(expr, env))
   }
 
   # The version of a piece of software this run used, as the run found it, mirroring the
@@ -934,6 +1022,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     if (length(state$code_lists) > 0) document$code_lists <- state$code_lists
     if (length(state$variables) > 0) document$variables <- state$variables
     if (length(state$models) > 0) document$models <- state$models
+    if (length(state$steps) > 0) document$steps <- state$steps
     json <- jsonlite::toJSON(document, auto_unbox = TRUE, pretty = 2, digits = NA, null = "null")
     mg_write_lf(as.character(json), path)
 
@@ -950,6 +1039,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     software = software,
     variable = variable,
     model = model,
+    step = step,
     interval = interval,
     cell = mg_cell,
     table = table_,

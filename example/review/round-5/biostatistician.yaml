@@ -1,0 +1,29 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 5
+reviewer: biostatistician
+reviewed_by: Claude Code
+reviewed_on: '2026-10-09'
+manuscript_sha256: a13ae9c276e0d0327b30724e16570aed54fe1351b65b8c8b32293effd56ec67b
+file_sha256:
+  main.md: 5b274f68057568104728d56cec1151d80af3d5b375f5a157c547d3c37c3e3a5f
+  supplementary/S1_code_lists.md: 0424bddf5bebf482147a5579ea720fbfe9e701fadfb0b6898cdb21aa34fc0708
+verdict: minor-revision
+summary: The estimator is stated fully enough to reproduce. The crude interval is derived
+  from the standard error of the log odds ratio at the declared alpha, and the adjusted interval
+  is now said to be the model's Wald interval at the same alpha, which is what the code computes.
+  The signal criterion names the 95% interval whose lower bound it uses, which settles the
+  ambiguity raised in round three. One point from round three still stands.
+findings:
+- id: r5-bs-01
+  severity: minor
+  where: Results
+  finding: The Results still do not say whether the signal criterion was met. The Methods
+    define the criterion and the analysis computes it, and the reader is left to apply it by
+    hand to the count and the interval that the Results report. One sentence would close it.
+- id: r5-bs-02
+  severity: comment
+  where: Methods
+  finding: Each estimator choice now sits in a paragraph of its own, and the interval for the
+    adjusted estimate is stated. The two points of round four on the intervals are answered.

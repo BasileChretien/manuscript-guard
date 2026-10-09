@@ -16,6 +16,7 @@ API that omits it.
 from __future__ import annotations
 
 import ast
+import contextlib
 import hashlib
 import importlib.metadata
 import json
@@ -601,6 +602,103 @@ def parameter_read(script: Path, line: int, key: str) -> bool | None:
     )
 
 
+#: A step's name, which the Methods bind as `{{method.<name>}}`.
+_STEP_NAME = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*")
+
+#: Fields of a node that say nothing about what the code does: how a string was prefixed,
+#: a type comment, and whether a name is read or written, which its place already says.
+_UNSAID = frozenset({"kind", "type_comment", "ctx"})
+
+
+def _canonical(node: object) -> object:
+    """A node as data, without its positions, so the digest leaves layout and comments out.
+
+    Not `ast.dump`, which writes a node differently from one Python to the next (3.13 drops
+    empty fields): a step re-run on another Python would read as changed. Empty fields are
+    left out here on every version, and a function's docstring with them.
+    """
+    if isinstance(node, ast.AST):
+        fields = []
+        for name, value in ast.iter_fields(node):
+            if name in _UNSAID or value is None or value == []:
+                continue
+            if name == "body" and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                value = value[1:] if ast.get_docstring(node, clean=False) is not None else value
+            fields.append([name, _canonical(value)])
+        return [type(node).__name__, fields]
+    if isinstance(node, list):
+        return [_canonical(item) for item in node]
+    return repr(node)
+
+
+def _names_step(node: ast.AST, name: str) -> bool:
+    """Whether `node` is a call `<anything>.step(name)` with the name written out."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "step"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == name
+    )
+
+
+def step_code(script: Path, line: int, name: str) -> dict | None:
+    """What `with em.step(name):` on `line` of `script` runs, as the fragment records it.
+
+    The first and last line of its body; the functions of the script it calls, followed
+    through the functions they call; and a digest of the body and those functions read as
+    code, so that a comment, a blank line or a re-wrapped call changes nothing. None when
+    the script cannot be read or holds no such `with` there.
+    """
+    try:
+        tree = ast.parse(script.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError):
+        return None
+    blocks = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.With, ast.AsyncWith))
+        and any(_names_step(item.context_expr, name) for item in node.items)
+    ]
+    if len(blocks) > 1:
+        blocks = [
+            block
+            for block in blocks
+            for item in block.items
+            if _names_step(item.context_expr, name)
+            and item.context_expr.lineno <= line <= (item.context_expr.end_lineno or line)
+        ]
+    if len(blocks) != 1:
+        return None
+    body = blocks[0].body
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    follows: set[str] = set()
+    waiting: list[list[ast.stmt]] = [body]
+    while waiting:
+        for node in (n for stmt in waiting.pop() for n in ast.walk(stmt)):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in functions
+                and node.func.id not in follows
+            ):
+                follows.add(node.func.id)
+                waiting.append([functions[node.func.id]])
+    code = [_canonical(body), *(_canonical(functions[f]) for f in sorted(follows))]
+    record: dict = {
+        "lines": [body[0].lineno, body[-1].end_lineno or body[-1].lineno],
+        "digest": hashlib.sha256(json.dumps(code).encode("utf-8")).hexdigest(),
+    }
+    if follows:
+        record["follows"] = sorted(follows)
+    return record
+
+
 @dataclass
 class Emitter:
     """Collects values, then writes one fragment with its provenance.
@@ -641,6 +739,8 @@ class Emitter:
     # and its table are derived from them when the results are read, once for both languages.
     _variables: dict[str, dict] = field(default_factory=dict, init=False)
     _models: dict[str, dict] = field(default_factory=dict, init=False)
+    # The steps of the analysis that ran, each with where its code is and a digest of it.
+    _steps: dict[str, dict] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
@@ -769,6 +869,42 @@ class Emitter:
         if read is not None:
             self._values[full]["read"] = read
         return value
+
+    def step(self, name: str) -> contextlib.AbstractContextManager[None]:
+        """Mark the code a Methods claim describes, and record that it ran.
+
+            with em.step("ci"):
+                se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+                low = math.exp(math.log(ror) - z * se)
+
+        The Methods point at it by ending the claim with `{{method.ci}}`, which prints
+        nothing. The fragment records the lines of the block and a digest of its code, read
+        as code: a comment or a re-wrapped line leaves the digest as it was. Functions the
+        block calls that are defined in this script are part of the digest too; a function
+        from a package is not followed. G9 compares the digest with the one recorded when a
+        person last read the step against its claim.
+
+        A step that never runs, in a branch not taken, is not recorded, so a claim pointing
+        at it fails. The name must be written out in the `with` statement, where the script
+        can be read for the block.
+        """
+        if not _STEP_NAME.fullmatch(name):
+            raise ValueError(
+                f"step {name!r}: a name is lowercase letters, digits and underscores, starting "
+                f"with a letter, in parts joined by dots, so that the Methods can bind it"
+            )
+        caller = sys._getframe(1)
+        script = Path(caller.f_code.co_filename)
+        record = step_code(script, caller.f_lineno, name)
+        if record is None:
+            raise ValueError(
+                f"step {name!r}: no `with ....step({name!r}):` block was found in {script} "
+                f"where it was called; write the name out in the `with` statement"
+            )
+        if self._steps.get(name, record) != record:
+            raise ValueError(f"step {name!r} marks two different blocks of code")
+        self._steps[name] = record
+        return contextlib.nullcontext()
 
     def software(self, name: str) -> str:
         """Record the version of a piece of software this run used, as the run found it.
@@ -1134,6 +1270,8 @@ class Emitter:
             document["variables"] = dict(self._variables)
         if self._models:
             document["models"] = dict(self._models)
+        if self._steps:
+            document["steps"] = dict(self._steps)
         return document
 
     def _composition_of(self, key: str) -> dict:

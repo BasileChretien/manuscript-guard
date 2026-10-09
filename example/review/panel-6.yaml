@@ -1,0 +1,22 @@
+schema: manuscript-guard/panel/1
+round: 6
+opened_on: 2026-10-09
+manuscript_sha256: 0e2b8cebac853da204fb962ff01a3c2a706742e9e5fccdea1bd478971068c621
+blinded: false
+rationale: 'A revision round for the two minor points round five left open. The Results now
+  say whether the signal criterion was met, in a word the analysis computes and the text binds,
+  and the adjusted model''s paragraph says why the reporting year was left out. The two remits
+  that raised them read the paper again, with the earlier rounds in front of them.'
+reviewers:
+- id: pharmacoepidemiologist
+  role: Pharmacoepidemiologist
+  remit: Whether the design can answer the question asked. Case and exposure definitions,
+    denominators, the difference between disproportionate reporting and risk, and
+    the biases specific to spontaneous reporting.
+  why: Round five's point on the reporting year.
+- id: biostatistician
+  role: Biostatistician
+  remit: Whether the estimator is right and stated fully enough to reproduce. Interval
+    construction, small-cell behaviour, multiplicity, and whether the reader can reconstruct
+    the estimate from what is reported.
+  why: Round five's point on the signal criterion in the Results.

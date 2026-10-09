@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "32a57aca0fe3858a5ceb829265c4f546bed8829567437a9061511e84a08d7ef4",
-    "generated_at": "2026-10-09T05:46:35+00:00",
+    "generated_by_sha256": "de6e2e0b647fe0ce0ed61ec58ae46a7a646ae0825b91bcd746ced177600fefd0",
+    "generated_at": "2026-10-09T08:39:29+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.2.435"
     },
     "vcs": {
-      "sha": "7d3b5e8288e7be72f49f4fb19199d8658d8b4937",
+      "sha": "878e6e58ade2f97ac400a9e47077de57e2dc505b",
       "dirty": true,
-      "branch": "claude/ecstatic-shannon-ja5omd"
+      "branch": "claude/ecstatic-shannon-ja5omd-example"
     },
     "inputs": [
       {
@@ -43,6 +43,11 @@
       "value": true,
       "display": "True",
       "quoted": false
+    },
+    "signal.verdict": {
+      "value": "met",
+      "display": "met",
+      "label": true
     },
     "software.python": {
       "value": "3.13.16",
@@ -652,15 +657,15 @@
     },
     "signal": {
       "lines": [
-        77,
-        77
+        79,
+        81
       ],
-      "digest": "1a1195ebf7080fea38f6312f1009ecdaf5ce423026ab5573b99fc1ef338e5bd9"
+      "digest": "d2537ffaa2c3277dcd94b7608b1cc89116a4e9ad3860b5712e804e73052db159"
     },
     "adjusted": {
       "lines": [
-        86,
-        114
+        90,
+        118
       ],
       "digest": "ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf"
     }

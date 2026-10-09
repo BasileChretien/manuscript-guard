@@ -73,8 +73,12 @@ def main() -> None:
 
     # The signal criterion of the Methods, applied. It was stated there and computed nowhere
     # until the threshold had to be declared: a parameter nobody reads is a G2 failure.
+    # The verdict is a word the Results bind, so they say "not met" the day it is not. It is
+    # the name of the category the result falls in, not a sentence, hence `label`.
     with em.step("signal"):
-        em.value("signal.met", a >= min_cases and low > 1, quoted=False)
+        met = a >= min_cases and low > 1
+        em.value("signal.met", met, quoted=False)
+        em.value("signal.verdict", "met" if met else "not met", label=True)
     em.software("python")
     em.software("statsmodels")
 

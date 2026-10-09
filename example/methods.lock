@@ -8,10 +8,10 @@ reconciled_on: '2026-10-09'
 parameters: {}
 analysis:
   analysis/00_simulate.py: 1597ab87090780aebfb9560def1d5e7c9d46c6c90aecc824ebd0ecd84383e299
-  analysis/01_disproportionality.py: 32a57aca0fe3858a5ceb829265c4f546bed8829567437a9061511e84a08d7ef4
+  analysis/01_disproportionality.py: de6e2e0b647fe0ce0ed61ec58ae46a7a646ae0825b91bcd746ced177600fefd0
 pairs:
 - step: adjusted
-  claim: Adjusted for age group and sex, the two patient characteristics the database records for every report, the reporting odds ratio was also estimated by {{results.model.adjusted.kind}} of hepatic injury on exposure to example-drug, with both characteristics entered as categories. Its interval is the model's Wald interval for the exposure coefficient, at the same alpha. Table S2 describes the model as it was fitted.
+  claim: 'Adjusted for age group and sex, the two patient characteristics the database records for every report, the reporting odds ratio was also estimated by {{results.model.adjusted.kind}} of hepatic injury on exposure to example-drug, with both characteristics entered as categories. The reporting year, which every report also carries, was not adjusted for: calendar time is a common adjustment in disproportionality analyses, but the data generator draws the year independently of the drug, so here it cannot confound the estimate. Its interval is the model''s Wald interval for the exposure coefficient, at the same alpha. Table S2 describes the model as it was fitted.'
   code: ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf
   read_on: '2026-10-09'
 - step: ci
@@ -24,5 +24,5 @@ pairs:
   read_on: '2026-10-09'
 - step: signal
   claim: 'A signal was defined by the classical criterion: at least {{results.param.signal.min_cases}} cases together with a lower bound of the 95% confidence interval of the reporting odds ratio above 1. No p-value threshold was used as a decision rule, which is not how a disproportionality analysis reaches its conclusion.'
-  code: 1a1195ebf7080fea38f6312f1009ecdaf5ce423026ab5573b99fc1ef338e5bd9
+  code: d2537ffaa2c3277dcd94b7608b1cc89116a4e9ad3860b5712e804e73052db159
   read_on: '2026-10-09'

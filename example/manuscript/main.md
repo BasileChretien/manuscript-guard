@@ -57,8 +57,11 @@ rule, which is not how a disproportionality analysis reaches its conclusion.
 Adjusted for age group and sex, the two patient characteristics the database records for
 every report, the reporting odds ratio was also estimated by {{results.model.adjusted.kind}}
 of hepatic injury on exposure to example-drug, with both characteristics entered as
-categories. Its interval is the model's Wald interval for the exposure coefficient, at the
-same alpha. Table S2 describes the model as it was fitted. {{method.adjusted}}
+categories. The reporting year, which every report also carries, was not adjusted for:
+calendar time is a common adjustment in disproportionality analyses, but the data generator
+draws the year independently of the drug, so here it cannot confound the estimate. Its
+interval is the model's Wald interval for the exposure coefficient, at the same alpha. Table
+S2 describes the model as it was fitted. {{method.adjusted}}
 
 The analysis was run in Python {{results.software.python}} with statsmodels
 {{results.software.statsmodels}}.
@@ -92,7 +95,8 @@ The database contained {{results.cohort.n_reports}} reports, of which
 Reporting of hepatic injury was disproportionate for example-drug, with a reporting odds
 ratio of {{results.ror.point}} (95% CI {{results.ror.ci_low}} to
 {{results.ror.ci_high}}; 90% CI {{results.ror.ci90_low}} to {{results.ror.ci90_high}}). The
-estimate is shown in Figure 1, and the counts it was computed from in Table 3, so a reader
+signal criterion defined in the Methods was {{results.signal.verdict}}. The estimate is shown
+in Figure 1, and the counts it was computed from in Table 3, so a reader
 can reconstruct it. Adjusted for age group and sex, the reporting odds ratio was
 {{results.ror_adjusted.point}} (95% CI {{results.ror_adjusted.ci_low}} to
 {{results.ror_adjusted.ci_high}}), given to three decimal places because to two it is the

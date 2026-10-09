@@ -265,15 +265,15 @@ def test_review_holds_to_the_rounds_asked_for_beside_a_key_the_schema_refuses(
     project: Path, capsys
 ) -> None:
     """`review` does not print the schema's findings, so what it reads of `review:` is its
-    whole answer. Six rounds asked for, five complete, and one mistyped key beside it."""
+    whole answer. Seven rounds asked for, six complete, and one mistyped key beside it."""
     paper = project / "paper.yaml"
     paper.write_text(
-        paper.read_text(encoding="utf-8") + "\nreview:\n  rounds_required: 6\n  typo: 1\n",
+        paper.read_text(encoding="utf-8") + "\nreview:\n  rounds_required: 7\n  typo: 1\n",
         encoding="utf-8",
     )
 
     assert run("review", str(project), "--submission") == 1
-    assert "5 of 6 review round(s) complete" in capsys.readouterr().out
+    assert "6 of 7 review round(s) complete" in capsys.readouterr().out
 
 
 def test_check_submission_is_stricter_than_a_draft(project: Path) -> None:

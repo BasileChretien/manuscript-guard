@@ -2,7 +2,7 @@
 
 This page is about the part that is optional: the skills and hooks an agent tool can load,
 how each tool installs and updates them, and what each one does and does not enforce. The
-fourteen skills are listed in the [README](../README.md#the-claude-code-plugin).
+fifteen skills are listed in the [README](../README.md#the-claude-code-plugin).
 
 ## The Claude Code plugin
 
@@ -76,7 +76,7 @@ as `cd paper && manuscript-guard submit` does when it is sent from the folder ab
 
 ## Codex
 
-Codex installs the same plugin from this repository, with the same fourteen skills and the
+Codex installs the same plugin from this repository, with the same fifteen skills and the
 same four hooks. After the pip package:
 
 ```bash
@@ -131,7 +131,7 @@ is, as its documentation says it does.
 ## Gemini CLI, Mistral Vibe, Kimi Code CLI and other agent tools
 
 By their own documentation, these tools read skills from a folder, `.agents/skills`, in your
-home or in a project. After the pip package, one command copies the fourteen skills there:
+home or in a project. After the pip package, one command copies the fifteen skills there:
 
 ```bash
 manuscript-guard install-skills              # for you, in every project: ~/.agents/skills
@@ -177,8 +177,8 @@ A Codex user without the `codex` command can use the copy in place of the plugin
 has no hooks. With both, Codex has every skill in two places it reads, the plugin and the
 folder. What it then shows was not watched.
 
-How far this has been checked: Gemini CLI 0.58.0 lists the fourteen skills from a project's
-`.agents/skills`. That it reads the folder in your home, and that Mistral Vibe and Kimi Code
+How far this has been checked: Gemini CLI 0.58.0 listed the skills from a project's
+`.agents/skills`, all fourteen that were there when it was run. That it reads the folder in your home, and that Mistral Vibe and Kimi Code
 CLI read either, is from their own documentation and has not been watched. What each tool
 does with `AGENTS.md` is from its documentation too, and for Kimi Code CLI that documentation
 was not found to say. No skill has been used in a session of any of the three.

@@ -319,6 +319,7 @@ def test_no_standard_input_at_all_is_an_empty_event(monkeypatch) -> None:
         ("results/01_disproportionality.json.sha256", "digest"),
         ("build/manuscript.docx", "regenerated"),
         ("profiles/reporting/STROBE.yaml", "transcribed"),
+        ("checks/decisions.csv", "a decision nobody made"),
     ],
 )
 def test_generated_files_cannot_be_edited(
@@ -343,6 +344,13 @@ def test_generated_files_cannot_be_edited(
         "review/panel-1.yaml",
         "methods.lock",
         "figures/forest.py",
+        # A project says what a co-author should check by writing this one.
+        "checks/items.json",
+        # And everything else under checks/ is the project's too: the guard named every
+        # .csv there, so a source table extracted beside the evidence was refused with a
+        # sentence about the record of who checked what.
+        "checks/evidence/table3.csv",
+        "checks/qc_ranges.csv",
     ],
 )
 def test_files_a_person_writes_are_allowed(project: Path, relative: str, capsys) -> None:

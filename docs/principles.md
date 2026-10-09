@@ -39,6 +39,14 @@ script imports fails the run only where it is listed among the `inputs`. Left un
 source file under `analysis/` that is newer than the results is a warning, and only
 `verify` shows that a value changed.
 
+What none of it asks is whether a sentence says what its source says. A value can be right, its
+quote can be right, the quote can be in the stored source, and the sentence can still name the
+wrong denominator or the wrong year with every gate passing — which is what happened on the first
+manuscript written this way, and what a co-author found. That question goes to a person:
+`manuscript-guard checker build` writes one self-contained page of items to send someone, and
+`checker import` records what they answered against the digest of what they were shown. It
+records a reading; it does not check one.
+
 ## Design principles
 
 **The guarantees are deterministic code.** No model output is trusted as evidence about the

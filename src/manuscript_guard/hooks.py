@@ -41,6 +41,16 @@ FORBIDDEN = (
         "checklist profiles are transcribed from the official document; "
         "edit the recipe and re-run `manuscript-guard transcribe`",
     ),
+    (
+        # The one file, named. A prefix of `checks/` with a suffix of `.csv` refused a project's
+        # own `checks/evidence/table3.csv` — in the folder the checking skill tells a project to
+        # keep its evidence in — with a sentence about the record of who checked what, which was
+        # false of it. Everything else under `checks/` is the project's to write.
+        "checks/decisions.csv",
+        "",
+        "the record of who checked what is appended to by `manuscript-guard checker import`; "
+        "a decision nobody made cannot be written into it by hand",
+    ),
 )
 
 # Exempt from the rule above. Without this, the guard denies edits to

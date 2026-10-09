@@ -10005,7 +10005,8 @@ def _line_of(root: Path, text: str) -> int:
 def test_the_example_s_methods_point_at_steps_that_ran_and_were_read(project: Path) -> None:
     report = _methods_report(project)
     assert report.ok and not report.findings, report.render(project)
-    assert report.counts["method_steps"] == report.counts["method_claims"] == 4
+    # Four steps, three texts: the estimate and its intervals share one paragraph.
+    assert (report.counts["method_steps"], report.counts["method_claims"]) == (4, 3)
     assert report.counts["method_pairs_stale"] == 0
 
 
@@ -10022,7 +10023,7 @@ def test_a_change_inside_a_step_names_the_paragraph_to_read_again(project: Path)
             _line_of(project, "{{method.ci}}"),
         )
     ]
-    assert found[0].context.startswith("Confidence intervals were derived")
+    assert found[0].context.startswith("The reporting odds ratio was computed")
     assert "methods-drift" in {f.code for f in report.failures}
 
 

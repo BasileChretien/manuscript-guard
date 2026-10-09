@@ -749,8 +749,10 @@ def test_r_reads_a_step_as_code(tmp_path: Path) -> None:
 def test_r_refuses_the_steps_python_refuses(tmp_path: Path, call: str, refusal: str) -> None:
     root = _parameter_project(tmp_path)
     script = root / "analysis" / "refused.R"
+    # A step's digest needs the digest package, which an R without it cannot compute.
+    needs = PARAMETERS_R.split("source(")[0]
     script.write_text(
-        f'source("{EMIT_R.as_posix()}")\nem <- mg_emitter("{script.as_posix()}")\n{call}\n',
+        f'{needs}source("{EMIT_R.as_posix()}")\nem <- mg_emitter("{script.as_posix()}")\n{call}\n',
         encoding="utf-8",
     )
     out = _run_r(script, root)

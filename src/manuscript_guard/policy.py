@@ -56,6 +56,8 @@ BINDS_AT = {
     "script-newer": ANALYSIS,
     "results-edited": ANALYSIS,
     "no-digest": ANALYSIS,
+    # A parameter the analysis declares and never reads is wrong as soon as it is written.
+    "parameter-unread": ANALYSIS,
     # -- drafting ---------------------------------------------------------------
     # Numbers in prose only exist once there is prose.
     "no-results-dir": DRAFTING,
@@ -71,6 +73,8 @@ BINDS_AT = {
     "malformed-placeholder": DRAFTING,
     "unresolved-binding": DRAFTING,
     "unquoted-result": DRAFTING,
+    "typed-parameter": DRAFTING,
+    "typed-software-version": DRAFTING,
     "unplaced-table": DRAFTING,
     "divergent-display": DRAFTING,
     # Figures are still being redrawn while the text is drafted; their numbers must

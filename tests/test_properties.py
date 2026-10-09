@@ -59,7 +59,9 @@ from readings import MAIN, PAPER, READINGS, Unavailable, answer
 from manuscript_guard import reworded as reworded_module
 from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.project import outside_maths
+from manuscript_guard.contracts.values import RESULTS, Value, number_in
 from manuscript_guard.gates import language as language_gate
+from manuscript_guard.gates import numbers as numbers_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
 from manuscript_guard.gates.language import _file, _hidden
@@ -476,6 +478,85 @@ def _seen_and_judged(text: str) -> None:
             with_scan = CLASSIFIER.classify(atom, chain, scan)
             assert with_scan == CLASSIFIER.classify(atom, chain), (text, atom.text)
             assert with_scan.kind in (TERM, STRUCTURAL, CONVENTION, UNCLASSIFIED)
+
+
+# ------------------------------------------------------------------------------ parameters
+
+#: What an analysis declares in the property below: a threshold, a count, a version, and a
+#: parameter that equals the name of a structure.
+_DECLARED = (
+    Value("param.alpha", 0.05, "0.05", RESULTS, role="parameter", read=True),
+    Value("param.signal.min_cases", 3, "3", RESULTS, role="parameter", read=True),
+    Value("param.rows", 2, "2", RESULTS, role="parameter", read=True),
+    Value("software.r", "4.6.0", "4.6.0", RESULTS, label=True, role="software"),
+)
+
+#: One of every kind G2 reads a typed parameter in, with `|` where its atom starts, the key it
+#: states, and whether it is a version, which is read wherever it stands. A threshold is
+#: read in the Methods alone, and `2 x 2` is read nowhere, whatever a parameter equals.
+_TYPED = (
+    ("an alpha of |0.05", "param.alpha", False),
+    ("p < |.05", "param.alpha", False),
+    ("|p<0.05", "param.alpha", False),
+    ("at least |3 cases", "param.signal.min_cases", False),
+    ("R |4.6.0", "software.r", True),
+    ("a |2 x 2 table", None, False),
+)
+
+_METHODS_HEADINGS = ("# Methods", "# Materials and methods", "# Methods\n\n## Statistical analysis")
+_OTHER_HEADINGS = ("# Results", "# Discussion", "# Results\n\n## Sensitivity analyses")
+
+
+@st.composite
+def _planted_choices(draw: st.DrawFn) -> tuple[str, set[tuple[int, int, str]]]:
+    """Filler words with every kind of typed parameter planted under a Methods heading and
+    again under another one, in an order and among words drawn each time, and where each
+    stands that G2 must find."""
+    parts: list[str] = []
+    found: set[tuple[int, int, str]] = set()
+
+    def filler() -> str:
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=5))
+        return "".join(draw(st.sampled_from((" ", " ", "\n"))) + word for word in words)
+
+    for heading, methods in (
+        (draw(st.sampled_from(_METHODS_HEADINGS)), True),
+        (draw(st.sampled_from(_OTHER_HEADINGS)), False),
+    ):
+        parts.append(f"{heading}\n\n{filler().strip().capitalize()}")
+        for written, key, version in draw(st.permutations(_TYPED)):
+            parts.append(filler() + " ")
+            before, _bar, after = written.partition("|")
+            parts.append(before)
+            if key is not None and (methods or version):
+                text = "".join(parts)
+                found.add(
+                    (text.count("\n") + 1, len(text) - (text.rfind("\n") + 1) + 1, key)
+                )
+            parts.append(after)
+        parts.append(f"{filler()}.\n\n")
+    return "".join(parts), found
+
+
+@holds(150, _planted_choices())
+def test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not(
+    planted: tuple[str, set[tuple[int, int, str]]],
+) -> None:
+    """A threshold the analysis declares is found typed in the Methods, written with or
+    without its nought and with or without spaces round its comparison, and a declared
+    version wherever it stands. Nothing else is: not the same threshold in the Results,
+    where it is no convention, and not the `2` of a `2 x 2` table that equals a parameter."""
+    text, expected = planted
+    headings, notes = heading_index(text), footnote_index(text)
+    scan = CLASSIFIER.scan(text)
+    chosen = numbers_gate.chosen_rules(CLASSIFIER)
+    found = set()
+    for atom in find_atoms(text, mask(text)):
+        verdict = CLASSIFIER.classify_under(atom, chains_at(headings, notes, atom.start), scan)
+        typed = numbers_gate.typed_choice(atom.text, verdict, list(_DECLARED), chosen)
+        if typed is not None:
+            found.add((atom.line, atom.col, typed.key))
+    assert found == expected, text
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -1219,6 +1300,25 @@ def _a_stop_against_a_binding_ends_no_sentence(patch: pytest.MonkeyPatch) -> Non
     patch.setattr(numbers_gate, "_sentence", lambda text, ends, start: bisect_left(ends, start))
 
 
+def _any_convention_is_a_threshold(patch: pytest.MonkeyPatch) -> None:
+    def every(classifier: Classifier) -> frozenset[str]:
+        return frozenset(rule.id for rule in classifier.conventions)
+
+    patch.setattr(numbers_gate, "chosen_rules", every)
+
+
+def _the_figure_is_read_with_what_is_before_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(numbers_gate, "stated_number", number_in)
+
+
+def _a_figure_without_its_nought_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    def stated(text: str) -> float | None:
+        at = re.search(r"\d|\.\d", text)
+        return None if at is None else number_in(text[at.start() :])
+
+    patch.setattr(numbers_gate, "stated_number", stated)
+
+
 def _a_nought_is_trimmed_off_a_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(tokens, "_TRAIL", tokens._TRAIL + "0")
 
@@ -1306,6 +1406,18 @@ BROKEN = {
     "a comment is read for its stops": (
         _a_comment_is_read_for_its_stops,
         test_a_comment_is_white_space_to_the_order_of_intervals,
+    ),
+    "a parameter is matched by any convention": (
+        _any_convention_is_a_threshold,
+        test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "the figure of a typed parameter is read with what is typed before it": (
+        _the_figure_is_read_with_what_is_before_it,
+        test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a typed parameter written without its nought is not read": (
+        _a_figure_without_its_nought_is_not_read,
+        test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
     ),
     "a nought is trimmed off a number": (
         _a_nought_is_trimmed_off_a_number,

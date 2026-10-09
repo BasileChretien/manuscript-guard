@@ -1039,14 +1039,15 @@ def test_explain_agrees_with_check(project: Path, capsys) -> None:
     """
     path = project / "manuscript" / "main.md"
     path.write_text(
-        "# Methods\n\nSignificance was set at p < 0.05.\n\n"
+        # 0.01, not the example's own alpha: typed, that one is a declared parameter.
+        "# Methods\n\nSignificance was set at p < 0.01.\n\n"
         "# Results\n\nThe excess was significant (p < 0.001).\n",
         encoding="utf-8",
     )
     assert run("explain", str(path)) == 0
     lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
 
-    methods = next(line for line in lines if " 0.05 " in f" {line} ")
+    methods = next(line for line in lines if " 0.01 " in f" {line} ")
     results = next(line for line in lines if " 0.001 " in f" {line} ")
     assert methods.startswith("ok"), "a threshold in Methods is a convention"
     assert results.startswith("FAIL"), "the same characters in Results are a finding"

@@ -1243,6 +1243,46 @@ The lock can also carry parameters that must appear in the prose — the signifi
 threshold, the software version. Presence, not correctness, but those are exactly what a
 reviewer queries and exactly what is left behind when an analysis is redone.
 
+## A choice the code makes is declared, bound and read
+
+The ledger records that someone looked. Some of what they look for needs no reading: the
+alpha, the minimum number of cases, the software version. These are choices made in the
+code and stated in the Methods, and typed there they pass G2 as conventions or as the name of
+a thing. `explain` on the example showed `0.05 convention alpha-level` and `3 convention
+disproportionality-criterion`: the gate had agreed not to look at the two numbers in the
+Methods most likely to drift from the code. The example's own Methods had already drifted.
+They defined a signal as at least 3 cases with a lower bound above 1, and the code computed no
+signal at all.
+
+So the analysis declares them, in both emitters: `alpha = em.parameter("alpha", 0.05)` records
+`param.alpha` and hands the value back for the code to use. `em.software("statsmodels")`
+records the version the run imported, and refuses a distribution the run never imported. The
+Methods bind both. G2 fails a declared value typed instead: a Methods-only convention whose
+number equals a parameter, or a software version equal to a declared one. Only the
+Methods-only conventions count, because they are the thresholds an author chooses in advance;
+the `2` of a `2 x 2` table names a structure whatever a parameter equals.
+
+**Declared is not used.** A parameter bound in the Methods prints the right number for a step
+the code may not take, which is exactly what the example's signal criterion was. Each
+emitter therefore reads its own script where `parameter()` is called, with Python's `ast`
+and R's parse data, and records whether the value handed back is read again (`read`). The
+value thrown away, or assigned to a name nothing in its scope reads, is `false`, and G2 fails
+it from the `analysis` stage. A value read again is not shown to change anything. It can be
+read in a `print`, or in a branch that never runs, or compared with data it never decides
+for. Perturbing it and re-running would not settle that either: a threshold of 3 cases with 77
+cases in the data changes no result whether or not the code applies it. The record says what
+was established, a read, and nothing more.
+
+**A copy that no longer agrees is named, not failed.** The rule above finds a typed copy only
+while it still equals the parameter. Once the analysis declares parameters, a Methods
+threshold equal to none of them is reported as `threshold-undeclared`, a warning. It is either a
+choice the code makes and does not declare, or the copy left behind by a change, and which
+one is a question for the author.
+
+A threshold is not a measurement, so a float parameter is written as typed (fifteen
+significant digits, in both languages) unless `digits` or `display` says otherwise: 0.025
+rounded to two places is 0.03, a different test.
+
 ## A rewording is held to the words
 
 A language pass is trusted with the words: a co-author tidying a paragraph, an editing
@@ -6577,6 +6617,18 @@ Closed since, and why each mattered:
 - **G9 cannot tell a refactor from a change of meaning.** Every edit to an analysis file
   prompts a re-read, including one that only moved a function. That is the safe direction,
   but it is friction.
+- **A parameter that is read is not shown to be used.** The emitters record whether the value
+  `parameter()` returns is read again in its scope, by name. A read inside a `print` or in a
+  branch that never runs counts, so does a name of the same spelling read elsewhere in the
+  same function, and a value passed into an attribute or a tuple is not followed at all (the
+  record then says nothing either way). In R, a call that is the last expression of a block
+  is its value and is not followed. A parameter declared in a helper module is read in the
+  script the emitter was given, not the helper.
+- **Only an equal typed copy fails.** A threshold typed in the Methods fails as a typed
+  parameter while it equals one; once the code has moved on it is a warning,
+  `threshold-undeclared`, and only in an analysis that declares parameters. A confidence level
+  ("95% CI") is a convention everywhere and is never read for a parameter. A software version
+  is matched by its text, so `Python 3.13` beside a declared `3.13.16` is not found.
 - **Download links rot.** All fourteen work today, verified by a clean-room fetch and
   transcribe, but two needed a second attempt and none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible

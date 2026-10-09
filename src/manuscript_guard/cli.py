@@ -63,6 +63,7 @@ from manuscript_guard.gates import (
     source_files,
     sync_bib,
 )
+from manuscript_guard.gates.numbers import chosen_rules, typed_choice
 from manuscript_guard.policy import (
     DESCRIPTIONS,
     STAGES,
@@ -1438,16 +1439,25 @@ def cmd_explain(args: argparse.Namespace) -> int:
     # `conventions:` exemption, which is the one mechanism that makes G2 vacuous.
     headings = heading_index(text)
     notes = footnote_index(text)
+    # A threshold the analysis declares is accepted by its convention and still fails
+    # `check` typed, so this says so too, with the binding to write instead.
+    namespace, _results, _literature, _loaded = load_namespace(project)
+    choices = [value for value in namespace.values() if value.role]
+    chosen = chosen_rules(classifier)
     rows = []
     for atom in find_atoms(text, mask(text)):
         verdict = classifier.classify_under(atom, chains_at(headings, notes, atom.start))
-        rows.append((atom.line, atom.text, verdict.kind, verdict.rule or "-"))
+        typed = typed_choice(atom.text, verdict, choices, chosen)
+        rule = verdict.rule or "-"
+        if typed is not None:
+            rule = f"{rule}, typed: write {typed.reference}"
+        rows.append((atom.line, atom.text, verdict.kind, rule, typed is not None))
     if not rows:
         print("no numeric atoms outside masked regions")
         return 0
     width = max(len(r[1]) for r in rows)
-    for line, atom_text, kind, rule in rows:
-        marker = "FAIL" if kind == UNCLASSIFIED else "ok  "
+    for line, atom_text, kind, rule, typed in rows:
+        marker = "FAIL" if kind == UNCLASSIFIED or typed else "ok  "
         print(f"{marker} {line:>5}  {atom_text:<{width}}  {kind:<12} {rule}")
     return 0
 

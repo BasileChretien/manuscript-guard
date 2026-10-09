@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, hand-authored-table, results-edited, script-newer, input-changed or duplicate-quantity.
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed or duplicate-quantity.
 ---
 
 # Binding the numbers
@@ -26,6 +26,8 @@ em.value("case.pct_serious", pct, digits=1)            # a float needs digits or
 em.value("model.p", p, display="<0.001")               # a comparator only has to hold
 em.interval("ror", point, low, high, digits=2)         # ror.point, ror.ci_low, ror.ci_high
 em.value("table2x2.a", a, quoted=False)                # published but not quoted in the text
+alpha = em.parameter("alpha", 0.05)                    # param.alpha: a choice, handed back to use
+em.software("statsmodels")                             # software.statsmodels, as imported
 em.write()                                             # results/<script stem>.json + .sha256
 ```
 
@@ -37,6 +39,8 @@ library(manuscriptguard)
 em <- mg_emitter("analysis/02_model.R", inputs = "data/cohort.csv")  # run from the project root
 em$value("model.n", 412L)
 em$interval("model.or", 2.5, 1.8, 3.4, digits = 2)
+alpha <- em$parameter("alpha", 0.05)
+em$software("survival")
 em$write()
 ```
 
@@ -183,6 +187,9 @@ checked like any other.
 | `unresolved-binding` | the key does not exist; the finding suggests the nearest one |
 | `value-splits-paragraph` | the value prints display maths, a LaTeX environment, an HTML block tag or a line break into its sentence, where it can break the paragraph in parts in Word. Write that part in the `.md`, as a block of its own, and bind only the numbers in it |
 | `unquoted-result` | a published value is quoted nowhere: quote it, or emit with `quoted=False` |
+| `typed-parameter`, `typed-software-version` | the analysis declares this threshold or version: bind `{{results.param.…}}` or `{{results.software.…}}` rather than typing it |
+| `parameter-unread` | the script declares a parameter and never reads the value `parameter()` returns: use it in the step it stands for, or remove it |
+| `threshold-undeclared` | a warning: a threshold typed in the Methods that no declared parameter has. Declare it if the code applies it; if the code applies another value, the Methods are wrong |
 | `unplaced-table` | an emitted table is never placed with `{{table.key}}` |
 | `hand-authored-table` | emit the table |
 | `script-newer`, `input-changed` | re-run the script that wrote the results |

@@ -175,6 +175,8 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 bounds=spec.get("bounds"),
                 bound=spec.get("bound"),
                 level=spec.get("level"),
+                role=spec.get("role"),
+                read=spec.get("read"),
             )
 
         for key, spec in document.get("tables", {}).items():

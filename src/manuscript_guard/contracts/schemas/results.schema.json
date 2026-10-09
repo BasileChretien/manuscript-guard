@@ -143,6 +143,14 @@
           "type": "string",
           "description": "Which interval this bound belongs to, when one estimate carries more than one - \"90%\" beside a 95% CI, or \"95% CrI\" beside a frequentist one. Bounds are compared within a level and never across: a 90% interval nested inside a 95% one is correct, not a contradiction. Absent means the estimate's only interval."
         },
+        "role": {
+          "enum": ["parameter", "software"],
+          "description": "What the value is, when it is neither a measurement nor a label. `parameter` is a choice the analysis made and used (`em.parameter`), `software` the version of a piece of software the run imported (`em.software`). G2 fails one of these typed in the text where it should be bound, because a threshold typed in the Methods passes as a convention and stays one after the code has changed."
+        },
+        "read": {
+          "type": "boolean",
+          "description": "For a parameter: whether the script reads again the value `parameter()` handed back, as the emitter found by reading the script where the call stands. False when the value is thrown away or assigned to a name nothing reads, which G2 fails; absent when the emitter could not tell. A read is not proof that the value changes a result."
+        },
         "same_as": {
           "type": "string",
           "description": "Another key this value is the same quantity as. G8 notices two keys holding the same number and goes quiet the moment they diverge, which is when it matters; nothing else in this file records that two keys were meant to agree. A declaration rather than an inference, because the question is about intent: ror.point, ror.ci_low and ror.ci_high share everything a heuristic could see and are supposed to differ."

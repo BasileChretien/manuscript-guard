@@ -15,7 +15,9 @@ API that omits it.
 
 from __future__ import annotations
 
+import ast
 import hashlib
+import importlib.metadata
 import json
 import platform
 import re
@@ -376,6 +378,69 @@ def _git(root: Path, *args: str) -> str | None:
         return None
 
 
+#: The part of a parameter's key the author writes; `param.` is put in front of it.
+_PARAMETER_KEY = re.compile(r"[a-z0-9_]+(?:\.[a-z0-9_]+)*")
+
+
+def parameter_read(script: Path, line: int, key: str) -> bool | None:
+    """Whether the value `parameter(key, ...)` hands back on `line` of `script` is read.
+
+    False when the call is a statement of its own, or assigns a name that nothing in its
+    scope reads. True when a name it assigns is read, or when the call sits inside a larger
+    expression, an argument or an operand. None when the script cannot be read or the call
+    cannot be found, or when the value goes somewhere this does not follow (an attribute,
+    a tuple). A name read again is all this establishes.
+    """
+    try:
+        tree = ast.parse(script.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError):
+        return None
+    parents: dict[ast.AST, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[child] = node
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "parameter"
+    ]
+    named = [
+        call
+        for call in calls
+        if call.args and isinstance(call.args[0], ast.Constant) and call.args[0].value == key
+    ]
+    if len(named) != 1:
+        named = [call for call in calls if call.lineno <= line <= (call.end_lineno or line)]
+    if len(named) != 1:
+        return None
+    call = named[0]
+    parent = parents[call]
+    if isinstance(parent, ast.Expr):
+        return False
+    if isinstance(parent, ast.NamedExpr):
+        target, call = parent.target, parent
+        if not isinstance(parents[parent], ast.Expr):
+            return True
+    elif isinstance(parent, (ast.Assign, ast.AnnAssign)) and parent.value is call:
+        targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
+        if len(targets) != 1 or not isinstance(targets[0], ast.Name):
+            return None
+        target = targets[0]
+    else:
+        return True
+    scope = parent
+    while scope in parents and not isinstance(
+        scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+    ):
+        scope = parents[scope]
+    return any(
+        isinstance(node, ast.Name) and node.id == target.id and isinstance(node.ctx, ast.Load)
+        for node in ast.walk(scope)
+    )
+
+
 @dataclass
 class Emitter:
     """Collects values, then writes one fragment with its provenance.
@@ -490,6 +555,90 @@ class Emitter:
         elif level is not None:
             raise ValueError(f"{key!r} declares a level without being a bound of anything")
         self._values[key] = spec
+
+    def parameter(
+        self,
+        key: str,
+        value: object,
+        *,
+        display: str | None = None,
+        digits: int | None = None,
+        unit: str | None = None,
+        note: str | None = None,
+    ) -> object:
+        """Record a choice the analysis made, and hand it back for the analysis to use.
+
+            alpha = em.parameter("alpha", 0.05)
+            z = NormalDist().inv_cdf(1 - alpha / 2)
+
+        Writes `param.alpha`, which the Methods quote as `{{results.param.alpha}}`. The value
+        the prose states is then the value the code ran with: a threshold typed in the Methods
+        passes G2 as a convention, and it stays a convention after the code has moved on to
+        another one. G2 fails a Methods number that equals a declared parameter and is typed
+        rather than bound.
+
+        A float is written as it was typed unless `digits` or `display` says otherwise:
+        a threshold is not rounded.
+
+        Declared is not used. The script is read where the call stands, and the fragment
+        records whether the value handed back is read again (`read`): `false` when it is
+        thrown away or assigned to a name nothing reads, which G2 fails, and absent when the
+        reading cannot tell. A read is not proof that the value changes a result. It can be
+        read inside a `print` or in a branch that never runs, and nothing here looks.
+        """
+        if not _PARAMETER_KEY.fullmatch(key):
+            raise ValueError(
+                f"parameter {key!r}: a key is lowercase letters, digits and underscores, in "
+                f"parts joined by dots, so that the Methods can bind it"
+            )
+        full = f"param.{key}"
+        if isinstance(value, float) and display is None and digits is None:
+            # Written as typed. A threshold is not a measurement to round: 0.025 to two
+            # places is 0.03, a different test. Fifteen significant digits give back any
+            # constant typed in the code, and are what the R emitter writes too.
+            display = f"{value:.15g}"
+        self.value(full, value, display=display, digits=digits, unit=unit, note=note)
+        self._values[full]["role"] = "parameter"
+        caller = sys._getframe(1)
+        read = parameter_read(Path(caller.f_code.co_filename), caller.f_lineno, key)
+        if read is not None:
+            self._values[full]["read"] = read
+        return value
+
+    def software(self, name: str) -> str:
+        """Record the version of a piece of software this run used, as the run found it.
+
+            em.software("python")         # writes software.python
+            em.software("statsmodels")    # writes software.statsmodels
+
+        The Methods quote it as `{{results.software.statsmodels}}`, so the version they name
+        is the one that computed the results rather than the one installed when the sentence
+        was written. A distribution the run never imported is refused: the Methods would name
+        software that computed nothing.
+        """
+        if name.lower() == "python":
+            version = platform.python_version()
+        else:
+            try:
+                version = importlib.metadata.version(name)
+            except importlib.metadata.PackageNotFoundError:
+                raise ValueError(
+                    f"software {name!r}: no installed distribution has that name"
+                ) from None
+            modules = {
+                module
+                for module, owners in importlib.metadata.packages_distributions().items()
+                if any(owner.lower() == name.lower() for owner in owners)
+            }
+            if not modules & set(sys.modules):
+                raise ValueError(
+                    f"software {name!r}: version {version} is installed, but this run has not "
+                    f"imported it, so it computed none of these results"
+                )
+        key = "software." + re.sub(r"[^a-z0-9_]", "_", name.lower())
+        self.value(key, version, label=True)
+        self._values[key]["role"] = "software"
+        return version
 
     def interval(
         self,

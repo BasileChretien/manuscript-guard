@@ -1,0 +1,33 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 4
+reviewer: biostatistician
+reviewed_by: Claude Code
+reviewed_on: '2026-10-09'
+manuscript_sha256: 99d4125cde6f06a2c4cb3be4e26db1f8fa6fa3f98e8ae3f764293041823bf9f0
+file_sha256:
+  main.md: 682bd10ab580e29457b802edecc5c6bc0216e61624c3c406838655fb54d09461
+  supplementary/S1_code_lists.md: 0424bddf5bebf482147a5579ea720fbfe9e701fadfb0b6898cdb21aa34fc0708
+verdict: minor-revision
+summary: 'The adjusted model is stated fully enough to reproduce: Table S2 gives the outcome,
+  each variable with how it entered and its reference, and the rows and events, and the formula
+  behind it matches the Methods. A logistic regression with five coefficients on 271 events
+  is well supported, and the fit converged. That the adjusted ratio equals the crude one to
+  two decimals is explained rather than left to look like an error. One clause is missing
+  on how the adjusted interval was obtained.'
+findings:
+- id: r4-bs-01
+  severity: minor
+  where: Methods, adjusted model
+  finding: The Methods say how the crude interval was derived and not how the adjusted one
+    was. It is the model's Wald interval for the exposure coefficient, at the same alpha,
+    which is what a reader would assume, but the crude paragraph is explicit and the
+    adjusted one should be too.
+- id: r4-bs-02
+  severity: comment
+  where: Supplement, Table S2
+  finding: The table lets a reader reconstruct the specification without the code, which is
+    what a model table is for. The two minor points of round three (which interval's lower
+    bound the signal criterion uses, and whether the criterion was met) are not touched by
+    this revision and still stand.

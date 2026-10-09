@@ -1,0 +1,85 @@
+schema: manuscript-guard/models/1
+
+# What a fitted model is called, and which outcomes it is a model of.
+#
+# Read by G15 and by the loader of the results. The emitters record what a fit says of itself
+# (the language, the class, the family and the link) and nothing else, so that the name a
+# model goes by is derived in one place for both languages rather than typed by the author or
+# guessed by two emitters. An entry matches a fit when every field it gives equals the fit's.
+#
+# `outcome` lists the kinds of outcome variable the model is for, as `em.variable` declares
+# them; a model fitted to another kind is a G15 failure. `synonyms` are the names the Methods
+# may give it, matched as whole words in any case; a model named in the Methods that the
+# analysis did not fit is a warning. Each entry says why it allows what it allows.
+
+engines:
+  - kind: logistic regression
+    synonyms: [logistic regression, logistic model, logit model, logit regression]
+    outcome: [binary]
+    why: The log odds of a binary outcome.
+    fits:
+      - {language: Python, class: GLM, family: Binomial, link: Logit}
+      - {language: Python, class: Logit}
+      - {language: R, class: glm, family: binomial, link: logit}
+
+  - kind: probit regression
+    synonyms: [probit regression, probit model]
+    outcome: [binary]
+    why: The normal quantile of the probability of a binary outcome.
+    fits:
+      - {language: Python, class: GLM, family: Binomial, link: Probit}
+      - {language: Python, class: Probit}
+      - {language: R, class: glm, family: binomial, link: probit}
+
+  - kind: log-binomial regression
+    synonyms: [log-binomial regression, log-binomial model]
+    outcome: [binary]
+    why: The log probability of a binary outcome, for a risk ratio.
+    fits:
+      - {language: Python, class: GLM, family: Binomial, link: Log}
+      - {language: R, class: glm, family: binomial, link: log}
+
+  - kind: Poisson regression
+    synonyms: [Poisson regression, Poisson model]
+    outcome: [count, binary]
+    why: >-
+      The log rate of a count. Binary outcomes are allowed because Poisson regression with a
+      robust variance (Zou's modified Poisson) is a standard way to estimate a risk ratio;
+      whether the variance was made robust is not read here.
+    fits:
+      - {language: Python, class: GLM, family: Poisson, link: Log}
+      - {language: Python, class: Poisson}
+      - {language: R, class: glm, family: poisson, link: log}
+
+  - kind: quasi-Poisson regression
+    synonyms: [quasi-Poisson regression, quasi-Poisson model, quasipoisson regression]
+    outcome: [count]
+    why: A Poisson mean with a dispersion estimated from the data.
+    fits:
+      - {language: R, class: glm, family: quasipoisson, link: log}
+
+  - kind: negative binomial regression
+    synonyms: [negative binomial regression, negative binomial model]
+    outcome: [count]
+    why: The log rate of an overdispersed count.
+    fits:
+      - {language: Python, class: GLM, family: NegativeBinomial, link: Log}
+      - {language: Python, class: NegativeBinomial}
+
+  - kind: linear regression
+    synonyms: [linear regression, ordinary least squares, OLS regression]
+    outcome: [continuous]
+    why: The mean of a continuous outcome.
+    fits:
+      - {language: Python, class: OLS}
+      - {language: Python, class: GLM, family: Gaussian, link: Identity}
+      - {language: R, class: lm}
+      - {language: R, class: glm, family: gaussian, link: identity}
+
+  - kind: gamma regression
+    synonyms: [gamma regression, gamma model]
+    outcome: [continuous]
+    why: The mean of a positive, right-skewed continuous outcome.
+    fits:
+      - {language: Python, class: GLM, family: Gamma}
+      - {language: R, class: glm, family: Gamma}

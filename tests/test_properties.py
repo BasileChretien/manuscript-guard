@@ -61,6 +61,7 @@ from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
 from manuscript_guard.gates import language as language_gate
+from manuscript_guard.gates import models as models_gate
 from manuscript_guard.gates import numbers as numbers_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
@@ -556,6 +557,60 @@ def test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not(
         typed = numbers_gate.typed_choice(atom.text, verdict, list(_DECLARED), chosen)
         if typed is not None:
             found.add((atom.line, atom.col, typed.key))
+    assert found == expected, text
+
+
+# --------------------------------------------------------------------------- models named
+
+#: One of every way G15 reads a model named in the Methods, with the kind it names, and
+#: one of every place it must not: hidden from the page, inside a longer word, or in the
+#: Results, where `found` is false.
+_NAMED = (
+    ("logistic regression", "logistic regression", True),
+    ("Logistic Regression", "logistic regression", True),
+    ("log binomial regression", "log-binomial regression", True),
+    ("negative\nbinomial model", "negative binomial regression", True),
+    ("probit models", "probit regression", True),
+    ("<!-- Poisson regression -->", None, False),
+    ("`gamma regression`", None, False),
+    ("quasilogistic regression", None, False),
+)
+
+
+@st.composite
+def _planted_names(draw: st.DrawFn) -> tuple[str, list[tuple[int, str]]]:
+    """Filler words with every way of naming a model planted under a Methods heading, and
+    the same names again under the Results, in an order and among words drawn each time."""
+    parts: list[str] = []
+    found: list[tuple[int, str]] = []
+
+    def filler() -> str:
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=5))
+        return "".join(draw(st.sampled_from((" ", " ", "\n"))) + word for word in words)
+
+    for heading, methods in (
+        (draw(st.sampled_from(_METHODS_HEADINGS)), True),
+        (draw(st.sampled_from(_OTHER_HEADINGS)), False),
+    ):
+        parts.append(f"{heading}\n\n{filler().strip().capitalize()}")
+        for written, kind, counted in draw(st.permutations(_NAMED)):
+            parts.append(filler() + " ")
+            if methods and counted:
+                found.append((len("".join(parts)), kind))
+            parts.append(written)
+        parts.append(f"{filler()}.\n\n")
+    return "".join(parts), found
+
+
+@holds(150, _planted_names())
+def test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not(
+    planted: tuple[str, list[tuple[int, str]]],
+) -> None:
+    """A model named in the Methods is found in any case, with a space, a hyphen or a line
+    break between its words, and in the plural, with the kind it names. Nothing is found in
+    a comment, in code, inside a longer word, or in the Results."""
+    text, expected = planted
+    found = [(start, kind) for start, _end, kind in models_gate.named_in_methods(text)]
     assert found == expected, text
 
 
@@ -1300,6 +1355,49 @@ def _a_stop_against_a_binding_ends_no_sentence(patch: pytest.MonkeyPatch) -> Non
     patch.setattr(numbers_gate, "_sentence", lambda text, ends, start: bisect_left(ends, start))
 
 
+def _names_with(**changes: Any):
+    """`models._names` rebuilt with one of its readings taken away."""
+    import functools
+
+    @functools.cache
+    def names() -> re.Pattern[str]:
+        listed = sorted(
+            {name for entry in models_gate.engines() for name in entry.synonyms},
+            key=len, reverse=True,
+        )  # fmt: skip
+        if changes.get("as_written"):
+            words = [re.escape(name) for name in listed]
+        else:
+            words = [r"[\s-]+".join(map(re.escape, re.split(r"[\s-]+", n))) for n in listed]
+        plural = changes.get("plural", "s?")
+        return re.compile(
+            r"(?<![\w-])(?:" + "|".join(words) + ")" + plural + r"(?![\w-])",
+            changes.get("flags", re.IGNORECASE),
+        )
+
+    return names
+
+
+def _a_model_is_named_in_one_case(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "_names", _names_with(flags=0))
+
+
+def _a_hyphen_is_no_space_in_a_models_name(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "_names", _names_with(as_written=True))
+
+
+def _a_model_is_never_named_in_the_plural(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "_names", _names_with(plural=""))
+
+
+def _a_model_named_anywhere_is_named_in_the_methods(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "is_methods", lambda chain: True)
+
+
+def _a_model_named_in_a_comment_is_named(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "_hidden", lambda text: text)
+
+
 def _any_convention_is_a_threshold(patch: pytest.MonkeyPatch) -> None:
     def every(classifier: Classifier) -> frozenset[str]:
         return frozenset(rule.id for rule in classifier.conventions)
@@ -1406,6 +1504,26 @@ BROKEN = {
     "a comment is read for its stops": (
         _a_comment_is_read_for_its_stops,
         test_a_comment_is_white_space_to_the_order_of_intervals,
+    ),
+    "a model is named in one case only": (
+        _a_model_is_named_in_one_case,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a hyphen is no space in a model's name": (
+        _a_hyphen_is_no_space_in_a_models_name,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a model is never named in the plural": (
+        _a_model_is_never_named_in_the_plural,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a model named anywhere is named in the Methods": (
+        _a_model_named_anywhere_is_named_in_the_methods,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a model named in a comment is named": (
+        _a_model_named_in_a_comment_is_named,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
     ),
     "a parameter is matched by any convention": (
         _any_convention_is_a_threshold,

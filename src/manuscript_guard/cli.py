@@ -50,6 +50,7 @@ from manuscript_guard.gates import (
     check_language,
     check_literature_chain,
     check_methods,
+    check_models,
     check_numbers,
     check_reporting,
     check_review,
@@ -136,6 +137,7 @@ def _run_gates(
         ("G8", lambda: check_consistency(results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
         ("G14", lambda: check_language(project)),
+        ("G15", lambda: check_models(project, results)),
         ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
     ):
         report = _guarded(name, gate, unreadable)
@@ -1462,6 +1464,40 @@ def cmd_explain(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_models(args: argparse.Namespace) -> int:
+    """Print each model the analysis fitted as its card, with what G15 says of it.
+
+    The card is what a co-author reads to say whether the model is the right one: what it is
+    called, what the author says it is for, the sentence made from the fit, and each variable
+    with the kind it was declared and how it entered."""
+    from manuscript_guard.contracts.models import describe, table_rows
+
+    project, _ = load_project(args.path)
+    _namespace, results, _literature, _loaded = load_namespace(project)
+    if not results.models:
+        print("no models: an analysis records one with em.model() in Python, em$model() in R")
+        return 0
+    report = check_models(project, results)
+    for key, model in results.models.items():
+        print(f"{model.name}  (model.{key}, {model.source.name})")
+        print(f"  fitted:      {model.kind or 'a model the toolkit has no name for'}")
+        print(f"  formula:     {model.formula}")
+        print(f"  from fit:    {describe(model, results.variables)}")
+        print(f"  author says: {model.description or '(nothing)'}")
+        rows = [["Variable", "Declared as", "Entered as", "Levels"]]
+        rows += table_rows(model, results.variables)
+        widths = [max(len(row[i]) for row in rows) for i in range(4)]
+        for row in rows:
+            cells = zip(row, widths, strict=True)
+            print("    " + "  ".join(cell.ljust(width) for cell, width in cells))
+        print(f"  converged:   {'yes' if model.converged else 'NO'}")
+        mine = [f for f in report.findings if f.message.startswith(f"model {key!r}:")]
+        for finding in mine:
+            print(f"  [{finding.severity.upper()}] {finding.message.split(': ', 1)[1]}")
+        print()
+    return 0 if report.ok else 1
+
+
 def cmd_reworded(args: argparse.Namespace) -> int:
     """Compare the manuscript with what it was, and say what changed besides the wording.
 
@@ -2348,6 +2384,12 @@ def build_parser() -> argparse.ArgumentParser:
     explain = sub.add_parser("explain", help="show how each number in a file was classified")
     explain.add_argument("file", type=Path)
     explain.set_defaults(func=cmd_explain)
+
+    models = sub.add_parser(
+        "models", help="print each fitted model as its card, with what G15 says of it"
+    )
+    models.add_argument("path", nargs="?", type=Path, default=Path("."))
+    models.set_defaults(func=cmd_models)
 
     reworded = sub.add_parser(
         "reworded",

@@ -87,7 +87,7 @@ BOXES = {
     "analysis": (20, 60, 150, "Analysis", "Python or R"),
     "results": (200, 60, 150, "results/", "from the emitter"),
     "manuscript": (380, 60, 150, "Manuscript", "with {{bindings}}"),
-    "check": (560, 60, 150, "check", "fourteen gates"),
+    "check": (560, 60, 150, "check", "fifteen gates"),
     "build": (740, 60, 120, "build", "the .docx"),
     "ledger": (370, 190, 170, "Literature ledger", "value, quote, source"),
     "rules": (550, 190, 170, "Journal profile", "reporting checklist"),

@@ -12865,7 +12865,7 @@ def test_a_supplement_of_headings_and_tables_only_is_not_compared_with_the_paper
 
     (project / SUPPLEMENT).write_text(
         "# Supplementary methods\n\n## Table S1. Code lists used to identify the outcome\n\n"
-        "{{table.outcome_codes}}\n",
+        "{{table.outcome_codes}}\n\n## Table S2. The adjusted model\n\n{{table.model_adjusted}}\n",
         encoding="utf-8",
         newline="\n",
     )

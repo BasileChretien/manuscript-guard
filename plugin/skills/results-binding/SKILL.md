@@ -28,6 +28,8 @@ em.interval("ror", point, low, high, digits=2)         # ror.point, ror.ci_low, 
 em.value("table2x2.a", a, quoted=False)                # published but not quoted in the text
 alpha = em.parameter("alpha", 0.05)                    # param.alpha: a choice, handed back to use
 em.software("statsmodels")                             # software.statsmodels, as imported
+em.variable("age_group", "categorical", label="age group", reference="18-44")
+em.model("adjusted", fit, name="Adjusted model")       # model.adjusted.*, table.model_adjusted
 em.write()                                             # results/<script stem>.json + .sha256
 ```
 

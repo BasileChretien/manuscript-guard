@@ -11,6 +11,10 @@ import math
 from pathlib import Path
 from statistics import NormalDist
 
+import pandas as pd
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+
 from manuscript_guard.emit import Emitter
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -66,6 +70,40 @@ def main() -> None:
     # until the threshold had to be declared: a parameter nobody reads is a G2 failure.
     em.value("signal.met", a >= min_cases and low > 1, quoted=False)
     em.software("python")
+    em.software("statsmodels")
+
+    # The ratio adjusted for age group and sex, by logistic regression. The model is
+    # recorded as the fit describes itself, and each variable it reads is declared with the
+    # kind it is meant to be: G15 holds the two to each other, and the paper's table of the
+    # model is made from them rather than typed.
+    frame = pd.DataFrame(rows)
+    frame["hepatic"] = (frame["event"] == EVENT).astype(int)
+    frame["exposed"] = (frame["drug"] == DRUG).astype(int)
+    em.variable("hepatic", "binary", label="hepatic injury", levels=[0, 1],
+                values=frame["hepatic"])
+    em.variable("exposed", "binary", label="example-drug", levels=[0, 1],
+                values=frame["exposed"])
+    em.variable("age_group", "categorical", label="age group",
+                levels=["18-44", "45-64", "65-74", "75+"], reference="18-44",
+                values=frame["age_group"])
+    em.variable("sex", "binary", label="sex", levels=["F", "M"], reference="F",
+                values=frame["sex"])
+    fit = smf.glm(
+        "hepatic ~ exposed + C(age_group, Treatment('18-44')) + C(sex, Treatment('F'))",
+        frame,
+        family=sm.families.Binomial(),
+    ).fit()
+    em.model(
+        "adjusted",
+        fit,
+        name="Adjusted model",
+        description="The reporting odds ratio of the primary analysis, adjusted for the two "
+        "patient characteristics the database records for every report.",
+    )
+    adjusted_low, adjusted_high = (math.exp(b) for b in fit.conf_int(alpha=alpha).loc["exposed"])
+    em.interval(
+        "ror_adjusted", math.exp(fit.params["exposed"]), adjusted_low, adjusted_high, digits=3
+    )
 
     em.value("cohort.n_reports", len(rows))
     em.value("cohort.n_drug_reports", a + b)

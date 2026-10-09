@@ -16,6 +16,7 @@ from manuscript_guard.gates.journal import check_journal
 from manuscript_guard.gates.language import check_language
 from manuscript_guard.gates.literature import check_literature_chain
 from manuscript_guard.gates.methods import check_methods, reconcile
+from manuscript_guard.gates.models import check_models
 from manuscript_guard.gates.numbers import check_numbers, source_files
 from manuscript_guard.gates.reporting import (
     available_checklists,
@@ -47,9 +48,12 @@ GATES = {
     "G13": "the response to the reviewers answers every point, and its claims hold",
     "G14": "abbreviations are defined once, one term is kept for one thing, the "
     "spelling is one English and the notation is one",
+    "G15": "each model is the model its variables call for, and the Methods name the model "
+    "fitted",
 }
 
 __all__ = [
+    "check_models",
     "check_revision",
     "rounds",
     "GATES",

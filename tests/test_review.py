@@ -48,13 +48,16 @@ def project(project: Path) -> Path:
     """The example as these tests were written for: two rounds, both reading the manuscript
     as it stands.
 
-    The example's own history has a third round, which read a revision of the Methods and
-    supersedes the two (see the test below). The tests here are about the gate's handling
-    of a panel, and each assumes round two is the last: so their copy of the example drops
-    round three and points rounds one and two at the manuscript as it now stands, in the
-    copy only, as `restamp_figure_review` does for the figure."""
-    shutil.rmtree(project / "review" / "round-3")
-    (project / "review" / "panel-3.yaml").unlink()
+    The example's own history has later rounds, which read revisions and supersede the two
+    (see the test below). The tests here are about the gate's handling of a panel, and each
+    assumes round two is the last: so their copy of the example drops every later round and
+    points rounds one and two at the manuscript as it now stands, in the copy only, as
+    `restamp_figure_review` does for the figure."""
+    for later in (project / "review").glob("panel-*.yaml"):
+        number = int(later.stem.removeprefix("panel-"))
+        if number > 2:
+            later.unlink()
+            shutil.rmtree(project / "review" / f"round-{number}")
     digest = manuscript_digest(load_project(project)[0])
     for path in (project / "review").rglob("*.yaml"):
         text = path.read_text(encoding="utf-8")
@@ -68,15 +71,22 @@ def project(project: Path) -> Path:
 def test_the_example_s_latest_round_reads_the_manuscript_and_supersedes_the_rest(
     built_example: Path,
 ) -> None:
-    """The example as committed: its third round reads the manuscript as it stands, and each
-    record of the two before is superseded by it rather than left stale."""
+    """The example as committed: its latest round reads the manuscript as it stands, and
+    each record of every round before it is superseded rather than left stale."""
     report = report_for(built_example, submission=True)
     assert report.ok, report.render(built_example)
+    review = built_example / "review"
+    latest = max(int(p.stem.removeprefix("panel-")) for p in review.glob("panel-*.yaml"))
     digest = manuscript_digest(load_project(built_example)[0])
-    for path in (built_example / "review" / "round-3").glob("*.yaml"):
+    for path in (review / f"round-{latest}").glob("*.yaml"):
         assert yaml.safe_load(path.read_text(encoding="utf-8"))["manuscript_sha256"] == digest
-    superseded = {f.path.name for f in report.findings if f.code == "review-superseded"}
-    assert len(superseded) == 5 and not failures(report), report.render(built_example)
+    earlier = {
+        path
+        for number in range(1, latest)
+        for path in (review / f"round-{number}").glob("*.yaml")
+    }
+    superseded = {f.path for f in report.findings if f.code == "review-superseded"}
+    assert superseded == earlier and not failures(report), report.render(built_example)
 
 
 # ---------------------------------------------------------------- the complete case

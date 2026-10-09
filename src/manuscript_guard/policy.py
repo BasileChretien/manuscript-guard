@@ -58,6 +58,17 @@ BINDS_AT = {
     "no-digest": ANALYSIS,
     # A parameter the analysis declares and never reads is wrong as soon as it is written.
     "parameter-unread": ANALYSIS,
+    # A model that is the wrong model is wrong as soon as it is fitted.
+    "model-variable-undeclared": ANALYSIS,
+    "model-outcome-kind": ANALYSIS,
+    "model-categories-as-number": ANALYSIS,
+    "model-binary-as-number": ANALYSIS,
+    "model-level-undeclared": ANALYSIS,
+    "model-reference": ANALYSIS,
+    "model-not-converged": ANALYSIS,
+    "model-empty-level": ANALYSIS,
+    "variable-level-undeclared": ANALYSIS,
+    "variable-not-binary": ANALYSIS,
     # -- drafting ---------------------------------------------------------------
     # Numbers in prose only exist once there is prose.
     "no-results-dir": DRAFTING,
@@ -75,6 +86,7 @@ BINDS_AT = {
     "unquoted-result": DRAFTING,
     "typed-parameter": DRAFTING,
     "typed-software-version": DRAFTING,
+    "typed-model-kind": DRAFTING,
     "unplaced-table": DRAFTING,
     "divergent-display": DRAFTING,
     # Figures are still being redrawn while the text is drafted; their numbers must
@@ -101,6 +113,8 @@ BINDS_AT = {
     "figure-review-concerns": INTERNAL_REVIEW,
     "figure-review-finding": INTERNAL_REVIEW,
     "journal-profile-missing": INTERNAL_REVIEW,
+    # How many rows a model lost to missing values is for the finished draft to say.
+    "model-rows-dropped": INTERNAL_REVIEW,
     "over-journal-limit": INTERNAL_REVIEW,
     "missing-required-section": INTERNAL_REVIEW,
     "missing-abstract": INTERNAL_REVIEW,

@@ -381,6 +381,142 @@ def _git(root: Path, *args: str) -> str | None:
 #: The part of a parameter's key the author writes; `param.` is put in front of it.
 _PARAMETER_KEY = re.compile(r"[a-z0-9_]+(?:\.[a-z0-9_]+)*")
 
+#: A model's key names its values and its table, and a table key takes no dots.
+_TABLE_SAFE_KEY = re.compile(r"[a-z][a-z0-9_]*")
+
+#: What a variable can be meant to be. The data hold numbers and strings, and cannot say
+#: whether 1 to 4 is a grade, a code or a count.
+VARIABLE_KINDS = ("binary", "categorical", "ordinal", "continuous", "count")
+
+#: More distinct values than this, and the levels a variable was observed to take are not
+#: listed: a continuous variable has as many as it has rows.
+_MOST_LEVELS = 50
+
+
+def _level(level: object) -> str:
+    """A level as the fragment writes it: the text a reader sees, whatever its type."""
+    if isinstance(level, bool):
+        return str(level)
+    if isinstance(level, float) and level.is_integer():
+        return str(int(level))
+    return str(level)
+
+
+def _observed(values: object, kind: str) -> dict:
+    """What the data hold of a variable: levels (where few), distinct values, missing."""
+    items = list(values)
+    missing = [item for item in items if item is None or (isinstance(item, float) and item != item)]
+    present = {_level(item) for item in items if item not in missing}
+    out: dict = {"distinct": len(present), "missing": len(missing)}
+    if kind in ("binary", "categorical", "ordinal") or len(present) <= _MOST_LEVELS:
+        out["levels"] = sorted(present)
+    return out
+
+
+def _variables_in(code: str, columns: set[str]) -> list[str]:
+    """The data's columns a formula's factor reads: `C(age, Treatment('18-44'))` reads age."""
+    try:
+        tree = ast.parse(code, mode="eval")
+    except SyntaxError:
+        return [code] if code in columns else []
+    return sorted({node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} & columns)
+
+
+def read_statsmodels(fit: object) -> dict:
+    """The model card of a statsmodels fit made through the formula API.
+
+    Raises ValueError for anything else: a card is read from the fit or not written, since
+    a model described by hand is the thing this exists to replace.
+    """
+    model = getattr(fit, "model", None)
+    data = getattr(model, "data", None)
+    spec = getattr(data, "design_info", None) or getattr(data, "model_spec", None)
+    frame = getattr(data, "frame", None)
+    if model is None or spec is None or frame is None or not hasattr(spec, "term_codings"):
+        raise ValueError(
+            "model: not a statsmodels fit made through the formula API (smf.glm, smf.logit, "
+            "smf.ols and the like), so the terms cannot be read from it"
+        )
+    columns = {str(column) for column in frame.columns}
+    family = getattr(model, "family", None)
+    engine = {
+        "language": "Python",
+        "package": "statsmodels",
+        "class": type(model).__name__,
+    }
+    if family is not None:
+        engine["family"] = type(family).__name__
+        engine["link"] = type(family.link).__name__
+
+    slices = dict(spec.term_name_slices)
+    exog = model.exog
+    endog = [float(value) for value in model.endog]
+    binary = engine.get("family") == "Binomial" or engine["class"] in ("Logit", "Probit")
+    terms, events_by_level = [], {}
+    for term in spec.terms:
+        if not term.factors:
+            continue
+        entered = []
+        for coding in spec.term_codings[term]:
+            for factor in coding.factors:
+                info = spec.factor_infos[factor]
+                variables = _variables_in(factor.code, columns)
+                record: dict = {"expression": factor.code, "variables": variables}
+                if info.type == "categorical":
+                    record["as"] = "categorical"
+                    record["levels"] = [_level(level) for level in info.categories]
+                    contrast = coding.contrast_matrices.get(factor)
+                    suffixes = list(contrast.column_suffixes) if contrast is not None else []
+                    shown = {suffix[3:-1] for suffix in suffixes if suffix.startswith("[T.")}
+                    if suffixes and len(shown) == len(suffixes):
+                        left = [level for level in record["levels"] if level not in shown]
+                        if len(left) == 1:
+                            record["reference"] = left[0]
+                    if binary and len(term.factors) == 1 and "reference" in record:
+                        columns_at = range(*slices[term.name()].indices(exog.shape[1]))
+                        by_level = {record["reference"]: 0.0}
+                        for row, outcome in zip(exog, endog, strict=True):
+                            hit = [
+                                suffix[3:-1]
+                                for suffix, column in zip(suffixes, columns_at, strict=True)
+                                if row[column] == 1
+                            ]
+                            level = hit[0] if hit else record["reference"]
+                            by_level[level] = by_level.get(level, 0.0) + outcome
+                        for variable in variables:
+                            events_by_level[variable] = {
+                                level: int(by_level.get(level, 0)) for level in record["levels"]
+                            }
+                else:
+                    record["as"] = "numerical"
+                entered.append(record)
+        terms.append({"term": term.name(), "entered": entered})
+
+    outcome = str(model.endog_names)
+    missing = list(getattr(data, "missing_row_idx", None) or [])
+    if hasattr(fit, "converged"):
+        converged = bool(fit.converged)
+    elif isinstance(getattr(fit, "mle_retvals", None), dict):
+        converged = bool(fit.mle_retvals.get("converged", True))
+    else:
+        converged = True
+    card: dict = {
+        "engine": engine,
+        "formula": str(model.formula),
+        "outcome": {"expression": outcome, "variables": _variables_in(outcome, columns)},
+        "terms": terms,
+        "parameters": int(exog.shape[1] - getattr(model, "k_constant", 0)),
+        "n_input": len(frame),
+        "n_used": len(endog),
+        "n_dropped": len(missing),
+        "converged": converged,
+    }
+    if binary:
+        card["events"] = int(sum(endog))
+        if events_by_level:
+            card["events_by_level"] = events_by_level
+    return card
+
 
 def parameter_read(script: Path, line: int, key: str) -> bool | None:
     """Whether the value `parameter(key, ...)` hands back on `line` of `script` is read.
@@ -476,6 +612,11 @@ class Emitter:
     # Code lists as data, beside the table that prints them: RECORD 6.1 asks for the list,
     # and a list is more useful to a reader and to a later check than its rendering.
     _code_lists: dict[str, list[dict]] = field(default_factory=dict, init=False)
+    # The variables the analysis declares, with the kind each is meant to be, and the models
+    # it fitted, as read from the fit. Facts only: the name a model goes by, its description
+    # and its table are derived from them when the results are read, once for both languages.
+    _variables: dict[str, dict] = field(default_factory=dict, init=False)
+    _models: dict[str, dict] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
@@ -639,6 +780,82 @@ class Emitter:
         self.value(key, version, label=True)
         self._values[key]["role"] = "software"
         return version
+
+    def variable(
+        self,
+        name: str,
+        kind: str,
+        *,
+        label: str,
+        levels: list | None = None,
+        reference: object = None,
+        unit: str | None = None,
+        values: object = None,
+    ) -> None:
+        """Declare a variable a model uses, with the kind it is meant to be.
+
+            em.variable("age_group", "categorical", label="age group",
+                        levels=["18-44", "45-64", "65-74", "75+"], reference="18-44",
+                        values=data["age_group"])
+
+        `kind` is one of binary, categorical, ordinal, continuous or count. The data cannot
+        say which: an ordinal grade and a nominal code are both integers. G15 compares the
+        kind with how each model entered the variable, and `values`, when given, with what
+        the data hold: the levels observed, how many distinct values, how many missing.
+        """
+        if kind not in VARIABLE_KINDS:
+            raise ValueError(f"variable {name!r}: kind is one of {', '.join(VARIABLE_KINDS)}")
+        if name in self._variables:
+            raise ValueError(f"variable {name!r} declared twice by {self.script}")
+        entry: dict = {"kind": kind, "label": label}
+        if levels is not None:
+            entry["levels"] = [_level(level) for level in levels]
+        if reference is not None:
+            entry["reference"] = _level(reference)
+            if levels is not None and entry["reference"] not in entry["levels"]:
+                raise ValueError(f"variable {name!r}: reference {reference!r} is not a level")
+        if unit is not None:
+            entry["unit"] = unit
+        if values is not None:
+            entry["observed"] = _observed(values, kind)
+        self._variables[name] = entry
+
+    def model(
+        self,
+        key: str,
+        fit: object,
+        *,
+        name: str,
+        description: str | None = None,
+    ) -> None:
+        """Record a fitted model as the fit itself describes it.
+
+            fit = smf.glm("hepatic ~ exposed + C(age_group)", data,
+                          family=sm.families.Binomial()).fit()
+            em.model("adjusted", fit, name="Adjusted model",
+                     description="The primary analysis: the crude ratio, adjusted for age group.")
+
+        Read from the fit, not described: the engine, family and link, the formula, each term
+        with how every variable entered it (as a number, or as categories with their levels
+        and reference), the rows used and dropped, the events of a binary outcome, by level of
+        each categorical term, and whether the fit converged. `name` is what the paper calls
+        the model and `description` what it is for, which no fit can say.
+
+        The statsmodels formula API is read. A fit it cannot read is refused rather than
+        guessed at.
+        """
+        if not _TABLE_SAFE_KEY.fullmatch(key):
+            raise ValueError(
+                f"model {key!r}: a key is lowercase letters, digits and underscores, so that its "
+                f"values and its table can be bound"
+            )
+        if key in self._models:
+            raise ValueError(f"model {key!r} recorded twice by {self.script}")
+        card = read_statsmodels(fit)
+        card["name"] = name
+        if description is not None:
+            card["description"] = description
+        self._models[key] = card
 
     def interval(
         self,
@@ -894,6 +1111,10 @@ class Emitter:
             # RECORD 6.1 asks the reader for; the list is what a later check, or the next
             # study reusing the definition, actually wants.
             document["code_lists"] = dict(self._code_lists)
+        if self._variables:
+            document["variables"] = dict(self._variables)
+        if self._models:
+            document["models"] = dict(self._models)
         return document
 
     def _composition_of(self, key: str) -> dict:

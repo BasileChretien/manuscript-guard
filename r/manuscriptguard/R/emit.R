@@ -420,6 +420,88 @@ mg_parameter_read <- function(path, key) {
   any(pd$token == "SYMBOL" & pd$text == name$text & pd$id != name$id)
 }
 
+# What a variable can be meant to be, as the Python emitter has it.
+mg_variable_kinds <- c("binary", "categorical", "ordinal", "continuous", "count")
+
+# What the data hold of a variable: levels (where few), distinct values, missing. Sorted in
+# code-point order, as Python sorts, whatever the locale.
+mg_observed <- function(values, kind) {
+  present <- unique(as.character(values[!is.na(values)]))
+  present <- sort(present, method = "radix")
+  out <- list(distinct = length(present), missing = sum(is.na(values)))
+  if (kind %in% c("binary", "categorical", "ordinal") || length(present) <= 50) {
+    out$levels <- I(present)
+  }
+  out
+}
+
+# The model card of an lm or glm fit, read from the fit, mirroring the Python emitter's
+# `read_statsmodels`. Facts only; the name a model goes by is derived when results are read.
+mg_read_fit <- function(fit) {
+  if (!inherits(fit, "lm")) {
+    stop("model: only lm and glm fits are read, so the terms cannot be read from this one",
+         call. = FALSE)
+  }
+  tt <- stats::terms(fit)
+  engine <- list(language = "R", package = "stats", class = class(fit)[[1]])
+  if (inherits(fit, "glm")) {
+    engine$family <- fit$family$family
+    engine$link <- fit$family$link
+  }
+  factors <- attr(tt, "factors")
+  xlevels <- fit$xlevels
+  contrasts <- fit$contrasts
+  binary <- identical(engine$family, "binomial")
+  frame <- stats::model.frame(fit)
+  y <- if (binary) fit$y else NULL
+  terms <- list()
+  events_by_level <- list()
+  for (label in attr(tt, "term.labels")) {
+    used <- rownames(factors)[factors[, label] != 0]
+    entered <- lapply(used, function(expression) {
+      record <- list(expression = expression, variables = I(all.vars(str2lang(expression))))
+      if (!is.null(xlevels[[expression]])) {
+        record$as <- "categorical"
+        record$levels <- I(as.character(xlevels[[expression]]))
+        coding <- contrasts[[expression]]
+        if (is.null(coding) || identical(coding, "contr.treatment")) {
+          record$reference <- as.character(xlevels[[expression]][[1]])
+        }
+      } else {
+        record$as <- "numerical"
+      }
+      record
+    })
+    if (binary && length(used) == 1 && !is.null(xlevels[[used[[1]]]])) {
+      levels <- as.character(xlevels[[used[[1]]]])
+      sums <- tapply(y, factor(as.character(frame[[used[[1]]]]), levels = levels), sum)
+      sums[is.na(sums)] <- 0
+      for (variable in all.vars(str2lang(used[[1]]))) {
+        events_by_level[[variable]] <- as.list(stats::setNames(as.integer(sums), levels))
+      }
+    }
+    terms[[length(terms) + 1]] <- list(term = label, entered = entered)
+  }
+  outcome <- paste(deparse(stats::formula(fit)[[2]]), collapse = " ")
+  dropped <- length(fit$na.action)
+  card <- list(
+    engine = engine,
+    formula = paste(deparse(stats::formula(fit)), collapse = " "),
+    outcome = list(expression = outcome, variables = I(all.vars(stats::formula(fit)[[2]]))),
+    terms = terms,
+    parameters = length(stats::coef(fit)) - attr(tt, "intercept"),
+    n_input = stats::nobs(fit) + dropped,
+    n_used = stats::nobs(fit),
+    n_dropped = dropped,
+    converged = if (inherits(fit, "glm")) isTRUE(fit$converged) else TRUE
+  )
+  if (binary) {
+    card$events <- as.integer(sum(y))
+    if (length(events_by_level) > 0) card$events_by_level <- events_by_level
+  }
+  card
+}
+
 mg_emitter <- function(script, inputs = character(), root = NULL) {
   script_path <- normalizePath(script, winslash = "/", mustWork = TRUE)
   project_root <- if (is.null(root)) mg_find_root(dirname(script_path)) else normalizePath(root, winslash = "/")
@@ -428,6 +510,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   state$inputs <- as.character(inputs)
   state$tables <- list()
   state$code_lists <- list()
+  state$variables <- list()
+  state$models <- list()
   # Which cells this emitter produced from numbers, per table, in the shape the fragment
   # publishes. G2 reads it and applies the same rule to a fragment from either language;
   # without it, a composed cell and a typed one are the same characters on disk.
@@ -509,6 +593,47 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     state$values[[key]] <- list(value = version, display = version, label = TRUE,
                                 role = "software")
     invisible(version)
+  }
+
+  # Declare a variable a model uses, with the kind it is meant to be, mirroring the Python
+  # `variable()`. The data cannot say whether 1 to 4 is a grade, a code or a count.
+  variable <- function(name, kind, label, levels = NULL, reference = NULL, unit = NULL,
+                       values = NULL) {
+    if (!(kind %in% mg_variable_kinds)) {
+      stop("variable ", name, ": kind is one of ", paste(mg_variable_kinds, collapse = ", "),
+           call. = FALSE)
+    }
+    if (!is.null(state$variables[[name]])) {
+      stop("variable ", name, " declared twice by ", script_path, call. = FALSE)
+    }
+    entry <- list(kind = kind, label = label)
+    if (!is.null(levels)) entry$levels <- I(as.character(levels))
+    if (!is.null(reference)) {
+      entry$reference <- as.character(reference)
+      if (!is.null(levels) && !(entry$reference %in% entry$levels)) {
+        stop("variable ", name, ": reference ", reference, " is not a level", call. = FALSE)
+      }
+    }
+    if (!is.null(unit)) entry$unit <- unit
+    if (!is.null(values)) entry$observed <- mg_observed(values, kind)
+    state$variables[[name]] <- entry
+    invisible(NULL)
+  }
+
+  # Record a fitted model as the fit describes it, mirroring the Python `model()`.
+  model <- function(key, fit, name, description = NULL) {
+    if (!grepl("^[a-z][a-z0-9_]*$", key)) {
+      stop("model ", key, ": a key is lowercase letters, digits and underscores, so that ",
+           "its values and its table can be bound", call. = FALSE)
+    }
+    if (!is.null(state$models[[key]])) {
+      stop("model ", key, " recorded twice by ", script_path, call. = FALSE)
+    }
+    card <- mg_read_fit(fit)
+    card$name <- name
+    if (!is.null(description)) card$description <- description
+    state$models[[key]] <- card
+    invisible(NULL)
   }
 
   # Publish an estimate and its interval as one thing, mirroring the Python `interval()`.
@@ -807,6 +932,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
       names(document$tables) <- names(state$tables)
     }
     if (length(state$code_lists) > 0) document$code_lists <- state$code_lists
+    if (length(state$variables) > 0) document$variables <- state$variables
+    if (length(state$models) > 0) document$models <- state$models
     json <- jsonlite::toJSON(document, auto_unbox = TRUE, pretty = 2, digits = NA, null = "null")
     mg_write_lf(as.character(json), path)
 
@@ -821,6 +948,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     value = value,
     parameter = parameter,
     software = software,
+    variable = variable,
+    model = model,
     interval = interval,
     cell = mg_cell,
     table = table_,

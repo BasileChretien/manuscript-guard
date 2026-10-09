@@ -14,6 +14,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_structured, validate
+from manuscript_guard.contracts.models import (
+    Model,
+    Variable,
+    describe,
+    read_models,
+    read_variables,
+    table_rows,
+    values_of,
+)
 from manuscript_guard.contracts.values import RESULTS, DisplayError, Value, derive_display
 from manuscript_guard.findings import Finding, Report, merge_all
 
@@ -55,6 +64,9 @@ class Table:
     # used to be reachable only from inside the Python emitter, which made it a rule an
     # author stepped around by switching language.
     composed: tuple[dict, ...] = ()
+    # Made by this package from a model card rather than emitted by an analysis: every cell
+    # is a fact the fit recorded, so the check of typed cells has nothing to hold it to.
+    generated: bool = False
 
 
 @dataclass(frozen=True)
@@ -65,6 +77,10 @@ class Results:
     # Published code lists, keyed by the table that prints them. G2 checks a code-list cell
     # against these: it is the only independent anchor such a cell has.
     code_lists: dict[str, list] = field(default_factory=dict)
+    # The variables the analysis declared and the models it fitted, as `contracts.models`
+    # reads them. G15 holds the two to each other.
+    variables: dict[str, Variable] = field(default_factory=dict)
+    models: dict[str, Model] = field(default_factory=dict)
 
     def get(self, key: str) -> Value | None:
         return self.values.get(key)
@@ -114,6 +130,8 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
     tables: dict[str, Table] = {}
     code_lists: dict[str, list] = {}
     table_owner: dict[str, Path] = {}
+    variables: dict[str, Variable] = {}
+    models: dict[str, Model] = {}
 
     for path in paths:
         document = read_structured(path)
@@ -208,10 +226,111 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 source=path,
                 composed=tuple(spec.get("composed") or ()),
             )
+        reports.append(_read_cards(document, path, variables, models))
+
+    models_report, values, tables = _models_into(
+        models, variables, values, tables
+    )
+    reports.append(models_report)
 
     merged = merge_all(reports).with_counts(
         results_fragments=len(fragments),
         results_values=len(values),
         results_tables=len(tables),
     )
-    return Results(values, tuple(fragments), tables, code_lists), merged
+    return Results(values, tuple(fragments), tables, code_lists, variables, models), merged
+
+
+def _read_cards(
+    document: dict,
+    path: Path,
+    variables: dict[str, Variable],
+    models: dict[str, Model],
+) -> Report:
+    """A fragment's variables and models, into the project's. A variable two scripts both
+    declare must be declared alike; a model key is one model."""
+    findings = []
+    for name, variable in read_variables(document, path).items():
+        known = variables.get(name)
+        if known is not None and (known.kind, known.label, known.levels, known.reference) != (
+            variable.kind, variable.label, variable.levels, variable.reference,
+        ):  # fmt: skip
+            findings.append(
+                Finding(
+                    gate="G0",
+                    code="variable-declared-twice",
+                    message=f"variable {name!r} is declared differently by two scripts",
+                    path=path,
+                    context=f"also declared in {known.source.name}",
+                    hint="declare it the same way in both, or in one",
+                )
+            )
+            continue
+        variables.setdefault(name, variable)
+    for key, model in read_models(document, path).items():
+        if key in models:
+            findings.append(
+                Finding(
+                    gate="G0",
+                    code="duplicate-model",
+                    message=f"model {key!r} is recorded twice",
+                    path=path,
+                    context=f"also recorded in {models[key].source.name}",
+                )
+            )
+            continue
+        models[key] = model
+    return Report(tuple(findings))
+
+
+def _models_into(
+    models: dict[str, Model],
+    variables: dict[str, Variable],
+    values: dict[str, Value],
+    tables: dict[str, Table],
+) -> tuple[Report, dict[str, Value], dict[str, Table]]:
+    """Each model's bindable values and its table, derived from its card.
+
+    `{{results.model.<key>.kind}}` is the name the fit goes by, and `{{table.model_<key>}}`
+    the outcome and each variable with the kind it was declared and how it entered: the
+    model as the paper describes it is the model as it was fitted, not a retyping of it.
+    """
+    findings = []
+    values, tables = dict(values), dict(tables)
+    for model in models.values():
+        for key, value in values_of(model).items():
+            if key in values:
+                findings.append(
+                    Finding(
+                        gate="G0",
+                        code="duplicate-key",
+                        message=f"{value.key!r} is a value of model {model.key!r} and is also "
+                        f"emitted",
+                        path=model.source,
+                        hint=f"keys under model.{model.key}. are the model's own",
+                    )
+                )
+                continue
+            values[key] = value
+        key = f"model_{model.key}"
+        if key in tables:
+            findings.append(
+                Finding(
+                    gate="G0",
+                    code="duplicate-table",
+                    message=f"table {key!r} is model {model.key!r}'s and is also emitted",
+                    path=model.source,
+                )
+            )
+            continue
+        tables[key] = Table(
+            key=key,
+            columns=("Variable", "Declared as", "Entered as", "Levels"),
+            rows=tuple(tuple(row) for row in table_rows(model, variables)),
+            caption=f"{model.name}. {describe(model, variables)}",
+            align=("left", "left", "left", "left"),
+            quoted=True,
+            source=model.source,
+            generated=True,
+        )
+    return Report(tuple(findings)), values, tables

@@ -131,7 +131,7 @@ def _run_gates(
         ("G4", lambda: check_journal(project)),
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project)),
-        ("G9", lambda: check_methods(project)),
+        ("G9", lambda: check_methods(project, namespace)),
         ("G12", lambda: check_design(project)),
         ("G8", lambda: check_consistency(results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),

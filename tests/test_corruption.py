@@ -9803,7 +9803,8 @@ def test_a_language_pass_that_retyped_a_level_of_confidence_is_caught(project: P
     assert gate_report(project).ok, "the gates see nothing wrong with it"
     lost, new = report.findings
     assert (lost.code, new.code) == ("fact-lost", "fact-new")
-    assert lost.message.startswith("the number '90' is gone: it stood on line ")
+    # The Methods name the 90% interval too, so the number is one of two that stood.
+    assert lost.message.startswith("the number '90' stood twice before the edit, on lines ")
     assert new.message.startswith("the number '95' stands ")
     assert new.line == line_of(after, "; 95% CI {{results.ror.ci90_low}}")
 

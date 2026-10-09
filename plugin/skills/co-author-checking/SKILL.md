@@ -56,7 +56,8 @@ Three things worth saying explicitly, because people assume the opposite:
 - **"Not sure" is wanted.** It is the honest answer when a document is ambiguous, and it keeps
   the item outstanding for someone else rather than burying it under a tick.
 - **Their note is read.** A "wrong" with no note means someone has to find the problem again
-  from nothing.
+  from nothing, so the page asks for the reason before it moves on from "does not match" or
+  "not sure": the note goes on the item it is about.
 - **Nothing is being timed.** The page shows an estimate of the work left so the person can see
   the end; it is not a measurement of them.
 

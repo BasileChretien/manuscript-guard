@@ -29,7 +29,13 @@ import yaml
 from manuscript_guard.contracts import load_namespace, load_project
 from manuscript_guard.emit import write_digest
 from manuscript_guard.findings import merge_all
-from manuscript_guard.gates import check_consistency, check_figures, check_freshness, check_numbers
+from manuscript_guard.gates import (
+    check_consistency,
+    check_figures,
+    check_freshness,
+    check_models,
+    check_numbers,
+)
 
 
 def gate_report(root: Path):
@@ -43,6 +49,7 @@ def gate_report(root: Path):
             check_numbers(project, namespace, results, literature),
             check_figures(project, results),
             check_consistency(results),
+            check_models(project, results),
         ]
     )
 
@@ -8175,18 +8182,18 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
-    """One record a reviewer, no readers named: nothing about them changed. The third round
-    read the revision that bound the Methods' parameters, with the earlier rounds in front of
-    it, so it supersedes them and says it was not blinded."""
+    """One record a reviewer, no readers named: nothing about them changed. Rounds three and
+    four read revisions with the earlier rounds in front of them, so the fourth supersedes
+    the three before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok, report.render(project)
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
-    assert said == [("review-superseded", "round-1")] * 3 + [
-        ("review-superseded", "round-2")
-    ] * 2 + [("round-not-blinded", "review")], report.render(project)
-    assert report.counts["review_rounds_complete"] == 3
+    superseded = [("review-superseded", f"round-{n}") for n, many in ((1, 3), (2, 2), (3, 2))
+                  for _ in range(many)]  # fmt: skip
+    assert said == superseded + [("round-not-blinded", "review")] * 2, report.render(project)
+    assert report.counts["review_rounds_complete"] == 4
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -9939,3 +9946,41 @@ def test_explain_says_a_declared_threshold_is_typed(
     main(["explain", str(main_md(project))])
     row = next(line for line in capsys.readouterr().out.splitlines() if " 0.05 " in line)
     assert row.startswith("FAIL") and "typed: write {{results.param.alpha}}" in row, row
+
+
+# --------------------------------------------------------------------------------------
+# Models: the example's adjusted model is the model its variables call for.
+# --------------------------------------------------------------------------------------
+
+
+def _models_report(root: Path):
+    from manuscript_guard.gates import check_models
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, _loaded = load_namespace(project)
+    return check_models(project, results)
+
+
+def test_the_example_s_model_is_the_model_its_variables_call_for(project: Path) -> None:
+    report = _models_report(project)
+    assert not report.findings, report.render(project)
+    assert report.counts["models"] == 1
+
+
+def test_a_reference_moved_in_the_formula_and_not_in_the_declaration_fails(project: Path) -> None:
+    _replace_once(_analysis(project), "C(sex, Treatment('F'))", "C(sex, Treatment('M'))")
+    _rerun_disproportionality(project)
+    found = [f for f in _models_report(project).failures if f.code == "model-reference"]
+    assert [f.message for f in found] == [
+        "model 'adjusted': 'sex' has reference 'M' in the fit and 'F' in its declaration"
+    ]
+
+
+def test_an_outcome_declared_continuous_under_a_logistic_model_fails(project: Path) -> None:
+    _replace_once(
+        _analysis(project),
+        'em.variable("hepatic", "binary", label="hepatic injury", levels=[0, 1],',
+        'em.variable("hepatic", "continuous", label="hepatic injury",',
+    )
+    _rerun_disproportionality(project)
+    assert "model-outcome-kind" in {f.code for f in _models_report(project).failures}

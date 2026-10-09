@@ -1,6 +1,6 @@
 ---
 name: methods-writer
-description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when check reports methods-drift or methods-never-reconciled, or after the analysis changes.
+description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when check reports methods-drift, methods-never-reconciled or a G15 model-… or variable-… finding, or after the analysis changes.
 ---
 
 # Writing Methods that describe what was done
@@ -88,6 +88,45 @@ G2 then fails the value typed instead of bound, and fails a parameter the script
 again. That second check is the one that matters most: a parameter declared and bound, and
 applied nowhere, prints the right number for a step the code does not take. What it cannot
 tell is whether a value that is read changes a result; that is still your reading.
+
+## Describing a model
+
+Record the model from its fit and declare every variable it reads, in the analysis:
+
+```python
+em.variable("age_group", "categorical", label="age group",
+            levels=["18-44", "45-64", "65-74", "75+"], reference="18-44", values=data["age_group"])
+fit = smf.glm("hepatic ~ exposed + C(age_group, Treatment('18-44'))", data,
+              family=sm.families.Binomial()).fit()
+em.model("adjusted", fit, name="Adjusted model", description="What the model is for.")
+```
+
+(R: `em$variable(...)` and `em$model("adjusted", glm(...), name = ...)`.) The kind a variable
+is declared is the one thing the data cannot tell G15: an ordinal grade and a nominal code
+are both integers. Declare what the variable means, not what its storage is.
+
+Then, in the Methods, name the model by binding `{{results.model.adjusted.kind}}`, and place
+`{{table.model_adjusted}}` (in the supplement if the journal is short of tables): the outcome
+and each variable with its declared kind, how it entered and its reference. If the model
+dropped rows for missing values, bind `{{results.model.adjusted.n_dropped}}` where the Methods
+say how missing data were handled.
+
+`manuscript-guard models` prints each model as its card. Read it before writing the
+paragraph, and give it to a co-author: the author's description beside the sentence made from
+the fit is where a model that answers a different question shows.
+
+What G15 reports, and what to do:
+
+| Code | Ask |
+|---|---|
+| `model-outcome-kind` | the model is not for this kind of outcome: fit one that is, or declare the outcome's real kind |
+| `model-categories-as-number` | a categorical variable entered as one slope: enter it as categories |
+| `model-reference`, `model-level-undeclared`, `variable-level-undeclared` | the fit and the declaration disagree about levels: fix whichever is wrong |
+| `model-variable-undeclared` | declare it with `variable()` |
+| `model-not-converged`, `model-empty-level` | a sparse level or separation: merge levels or refit, and say what you did |
+| `model-rows-dropped` | bind the number dropped where missing data are described |
+| `typed-model-kind` | the Methods type the kind of the model fitted: bind `{{results.model.<key>.kind}}` |
+| `model-ordinal-as-trend`, `model-number-as-categories`, `model-few-events`, `model-kind-unfitted` | warnings: say in the Methods why, or change the model |
 
 ## Locking the parameters worth checking
 

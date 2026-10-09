@@ -21,6 +21,26 @@
       "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
       "additionalProperties": { "$ref": "#/$defs/table" }
     },
+    "variables": {
+      "type": "object",
+      "description": "The variables the analysis declares with `variable()`, each with the kind it is meant to be. The data cannot say whether 1 to 4 is a grade, a code or a count; G15 compares the kind with how every model entered the variable, and with what the data were observed to hold.",
+      "propertyNames": {
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/variable"
+      }
+    },
+    "models": {
+      "type": "object",
+      "description": "The models the analysis fitted, recorded with `model()` as the fit describes itself: engine, formula, terms and how each variable entered them, rows used and dropped, events, convergence. Facts only: the name a model goes by, its generated description and its table are derived when the results are read.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/model"
+      }
+    },
     "code_lists": {
       "type": "object",
       "description": "The code lists the analysis selected on, keyed by the table that prints them. RECORD 6.1 requires these to be published; keeping them as data beside the rendered table means the paper prints the list the code actually used, and the next study can reuse the definition rather than retyping it.",
@@ -154,6 +174,217 @@
         "same_as": {
           "type": "string",
           "description": "Another key this value is the same quantity as. G8 notices two keys holding the same number and goes quiet the moment they diverge, which is when it matters; nothing else in this file records that two keys were meant to agree. A declaration rather than an inference, because the question is about intent: ror.point, ror.ci_low and ror.ci_high share everything a heuristic could see and are supposed to differ."
+        }
+      }
+    },
+    "variable": {
+      "type": "object",
+      "required": [
+        "kind",
+        "label"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "binary",
+            "categorical",
+            "ordinal",
+            "continuous",
+            "count"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How the paper names the variable."
+        },
+        "levels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reference": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "observed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "distinct",
+            "missing"
+          ],
+          "properties": {
+            "distinct": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "missing": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "levels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "What the data held of the variable when the analysis ran."
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "engine",
+        "formula",
+        "outcome",
+        "terms",
+        "parameters",
+        "n_input",
+        "n_used",
+        "n_dropped",
+        "converged"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the paper calls the model."
+        },
+        "description": {
+          "type": "string",
+          "description": "What the model is for, in the author's words. No fit can say."
+        },
+        "engine": {
+          "type": "object",
+          "required": [
+            "language",
+            "class"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "What the fit says of itself: language, package, class, family and link."
+        },
+        "formula": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "object",
+          "required": [
+            "expression",
+            "variables"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "expression": {
+              "type": "string"
+            },
+            "variables": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "terms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "term",
+              "entered"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "term": {
+                "type": "string"
+              },
+              "entered": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "expression",
+                    "variables",
+                    "as"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "variables": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "as": {
+                      "enum": [
+                        "categorical",
+                        "numerical"
+                      ]
+                    },
+                    "levels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "reference": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Coefficients estimated, the intercept aside."
+        },
+        "n_input": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_used": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_dropped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "converged": {
+          "type": "boolean"
+        },
+        "events": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "For a binary outcome: the rows where it occurred."
+        },
+        "events_by_level": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "description": "For a binary outcome: events at each level of each categorical term."
         }
       }
     },

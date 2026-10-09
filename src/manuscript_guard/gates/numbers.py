@@ -918,6 +918,8 @@ def _emitted_tables(results: Results, classifier: Classifier) -> Report:
     known |= {shown.replace(",", "") for shown in known}
 
     for key, table in results.tables.items():
+        if table.generated:
+            continue
         spec = {
             "columns": list(table.columns),
             "rows": [list(row) for row in table.rows],

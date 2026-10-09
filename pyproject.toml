@@ -42,10 +42,13 @@ dependencies = ["PyYAML>=6.0", "jsonschema>=4.0"]
 # one would draw other inputs under a commit that changed nothing, and a failure nobody
 # caused would turn up in somebody's pull request. tests/generated.py also replaces one
 # internal of it, and says why; raise the pin on purpose, with that file open.
+# statsmodels, like matplotlib, is the example's and not the toolkit's: the example fits the
+# model G15 reads, and `em.model` imports nothing until it is handed a fit.
 dev = [
   "pytest>=7.0",
   "ruff==0.16.1",
   "matplotlib>=3.7",
+  "statsmodels>=0.14",
   "hatchling",
   "hatch-fancy-pypi-readme>=24.1",
   "hypothesis==6.168.5",

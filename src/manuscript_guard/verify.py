@@ -46,6 +46,7 @@ wrote code to deceive their own toolkit. It does not reach the second.
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import stat
@@ -127,15 +128,28 @@ def runner_for(script: Path) -> list[str] | None:
     return template
 
 
+#: Significant digits two floats must share to be the same result. An iterative fit's last
+#: digits depend on the machine's linear algebra (CI on macOS found an adjusted ratio of
+#: 3.844764571463991 where Linux had written 3.844764571464015), so exact equality made
+#: every model a failed reproduction on another machine. Nine digits is far past anything a
+#: paper prints, and the display, compared exactly, is what it prints.
+RELATIVE_TOLERANCE = 1e-9
+
+
 def _same(before: object, after: object) -> bool:
-    """Equality that treats two NaNs as agreeing.
+    """Equality that treats two NaNs as agreeing, and two floats sharing nine significant
+    digits as the same value.
 
     `float('nan') == float('nan')` is False, so a results value that is legitimately NaN
     both on disk and on re-run was reported as a difference every single time — a permanent
     red that teaches an author to stop reading this command.
     """
     if isinstance(before, float) and isinstance(after, float):
-        return before == after or (before != before and after != after)
+        return (
+            before == after
+            or (before != before and after != after)
+            or math.isclose(before, after, rel_tol=RELATIVE_TOLERANCE)
+        )
     if isinstance(before, tuple) and isinstance(after, tuple) and len(before) == len(after):
         return all(_same(a, b) for a, b in zip(before, after, strict=True))
     return bool(before == after)

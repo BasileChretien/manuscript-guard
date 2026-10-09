@@ -580,3 +580,75 @@ def test_r_refuses_what_python_refuses(tmp_path: Path, call: str, refusal: str) 
     )
     out = _run_r(script, root)
     assert out.returncode != 0 and refusal in out.stderr, out.stderr
+
+
+MODEL_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+data <- read.csv("%(data)s", stringsAsFactors = FALSE)
+em$variable("g", "categorical", label = "group", levels = c("a", "b", "c"), reference = "a",
+            values = data$g)
+fit <- glm(y ~ x + g, data = data, family = binomial())
+em$model("adjusted", fit, name = "Adjusted model", description = "The primary analysis.")
+em$write()
+"""
+
+
+def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> None:
+    """One card in two languages: how each variable entered, the counts, the events by level
+    and the kind of model agree; only the formula's spelling is each language's own."""
+    pd = pytest.importorskip("pandas")
+    sm = pytest.importorskip("statsmodels.api")
+    smf = pytest.importorskip("statsmodels.formula.api")
+    import random
+
+    from manuscript_guard.contracts.models import engine_of
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    draw = random.Random(2)
+    rows = [{"y": int(draw.random() < 0.3), "x": i % 10, "g": "abc"[i % 3]} for i in range(300)]
+    data = pd.DataFrame(rows)
+    data["x"] = data["x"].astype(float)
+    data.loc[7, "x"] = float("nan")
+    csv = root / "data.csv"
+    data.to_csv(csv, index=False, na_rep="NA")
+
+    script = root / "analysis" / "model.R"
+    script.write_text(
+        MODEL_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(), "data": csv.as_posix()},
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    path = root / "results" / "model.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    validate(document, "results", path)
+    from_r = document["models"]["adjusted"]
+
+    em = Emitter(root / "analysis" / "model.R", root=root)
+    fit = smf.glm("y ~ x + C(g, Treatment('a'))", data, family=sm.families.Binomial()).fit()
+    em.model("adjusted", fit, name="Adjusted model", description="The primary analysis.")
+    from_python = em.document()["models"]["adjusted"]
+
+    def facts(card: dict) -> dict:
+        entered = sorted(
+            (r["variables"][0], r["as"], tuple(r.get("levels", ())), r.get("reference"))
+            for t in card["terms"] for r in t["entered"]
+        )  # fmt: skip
+        keep = ("parameters", "n_input", "n_used", "n_dropped", "converged", "events",
+                "events_by_level", "name", "description")  # fmt: skip
+        return {
+            "kind": engine_of(card["engine"]).kind,
+            "outcome": card["outcome"]["variables"],
+            "entered": entered,
+            **{key: card.get(key) for key in keep},
+        }
+
+    assert facts(from_r) == facts(from_python)
+    assert document["variables"]["g"]["observed"] == {
+        "distinct": 3, "missing": 0, "levels": ["a", "b", "c"],
+    }  # fmt: skip

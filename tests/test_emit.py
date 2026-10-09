@@ -850,6 +850,20 @@ def test_software_is_the_version_the_run_imported(scratch: Path) -> None:
     assert values["software.python"]["display"] == platform.python_version()
 
 
+def test_software_is_found_imported_without_a_top_level_txt(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Python 3.10 maps modules to distributions through `top_level.txt` alone, and a wheel
+    built without one maps to nothing: statsmodels 0.15 was refused there in a run that had
+    imported it. The distribution's list of files names its modules either way."""
+    import importlib.metadata
+
+    import hypothesis  # noqa: F401 - imported so that the run has used it
+
+    monkeypatch.setattr(importlib.metadata, "packages_distributions", lambda: {})
+    assert emitter(scratch).software("hypothesis") == importlib.metadata.version("hypothesis")
+
+
 def test_software_installed_and_never_imported_is_refused(scratch: Path) -> None:
     """The Methods would name software that computed nothing."""
     import sys

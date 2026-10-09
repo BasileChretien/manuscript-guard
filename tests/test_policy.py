@@ -239,7 +239,7 @@ def test_a_file_a_gate_cannot_read_is_named_and_not_called_a_bug(project: Path) 
 
 #: The gates that read the text of the manuscript, in the order they run. G11 reads its
 #: bytes for the digest and G13 reads it only once a revision round is open.
-READ_THE_MANUSCRIPT = "G2, G7, G4, G8r, G6, G9, G14 and BUILD"
+READ_THE_MANUSCRIPT = "G2, G7, G4, G8r, G6, G9, G14, G15 and BUILD"
 
 
 def in_a_code_page(path: Path) -> int:

@@ -16,7 +16,7 @@
   <text x="455.0" y="106" text-anchor="middle" font-size="12" fill="#9198a1">with {{bindings}}</text>
   <rect x="560" y="60" width="150" height="62" rx="8" fill="#121d2f" stroke="#4493f8" stroke-width="1.5"/>
   <text x="635.0" y="87" text-anchor="middle" font-size="14" font-weight="600" fill="#f0f6fc">check</text>
-  <text x="635.0" y="106" text-anchor="middle" font-size="12" fill="#9198a1">fourteen gates</text>
+  <text x="635.0" y="106" text-anchor="middle" font-size="12" fill="#9198a1">fifteen gates</text>
   <rect x="740" y="60" width="120" height="62" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
   <text x="800.0" y="87" text-anchor="middle" font-size="14" font-weight="600" fill="#f0f6fc">build</text>
   <text x="800.0" y="106" text-anchor="middle" font-size="12" fill="#9198a1">the .docx</text>

@@ -50,7 +50,12 @@ signal-detection practice. A signal was defined by the classical criterion: at l
 {{results.param.signal.min_cases}} cases together with a lower
 bound of the confidence interval of the reporting odds ratio above 1. No p-value threshold
 was used as a decision rule, which is not how a disproportionality analysis reaches its
-conclusion. The analysis was run in Python {{results.software.python}}.
+conclusion. The reporting odds ratio was also estimated adjusted for age group and sex, the
+two patient characteristics the database records for every report, by
+{{results.model.adjusted.kind}} of hepatic injury on exposure to example-drug, with both
+characteristics entered as categories. Table S2 describes the model as it was fitted. The
+analysis was run in Python {{results.software.python}} with statsmodels
+{{results.software.statsmodels}}.
 
 Reporting follows the checklist declared in `paper.yaml`.
 
@@ -82,7 +87,10 @@ Reporting of hepatic injury was disproportionate for example-drug, with a report
 ratio of {{results.ror.point}} (95% CI {{results.ror.ci_low}} to
 {{results.ror.ci_high}}; 90% CI {{results.ror.ci90_low}} to {{results.ror.ci90_high}}). The
 estimate is shown in Figure 1, and the counts it was computed from in Table 3, so a reader
-can reconstruct it.
+can reconstruct it. Adjusted for age group and sex, the reporting odds ratio was
+{{results.ror_adjusted.point}} (95% CI {{results.ror_adjusted.ci_low}} to
+{{results.ror_adjusted.ci_high}}), given to three decimal places because to two it is the
+crude estimate: the data generator draws both characteristics independently of the drug.
 
 {{table.two_by_two}}
 

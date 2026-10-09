@@ -240,6 +240,7 @@ All deterministic, all runnable in CI without Claude.
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
 | G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
 | G14 | Abbreviations, terms, spelling and notation | never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, when a word is in the spelling of the English the paper does not declare, when a P value, an interval or a percentage is written in two ways, and when a number runs into its unit |
+| G15 | Models and their variables | a model of an outcome its kind is not for, a variable entered as another kind than it was declared, a reference or a level other than the declared one, an undeclared variable, a fit that did not converge or has a level without events, rows dropped and never stated (warnings: few events for each coefficient, an ordinal variable entered as a trend, a model the Methods name and the analysis did not fit) |
 
 Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
 is in no stage's deferral list and so fails everywhere, because a checker that could not
@@ -1261,7 +1262,10 @@ Methods bind both. A version is the environment and not a result, so `verify`, r
 analysis on another machine, reports a version other than the one on disk as a warning
 (`rerun-other-software`) and holds every other value to agreeing. Which values are versions
 it reads from the re-run, so a fragment edited to call a changed result "software" is still
-a difference. G2 fails a declared value typed instead: a Methods-only convention whose
+a difference. A fitted model's last digits are the machine's too: an iterative fit
+on macOS and on Linux agree to about fifteen digits and not to the last bit. So verify holds
+a float to agreeing in nine significant digits, and its display, which is what the paper
+prints, to agreeing exactly. G2 fails a declared value typed instead: a Methods-only convention whose
 number equals a parameter, or a software version equal to a declared one. Only the
 Methods-only conventions count, because they are the thresholds an author chooses in advance;
 the `2` of a `2 x 2` table names a structure whatever a parameter equals.
@@ -1286,6 +1290,56 @@ one is a question for the author.
 A threshold is not a measurement, so a float parameter is written as typed (fifteen
 significant digits, in both languages) unless `digits` or `display` says otherwise: 0.025
 rounded to two places is 0.03, a different test.
+
+## A model is read from its fit, and each variable says what it is
+
+A parameter is one number. A model is a set of decisions: which outcome, which kind of
+model for it, which variables, each entered how, against which reference, on which rows. A
+Methods section states them in a sentence, and the sentence is written once and never read
+against the fit again.
+
+So the analysis records the model as the fit describes itself. `em.model("adjusted", fit,
+name=..., description=...)` reads a statsmodels fit made through the formula API, and
+`em$model()` an R `lm` or `glm`. Each records the engine (language, class, family, link), the
+formula, every term with how each variable entered it (as a number, or as categories with
+their levels and reference), the rows used and dropped, the events of a binary outcome by
+level of each categorical term, and convergence. A fit the emitter cannot read is refused,
+not described: a model typed by hand is the thing this replaces.
+
+The data cannot say what a variable is meant to be. 1 to 4 is a grade, a code or a count,
+and an identifier looks like an integer. `em.variable("age_group", "categorical", label=...,
+levels=..., reference=..., values=...)` says it, beside the code that derives the variable,
+and records what the data held: the levels, the distinct values, the missing ones.
+
+**Facts in the fragment, names derived once.** The emitters write facts and nothing else.
+What a model is called (`logistic regression`), the sentence that describes it and the
+table that prints it are derived when the results are read, from `data/models.yaml`, in
+Python, for both languages. Two emitters naming models would be two lists to keep equal.
+The model has two names and two descriptions. Its name (`Adjusted model`) and its
+description (what it is for) are the author's, since no fit knows them. Its kind and the
+generated sentence come from the fit, and that is what G15 checks the author's words
+against. `{{results.model.<key>.kind}}` binds the kind, and `{{table.model_<key>}}` places the
+table: the outcome and each variable with the kind it was declared, how it entered, and its
+levels with the reference marked. A table the toolkit made from facts is not held to the
+rule for typed cells, and is placed or reported like any emitted table.
+
+**What G15 settles.** The comparisons a reader would make if they had the card in front of
+them: the outcome is a kind the model is for (a binary outcome under a linear model fails);
+each variable entered as the kind it was declared (a nominal code entered as one slope
+fails, an ordinal one entered as a trend is a warning); the reference and levels the fit
+used are the declared ones; every variable a model reads was declared; the fit converged
+and no level of a categorical term is without events; rows dropped for missing values are
+stated in the manuscript. Few events for each coefficient is a warning, at ten, Peduzzi's
+rule, which the literature has argued over since. The kind of a model the analysis fitted, typed in
+the Methods, fails as a typed parameter does, since it is the copy left behind when the model
+changes; a kind it did not fit is a warning. Both are read in the prose G14 reads, in any
+case, across a hyphen or a line break, and in the plural.
+
+**What it leaves to people.** Whether the adjustment set is the right one, whether an
+assumption holds, whether the model answers the question. `manuscript-guard models` prints
+each card for that reading: the author's name and description beside the kind and the
+generated sentence, and the table of variables. Once a co-author page can carry items, the
+card is the item, and its digest covers both descriptions.
 
 ## A rewording is held to the words
 
@@ -6628,6 +6682,15 @@ Closed since, and why each mattered:
   record then says nothing either way). In R, a call that is the last expression of a block
   is its value and is not followed. A parameter declared in a helper module is read in the
   script the emitter was given, not the helper.
+- **G15 reads two kinds of fit.** The statsmodels formula API in Python and `lm`/`glm` in R.
+  Anything else (a Cox model, a mixed model, scikit-learn) cannot be recorded with
+  `em.model` yet. A fit `data/models.yaml` has no entry for is a warning, and its outcome is
+  not checked. Whether a variance was made robust, or an assumption holds, is not read.
+- **Events by level are counted for a term of one categorical variable.** An interaction's
+  cells are not, so a cell of an interaction with no events is not found.
+- **A model's terms are those of its formula.** A variable transformed in the formula
+  (`np.log(x)`) is recorded with its expression and checked as the variable it reads; one
+  derived before the formula is a variable of its own, and must be declared as one.
 - **Only an equal typed copy fails.** A threshold typed in the Methods fails as a typed
   parameter while it equals one; once the code has moved on it is a warning,
   `threshold-undeclared`, and only in an analysis that declares parameters. A confidence level

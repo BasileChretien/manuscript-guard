@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "a34868c776c5688dac6084a8d303ff1e04aa23b133bb3538d38cb9ef9de91eca",
-    "generated_at": "2026-10-09T00:55:07+00:00",
+    "generated_by_sha256": "afa321e802045d12094afc4134d0f2cb09058b39a011e0183af24f23a9c08b72",
+    "generated_at": "2026-10-09T02:38:57+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.2.435"
     },
     "vcs": {
-      "sha": "8fa76ac1b5cfe428306a5ff500702949d6ee89de",
+      "sha": "c52ad2139f49d5ca564a109f4233220c45eaf778",
       "dirty": true,
-      "branch": "claude/ecstatic-shannon-ja5omd"
+      "branch": "models-wip"
     },
     "inputs": [
       {
@@ -49,6 +49,31 @@
       "display": "3.13.16",
       "label": true,
       "role": "software"
+    },
+    "software.statsmodels": {
+      "value": "0.15.0",
+      "display": "0.15.0",
+      "label": true,
+      "role": "software"
+    },
+    "ror_adjusted.point": {
+      "value": 3.844764571464015,
+      "display": "3.845",
+      "digits": 3
+    },
+    "ror_adjusted.ci_low": {
+      "value": 2.8852237873895215,
+      "display": "2.885",
+      "digits": 3,
+      "bounds": "ror_adjusted.point",
+      "bound": "low"
+    },
+    "ror_adjusted.ci_high": {
+      "value": 5.123420469009598,
+      "display": "5.123",
+      "digits": 3,
+      "bounds": "ror_adjusted.point",
+      "bound": "high"
     },
     "cohort.n_reports": {
       "value": 4000,
@@ -449,5 +474,165 @@
         ]
       }
     ]
+  },
+  "variables": {
+    "hepatic": {
+      "kind": "binary",
+      "label": "hepatic injury",
+      "levels": [
+        "0",
+        "1"
+      ],
+      "observed": {
+        "distinct": 2,
+        "missing": 0,
+        "levels": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    "exposed": {
+      "kind": "binary",
+      "label": "example-drug",
+      "levels": [
+        "0",
+        "1"
+      ],
+      "observed": {
+        "distinct": 2,
+        "missing": 0,
+        "levels": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    "age_group": {
+      "kind": "categorical",
+      "label": "age group",
+      "levels": [
+        "18-44",
+        "45-64",
+        "65-74",
+        "75+"
+      ],
+      "reference": "18-44",
+      "observed": {
+        "distinct": 4,
+        "missing": 0,
+        "levels": [
+          "18-44",
+          "45-64",
+          "65-74",
+          "75+"
+        ]
+      }
+    },
+    "sex": {
+      "kind": "binary",
+      "label": "sex",
+      "levels": [
+        "F",
+        "M"
+      ],
+      "reference": "F",
+      "observed": {
+        "distinct": 2,
+        "missing": 0,
+        "levels": [
+          "F",
+          "M"
+        ]
+      }
+    }
+  },
+  "models": {
+    "adjusted": {
+      "engine": {
+        "language": "Python",
+        "package": "statsmodels",
+        "class": "GLM",
+        "family": "Binomial",
+        "link": "Logit"
+      },
+      "formula": "hepatic ~ exposed + C(age_group, Treatment('18-44')) + C(sex, Treatment('F'))",
+      "outcome": {
+        "expression": "hepatic",
+        "variables": [
+          "hepatic"
+        ]
+      },
+      "terms": [
+        {
+          "term": "C(age_group, Treatment('18-44'))",
+          "entered": [
+            {
+              "expression": "C(age_group, Treatment('18-44'))",
+              "variables": [
+                "age_group"
+              ],
+              "as": "categorical",
+              "levels": [
+                "18-44",
+                "45-64",
+                "65-74",
+                "75+"
+              ],
+              "reference": "18-44"
+            }
+          ]
+        },
+        {
+          "term": "C(sex, Treatment('F'))",
+          "entered": [
+            {
+              "expression": "C(sex, Treatment('F'))",
+              "variables": [
+                "sex"
+              ],
+              "as": "categorical",
+              "levels": [
+                "F",
+                "M"
+              ],
+              "reference": "F"
+            }
+          ]
+        },
+        {
+          "term": "exposed",
+          "entered": [
+            {
+              "expression": "exposed",
+              "variables": [
+                "exposed"
+              ],
+              "as": "numerical"
+            }
+          ]
+        }
+      ],
+      "parameters": 5,
+      "n_input": 4000,
+      "n_used": 4000,
+      "n_dropped": 0,
+      "converged": true,
+      "events": 271,
+      "events_by_level": {
+        "age_group": {
+          "18-44": 56,
+          "45-64": 81,
+          "65-74": 77,
+          "75+": 57
+        },
+        "sex": {
+          "F": 134,
+          "M": 137
+        }
+      },
+      "name": "Adjusted model",
+      "description": "The reporting odds ratio of the primary analysis, adjusted for the two patient characteristics the database records for every report."
+    }
   }
 }

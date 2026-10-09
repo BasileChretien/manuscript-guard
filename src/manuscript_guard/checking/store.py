@@ -53,7 +53,7 @@ class Imported:
     by: str
     recorded: tuple[Decision, ...]
     stale: tuple[tuple[str, str], ...]       # (what to call the item, why)
-    unknown: tuple[str, ...]                 # ids this project does not have
+    unknown: tuple[str, ...]                 # what to call each item this project does not have
 
 
 def decisions_path(project_root: Path) -> Path:
@@ -112,7 +112,10 @@ def import_answers(project_root: Path, answers_file: Path, items: Items) -> Impo
         identifier = str(answer.get("id") or "")
         item = known.get(identifier)
         if item is None:
-            unknown.append(identifier)
+            # By the title the page sent with the answer: a cited sentence edited since the page
+            # was built is a new item with a new id, and its old answer was named by twelve hex
+            # characters nobody can look up.
+            unknown.append(str(answer.get("title") or identifier))
             continue
         # The title, not the twelve hex characters of the id: the person reading this refusal has
         # to find the thing and ask somebody about it again.

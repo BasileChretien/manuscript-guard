@@ -230,8 +230,46 @@ def test_a_script_ending_inside_the_data_cannot_end_the_page(tmp_path: Path) -> 
     )
     out, _ = build_bundle(items, person="A Person", title="A paper", out=tmp_path / "check.html")
     page = out.read_text(encoding="utf-8")
-    assert "<\\/script>" in page
+    assert "\\u003c/script>" in page
     assert page.count("</script>") == 1, "only the page's own script element ends"
+
+
+def test_a_comment_opened_inside_the_data_cannot_take_the_page_with_it(tmp_path: Path) -> None:
+    """`<!--` and then `<script` in an item put the browser's parser where the page's own
+    `</script>` closes nothing, with only `</` escaped. No `<` of the data reaches the page."""
+    import json as json_module
+
+    text = "A sentence with <!-- and <script> in it."
+    items = load_items(
+        tmp_path,
+        write_items(
+            tmp_path,
+            items=[{"id": "x", "group": "claim", "title": "t", "sentences": [{"text": text}]}],
+        ),
+    )
+    out, _ = build_bundle(items, person="A Person", title="A paper", out=tmp_path / "check.html")
+    page = out.read_text(encoding="utf-8")
+    script = page[page.rindex("<script>") + len("<script>") : page.rindex("</script>")]
+    data = script[script.index("const BUNDLE = ") + len("const BUNDLE = ") : script.index(";\n")]
+    assert "<" not in data
+    assert json_module.loads(data)["items"][0]["sentences"][0]["text"] == text
+
+
+def test_a_page_refused_for_its_size_is_not_left_on_disk(tmp_path: Path) -> None:
+    """It was written and then refused, so the file a person was told not to send was there to
+    be sent."""
+    from manuscript_guard.checking import bundle as module
+
+    items = load_items(tmp_path, write_items(tmp_path))
+    out = tmp_path / "check.html"
+    original = module.MAX_BUNDLE_BYTES
+    try:
+        module.MAX_BUNDLE_BYTES = 1024
+        with pytest.raises(BundleError, match="would come to"):
+            build_bundle(items, person="A Person", title="A paper", out=out)
+    finally:
+        module.MAX_BUNDLE_BYTES = original
+    assert not out.exists()
 
 
 # ---------------------------------------------------------------- what comes back
@@ -1128,3 +1166,176 @@ def test_a_paragraph_that_is_only_a_citation_is_not_asked_about(project: Path) -
     for item in only(produced(project), "claim"):
         assert item["title"].strip() != "[@fictionalClassSignal2019]"
         assert any(character.isalpha() for character in item["title"].replace("@", " "))
+
+
+# ------------------------------------------------------------------ the second round's fixes
+
+
+def test_a_reference_is_read_the_same_whether_or_not_pandoc_is_there(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two readers disagreed on 58 of 58 references of a real bibliography, so a page built where
+    pandoc was and imported where it was not refused every reference answer with "the item
+    changed after it was checked". One reader now, whatever the machine has."""
+    from manuscript_guard.cli import _checking_items, load_project
+
+    def references() -> list[tuple[str, str]]:
+        items = _checking_items(load_project(project)[0], None).items
+        return [(item["id"], item["digest"]) for item in items if item["group"] == "reference"]
+
+    with_pandoc = references()
+    monkeypatch.setenv("PATH", "")
+    assert references() == with_pandoc and with_pandoc
+
+
+def test_a_reference_shows_its_particle_and_its_capitals_as_written(project: Path) -> None:
+    """pandoc dropped "von" from "von Elm, Erik" and lower-cased an unbraced title, proper nouns
+    and all, on a page whose question is whether the reference is right."""
+    from manuscript_guard.checking.produce import _bib_records
+    from manuscript_guard.cli import load_project
+
+    (project / "literature" / "references.bib").write_text(
+        "@article{elm2007,\n"
+        "  author = {von Elm, Erik and van der Heijden, Anna},\n"
+        "  title = {Aspirin use in Japan and the United States: A study of Parkinson's disease},\n"
+        "  journal = {A Journal},\n"
+        "  year = {2007},\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    record = _bib_records(load_project(project)[0])["elm2007"]
+    assert record["author"] == "von Elm, Erik and van der Heijden, Anna"
+    assert "Japan and the United States" in record["title"] and "Parkinson's" in record["title"]
+
+
+@pytest.mark.parametrize(
+    ("sentence", "words"),
+    [
+        ("Reports were sent to the U.S. Food and Drug Administration [@key].", "Reports were sent"),
+        ("The codes are listed in Suppl. Table 3 of the protocol [@key].", "The codes are listed"),
+        ("Supp. Fig. 2 shows the same trend in older adults [@key].", "Supp. Fig. 2 shows"),
+        ("The drug was given b.i.d. for a week in the trial [@key].", "The drug was given"),
+        ("Data came from the U.K. registry run by one centre [@key].", "Data came from"),
+    ],
+)
+def test_a_word_with_a_stop_inside_it_never_ends_a_sentence(sentence: str, words: str) -> None:
+    """"the U.S. Food and Drug Administration [@key]" was cut after "U.S.", and the item's whole
+    text was "Food and Drug Administration [@key]." — the subject of the claim on no item."""
+    from manuscript_guard.checking.produce import _split
+
+    pieces = _split(f"An opening sentence here. {sentence} A closing sentence there.")
+    assert pieces == ["An opening sentence here.", sentence, "A closing sentence there."]
+    assert any(piece.startswith(words) and "[@key]" in piece for piece in pieces)
+
+
+def test_an_items_file_that_is_a_list_is_refused_in_words(project: Path) -> None:
+    """A list of items at the top level, the likeliest file to write by hand, raised an
+    AttributeError."""
+    from manuscript_guard.cli import _checking_items, load_project
+
+    (project / "checks").mkdir(exist_ok=True)
+    (project / "checks" / "items.json").write_text(
+        json.dumps([{"id": "x", "group": "literature", "title": "t"}]), encoding="utf-8"
+    )
+    with pytest.raises(ItemsError, match="the top level is a list"):
+        _checking_items(load_project(project)[0], None)
+    with pytest.raises(ItemsError, match="the top level is a list"):
+        load_items(project)
+
+
+def test_the_producer_module_is_not_shadowed_by_a_function() -> None:
+    """Exported from the package as `produce`, the function made `checking.produce` a function
+    and not the module it lives in."""
+    import types
+
+    import manuscript_guard.checking as checking
+
+    assert isinstance(checking.produce, types.ModuleType)
+
+
+def _answered(project: Path, items, by: str, answers: list[dict]) -> None:
+    path = project / f"answers-{by.split()[0].lower()}.json"
+    path.write_text(
+        json.dumps(
+            {"schema": "manuscript-guard/checking-answers/1", "by": by, "answers": answers}
+        ),
+        encoding="utf-8",
+    )
+    import_answers(project, path, items)
+
+
+def test_an_answer_whose_sentence_changed_is_named_by_person_and_sentence(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A cited sentence edited after it was answered is a new item with a new id. Its old answer
+    was named by twelve hex characters, at import and in `status`."""
+    from manuscript_guard.cli import _checking_items, load_project, main
+
+    items = _checking_items(load_project(project)[0], None)
+    claim = next(item for item in items.items if item["group"] == "claim")
+    _answered(project, items, "Ada Example", [
+        {"id": claim["id"], "digest": claim["digest"], "title": claim["title"], "status": "ok"}
+    ])
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    opening = " ".join(claim["sentences"][0]["text"].split()[:4])
+    assert text.count(opening) == 1, opening
+    main_md.write_text(text.replace(opening, opening + " also", 1), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["checker", "status", str(project)]) == 0
+    said = capsys.readouterr().out
+    assert f"Ada Example on {claim['title']}" in said, said
+
+    answers = project / "late.json"
+    answers.write_text(json.dumps({
+        "schema": "manuscript-guard/checking-answers/1", "by": "Bea Example",
+        "answers": [{"id": claim["id"], "digest": claim["digest"], "title": claim["title"],
+                     "status": "ok"}],
+    }), encoding="utf-8")
+    capsys.readouterr()
+    main(["checker", "import", str(project), "--answers", str(answers)])
+    said = capsys.readouterr().out
+    assert f"not recorded: {claim['title']}" in said and claim["id"] not in said, said
+
+
+def test_a_disagreement_is_named_by_the_item_and_build_counts_each_item_once(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A disagreement was named by its id; and with every item answered, `build` printed "10
+    item(s) to check, 10 already checked", counting the same items twice."""
+    from manuscript_guard.cli import _checking_items, load_project, main
+
+    items = _checking_items(load_project(project)[0], None)
+    first = items.items[0]
+    everything = [
+        {"id": item["id"], "digest": item["digest"], "status": "ok"} for item in items.items
+    ]
+    _answered(project, items, "Ada Example", everything)
+    _answered(project, items, "Bea Example", [
+        {"id": first["id"], "digest": first["digest"], "status": "wrong", "note": "not in it"}
+    ])
+    capsys.readouterr()
+    assert main(["checker", "status", str(project)]) == 0
+    said = capsys.readouterr().out
+    assert f"disagreement on {first['title']}:" in said and first["id"] not in said, said
+
+    assert main(["checker", "build", str(project), "--for", "Cy Example"]) == 0
+    said = capsys.readouterr().out
+    total = len(items.outstanding)
+    assert f"{total} item(s) for Cy Example to check, {total} of them already answered" in said
+
+
+def test_the_page_asks_for_the_reason_keeps_no_focus_and_leaves_modified_keys_alone() -> None:
+    """Three ways the page recorded what the co-author did not mean: a note typed after "does not
+    match" went into the next item's box; Space or Enter after a click pressed the button again,
+    on the next item; and Ctrl+U, the browser's view of the source, recorded "not sure". The page
+    has no runner of its own here, so what is held is that each guard is in it."""
+    from manuscript_guard.checking.bundle import TEMPLATE
+
+    page = TEMPLATE.read_text(encoding="utf-8")
+    assert 'if (status !== "ok" && !note)' in page and '$("note").focus()' in page
+    assert "e.currentTarget.blur()" in page
+    for button in ("yes", "no", "hm", "prev", "next"):
+        assert f'$("{button}").onclick = pressed(' in page, button
+    assert "if (e.ctrlKey || e.metaKey || e.altKey) return;" in page
+    assert "title: it.title" in page

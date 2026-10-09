@@ -96,6 +96,7 @@
   <button class="no" id="no">Does not match (N)</button>
   <button class="hm" id="hm">Not sure (U)</button>
   <input id="note" placeholder="A note, if anything needs saying">
+  <span id="why" class="warn" hidden>Say what is wrong, or why you are not sure, then press it again.</span>
   <button id="prev">◀ back</button>
   <button id="next">next ▶</button>
   <button id="save"><b>Save my answers</b></button>
@@ -241,18 +242,34 @@ function render() {
     (it.evidence || [{ kind: "none" }]).map(evidence).join("") +
     (a.status ? `<p class="note">You answered: <b>${esc(a.status)}</b>${a.note ? " — " + esc(a.note) : ""}</p>` : "");
   $("note").value = a.note || "";
+  $("why").hidden = true;
 }
 
+// "Does not match" and "not sure" wait for the reason, in this item's box, before moving on. A
+// note typed after the answer went into the next item's box, and was recorded against that one:
+// someone who pressed "does not match" and then explained wrote their explanation against an
+// item they had not answered, in a record nobody rewrites. The title goes with the answer, so an
+// answer whose sentence has changed since can still be named when it comes back.
 function answer(status) {
   const it = S.list[S.pos];
   if (!it) return;
-  S.answers[it.id] = {
-    id: it.id, digest: it.digest, status,
-    note: $("note").value.trim(), at: stamp(),
-  };
+  const note = $("note").value.trim();
+  if (status !== "ok" && !note) {
+    $("why").hidden = false;
+    $("note").focus();
+    return;
+  }
+  $("why").hidden = true;
+  S.answers[it.id] = { id: it.id, digest: it.digest, title: it.title, status, note, at: stamp() };
   keep();
   if (S.pos < S.list.length - 1) S.pos += 1;
   render();
+}
+
+// A clicked button keeps the focus, and Space or Enter then presses it again, on the next item:
+// Space is how many people scroll. So a button gives the focus up once it has been pressed.
+function pressed(act) {
+  return (e) => { e.currentTarget.blur(); act(); };
 }
 
 function answersFile() {
@@ -279,11 +296,11 @@ function save() {
   $("sent").showModal();
 }
 
-$("yes").onclick = () => answer("ok");
-$("no").onclick = () => answer("wrong");
-$("hm").onclick = () => answer("unsure");
-$("prev").onclick = () => { S.pos = Math.max(0, S.pos - 1); render(); };
-$("next").onclick = () => { S.pos = Math.min(S.list.length - 1, S.pos + 1); render(); };
+$("yes").onclick = pressed(() => answer("ok"));
+$("no").onclick = pressed(() => answer("wrong"));
+$("hm").onclick = pressed(() => answer("unsure"));
+$("prev").onclick = pressed(() => { S.pos = Math.max(0, S.pos - 1); render(); });
+$("next").onclick = pressed(() => { S.pos = Math.min(S.list.length - 1, S.pos + 1); render(); });
 $("save").onclick = save;
 $("copy").onclick = () => {
   $("blob").value = answersFile();
@@ -293,7 +310,10 @@ $("copy").onclick = () => {
   try { navigator.clipboard.writeText(answersFile()); } catch (e) {}
 };
 $("shut").onclick = () => $("sent").close();
+// A key pressed with Ctrl, Alt or the command key is the browser's, not an answer: Ctrl+U shows
+// the page's source, and recorded "not sure".
 document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
   const k = e.key.toLowerCase();
   if (k === "y") answer("ok");

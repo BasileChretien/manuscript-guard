@@ -141,6 +141,13 @@ def items_from(document: dict, source: Path) -> Items:
     """
     from manuscript_guard.contracts._schema import validate
 
+    if not isinstance(document, dict):
+        # A file whose top level is a list of items, the likeliest way to write one by hand,
+        # raised an AttributeError on `.get`.
+        raise ItemsError(
+            f"{source}: the top level is a {type(document).__name__}, and an items file is a "
+            f"mapping with `schema`, `groups` and `items`"
+        )
     if document.get("schema") != SCHEMA:
         raise ItemsError(
             f"{source}: schema is {document.get('schema')!r}, and this reads {SCHEMA!r}"

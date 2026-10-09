@@ -1864,6 +1864,8 @@ def _checking_items(project, named: Path | None):
             contributed = read_structured(source) or {}
         except Exception as exc:  # noqa: BLE001 — any unreadable file is one message
             raise ItemsError(f"{source} cannot be read: {exc}") from exc
+        if not isinstance(contributed, dict):
+            items_from(contributed, source)
         if contributed.get("schema") != SCHEMA:
             # Checked here because the merged document carries the toolkit's own schema key, so
             # a wrong one in the project's file would otherwise pass unremarked.
@@ -1939,17 +1941,24 @@ def cmd_checker(args: argparse.Namespace) -> int:
         except BundleError as exc:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2
-        asked = len(items.outstanding)
+        asked = items.outstanding
         # From the record as well as from the items file. "0 already checked by someone" was
         # printed after a whole round had come back and been imported, because this counted only
-        # the `already` field a project may write.
+        # the `already` field a project may write. Then "10 item(s) to check, 10 already checked"
+        # counted the same items twice: what the page asks, and who has answered those. So the
+        # second number is a part of the first, and the items the page shows as done already
+        # are counted apart.
         standing = status(project.root, items)
-        checked = len(items.items) - asked + len(standing.answered)
+        answered = sum(1 for item in asked if standing.answered.get(str(item["id"])))
         print(f"wrote {written} ({size // 1024} kB)")
         print(
-            f"{asked} item(s) to check, {checked} already checked by someone, "
-            f"for {args.name}."
+            f"{len(asked)} item(s) for {args.name} to check, {answered} of them already "
+            f"answered by someone else."
         )
+        if standing.already:
+            print(
+                f"{standing.already} more on the page are marked as checked before this round."
+            )
         print(
             "Send that one file. It opens by double-clicking, needs nothing installed and no "
             "network, and its own button writes the answers file to send back."
@@ -1972,10 +1981,13 @@ def cmd_checker(args: argparse.Namespace) -> int:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2
         print(f"{len(brought.recorded)} decision(s) recorded for {brought.by}")
-        for identifier, why in brought.stale:
-            print(f"  not recorded: {identifier} — {why}")
-        for identifier in brought.unknown:
-            print(f"  not recorded: {identifier} — this project has no such item")
+        for called, why in brought.stale:
+            print(f"  not recorded: {called} — {why}")
+        for called in brought.unknown:
+            print(
+                f"  not recorded: {called} — this project has no such item now; a cited "
+                f"sentence edited since the page was built is a new item, to send again"
+            )
         return 1 if (brought.stale or brought.unknown) and not brought.recorded else 0
 
     standing = status(project.root, items)
@@ -1992,8 +2004,12 @@ def cmd_checker(args: argparse.Namespace) -> int:
     if standing.orphaned:
         print(
             f"{len(standing.orphaned)} answer(s) are about items this project no longer has; "
-            f"they stay in the record and count for nothing"
+            f"they stay in the record and count for nothing:"
         )
+        # By the person and the sentence: a cited sentence edited since it was answered is a new
+        # item, and the old answer, named by its id, could not be traced to anyone or anything.
+        for decision in standing.orphaned:
+            print(f"  {decision.by} on {decision.title or decision.id}")
     for person in standing.people:
         counts = standing.by_person[person]
         said = ", ".join(f"{n} {name}" for name, n in sorted(counts.items()))
@@ -2002,7 +2018,7 @@ def cmd_checker(args: argparse.Namespace) -> int:
         print(f"  [{decision.status}] {decision.by} on {decision.title}: {decision.note or '—'}")
     for identifier, decisions in standing.disagreements:
         who = "; ".join(f"{d.by} says {d.status}" for d in decisions)
-        print(f"  disagreement on {identifier}: {who}")
+        print(f"  disagreement on {decisions[0].title or identifier}: {who}")
     return 0
 
 

@@ -4244,32 +4244,36 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   a round they are part of, or that part of their reading is done twice. Nothing is lost that was
   saved and sent.
 - **A sentence is split by punctuation, and the list of abbreviations is finite.** The split is
-  a stop, a space, then a capital letter or an opening quote or bracket — except after a word in
-  `NOT_AN_END` ("et al.", "e.g.", "Fig.", "No.", "St." and about thirty more) or after a single
-  initial, and except where the piece that results carries no word of its own, which is joined
-  back to the piece before it. Both rules exist because of one shape: a numbered-citation style
-  writes "described by Okada et al. [@key]." and the first version cut it there, so the item a
-  co-author was asked about read `[@key].` and the half carrying the claim was on no item at all.
-  An abbreviation not in that list still splits a sentence, and a reader is then shown a half of
-  one; what cannot happen any more is an item with no claim in it. The earlier text here said
-  "the rest of the sentence is in the file either way", which was false: a claim item exists only
-  where a citekey is.
+  a stop, a space, then a capital letter or an opening quote or bracket — except after a word with
+  a stop inside it ("U.S.", "e.g.", "Ph.D.", "b.i.d."), after a word in `NOT_AN_END` ("et al.",
+  "Fig.", "Suppl.", "No.", "St." and about thirty more) or after a single initial, and except where
+  the piece that results carries no word of its own, which is joined back to the piece before it.
+  The rules exist because of two shapes: "described by Okada et al. [@key]." cut at "al." left an
+  item reading `[@key].`, and "sent to the U.S. Food and Drug Administration [@key]." cut at
+  "U.S." left one reading "Food and Drug Administration [@key]." — in both, the subject of the
+  claim on no item. A word with a stop inside it is a rule rather than a list for that reason. A
+  word that ends in a stop, has none inside it and is not in the list still splits a sentence,
+  and a reader is then shown a half of one; what holds is that no item is without a word of its
+  own. A citation written after a sentence's stop and before another sentence ("…was small.
+  [@key] A later study…") is read with the sentence after it; at the end of a paragraph it is
+  joined to the one before. The earlier text here said "the rest of the sentence is in the file
+  either way", and then that an item with no claim in it could not happen any more; both were
+  false.
 - **A claim is one sentence citing something.** An argument made across two sentences is asked as
   two questions, and a sentence citing three papers is one question about all three, which a
   person can only answer as a whole or decline. A paper whose claims need finer grain writes its
   own items.
-- **Two readers of the bibliography, and the fallback handles fields rather than the format.**
-  Where pandoc is on the path — it is already required for `build` and `submit` — the file is
-  parsed with `pandoc -f biblatex -t csljson`, which decodes a TeX accent, expands a `@string`
-  macro and reads a biblatex extended name into its parts. Where it is not, a small reader reads
-  the fields as they are written: `M{\"u}ller` stays as it is typed, a `@string` macro is shown
-  unexpanded, and a `#` concatenation is shown with its hashes. It no longer makes an entry of an
-  `@` inside a value or of an `@comment`, both of which it did.
-  **The two do not agree in every detail**, and pandoc's reading is the one to prefer: it writes
-  a page range with a plain hyphen where the small reader keeps the file's en dash, and a title
-  in the sentence case biblatex stores rather than the title case a file often types. Both
-  identify the same work, which is what a co-author is asked about, and the printed bibliography
-  is pandoc's reading of the same file under a style.
+- **The bibliography is read as fields, not as the format.** One small reader, everywhere: the
+  fields as the file writes them, so `M{\"u}ller` reaches a co-author as typed, a `@string` macro
+  unexpanded, a `#` concatenation with its hashes, and a biblatex extended name as its raw parts.
+  It makes no entry of an `@` inside a value or of an `@comment`. pandoc read the format properly
+  and was used where it was on the path, until it was measured: the two readers disagreed on 58
+  of 58 references of a real bibliography, so a page built where pandoc was and imported where
+  it was not refused every reference answer as about changed text, when nothing had changed; and
+  pandoc dropped a particle ("von Elm, Erik" as "Elm, Erik") and lower-cased an unbraced title,
+  proper nouns included. A digest that depends on the machine is not a digest of the paper, so
+  pandoc is not used here. The built document's bibliography is still pandoc's reading of the
+  same file under a style, so the page and the paper can print a reference differently.
 - **No test runs the page's JavaScript.** The template is checked by reading it and by opening a
   built page in a browser by hand; its storage, its download, its dialog, its clipboard and its
   keyboard handling are held by nothing. A defect there reaches a co-author and not the suite.
@@ -4282,6 +4286,29 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
 - **The whole file must fit in mail.** A page is refused over 24 MB, and an image over 4 MB, since
   a mail server will usually carry no more. A project with many page images sends a round in parts
   rather than raising the limit.
+- **Every page carries every author's details.** The author items hold each author's e-mail,
+  ORCID, affiliations and competing interests, and every page carries every item, so a page sent
+  to one co-author holds the others' details too. Within an author group that is what the title
+  page will print; a page sent to anyone outside it should be built from an items file without
+  the author group.
+- **Some of what a co-author sees is outside the digest.** The digest covers the words: an item's
+  title, facts, sentences and the text of its evidence. A table's outlined cell and an image's
+  bytes are not in it, so an answer survives the outline moving to another cell or the image
+  being replaced. A bound value is shown by its name (`[reported_incidence]`), so a changed
+  `results.` or `lit.` value leaves the sentence, and an answer about it, as they were.
+- **Only comments are left out of the sentences.** A sentence a draft has commented out is not
+  offered; one in a fenced code block or in the front matter is, if it cites something.
+- **The highlighter can mark inside a character reference.** A marked word is found in the
+  escaped text, so a short one that also spells part of an escape (`amp`, `lt`) is marked inside
+  `&amp;` or `&lt;`, and the page shows the escape's characters.
+- **The splitter's time grows with the square of a paragraph's length.** Each stop is judged on
+  the text before it, taken from the paragraph's start. A paragraph of ordinary length is split
+  at once; one of hundreds of sentences is not.
+- **`checks/decisions.csv` is for this toolkit to write and a person to read.** Opened in a
+  spreadsheet and saved again, it can come back in another encoding, which ends the next
+  `status` in a `UnicodeDecodeError`, or as UTF-8 with a byte order mark, which takes the name of
+  its first column (`when`) with it. A note opening with `=` is read by a spreadsheet as a formula.
+  Read it in a spreadsheet; write it only with `checker import`.
 
 - **G1 fails only on the script that wrote a results file and on the inputs it declared.**
   The digests it compares are of the emitting script and of each path given to the emitter

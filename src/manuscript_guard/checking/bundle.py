@@ -127,28 +127,35 @@ def build_bundle(
     )
 
     html = TEMPLATE.read_text(encoding="utf-8")
-    # `</script>` inside the data would end the page's own script element; the JSON is escaped
-    # the way every page that inlines JSON has to escape it.
+    # Every `<` in the data is written `\u003c`, which JSON and JavaScript both read back as `<`.
+    # Escaping only `</` kept `</script>` from ending the page's own script, but an item holding
+    # `<!--` and then `<script` put the browser's parser in a state where the page's real
+    # `</script>` closed nothing, and the page showed nothing. The line and paragraph separators
+    # are escaped because a JavaScript older than 2019 reads either as the end of a line, inside
+    # a string. Written as escapes here too: the characters themselves are invisible in source.
     encoded = (
         json.dumps(payload, ensure_ascii=False)
-        .replace("</", "<\\/")
-        .replace(" ", "\\u2028")
-        .replace(" ", "\\u2029")
+        .replace("<", "\\u003c")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
     )
     page = html.replace("__BUNDLE__", encoded).replace("__TITLE__", _escape(title))
     if "__BUNDLE__" in page or "__TITLE__" in page:
         raise BundleError("the page template no longer carries both of its placeholders")
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(page, encoding="utf-8", newline="\n")
-    size = out.stat().st_size
+    # Measured before it is written: a page refused for its size used to be left on disk, where
+    # it could be sent all the same.
+    data = page.encode("utf-8")
+    size = len(data)
     if size > MAX_BUNDLE_BYTES:
         raise BundleError(
-            f"{out.name} came to {size // 1024 // 1024} MB, over the "
+            f"{out.name} would come to {size // 1024 // 1024} MB, over the "
             f"{MAX_BUNDLE_BYTES // 1024 // 1024} MB a mail server will usually carry. It holds "
             f"{carried} distinct image(s): render them smaller, or split the items between "
             f"files."
         )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(data)
     return out, size
 
 

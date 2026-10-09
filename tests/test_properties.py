@@ -383,40 +383,73 @@ def _found_in_order(text: str) -> None:
 # ------------------------------------------------------- the sentences a co-author is shown
 
 
-@holds(200, texts())
-def test_every_citation_lies_in_one_sentence_and_no_sentence_is_only_a_citation(
-    manuscript: str,
+#: Every way a stop can stand before a citation without ending the sentence, and a narrative
+#: citation ending one. Each example plants one of each, in an order drawn each time: a kind
+#: drawn first, one among several, is under some seeds never drawn.
+_CITED = (
+    "{words} was described by Okada et al. [@{key}].",
+    "{words} went to the U.S. Food and Drug Administration [@{key}].",
+    "{words} is listed in Suppl. Table 3 of the protocol [@{key}].",
+    "{words} such as e.g. St. John's wort [@{key}].",
+    "{words} held in one Ph.D. Thesis on the matter [@{key}].",
+    "{words} reached the same conclusion as @{key}.",
+)
+#: A citation after the paragraph's last stop, which the splitter cuts off and has to join back.
+#: Only at the end of a paragraph: written before another sentence, it is read with that one,
+#: which DESIGN.md's Known gaps records.
+_CITED_LAST = "{words}. [@{key}]"
+
+
+@st.composite
+def _planted_citations(draw: st.DrawFn) -> tuple[str, list[tuple[str, str, str]]]:
+    """A paragraph of every kind of cited clause among drawn words, each followed by a sentence
+    of its own, and a citation after the last stop; for each: its key, the words of its clause,
+    and the sentence after it, if there is one."""
+    planted: list[tuple[str, str, str]] = []
+    parts: list[str] = []
+    for n, form in enumerate(draw(st.permutations(_CITED))):
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=5)))
+        words = words[0].upper() + words[1:]
+        after = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=5)))
+        after = after[0].upper() + after[1:] + "."
+        key = f"planted{n}"
+        clause = form.format(words=words, key=key)
+        parts += [clause, after]
+        planted.append((key, clause.split("[@")[0].split(" as @")[0].rstrip(" ."), after))
+    words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=5)))
+    words = words[0].upper() + words[1:]
+    parts.append(_CITED_LAST.format(words=words, key="plantedlast"))
+    planted.append(("plantedlast", words, ""))
+    gaps = [draw(st.sampled_from((" ", " ", "\n"))) for _ in parts]
+    return "".join(gap + part for gap, part in zip(gaps, parts, strict=True)).strip(), planted
+
+
+@holds(200, texts(), _planted_citations())
+def test_every_citation_lies_in_the_sentence_of_its_own_clause(
+    manuscript: str, cited: tuple[str, list[tuple[str, str, str]]]
 ) -> None:
     """The claim items a co-author checks are the sentences of the manuscript that cite
-    something, so two things have to hold of the splitter.
+    something, so the splitter owes them two things.
 
-    **Every citation the toolkit finds is in a sentence**, or the claim it belongs to is on no
-    item and nobody is asked about it.
+    **Every citation is in the sentence that carries its own clause, and in no other.** A split
+    at a stop that ends nothing ("et al.", "U.S.", "Suppl.") leaves the words of the claim on one
+    piece and the citation on another, and the co-author is asked whether a source supports
+    "Food and Drug Administration". A splitter that never splits holds the next sentence too.
 
     **Within a paragraph, only the first piece may carry no word of its own.** A piece with none
-    is joined to the piece before it, so somebody is never asked whether a source supports a
-    claim they have not been shown. One split broke both at once: "described by Okada et al.
-    [@key]." was cut at the stop in "al.", which left a second piece reading "[@key]." and put
-    the half carrying the claim on no item at all.
-
-    The first piece is the exception because a paragraph that is nothing but a citation has
-    nothing before it to join to. The producer drops that one rather than ask about it, which is
-    held in `tests/test_checking.py`, not here.
+    is joined to the piece before it, so nobody is asked about a citation without its claim. The
+    first piece is the exception because a paragraph that is nothing but a citation has nothing
+    before it to join to; the producer drops that one, which `tests/test_checking.py` holds.
     """
-    from manuscript_guard.zotero.citations import find_citations
+    paragraph, planted = cited
+    read = READINGS["checker sentences"]()(manuscript + "\n\n" + paragraph + "\n")
 
-    planted = (
-        manuscript
-        + "\n\nThe risk was described by Okada et al. [@planted2020]. A later study agreed.\n"
-        + "\nSee Fig. 2 and e.g. St. John's wort [@planted2021]; the effect was small.\n"
-        + "\nA cohort reached the same conclusion as @planted2022.\n"
-    )
-    read = READINGS["checker sentences"]()(planted)
-
-    for use in find_citations(planted, Path("main.md")):
-        if use.citekey.startswith("planted"):
-            holding = [sentence for _line, sentence in read if use.citekey in sentence]
-            assert holding, f"{use.citekey} is in no sentence: {read}"
+    for key, clause, after in planted:
+        holding = [sentence for _line, sentence in read if f"@{key}" in sentence]
+        assert len(holding) == 1, f"@{key} is in {len(holding)} sentences: {read}"
+        assert " ".join(clause.split()) in holding[0], f"@{key} is apart from its clause: {read}"
+        if after:
+            assert " ".join(after.split()) not in holding[0], f"@{key} runs on: {holding[0]!r}"
 
     def wordless(sentence: str) -> bool:
         return not any(
@@ -1280,9 +1313,74 @@ def _a_listing_in_a_comment_is_put_back(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reworded_module, "html_comments", lambda text, fences=None: [])
 
 
+def _every_stop_ends_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import produce
+
+    patch.setattr(produce, "_ends_a_sentence", lambda before: True)
+
+
+def _no_stop_ends_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import produce
+
+    patch.setattr(produce, "_ends_a_sentence", lambda before: False)
+
+
+def _a_stop_inside_a_word_can_end_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import produce
+
+    def ends(before: str) -> bool:
+        found = produce.LAST_WORD.search(before)
+        if found is None:
+            return True
+        word = found.group(1).rstrip(".").lower()
+        return not (word in produce.NOT_AN_END or len(word) == 1)
+
+    patch.setattr(produce, "_ends_a_sentence", ends)
+
+
+def _no_abbreviation_is_known(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import produce
+
+    patch.setattr(produce, "NOT_AN_END", frozenset())
+
+
+def _a_wordless_piece_is_left_alone(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import produce
+
+    def split(flat: str) -> list[str]:
+        pieces, at = [], 0
+        for found in produce.SENTENCE_END.finditer(flat):
+            if produce._ends_a_sentence(flat[: found.start()]):
+                pieces.append(flat[at : found.start()].strip())
+                at = found.end()
+        return [piece for piece in [*pieces, flat[at:].strip()] if piece]
+
+    patch.setattr(produce, "_split", split)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "every stop ends a sentence, after et al. and Suppl. too": (
+        _every_stop_ends_a_sentence,
+        test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
+    "no stop ends a sentence": (
+        _no_stop_ends_a_sentence,
+        test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
+    "a stop inside a word, as in U.S., can end a sentence": (
+        _a_stop_inside_a_word_can_end_a_sentence,
+        test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
+    "no abbreviation is known": (
+        _no_abbreviation_is_known,
+        test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
+    "a piece with no word of its own is left alone": (
+        _a_wordless_piece_is_left_alone,
+        test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
     "a quotation is read as the paper's own words": (
         _a_quotation_is_the_papers_own,
         test_a_term_given_up_is_found_where_it_stands_and_nowhere_it_does_not,

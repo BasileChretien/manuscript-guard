@@ -32,6 +32,10 @@ and text excerpts. It writes `checks/items.json`
 fills alone — the two producers key their ids on different things, so a group taken item by item
 would ask a co-author the same value twice.
 
+`produce` and `merge` are not exported here: imported into this package under those names they
+shadowed the submodule `checking.produce`, so `manuscript_guard.checking.produce` was a function
+and not the module. They are imported from `checking.produce`.
+
 Carrying all of it to a person who is not a programmer, and keeping the record of what came
 back, is the rest of this package. Nothing here needs a dependency the toolkit did not already
 have, and nothing in it is particular to one model, one vendor or one agent.
@@ -39,7 +43,6 @@ have, and nothing in it is particular to one model, one vendor or one agent.
 
 from manuscript_guard.checking.bundle import BundleError, build_bundle
 from manuscript_guard.checking.items import ItemsError, load_items
-from manuscript_guard.checking.produce import merge, produce
 from manuscript_guard.checking.store import (
     AnswersError,
     import_answers,
@@ -54,8 +57,6 @@ __all__ = [
     "build_bundle",
     "import_answers",
     "load_items",
-    "merge",
-    "produce",
     "read_decisions",
     "status",
 ]

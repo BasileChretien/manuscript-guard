@@ -68,9 +68,11 @@ CITEKEY = re.compile(r"@([A-Za-z][\w:.#$%&+?<>~/-]*)")
 #: a numbered-citation style writes "Okada et al. [@key]." and the stop in "al." is not an end.
 SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'(\[])")
 #: Words that end in a stop and do not end a sentence. Lower-cased, without their stops. Short on
-#: purpose: each one is a word a manuscript really writes before a citation or a figure.
+#: purpose: each one is a word a manuscript really writes before a citation or a figure. A word
+#: with a stop inside it ("U.S.", "e.g.", "Ph.D.") is never an end and needs no entry here: see
+#: `_ends_a_sentence`.
 NOT_AN_END = frozenset({
-    "al", "e.g", "i.e", "cf", "ca", "approx", "ibid", "viz", "vs", "etc", "fig", "figs",
+    "al", "cf", "ca", "approx", "ibid", "viz", "vs", "etc", "fig", "figs", "suppl", "supp",
     "tab", "tabs", "eq", "eqs", "ref", "refs", "no", "nos", "vol", "vols", "pp", "ed", "eds",
     "st", "dr", "prof", "mr", "mrs", "ms", "sr", "jr", "inc", "ltd", "dept", "univ",
 })
@@ -166,12 +168,17 @@ def _ends_a_sentence(before: str) -> bool:
     It does not after "et al.", "e.g." or "Fig.", nor after a single initial — and the split that
     matters most is exactly there, because a numbered-citation style writes "described by Okada
     et al. [@key]." and cutting it leaves one item reading "[@key]." with no claim in it.
+
+    A word with a stop inside it is never an end, whatever the word: "the U.S. Food and Drug
+    Administration [@key]" was cut after "U.S.", and the item's whole text was "Food and Drug
+    Administration [@key]." — the subject of the claim on no item. A list cannot hold every such
+    word ("U.K.", "Ph.D.", "b.i.d."), and the rule needs none of them.
     """
     found = LAST_WORD.search(before)
     if found is None:
         return True
     word = found.group(1).rstrip(".").lower()
-    return not (word in NOT_AN_END or len(word) == 1)
+    return not (word in NOT_AN_END or len(word) == 1 or "." in word)
 
 
 def _split(flat: str) -> list[str]:
@@ -286,124 +293,26 @@ def _uses_of(key: str, documents: list[Document]) -> list[dict]:
     return found[:8]
 
 
-#: What a CSL record calls the fields this page shows, and what this module calls them. pandoc
-#: writes CSL JSON, which is the same information under other names.
-FROM_CSL = (
-    ("type", "type"),
-    ("title", "title"),
-    ("container-title", "journaltitle"),
-    ("volume", "volume"),
-    ("issue", "number"),
-    ("page", "pages"),
-    ("DOI", "doi"),
-    ("URL", "url"),
-)
-
-
-def _name_of(person: dict) -> str:
-    """One CSL name as a bibliography prints it: "van der Eijk, Yvette"."""
-    if person.get("literal"):
-        return str(person["literal"])
-    family = " ".join(
-        part for part in (person.get("non-dropping-particle"), person.get("family")) if part
-    )
-    given = " ".join(
-        part for part in (person.get("given"), person.get("suffix")) if part
-    )
-    return f"{family}, {given}".strip().strip(",") if given else family
-
-
-def _date_of(issued: dict) -> str:
-    """A CSL date as the year, or the year and month, or the whole of it."""
-    if issued.get("literal"):
-        return str(issued["literal"])
-    parts = (issued.get("date-parts") or [[]])[0]
-    return "-".join(f"{int(part):02d}" if n else str(int(part)) for n, part in enumerate(parts))
-
-
-def _records_from_pandoc(path: Path) -> dict[str, dict[str, str]] | None:
-    """Every entry, parsed by pandoc, or `None` where pandoc cannot be used.
-
-    `pandoc -f biblatex -t csljson` understands the format properly: `M{\"u}ller` comes back as
-    Müller, a biblatex extended name as its parts, a `@string` macro expanded, and an `@` inside
-    a value as what it is. The reader below this does none of that and says so.
-    """
-    import json
-    import shutil
-    import subprocess
-
-    found = shutil.which("pandoc")
-    if not found:
-        return None
-    try:
-        done = subprocess.run(
-            [found, "-f", "biblatex", "-t", "csljson", str(path)],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if done.returncode != 0 or not (done.stdout or "").strip():
-        # A bibliography pandoc refuses is read by the small reader instead, which shows the
-        # fields as written rather than nothing at all.
-        return None
-    try:
-        entries = json.loads(done.stdout)
-    except ValueError:
-        return None
-    if not isinstance(entries, list):
-        return None
-
-    records: dict[str, dict[str, str]] = {}
-    for entry in entries:
-        if not isinstance(entry, dict) or not entry.get("id"):
-            continue
-        fields: dict[str, str] = {}
-        for csl, ours in FROM_CSL:
-            value = entry.get(csl)
-            if isinstance(value, str) and value.strip():
-                fields[ours] = " ".join(value.split())
-            elif isinstance(value, (int, float)):
-                fields[ours] = str(value)
-        for csl, ours in (("author", "author"), ("editor", "editor")):
-            people = [
-                _name_of(person) for person in entry.get(csl) or [] if isinstance(person, dict)
-            ]
-            if any(people):
-                fields[ours] = " and ".join(name for name in people if name)
-        issued = entry.get("issued")
-        if isinstance(issued, dict):
-            said = _date_of(issued)
-            if said:
-                fields["date"] = said
-        records[str(entry["id"])] = fields
-    return records
-
-
 def _bib_records(project) -> dict[str, dict[str, str]]:
-    """Every entry of `references.bib`, as fields, by pandoc where there is one.
+    """Every entry of `references.bib`, as fields, read by one reader everywhere.
 
-    Two readers, and the better one is not always there. `checker build` must work in a project
-    that has no pandoc, so `_records_read_here` stays; where pandoc is on the path it parses
-    instead, because what it reads is the format and what the small reader reads is the shape
-    that format usually takes.
-
-    **The two do not agree in every detail, and pandoc's reading is the one to prefer**: it gives
-    a page range as `425-440` where the small reader keeps the file's en dash, and a title in the
-    sentence case biblatex stores rather than the title case the file types. Both identify the
-    same work, which is what a co-author is asked about, and the printed bibliography is pandoc's
-    reading of the same file under a style.
+    There were two: pandoc where it was on the path, and the small reader below where it was not.
+    They disagreed on 58 of 58 references of a real bibliography, so a page built on one machine
+    and imported on another refused every reference answer, saying the item had changed when
+    nothing had. That is the digest's own guarantee fired on the state of a machine, and the
+    message was false. pandoc also dropped a particle ("von Elm, Erik" shown as "Elm, Erik") and
+    lower-cased an unbraced title, proper nouns and all, on a page whose question is whether the
+    reference is right. So a digest depends on the paper and on nothing about the machine: the
+    fields as the file writes them.
     """
     path = project.path("literature") / "references.bib"
     if not path.is_file():
         return {}
-    parsed = _records_from_pandoc(path)
-    if parsed is not None:
-        return parsed
     return _records_read_here(path)
 
 
 def _records_read_here(path: Path) -> dict[str, dict[str, str]]:
-    """Every entry of a `.bib` file, read without pandoc: the fields as they are written.
+    """Every entry of a `.bib` file: the fields as they are written.
 
     A small reader rather than a dependency: a .bib entry is `@type{key, field = {value},}`, and
     what a co-author checks is the fields as they are written. Nested braces are counted, so a
@@ -417,9 +326,9 @@ def _records_read_here(path: Path) -> dict[str, dict[str, str]]:
     extended name — and a URL carrying `&title=` overwrote the entry's real title, which a
     co-author would have been shown as the thing to check.
 
-    What it does not do, where pandoc does: decode a TeX accent, expand a `@string` macro, join
-    a `#` concatenation, or read a biblatex extended name into its parts. DESIGN.md's Known gaps
-    carries that.
+    What it does not do: decode a TeX accent, expand a `@string` macro, join a `#`
+    concatenation, or read a biblatex extended name into its parts. A co-author sees each as the
+    file writes it, `M{\\"u}ller` included; DESIGN.md's Known gaps carries that.
     """
     text = path.read_text(encoding="utf-8", errors="replace")
     records: dict[str, dict[str, str]] = {}

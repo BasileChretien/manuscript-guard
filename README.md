@@ -151,6 +151,47 @@ which it starts to matter, from `design` to `submission`, and until then it is p
 counted without failing the run: see [stages](docs/stages.md). What each gate guarantees and
 why it is built that way is in [principles](docs/principles.md).
 
+## The part no gate can check
+
+Every gate above asks whether a number is the number the analysis produced, or whether a quote
+is really in the stored source. None can ask what a reader of that source asks: **does the
+sentence say what the document says.** A value can be right, its quote can be right, and the
+sentence around it can still name the wrong denominator, subgroup or year with every check
+passing. On the first manuscript written with this toolkit, that is what happened, and a
+co-author reading one item against one quote is what found it.
+
+```bash
+manuscript-guard checker build --for "A Co-Author"      # one file to send them
+manuscript-guard checker import --answers answers.json  # what they said, into checks/decisions.csv
+manuscript-guard checker status                         # outstanding, stale, and who disagrees
+```
+
+`build` writes **one file**. It carries every item, the sentences each value appears in, and the
+evidence rendered into the file itself: images as data URIs, tables and excerpts as data. It
+opens by double-clicking, in any current browser, offline — nothing installed, no account, no
+network,
+and nothing sent anywhere by the page. The person presses a button and sends back the answers
+file.
+
+What is asked is found from the project's own files: the values quoted from the literature with
+the passage each came from, the sentences that cite something, the references, and the authors.
+A number transcribed from a table in a source document is not among them and cannot be — only
+the project knows which row it came from — so a project that traces its own numbers adds them in
+`checks/items.json`.
+
+A group the project fills, it fills alone: one contributed item in a group means none of the
+toolkit's are added to it, since the two are keyed differently and a co-author would otherwise
+read the same value twice.
+
+Every answer carries the digest of the item as its maker saw it. If the sentence or the value
+moved after they looked, the answer is **not** recorded as agreement: their yes was about text
+nobody has now, and the item is outstanding again. `checks/decisions.csv` is append-only, because
+"was this checked, by whom, and when" is a question asked months later, by whoever is answering a
+reviewer.
+
+What this gives you is a record of who looked, at what exactly, when, and what they said. It is
+not a proof that they read it correctly, and nothing here checks their reading.
+
 ## Install
 
 Python 3.10 or later:
@@ -217,6 +258,7 @@ number in the file and the rule that classified it.
 | `methods` | check or record that the Methods were read against the code; `--explain` lists each claim beside the step that backs it |
 | `models` | print each fitted model as its card, with what G15 says of it |
 | `review` | show where the review panel stands; `--run` has it read by the models you list |
+| `checker` | send a co-author one file of things to confirm, and record what they answered |
 | `import` | bring a co-author's Word edits back into the manuscript source |
 | `reworded` | check that an edit changed the wording and no binding, citation or typed number |
 | `respond` | open a revision round, or write the point-by-point response |
@@ -243,7 +285,7 @@ claude plugin marketplace add BasileChretien/manuscript-guard
 claude plugin install manuscript-guard@manuscript-guard
 ```
 
-Fourteen skills. Start with `project-setup`; most of the others name the finding codes that
+Fifteen skills. Start with `project-setup`; most of the others name the finding codes that
 should send you to them.
 
 | Skill | For |
@@ -258,6 +300,7 @@ should send you to them.
 | `journal-profile` | choosing a journal with the author, and encoding its rules |
 | `reporting-checklist` | STROBE, CONSORT, PRISMA and the rest, retrieved rather than remembered |
 | `review-panel` | an internal review panel, recorded and answered |
+| `co-author-checking` | the question no gate can ask, put to a person who can answer it |
 | `word-roundtrip` | a co-author's Word edits, back into the source |
 | `reviewer-response` | the point-by-point response to a journal, checked against the revision |
 | `submission-pack` | everything the journal asks for, and the covering letter |
@@ -281,7 +324,7 @@ By Codex's documentation, it runs a hook only after you have trusted it, under `
 ### Gemini CLI, Mistral Vibe, Kimi Code CLI and other tools
 
 By their own documentation these read skills from a folder, and one command copies the
-fourteen there:
+fifteen there:
 
 ```bash
 manuscript-guard install-skills              # for you, in every project: ~/.agents/skills

@@ -1,0 +1,23 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 6
+reviewer: pharmacoepidemiologist
+reviewed_by: Claude Code
+reviewed_on: '2026-10-09'
+manuscript_sha256: 0e2b8cebac853da204fb962ff01a3c2a706742e9e5fccdea1bd478971068c621
+file_sha256:
+  main.md: a311507746e68073566d3873acc1a06f6cc3e297f21be0595d4c3525308b50a9
+  supplementary/S1_code_lists.md: 0424bddf5bebf482147a5579ea720fbfe9e701fadfb0b6898cdb21aa34fc0708
+verdict: pass
+summary: 'The adjusted model''s paragraph now says why the reporting year was left out, and
+  the reason is the right one for these data: the generator draws the year independently of
+  the drug, so it cannot confound the comparison. The sentence also names calendar time as
+  the usual adjustment, which is what a reader of a real analysis would need to see addressed.
+  Nothing is left from the earlier rounds.'
+findings:
+- id: r6-pe-01
+  severity: comment
+  where: Methods, adjusted model
+  finding: Round five's r5-pe-01 is answered, in the paragraph where a reader looks for the
+    adjustment set.

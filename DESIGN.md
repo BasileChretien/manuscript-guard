@@ -4277,9 +4277,203 @@ every property at ten times its examples with the second, held on main at 0.2.43
 What turned up is three ways the sentence of a vocabulary conflict is worded by the order
 of the entries, which is under Known gaps and held by a test.
 
+## The check a gate cannot make, and who can make it
+
+Every gate here asks a question a machine can settle: is this number the number the analysis
+wrote, is this quote in the stored source, is this value in that quote. The question none of them
+asks is the one a reader of the source asks — **does the sentence say what the document says**.
+
+That is not a gap in the implementation. It is the boundary of the whole approach. A value can be
+right, its quote can be right, the quote can be in the source, and the sentence can still name
+the wrong denominator, the wrong subgroup or the wrong year. On the first manuscript written with
+this toolkit, that is precisely what happened: a share whose value and quote were both correct,
+in a sentence that agreed with the ledger about the wrong denominator, three machine passes clean.
+A co-author reading one item against one quote found it.
+
+So the question goes to people. The design problem is that the people who can answer it are
+clinicians and pharmacologists, not programmers, and every step between them and the question
+loses most of them.
+
+### One file, and nothing else
+
+**Chosen:** `checker build --for "<name>"` writes one self-contained page. Every item, every
+sentence, and every piece of evidence is inside that file — images as data URIs, tables and text
+excerpts as data. It opens by double-clicking, offline, in any current browser. Nothing is
+installed, no
+account is made, no network is touched, and the page sends nothing anywhere. A button writes the
+answers file; the person sends it back however they already send files.
+
+**Rejected: a page on the project's own site, with a token for each co-author.** It was the first
+thing asked for, and it is worse on every axis that matters here.
+
+- A manuscript's unpublished numbers would sit on a public host. A token in a URL is not access
+  control: it travels in mail, in browser history and in referrers, and one forward makes the
+  numbers public before the paper is.
+- Collecting answers needs something that accepts writes. A static page cannot, so it means a
+  service, which means an account, a secret and an operator — in a toolkit whose dependencies
+  are PyYAML and jsonschema.
+- It fails exactly where it is needed: offline, on a hospital network that blocks the host, in a
+  mail client that rewrites links.
+- The author would maintain it, and an author writing a paper is not an operator of web
+  services.
+
+What the page gives up is a return path that needs no action from the person: they must send one
+file back. That is a real cost, paid once per person per round, and it buys a round that works on
+any machine with a browser.
+
+### The items are found, not written
+
+A project should not have to describe its own paper to get a round started. `checking/produce.py`
+reads the files the project already keeps and offers four kinds: values quoted from the
+literature, each with the passage it came from; sentences that cite something; references as
+`references.bib` holds them; and the authors. Nothing of this is particular to one paper.
+
+What it cannot offer is a number transcribed from a table in a source document, because only the
+project knows that this value came from row 14 of that workbook — that is what its own tracing
+records. A project writes those into `checks/items.json`, and they are asked **first**, because a
+project that went to the trouble knows what it wants asked first. Page images live there too: a
+PDF renderer is a dependency this toolkit does not have and will not take for this, and what a
+checker reads is the quote, which is text the ledger already holds.
+
+**A group the project fills is the project's, whole.** Not item by item: the two producers key
+their ids on different inputs, so the same value gets two ids, nothing deduplicates it, and a
+co-author is asked about it twice. The paper this was first run against fills all four of
+these groups itself, with each value traced to a row of a source document the toolkit cannot see;
+asking its own version of each beside them would have added a few hundred duplicate questions to
+someone's afternoon. So one contributed item in a group takes that whole group, and
+`build` prints how many of its own it left out — a thing to notice, rather than to discover from
+a co-author.
+
+### What the digest covers
+
+Every answer carries the digest of the item as its maker saw it. An answer whose digest no longer
+matches is not recorded as agreement: the sentence moved after they looked, so their yes is about
+text nobody has now, and the item is outstanding again.
+
+The digest therefore covers the words — the title, the facts, each sentence's text and
+section, **and the words of each piece of evidence**: a quote's text, a table's cells, an
+excerpt's lines, a facts table's rows, and the caption and note that frame them. The evidence
+was left out of the first version, on the argument that a page re-rendered larger is the same
+page — true of an image and false of words, and applied to both. For the literature group the
+evidence *is* the question, "Does the quoted passage say this number?", so a quote replaced
+between build and import left a co-author's yes recorded against a sentence they never read.
+
+Deliberately not in it:
+
+- **how a piece of evidence was drawn, or where to look in it.** An image's file, a table's
+  outlined cell, an excerpt's line numbers, the substrings highlighted. A page re-rendered
+  larger is the same page.
+- **where the sentence sits.** The line is how to find it, not what it says, and a manuscript
+  gains and loses lines every working day. With the line in the digest, adding one paragraph to
+  the Introduction would refuse every answer about every sentence below it, none of which
+  changed. That was in the first implementation, and it survived there twice: out of the digest
+  in the first fix, and left in a claim item's **identifier**, where it did the same thing by
+  another route until a review found it.
+- **the question the group asks.** Rewording "Does the quoted passage say this number?" would
+  otherwise discard every answer in that group, and the questions are prose about what a group
+  is rather than about any one item. The cost is that a group asked a materially different
+  question keeps its old answers, and nothing notices.
+
+### Append-only, and a person's name on it
+
+`checks/decisions.csv` is appended to, never rewritten. The question it answers — was this
+checked, by whom, and when — is asked months later by whoever is writing to a reviewer, and a
+file that gets rewritten cannot answer it. The latest decision by one person for one item counts;
+the superseded ones stay and say what changed. Where two people answered the same item
+differently, `status` reports it, because a disagreement between two readers of the same source
+is itself a finding.
+
+### Nothing in it belongs to a vendor
+
+The file is a page, the answers are JSON, the record is a CSV. No model, no provider and no agent
+tool appears anywhere in the path, and none is needed to run a round. That is deliberate: a
+co-author's reading is the one part of this toolkit that must not depend on anyone's subscription.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
+
+- **A co-author round records answers, and nothing more.** `checker status` says who answered
+  what; it cannot say who read anything. Nothing proves the file was opened, that the evidence was
+  looked at, or that a `ok` was not a row of clicks. The record is a person's word written down
+  accurately, with the text they were shown pinned to it, and that is the whole of the claim.
+- **An answers file is not signed.** `by` is the name the build put in it, and whoever holds the
+  file can edit any part of it before sending it back. Within a group of co-authors that is the
+  same trust as mail, which is how the file travels; it is not evidence against a person who
+  wants to misreport, and it is not meant to be. The attestation of a source, where that bar does
+  apply, stays in `literature/attested.yaml` and is signed by one person.
+- **A file rebuilt after the items changed loses a co-author's unsent progress.** The page keeps
+  answers in the browser under the bundle's identifier, which is a digest of the items' own
+  digests and the person's name: a rebuild that changes nothing they were asked keeps their
+  progress, and one that changes any item does not. So import what someone has before rebuilding
+  a round they are part of, or that part of their reading is done twice. Nothing is lost that was
+  saved and sent.
+- **A sentence is split by punctuation, and the list of abbreviations is finite.** The split is
+  a stop, a space, then a capital letter or an opening quote or bracket — except after a word with
+  a stop inside it ("U.S.", "e.g.", "Ph.D.", "b.i.d."), after a word in `NOT_AN_END` ("et al.",
+  "Fig.", "Suppl.", "No.", "St." and about thirty more) or after a single initial, and except where
+  the piece that results carries no word of its own, which is joined back to the piece before it.
+  The rules exist because of two shapes: "described by Okada et al. [@key]." cut at "al." left an
+  item reading `[@key].`, and "sent to the U.S. Food and Drug Administration [@key]." cut at
+  "U.S." left one reading "Food and Drug Administration [@key]." — in both, the subject of the
+  claim on no item. A word with a stop inside it is a rule rather than a list for that reason. A
+  word that ends in a stop, has none inside it and is not in the list still splits a sentence,
+  and a reader is then shown a half of one; what holds is that no item is without a word of its
+  own. A citation written after a sentence's stop and before another sentence ("…was small.
+  [@key] A later study…") is read with the sentence after it; at the end of a paragraph it is
+  joined to the one before. The earlier text here said "the rest of the sentence is in the file
+  either way", and then that an item with no claim in it could not happen any more; both were
+  false.
+- **A claim is one sentence citing something.** An argument made across two sentences is asked as
+  two questions, and a sentence citing three papers is one question about all three, which a
+  person can only answer as a whole or decline. A paper whose claims need finer grain writes its
+  own items.
+- **The bibliography is read as fields, not as the format.** One small reader, everywhere: the
+  fields as the file writes them, so `M{\"u}ller` reaches a co-author as typed, a `@string` macro
+  unexpanded, a `#` concatenation with its hashes, and a biblatex extended name as its raw parts.
+  It makes no entry of an `@` inside a value or of an `@comment`. pandoc read the format properly
+  and was used where it was on the path, until it was measured: the two readers disagreed on 58
+  of 58 references of a real bibliography, so a page built where pandoc was and imported where
+  it was not refused every reference answer as about changed text, when nothing had changed; and
+  pandoc dropped a particle ("von Elm, Erik" as "Elm, Erik") and lower-cased an unbraced title,
+  proper nouns included. A digest that depends on the machine is not a digest of the paper, so
+  pandoc is not used here. The built document's bibliography is still pandoc's reading of the
+  same file under a style, so the page and the paper can print a reference differently.
+- **No test runs the page's JavaScript.** The template is checked by reading it and by opening a
+  built page in a browser by hand; its storage, its download, its dialog, its clipboard and its
+  keyboard handling are held by nothing. A defect there reaches a co-author and not the suite.
+- **"Any browser" means a current one.** The page uses `??` and `<dialog>`, so a browser older
+  than about 2022 shows it wrongly or not at all. What a co-author sees then is untested.
+- **The browser's storage is a convenience, not a record.** A note typed and not yet attached to
+  an answer is lost on closing the tab, and everything unsent is lost where storage is refused —
+  in a private window, for instance — with nothing said. What is saved and sent is the answers
+  file.
+- **The whole file must fit in mail.** A page is refused over 24 MB, and an image over 4 MB, since
+  a mail server will usually carry no more. A project with many page images sends a round in parts
+  rather than raising the limit.
+- **Every page carries every author's details.** The author items hold each author's e-mail,
+  ORCID, affiliations and competing interests, and every page carries every item, so a page sent
+  to one co-author holds the others' details too. Within an author group that is what the title
+  page will print; a page sent to anyone outside it should be built from an items file without
+  the author group.
+- **Some of what a co-author sees is outside the digest.** The digest covers the words: an item's
+  title, facts, sentences and the text of its evidence. A table's outlined cell and an image's
+  bytes are not in it, so an answer survives the outline moving to another cell or the image
+  being replaced. A bound value is shown by its name (`[reported_incidence]`), so a changed
+  `results.` or `lit.` value leaves the sentence, and an answer about it, as they were.
+- **Only comments are left out of the sentences.** A sentence a draft has commented out is not
+  offered; one in a fenced code block or in the front matter is, if it cites something.
+- **The highlighter can mark inside a character reference.** A marked word is found in the
+  escaped text, so a short one that also spells part of an escape (`amp`, `lt`) is marked inside
+  `&amp;` or `&lt;`, and the page shows the escape's characters.
+- **The splitter's time grows with the square of a paragraph's length.** Each stop is judged on
+  the text before it, taken from the paragraph's start. A paragraph of ordinary length is split
+  at once; one of hundreds of sentences is not.
+- **`checks/decisions.csv` is for this toolkit to write and a person to read.** Opened in a
+  spreadsheet and saved again, it can come back in another encoding, which ends the next
+  `status` in a `UnicodeDecodeError`, or as UTF-8 with a byte order mark, which takes the name of
+  its first column (`when`) with it. A note opening with `=` is read by a spreadsheet as a formula.
+  Read it in a spreadsheet; write it only with `checker import`.
 
 - **G1 fails only on the script that wrote a results file and on the inputs it declared.**
   The digests it compares are of the emitting script and of each path given to the emitter

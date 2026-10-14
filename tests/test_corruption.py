@@ -1724,6 +1724,112 @@ def test_a_second_files_front_matter_is_not_a_required_section(project: Path) ->
     assert after.counts["main_text_words"] == before.counts["main_text_words"] + 3
 
 
+# A section found by its heading. G4 counted "2. Methods" and "Patients and methods" as the
+# required Methods, and G9 read neither: with a wrong parameter in `methods.lock`, it warned
+# under "# Methods" and said nothing under the other two. The abstract was found only as
+# "Abstract", so The Lancet's "Summary" was main text and the abstract's limit read nothing.
+
+
+def _methods_retitled(root: Path, heading: str) -> None:
+    main = main_md(root)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("# Methods\n", f"# {heading}\n", 1),
+        encoding="utf-8",
+    )
+
+
+def _wrong_alpha_in_the_lock(root: Path) -> None:
+    from manuscript_guard.gates import reconcile
+
+    reconcile(load_project(root)[0], parameters={"alpha": "0.07"})
+
+
+@pytest.mark.parametrize(
+    "heading", ["Methods", "2. Methods", "2.1 Methods", "II. Methods", "Patients and methods"]
+)
+def test_a_wrong_parameter_is_found_under_any_heading_g4_counts_as_the_methods(
+    project: Path, heading: str
+) -> None:
+    from manuscript_guard.gates import check_methods
+
+    _methods_retitled(project, heading)
+    _wrong_alpha_in_the_lock(project)
+    report = check_methods(load_project(project)[0])
+    assert any(
+        f.code == "methods-parameter-absent" and "alpha = 0.07" in f.message
+        for f in report.warnings
+    ), report.render(project)
+    assert "methods-not-found" not in {f.code for f in report.findings}
+    assert "missing-required-section" not in codes(_journal(project))
+
+
+def test_no_heading_that_names_the_methods_is_said(project: Path) -> None:
+    from manuscript_guard.gates import check_methods
+
+    _methods_retitled(project, "Approach")
+    _wrong_alpha_in_the_lock(project)
+    report = check_methods(load_project(project)[0])
+    assert [f.code for f in report.warnings if f.code.startswith("methods-")] == [
+        "methods-not-found"
+    ], report.render(project)
+    assert "missing-required-section" in codes(_journal(project))
+
+
+def test_a_structured_abstract_s_methods_are_not_the_paper_s(project: Path) -> None:
+    """The required sections were looked for among every heading, the abstract's own
+    among them, so a paper with no Methods section passed on its abstract's subheading."""
+    _methods_retitled(project, "Approach")
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("# Abstract\n\n", "# Abstract\n\n## Methods\n\nA cohort.\n\n", 1),
+        encoding="utf-8",
+    )
+    assert any(
+        f.code == "missing-required-section" and "Methods" in f.message
+        for f in _journal(project).failures
+    )
+
+
+def _abstract_retitled(root: Path, heading: str, words: int = 0) -> None:
+    main = main_md(root)
+    text = main.read_text(encoding="utf-8")
+    padding = " ".join(["more"] * words)
+    main.write_text(
+        text.replace("# Abstract\n\n", f"# {heading}\n\n{padding}\n\n", 1), encoding="utf-8"
+    )
+
+
+def _profile_says(root: Path, **structure: str) -> None:
+    path = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["structure"].update(structure)
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def test_an_abstract_the_profile_calls_summary_is_held_to_the_abstract_s_limit(
+    project: Path,
+) -> None:
+    _abstract_retitled(project, "Summary", words=400)
+    _profile_says(project, abstract_title="Summary")
+    report = _journal(project)
+    assert any(
+        f.code == "over-journal-limit" and f.message.startswith("abstract:")
+        for f in report.findings
+    ), report.render(project)
+    assert "abstract-not-found" not in {f.code for f in report.findings}
+
+
+def test_an_abstract_no_heading_names_is_said(project: Path) -> None:
+    """"Summary" with no `abstract_title`: the abstract's limit read nothing, and its words
+    counted as main text."""
+    _abstract_retitled(project, "Summary", words=400)
+    report = _journal(project)
+    found = [f for f in report.warnings if f.code == "abstract-not-found"]
+    assert len(found) == 1 and "300 words" in found[0].message, report.render(project)
+    assert report.counts["abstract_words"] == 0
+
+
 def test_a_comment_in_the_front_matter_is_not_a_required_statement(project: Path) -> None:
     """`# Funding` is a heading in Markdown and a comment in YAML. Inside the front matter it
     satisfied the journal's funding statement, and the build, which strips the block,

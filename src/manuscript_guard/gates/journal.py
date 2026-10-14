@@ -16,12 +16,13 @@ import re
 from datetime import date, timedelta
 from pathlib import Path
 
-from manuscript_guard.contracts._schema import read_structured, read_text, validate
+from manuscript_guard.contracts._schema import ContractError, read_structured, read_text, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SHIPPED_JOURNALS
 from manuscript_guard.text.masking import without_front_matter
+from manuscript_guard.text.section_names import bare, names_abstract, names_methods
 from manuscript_guard.text.sections import measure, scannable, split_sections
 
 GATE = "G4"
@@ -106,8 +107,10 @@ def check_journal(project: Project) -> Report:
     # into an over-length one, and the author's recourse was to cut material the journal was
     # never going to count in the first place.
     text = main_text(project)
-    counts = measure(text)
+    named = abstract_title_of(document)
+    counts = measure(text, named)
     report = report.merge(_check_limits(document, counts, path))
+    report = report.merge(_check_abstract_found(document, text, path))
     report = report.merge(_check_structure(document, text, path))
     report = report.merge(_check_statements(document, text, path))
     report = report.merge(_check_variant(document, project))
@@ -116,6 +119,53 @@ def check_journal(project: Project) -> Report:
         abstract_words=counts.abstract_words,
         main_text_words=counts.main_text_words,
         display_items=counts.tables + counts.figures,
+    )
+
+
+def abstract_title_of(document: dict) -> str | None:
+    """What the profile calls the abstract where it is not "Abstract" ("Summary")."""
+    named = (document.get("structure") or {}).get("abstract_title")
+    return str(named) if named else None
+
+
+def abstract_title(project: Project) -> str | None:
+    """The abstract's title in the target journal's profile, for the gates that read the
+    abstract and are not G4. None where there is no profile, or none that can be read: G4
+    says what is wrong with it."""
+    slug = project.target_journal
+    path = profile_path(project, slug) if slug else None
+    if path is None:
+        return None
+    try:
+        document = read_structured(path)
+    except (ContractError, OSError):
+        return None
+    if not isinstance(document, dict) or not validate(document, "journal", path).ok:
+        return None
+    return abstract_title_of(document)
+
+
+def _check_abstract_found(document: dict, text: str, path: Path) -> Report:
+    """Said where the profile limits the abstract and no heading names one: the limit was
+    checked against nothing, and the abstract's words counted as main text."""
+    limit = (document.get("limits") or {}).get("abstract_words")
+    named = abstract_title_of(document)
+    if limit is None or any(s.names_abstract(named) for s in split_sections(text)):
+        return Report()
+    looked = '"Abstract"' + (f' and "{named}"' if named else "")
+    return Report(
+        (
+            Finding(
+                gate=GATE,
+                code="abstract-not-found",
+                severity=WARN,
+                message=f"no heading names the abstract (looked for {looked}), so its limit "
+                f"of {limit} words was not checked and its words were counted as main text",
+                path=path,
+                hint="put the abstract under a heading; where the journal calls it something "
+                'else, say so in the profile: `structure: {abstract_title: "Summary"}`',
+            ),
+        )
     )
 
 
@@ -192,14 +242,49 @@ def _check_limits(document: dict, counts, path: Path) -> Report:
     return report
 
 
+#: A required section that is the Methods by name, and no more than that. "Materials and
+#: methods" is held to its own words, as every other required section is.
+_THE_METHODS = ("methods", "method", "methodology")
+
+
+def _present(required: str, titles: list[str], named: str | None) -> bool:
+    """Whether a heading answers a section the journal requires: its name in the heading,
+    as G4 has always read one. Where the section is the Methods or the abstract, by the test
+    the gates that read the section use (`text.section_names`), so that what G4 counts
+    present is what G9, G2 and G15 read as the Methods, and G14 as the abstract."""
+    wanted = bare(required).casefold()
+    if wanted in _THE_METHODS:
+        return any(names_methods(title) for title in titles)
+    if names_abstract(required, named):
+        return any(names_abstract(title, named) for title in titles)
+    return any(required.lower() in title for title in titles)
+
+
+def paper_titles(sections, named: str | None) -> list[str]:
+    """The titles of the paper's sections, lower-cased, less the headings inside the
+    abstract. A structured abstract's "Methods" and "Results" are the abstract's: read as
+    the paper's, they answered a required Methods section in a paper with none, while G9,
+    which reads the Methods, passed them over."""
+    titles: list[str] = []
+    chain: list = []
+    for section in sections:
+        while chain and chain[-1].level >= section.level:
+            chain.pop()
+        if section.title and not any(s.names_abstract(named) for s in chain):
+            titles.append(section.title.lower())
+        chain.append(section)
+    return titles
+
+
 def _check_structure(document: dict, text: str, path: Path) -> Report:
     structure = document.get("structure", {})
     report = Report()
     sections = split_sections(text)
-    titles = [s.title.lower() for s in sections if s.title]
+    named = abstract_title_of(document)
+    titles = paper_titles(sections, named)
 
     for required in structure.get("required_sections", []):
-        if not any(required.lower() in title for title in titles):
+        if not _present(required, titles, named):
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -212,7 +297,7 @@ def _check_structure(document: dict, text: str, path: Path) -> Report:
 
     wanted = structure.get("abstract_headings") or []
     if wanted:
-        abstract = next((s for s in sections if s.is_abstract), None)
+        abstract = next((s for s in sections if s.names_abstract(named)), None)
         if abstract is None:
             report = report.with_findings(
                 Finding(

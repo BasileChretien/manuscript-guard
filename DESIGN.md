@@ -1244,6 +1244,29 @@ The lock can also carry parameters that must appear in the prose — the signifi
 threshold, the software version. Presence, not correctness, but those are exactly what a
 reviewer queries and exactly what is left behind when an analysis is redone.
 
+**A section that counts as present is a section that is read.** G4 counts a required
+section present by finding its name in a heading, and so "2. Methods" and "Patients and
+methods" answered a required Methods section. G9 found the Methods by a pattern of its own,
+"Methods" or "Materials and methods" at the start of a heading, and under either of the
+others it compared the lock's parameters with no text: a wrong `alpha: 0.07` was reported
+under "# Methods" and passed under "# 2. Methods", with nothing said. Since 2026-10-14 one
+test says which heading is the Methods, `text/section_names.py`: a heading with the word
+"methods", "method" or "methodology" in it, numbered or not. G4 uses it for a required
+section named "Methods", G9 reads the first such section of the main text, and a project
+with analysis code and no such heading is told so (`methods-not-found`, a warning), with
+what was therefore not read. G2 and G15 read the Methods as places, where a heading names
+the method without the word ("Statistical analysis", "Study design"); they take numbered
+headings and "<anything> and methods" too now. They read fewer headings than G4 counts, and
+a Methods they miss makes them report a number, not pass one.
+
+The abstract is found the same way for G4's limit and its headings, G14's regions and the
+word count: "Abstract" or "Structured abstract", numbered or not, or the title the
+journal's profile gives it (`structure.abstract_title: Summary` for The Lancet). With a
+limit on the abstract and no heading naming one, G4 says so (`abstract-not-found`, a
+warning): the limit was checked against nothing and the abstract counted as main text. And
+the headings inside the abstract are the abstract's. A structured abstract's "Methods" and
+"Results" answered the journal's required sections in a paper whose body had neither.
+
 ## A choice the code makes is declared, bound and read
 
 The ledger records that someone looked. Some of what they look for needs no reading: the
@@ -4112,7 +4135,7 @@ the campaigns are in the suite, on Hypothesis:
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
   them, the settings typed into a project, a co-author's sessions in Word, texts that
   quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds nine more, each
+  beside what an edit made of it. `tests/test_properties.py` holds ten more, each
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
@@ -4173,12 +4196,14 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty rules are broken in place, one at a time, and the property that is
+the generators. So fifty-three rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops; nine ways `reworded` can misread an edit, from
+sentence, a comment read for its stops; three ways a section can be counted present by
+one gate and not read by another, from the Methods found by the name G9 had for them to a
+required section found among the abstract's headings; nine ways `reworded` can misread an edit, from
 a number's sign taken for no part of it to what a comment holds held to its place; five
 ways a co-author's items can be cut wrong round the citation of a claim, from every stop ending a
 sentence, after "et al." too, to a piece that is only a citation left as an item of its
@@ -5420,6 +5445,18 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
+- **The Methods are found by a word, and two gates read fewer headings than G4 counts.**
+  G4 and G9 take any heading with "methods", "method" or "methodology" in it for the
+  Methods, so a top-level "Limitations of the methods" before the real Methods would be the
+  section G9 reads. G2 and G15 read "Methods", numbered or not, "<anything> and methods",
+  "Methods and <anything>" and the names of the method's own subsections, and not "Methods
+  of the study": there G2 reports a number written in the Methods where it could have let
+  it through, and G15 reads no model's name. `methods-not-found` is said only where the
+  project has analysis code, since a case report or a narrative review has no Methods.
+- **An abstract under any other title is main text.** Without `abstract_title` in the
+  profile, "Summary" or "Overview" is a section of the paper: its words count as main text,
+  its subheadings are the paper's sections and its "Methods" can be the Methods G9 reads.
+  `abstract-not-found` is said only where the profile limits the abstract.
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.
@@ -8873,7 +8910,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 53 broken rules, and the comparison on eleven
+  - The properties were seen to fail on 56 broken rules, and the comparison on eleven
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

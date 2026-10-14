@@ -51,7 +51,9 @@ from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SOURCE_SUFFIXES
 from manuscript_guard.text.masking import blank_comments
 from manuscript_guard.text.placeholders import parse, substitute
+from manuscript_guard.text.section_names import names_methods
 from manuscript_guard.text.sections import (
+    Section,
     chains_at,
     footnote_index,
     heading_index,
@@ -61,7 +63,6 @@ from manuscript_guard.text.sections import (
 GATE = "G9"
 LOCK = "methods.lock"
 
-_METHODS_HEADING = re.compile(r"^\s*(?:materials and )?methods\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -309,12 +310,58 @@ def compare(current: dict[str, str], recorded: dict[str, str]) -> Drift:
     )
 
 
-def methods_text(project: Project) -> str:
-    for path in source_files(project.path("manuscript")):
-        for section in split_sections(read_text(path)):
-            if _METHODS_HEADING.match(section.title):
-                return section.enclosed
-    return ""
+def methods_text(project: Project) -> str | None:
+    """The Methods as G9 reads them: everything under the first heading that names them, by
+    the test G4 counts a required Methods section present with (`names_methods`), and not
+    the Methods of a structured abstract. In the main text, as G4 reads it: "Supplementary
+    methods" is not the paper's Methods. None where no heading names them.
+
+    The pattern this had of its own read "Methods" and "Materials and methods" and nothing
+    else, so under "2. Methods" or "Patients and methods" a wrong parameter in the lock was
+    compared with no text, and the gate said nothing."""
+    from manuscript_guard.gates.journal import abstract_title
+
+    named = abstract_title(project)
+    for path in source_files(project.path("manuscript"), main_text_only=True):
+        found = methods_in(read_text(path), named)
+        if found is not None:
+            return found
+    return None
+
+
+def methods_in(text: str, abstract_title: str | None = None) -> str | None:
+    """The Methods of one file, as `methods_text` reads them, or None. `abstract_title` is
+    what the journal's profile calls the abstract, as G4 has it."""
+    chain: list[Section] = []
+    for section in split_sections(text):
+        while chain and chain[-1].level >= section.level:
+            chain.pop()
+        inside = any(s.names_abstract(abstract_title) for s in chain)
+        if names_methods(section.title) and not inside:
+            return section.enclosed
+        chain.append(section)
+    return None
+
+
+def _no_methods(project: Project) -> Report:
+    """Said where the manuscript has text and no heading names the Methods."""
+    if not source_files(project.path("manuscript"), main_text_only=True):
+        return Report()
+    return Report(
+        (
+            Finding(
+                gate=GATE,
+                code="methods-not-found",
+                severity=WARN,
+                message="no heading in the manuscript names the Methods: G9 compared the "
+                "parameters with no text and found no Methods paragraph, G2 read no number "
+                "as written in the Methods, and G15 read no model's name in them",
+                path=project.path("manuscript"),
+                hint='a heading with the word "methods", "method" or "methodology" in it, '
+                'numbered or not, is the Methods: "2. Methods", "Patients and methods"',
+            ),
+        )
+    )
 
 
 def check_methods(
@@ -334,6 +381,9 @@ def check_methods(
     if not current:
         return pairs.with_counts(analysis_files=0)
 
+    prose = methods_text(project)
+    if prose is None:
+        pairs = pairs.merge(_no_methods(project))
     recorded = lock.get("analysis", {})
 
     if not recorded:
@@ -365,7 +415,7 @@ def check_methods(
             )
         )
 
-    report = report.merge(_compare_parameters(project, lock, namespace))
+    report = report.merge(_compare_parameters(project, lock, namespace, prose))
     return report.with_counts(
         analysis_files=len(current),
         analysis_changed=len(drift.changed) + len(drift.added) + len(drift.removed),
@@ -652,14 +702,16 @@ def explain_methods(project: Project, results: Results | None = None) -> list[st
     return out
 
 
-def _compare_parameters(project: Project, lock: dict, namespace: dict[str, Value] | None) -> Report:
+def _compare_parameters(
+    project: Project, lock: dict, namespace: dict[str, Value] | None, prose: str | None
+) -> Report:
     """The few things both sides state explicitly, and where disagreement is checkable.
 
     Read as the Methods print: a value bound there, `{{results.param.alpha}}`, is stated in
-    them, and the source alone does not hold the number.
+    them, and the source alone does not hold the number. With no Methods found, nothing is
+    compared, and `methods-not-found` says so.
     """
     report = Report()
-    prose = methods_text(project)
     if not prose:
         return report
     if namespace is None:

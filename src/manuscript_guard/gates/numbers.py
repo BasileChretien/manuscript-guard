@@ -215,7 +215,7 @@ def check_numbers(
                 typed = typed_choice(atom.text, verdict, choices, chosen)
                 if typed is not None:
                     report = report.with_findings(_typed_finding(typed, atom, path))
-                elif declares and verdict.kind == CONVENTION and verdict.rule in chosen:
+                elif declares and typed_threshold(atom.text, verdict, chosen):
                     report = report.with_findings(_undeclared_threshold(atom, path))
                 continue
             loose += 1
@@ -533,17 +533,31 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
     return report
 
 
-# Where the figure starts in an atom: `P<0.05` is one atom, and `.05` has no nought.
-_FIGURE = re.compile(r"\d|\.\d")
+# A figure in an atom, to its last digit: `P<0.05` is one atom, and `.05` has no nought.
+_FIGURE = re.compile(r"\d[\d.,]*|\.\d+")
+
+
+def own_figure(text: str) -> str | None:
+    """An atom from the first figure it states, or None where it states none of its own.
+
+    A figure typed against a letter is part of a name, in any alphabet: the 2 of `I2` and
+    `X2`, the 025 of `IC025` and `Ω025`. The convention that accepts "I2 > 50%" covers the
+    name with the threshold, and read from its first digit the name stated 2: a parameter
+    equal to 2 made it a typed copy to bind. A figure after anything else is the atom's
+    own, wherever it stands in it: `P<0.05`, `n=3`, the 50 of `I2>50%`.
+    """
+    for figure in _FIGURE.finditer(text):
+        if not text[: figure.start()][-1:].isalpha():
+            return text[figure.start() :]
+    return None
 
 
 def stated_number(text: str) -> float | None:
     """The number an atom states, read past what is typed before its figure: `P<0.05` and
-    `p<.05` state 0.05. A sign is not read; a threshold has none."""
-    at = _FIGURE.search(text)
-    if at is None:
+    `p<.05` state 0.05, and `I2` states none. A sign is not read; a threshold has none."""
+    figure = own_figure(text)
+    if figure is None:
         return None
-    figure = text[at.start() :]
     return number_in("0" + figure if figure.startswith(".") else figure)
 
 
@@ -551,6 +565,15 @@ def chosen_rules(classifier: Classifier) -> frozenset[str]:
     """The conventions that hold only in the Methods: the thresholds an author chooses in
     advance, which are the ones an analysis can declare as parameters."""
     return frozenset(rule.id for rule in classifier.conventions if rule.methods_only)
+
+
+def typed_threshold(text: str, verdict: Verdict, chosen: frozenset[str]) -> bool:
+    """Whether an atom is a threshold typed in the Methods: a Methods-only convention
+    accepts it, and it states a figure of its own. The name of the statistic a threshold
+    is held against is accepted with it and is no threshold."""
+    return (
+        verdict.kind == CONVENTION and verdict.rule in chosen and own_figure(text) is not None
+    )
 
 
 def typed_choice(
@@ -565,7 +588,7 @@ def typed_choice(
     whatever a parameter equals. A parameter is compared by the number it states, a version
     by its text.
     """
-    if verdict.kind == CONVENTION and verdict.rule in chosen:
+    if typed_threshold(text, verdict, chosen):
         stated = stated_number(text)
         if stated is None:
             return None

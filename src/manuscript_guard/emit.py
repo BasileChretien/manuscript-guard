@@ -401,11 +401,19 @@ def _modules_of(name: str) -> set[str]:
     3.10 from nothing else. A wheel built without one (statsmodels 0.15, by meson-python) then
     provides no module at all, and `software("statsmodels")` was refused in a run that had
     imported it. The distribution's own list of files says the same thing in every version.
+
+    A name is compared as the version lookup compares it, `scikit_learn` and `Scikit.Learn`
+    being `scikit-learn`: where a distribution lists no files, a name the lookup had found
+    was refused as never imported.
     """
+
+    def same(distribution: str) -> str:
+        return re.sub(r"[-_.]+", "-", distribution).lower()
+
     modules = {
         module
         for module, owners in importlib.metadata.packages_distributions().items()
-        if any(owner.lower() == name.lower() for owner in owners)
+        if any(same(owner) == same(name) for owner in owners)
     }
     for file in importlib.metadata.distribution(name).files or ():
         top = file.parts[0] if file.parts else ""
@@ -543,14 +551,47 @@ def read_statsmodels(fit: object) -> dict:
     return card
 
 
+#: What binds a name: the nearest of these round an assignment is the name's scope.
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
+#: Written round a call, these hold its value where nothing here follows it.
+_DISPLAYS = (ast.Tuple, ast.List, ast.Set, ast.Dict)
+
+
+def _read_by_name(statement: ast.AST, name: str, parents: dict[ast.AST, ast.AST]) -> bool | None:
+    """Whether `name`, assigned by `statement`, is read in the scope that binds it.
+
+    None where the name is not that scope's to read: a class keeps it as an attribute, read
+    as `Settings.ALPHA` from anywhere, and `global` or `nonlocal` binds it in another scope.
+    Both were read as a name nothing reads, and a parameter in use failed as unread.
+    """
+    scope = statement
+    while scope in parents and not isinstance(scope, _SCOPES):
+        scope = parents[scope]
+    if isinstance(scope, ast.ClassDef):
+        return None
+    waiting = list(ast.iter_child_nodes(scope))
+    while waiting:
+        node = waiting.pop()
+        if isinstance(node, (ast.Global, ast.Nonlocal)) and name in node.names:
+            return None
+        if not isinstance(node, _SCOPES):
+            waiting.extend(ast.iter_child_nodes(node))
+    return any(
+        isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Load)
+        for node in ast.walk(scope)
+    )
+
+
 def parameter_read(script: Path, line: int, key: str) -> bool | None:
     """Whether the value `parameter(key, ...)` hands back on `line` of `script` is read.
 
     False when the call is a statement of its own, or assigns a name that nothing in its
     scope reads. True when a name it assigns is read, or when the call sits inside a larger
     expression, an argument or an operand. None when the script cannot be read or the call
-    cannot be found, or when the value goes somewhere this does not follow (an attribute,
-    a tuple). A name read again is all this establishes.
+    cannot be found, or when the value goes somewhere this does not follow: an attribute, a
+    class's own name, a name declared `global` or `nonlocal`, or a tuple, list, set or
+    dictionary written round the call. A name read again is all this establishes.
     """
     try:
         tree = ast.parse(script.read_text(encoding="utf-8"))
@@ -580,8 +621,10 @@ def parameter_read(script: Path, line: int, key: str) -> bool | None:
     parent = parents[call]
     if isinstance(parent, ast.Expr):
         return False
+    if isinstance(parent, _DISPLAYS):
+        return None
     if isinstance(parent, ast.NamedExpr):
-        target, call = parent.target, parent
+        target = parent.target
         if not isinstance(parents[parent], ast.Expr):
             return True
     elif isinstance(parent, (ast.Assign, ast.AnnAssign)) and parent.value is call:
@@ -591,15 +634,7 @@ def parameter_read(script: Path, line: int, key: str) -> bool | None:
         target = targets[0]
     else:
         return True
-    scope = parent
-    while scope in parents and not isinstance(
-        scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
-    ):
-        scope = parents[scope]
-    return any(
-        isinstance(node, ast.Name) and node.id == target.id and isinstance(node.ctx, ast.Load)
-        for node in ast.walk(scope)
-    )
+    return _read_by_name(parent, target.id, parents)
 
 
 #: A step's name, which the Methods bind as `{{method.<name>}}`.

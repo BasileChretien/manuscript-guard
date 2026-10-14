@@ -1268,14 +1268,22 @@ a float to agreeing in nine significant digits, and its display, which is what t
 prints, to agreeing exactly. G2 fails a declared value typed instead: a Methods-only convention whose
 number equals a parameter, or a software version equal to a declared one. Only the
 Methods-only conventions count, because they are the thresholds an author chooses in advance;
-the `2` of a `2 x 2` table names a structure whatever a parameter equals.
+the `2` of a `2 x 2` table names a structure whatever a parameter equals. A figure typed
+against a letter, of any alphabet, is part of a name too. The convention that accepts "I2 > 50%" covers the
+name of the statistic with its threshold, and read from its first digit `I2` stated 2: an
+analysis that declared a parameter of 2 was told to bind the name, and one that declared
+none of 2 was told `I2` was a threshold no parameter has. A name states no number and is no
+threshold. The figure after it is, in an atom of its own or in the name's (`I2>50%`).
 
 **Declared is not used.** A parameter bound in the Methods prints the right number for a step
 the code may not take, which is exactly what the example's signal criterion was. Each
-emitter therefore reads its own script where `parameter()` is called, with Python's `ast`
+emitter therefore reads the code where `parameter()` is called, with Python's `ast`
 and R's parse data, and records whether the value handed back is read again (`read`). The
 value thrown away, or assigned to a name nothing in its scope reads, is `false`, and G2 fails
-it from the `analysis` stage. A value read again is not shown to change anything. It can be
+it from the `analysis` stage. Where the value goes somewhere the reading does not follow, as
+onto a class or into a list, nothing is recorded and nothing fails: a parameter kept as
+`Settings.ALPHA` was once looked for as a name, found unread, and failed in use. A value
+read again is not shown to change anything. It can be
 read in a `print`, or in a branch that never runs, or compared with data it never decides
 for. Perturbing it and re-running would not settle that either: a threshold of 3 cases with 77
 cases in the data changes no result whether or not the code applies it. The record says what
@@ -6949,12 +6957,31 @@ Closed since, and why each mattered:
 - **A claim's extent is the author's.** An anchor at the end of a paragraph of five sentences
   claims all five, and the gate cannot tell whether the step backs them all.
 - **A parameter that is read is not shown to be used.** The emitters record whether the value
-  `parameter()` returns is read again in its scope, by name. A read inside a `print` or in a
-  branch that never runs counts, so does a name of the same spelling read elsewhere in the
-  same function, and a value passed into an attribute or a tuple is not followed at all (the
-  record then says nothing either way). In R, a call that is the last expression of a block
-  is its value and is not followed. A parameter declared in a helper module is read in the
-  script the emitter was given, not the helper.
+  `parameter()` returns is read again, by name. A read inside a `print` or in a branch that
+  never runs counts, and so does a name of the same spelling read elsewhere in the same
+  function. Where the value goes somewhere the reading does not follow, the record says
+  nothing either way. In Python that is an attribute, a name a class keeps
+  (`class Settings: ALPHA = em.parameter("alpha", 0.05)`, read as `Settings.ALPHA`), a name
+  declared `global` or `nonlocal`, and a tuple, list, set or dictionary written round the
+  call (`a, b = em.parameter("a", 1), em.parameter("b", 2)`). In R it is a list or an
+  environment (`cfg$alpha <- em$parameter("alpha", 0.05)`) and a call that is the last
+  expression of a block, which is the block's value. An argument is a read in both, so
+  `cfg <- list(alpha = em$parameter("alpha", 0.05))` and
+  `cfg = dict(alpha=em.parameter("alpha", 0.05))` are recorded as read whatever becomes of
+  `cfg`.
+- **R reads a parameter more loosely than Python does.** Python looks for the name in the
+  scope that assigned it. R looks for a symbol of that spelling anywhere in the file, so
+  `alpha <- em$parameter("alpha", 0.05)` with `alpha <- 0.01` on the next line, with an
+  `alpha` that is another function's own, or with `cfg$alpha` somewhere, is recorded as
+  read. A call with no braces round it, `if (strict) em$parameter("alpha", 0.05)`, is
+  recorded as read though nothing takes its value.
+- **A parameter declared in a helper is read differently by the two emitters.** Python reads
+  the file the call stands in. A name a helper module assigns at its top level and only the
+  importing script reads is therefore recorded as unread, and fails:
+  `ALPHA = em.parameter("alpha", 0.05)` in `settings.py`, read as `settings.ALPHA`. Hand the
+  value back from a function, or read it where it is declared. R reads the script the
+  emitter was given, finds no call there for a parameter declared in a file it sources, and
+  records nothing.
 - **G15 reads two kinds of fit.** The statsmodels formula API in Python and `lm`/`glm` in R.
   Anything else (a Cox model, a mixed model, scikit-learn) cannot be recorded with
   `em.model` yet. A fit `data/models.yaml` has no entry for is a warning, and its outcome is
@@ -6968,7 +6995,11 @@ Closed since, and why each mattered:
   parameter while it equals one; once the code has moved on it is a warning,
   `threshold-undeclared`, and only in an analysis that declares parameters. A confidence level
   ("95% CI") is a convention everywhere and is never read for a parameter. A software version
-  is matched by its text, so `Python 3.13` beside a declared `3.13.16` is not found.
+  is matched by its text, so `Python 3.13` beside a declared `3.13.16` is not found. A copy
+  typed as a word, "at least three cases", holds no figure, and neither rule sees it. A
+  figure typed against a letter is part of a name, so a threshold typed against the word
+  before it with no space, `power80%` or `caliper0.2`, is read as a name and neither rule
+  sees it either.
 - **Download links rot.** All fourteen work today, verified by a clean-room fetch and
   transcribe, but two needed a second attempt and none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible

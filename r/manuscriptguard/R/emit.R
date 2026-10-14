@@ -490,12 +490,69 @@ mg_observed <- function(values, kind) {
   out
 }
 
+# The columns of the data a fit was made on, or NULL where there are none to name: a fit made
+# from vectors in the environment, or on data that is no data frame or list. A glm keeps its
+# data. An lm keeps only the call, so its `data` is read again where the formula was made.
+mg_fit_columns <- function(fit) {
+  data <- fit[["data"]]
+  if (is.null(data) && !is.null(fit$call$data)) {
+    data <- tryCatch(eval(fit$call$data, environment(stats::formula(fit))),
+                     error = function(e) NULL)
+  }
+  if (is.list(data) && !is.null(names(data))) names(data) else NULL
+}
+
+# The data's columns an expression of a formula reads, as the Python emitter's
+# `_variables_in` has them: `splines::ns(age, knots = knots)` reads age, and `knots` is an
+# object of the script. Every name, as before, where the fit has no columns to compare with.
+mg_variables_in <- function(expression, columns) {
+  read <- all.vars(expression)
+  if (is.null(columns)) read else read[read %in% columns]
+}
+
+# Whether an expression of a formula is a comparison, as the Python emitter's
+# `_is_comparison` has it: known by its syntax, at the top of the expression, bare, in
+# brackets or inside `I()`, and the negation of one. `factor(stage == "IV")` and
+# `ifelse(age > 65, 1, 0)` are not: what the call around the comparison makes of it is not
+# known from the syntax.
+mg_is_comparison <- function(expression) {
+  if (!is.call(expression) || !is.name(expression[[1]])) return(FALSE)
+  called <- as.character(expression[[1]])
+  if (called %in% c("==", "!=", "<", "<=", ">", ">=", "%in%")) return(length(expression) == 3)
+  if (called %in% c("I", "(", "!")) {
+    return(length(expression) == 2 && mg_is_comparison(expression[[2]]))
+  }
+  FALSE
+}
+
+# For a binomial fit, the events of each row and, for grouped data, the trials in all; NULL
+# where neither can be read exactly. Grouped data are a response of two columns,
+# `cbind(events, failures)`, read as the table holds them, or a proportion, whose trials R
+# defines the prior weights to be. A proportion whose events or trials are not whole numbers
+# is not a table of counts, and no events are recorded for it. The test is the one
+# `binomial()` warns by.
+mg_successes <- function(fit, frame) {
+  response <- stats::model.response(frame)
+  if (is.matrix(response) && ncol(response) == 2) {
+    return(list(rows = response[, 1], trials = sum(response)))
+  }
+  y <- fit$y
+  if (is.null(y)) return(NULL)  # fitted with y = FALSE: the fit kept no outcome to count
+  if (all(y %in% c(0, 1))) return(list(rows = y, trials = NULL))
+  weights <- fit$prior.weights
+  whole <- function(v) all(abs(v - round(v)) <= 0.001)
+  if (!whole(weights) || !whole(y * weights)) return(NULL)
+  list(rows = round(y * weights), trials = sum(round(weights)))
+}
+
 # The model card of an lm or glm fit, read from the fit, mirroring the Python emitter's
 # `read_statsmodels`. Facts only; the name a model goes by is derived when results are read.
+# Whatever inherits from lm is read, so a fit built on glm (`MASS::glm.nb`) is too, with the
+# family it gives itself, which the list of models may have no entry for.
 mg_read_fit <- function(fit) {
   if (!inherits(fit, "lm")) {
-    stop("model: only lm and glm fits are read, so the terms cannot be read from this one",
-         call. = FALSE)
+    stop("model: only lm and glm fits, and fits that inherit from them, are read, so the ",
+         "terms cannot be read from this one", call. = FALSE)
   }
   tt <- stats::terms(fit)
   engine <- list(language = "R", package = "stats", class = class(fit)[[1]])
@@ -508,13 +565,15 @@ mg_read_fit <- function(fit) {
   contrasts <- fit$contrasts
   binary <- identical(engine$family, "binomial")
   frame <- stats::model.frame(fit)
-  y <- if (binary) fit$y else NULL
+  columns <- mg_fit_columns(fit)
+  counted <- if (binary) mg_successes(fit, frame) else NULL
   terms <- list()
   events_by_level <- list()
   for (label in attr(tt, "term.labels")) {
     used <- rownames(factors)[factors[, label] != 0]
     entered <- lapply(used, function(expression) {
-      record <- list(expression = expression, variables = I(all.vars(str2lang(expression))))
+      parsed <- str2lang(expression)
+      record <- list(expression = expression, variables = I(mg_variables_in(parsed, columns)))
       if (!is.null(xlevels[[expression]])) {
         record$as <- "categorical"
         record$levels <- I(as.character(xlevels[[expression]]))
@@ -525,24 +584,31 @@ mg_read_fit <- function(fit) {
       } else {
         record$as <- "numerical"
       }
+      if (mg_is_comparison(parsed)) record$comparison <- TRUE
       record
     })
-    if (binary && length(used) == 1 && !is.null(xlevels[[used[[1]]]])) {
+    if (!is.null(counted) && length(used) == 1 && !is.null(xlevels[[used[[1]]]])) {
       levels <- as.character(xlevels[[used[[1]]]])
-      sums <- tapply(y, factor(as.character(frame[[used[[1]]]]), levels = levels), sum)
+      at <- factor(as.character(frame[[used[[1]]]]), levels = levels)
+      sums <- tapply(counted$rows, at, sum)
       sums[is.na(sums)] <- 0
-      for (variable in all.vars(str2lang(used[[1]]))) {
+      for (variable in mg_variables_in(str2lang(used[[1]]), columns)) {
         events_by_level[[variable]] <- as.list(stats::setNames(as.integer(sums), levels))
       }
     }
     terms[[length(terms) + 1]] <- list(term = label, entered = entered)
   }
-  outcome <- paste(deparse(stats::formula(fit)[[2]]), collapse = " ")
+  left <- stats::formula(fit)[[2]]
+  outcome <- list(
+    expression = paste(deparse(left), collapse = " "),
+    variables = I(mg_variables_in(left, columns))
+  )
+  if (mg_is_comparison(left)) outcome$comparison <- TRUE
   dropped <- length(fit$na.action)
   card <- list(
     engine = engine,
     formula = paste(deparse(stats::formula(fit)), collapse = " "),
-    outcome = list(expression = outcome, variables = I(all.vars(stats::formula(fit)[[2]]))),
+    outcome = outcome,
     terms = terms,
     parameters = length(stats::coef(fit)) - attr(tt, "intercept"),
     n_input = stats::nobs(fit) + dropped,
@@ -550,8 +616,9 @@ mg_read_fit <- function(fit) {
     n_dropped = dropped,
     converged = if (inherits(fit, "glm")) isTRUE(fit$converged) else TRUE
   )
-  if (binary) {
-    card$events <- as.integer(sum(y))
+  if (!is.null(counted)) {
+    card$events <- as.integer(sum(counted$rows))
+    if (!is.null(counted$trials)) card$trials <- as.integer(counted$trials)
     if (length(events_by_level) > 0) card$events_by_level <- events_by_level
   }
   card

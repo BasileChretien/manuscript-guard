@@ -144,11 +144,29 @@ em.model("adjusted", fit, name="Adjusted model", description="What the model is 
 is declared is the one thing the data cannot tell G15: an ordinal grade and a nominal code
 are both integers. Declare what the variable means, not what its storage is.
 
+A comparison written in the formula, `I(stage == 'IV')` or `I(age >= 65)`, is a binary term
+of its own: declare the variable it reads as what that variable is, and G15 does not hold the
+comparison to its levels or its reference. A comparison inside another call
+(`C(stage == 'IV')`, `np.where(...)`, `ifelse(...)`) is not known for one. Derive that
+variable before the fit and declare it as a variable of its own.
+
+For grouped data, where a row is a group with its events and its trials
+(`"cases + others ~ ..."` in statsmodels, `cbind(cases, others) ~ ...` or a proportion with
+`weights` in R), declare the columns of counts as `count`. The card then holds the events and
+the trials the table adds up to, and `{{results.model.adjusted.events}}` and
+`{{results.model.adjusted.trials}}` bind them.
+
 Then, in the Methods, name the model by binding `{{results.model.adjusted.kind}}`, and place
 `{{table.model_adjusted}}` (in the supplement if the journal is short of tables): the outcome
 and each variable with its declared kind, how it entered and its reference. If the model
 dropped rows for missing values, bind `{{results.model.adjusted.n_dropped}}` where the Methods
 say how missing data were handled.
+
+The binding is for the kind that was fitted. A word that leaves the model what it is goes
+before the binding: "multivariable {{results.model.adjusted.kind}}", "modified
+{{results.model.adjusted.kind}}". A name that says another model, "conditional logistic
+regression" or "mixed-effects logistic regression", is typed as it is: G15 does not read a
+name after such a word, and `src/manuscript_guard/data/models.yaml` lists the words.
 
 `manuscript-guard models` prints each model as its card. Read it before writing the
 paragraph, and give it to a co-author: the author's description beside the sentence made from
@@ -160,12 +178,15 @@ What G15 reports, and what to do:
 |---|---|
 | `model-outcome-kind` | the model is not for this kind of outcome: fit one that is, or declare the outcome's real kind |
 | `model-categories-as-number` | a categorical variable entered as one slope: enter it as categories |
+| `model-binary-as-number` | a binary variable entered as a number and coded otherwise than 0 and 1, or true and false: enter it as categories, or recode it |
 | `model-reference`, `model-level-undeclared`, `variable-level-undeclared` | the fit and the declaration disagree about levels: fix whichever is wrong |
+| `variable-not-binary` | a variable declared binary takes more than two values in the data: declare the kind it is, or derive the binary variable the model means |
 | `model-variable-undeclared` | declare it with `variable()` |
 | `model-not-converged`, `model-empty-level` | a sparse level or separation: merge levels or refit, and say what you did |
 | `model-rows-dropped` | bind the number dropped where missing data are described |
 | `typed-model-kind` | the Methods type the kind of the model fitted: bind `{{results.model.<key>.kind}}` |
 | `model-ordinal-as-trend`, `model-number-as-categories`, `model-few-events`, `model-kind-unfitted` | warnings: say in the Methods why, or change the model |
+| `model-engine-unknown` | a warning: the toolkit's list has no name for this fit, so its outcome is not checked and it has no kind to bind; name the model in your own words |
 
 ## Locking the parameters worth checking
 

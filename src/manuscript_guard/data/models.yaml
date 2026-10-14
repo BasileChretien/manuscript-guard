@@ -11,6 +11,48 @@ schema: manuscript-guard/models/1
 # them; a model fitted to another kind is a G15 failure. `synonyms` are the names the Methods
 # may give it, matched as whole words in any case; a model named in the Methods that the
 # analysis did not fit is a warning. Each entry says why it allows what it allows.
+#
+# For grouped binomial data (a row is a group, with its events and its trials) the outcome's
+# variables are the columns of counts, or their proportion, and G15 holds them to that
+# instead of to `outcome`.
+
+# Words that, standing directly before a name below, make it the name of another model.
+#
+# "Conditional logistic regression" is not the logistic regression of the entry below: it is
+# fitted by other code (`clogit`, `ConditionalLogit`) and no `glm` is one. Read as the kind
+# the analysis fitted, the name would fail as a typed copy of it, and the hint would offer a
+# binding that misnames the model. So after one of these words the name is not read at all:
+# neither as the kind that was fitted nor as a model that was not. A word is matched as a
+# whole word in any case, with a space, a hyphen or a line break inside it either way
+# ("mixed effects"), and with a space, a hyphen or one line break after it.
+#
+# Not here, on purpose, are the words that leave the model the fit it is: multivariable,
+# multivariate, univariable, adjusted, crude, weighted, stratified, and also modified and
+# robust. A Poisson regression with a robust variance is the same fit, as its entry says,
+# and "modified {{results.model.<key>.kind}}" is the right thing to write.
+#
+# The list is a judgement and is kept here to be corrected. A word that changes the model
+# and is missing from it leaves the name read as the fitted kind, a failure that is false
+# until the word is added.
+other_models:
+  - words: [conditional, exact]
+    why: >-
+      Another likelihood: conditional on the matched sets, or on the sufficient statistics of
+      the nuisance parameters.
+  - words: [multinomial, polytomous, ordinal, ordered, cumulative, proportional-odds]
+    why: An outcome of more than two categories, each with its own model.
+  - words: [mixed, mixed-effects, random-effects, multilevel, hierarchical]
+    why: Random effects for clustered data, which lm and glm do not fit.
+  - words: [penalised, penalized, regularised, regularized, lasso, ridge, elastic-net, Firth]
+    why: A penalised likelihood, whose estimates are not those of the plain fit.
+  - words: [Bayesian]
+    why: A posterior under a prior, not a maximum-likelihood fit.
+  - words: [zero-inflated, hurdle, truncated]
+    why: A count model in two parts, or of a distribution cut short.
+  - words: [generalised, generalized]
+    why: >-
+      A wider family than the one named: a generalised Poisson or gamma regression has a
+      further parameter.
 
 engines:
   - kind: logistic regression

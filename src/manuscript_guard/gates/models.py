@@ -16,7 +16,14 @@ from pathlib import Path
 
 from manuscript_guard.classify import is_methods
 from manuscript_guard.contracts._schema import read_text
-from manuscript_guard.contracts.models import Model, Variable, engine_of, engines
+from manuscript_guard.contracts.models import (
+    Engine,
+    Model,
+    Variable,
+    engine_of,
+    engines,
+    other_model_words,
+)
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.findings import WARN, Finding, Report
@@ -33,8 +40,21 @@ GATE = "G15"
 #: both for and against it.
 EVENTS_PER_PARAMETER = 10
 
-#: The levels a binary variable entered as a number may take: anything else is a code.
-_BINARY_NUMBERS = frozenset({"0", "1", "False", "True"})
+#: The levels a binary variable entered as a number may take: anything else is a code. The
+#: two truth values are spelled as each language writes them, Python's and R's.
+_BINARY_NUMBERS = frozenset({"0", "1", "False", "True", "FALSE", "TRUE"})
+
+#: What a column of a grouped outcome may be declared: a count, of events or of trials, or
+#: the proportion of one in the other.
+_GROUPED_OUTCOME = ("count", "continuous")
+
+#: What stands between a word that makes another model of a name and the name: spaces, or
+#: one line break. A full stop, or the blank line of a new paragraph, ends what the word
+#: was said of.
+_BETWEEN = r"(?:[^\S\n]+|[^\S\n]*\n[^\S\n]*)"
+
+#: How far before a model's name such a word is looked for.
+_REACH = 80
 
 
 def check_models(project: Project, results: Results) -> Report:
@@ -126,21 +146,14 @@ def _model(model: Model, variables: dict[str, Variable], referenced: set[str]) -
             )
         )
 
-    for name in model.outcome["variables"]:
-        declared = variables.get(name)
-        if engine is not None and declared is not None and declared.kind not in engine.outcome:
-            findings.append(
-                _finding(
-                    model,
-                    "model-outcome-kind",
-                    f"a {engine.kind} of {declared.label!r}, which is declared "
-                    f"{declared.kind}; a {engine.kind} is for a "
-                    f"{' or '.join(engine.outcome)} outcome",
-                    "fit a model for this kind of outcome, or declare the kind the outcome is",
-                )
-            )
+    if engine is not None:
+        findings.extend(_outcome(model, engine, variables))
 
     for record in model.entered:
+        if record.get("comparison"):
+            # `I(stage == 'IV')` is a binary term of its own: the kind, the levels and the
+            # reference of the variable it reads are not its own.
+            continue
         for name in record["variables"]:
             if name in variables:
                 findings.extend(_entered(model, record, variables[name]))
@@ -167,7 +180,9 @@ def _model(model: Model, variables: dict[str, Variable], referenced: set[str]) -
                     )
                 )
     if model.events is not None and model.parameters:
-        fewer = min(model.events, model.n_used - model.events)
+        # Grouped data have their trials; otherwise each row used is one.
+        trials = model.n_used if model.trials is None else model.trials
+        fewer = min(model.events, trials - model.events)
         if fewer / model.parameters < EVENTS_PER_PARAMETER:
             findings.append(
                 _finding(
@@ -191,6 +206,47 @@ def _model(model: Model, variables: dict[str, Variable], referenced: set[str]) -
             )
         )
     return Report(tuple(findings))
+
+
+def _outcome(model: Model, engine: Engine, variables: dict[str, Variable]) -> list[Finding]:
+    """The outcome against the kinds its model is for.
+
+    A comparison written in the formula, `I(score > 5)`, is a binary outcome of its own and
+    is not held to the kind of the variable it reads. The columns of grouped data are
+    counts, or their proportion, under a model whose outcome is binary: the binary outcome
+    is each trial's.
+    """
+    if model.outcome.get("comparison"):
+        return []
+    grouped = model.trials is not None and "binary" in engine.outcome
+    findings = []
+    for name in model.outcome["variables"]:
+        declared = variables.get(name)
+        if declared is None:
+            continue
+        if grouped and declared.kind not in _GROUPED_OUTCOME:
+            findings.append(
+                _finding(
+                    model,
+                    "model-outcome-kind",
+                    f"a {engine.kind} of grouped data, where {declared.label!r} holds the "
+                    f"events or the trials of each row; it is declared {declared.kind}",
+                    "declare it a count: in grouped data the binary outcome is each "
+                    "trial's, not this column's",
+                )
+            )
+        elif not grouped and declared.kind not in engine.outcome:
+            findings.append(
+                _finding(
+                    model,
+                    "model-outcome-kind",
+                    f"a {engine.kind} of {declared.label!r}, which is declared "
+                    f"{declared.kind}; a {engine.kind} is for a "
+                    f"{' or '.join(engine.outcome)} outcome",
+                    "fit a model for this kind of outcome, or declare the kind the outcome is",
+                )
+            )
+    return findings
 
 
 def _entered(model: Model, record: dict, variable: Variable) -> list[Finding]:
@@ -284,6 +340,19 @@ def _names() -> re.Pattern[str]:
     return re.compile(r"(?<![\w-])(?:" + "|".join(words) + r")s?(?![\w-])", re.IGNORECASE)
 
 
+def _other_model(hidden: str, start: int) -> bool:
+    """Whether the name at `start` stands directly after a word that makes it the name of
+    another model: "conditional" before "logistic regression". The words are those of
+    `data/models.yaml`, as whole words in any case, with a space, a hyphen or a line break
+    inside one either way, and spaces or one line break between the word and the name."""
+    words = sorted(other_model_words(), key=len, reverse=True)
+    spelled = [r"[\s-]+".join(map(re.escape, re.split(r"[\s-]+", word))) for word in words]
+    before = re.compile(
+        r"(?<![\w-])(?:" + "|".join(spelled) + ")" + _BETWEEN + r"\Z", re.IGNORECASE
+    )
+    return before.search(hidden, max(0, start - _REACH), start) is not None
+
+
 def _kind_named(text: str) -> str | None:
     folded = " ".join(re.split(r"[\s-]+", text.casefold())).removesuffix("s")
     for entry in engines():
@@ -296,12 +365,15 @@ def _kind_named(text: str) -> str | None:
 def named_in_methods(text: str) -> list[tuple[int, int, str]]:
     """Each model the Methods of `text` name: its offsets, and the kind it names. Read in the
     prose G14 reads words in, with listings, comments, inline code and equations hidden, and
-    the Methods are where the headings above say they are, as G2 has them."""
+    the Methods are where the headings above say they are, as G2 has them. A name after a
+    word that makes it another model's ("conditional logistic regression") is not read."""
     hidden = _hidden(text)
     headings, notes = heading_index(text), footnote_index(text)
     found = []
     for match in _names().finditer(hidden):
         if not any(is_methods(chain) for chain in chains_at(headings, notes, match.start())):
+            continue
+        if _other_model(hidden, match.start()):
             continue
         kind = _kind_named(match.group())
         if kind is not None:

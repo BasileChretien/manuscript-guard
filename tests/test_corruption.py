@@ -9987,6 +9987,124 @@ def test_an_outcome_declared_continuous_under_a_logistic_model_fails(project: Pa
     assert "model-outcome-kind" in {f.code for f in _models_report(project).failures}
 
 
+_THE_FIT = "        fit = smf.glm(\n"
+
+_BAND = """\
+        codes = {"18-44": 1, "45-64": 2, "65-74": 3, "75+": 4}
+        frame["band"] = frame["age_group"].map(codes).astype(float)
+        frame.loc[0, "band"] = float("nan")
+        em.variable("band", "ordinal", label="age band", levels=[1, 2, 3, 4], reference=1,
+                    values=frame["band"])
+"""
+
+
+def test_a_reference_moved_on_a_category_of_float_codes_fails(project: Path) -> None:
+    """An integer code with one missing value is a column of floats. Its columns in the fit
+    are named "[T.2.0]" and its levels are written "2", so no reference was recorded for it
+    and a reference other than the declared one passed."""
+    _replace_once(_analysis(project), _THE_FIT, _BAND + _THE_FIT)
+    _replace_once(
+        _analysis(project), "C(age_group, Treatment('18-44'))", "C(band, Treatment(2))"
+    )
+    _rerun_disproportionality(project)
+    assert sorted(f.message for f in _models_report(project).failures) == [
+        "model 'adjusted': 'age band' has reference '2' in the fit and '1' in its declaration",
+        "model 'adjusted': 1 of 4000 rows were dropped, for missing values, and the manuscript "
+        "never says how many",
+    ]
+
+
+def test_a_variable_dichotomised_in_the_formula_is_not_held_to_its_levels(project: Path) -> None:
+    """`I(age_group == '75+')` is true or false of each report, a binary term of its own. It
+    was held to the four levels and the reference declared for the age group."""
+    _replace_once(
+        _analysis(project), "C(age_group, Treatment('18-44'))", "I(age_group == '75+')"
+    )
+    _rerun_disproportionality(project)
+    report = _models_report(project)
+    assert not report.findings, report.render(project)
+    _replace_once(_analysis(project), "I(age_group == '75+')", "C(age_group == '75+')")
+    _rerun_disproportionality(project)
+    assert {f.code for f in _models_report(project).failures} == {
+        "model-level-undeclared", "model-reference",
+    }, "inside another call it is not known for a comparison"  # fmt: skip
+
+
+def test_a_missing_value_of_a_nullable_column_is_not_a_level(project: Path) -> None:
+    """pandas writes it NA, which is neither None nor a float: it was recorded as the level
+    "<NA>", which no declaration has."""
+    _replace_once(
+        _analysis(project),
+        'values=frame["exposed"])',
+        'values=frame["exposed"].astype("Int64").mask(frame.index == 0))',
+    )
+    _rerun_disproportionality(project)
+    report = _models_report(project)
+    assert not report.findings, report.render(project)
+    project_, _ = load_project(project)
+    observed = load_namespace(project_)[1].variables["exposed"].observed
+    assert observed == {"distinct": 2, "missing": 1, "levels": ["0", "1"]}
+
+
+_THE_BOUNDS = "        bounds = fit.conf_int"
+
+_GROUPED = """\
+        table = frame.groupby(["age_group", "exposed"], as_index=False).agg(
+            cases=("hepatic", "sum"), reports=("hepatic", "size")
+        )
+        table["others"] = table["reports"] - table["cases"]
+        em.variable("cases", "count", label="reports of hepatic injury")
+        em.variable("others", "count", label="other reports")
+        grouped = smf.glm(
+            "cases + others ~ exposed + C(age_group, Treatment('18-44'))",
+            table,
+            family=sm.families.Binomial(),
+        ).fit()
+        em.model("grouped", grouped, name="Grouped model")
+"""
+
+
+def test_a_grouped_model_counts_the_table_and_a_level_with_no_events_fails(project: Path) -> None:
+    """The same reports as a table of eight rows, cases beside the others. The fit is of the
+    proportion in each row, and the sum of the proportions was recorded as the events."""
+    _replace_once(_analysis(project), _THE_BOUNDS, _GROUPED + _THE_BOUNDS)
+    _rerun_disproportionality(project)
+    report = _models_report(project)
+    assert not report.findings, report.render(project)
+    project_, _ = load_project(project)
+    models = load_namespace(project_)[1].models
+    each, grouped = models["adjusted"], models["grouped"]
+    assert (grouped.events, grouped.trials) == (each.events, each.n_used) == (271, 4000)
+    assert grouped.n_used == 8
+    assert grouped.events_by_level == {"age_group": each.events_by_level["age_group"]}
+
+    _replace_once(
+        _analysis(project),
+        '        table["others"] = ',
+        '        table.loc[table["age_group"] == "75+", "cases"] = 0\n        table["others"] = ',
+    )
+    _rerun_disproportionality(project)
+    failed = [f.message for f in _models_report(project).failures]
+    assert (
+        "model 'grouped': no events at level '75+' of 'age_group': its coefficient cannot be "
+        "estimated (separation)"
+    ) in failed, failed
+
+
+def test_another_model_named_in_the_methods_is_not_the_fitted_kind_typed(project: Path) -> None:
+    """"Conditional logistic regression" is not the logistic regression the example fitted,
+    and binding the fitted kind there, as the hint said, would have misnamed it. A word that
+    leaves the model what it is, "multivariable", still leaves the name a typed copy."""
+    said = "S2 describes the model as it was fitted."
+    _replace_once(
+        main_md(project), said, said + " A conditional logistic regression was not needed."
+    )
+    report = _models_report(project)
+    assert not report.findings, report.render(project)
+    _replace_once(main_md(project), "A conditional logistic", "A multivariable logistic")
+    assert [f.code for f in _models_report(project).findings] == ["typed-model-kind"]
+
+
 # -------------------------------------------------------------- the Methods, pair by pair
 
 

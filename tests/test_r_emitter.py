@@ -654,6 +654,225 @@ def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> 
     }  # fmt: skip
 
 
+NEEDS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+record <- function(key, fit) em$model(key, fit, name = key)
+em$value("fits", 1L)
+"""
+
+FITS_R = NEEDS_R + """
+set.seed(1)
+n <- 300
+d <- data.frame(
+  y = rbinom(n, 1, 0.4), drug = sample(c("X", "Y"), n, TRUE), age = rnorm(n, 50, 10),
+  stage = sample(c("I", "II", "III", "IV"), n, TRUE), score = rnorm(n, 5, 2),
+  stringsAsFactors = FALSE
+)
+d$exposed <- d$drug == "X"
+em$variable("y", "binary", label = "the outcome", levels = c(0, 1), values = d$y)
+em$variable("exposed", "binary", label = "exposure", levels = c(FALSE, TRUE),
+            values = d$exposed)
+em$variable("age", "continuous", label = "age")
+em$variable("stage", "categorical", label = "stage", levels = c("I", "II", "III", "IV"),
+            reference = "I", values = d$stage)
+em$variable("score", "continuous", label = "score")
+knots <- c(40, 60)
+age_breaks <- c(0, 40, 60, 120)
+cutoff <- 5
+late <- c("III", "IV")
+record("logical", glm(y ~ exposed, binomial, data = d))
+record("spline", glm(y ~ splines::ns(age, knots = knots), binomial, data = d))
+record("bands", glm(y ~ cut(age, breaks = age_breaks), binomial, data = d))
+record("linear", lm(score ~ splines::ns(age, knots = knots), data = d))
+record("dichotomised", glm(I(score > cutoff) ~ I(stage == "IV") + age, binomial, data = d))
+record("negated", glm(y ~ I(!(stage %%in%% late)), binomial, data = d))
+record("bare", glm(y ~ age >= 65, binomial, data = d))
+record("factored", glm(y ~ factor(stage), binomial, data = d))
+record("as_logical", glm(y ~ factor(stage == "IV"), binomial, data = d))
+record("trend", glm(y ~ as.numeric(factor(stage)), binomial, data = d))
+record("no_y", glm(y ~ factor(stage), binomial, data = d, y = FALSE))
+yy <- d$y
+aa <- d$age
+record("vectors", glm(yy ~ splines::ns(aa, knots = knots), binomial))
+em$write()
+"""
+
+
+def _judged_from_r(root: Path, text: str, **paths: str) -> tuple[dict, dict[str, set[str]]]:
+    """The fragment an R script wrote, and what G15 says of each model in it."""
+    from manuscript_guard.contracts import load_namespace, load_project
+    from manuscript_guard.gates import check_models
+
+    (root / "manuscript").mkdir()
+    (root / "manuscript" / "main.md").write_text("# Methods\n\nText.\n", encoding="utf-8")
+    script = root / "analysis" / "fits.R"
+    script.write_text(
+        text % {"emit": EMIT_R.as_posix(), "script": script.as_posix(), **paths}, encoding="utf-8"
+    )
+    out = _run_r(script, root)
+    assert out.returncode == 0, f"{out.stdout}\n{out.stderr}"
+    path = root / "results" / "fits.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert validate(document, "results", path).ok
+    project, _ = load_project(root)
+    _namespace, results, _literature, loaded = load_namespace(project)
+    assert loaded.ok, loaded.render(root)
+    said: dict[str, set[str]] = {key: set() for key in document["models"]}
+    for finding in check_models(project, results).findings:
+        key = finding.message.split("'")[1] if finding.message.startswith("model '") else ""
+        said.setdefault(key, set()).add(finding.code)
+    return document, said
+
+
+@pytest.fixture(scope="module")
+def r_fits(tmp_path_factory: pytest.TempPathFactory) -> tuple[dict, dict[str, set[str]]]:
+    return _judged_from_r(_parameter_project(tmp_path_factory.mktemp("fits")), FITS_R)
+
+
+def _entered_in(document: dict, key: str) -> list[dict]:
+    return [record for term in document["models"][key]["terms"] for record in term["entered"]]
+
+
+def test_a_logical_predictor_in_r_is_a_binary_variable_entered_as_a_number(r_fits) -> None:
+    """R gives a logical no `xlevels`, so the term is a number, and writes its two values
+    FALSE and TRUE. Declared binary, that is what it is, and nothing is reported."""
+    document, said = r_fits
+    assert _entered_in(document, "logical") == [
+        {"expression": "exposed", "variables": ["exposed"], "as": "numerical"}
+    ]
+    exposed = document["variables"]["exposed"]
+    assert exposed["levels"] == ["FALSE", "TRUE"]
+    assert exposed["observed"] == {"distinct": 2, "missing": 0, "levels": ["FALSE", "TRUE"]}
+    assert said["logical"] == set() and "" not in said, said
+
+
+@pytest.mark.parametrize(
+    ("key", "variables", "codes"),
+    [
+        ("spline", ["age"], set()),
+        # Bands of a continuous variable are a warning, as they were; `age_breaks` is not read.
+        ("bands", ["age"], {"model-number-as-categories"}),
+        # An lm keeps no copy of its data: the call's `data` is read again.
+        ("linear", ["age"], set()),
+        ("negated", ["stage"], set()),
+        # With no `data` there are no columns to tell `knots` from: every name, as before.
+        ("vectors", ["aa", "knots"], {"model-variable-undeclared"}),
+    ],
+)
+def test_r_keeps_the_names_that_are_columns_of_the_data(
+    r_fits, key: str, variables: list[str], codes: set[str]
+) -> None:
+    document, said = r_fits
+    assert [record["variables"] for record in _entered_in(document, key)] == [variables]
+    assert said[key] == codes
+
+
+def test_r_knows_a_comparison_and_g15_does_not_hold_it_to_its_variable(r_fits) -> None:
+    """`I(stage == "IV")` is a logical, entered as a number, of a variable declared
+    categorical; `I(score > cutoff)` a binary outcome of a continuous one."""
+    document, said = r_fits
+    card = document["models"]["dichotomised"]
+    assert card["outcome"] == {
+        "expression": "I(score > cutoff)", "variables": ["score"], "comparison": True,
+    }  # fmt: skip
+    assert _entered_in(document, "dichotomised") == [
+        {"expression": 'I(stage == "IV")', "variables": ["stage"], "as": "numerical",
+         "comparison": True},
+        {"expression": "age", "variables": ["age"], "as": "numerical"},
+    ]  # fmt: skip
+    assert card["events"] > 0 and said["dichotomised"] == set()
+    for key in ("negated", "bare"):
+        assert [r.get("comparison") for r in _entered_in(document, key)] == [True], key
+        assert said[key] == set()
+
+
+@pytest.mark.parametrize(
+    ("key", "codes"),
+    [
+        ("factored", set()),
+        ("trend", {"model-categories-as-number"}),
+        # A comparison inside another call is not known for one, and is held to `stage`.
+        ("as_logical", {"model-level-undeclared", "model-reference"}),
+    ],
+)
+def test_r_marks_nothing_else_a_comparison(r_fits, key: str, codes: set[str]) -> None:
+    document, said = r_fits
+    assert not any("comparison" in record for record in _entered_in(document, key))
+    assert "comparison" not in document["models"][key]["outcome"]
+    assert said[key] == codes
+
+
+def test_r_counts_the_events_of_a_fit_that_kept_its_outcome_and_of_no_other(r_fits) -> None:
+    """`glm(..., y = FALSE)` keeps no outcome: no events are recorded for it, where 0 was."""
+    models = r_fits[0]["models"]
+    kept = models["factored"]
+    assert kept["events"] == sum(kept["events_by_level"]["stage"].values()) > 0
+    assert not {"events", "events_by_level"} & set(models["no_y"])
+
+
+GROUPED_R = NEEDS_R + """
+t <- read.csv("%(data)s", stringsAsFactors = FALSE)
+t$n <- t$s + t$f
+t$p <- t$s / t$n
+t$q <- t$p * 0.999
+for (name in c("s", "f", "n")) em$variable(name, "count", label = name)
+em$variable("p", "continuous", label = "proportion of cases")
+em$variable("q", "continuous", label = "another proportion")
+em$variable("x", "binary", label = "exposure", levels = c(0, 1), values = t$x)
+em$variable("g", "categorical", label = "group", levels = c("a", "b", "c"), reference = "a",
+            values = t$g)
+record("grouped", glm(cbind(s, f) ~ x + g, binomial, data = t))
+record("of_n", glm(cbind(s, n - s) ~ x + g, binomial, data = t))
+record("proportion", glm(p ~ x + g, binomial, weights = n, data = t))
+record("unread", suppressWarnings(glm(q ~ x + g, binomial, weights = n, data = t)))
+em$write()
+"""
+
+
+def test_r_and_python_read_the_same_grouped_table(tmp_path: Path) -> None:
+    """`cbind(events, failures)`, and a proportion with the trials as weights, are fitted to
+    the proportion of each row: its sum was recorded as the events, 1 for a table of 85. Both
+    languages now record the events and the trials the table holds, and by level."""
+    pd = pytest.importorskip("pandas")
+    sm = pytest.importorskip("statsmodels.api")
+    smf = pytest.importorskip("statsmodels.formula.api")
+    import warnings
+
+    from manuscript_guard.emit import read_statsmodels
+
+    table = pd.DataFrame({
+        "s": [10, 20, 30, 25, 0, 0], "f": [90, 80, 70, 75, 100, 100],
+        "x": [0, 1, 0, 1, 0, 1], "g": ["a", "a", "b", "b", "c", "c"],
+    })  # fmt: skip
+    root = _parameter_project(tmp_path)
+    csv = root / "table.csv"
+    table.to_csv(csv, index=False)
+    document, said = _judged_from_r(root, GROUPED_R, data=csv.as_posix())
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # no events at level c, which is the point
+        fit = smf.glm("s + f ~ x + C(g)", table, family=sm.families.Binomial()).fit()
+    from_python = read_statsmodels(fit)
+
+    def facts(card: dict) -> tuple:
+        return card["events"], card["trials"], card["n_used"], card["events_by_level"]
+
+    counted = (85, 600, 6, {"g": {"a": 30, "b": 55, "c": 0}})
+    models = document["models"]
+    assert facts(from_python) == counted
+    for key in ("grouped", "of_n", "proportion"):
+        assert facts(models[key]) == counted, key
+        assert said[key] - {"model-not-converged"} == {"model-empty-level"}, key
+    assert sorted(models["grouped"]["outcome"]["variables"]) == from_python["outcome"]["variables"]
+    assert models["of_n"]["outcome"] == {"expression": "cbind(s, n - s)", "variables": ["s", "n"]}
+    assert models["proportion"]["outcome"]["variables"] == ["p"]
+    # A proportion whose events are not whole numbers is no table of counts: nothing is read.
+    assert not {"events", "trials", "events_by_level"} & set(models["unread"])
+
+
 STEPS_R = """
 if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
   cat("MISSING_DEPS\\n"); quit(status = 3)

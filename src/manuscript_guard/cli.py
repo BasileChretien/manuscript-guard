@@ -1495,6 +1495,13 @@ def cmd_models(args: argparse.Namespace) -> int:
         for finding in mine:
             print(f"  [{finding.severity.upper()}] {finding.message.split(': ', 1)[1]}")
         print()
+    # What G15 says of no one model, of a variable's data or of a name typed in the Methods,
+    # counts in the exit code and so is printed.
+    under_a_card = tuple(f"model {key!r}:" for key in results.models)
+    for finding in report.findings:
+        if not finding.message.startswith(under_a_card):
+            where = f"{finding.path.name}:{finding.line}: " if finding.line else ""
+            print(f"[{finding.severity.upper()}] {where}{finding.message}")
     return 0 if report.ok else 1
 
 

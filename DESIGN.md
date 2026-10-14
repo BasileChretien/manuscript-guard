@@ -4180,7 +4180,7 @@ inside a longer number, a nought trimmed off a number, a variable's name read as
 a binding that opens a line put on the line before, a stop against a binding that ends no
 sentence, a comment read for its stops; nine ways `reworded` can misread an edit, from
 a number's sign taken for no part of it to what a comment holds held to its place; five
-ways a co-author's item can lose the citation of its claim, from every stop ending a
+ways a co-author's items can be cut wrong round the citation of a claim, from every stop ending a
 sentence, after "et al." too, to a piece that is only a citation left as an item of its
 own; seven ways an anchor can claim the wrong text, from a claim that runs back past the
 anchor before it to an anchor in a comment taken for one; three ways the warning of an
@@ -7075,8 +7075,10 @@ Closed since, and why each mattered:
   though pandoc reads a heading or a raw block and then a paragraph the anchor's line only
   opens. An anchor's line inside a fenced code block is warned of, since code is not
   blanked. An anchor whose braces are typed over two lines is no line of anchors, so in
-  `A.\n{{method.a}}\n{{method.\nb}}\n\nB.` it stands as the line below the run and line 2
-  is warned of. And a comment after the last anchor of a run counts as text, so
+  `A.\n{{method.a}}\n{{method.b\n}}\n\nB.` it stands as the line below the run and line 2
+  is warned of, though both anchors print nothing. (A line break inside the name,
+  `{{method.\nb}}`, makes no anchor at all: it prints as text, and the paragraph does end
+  there.) And a comment after the last anchor of a run counts as text, so
   `A.\n{{method.a}}\n{{method.b}} <!-- checked -->\n\nB.` is warned of at line 2. In the
   last two nothing splits in the document, and the message that the paragraph ends there
   is false.

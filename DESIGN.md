@@ -5444,12 +5444,19 @@ Closed since, and why each mattered:
   major findings; the quality of the reading is beyond it, and the skill says so.
 - **A seal is kept beside what it seals, so it catches an edit, not a forger.** Whoever can
   edit a reading can take its `reading_sha256` out, soften a finding, and run `review --seal`
-  again. A reading `review --run` filed is then still said to be unsealed, since it carries
-  `provenance`; one filed by hand is said only while it still has a major finding, and a
-  warning is all either gets. What a hand-filed reading said before it was sealed is not
-  sealed at all, and every record written before seals existed is unsealed until somebody
-  seals it, with whatever it then says. The file's history in git is the witness for all of
-  these, and `check` does not read it.
+  again. Without the seal, a reading is said to be unsealed while it still has a major
+  finding or still carries `provenance`, which is how a reading `review --run` filed is
+  known; `provenance` is not sealed and may be taken out too, and then a reading whose only
+  major finding was made minor is said to be nothing at all. A warning is the most any of
+  this gets. What a hand-filed reading said before it was sealed is not sealed at all, and
+  every record written before seals existed is unsealed until somebody seals it, with
+  whatever it then says. The file's history in git is the witness for all of these, and
+  `check` does not read it.
+- **`review --seal` goes on its own, and is not told so of every flag.** It refuses
+  `--record`, `--record-figure`, `--providers`, `--run` and `--dry-run`. `--digest` with it
+  is answered first and nothing is sealed, and `--verdict`, `--summary`, `--by`, `--remit`
+  and `--files` are passed over. The command `review --record` prints for sealing puts the
+  reader's name in double quotes, which a name holding `"` or `$` would break.
 - **A plain record is not checked against where it is filed.** A named reading must say
   the reader, the reviewer and the round its place says. `<reviewer>.yaml` is read as it
   always was: its `reviewer` and `round` fields are not compared with its place, so a

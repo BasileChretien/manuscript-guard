@@ -1577,12 +1577,15 @@ the characters made ten to the minus six with nothing said.
 **A sign of comparison belongs to its number.** Until 2026-10-14 only the spaces around
 one were spoken of, and the sign itself was free with them: "The association was
 significant (P < 0.05)" made "(P > 0.05)" was reported as nothing to report, and the sign
-says the opposite. Now `<`, `>`, `=`, `≤`, `≥` and `≠` before a number or a binding are
-read with it, so "P < 0.05" is the fact `<0.05`, and a sign that is gone, new or turned
-round is a fact gone and a fact new, which fails, as a changed number does. The spaces
-around the sign are still free, any width and one line break, and so is how it is typed:
+says the opposite. Now `<`, `>`, `≤`, `≥` and `≠` before a number or a binding are read
+with it, so "P < 0.05" is the fact `<0.05`, and a sign that is gone, new or turned round is
+a fact gone and a fact new, which fails, as a changed number does. An `=` is read as what a
+number standing alone says: "(OR = 1.52)" made "(OR 1.52)" is a copy-edit and passes, and
+"P = 0.04" made "P < 0.04" fails. The spaces around the sign are still free, a space of any
+width and one line break, and so is how it is typed:
 "<=", "≤" and "⩽" are one sign, and so are the full-width forms and the escape `\<`
-that Word's round trip writes. A ">" is no sign where it ends an HTML tag, "<sup>2", or
+that Word's round trip writes. A ">" is no sign where it is the head of an arrow, "5 ->
+10", where it ends an HTML tag, "<sup>2", or
 marks a block quotation: at the start of its line, after a blank line, a quoted line or
 nothing. A ">" that starts a line in the middle of a paragraph is the sign of a sentence
 wrapped there, since pandoc opens no quotation without a blank line before it. The sign
@@ -8479,7 +8482,11 @@ Closed since, and why each mattered:
     0.05" fails as a sign gone, though the sentence says the same; "less than" made
     "more than" passes. Typed in TeX, `$p \leq 0.05$`, it is letters and not held. A
     ">" after what looks like an HTML tag opened on its line, "x<y and z>3", is taken for
-    the end of the tag and is no sign there.
+    the end of the tag and is no sign there, escaped `\>` or not. A block quotation
+    directly under a heading or a closing fence, with no blank line between, has its ">"
+    read as a sign, and a quoted paragraph rewrapped before its own sign loses it. The ">"
+    of a folded value in the front matter, `abstract: >`, is read as the sign of the first
+    number under it; G2 asks for the abstract under a heading instead.
   - A number spelt out, "3" made "three", is reported as gone, and so is a thousands
     separator taken out. The edit may be harmless; nothing here decides that.
   - Where a fact stands more often or less often than it did, which of them came or went

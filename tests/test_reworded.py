@@ -159,7 +159,7 @@ def test_a_number_is_read_as_it_is_typed(typed: str, read: list[str]) -> None:
         ("on days **1**-3", ["1", "?3"]),
         ("P < 1e-5", ["<1", "?5"]),
         ("in Figures 1E\N{EN DASH}1G", ["1", "?1"]),
-        ("tol = 10**-6", ["=10", "?6"]),
+        ("tol = 10**-6", ["10", "?6"]),
         ("y = x*-1", ["?1"]),
         ("z <- x^2*y^-1", ["2", "?1"]),
         ("struck ~~-3~~ out", ["?3"]),
@@ -213,7 +213,8 @@ def test_a_binding_here_is_one_the_gates_call_well_formed() -> None:
         ("P<0.05", ["<0.05"]),
         ("P \N{NO-BREAK SPACE}>\N{THIN SPACE}0.05", [">0.05"]),
         ("P <\n0.05", ["<0.05"]),  # wrapped after the sign
-        ("n = 12", ["=12"]),
+        ("n = 12", ["12"]),  # an "=" says what a number alone says
+        ("n \N{FULLWIDTH EQUALS SIGN} 12", ["12"]),
         ("P \N{LESS-THAN OR EQUAL TO} 0.001", ["\N{LESS-THAN OR EQUAL TO}0.001"]),
         ("P <= 0.001", ["\N{LESS-THAN OR EQUAL TO}0.001"]),
         ("P \N{LESS-THAN OR SLANTED EQUAL TO} 0.001", ["\N{LESS-THAN OR EQUAL TO}0.001"]),
@@ -223,6 +224,10 @@ def test_a_binding_here_is_one_the_gates_call_well_formed() -> None:
         ("a fall < -0.3", ["-<0.3"]),  # and the minus sign is the number's, as ever
         ("p \\< 0.05", ["<0.05"]),  # the escape Word's round trip writes
         # a ">" that is no sign
+        ("from 5 -> 10", ["5", "10"]),  # the head of an arrow
+        ("from 5 --> 10", ["5", "10"]),
+        ("from 5 => 10", ["5", "10"]),
+        ("from 5 \N{EN DASH}> 10", ["5", "10"]),
         ("x<sup>2</sup>", ["2"]),
         ("a cell <td>12</td>", ["12"]),
         # and no sign at all
@@ -341,7 +346,8 @@ def test_a_number_is_compared_as_typed(old: str, new: str) -> None:
     [
         # the experiment that found it: the sign turned round, "nothing to report"
         ("(P < 0.05)", "(P > 0.05)", "'<0.05'", "'>0.05'"),
-        ("(P < 0.05)", "(P = 0.05)", "'<0.05'", "'=0.05'"),
+        ("(P < 0.05)", "(P = 0.05)", "'<0.05'", "'0.05'"),
+        ("(P = 0.04)", "(P < 0.04)", "'0.04'", "'<0.04'"),
         ("(P \N{LESS-THAN OR EQUAL TO} 0.05)", "(P < 0.05)", "'\N{LESS-THAN OR EQUAL TO}0.05'",
          "'<0.05'"),
         ("(P < 0.05)", "(P 0.05)", "'<0.05'", "'0.05'"),  # the sign gone
@@ -369,6 +375,17 @@ def test_a_sign_of_comparison_gone_new_or_turned_round_fails(
         ("(P < 0.05)", "(P \N{NO-BREAK SPACE}<\N{NARROW NO-BREAK SPACE}0.05)"),
         ("(P < 0.05)", "(P \\< 0.05)"),
         ("(n = 12)", "(n=12)"),
+        # an "=" may come and go: it says what a number alone says
+        ("(OR = 1.52)", "(OR 1.52)"),
+        ("a mean age = 54", "a mean age of 54"),
+        # an arrow retyped
+        ("from 5 -> 10 mg", "from 5 \N{RIGHTWARDS ARROW} 10 mg"),
+        ("from 5 --> 10 mg", "from 5 to 10 mg"),
+        ("from 5 => 10 mg", "from 5 \N{RIGHTWARDS DOUBLE ARROW} 10 mg"),
+        # any width of space, and any space a word processor puts there
+        ("(P < 0.05)", "(P <\N{HAIR SPACE}0.05)"),
+        ("(P < 0.05)", "(P\N{EN SPACE}<\N{IDEOGRAPHIC SPACE}0.05)"),
+        ("(P < 0.05)", "(P\N{PUNCTUATION SPACE}<\N{FIGURE SPACE}0.05)"),
         ("(P < {{results.p}})", "(P<{{ results.p }})"),
         ("significant (P\n> 0.05) here", "significant (P > 0.05) here"),
     ],

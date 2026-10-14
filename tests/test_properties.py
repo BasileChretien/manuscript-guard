@@ -1308,12 +1308,14 @@ _WRITTEN = {
     CITATION: ("[@key%s]", "@key%s", "[see @key%s]"),
 }
 _TYPED_NUMBERS = ("12", "3.84", "1,200", "-0.5", "95", "0.05", ".05", "-.30")
-#: How a number is set in its sentence: bare, in brackets, in emphasis, after the sign of
-#: an estimate, in a cell, after a comma, after a product. In all but the last the dash of a
-#: negative one is its sign for sure; after the product it is perhaps one, and stands in
-#: both texts. A sign of comparison is no setting: it is part of its number (`_COMPARED`).
+#: How a number is set in its sentence: bare, in brackets, in emphasis, after an equals
+#: sign, which says what a number alone says, after the sign of an estimate, in a cell,
+#: after a comma, after a product. In all but the last the dash of a negative one is its
+#: sign for sure; after the product it is perhaps one, and stands in both texts. Any other
+#: sign of comparison is no setting: it is part of its number (`_COMPARED`).
 _SET = (
-    "%s", "(%s)", "*%s*", "**%s**", "\N{ALMOST EQUAL TO}%s", "|**%s**|", "(a,*%s*)", "x*%s",
+    "%s", "(%s)", "*%s*", "**%s**", "= %s", "\N{ALMOST EQUAL TO}%s", "|**%s**|", "(a,*%s*)",
+    "x*%s",
 )  # fmt: skip
 #: A sign of comparison, by the sign it is read as, in each of the ways it is typed, and the
 #: space between it and its number. A number drawn with one keeps it, and each time the
@@ -1321,7 +1323,6 @@ _SET = (
 _COMPARED = {
     "<": ("<", "\\<", "\N{FULLWIDTH LESS-THAN SIGN}"),
     ">": (">", "\\>"),
-    "=": ("=",),
     "\N{LESS-THAN OR EQUAL TO}": (
         "\N{LESS-THAN OR EQUAL TO}", "<=", "\N{LESS-THAN OR SLANTED EQUAL TO}",
     ),
@@ -1334,9 +1335,10 @@ _TURNED = (
     (("< 0.047", "'<0.047'"), ("> 0.047", "'>0.047'")),
     (("<0.047", "'<0.047'"), ("0.047", "'0.047'")),
     (("0.047", "'0.047'"), ("\N{LESS-THAN OR EQUAL TO} 0.047", "'\N{LESS-THAN OR EQUAL TO}0.047'")),
-    (("= 47", "'=47'"), ("\N{NOT EQUAL TO} 47", "'\N{NOT EQUAL TO}47'")),
+    (("= 47", "'47'"), ("\N{NOT EQUAL TO} 47", "'\N{NOT EQUAL TO}47'")),
+    (("= 0.047", "'0.047'"), ("< 0.047", "'<0.047'")),
     ((">= 47", "'\N{GREATER-THAN OR EQUAL TO}47'"), ("> 47", "'>47'")),
-    (("\\< 0.047", "'<0.047'"), ("= 0.047", "'=0.047'")),
+    (("\\< 0.047", "'<0.047'"), ("= 0.047", "'0.047'")),
 )  # fmt: skip
 #: The same sign before the same number, typed and spaced another way: no change.
 _RESPACED = (
@@ -1345,6 +1347,9 @@ _RESPACED = (
     ("< 0.047", "\N{NO-BREAK SPACE}<\n0.047"),
     ("\\< 0.047", "<0.047"),
     ("\N{LESS-THAN OR SLANTED EQUAL TO}0.047", "\N{LESS-THAN OR EQUAL TO} 0.047"),
+    ("= 0.047", "0.047"),
+    ("5 -> 47", "5 \N{RIGHTWARDS ARROW} 47"),
+    ("< 0.047", "<\N{HAIR SPACE}0.047"),
 )
 #: Each of the hyphens typed for a minus sign.
 _MINUS_TYPED = ("-", "\N{MINUS SIGN}", "\N{NON-BREAKING HYPHEN}")
@@ -1380,8 +1385,9 @@ def test_a_fact_is_where_it_says_and_a_text_is_what_it_was(manuscript: str, nobo
                 assert not signed or here[0] in reworded_module._MINUS + "+", (text, fact)
                 assert here[signed:].startswith(own.lstrip("+")), (text, fact)
             if fact.relation:
-                # The sign is typed before the fact, with nothing but space between.
-                typed = folded[: fact.start].rstrip(" \t\n\N{NO-BREAK SPACE}\N{THIN SPACE}")
+                # The sign is typed before the fact, with nothing but its gap between.
+                gap = re.compile("(?:" + reworded_module._GAP + r")\Z")
+                typed = gap.sub("", folded[: fact.start], count=1)
                 forms = [sign for sign, read in RELATIONS.items() if read == fact.relation]
                 assert any(typed.endswith(form) for form in forms), (text, fact)
             last = fact.start

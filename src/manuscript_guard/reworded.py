@@ -21,7 +21,8 @@ binding, every citation key and every typed number. The words between them are f
   the dash may be that of a range: there one that came or went is shown with a warning,
   for the same reason.
 - A **sign of comparison** before a number or a binding is part of it: "P < 0.05" made
-  "P > 0.05" is a number gone and one new, and so is "(n = 12)" made "(12)".
+  "P > 0.05" is a number gone and one new, and so is "P < 0.05" made "P 0.05". An "=" says
+  what a number alone says, and may come and go.
 
 A number is compared as it is typed. "3" spelt out as "three", "1,200" closed up to "1200"
 and "0.50" cut to "0.5" are each reported: the first two may be a matter of style, the third
@@ -107,11 +108,13 @@ _SUPERSCRIPT = (
 _SUBSCRIPT = "\N{SUBSCRIPT ZERO}-\N{SUBSCRIPT NINE}"
 #: The signs of a comparison as they are typed, and the sign each is compared as. "<=" and
 #: "\N{LESS-THAN OR EQUAL TO}" are one sign typed two ways, and making one into the other is a
-#: language edit; "<" and ">" are two, and "P < 0.05" made "P > 0.05" says the opposite.
+#: language edit; "<" and ">" are two, and "P < 0.05" made "P > 0.05" says the opposite. An
+#: "=" says what a number standing alone says, and is compared as none: "(OR = 1.52)" made
+#: "(OR 1.52)" is a copy-edit, and "P = 0.04" made "P < 0.04" is not.
 RELATIONS = {
     "<": "<",
     ">": ">",
-    "=": "=",
+    "=": "",
     "<=": "\N{LESS-THAN OR EQUAL TO}",
     "\N{LESS-THAN OR EQUAL TO}": "\N{LESS-THAN OR EQUAL TO}",
     "\N{LESS-THAN OVER EQUAL TO}": "\N{LESS-THAN OR EQUAL TO}",
@@ -124,12 +127,18 @@ RELATIONS = {
     "\N{NOT EQUAL TO}": "\N{NOT EQUAL TO}",
     "\N{FULLWIDTH LESS-THAN SIGN}": "<",
     "\N{FULLWIDTH GREATER-THAN SIGN}": ">",
-    "\N{FULLWIDTH EQUALS SIGN}": "=",
+    "\N{FULLWIDTH EQUALS SIGN}": "",
 }
 #: A sign of comparison, the two-character ones first, and the space a sentence may have
-#: between it and its number: any width, and one line break where the editor wrapped it.
+#: between it and its number: a space of any width, a tab, and one line break where the
+#: editor wrapped it.
 _RELATION = "|".join(sorted(map(re.escape, RELATIONS), key=len, reverse=True))
-_SPACE = "[ \t\N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE}]"
+_SPACE = (
+    "[ \t\N{NO-BREAK SPACE}\N{OGHAM SPACE MARK}\N{EN QUAD}-\N{HAIR SPACE}"
+    "\N{NARROW NO-BREAK SPACE}\N{MEDIUM MATHEMATICAL SPACE}\N{IDEOGRAPHIC SPACE}]"
+)
+#: What a ">" after it is the head of, and no sign: an arrow, "->", "-->", "=>".
+_ARROW_TAIL = "=" + _MINUS
 _GAP = _SPACE + "*(?:\n" + _SPACE + "*)?"
 #: A sign of comparison ending a stretch of text, with its gap: what stands before a binding.
 _RELATION_BEFORE = re.compile("(?P<relation>" + _RELATION + ")" + _GAP + r"\Z")
@@ -267,13 +276,16 @@ def _sign(text: str, at: int) -> int:
 def _compared(text: str, at: int, typed: str) -> str:
     """The sign of a comparison typed at `at`, as it is compared, or "" where it is none.
 
-    A ">" is none where it ends an HTML tag, and where it is the mark of a block quotation:
-    at the start of its line, after nothing but other marks and spaces, with no line before
-    it or a line before it that is blank or quoted too. A ">" that starts a line in the
-    middle of a paragraph is the sign of a sentence that was wrapped there: pandoc opens no
-    quotation without a blank line before it."""
+    A ">" is none where it is the head of an arrow, "5 -> 10", where it ends an HTML tag,
+    and where it is the mark of a block quotation: at the start of its line, after nothing
+    but other marks and spaces, with no line before it or a line before it that is blank or
+    quoted too. A ">" that starts a line in the middle of a paragraph is the sign of a
+    sentence that was wrapped there: pandoc opens no quotation without a blank line before
+    it."""
     if typed != ">":
         return RELATIONS[typed]
+    if at and text[at - 1] in _ARROW_TAIL:
+        return ""
     before = text[max(0, at - _WORD) : at]
     if _TAG_OPEN.search(before):
         return ""

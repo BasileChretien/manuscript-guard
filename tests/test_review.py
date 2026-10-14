@@ -541,6 +541,122 @@ def test_the_stale_hint_is_a_command_that_runs(project: Path) -> None:
     assert "--verdict" in stale.hint
 
 
+# ---------------------------------------------------------------- sealing a record filed by hand
+#
+# `review --record` writes a record with no findings, and they are typed in afterwards, so a
+# hand-filed reading is sealed with `review --seal` once they are. After that, what the reader
+# wrote cannot change without `reading-altered`, and the answers still can.
+
+THE_MAJOR = "- id: h1\n  severity: major\n  where: Methods\n  finding: No case definition.\n"
+
+
+def file_by_hand(root: Path, reviewer: str = "fresh-reader", *flags: str) -> Path:
+    from manuscript_guard.cli import main
+
+    assert main(["review", str(root), "--record", reviewer, "--round", "3",
+                 "--remit", "the manuscript as it stands",
+                 "--verdict", "major-revision", *flags]) == 0  # fmt: skip
+    path = next((root / "review" / "round-3").glob(f"{reviewer}*.yaml"))
+    text = path.read_text(encoding="utf-8")
+    path.write_bytes(text.replace("findings: []\n", "findings:\n" + THE_MAJOR).encode("utf-8"))
+    return path
+
+
+def seal(root: Path, reviewer: str = "fresh-reader", *flags: str) -> int:
+    from manuscript_guard.cli import main
+
+    return main(["review", str(root), "--seal", reviewer, "--round", "3", *flags])
+
+
+def test_recording_a_reading_says_how_to_seal_it(project: Path, capsys) -> None:
+    file_by_hand(project)
+    assert "review --seal fresh-reader --round 3" in capsys.readouterr().out
+
+
+def test_an_unsealed_reading_with_a_major_finding_is_said_and_never_failed(
+    project: Path,
+) -> None:
+    path = file_by_hand(project)
+    report = report_for(project, submission=True)
+    assert [f.path for f in report.warnings if f.code == "reading-unsealed"] == [path]
+    assert "reading-unsealed" not in failures(report)
+
+
+def test_an_unsealed_reading_with_no_major_finding_is_not_said(project: Path) -> None:
+    path = file_by_hand(project)
+    path.write_text(path.read_text(encoding="utf-8").replace("major", "minor"), "utf-8")
+    assert "reading-unsealed" not in codes(report_for(project, submission=True))
+
+
+def test_a_sealed_reading_keeps_every_byte_and_gains_one_line(project: Path) -> None:
+    path = file_by_hand(project)
+    before = path.read_bytes()
+    assert seal(project) == 0
+    after = path.read_bytes()
+    assert after.startswith(before)
+    assert re.fullmatch(rb"reading_sha256: [0-9a-f]{64}\n", after[len(before) :])
+    assert "reading-unsealed" not in codes(report_for(project, submission=True))
+
+
+def test_a_sealed_reading_softened_fails_and_answered_does_not(project: Path) -> None:
+    path = file_by_hand(project)
+    assert seal(project) == 0
+    text = path.read_text(encoding="utf-8")
+
+    path.write_text(text.replace("  finding: No case definition.\n",
+                                 "  finding: No case definition.\n"
+                                 "  resolution: Defined in Methods.\n"), "utf-8")  # fmt: skip
+    assert not {"reading-altered", "open-major-finding"} & codes(report_for(project))
+
+    path.write_text(text.replace("severity: major", "severity: minor"), "utf-8")
+    assert "reading-altered" in failures(report_for(project, submission=True))
+
+
+def test_a_reading_is_sealed_once(project: Path, capsys) -> None:
+    path = file_by_hand(project)
+    assert seal(project) == 0
+    sealed = path.read_bytes()
+    assert seal(project) == 2
+    assert "sealed already" in capsys.readouterr().err
+    assert path.read_bytes() == sealed
+
+
+def test_a_named_reading_is_sealed_by_its_reader(project: Path) -> None:
+    path = file_by_hand(project, "fresh-reader", "--reading", MODEL_A)
+    assert path.name == "fresh-reader.openai-model-a.yaml"
+    assert seal(project, "fresh-reader") == 2, "the plain record is not there"
+    assert seal(project, "fresh-reader", "--reading", MODEL_A) == 0
+    assert "reading_sha256" in yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def test_a_reading_with_windows_line_endings_is_sealed_in_them(project: Path) -> None:
+    path = file_by_hand(project)
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    assert seal(project) == 0
+    assert path.read_bytes().endswith(b"\r\n") and b"\r\n\r\n" not in path.read_bytes()
+    assert "reading-altered" not in codes(report_for(project))
+
+
+def test_a_reading_that_cannot_take_a_line_at_its_end_is_not_sealed(project: Path) -> None:
+    """In flow style the file is one mapping in braces, and a line after it is not a key."""
+    path = file_by_hand(project)
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    path.write_text(yaml.safe_dump(document, default_flow_style=True), "utf-8")
+    before = path.read_bytes()
+    assert seal(project) == 2
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "flag", [["--record", "x", "--verdict", "pass"], ["--run"], ["--providers"]]
+)
+def test_sealing_goes_on_its_own(project: Path, flag: list[str]) -> None:
+    from manuscript_guard.cli import main
+
+    file_by_hand(project)
+    assert main(["review", str(project), "--seal", "fresh-reader", *flag]) == 2
+
+
 # ---------------------------------------------------------------- several readings of a remit
 #
 # One reviewer's remit can be read more than once: by several models, by a model and a

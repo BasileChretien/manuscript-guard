@@ -8357,6 +8357,110 @@ def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project
 
 
 # --------------------------------------------------------------------------------------
+# A filed reading cannot be softened. A major finding binds until it is answered, and before
+# the seal it stopped binding when it was made minor, reworded or deleted, with nothing in
+# `check` to say so. Readings are filed here as `review --run` files them, through a
+# transport that answers for the providers.
+# --------------------------------------------------------------------------------------
+
+_A_MODEL_SAID = [
+    {"severity": "major", "where": "Methods", "finding": "No case definition is given."},
+    {"severity": "minor", "where": "Abstract", "finding": "Say the data are synthetic."},
+]
+
+
+def _filed_by_a_model(root: Path, monkeypatch) -> Path:
+    """One reviewer's reading, filed by `review --run` from a reply with a major finding."""
+    from test_review_run import Providers, answer, configure, reply_text
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    transport = Providers()
+    transport.default = lambda request: answer(reply_text("major-revision", _A_MODEL_SAID))
+    monkeypatch.setattr(client, "default_transport", transport)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-0123456789SECRETA")
+    shutil.rmtree(root / "review")
+    configure(root, "openai/model-a")
+    assert main(["review", str(root), "--run", "--yes"]) == 0
+    return sorted((root / "review" / "round-1").glob("*.*.yaml"))[0]
+
+
+_SOFTENINGS = {
+    "a major made minor": lambda d: d["findings"][0].update(severity="minor"),
+    "a major made a comment": lambda d: d["findings"][0].update(severity="comment"),
+    "a finding deleted": lambda d: d["findings"].pop(0),
+    "a finding reworded": lambda d: d["findings"][0].update(finding="Case definition: fine."),
+    "a finding moved": lambda d: d["findings"][0].update(where="Discussion"),
+    "the verdict softened": lambda d: d.update(verdict="pass"),
+    "the summary rewritten": lambda d: d.update(summary="A careful paper."),
+    "a rejection test turned": lambda d: d["rejection_tests"][0].update(holds=True),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_SOFTENINGS))
+def test_a_model_s_reading_changed_after_it_was_filed_fails(
+    project: Path, monkeypatch, name: str
+) -> None:
+    from manuscript_guard.gates import check_review
+
+    path = _filed_by_a_model(project, monkeypatch)
+    _edit(path, _SOFTENINGS[name])
+    report = check_review(load_project(project)[0], submission=True)
+    altered = [f for f in report.failures if f.code == "reading-altered"]
+    assert [f.path for f in altered] == [path], report.render(project)
+    # Before submission it is said, as G11 says everything until then.
+    report = check_review(load_project(project)[0])
+    assert any(f.code == "reading-altered" for f in report.warnings)
+
+
+_ANSWERS_TO_A_MODEL = {
+    "a resolution": lambda d: d["findings"][0].update(
+        resolution="A case definition is now given.", resolved_on="2026-10-14"
+    ),
+    "an override": lambda d: d["findings"][0].update(overridden="Out of scope here."),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_ANSWERS_TO_A_MODEL))
+def test_answering_a_model_s_finding_is_not_an_edit_of_the_reading(
+    project: Path, monkeypatch, name: str
+) -> None:
+    path = _filed_by_a_model(project, monkeypatch)
+    assert "open-major-finding" in _review_failures(project)
+    # The model read every remit, and each reading has the major finding to answer.
+    for reading in sorted(path.parent.glob("*.*.yaml")):
+        _edit(reading, _ANSWERS_TO_A_MODEL[name])
+    failures = _review_failures(project)
+    assert "reading-altered" not in failures
+    assert "open-major-finding" not in failures
+
+
+def test_a_model_s_reading_with_its_seal_taken_out_is_said(project: Path, monkeypatch) -> None:
+    """The seal deleted and the major made minor: no major is left to say the reading is
+    unsealed, so a reading `review --run` filed is said whatever it holds."""
+    from manuscript_guard.gates import check_review
+
+    path = _filed_by_a_model(project, monkeypatch)
+
+    def unseal_and_soften(document):
+        document.pop("reading_sha256")
+        document["findings"][0]["severity"] = "minor"
+
+    _edit(path, unseal_and_soften)
+    report = check_review(load_project(project)[0], submission=True)
+    assert [f.path for f in report.warnings if f.code == "reading-unsealed"] == [path]
+
+
+def test_the_example_s_hand_filed_readings_are_sealed_too(project: Path) -> None:
+    """`review --seal` sealed them, and the same edits fail."""
+    path = project / "review" / "round-1" / "biostatistician.yaml"
+    assert "reading_sha256" in yaml.safe_load(path.read_text(encoding="utf-8"))
+    _edit(path, lambda d: d["findings"][0].update(severity="minor"))
+    assert "reading-altered" in _review_failures(project)
+
+
+# --------------------------------------------------------------------------------------
 # Two titles. Assembling compares the title in a manuscript file's own header with
 # paper.yaml's and makes a warning where they differ. No command showed it: `build` and
 # `submit` printed what assembling found only when that held a failure, and `check` did not

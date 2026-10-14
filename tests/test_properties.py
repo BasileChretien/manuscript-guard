@@ -1602,6 +1602,44 @@ def test_a_value_is_stated_whole_or_not_at_all(drawn: tuple[str, str]) -> None:
             assert contains(quote, value), (quote, value)
 
 
+# ---------------------------------------------------------------------- an ISBN's check digit
+
+
+@st.composite
+def _isbns(draw: st.DrawFn) -> tuple[str, str]:
+    """An ISBN-10 and an ISBN-13 with their check digits worked out here, each written with
+    the hyphens drawn, and each with one digit changed."""
+    ten = draw(st.lists(st.integers(0, 9), min_size=9, max_size=9))
+    check = (11 - sum((10 - at) * d for at, d in enumerate(ten)) % 11) % 11
+    isbn10 = "".join(map(str, ten)) + ("X" if check == 10 else str(check))
+    thirteen = [9, 7, draw(st.sampled_from((8, 9)))] + draw(
+        st.lists(st.integers(0, 9), min_size=9, max_size=9)
+    )
+    check = (10 - sum(d * (1 if at % 2 == 0 else 3) for at, d in enumerate(thirteen)) % 10) % 10
+    isbn13 = "".join(map(str, thirteen)) + str(check)
+    written = []
+    for isbn in (isbn10, isbn13):
+        cuts = sorted(draw(st.sets(st.integers(1, len(isbn) - 1), max_size=4)))
+        pieces = [isbn[a:b] for a, b in zip([0, *cuts], [*cuts, len(isbn)], strict=True)]
+        at = draw(st.integers(0, len(isbn) - 2))
+        changed = isbn[:at] + str((int(isbn[at]) + draw(st.integers(1, 9))) % 10) + isbn[at + 1 :]
+        written.append((draw(st.sampled_from(("-", " "))).join(pieces), changed))
+    return written[0], written[1]
+
+
+@holds(300, _isbns())
+def test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not(
+    drawn: tuple[tuple[str, str], tuple[str, str]],
+) -> None:
+    """Both forms catch any one digit changed: an ISBN-10 with any check digit, X
+    included, and an ISBN-13 with the weights 1 and 3."""
+    from manuscript_guard.gates.identifiers import isbn_valid
+
+    for written, changed in drawn:
+        assert isbn_valid(written), written
+        assert not isbn_valid(changed), changed
+
+
 # --------------------------------------------------------------------------------------- TeX
 
 
@@ -1804,6 +1842,20 @@ def _a_name_is_a_threshold_like_the_figure_beside_it(patch: pytest.MonkeyPatch) 
 
 def _a_nought_is_trimmed_off_a_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(tokens, "_TRAIL", tokens._TRAIL + "0")
+
+
+def _an_isbn_13_is_weighed_as_an_isbn_10(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    def valid(written: str) -> bool:
+        digits = re.sub(r"[\s-]", "", written).upper()
+        if not re.fullmatch(r"\d{9}[\dX]|\d{13}", digits):
+            return False
+        weights = range(len(digits), 0, -1)
+        total = sum(w * (10 if d == "X" else int(d)) for w, d in zip(weights, digits, strict=True))
+        return total % 11 == 0
+
+    patch.setattr(identifiers, "isbn_valid", valid)
 
 
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
@@ -2126,6 +2178,10 @@ BROKEN = {
     "a nought is trimmed off a number": (
         _a_nought_is_trimmed_off_a_number,
         test_a_number_is_seen_where_it_stands_and_judged_one_way,
+    ),
+    "an ISBN-13 is weighed as an ISBN-10": (
+        _an_isbn_13_is_weighed_as_an_isbn_10,
+        test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
     ),
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,

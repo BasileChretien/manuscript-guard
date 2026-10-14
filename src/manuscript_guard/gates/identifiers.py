@@ -1,0 +1,148 @@
+"""G7, offline: each reference's identifiers are well formed, and its fields are there.
+
+What can be known of `references.bib` without asking anyone: whether a DOI has the shape of
+one, a PMID is digits, a PMCID is "PMC" and digits, an ISBN's check digit is right, an arXiv
+identifier has one of its two forms, and whether an entry has the fields its type needs to be
+printed (an article its journal, a book its publisher). It runs in CI, needs no network and
+reads the committed file, so it means the same on every machine.
+
+Whether a well-formed DOI is registered, names the work the entry describes, or has been
+retracted is another question, for a lookup that records what it found.
+"""
+
+from __future__ import annotations
+
+import re
+
+from manuscript_guard.contracts.project import Project
+from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.literature.bibfile import read_entries
+
+GATE = "G7"
+BIB_FILE = "references.bib"
+
+#: A DOI as Crossref and DataCite issue them: the directory "10.", a registrant code of
+#: four to nine digits (dotted subcodes allowed), a slash, and a suffix with no space.
+_DOI = re.compile(r"10\.\d{4,9}(?:\.\d+)*/\S+")
+#: What a DOI is often written with: a scheme, a resolver, a trailing stop.
+_DOI_DRESSING = re.compile(r"^(?:doi:\s*|https?://(?:dx\.)?doi\.org/)", re.IGNORECASE)
+_PMID = re.compile(r"\d{1,9}")
+_PMCID = re.compile(r"PMC\d{1,9}", re.IGNORECASE)
+#: arXiv's two forms: "2101.01234v2" since 2007, "hep-th/9901001" before.
+_ARXIV = re.compile(r"(?:\d{4}\.\d{4,5}|[a-z][a-z.-]*(?:\.[A-Z]{2})?/\d{7})(?:v\d+)?")
+
+#: The fields BibTeX's standard styles print for each type, by the names BibTeX and BibLaTeX
+#: give them (btxdoc, "Entry Types"). Each tuple is one field, any of whose names will do.
+REQUIRED: dict[str, tuple[tuple[str, ...], ...]] = {
+    "article": (("author",), ("title",), ("journal", "journaltitle"), ("year", "date")),
+    "book": (("author", "editor"), ("title",), ("publisher",), ("year", "date")),
+    "inbook": (("author", "editor"), ("title",), ("chapter", "pages"), ("publisher",),
+               ("year", "date")),
+    "incollection": (("author",), ("title",), ("booktitle",), ("publisher",), ("year", "date")),
+    "inproceedings": (("author",), ("title",), ("booktitle",), ("year", "date")),
+    "conference": (("author",), ("title",), ("booktitle",), ("year", "date")),
+    "mastersthesis": (("author",), ("title",), ("school", "institution"), ("year", "date")),
+    "phdthesis": (("author",), ("title",), ("school", "institution"), ("year", "date")),
+    "techreport": (("author",), ("title",), ("institution",), ("year", "date")),
+    "proceedings": (("title",), ("year", "date")),
+    "manual": (("title",),),
+    "booklet": (("title",),),
+    "unpublished": (("author",), ("title",), ("note",)),
+}  # fmt: skip
+
+
+def normal_doi(written: str) -> str:
+    """A DOI without the scheme, the resolver or the stop it is often written with."""
+    return _DOI_DRESSING.sub("", written.strip()).rstrip(".").strip()
+
+
+def isbn_valid(written: str) -> bool:
+    """Whether an ISBN-10 or ISBN-13, hyphens and spaces aside, has the right check digit."""
+    digits = re.sub(r"[\s-]", "", written).upper()
+    if re.fullmatch(r"\d{9}[\dX]", digits):
+        total = sum((10 - at) * (10 if d == "X" else int(d)) for at, d in enumerate(digits))
+        return total % 11 == 0
+    if re.fullmatch(r"\d{13}", digits):
+        total = sum(int(d) * (1 if at % 2 == 0 else 3) for at, d in enumerate(digits))
+        return total % 10 == 0
+    return False
+
+
+def _isbns(field: str) -> list[str]:
+    """The ISBNs of one field, which may hold several."""
+    return [part for part in re.split(r"[,;/]|\s(?=\d{3})", field) if part.strip()]
+
+
+def problems(key: str, fields: dict[str, str]) -> list[tuple[str, str]]:
+    """What is wrong with one entry: each as a code and a sentence."""
+    found: list[tuple[str, str]] = []
+
+    def malformed(kind: str, value: str, why: str) -> None:
+        found.append(("identifier-malformed", f"@{key}: the {kind} {value!r} {why}"))
+
+    doi = fields.get("doi", "").strip()
+    if doi and not _DOI.fullmatch(normal_doi(doi)):
+        malformed("DOI", doi, 'is not "10.", a registrant code, a slash and a suffix')
+    eprinttype = (fields.get("eprinttype") or fields.get("archiveprefix") or "").lower()
+    pmid = fields.get("pmid", "").strip() or (
+        fields.get("eprint", "").strip() if eprinttype == "pubmed" else ""
+    )
+    if pmid and not _PMID.fullmatch(pmid):
+        malformed("PMID", pmid, "is not a number")
+    pmcid = fields.get("pmcid", "").strip() or (
+        fields.get("eprint", "").strip() if eprinttype == "pmc" else ""
+    )
+    if pmcid and not _PMCID.fullmatch(pmcid):
+        malformed("PMCID", pmcid, 'is not "PMC" and a number')
+    arxiv = fields.get("eprint", "").strip() if eprinttype == "arxiv" else ""
+    if arxiv and not _ARXIV.fullmatch(re.sub(r"(?i)^arxiv:", "", arxiv)):
+        malformed("arXiv identifier", arxiv, 'has neither of its forms, "2101.01234" or '
+                  '"hep-th/9901001"')  # fmt: skip
+    for isbn in _isbns(fields.get("isbn", "")):
+        if not isbn_valid(isbn):
+            malformed("ISBN", isbn.strip(), "has a check digit that does not add up")
+
+    kind = fields.get("type", "").lower()
+    for names in REQUIRED.get(kind, ()):
+        if not any(fields.get(name, "").strip() for name in names):
+            found.append(
+                (
+                    "reference-field-missing",
+                    f"@{key}: an @{kind} entry needs its {' or '.join(names)}, and has "
+                    "none",
+                )
+            )
+    return found
+
+
+def check_identifiers(project: Project) -> Report:
+    """Every entry of the committed `references.bib`, cited or not."""
+    path = project.path("literature") / BIB_FILE
+    if not path.is_file():
+        return Report().with_counts(references_read=0)
+    entries = read_entries(path)
+    report = Report()
+    for key, fields in sorted(entries.items()):
+        for code, message in problems(key, fields):
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code=code,
+                    severity=WARN,
+                    message=message,
+                    path=path,
+                    hint=_HINTS[code],
+                )
+            )
+    return report.with_counts(references_read=len(entries))
+
+
+_HINTS = {
+    "identifier-malformed": "correct it in Zotero, then `manuscript-guard sync-bib`; a "
+    "mistyped identifier sends a reader, and any lookup, to another work or to none",
+    "reference-field-missing": "fill the field in Zotero, then `manuscript-guard sync-bib`: "
+    "the reference list prints the entry without it",
+}
+
+
+__all__ = ["REQUIRED", "check_identifiers", "isbn_valid", "normal_doi", "problems"]

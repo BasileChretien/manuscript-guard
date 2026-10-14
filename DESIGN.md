@@ -658,6 +658,20 @@ verified. The schemas of both files now refuse a blank or all-space field (`sour
 in `attested.yaml`), and a value that reaches the gates without a source all the
 same is `literature-source-missing` and counted as failed.
 
+**A reference's identifiers are read offline.** Nothing read `references.bib` but for its
+keys, so a DOI typed "1016/j.…" without its "10.", a PMID written "PMID: 12345678", an
+ISBN with a check digit that does not add up, or an article with no journal reached the
+reference list as they were. G7 now reads every entry of the committed file, cited or not,
+through the same small reader the co-author items use (`literature/bibfile.py`): a DOI is
+"10.", a registrant code, a slash and a suffix, once a `doi:` or a resolver in front of it
+and a stop after it are taken off, so a legacy SICI DOI passes; a PMID is digits, a PMCID
+"PMC" and digits; an ISBN-10 or -13 has the right check digit; an arXiv identifier one of
+its two forms; and an entry has the fields BibTeX's standard styles print for its type
+(btxdoc), under BibTeX's name or BibLaTeX's (`journaltitle`, `date`). Each is a warning
+(`identifier-malformed`, `reference-field-missing`) until its stage is decided. Whether a
+DOI is registered, names the work the entry describes, or was retracted is for a lookup
+that records what it found, and none is made here.
+
 ## Only a person can sign an attestation
 
 `attested.yaml` exists to record that **a named human read something the toolkit could not
@@ -4141,7 +4155,7 @@ the campaigns are in the suite, on Hypothesis:
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
   them, the settings typed into a project, a co-author's sessions in Word, texts that
   quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds nine more, each
+  beside what an edit made of it. `tests/test_properties.py` holds ten more, each
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
@@ -4202,12 +4216,12 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty rules are broken in place, one at a time, and the property that is
+the generators. So fifty-one rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops; nine ways `reworded` can misread an edit, from
+sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10; nine ways `reworded` can misread an edit, from
 a number's sign taken for no part of it to what a comment holds held to its place; five
 ways a co-author's items can be cut wrong round the citation of a claim, from every stop ending a
 sentence, after "et al." too, to a piece that is only a citation left as an item of its
@@ -5456,6 +5470,12 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
+- **A reference's identifiers are checked for their form, not for what they name.** A DOI
+  with the shape of one passes whether it is registered or not, and one registered to
+  another work passes too, as does a PMID that is digits. Only the types BibTeX's standard
+  styles define are held to their fields: BibLaTeX's `@online`, `@report` or `@thesis`, and
+  `@misc`, need none. An ISBN-13 whose check digit adds up is read as one even where its
+  first three digits are no ISBN prefix.
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.
@@ -8924,7 +8944,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 53 broken rules, and the comparison on eleven
+  - The properties were seen to fail on 54 broken rules, and the comparison on eleven
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

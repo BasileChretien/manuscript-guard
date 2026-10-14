@@ -73,6 +73,8 @@ BINDS_AT = {
     # Numbers in prose only exist once there is prose.
     "no-results-dir": DRAFTING,
     "no-results": DRAFTING,
+    # A manuscript folder with nothing in it the gates read: from the stage there is prose.
+    "manuscript-empty": DRAFTING,
     "authors-incomplete": DRAFTING,
     "unclassified-number": DRAFTING,
     "code-block-text-number": DRAFTING,

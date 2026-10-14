@@ -1730,6 +1730,133 @@ def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypat
     )
 
 
+# A literature value with a blank field. `source_file: ""` was passed over by both gates:
+# `check --stage drafting` added no finding, and the value was simply not counted as
+# verified, so the run claimed every value it had checked was verified.
+
+_BLANK_FIELDS = [
+    ("ledger", "source_file", ""),
+    ("ledger", "source_file", "   "),
+    ("ledger", "locator", ""),
+    ("ledger", "locator", " "),
+    ("ledger", "quote", " "),
+    ("attested", "attested_by", " "),
+    ("attested", "statement", "\t"),
+    ("attested", "source", " "),
+    ("attested", "locator", " "),
+]
+
+
+@pytest.mark.parametrize(
+    ("file", "field", "blank"),
+    _BLANK_FIELDS,
+    ids=[f"{file}-{field}-{len(blank)}" for file, field, blank in _BLANK_FIELDS],
+)
+def test_a_literature_value_with_a_blank_field_fails(
+    project: Path, file: str, field: str, blank: str
+) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    path = project / "literature" / f"{file}.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0][field] = blank
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    report, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    assert any(
+        f.code == "schema-violation" and f"entries/0/{field}" in f.message
+        for f in report.failures
+    ), report.render(project)
+
+
+def _literature_report(root: Path, change=None):
+    """G7's two literature checks, run as `check` runs them; `change` edits the loaded
+    values first, to reach the gates with what the schema would have refused."""
+    from manuscript_guard.gates import check_citations, check_literature_chain
+
+    project, _ = load_project(root)
+    _namespace, _results, literature, load_report = load_namespace(project)
+    if change is not None:
+        literature = change(literature)
+    return merge_all(
+        [
+            load_report,
+            check_citations(project, literature),
+            check_literature_chain(project, literature),
+        ]
+    )
+
+
+def _without_source(literature):
+    from dataclasses import replace
+
+    from manuscript_guard.contracts.literature import Literature
+
+    key = "background.reported_incidence"
+    value = literature.values[key]
+    changed = replace(value, detail={**value.detail, "source_file": " "})
+    return Literature({**literature.values, key: changed}, literature.root)
+
+
+def _source_removed(root: Path) -> None:
+    (root / "literature" / "sources" / "fictionalHepaticCohort2021.txt").unlink()
+
+
+def _misquoted(root: Path) -> None:
+    source = root / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text("A different paper entirely.\n", encoding="utf-8")
+
+
+def _value_not_quoted(root: Path) -> None:
+    path = root / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0].update(value=17.0, display="17")
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _unreadable(root: Path) -> None:
+    path = root / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["source_file"] = "sources/fictionalHepaticCohort2021.docx"
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    (root / "literature" / "sources" / "fictionalHepaticCohort2021.docx").write_bytes(b"PK")
+
+
+@pytest.mark.parametrize(
+    ("edit", "change", "verdict", "code"),
+    [
+        (None, None, "literature_verified", None),
+        (None, _without_source, "literature_failed", "literature-source-missing"),
+        (_source_removed, None, "literature_failed", "literature-source-missing"),
+        (_misquoted, None, "literature_failed", "quote-not-in-source"),
+        (_value_not_quoted, None, "literature_failed", "value-not-in-quote"),
+        (_unreadable, None, "literature_unverifiable", None),
+    ],
+    ids=["clean", "no source named", "source gone", "quote", "value", "unreadable"],
+)
+def test_every_literature_value_ends_in_one_verdict(
+    project: Path, edit, change, verdict: str, code: str | None
+) -> None:
+    """Verified, unverifiable, failed or attested: one of the four for every value, so a
+    value the gates passed over shows as a count that does not add up."""
+    if edit is not None:
+        edit(project)
+    report = _literature_report(project, change)
+    counts = report.counts
+    verdicts = ("verified", "unverifiable", "failed", "attested")
+    assert sum(counts[f"literature_{name}"] for name in verdicts) == counts[
+        "literature_values"
+    ], counts
+    # The edited value, the first of the two ledger entries, is the one that moved.
+    expected = {"literature_verified": 2, "literature_unverifiable": 0, "literature_failed": 0}
+    if verdict != "literature_verified":
+        expected["literature_verified"] = 1
+        expected[verdict] = 1
+    assert {name: counts[name] for name in expected} == expected, counts
+    if code is not None:
+        assert code in codes(report), report.render(project)
+
+
 # --------------------------------------------------------------------- the journal gate
 # A journal's limits, sections and statements are about the document the editor receives,
 # and the build strips every file's front matter before printing it.
@@ -8267,6 +8394,110 @@ def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project
         encoding="utf-8",
     )
     assert "reading-unreadable" in _review_failures(project)
+
+
+# --------------------------------------------------------------------------------------
+# A filed reading cannot be softened. A major finding binds until it is answered, and before
+# the seal it stopped binding when it was made minor, reworded or deleted, with nothing in
+# `check` to say so. Readings are filed here as `review --run` files them, through a
+# transport that answers for the providers.
+# --------------------------------------------------------------------------------------
+
+_A_MODEL_SAID = [
+    {"severity": "major", "where": "Methods", "finding": "No case definition is given."},
+    {"severity": "minor", "where": "Abstract", "finding": "Say the data are synthetic."},
+]
+
+
+def _filed_by_a_model(root: Path, monkeypatch) -> Path:
+    """One reviewer's reading, filed by `review --run` from a reply with a major finding."""
+    from test_review_run import Providers, answer, configure, reply_text
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    transport = Providers()
+    transport.default = lambda request: answer(reply_text("major-revision", _A_MODEL_SAID))
+    monkeypatch.setattr(client, "default_transport", transport)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-0123456789SECRETA")
+    shutil.rmtree(root / "review")
+    configure(root, "openai/model-a")
+    assert main(["review", str(root), "--run", "--yes"]) == 0
+    return sorted((root / "review" / "round-1").glob("*.*.yaml"))[0]
+
+
+_SOFTENINGS = {
+    "a major made minor": lambda d: d["findings"][0].update(severity="minor"),
+    "a major made a comment": lambda d: d["findings"][0].update(severity="comment"),
+    "a finding deleted": lambda d: d["findings"].pop(0),
+    "a finding reworded": lambda d: d["findings"][0].update(finding="Case definition: fine."),
+    "a finding moved": lambda d: d["findings"][0].update(where="Discussion"),
+    "the verdict softened": lambda d: d.update(verdict="pass"),
+    "the summary rewritten": lambda d: d.update(summary="A careful paper."),
+    "a rejection test turned": lambda d: d["rejection_tests"][0].update(holds=True),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_SOFTENINGS))
+def test_a_model_s_reading_changed_after_it_was_filed_fails(
+    project: Path, monkeypatch, name: str
+) -> None:
+    from manuscript_guard.gates import check_review
+
+    path = _filed_by_a_model(project, monkeypatch)
+    _edit(path, _SOFTENINGS[name])
+    report = check_review(load_project(project)[0], submission=True)
+    altered = [f for f in report.failures if f.code == "reading-altered"]
+    assert [f.path for f in altered] == [path], report.render(project)
+    # Before submission it is said, as G11 says everything until then.
+    report = check_review(load_project(project)[0])
+    assert any(f.code == "reading-altered" for f in report.warnings)
+
+
+_ANSWERS_TO_A_MODEL = {
+    "a resolution": lambda d: d["findings"][0].update(
+        resolution="A case definition is now given.", resolved_on="2026-10-14"
+    ),
+    "an override": lambda d: d["findings"][0].update(overridden="Out of scope here."),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_ANSWERS_TO_A_MODEL))
+def test_answering_a_model_s_finding_is_not_an_edit_of_the_reading(
+    project: Path, monkeypatch, name: str
+) -> None:
+    path = _filed_by_a_model(project, monkeypatch)
+    assert "open-major-finding" in _review_failures(project)
+    # The model read every remit, and each reading has the major finding to answer.
+    for reading in sorted(path.parent.glob("*.*.yaml")):
+        _edit(reading, _ANSWERS_TO_A_MODEL[name])
+    failures = _review_failures(project)
+    assert "reading-altered" not in failures
+    assert "open-major-finding" not in failures
+
+
+def test_a_model_s_reading_with_its_seal_taken_out_is_said(project: Path, monkeypatch) -> None:
+    """The seal deleted and the major made minor: no major is left to say the reading is
+    unsealed, so a reading `review --run` filed is said whatever it holds."""
+    from manuscript_guard.gates import check_review
+
+    path = _filed_by_a_model(project, monkeypatch)
+
+    def unseal_and_soften(document):
+        document.pop("reading_sha256")
+        document["findings"][0]["severity"] = "minor"
+
+    _edit(path, unseal_and_soften)
+    report = check_review(load_project(project)[0], submission=True)
+    assert [f.path for f in report.warnings if f.code == "reading-unsealed"] == [path]
+
+
+def test_the_example_s_hand_filed_readings_are_sealed_too(project: Path) -> None:
+    """`review --seal` sealed them, and the same edits fail."""
+    path = project / "review" / "round-1" / "biostatistician.yaml"
+    assert "reading_sha256" in yaml.safe_load(path.read_text(encoding="utf-8"))
+    _edit(path, lambda d: d["findings"][0].update(severity="minor"))
+    assert "reading-altered" in _review_failures(project)
 
 
 # --------------------------------------------------------------------------------------

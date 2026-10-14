@@ -36,3 +36,4 @@ findings:
   where: Methods
   finding: One comparison, so no multiplicity adjustment is needed and none is claimed.
     Correct as it stands; worth noting because reviewers often ask for one reflexively.
+reading_sha256: 7a9a0989fb36c8ddfd39d6bbbfb710a5a2088e64c92570104e941cf962495072

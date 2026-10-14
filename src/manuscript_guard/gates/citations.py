@@ -170,8 +170,21 @@ def _sources_exist(project: Project, literature: Literature) -> Report:
         detail = value.detail or {}
         if value.origin == ATTESTED:
             continue
-        source = detail.get("source_file")
+        source = str(detail.get("source_file") or "").strip()
         if not source:
+            # The ledger's schema refuses a blank `source_file`. Should one get here all the
+            # same, it is a value with no source, not a value to pass over.
+            missing += 1
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="literature-source-missing",
+                    message=f"{key}: no stored source is named",
+                    path=value.source,
+                    hint="name the file under literature/ that the quote was copied from, or "
+                    "move the entry to attested.yaml and say who read it",
+                )
+            )
             continue
         if not (root / source).exists():
             missing += 1

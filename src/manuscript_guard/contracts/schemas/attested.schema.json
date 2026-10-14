@@ -31,17 +31,20 @@
         "source": {
           "type": "string",
           "minLength": 1,
+          "pattern": "\\S",
           "description": "What was read, in enough detail to be found again: full reference, database and query, personal communication, regulatory document number."
         },
-        "locator": { "type": "string", "minLength": 1 },
+        "locator": { "type": "string", "minLength": 1, "pattern": "\\S" },
         "statement": {
           "type": "string",
           "minLength": 1,
+          "pattern": "\\S",
           "description": "The attester's own words: what they saw and why it could not be stored. This is the record that a human personally checked the value."
         },
         "attested_by": {
           "type": "string",
           "minLength": 1,
+          "pattern": "\\S",
           "description": "Name of the person taking responsibility for the value."
         },
         "attested_on": { "type": "string", "format": "date" },

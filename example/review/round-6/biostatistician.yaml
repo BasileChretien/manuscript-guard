@@ -21,3 +21,4 @@ findings:
   where: Results
   finding: Round five's r5-bs-01 is answered. The verdict is bound rather than typed, so it
     cannot outlive the numbers it is about.
+reading_sha256: 4aa4025acab842a9ad7ea45d2d0d4581485661e9db5417c3b2026a2b41b05323

@@ -410,6 +410,44 @@ def test_the_kind_of_the_model_fitted_typed_in_the_methods_fails(tmp_path: Path)
     assert not judged(project_with(tmp_path))[0].findings
 
 
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "### Logistic regression",
+        "## Logistic regression models ##",
+        "Logistic regression\n-------------------",
+    ],
+)
+def test_a_model_named_in_a_heading_is_not_read(tmp_path: Path, heading: str) -> None:
+    """A heading of the Methods names the analysis it heads; the running text is where a
+    typed copy of the fitted kind is read, and the same words under the heading fail."""
+    text = f"# Methods\n\n{heading}\n\nWe fitted a {{{{results.model.adjusted.kind}}}}.\n"
+    text += "\n{{table.model_adjusted}}\n"
+    report, _ = judged(project_with(tmp_path, text=text))
+    assert not report.findings, report.render(tmp_path)
+    text = text.replace("{{results.model.adjusted.kind}}", "logistic regression")
+    report, _ = judged(project_with(tmp_path, text=text))
+    found = [(f.code, f.line) for f in report.findings]
+    assert found == [("typed-model-kind", 5 + heading.count("\n"))], report.render(tmp_path)
+
+
+@pytest.mark.parametrize("heading", ["## Poisson regression", "Poisson regression\n------"])
+def test_a_model_not_fitted_named_in_a_heading_is_not_read(tmp_path: Path, heading: str) -> None:
+    text = METHODS.replace("# Methods\n", f"# Methods\n\n{heading}\n")
+    report, _ = judged(project_with(tmp_path, text=text))
+    assert not report.findings, report.render(tmp_path)
+    report, _ = judged(project_with(tmp_path, text=text + "\nPoisson regression was not used.\n"))
+    assert [f.code for f in report.findings] == ["model-kind-unfitted"]
+
+
+def test_a_line_shaped_like_a_heading_that_prints_as_text_is_read(tmp_path: Path) -> None:
+    """With no blank line above it, `## logistic regression` is a line of the paragraph to
+    pandoc, and so text."""
+    text = METHODS + "\nWe fitted\n## logistic regression.\n"
+    report, _ = judged(project_with(tmp_path, text=text))
+    assert [f.code for f in report.findings] == ["typed-model-kind"], report.render(tmp_path)
+
+
 #: The words `data/models.yaml` lists as making the name after them another model's. Written
 #: out, so that a word taken off the list fails here.
 _OTHER_MODEL_WORDS = {

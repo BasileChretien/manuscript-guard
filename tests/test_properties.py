@@ -669,6 +669,8 @@ _NAMED = (
     ("Modified |Poisson regression", "Poisson regression", True),
     ("was conditional. |Logistic models", "logistic regression", True),
     ("was exact\n\n|probit regression", "probit regression", True),
+    ("\n\n## Logistic regression\n\n", None, False),
+    ("\n\nPoisson models\n--------------\n\n", None, False),
 )
 
 
@@ -704,9 +706,10 @@ def test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_do
 ) -> None:
     """A model named in the Methods is found in any case, with a space, a hyphen or a line
     break between its words, and in the plural, with the kind it names. Nothing is found in
-    a comment, in code, inside a longer word, or in the Results. Nor directly after a word
-    that makes it the name of another model, "conditional" or "mixed effects", while any
-    other word before it, a full stop or a new paragraph between, leaves it found."""
+    a comment, in code, inside a longer word, in a heading, ATX or setext, or in the
+    Results. Nor directly after a word that makes it the name of another model,
+    "conditional" or "mixed effects", while any other word before it, a full stop or a new
+    paragraph between, leaves it found."""
     text, expected = planted
     found = [(start, kind) for start, _end, kind in models_gate.named_in_methods(text)]
     assert found == expected, text
@@ -1610,6 +1613,11 @@ def _any_word_before_a_name_makes_it_another_model(patch: pytest.MonkeyPatch) ->
     patch.setattr(models_gate, "_other_model", other)
 
 
+def _a_model_named_in_a_heading_is_named(patch: pytest.MonkeyPatch) -> None:
+    """The rule before headings were left alone: a heading was read as the text is."""
+    patch.setattr(models_gate, "_heading_lines", lambda text, headings: [])
+
+
 def _a_new_paragraph_is_a_space_before_a_models_name(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(models_gate, "_BETWEEN", r"[\s.]+")
 
@@ -1891,6 +1899,10 @@ BROKEN = {
     ),
     "any word before a model's name makes it another model": (
         _any_word_before_a_name_makes_it_another_model,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a model named in a heading is named": (
+        _a_model_named_in_a_heading_is_named,
         test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
     ),
     "a full stop or a new paragraph is a space before a model's name": (

@@ -12,6 +12,7 @@ people who read the model card, and this gate does not pretend otherwise.
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from pathlib import Path
 
 from manuscript_guard.classify import is_methods
@@ -29,6 +30,7 @@ from manuscript_guard.contracts.results import Results
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.language import _hidden
 from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.text.blocks import Unprinted
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 
@@ -362,15 +364,33 @@ def _kind_named(text: str) -> str | None:
     return None
 
 
+def _heading_lines(text: str, headings: list) -> list[tuple[int, int]]:
+    """Where each printed heading's title line stands: an ATX line, or the line above a
+    setext rule. A line shaped like a heading that pandoc prints as text is text."""
+    lines = []
+    for heading in headings:
+        if type(heading.title) is Unprinted:
+            continue
+        end = text.find("\n", heading.start)
+        lines.append((heading.start, len(text) if end < 0 else end))
+    return lines
+
+
 def named_in_methods(text: str) -> list[tuple[int, int, str]]:
     """Each model the Methods of `text` name: its offsets, and the kind it names. Read in the
     prose G14 reads words in, with listings, comments, inline code and equations hidden, and
     the Methods are where the headings above say they are, as G2 has them. A name after a
-    word that makes it another model's ("conditional logistic regression") is not read."""
+    word that makes it another model's ("conditional logistic regression") is not read, nor
+    one in a heading, which names the analysis it heads: the running text is read."""
     hidden = _hidden(text)
     headings, notes = heading_index(text), footnote_index(text)
+    lines = _heading_lines(text, headings)
+    starts = [start for start, _end in lines]
     found = []
     for match in _names().finditer(hidden):
+        at = bisect_right(starts, match.start()) - 1
+        if at >= 0 and match.start() <= lines[at][1]:
+            continue
         if not any(is_methods(chain) for chain in chains_at(headings, notes, match.start())):
             continue
         if _other_model(hidden, match.start()):

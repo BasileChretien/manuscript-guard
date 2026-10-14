@@ -1355,7 +1355,8 @@ stated in the manuscript. Few events for each coefficient is a warning, at ten, 
 rule, which the literature has argued over since. The kind of a model the analysis fitted, typed in
 the Methods, fails as a typed parameter does, since it is the copy left behind when the model
 changes; a kind it did not fit is a warning. Both are read in the prose G14 reads, in any
-case, across a hyphen or a line break, and in the plural.
+case, across a hyphen or a line break, and in the plural, and not in a heading, which names
+the analysis it heads.
 
 **A longer name is another model.** "Conditional logistic regression" holds the words
 "logistic regression" and is not one: no `glm` fits it. Read as the fitted kind it failed,
@@ -7044,10 +7045,15 @@ Closed since, and why each mattered:
   name read as the fitted kind, a false failure until it is added: "bivariate probit model"
   fails `typed-model-kind` beside a fitted probit regression today. The list is somebody's
   judgement, kept in the data file where it can be corrected. A possessive is another word,
-  so "Firth's logistic regression" is read where "Firth logistic regression" is not. A
-  heading in the Methods is read like the text: "Logistic regression" as a heading fails as
-  a typed copy, and the binding in its place builds and prints the kind as the list writes
-  it, without a capital.
+  so "Firth's logistic regression" is read where "Firth logistic regression" is not.
+- **A model's name in a heading is not read.** `typed-model-kind` and `model-kind-unfitted`
+  read the running text of the Methods. A heading names the analysis it heads, and a
+  binding there would print the kind without its capital ("logistic regression"), so the
+  title line of an ATX or a setext heading is left alone. A heading that names the fitted
+  kind therefore stays behind, unreported, when the model changes. A line shaped like a
+  heading that the code finding headings titles `Unprinted` is read as text: one with no
+  blank line above it, which pandoc prints in the paragraph, and the kinds `section_breaks`
+  lists, a seven-hash heading among them.
 - **Only an equal typed copy fails.** A threshold typed in the Methods fails as a typed
   parameter while it equals one; once the code has moved on it is a warning,
   `threshold-undeclared`, and only in an analysis that declares parameters. A confidence level

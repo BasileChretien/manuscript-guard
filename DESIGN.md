@@ -1182,8 +1182,8 @@ in "P < 0.05 was considered significant" as in "P values were two-sided"; the sp
 of its sign is still read. And a level of confidence stated after the letters, "a
 confidence interval of 95%, 5% margin of error", is no bound. Nor is a first bound a
 level: in "(95% CI 80%-93%; 12 studies)" the 80% was taken for one, "-93" for a bound
-and the semicolon for the join, until the third review. A level has no hyphen and no
-minus sign against its percent sign.
+and the semicolon for the join, until the third review. A level has no bound in percent
+after a hyphen or a minus sign against its percent sign.
 
 **The space before a unit is not a matter of counting.** `notation-unit` reports a number
 that runs into its unit, "5mg", "10mL", "37°C", wherever it stands, in a manuscript that
@@ -8441,6 +8441,10 @@ Closed since, and why each mattered:
     where the first number is 80, 90, 95, 99 or 99.9 and a comma or a semicolon
     follows it, so an interval written "CI 95%, 99%" with no level before it is not
     counted.
+  - A first bound in percent is told from a level by the percent sign of the second.
+    Where the second has none, "(95% CI 80%-93; 12 studies)", the 80% is taken for a
+    level, "-93" for a bound and the semicolon for the join, and the manuscript is told
+    of an interval joined by a semicolon.
   - The convention is the majority. A manuscript that is mostly in the form its journal
     does not print is told of the places where it is right.
   - Only the units listed in `gates/notation.py` are read, and of the symbols of one

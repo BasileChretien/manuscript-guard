@@ -1758,7 +1758,7 @@ def _without_source(literature):
     return Literature({**literature.values, key: changed}, literature.root)
 
 
-def _gone(root: Path) -> None:
+def _source_removed(root: Path) -> None:
     (root / "literature" / "sources" / "fictionalHepaticCohort2021.txt").unlink()
 
 
@@ -1787,7 +1787,7 @@ def _unreadable(root: Path) -> None:
     [
         (None, None, "literature_verified", None),
         (None, _without_source, "literature_failed", "literature-source-missing"),
-        (_gone, None, "literature_failed", "literature-source-missing"),
+        (_source_removed, None, "literature_failed", "literature-source-missing"),
         (_misquoted, None, "literature_failed", "quote-not-in-source"),
         (_value_not_quoted, None, "literature_failed", "value-not-in-quote"),
         (_unreadable, None, "literature_unverifiable", None),

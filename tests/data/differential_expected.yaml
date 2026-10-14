@@ -35,3 +35,7 @@ expected:
       blanked, as the bindings are: a stop inside a comment ends no sentence, so a reversal
       with such a comment between its bounds is reported, and a stop with a comment typed
       against it ends one, so the bounds on either side of it are no longer compared
+  - reading: check
+    why: >-
+      `check` counts the literature values that failed, `literature_failed`, so that every
+      value ends in one verdict: verified, unverifiable, failed or attested

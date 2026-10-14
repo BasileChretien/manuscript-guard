@@ -103,7 +103,7 @@ def test_each_fact_knows_its_line() -> None:
         ("version 1.2.3", ["1.2", "3"]),
         ("seen in 45%.12 We then", ["45", "12"]),  # a note's number after a sentence
         # raised and lowered figures are figures
-        ("P < 5 x 10⁻⁸", ["5", "10", "⁻⁸"]),
+        ("P < 5 x 10⁻⁸", ["<5", "10", "⁻⁸"]),
         ("10⁶ cells", ["10", "⁶"]),
         ("an IC₅₀ of 3", ["₅₀", "3"]),
     ],
@@ -135,7 +135,7 @@ def test_a_number_is_read_as_it_is_typed(typed: str, read: list[str]) -> None:
         ("a mean of (*-0.3*)", ["-0.3"]),
         ("a cell |**-0.3**|", ["-0.3"]),
         ("the pair (0.5,*-0.3*)", ["0.5", "-0.3"]),
-        ("P < 10^-5^", ["10", "-5"]),
+        ("P < 10^-5^", ["<10", "-5"]),
         ("with x~-1~ below", ["-1"]),
         ("quoted as '-3'", ["-3"]),
         ('the vector c("-3","-5")', ["-3", "-5"]),
@@ -157,7 +157,7 @@ def test_a_number_is_read_as_it_is_typed(typed: str, read: list[str]) -> None:
         ("with $n$-1 degrees of freedom", ["?1"]),
         ("PM~2.5~-10 was high", ["2.5", "?10"]),
         ("on days **1**-3", ["1", "?3"]),
-        ("P < 1e-5", ["1", "?5"]),
+        ("P < 1e-5", ["<1", "?5"]),
         ("in Figures 1E\N{EN DASH}1G", ["1", "?1"]),
         ("tol = 10**-6", ["10", "?6"]),
         ("y = x*-1", ["?1"]),
@@ -204,6 +204,64 @@ def test_a_binding_here_is_one_the_gates_call_well_formed() -> None:
     held = [fact.text for fact in facts(text) if fact.kind == BINDING]
     assert held == [binding.ref for binding in parse(text)[0]]
     assert held == ["results.a", "lit.b.c", "table.t1", "figure.f", "results.listed"]
+
+
+@pytest.mark.parametrize(
+    ("typed", "read"),
+    [
+        ("P < 0.05", ["<0.05"]),
+        ("P<0.05", ["<0.05"]),
+        ("P \N{NO-BREAK SPACE}>\N{THIN SPACE}0.05", [">0.05"]),
+        ("P <\n0.05", ["<0.05"]),  # wrapped after the sign
+        ("n = 12", ["12"]),  # an "=" says what a number alone says
+        ("n \N{FULLWIDTH EQUALS SIGN} 12", ["12"]),
+        ("P \N{LESS-THAN OR EQUAL TO} 0.001", ["\N{LESS-THAN OR EQUAL TO}0.001"]),
+        ("P <= 0.001", ["\N{LESS-THAN OR EQUAL TO}0.001"]),
+        ("P \N{LESS-THAN OR SLANTED EQUAL TO} 0.001", ["\N{LESS-THAN OR EQUAL TO}0.001"]),
+        ("age >= 18", ["\N{GREATER-THAN OR EQUAL TO}18"]),
+        ("a value \N{NOT EQUAL TO} 0", ["\N{NOT EQUAL TO}0"]),
+        ("P \N{FULLWIDTH LESS-THAN SIGN} 0.05", ["<0.05"]),
+        ("a fall < -0.3", ["-<0.3"]),  # and the minus sign is the number's, as ever
+        ("p \\< 0.05", ["<0.05"]),  # the escape Word's round trip writes
+        # a ">" that is no sign
+        ("from 5 -> 10", ["5", "10"]),  # the head of an arrow
+        ("from 5 -\\> 10", ["5", "10"]),  # escaped, as pandoc writes it
+        ("5\N{FULLWIDTH HYPHEN-MINUS}\N{FULLWIDTH GREATER-THAN SIGN}10", ["5", "10"]),
+        ("from 5 --> 10", ["5", "10"]),
+        ("from 5 => 10", ["5", "10"]),
+        ("from 5 \N{EN DASH}> 10", ["5", "10"]),
+        ("x<sup>2</sup>", ["2"]),
+        ("a cell <td>12</td>", ["12"]),
+        # and no sign at all
+        ("alpha <- 0.05", ["0.05"]),
+        ("about \N{ALMOST EQUAL TO}3", ["3"]),
+    ],
+)
+def test_a_sign_of_comparison_is_part_of_its_number(typed: str, read: list[str]) -> None:
+    assert [text for kind, text in kinds(f"It was {typed}.\n") if kind == NUMBER] == read
+
+
+@pytest.mark.parametrize(
+    ("text", "read"),
+    [
+        ("Before.\n\n> 12 participants said so.\n", ["12"]),
+        ("> First line\n> 12 more said so.\n", ["12"]),
+        ("> > 12 nested.\n", ["12"]),
+        # a sentence wrapped before its sign: pandoc opens no quotation there
+        ("It was significant (P\n> 0.05) here.\n", [">0.05"]),
+    ],
+)
+def test_a_block_quotation_s_mark_is_no_sign(text: str, read: list[str]) -> None:
+    assert [held for kind, held in kinds(text) if kind == NUMBER] == read
+
+
+def test_a_sign_of_comparison_before_a_binding_is_part_of_it() -> None:
+    assert kinds("P < {{results.p}} and {{results.q}}.\n") == [
+        (BINDING, "<results.p"),
+        (BINDING, "results.q"),
+    ]
+    (fact, _q) = facts("P <\n{{ results.p }} and {{results.q}}.\n")
+    assert (fact.text, fact.relation, fact.shown) == ("<results.p", "<", "< {{results.p}}")
 
 
 def test_a_citation_is_its_key_in_a_group_or_in_the_sentence() -> None:
@@ -283,6 +341,62 @@ def test_a_fact_that_is_gone_or_new_fails(
 def test_a_number_is_compared_as_typed(old: str, new: str) -> None:
     report = compare(f"It was {old} in all.\n", f"It was {new} in all.\n", PATH)
     assert sorted(told(report)) == [("fact-lost", FAIL), ("fact-new", FAIL)], said(report)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "lost", "added"),
+    [
+        # the experiment that found it: the sign turned round, "nothing to report"
+        ("(P < 0.05)", "(P > 0.05)", "'<0.05'", "'>0.05'"),
+        ("(P < 0.05)", "(P = 0.05)", "'<0.05'", "'0.05'"),
+        ("(P = 0.04)", "(P < 0.04)", "'0.04'", "'<0.04'"),
+        ("(P \N{LESS-THAN OR EQUAL TO} 0.05)", "(P < 0.05)", "'\N{LESS-THAN OR EQUAL TO}0.05'",
+         "'<0.05'"),
+        ("(P < 0.05)", "(P 0.05)", "'<0.05'", "'0.05'"),  # the sign gone
+        ("in 12 reports", "in >12 reports", "'12'", "'>12'"),  # a sign new
+        ("(P < 0.05)", "(P less than 0.05)", "'<0.05'", "'0.05'"),  # spelt out: not read
+        ("(P < {{results.p}})", "(P > {{results.p}})", "< {{results.p}}", "> {{results.p}}"),
+        ("(P < {{results.p}})", "(P {{results.p}})", "< {{results.p}}", "{{results.p}}"),
+    ],
+)  # fmt: skip
+def test_a_sign_of_comparison_gone_new_or_turned_round_fails(
+    old: str, new: str, lost: str, added: str
+) -> None:
+    report = compare(f"It was {old} in all.\n", f"It was {new} in all.\n", PATH)
+    assert sorted(told(report)) == [("fact-lost", FAIL), ("fact-new", FAIL)], said(report)
+    by_code = {finding.code: finding.message for finding in report.findings}
+    assert lost in by_code["fact-lost"] and added in by_code["fact-new"], said(report)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("(P < 0.05)", "(P<0.05)"),
+        ("(P<0.05)", "(P <\n0.05)"),
+        ("(P \N{LESS-THAN OR EQUAL TO} 0.05)", "(P <= 0.05)"),
+        ("(P < 0.05)", "(P \N{NO-BREAK SPACE}<\N{NARROW NO-BREAK SPACE}0.05)"),
+        ("(P < 0.05)", "(P \\< 0.05)"),
+        ("(n = 12)", "(n=12)"),
+        # an "=" may come and go: it says what a number alone says
+        ("(OR = 1.52)", "(OR 1.52)"),
+        ("a mean age = 54", "a mean age of 54"),
+        # an arrow retyped
+        ("from 5 -> 10 mg", "from 5 \N{RIGHTWARDS ARROW} 10 mg"),
+        ("from 5 -\\> 10 mg", "from 5 \N{RIGHTWARDS ARROW} 10 mg"),
+        ("5\N{FULLWIDTH HYPHEN-MINUS}\N{FULLWIDTH GREATER-THAN SIGN}10", "5\N{RIGHTWARDS ARROW}10"),
+        ("from 5 --> 10 mg", "from 5 to 10 mg"),
+        ("from 5 => 10 mg", "from 5 \N{RIGHTWARDS DOUBLE ARROW} 10 mg"),
+        # any width of space, and any space a word processor puts there
+        ("(P < 0.05)", "(P <\N{HAIR SPACE}0.05)"),
+        ("(P < 0.05)", "(P\N{EN SPACE}<\N{IDEOGRAPHIC SPACE}0.05)"),
+        ("(P < 0.05)", "(P\N{PUNCTUATION SPACE}<\N{FIGURE SPACE}0.05)"),
+        ("(P < {{results.p}})", "(P<{{ results.p }})"),
+        ("significant (P\n> 0.05) here", "significant (P > 0.05) here"),
+    ],
+)
+def test_the_space_around_a_sign_of_comparison_is_free(old: str, new: str) -> None:
+    report = compare(f"It was {old} in all.\n", f"It was {new} in all.\n", PATH)
+    assert not report.findings, said(report)
 
 
 @pytest.mark.parametrize(

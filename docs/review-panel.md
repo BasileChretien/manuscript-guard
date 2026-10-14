@@ -68,4 +68,11 @@ before a submission build. A reading made by hand or by an agent counts beside t
 models' (`manuscript-guard review --record <reviewer> --round <n> --reading <who>
 --verdict <verdict>`).
 
+What the reader wrote is sealed: a filed reading carries `reading_sha256`, a digest of
+its verdict, summary, rejection tests and findings, and a finding made minor, reworded or
+deleted afterwards is `reading-altered`, which fails a submission. The answers are not in
+the seal. A model's reading is sealed when it is filed; one written by hand is sealed
+once its findings are in, with `manuscript-guard review --seal <reviewer> --round <n>`
+(and `--reading <who>` for a named reading).
+
 [Back to the README](../README.md)

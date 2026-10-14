@@ -27,6 +27,7 @@ findings. So the gate warns during ordinary work and fails for a submission buil
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import unicodedata
 from dataclasses import dataclass, replace
@@ -130,6 +131,37 @@ def document_digest(project: Project) -> str:
             digest.update(name.encode("utf-8"))
             digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii"))
     return digest.hexdigest()
+
+
+#: The fields of a finding that are the reader's. The author answers a finding in the
+#: others (`resolution`, `resolved_on`, `overridden`), and those stay out of the seal.
+READER_FINDING_FIELDS = ("id", "severity", "where", "finding")
+
+
+def reading_digest(document: dict) -> str:
+    """SHA-256 of what the reader of a review record wrote, as `reading_sha256` holds it.
+
+    The verdict, the summary, the rejection tests, and each finding's id, severity, place
+    and words, in their order. A major finding binds until it is answered, and before this
+    a filed reading could be made to stop binding by turning its `major` into `minor`, by
+    rewording it or by deleting it, with nothing in `check` to say so. The answers are left
+    out, so answering a finding is not an edit of the reading. So are the digests of what
+    was read: `file_sha256` is trimmed by hand when a reader read only some files.
+
+    Serialised as `checking/items.py` serialises an item, so the same words digest the same
+    on any machine whatever the YAML around them looks like.
+    """
+    core = {
+        "verdict": document.get("verdict"),
+        "summary": document.get("summary"),
+        "rejection_tests": document.get("rejection_tests"),
+        "findings": [
+            {field: finding.get(field) for field in READER_FINDING_FIELDS}
+            for finding in document.get("findings") or []
+        ],
+    }
+    canonical = json.dumps(core, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def review_root(project: Project) -> Path:
@@ -667,6 +699,8 @@ def _check_round(
                     )
                 )
 
+            report = report.merge(_check_seal(reading.path, document, number, who, severity))
+
             # Every reading's major findings bind, whoever else read the remit: another
             # reader's clean reading does not answer them.
             for finding in document.get("findings", []):
@@ -696,6 +730,56 @@ def _check_round(
             )
 
     return _Round(number, report, unfinished, behind, tuple(unresolved), records)
+
+
+def _check_seal(path: Path, document: dict, number: int, who: str, severity: str) -> Report:
+    """Whether a reading still says what its reader wrote, where it was sealed.
+
+    `review --run` seals each reading it files; `review --seal` seals one filed by hand once
+    its findings are written. An unsealed reading is said, never failed, since every record
+    written before the seal existed is one: a reading with a major finding, and any reading
+    `review --run` filed (it has `provenance`). For those the major finding may be the one
+    that is gone: a seal taken out and a `major` made `minor` left nothing to say otherwise.
+    """
+    sealed = document.get("reading_sha256")
+    if sealed is None:
+        filed_by_run = "provenance" in document
+        major = any(finding["severity"] == "major" for finding in document.get("findings", []))
+        if not (filed_by_run or major):
+            return Report()
+        why = (
+            "`review --run` seals what it files, so this one was filed before readings were "
+            "sealed or has had its seal taken out"
+            if filed_by_run
+            else "a major finding in it could be softened or deleted without a trace"
+        )
+        return Report().with_findings(
+            Finding(
+                gate=GATE,
+                code="reading-unsealed",
+                severity=WARN,
+                message=f"round {number}: {who}'s reading is not sealed: {why}",
+                path=path,
+                hint="read it against what was filed (`git log -p` on the file), then seal "
+                "it: `manuscript-guard review --seal <reviewer> --round <n>`, with "
+                "`--reading <reader>` for a named reading",
+            )
+        )
+    if reading_digest(document) == sealed:
+        return Report()
+    return Report().with_findings(
+        Finding(
+            gate=GATE,
+            code="reading-altered",
+            severity=severity,
+            message=f"round {number}: {who}'s reading has been changed since it was sealed",
+            path=path,
+            hint="the seal covers what the reader wrote: the verdict, the summary, the "
+            "rejection tests, and each finding's id, severity, where and finding. Put them "
+            "back as they were (`git diff` shows what changed), and answer a finding in "
+            "`resolution:` or `overridden:` instead",
+        )
+    )
 
 
 @dataclass(frozen=True)

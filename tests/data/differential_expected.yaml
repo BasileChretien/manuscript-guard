@@ -35,3 +35,13 @@ expected:
       blanked, as the bindings are: a stop inside a comment ends no sentence, so a reversal
       with such a comment between its bounds is reported, and a stop with a comment typed
       against it ends one, so the bounds on either side of it are no longer compared
+  - reading: check
+    why: >-
+      `check` counts the literature values that failed, `literature_failed`, so that every
+      value ends in one verdict: verified, unverifiable, failed or attested
+  - reading: reworded
+    why: >-
+      a sign of comparison before a number or a binding is part of it, so "P < 0.05" made
+      "P > 0.05", or "P = 0.04" made "P < 0.04", is a fact gone and a fact new; an "=" is
+      read as none, an arrow's head is no sign, the space around the sign stays free, and
+      "<=" is read as the sign it is typed for

@@ -251,8 +251,14 @@ CHANGED = {
     ),
     "a sign that is no part of its number": (
         "reworded.py",
-        "            minus, start = read, number.start()\n",
-        "            minus, start = NO, number.start()\n",
+        '            minus, start = read, number.start("sign")\n',
+        '            minus, start = NO, number.start("sign")\n',
+        "reworded",
+    ),
+    "a sign of comparison that is no part of its number": (
+        "reworded.py",
+        '        relation = _compared(shown, number.start("relation"), typed) if typed else ""\n',
+        '        relation = ""\n',
         "reworded",
     ),
     "a finding that points at another file": (

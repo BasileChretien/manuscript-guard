@@ -648,6 +648,16 @@ dependency: a toolkit that will not install without a PDF stack is a toolkit peo
 install. `pdftotext` is asked for UTF-8 and read as UTF-8 whatever the locale, and a
 `pdftotext` that fails or gives nothing leaves the PDF to `pypdf`.
 
+Each value ends in one of four verdicts, and the counts of `check` say how many in each:
+`literature_verified`, `literature_unverifiable` (a source nothing can read),
+`literature_failed` and `literature_attested`. Together they are `literature_values`. A value
+with no stored source used to fit none of them. With `source_file: ""` both checks passed it
+over, `check` added no finding, and the run read as though every value it had looked at was
+verified. The schemas of both files now refuse a blank or all-space field (`source_file`,
+`locator` and `quote` in the ledger; `source`, `locator`, `statement` and `attested_by`
+in `attested.yaml`), and a value that reaches the gates without a source all the
+same is `literature-source-missing` and counted as failed.
+
 ## Only a person can sign an attestation
 
 `attested.yaml` exists to record that **a named human read something the toolkit could not
@@ -1603,6 +1613,25 @@ A number with no nought keeps its point, ".05", and raised and lowered figures a
 figures: the first review found "-.30" read as "30", and ten to the minus eight typed with
 the characters made ten to the minus six with nothing said.
 
+**A sign of comparison belongs to its number.** Until 2026-10-14 only the spaces around
+one were spoken of, and the sign itself was free with them: "The association was
+significant (P < 0.05)" made "(P > 0.05)" was reported as nothing to report, and the sign
+says the opposite. Now `<`, `>`, `≤`, `≥` and `≠` before a number or a binding are read
+with it, so "P < 0.05" is the fact `<0.05`, and a sign that is gone, new or turned round is
+a fact gone and a fact new, which fails, as a changed number does. An `=` is read as what a
+number standing alone says: "(OR = 1.52)" made "(OR 1.52)" is a copy-edit and passes, and
+"P = 0.04" made "P < 0.04" fails. The spaces around the sign are still free, a space of any
+width and one line break, and so is how it is typed:
+"<=", "≤" and "⩽" are one sign, and so are the full-width forms and the escape `\<`
+that Word's round trip writes. A ">" is no sign where it is the head of an arrow, "5 ->
+10", escaped as pandoc writes one, `5 -\> 10`, or in full width; where it ends an HTML tag,
+"<sup>2"; or where it marks a block quotation: at the start of its line, after a blank
+line, a quoted line or nothing. A ">" that starts a line in the middle of a paragraph is the sign of a sentence
+wrapped there, since pandoc opens no quotation without a blank line before it. The sign
+before a binding is held as well, because "P < {{results.p}}" made "P > {{results.p}}"
+turns the result round as surely as a typed one. "≈" and "~" are not signs of a
+comparison and are left as they were.
+
 **It is read once, with a count.** Whether a fact is gone or new is known from how often it
 stands in each text. Where the order changed is known from a count of what one text has had
 that the other has not: each stretch ends where the count is settled, so two clauses moved
@@ -1647,6 +1676,25 @@ make the gate something to switch off.
 done, or an `overridden` saying why it was not. Recording the reason turns it from an
 oversight into a decision, and it is the thing you want when a real reviewer asks the same
 question. Silence is the only unacceptable answer.
+
+**What a reader wrote is sealed.** Answering a finding is the author's edit; what the reader
+wrote is not. Until 2026-10-14 nothing held that line: the header of a filed reading said
+"Nothing else here is yours to edit", and turning a `major` into `minor`, rewording a finding
+or deleting it made it stop binding, with nothing in `check` to say so. A reading now carries
+`reading_sha256`, a digest over the verdict, the summary, the rejection tests and each
+finding's `id`, `severity`, `where` and `finding`, serialised as a co-author item is. The
+answers (`resolution`, `resolved_on`, `overridden`) are not in it, and neither is
+`file_sha256`, which the review-panel skill tells a reader to trim to the files they read.
+G11 computes it again and reports `reading-altered` where it differs, as it reports the rest
+of a round: a warning while drafting, a failure at submission. `review --run` seals each
+reading it files. A record started by `review --record` has no findings yet when it is
+written, so `review --seal <reviewer> --round <n>` seals it once they are typed in: it adds
+the one line at the end and changes nothing else in the file, and it will not seal a reading
+twice. A reading with a major finding and no seal, and any reading `review --run` filed
+without one, is `reading-unsealed`, a warning and never more, because every record written
+before 2026-10-14 is unsealed. The author chose the sealing step over writing the hand-filed
+case down as a gap. The example's thirteen records were sealed with the command when it was
+added.
 
 Editing the manuscript marks the reviews stale, which is correct: a review of the old
 Results is not a review of the new ones. **What it marks stale is scoped to what each
@@ -4202,15 +4250,17 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty-three rules are broken in place, one at a time, and the property that is
+the generators. So fifty-eight rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
 sentence, a comment read for its stops; three ways a section can be counted present by
 one gate and not read by another, from the Methods found by the name G9 had for them to a
-required section found among the abstract's headings; nine ways `reworded` can misread an edit, from
-a number's sign taken for no part of it to what a comment holds held to its place; five
+required section found among the abstract's headings; fourteen ways `reworded` can misread
+an edit, from a number's sign taken for no part of it, and a sign of comparison taken for
+none, read as it is typed, read only hard against its number, an arrow's head or an equals
+sign taken for one, to what a comment holds held to its place; five
 ways a co-author's items can be cut wrong round the citation of a claim, from every stop ending a
 sentence, after "et al." too, to a piece that is only a citation left as an item of its
 own; seven ways an anchor can claim the wrong text, from a claim that runs back past the
@@ -4384,11 +4434,12 @@ it.
   like any other and is compared: it used to end the process that was answering.
 - **The comparison is held to being one.** Two processes on this source under two hash
   seeds must answer alike on every reading, which also catches a reading that walks a
-  set. And eleven lines are changed in a copy of the source, one at a time, and the reading
+  set. And twelve lines are changed in a copy of the source, one at a time, and the reading
   that goes through each must differ: among them the mutant the review of #181 found
   alive, the offset of a quotation's lines losing a character at each line break, an
-  import that writes no rewording, and a finding that points at another file with its
-  line kept, which the readings did not compare at first.
+  import that writes no rewording, a finding that points at another file with its line
+  kept, which the readings did not compare at first, and a sign of comparison that is no
+  part of its number.
 
 Run against main as it was before #181 and #183, it reports the vocabulary reading
 changed, on a vocabulary of one entry, and `check` changed; passes over the spelling
@@ -5418,6 +5469,13 @@ Closed since, and why each mattered:
   what the manuscript says it means is a judgement, and belongs to the review panels.
 - **Nothing checks that a stored source is the work the citekey names.** Saving the wrong
   PDF under the right name passes, provided the quote is in it.
+- **A locator is checked for being there, not for being right.** The schema refuses a blank
+  `locator`, and nothing reads the one that is written: "Table 2" on a quote taken from the
+  abstract passes. It is for the person checking the value, who is sent to the place it names.
+- **A field the literature schemas call blank is one of spaces only.** Their `\S` is any
+  character that is not a space, and a zero-width space (U+200B) or a byte-order mark is one:
+  `attested_by` made of either passes as a signature that shows nothing. Nobody types one by
+  accident, and a name that is there but wrong passes as well.
 - **A PDF is read as its reader gives it, less a short table of foldings.** Curly quotes,
   the dashes, the hyphens U+2010 and U+2011, the ellipsis and the ligatures fi, fl, ff, ffi
   and ffl are folded before a quote is looked for. Anything else one reader spells out and
@@ -5472,6 +5530,21 @@ Closed since, and why each mattered:
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.
+- **A seal is kept beside what it seals, so it catches an edit, not a forger.** Whoever can
+  edit a reading can take its `reading_sha256` out, soften a finding, and run `review --seal`
+  again. Without the seal, a reading is said to be unsealed while it still has a major
+  finding or still carries `provenance`, which is how a reading `review --run` filed is
+  known; `provenance` is not sealed and may be taken out too, and then a reading whose only
+  major finding was made minor is said to be nothing at all. A warning is the most any of
+  this gets. What a hand-filed reading said before it was sealed is not sealed at all, and
+  every record written before seals existed is unsealed until somebody seals it, with
+  whatever it then says. The file's history in git is the witness for all of these, and
+  `check` does not read it.
+- **`review --seal` goes on its own, and is not told so of every flag.** It refuses
+  `--record`, `--record-figure`, `--providers`, `--run` and `--dry-run`. `--digest` with it
+  is answered first and nothing is sealed, and `--verdict`, `--summary`, `--by`, `--remit`
+  and `--files` are passed over. The command `review --record` prints for sealing puts the
+  reader's name in double quotes, which a name holding `"` or `$` would break.
 - **A plain record is not checked against where it is filed.** A named reading must say
   the reader, the reviewer and the round its place says. `<reviewer>.yaml` is read as it
   always was: its `reviewer` and `round` fields are not compared with its place, so a
@@ -8502,9 +8575,19 @@ Closed since, and why each mattered:
   while timing. Both are left to the wall clock.
 
 - **`reworded` holds bindings, citation keys and typed numbers, and nothing else.**
-  - A unit, a sign of comparison, a "not" and "increased" for "decreased" are words, and
-    are not held: "5 mg" made "5 g", "P < 0.05" made "P > 0.05" and "did not differ" made
-    "differed" all pass. So does a number written in words: "three" made "four".
+  - A unit, a "not" and "increased" for "decreased" are words, and are not held: "5 mg"
+    made "5 g" and "did not differ" made "differed" both pass. So does a number written in
+    words: "three" made "four".
+  - A sign of comparison is held only as a sign. Spelt out, "P < 0.05" made "P less than
+    0.05" fails as a sign gone, though the sentence says the same; "less than" made
+    "more than" passes. Typed in TeX, `$p \leq 0.05$`, it is letters and not held. A
+    ">" after what looks like an HTML tag opened on its line, "x<y and z>3", is taken for
+    the end of the tag and is no sign there, escaped `\>` or not. A block quotation
+    directly under a heading or a closing fence, with no blank line between, has its ">"
+    read as a sign, and a quoted paragraph rewrapped before its own sign loses it. The ">"
+    of a folded value in the front matter, `abstract: >`, is read as the sign of the first
+    number under it; G2 asks for the abstract under a heading instead. "=>" is the head of
+    an arrow, though some authors type it for "≥": "age => 18" made "age 18" passes.
   - A number spelt out, "3" made "three", is reported as gone, and so is a thousands
     separator taken out. The edit may be harmless; nothing here decides that.
   - Where a fact stands more often or less often than it did, which of them came or went
@@ -8922,7 +9005,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 56 broken rules, and the comparison on eleven
+  - The properties were seen to fail on 61 broken rules, and the comparison on twelve
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

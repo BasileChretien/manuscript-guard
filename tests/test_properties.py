@@ -85,6 +85,7 @@ from manuscript_guard.reworded import (
     MAYBE,
     NO,
     NUMBER,
+    RELATIONS,
     SURE,
     compare,
     facts,
@@ -1381,13 +1382,50 @@ _WRITTEN = {
     CITATION: ("[@key%s]", "@key%s", "[see @key%s]"),
 }
 _TYPED_NUMBERS = ("12", "3.84", "1,200", "-0.5", "95", "0.05", ".05", "-.30")
-#: How a number is set in its sentence: bare, in brackets, in emphasis, after a sign, in
-#: a cell, after a comma, after a product. In all but the last the dash of a negative one
-#: is its sign for sure; after the product it is perhaps one, and stands in both texts.
+#: How a number is set in its sentence: bare, in brackets, in emphasis, after an equals
+#: sign, which says what a number alone says, after the sign of an estimate, in a cell,
+#: after a comma, after a product. In all but the last the dash of a negative one is its
+#: sign for sure; after the product it is perhaps one, and stands in both texts. Any other
+#: sign of comparison is no setting: it is part of its number (`_COMPARED`).
 _SET = (
     "%s", "(%s)", "*%s*", "**%s**", "= %s", "\N{ALMOST EQUAL TO}%s", "|**%s**|", "(a,*%s*)",
     "x*%s",
 )  # fmt: skip
+#: A sign of comparison, by the sign it is read as, in each of the ways it is typed, and the
+#: space between it and its number. A number drawn with one keeps it, and each time the
+#: sentence is written the sign is typed and spaced another way: that is a rewording.
+_COMPARED = {
+    "<": ("<", "\\<", "\N{FULLWIDTH LESS-THAN SIGN}"),
+    ">": (">", "\\>"),
+    "\N{LESS-THAN OR EQUAL TO}": (
+        "\N{LESS-THAN OR EQUAL TO}", "<=", "\N{LESS-THAN OR SLANTED EQUAL TO}",
+    ),
+    "\N{GREATER-THAN OR EQUAL TO}": ("\N{GREATER-THAN OR EQUAL TO}", ">="),
+}  # fmt: skip
+_AROUND = ("", " ", "\N{NO-BREAK SPACE}", "\N{THIN SPACE}")
+#: A sign turned round, taken off or put on, as typed and as a finding names it, before
+#: the edit and after it.
+_TURNED = (
+    (("< 0.047", "'<0.047'"), ("> 0.047", "'>0.047'")),
+    (("<0.047", "'<0.047'"), ("0.047", "'0.047'")),
+    (("0.047", "'0.047'"), ("\N{LESS-THAN OR EQUAL TO} 0.047", "'\N{LESS-THAN OR EQUAL TO}0.047'")),
+    (("= 47", "'47'"), ("\N{NOT EQUAL TO} 47", "'\N{NOT EQUAL TO}47'")),
+    (("= 0.047", "'0.047'"), ("< 0.047", "'<0.047'")),
+    ((">= 47", "'\N{GREATER-THAN OR EQUAL TO}47'"), ("> 47", "'>47'")),
+    (("\\< 0.047", "'<0.047'"), ("= 0.047", "'0.047'")),
+)  # fmt: skip
+#: The same sign before the same number, typed and spaced another way: no change.
+_RESPACED = (
+    ("\N{LESS-THAN OR EQUAL TO} 0.047", "<=0.047"),
+    (">= 47", "\N{GREATER-THAN OR EQUAL TO}\N{THIN SPACE}47"),
+    ("< 0.047", "\N{NO-BREAK SPACE}<\n0.047"),
+    ("\\< 0.047", "<0.047"),
+    ("\N{LESS-THAN OR SLANTED EQUAL TO}0.047", "\N{LESS-THAN OR EQUAL TO} 0.047"),
+    ("= 0.047", "0.047"),
+    ("5 -> 47", "5 \N{RIGHTWARDS ARROW} 47"),
+    ("5 -\\> 47", "5 to 47"),
+    ("< 0.047", "<\N{HAIR SPACE}0.047"),
+)
 #: Each of the hyphens typed for a minus sign.
 _MINUS_TYPED = ("-", "\N{MINUS SIGN}", "\N{NON-BREAKING HYPHEN}")
 #: How the first bound of a range is set: bare, with a per cent sign, a prime or a euro
@@ -1417,9 +1455,16 @@ def test_a_fact_is_where_it_says_and_a_text_is_what_it_was(manuscript: str, nobo
             elif fact.kind == CITATION:
                 assert here.lstrip("-").startswith("@" + fact.text), (text, fact)
             else:
-                signed = fact.minus != NO or fact.text[0] == "+"
+                own = fact.text[len(fact.relation) :]
+                signed = fact.minus != NO or own[0] == "+"
                 assert not signed or here[0] in reworded_module._MINUS + "+", (text, fact)
-                assert here[signed:].startswith(fact.text.lstrip("+")), (text, fact)
+                assert here[signed:].startswith(own.lstrip("+")), (text, fact)
+            if fact.relation:
+                # The sign is typed before the fact, with nothing but its gap between.
+                gap = re.compile("(?:" + reworded_module._GAP + r")\Z")
+                typed = gap.sub("", folded[: fact.start], count=1)
+                forms = [sign for sign, read in RELATIONS.items() if read == fact.relation]
+                assert any(typed.endswith(form) for form in forms), (text, fact)
             last = fact.start
         assert not compare(text, text, MAIN).findings, text
 
@@ -1439,7 +1484,10 @@ def _rewordings(draw: st.DrawFn, did: str) -> tuple[str, str, str, list[str], in
     def fact() -> tuple[str, str]:
         kind = draw(st.sampled_from((BINDING, CITATION, NUMBER, NUMBER)))
         if kind == NUMBER:
-            return kind, draw(st.sampled_from(_TYPED_NUMBERS))
+            number = draw(st.sampled_from(_TYPED_NUMBERS))
+            if number[0] == "-":
+                return kind, number
+            return kind, draw(st.sampled_from(("", "", *_COMPARED))) + number
         return kind, f"k{draw(st.integers(1, 4))}"
 
     sizes = draw(st.lists(st.integers(0, 3), min_size=1, max_size=6))
@@ -1489,8 +1537,8 @@ def _rewordings(draw: st.DrawFn, did: str) -> tuple[str, str, str, list[str], in
             follows = held[at + 1] if at + 1 < len(held) else ("", "-")
             if (
                 kind == follows[0] == NUMBER
-                and text[0] not in "-."
-                and follows[1][0] not in "-."
+                and text[0] not in ("-", ".", *_COMPARED)
+                and follows[1][0] not in ("-", ".", *_COMPARED)
                 and draw(st.booleans())
             ):
                 # Two numbers as the bounds of a range, in one of the ways it is joined.
@@ -1499,7 +1547,11 @@ def _rewordings(draw: st.DrawFn, did: str) -> tuple[str, str, str, list[str], in
                 parts.append(low + draw(st.sampled_from(_JOINED)) + follows[1])
                 at += 2
             elif kind == NUMBER:
-                retyped = text.replace("-", draw(st.sampled_from(_MINUS_TYPED)))
+                relation = text[0] if text[0] in _COMPARED else ""
+                retyped = text[len(relation) :].replace("-", draw(st.sampled_from(_MINUS_TYPED)))
+                if relation:
+                    sign = draw(st.sampled_from(_COMPARED[relation]))
+                    retyped = sign + draw(st.sampled_from(_AROUND)) + retyped
                 parts.append(draw(st.sampled_from(_SET[:-1] if sure else _SET)) % retyped)
                 at += 1
             else:
@@ -1509,6 +1561,7 @@ def _rewordings(draw: st.DrawFn, did: str) -> tuple[str, str, str, list[str], in
         return " ".join(parts) + "."
 
     comment = draw(st.integers(0, len(before)))
+    turned = draw(st.sampled_from(_TURNED))
     texts_of = []
     for sentences, hidden in (
         (before, "<!--\n```r\nset.seed(14)\nx <- {{results.gone}} [@gone2001]\n```\n-->"),
@@ -1534,6 +1587,16 @@ def _rewordings(draw: st.DrawFn, did: str) -> tuple[str, str, str, list[str], in
             # read as a sure one, and a dash that joins read as perhaps one.
             forms = ("x*-61", "n-61") if sentences is before else ("x * -61", "*n*-61")
             paragraphs.append(f"{filler().capitalize()} {forms[0]} {filler()} {forms[1]}.")
+        if did == "compared":
+            # A sign of comparison turned round, taken off or put on.
+            typed = turned[0][0] if sentences is before else turned[1][0]
+            paragraphs.append(f"{filler().capitalize()} P {typed} {filler()}.")
+        if did == "respaced":
+            # The same sign typed and spaced another way, which is a language edit: every
+            # way of it in every example, so that a rule broken for one is always seen.
+            for pair in _RESPACED:
+                typed = pair[0] if sentences is before else pair[1]
+                paragraphs.append(f"{filler().capitalize()} P {typed} {filler()}.")
         if did == "unsure":
             # A range whose first bound ends on a mark that may close, joined by a dash in
             # the text before and by "to" in the text after: the dash may have been a sign.
@@ -1543,6 +1606,8 @@ def _rewordings(draw: st.DrawFn, did: str) -> tuple[str, str, str, list[str], in
         texts_of.append("\n\n".join(paragraphs) + "\n")
     line = 1 + 2 * (at + (comment <= at))
     last = 1 + 2 * (len(after) + 1)
+    if did == "compared":
+        shown, line = [turned[0][1], turned[1][1]], last
     if did == "unsure":
         shown, line = ["'43'", "may have lost a minus sign"], last
     if did == "beside":
@@ -1561,7 +1626,7 @@ def _rewordings(draw: st.DrawFn, did: str) -> tuple[str, str, str, list[str], in
 #: passed. What Hypothesis draws first in an example it varies least.
 _EDITS = (
     "nothing", "lost", "new", "changed", "unsigned", "turned", "unsure", "beside", "swapped",
-    "both",
+    "both", "compared", "respaced",
 )  # fmt: skip
 
 
@@ -1595,9 +1660,11 @@ def _held_to_its_edit(drawn: tuple[str, str, str, list[str], int]) -> None:
         "beside": ["sign-lost"],
         "swapped": ["sign-moved"],
         "both": ["sign-unsure"],
+        "compared": ["fact-lost", "fact-new"],
+        "respaced": [],
     }[did]
     assert codes == expected, (before, after, did, said)
-    assert report.ok == (did in ("nothing", "unsure", "swapped", "both"))
+    assert report.ok == (did in ("nothing", "unsure", "swapped", "both", "respaced"))
     by_code = {found.code: found for found in report.findings}
     if did in ("unsigned", "unsure", "beside", "swapped", "both"):
         (found,) = report.findings
@@ -1905,6 +1972,27 @@ def _required_sections_are_found_in_the_abstract(patch: pytest.MonkeyPatch) -> N
 
 def _a_sign_is_no_part_of_its_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reworded_module, "_sign", lambda text, at: NO)
+
+
+def _a_sign_of_comparison_is_no_part_of_its_number(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reworded_module, "_compared", lambda text, at, typed: "")
+
+
+def _a_sign_of_comparison_is_compared_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reworded_module, "RELATIONS", {sign: sign for sign in RELATIONS})
+
+
+def _an_arrow_s_head_is_a_sign(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reworded_module, "_ARROW_TAIL", "")
+
+
+def _an_equals_sign_is_a_sign(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reworded_module, "RELATIONS", {**RELATIONS, "=": "="})
+
+
+def _a_sign_of_comparison_is_read_only_against_its_number(patch: pytest.MonkeyPatch) -> None:
+    pattern = reworded_module._NUMBER.pattern.replace(reworded_module._GAP, "", 1)
+    patch.setattr(reworded_module, "_NUMBER", re.compile(pattern))
 
 
 def _the_order_is_not_looked_at(patch: pytest.MonkeyPatch) -> None:
@@ -2238,6 +2326,26 @@ BROKEN = {
     ),
     "a number's sign is no part of it": (
         _a_sign_is_no_part_of_its_number,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "a sign of comparison is no part of its number": (
+        _a_sign_of_comparison_is_no_part_of_its_number,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "a sign of comparison is compared as it is typed": (
+        _a_sign_of_comparison_is_compared_as_typed,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "an arrow's head is read as a sign": (
+        _an_arrow_s_head_is_a_sign,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "an equals sign is read as a sign": (
+        _an_equals_sign_is_a_sign,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "a sign of comparison is read only hard against its number": (
+        _a_sign_of_comparison_is_read_only_against_its_number,
         test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
     ),
     "the order of the facts is not looked at": (

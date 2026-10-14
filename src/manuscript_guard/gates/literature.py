@@ -55,10 +55,18 @@ _MODEL_NAME = re.compile(
 
 
 def check_literature_chain(project: Project, literature: Literature) -> Report:
+    """Each value ends in one verdict: verified, unverifiable or failed, or it is attested.
+
+    The counts say which, and `literature_verified + literature_unverifiable +
+    literature_failed + literature_attested` is `literature_values`. A value with no stored
+    source to read used to be passed over: it was counted in none of these, reported by
+    nothing, and the run said everything it had checked was verified.
+    """
     report = Report()
     root = project.path("literature")
     verified = 0
     unverifiable = 0
+    failed = 0
 
     for key, value in sorted(literature.values.items()):
         detail = value.detail or {}
@@ -67,14 +75,14 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
             report = report.merge(_check_attestation(key, value, detail))
             continue
 
-        source_file = detail.get("source_file")
+        source_file = str(detail.get("source_file") or "").strip()
         quote = detail.get("quote", "")
-        if not source_file:
-            continue
-
         path = root / source_file
-        if not path.exists():
-            continue  # already reported as literature-source-missing
+        if not source_file or not path.exists():
+            # `_sources_exist` reports both as literature-source-missing; one finding is
+            # enough. The value was checked against nothing, so it is not verified.
+            failed += 1
+            continue
 
         try:
             text = read_source(path)
@@ -93,6 +101,7 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
             continue
 
         if not contains(text, quote):
+            failed += 1
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -107,6 +116,7 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
             continue
 
         if not states_value(quote, value.display):
+            failed += 1
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -136,7 +146,9 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
             )
 
     return report.with_counts(
-        literature_verified=verified, literature_unverifiable=unverifiable
+        literature_verified=verified,
+        literature_unverifiable=unverifiable,
+        literature_failed=failed,
     )
 
 

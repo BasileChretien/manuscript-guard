@@ -147,6 +147,9 @@ BINDS_AT = {
     "claimed-change-did-not-happen": SUBMISSION,
             "review-stale": SUBMISSION,
     "open-major-finding": SUBMISSION,
+    # A sealed reading whose words changed: a major finding softened or deleted binds
+    # nothing any more, so this binds where the major findings do.
+    "reading-altered": SUBMISSION,
 }
 
 

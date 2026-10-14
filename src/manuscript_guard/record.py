@@ -330,6 +330,68 @@ def write_review(
     return Written(path=path, panel=panel)
 
 
+def seal_review(
+    project, reviewer: str, *, round_number: int = 1, reading: str | None = None
+) -> Path:
+    """Seal a reading filed by hand, once its findings are written: add `reading_sha256`.
+
+    `review --run` seals each reading it files. One started by `review --record` has no
+    findings when it is written, and they are typed in afterwards, so there is nothing to
+    seal until then. This writes the seal once and refuses a reading that has one: a seal
+    written again after an edit would hide the edit.
+
+    The line is added at the end of the file, and nothing else in it is touched, so the
+    reader's comments and wrapping stay as they were. The file is read again with the line
+    added, and if it does not then say the same with the seal beside it, nothing is written.
+    """
+    import yaml
+
+    from manuscript_guard.contracts._schema import ContractError, read_structured, validate
+    from manuscript_guard.gates.review import reading_digest, reading_path
+
+    if round_number < 1:
+        raise RecordError("rounds are numbered from 1")
+    path = reading_path(project, round_number, reviewer, reading)
+    if not path.exists():
+        raise RecordError(f"there is no {path.name} in round {round_number} to seal")
+    try:
+        document = read_structured(path)
+    except ContractError as exc:
+        raise RecordError(str(exc)) from None
+    report = validate(document, "review", path)
+    if not report.ok or not isinstance(document, dict):
+        said = "; ".join(finding.message for finding in report.findings[:3])
+        raise RecordError(
+            f"{path.name} does not fit the review schema ({said}); put it right first"
+        )
+    if "reading_sha256" in document:
+        raise RecordError(
+            f"{path.name} is sealed already. A seal is written once: written again after an "
+            "edit, it would hide the edit"
+        )
+
+    digest = reading_digest(document)
+    data = path.read_bytes()
+    newline = b"\r\n" if b"\r\n" in data else b"\n"
+    if data and not data.endswith(b"\n"):
+        data += newline
+    sealed = data + b"reading_sha256: " + digest.encode("ascii") + newline
+    try:
+        same = yaml.safe_load(sealed.decode("utf-8")) == {
+            **yaml.safe_load(path.read_bytes().decode("utf-8")),
+            "reading_sha256": digest,
+        }
+    except (yaml.YAMLError, UnicodeDecodeError, TypeError):
+        same = False
+    if not same:
+        raise RecordError(
+            f"{path.name} does not end where a line can be added to it, so it is not sealed. "
+            "Write it as a block of `key: value` lines, as `review --record` does"
+        )
+    path.write_bytes(sealed)
+    return path
+
+
 def write_figure_review(
     project,
     figure: str,

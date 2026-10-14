@@ -358,6 +358,20 @@ malformed binding, a declared value nothing quotes, a hand-authored table, an ed
 figure, a figure script that stopped reading results, one quantity emitted under two names,
 and near-miss conventions such as `p < 0.37` that a laxer allowlist would wave through.
 
+**A check that read nothing says so.** A gate that passes having read nothing is the same
+failure as one that misses a number, and it happened three ways at once: `audit --strict` of
+an empty paper printed "0 numeric tokens" and exited 0; `bind` said "every number in the
+manuscript is accounted for" of a folder with no Markdown in it; and a manuscript kept as
+`.qmd`, under `_drafts/` or behind a mistyped `paths.manuscript` failed `check` only through
+the results it left unquoted, 21 findings that named everything but the folder, and passed
+at the design and analysis stages. Now `audit --strict` fails a paper it read no number in,
+`bind` refuses a manuscript it cannot read (exit 2), and G2 reports `manuscript-empty`, one
+G0 finding that names the folder, the pattern it read and what it found there instead, in
+place of the unquoted results; it fails from the drafting stage. `tests/test_reads_nothing.py`
+holds every gate and every subcommand in a table: what it reads, its count, and what it does
+when it reads nothing, a finding, an exit code, or a written reason why nothing is fine. A
+new gate or command is not in the table and fails that test until someone decides.
+
 ## Decisions taken during construction
 
 - **The digest of a results fragment is a `.sha256` sidecar, not a field inside it.**
@@ -5420,6 +5434,12 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
+- **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
+  citation, no reporting guideline, no analysis code, no fitted model or no revision round
+  has nothing for G3, G10, G7, G8r, G9, G15 or G13 to read, and each passes with its count
+  at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
+  input is missing by mistake rather than by design is caught only where another finding
+  depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.

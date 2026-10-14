@@ -64,7 +64,7 @@ from manuscript_guard.gates import (
     source_files,
     sync_bib,
 )
-from manuscript_guard.gates.numbers import chosen_rules, typed_choice
+from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
 from manuscript_guard.policy import (
     DESCRIPTIONS,
     STAGES,
@@ -385,6 +385,11 @@ def cmd_bind(args: argparse.Namespace) -> int:
     from manuscript_guard.binding import SelectionError, apply, label, routes, select, unbound
 
     project, _ = load_project(args.path)
+    empty = why_no_manuscript(project)
+    if empty is not None:
+        # "every number in the manuscript is accounted for" was said of no manuscript.
+        print(f"manuscript-guard bind: {empty}", file=sys.stderr)
+        return 2
     namespace, _results, _literature, _ = load_namespace(project)
     items = unbound(project, namespace)
 
@@ -1335,9 +1340,17 @@ def cmd_audit(args: argparse.Namespace) -> int:
             print(f"  {item}", file=sys.stderr)
         return 2
     print(render(report, measure_discrimination(report.backing_values), Path.cwd()))
+    if not report.examined:
+        # An empty paper, or one whose numbers are all in pictures, printed "0 numeric
+        # tokens" and passed --strict: an audit that read nothing.
+        print(
+            "the audit read no number in what it was given, so nothing was checked",
+            file=sys.stderr,
+        )
     # A paper or figure the audit could not read is a check that did not happen, which
-    # --strict must not pass.
-    return 1 if (report.unmatched or report.unreadable) and args.strict else 0
+    # --strict must not pass; nor is a paper with no number in it.
+    failed = report.unmatched or report.unreadable or not report.examined
+    return 1 if failed and args.strict else 0
 
 
 def cmd_journal(args: argparse.Namespace) -> int:

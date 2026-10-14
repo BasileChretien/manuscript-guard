@@ -435,12 +435,33 @@ def _level(level: object) -> str:
     return str(level)
 
 
+def _is_missing(item: object) -> bool:
+    """None, a value unequal to itself (a NaN of any float type, NaT), or pandas' NA.
+
+    Compared with itself NA is NA again, neither true nor false, so it is known by what it
+    is. pandas is looked up and not imported: a run that never loaded it holds no NA.
+    """
+    pandas = sys.modules.get("pandas")
+    if item is None or (pandas is not None and item is getattr(pandas, "NA", None)):
+        return True
+    try:
+        return bool(item != item)
+    except (TypeError, ValueError):
+        # A value with no single answer to the question, such as an array in a cell: it is
+        # not shown to be missing, and is written as the level it prints.
+        return False
+
+
 def _observed(values: object, kind: str) -> dict:
     """What the data hold of a variable: levels (where few), distinct values, missing."""
-    items = list(values)
-    missing = [item for item in items if item is None or (isinstance(item, float) and item != item)]
-    present = {_level(item) for item in items if item not in missing}
-    out: dict = {"distinct": len(present), "missing": len(missing)}
+    present: set[str] = set()
+    missing = 0
+    for item in values:
+        if _is_missing(item):
+            missing += 1
+        else:
+            present.add(_level(item))
+    out: dict = {"distinct": len(present), "missing": missing}
     if kind in ("binary", "categorical", "ordinal") or len(present) <= _MOST_LEVELS:
         out["levels"] = sorted(present)
     return out
@@ -453,6 +474,144 @@ def _variables_in(code: str, columns: set[str]) -> list[str]:
     except SyntaxError:
         return [code] if code in columns else []
     return sorted({node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} & columns)
+
+
+_COMPARISONS = (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.In, ast.NotIn)
+
+
+def _compares(node: ast.AST) -> bool:
+    if isinstance(node, ast.Compare):
+        return all(isinstance(op, _COMPARISONS) for op in node.ops)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.Not, ast.Invert)):
+        return _compares(node.operand)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "I":
+        return len(node.args) == 1 and not node.keywords and _compares(node.args[0])
+    return False
+
+
+def _is_comparison(code: str) -> bool:
+    """Whether a formula's factor is a comparison: `stage == 'IV'`, `I(age >= 65)`.
+
+    Known by its syntax, at the top of the expression, bare or inside `I()`, and the negation
+    of one. A comparison is true or false of each row, a binary term of its own, and G15
+    does not hold it to the kind, the levels or the reference of the variable it reads. A
+    comparison deeper in the expression (`C(stage == 'IV')`, `np.where(age > 65, 1, 0)`) is
+    not one: what the call around it makes of it is not known from the syntax.
+    """
+    try:
+        return _compares(ast.parse(code.strip(), mode="eval").body)
+    except SyntaxError:
+        return False
+
+
+def _treatment_levels(categories: tuple, suffixes: list[str]) -> list[str] | None:
+    """The level each column of a treatment coding stands for, written as the levels are.
+
+    patsy names such a column "[T.<level>]" with the level as Python prints it, so a float
+    code is "[T.2.0]" where the levels say "2". Each suffix is therefore looked up among the
+    names patsy gives the categories. None where that does not give one level for each
+    column: another coding, or two categories written alike ("1" beside 1), where the
+    reference would be a guess.
+    """
+    levels = [_level(category) for category in categories]
+    named = {
+        "[T.%s]" % (category,): level  # noqa: UP031 - written as patsy writes it
+        for category, level in zip(categories, levels, strict=True)
+    }
+    if len(named) != len(levels) or len(set(levels)) != len(levels):
+        return None
+    if not suffixes or any(suffix not in named for suffix in suffixes):
+        return None
+    return [named[suffix] for suffix in suffixes]
+
+
+def _entered(factor: object, info: object, contrast: object, columns: set[str]) -> tuple:
+    """How a term took one factor, and for a treatment coding the level of each column."""
+    record: dict = {"expression": factor.code, "variables": _variables_in(factor.code, columns)}
+    shown = None
+    if info.type == "categorical":
+        record["as"] = "categorical"
+        record["levels"] = [_level(level) for level in info.categories]
+        suffixes = list(contrast.column_suffixes) if contrast is not None else []
+        shown = _treatment_levels(info.categories, suffixes)
+        left = [level for level in record["levels"] if level not in shown] if shown else []
+        if len(left) == 1:
+            record["reference"] = left[0]
+    else:
+        record["as"] = "numerical"
+    if _is_comparison(factor.code):
+        record["comparison"] = True
+    return record, shown
+
+
+def _by_level(
+    record: dict, shown: list[str], columns_at: range, exog: object, successes: list[float]
+) -> dict[str, int]:
+    """The events at each level of a term of one categorical variable."""
+    by_level = dict.fromkeys(record["levels"], 0.0)
+    for row, outcome in zip(exog, successes, strict=True):
+        hit = [level for level, at in zip(shown, columns_at, strict=True) if row[at] == 1]
+        by_level[hit[0] if hit else record["reference"]] += outcome
+    return {level: int(count) for level, count in by_level.items()}
+
+
+def _outcome(model: object, data: object, columns: set[str]) -> tuple[dict, bool | None]:
+    """The outcome as the formula has it, and whether it is two columns of counts.
+
+    statsmodels names a one-column outcome by its expression. A binomial outcome of two
+    columns is either grouped data, `successes + failures`, or one categorical variable with
+    a column for each level; which, and the expressions, are read from the design of the
+    left-hand side. None where there are several columns and no such design to read.
+    """
+    names = model.endog_names
+    info = getattr(getattr(data, "orig_endog", None), "design_info", None)
+    factors = [factor for term in getattr(info, "terms", ()) for factor in term.factors]
+    if isinstance(names, str) or not factors:
+        codes, counts = [str(names)], False if isinstance(names, str) else None
+    else:
+        codes = [factor.code for factor in factors]
+        counts = all(info.factor_infos[factor].type == "numerical" for factor in factors)
+    read = {variable for code in codes for variable in _variables_in(code, columns)}
+    record: dict = {"expression": " + ".join(codes), "variables": sorted(read)}
+    if len(codes) == 1 and _is_comparison(codes[0]):
+        record["comparison"] = True
+    return record, counts
+
+
+def _successes(model: object, data: object, counts: bool | None) -> tuple:
+    """For a binary outcome, the events of each row and, for grouped data, the trials in all.
+
+    Grouped data are read where the outcome is two columns of counts: the first holds the
+    events, and `n_trials` the total of each row. An outcome of one column that is not 0 or
+    1 is a proportion, whose trials are in weights that may be anything else as well, so no
+    events are recorded for it. (None, None) for whatever cannot be read exactly.
+    """
+    trials = getattr(model, "n_trials", None)
+    if counts is None or (counts and trials is None):
+        return None, None
+    if counts:
+        return [float(row[0]) for row in data.endog], int(round(sum(map(float, trials))))
+    each = [float(value) for value in model.endog]
+    if any(value not in (0.0, 1.0) for value in each):
+        return None, None
+    return each, None
+
+
+def _statsmodels_engine(model: object) -> dict:
+    engine = {"language": "Python", "package": "statsmodels", "class": type(model).__name__}
+    family = getattr(model, "family", None)
+    if family is not None:
+        engine["family"] = type(family).__name__
+        engine["link"] = type(family.link).__name__
+    return engine
+
+
+def _converged(fit: object) -> bool:
+    if hasattr(fit, "converged"):
+        return bool(fit.converged)
+    if isinstance(getattr(fit, "mle_retvals", None), dict):
+        return bool(fit.mle_retvals.get("converged", True))
+    return True
 
 
 def read_statsmodels(fit: object) -> dict:
@@ -471,20 +630,13 @@ def read_statsmodels(fit: object) -> dict:
             "smf.ols and the like), so the terms cannot be read from it"
         )
     columns = {str(column) for column in frame.columns}
-    family = getattr(model, "family", None)
-    engine = {
-        "language": "Python",
-        "package": "statsmodels",
-        "class": type(model).__name__,
-    }
-    if family is not None:
-        engine["family"] = type(family).__name__
-        engine["link"] = type(family.link).__name__
+    engine = _statsmodels_engine(model)
+    outcome, counts = _outcome(model, data, columns)
+    binary = engine.get("family") == "Binomial" or engine["class"] in ("Logit", "Probit")
+    successes, trials = _successes(model, data, counts) if binary else (None, None)
 
     slices = dict(spec.term_name_slices)
     exog = model.exog
-    endog = [float(value) for value in model.endog]
-    binary = engine.get("family") == "Binomial" or engine["class"] in ("Logit", "Probit")
     terms, events_by_level = [], {}
     for term in spec.terms:
         if not term.factors:
@@ -492,60 +644,31 @@ def read_statsmodels(fit: object) -> dict:
         entered = []
         for coding in spec.term_codings[term]:
             for factor in coding.factors:
-                info = spec.factor_infos[factor]
-                variables = _variables_in(factor.code, columns)
-                record: dict = {"expression": factor.code, "variables": variables}
-                if info.type == "categorical":
-                    record["as"] = "categorical"
-                    record["levels"] = [_level(level) for level in info.categories]
-                    contrast = coding.contrast_matrices.get(factor)
-                    suffixes = list(contrast.column_suffixes) if contrast is not None else []
-                    shown = {suffix[3:-1] for suffix in suffixes if suffix.startswith("[T.")}
-                    if suffixes and len(shown) == len(suffixes):
-                        left = [level for level in record["levels"] if level not in shown]
-                        if len(left) == 1:
-                            record["reference"] = left[0]
-                    if binary and len(term.factors) == 1 and "reference" in record:
-                        columns_at = range(*slices[term.name()].indices(exog.shape[1]))
-                        by_level = {record["reference"]: 0.0}
-                        for row, outcome in zip(exog, endog, strict=True):
-                            hit = [
-                                suffix[3:-1]
-                                for suffix, column in zip(suffixes, columns_at, strict=True)
-                                if row[column] == 1
-                            ]
-                            level = hit[0] if hit else record["reference"]
-                            by_level[level] = by_level.get(level, 0.0) + outcome
-                        for variable in variables:
-                            events_by_level[variable] = {
-                                level: int(by_level.get(level, 0)) for level in record["levels"]
-                            }
-                else:
-                    record["as"] = "numerical"
+                contrast = coding.contrast_matrices.get(factor)
+                record, shown = _entered(factor, spec.factor_infos[factor], contrast, columns)
+                if successes is not None and len(term.factors) == 1 and "reference" in record:
+                    columns_at = range(*slices[term.name()].indices(exog.shape[1]))
+                    counted = _by_level(record, shown, columns_at, exog, successes)
+                    for variable in record["variables"]:
+                        events_by_level[variable] = dict(counted)
                 entered.append(record)
         terms.append({"term": term.name(), "entered": entered})
 
-    outcome = str(model.endog_names)
-    missing = list(getattr(data, "missing_row_idx", None) or [])
-    if hasattr(fit, "converged"):
-        converged = bool(fit.converged)
-    elif isinstance(getattr(fit, "mle_retvals", None), dict):
-        converged = bool(fit.mle_retvals.get("converged", True))
-    else:
-        converged = True
     card: dict = {
         "engine": engine,
         "formula": str(model.formula),
-        "outcome": {"expression": outcome, "variables": _variables_in(outcome, columns)},
+        "outcome": outcome,
         "terms": terms,
         "parameters": int(exog.shape[1] - getattr(model, "k_constant", 0)),
         "n_input": len(frame),
-        "n_used": len(endog),
-        "n_dropped": len(missing),
-        "converged": converged,
+        "n_used": len(model.endog),
+        "n_dropped": len(list(getattr(data, "missing_row_idx", None) or [])),
+        "converged": _converged(fit),
     }
-    if binary:
-        card["events"] = int(sum(endog))
+    if successes is not None:
+        card["events"] = int(sum(successes))
+        if trials is not None:
+            card["trials"] = trials
         if events_by_level:
             card["events_by_level"] = events_by_level
     return card
@@ -1040,8 +1163,10 @@ class Emitter:
         Read from the fit, not described: the engine, family and link, the formula, each term
         with how every variable entered it (as a number, or as categories with their levels
         and reference), the rows used and dropped, the events of a binary outcome, by level of
-        each categorical term, and whether the fit converged. `name` is what the paper calls
-        the model and `description` what it is for, which no fit can say.
+        each categorical term, and whether the fit converged. For grouped data, an outcome
+        of two columns of counts, the events are those of the table and its trials are
+        recorded beside them. `name` is what the paper calls the model and `description`
+        what it is for, which no fit can say.
 
         The statsmodels formula API is read. A fit it cannot read is refused rather than
         guessed at.

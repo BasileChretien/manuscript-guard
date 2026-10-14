@@ -1315,6 +1315,28 @@ their levels and reference), the rows used and dropped, the events of a binary o
 level of each categorical term, and convergence. A fit the emitter cannot read is refused,
 not described: a model typed by hand is the thing this replaces.
 
+**The variables of a term are the data's columns.** `splines::ns(age, knots = knots)` reads
+`age`; `knots` is an object of the script, and a variable nobody could declare. Python has
+the frame the fit kept. In R a `glm` keeps its data and an `lm` only its call, whose `data`
+is read again where the formula was made.
+
+**A comparison is a term of its own.** `I(stage == 'IV')` is true or false of each row. It is
+not `stage`: its levels are not the four stages and its reference is no stage, and Python
+enters it as categories where R enters it as a number. Each emitter knows it by its syntax
+(`==`, `!=`, `<`, `<=`, `>`, `>=`, `in` or `%in%`, at the top of the expression, bare or
+inside `I()`, and the negation of one) and marks the term, or the outcome, `comparison`. G15
+asks that the variable it reads be declared and holds the comparison to none of that
+variable's kind, levels and reference. The mark is the one fact added to the fragment for
+it: the gate could not tell a comparison from the expression without reading two languages.
+
+**Grouped data are events among trials.** A binomial model of a table, one row a group, is
+fitted to the proportion of each row, and the sum of those proportions is no number of
+events. For `successes + failures ~ ...` in statsmodels, and in R for
+`cbind(successes, failures) ~ ...` or a proportion with the trials as `weights`, the card
+holds `events`, the successes summed over the rows, and `trials`. A card without `trials`
+is one observation a row, as every card was. The columns of a grouped outcome are counts,
+or their proportion, and are declared so: the binary outcome is each trial's.
+
 The data cannot say what a variable is meant to be. 1 to 4 is a grade, a code or a count,
 and an identifier looks like an integer. `em.variable("age_group", "categorical", label=...,
 levels=..., reference=..., values=...)` says it, beside the code that derives the variable,
@@ -1342,7 +1364,21 @@ stated in the manuscript. Few events for each coefficient is a warning, at ten, 
 rule, which the literature has argued over since. The kind of a model the analysis fitted, typed in
 the Methods, fails as a typed parameter does, since it is the copy left behind when the model
 changes; a kind it did not fit is a warning. Both are read in the prose G14 reads, in any
-case, across a hyphen or a line break, and in the plural.
+case, across a hyphen or a line break, and in the plural, and not in a heading, which names
+the analysis it heads.
+
+**A longer name is another model.** "Conditional logistic regression" holds the words
+"logistic regression" and is not one: no `glm` fits it. Read as the fitted kind it failed,
+and the hint offered a binding that misnamed the model. `data/models.yaml` therefore lists
+the words that, directly before a name, make it the name of another model (conditional,
+multinomial, ordinal, mixed-effects, penalised, Bayesian, zero-inflated, generalised and
+their kin), and after one the name is not read at all, as the fitted kind or as a model
+that was not fitted. The words that leave the fit what it is are kept off the list on
+purpose: "multivariable", "adjusted", "crude", "weighted", and "modified" and "robust"
+too, since a Poisson regression with a robust variance is the same fit and "modified
+{{results.model.<key>.kind}}" is what to write. A list was chosen over a rule because no
+rule knows which adjective changes a model; it is a judgement, and it is kept in the data
+file where it can be corrected.
 
 **What it leaves to people.** Whether the adjustment set is the right one, whether an
 assumption holds, whether the model answers the question. `manuscript-guard models` prints
@@ -6991,11 +7027,65 @@ Closed since, and why each mattered:
   Anything else (a Cox model, a mixed model, scikit-learn) cannot be recorded with
   `em.model` yet. A fit `data/models.yaml` has no entry for is a warning, and its outcome is
   not checked. Whether a variance was made robust, or an assumption holds, is not read.
+  In R whatever inherits from `lm` is read, so `MASS::glm.nb` is: it is recorded with the
+  package `stats` and the family `Negative Binomial(<theta>)`, which no entry matches, and
+  is such a warning. So is a statsmodels fit made with one of the deprecated lower-case
+  link classes (`links.logit()` for `links.Logit()`), whose name is not the entry's.
+  A formula without an intercept, `y ~ 0 + g`, has a first level and no reference: Python
+  records none, and R records the first level. `manuscript-guard models` exits on the
+  findings of G15 alone, whatever the stage of the paper.
 - **Events by level are counted for a term of one categorical variable.** An interaction's
-  cells are not, so a cell of an interaction with no events is not found.
+  cells are not, so a cell of an interaction with no events is not found. Nor are those of a
+  category whose reference is not recorded: a coding other than treatment, or, in Python, an
+  object column that holds `1` the number beside `"1"` the text, two levels written alike,
+  where the level left over could be either. R counts none for a logical term, which has no
+  `xlevels`; Python counts them for a comparison, under the name of the variable it reads.
+- **Grouped data are read in the forms that say what the trials are.** In statsmodels that
+  is a two-column outcome. A proportion with the trials as `var_weights` or `freq_weights`
+  is not read: those weights may be anything else as well, so the card holds no events, and
+  the events for each coefficient and by level go unchecked. Its outcome is then held to the
+  model as one observation a row, and a proportion declared continuous fails
+  `model-outcome-kind`; written `successes + failures ~ ...` it is the same fit, and is
+  read. In R the trials of a
+  proportion are the prior weights, as `binomial()` defines them, and are read when they and
+  the events are whole numbers. In both languages a 0/1 outcome with frequency weights is
+  counted by its rows, not by its weights, and in R so is a table of proportions that are
+  all 0 or 1. A column of a grouped outcome may be declared `count` or `continuous`, since
+  the gate cannot tell a count from a proportion, so a count declared continuous passes. A
+  text outcome of two levels, or a comparison as the outcome, reaches statsmodels as one
+  column a level, and statsmodels takes the first level for the event: the card counts that
+  level, as the fit does.
 - **A model's terms are those of its formula.** A variable transformed in the formula
   (`np.log(x)`) is recorded with its expression and checked as the variable it reads; one
-  derived before the formula is a variable of its own, and must be declared as one.
+  derived before the formula is a variable of its own, and must be declared as one. A
+  comparison is known only at the top of its expression: `C(stage == 'IV')`,
+  `factor(stage == "IV")`, `np.where(age > 65, 1, 0)`, `ifelse(age > 65, 1, 0)`,
+  `cut(age, ...)` and two comparisons joined by `&` are held to the variable they read, and
+  the first two fail on its levels. A comparison as the outcome is taken for the binary
+  outcome it is and not held to its model, so a linear model of `I(score > 5)` is not
+  reported. `Q("age group")`, patsy's way to a column whose name is no Python name, records
+  no variable: the term is checked against nothing and nothing is reported undeclared. In R
+  a fit made with no `data`, from vectors in the environment, has no columns to tell a
+  variable from an object of the script, so every name in the formula is recorded
+  (`knots` in `splines::ns(x, knots = knots)`), and so it is where `data` is an
+  environment. An `lm` keeps no copy of its data: a data frame replaced or changed between
+  the fit and `em$model()` is read as it now is. A level is written as Python prints it,
+  an integer-valued float as the integer, except that a numpy float of another width
+  (`float32`) handed to `values=` as an array keeps its `.0`.
+- **A word that changes the model is known from a list.** `data/models.yaml` lists the words
+  after which a model's name is the name of another model. One that is missing leaves the
+  name read as the fitted kind, a false failure until it is added: "bivariate probit model"
+  fails `typed-model-kind` beside a fitted probit regression today. The list is somebody's
+  judgement, kept in the data file where it can be corrected. A possessive is another word,
+  so "Firth's logistic regression" is read where "Firth logistic regression" is not.
+- **A model's name in a heading is not read.** `typed-model-kind` and `model-kind-unfitted`
+  read the running text of the Methods. A heading names the analysis it heads, and a
+  binding there would print the kind without its capital ("logistic regression"), so the
+  title line of an ATX or a setext heading is left alone. A heading that names the fitted
+  kind therefore stays behind, unreported, when the model changes. A line shaped like a
+  heading that the code finding headings titles `Unprinted` is read as text: one with no
+  blank line above it, which pandoc prints in the paragraph, and the kinds `section_breaks`
+  lists, a seven-hash heading among them.
 - **Only an equal typed copy fails.** A threshold typed in the Methods fails as a typed
   parameter while it equals one; once the code has moved on it is a warning,
   `threshold-undeclared`, and only in an analysis that declares parameters. A confidence level

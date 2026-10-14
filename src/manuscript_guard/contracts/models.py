@@ -35,8 +35,13 @@ class Engine:
 
 
 @functools.cache
-def engines() -> tuple[Engine, ...]:
+def _listed() -> dict:
     text = files("manuscript_guard.data").joinpath("models.yaml").read_text(encoding="utf-8")
+    return yaml.safe_load(text)
+
+
+@functools.cache
+def engines() -> tuple[Engine, ...]:
     return tuple(
         Engine(
             kind=entry["kind"],
@@ -44,8 +49,15 @@ def engines() -> tuple[Engine, ...]:
             outcome=tuple(entry["outcome"]),
             fits=tuple(entry["fits"]),
         )
-        for entry in yaml.safe_load(text)["engines"]
+        for entry in _listed()["engines"]
     )
+
+
+@functools.cache
+def other_model_words() -> tuple[str, ...]:
+    """The words that, before a model's name, make it the name of another model: "conditional"
+    before "logistic regression". `data/models.yaml` says why each is listed."""
+    return tuple(word for entry in _listed()["other_models"] for word in entry["words"])
 
 
 def engine_of(engine: dict) -> Engine | None:
@@ -81,6 +93,9 @@ class Model:
     source: Path
     description: str | None = None
     events: int | None = None
+    # Grouped binomial data only: a row is a group, `events` its successes summed over the
+    # rows and `trials` its trials. None for a card of one observation a row.
+    trials: int | None = None
     events_by_level: dict = field(default_factory=dict)
 
     @property
@@ -132,6 +147,7 @@ def read_models(document: dict, path: Path) -> dict[str, Model]:
             source=path,
             description=spec.get("description"),
             events=spec.get("events"),
+            trials=spec.get("trials"),
             events_by_level=dict(spec.get("events_by_level") or {}),
         )
         for key, spec in (document.get("models") or {}).items()
@@ -143,7 +159,10 @@ def _label(name: str, variables: dict[str, Variable]) -> str:
 
 
 def _entered_as(record: dict) -> str:
-    """How a term took a variable, in words: as categories, as a number, or as an expression."""
+    """How a term took a variable, in words: as categories, as a number, or as an expression.
+    A comparison is its expression: it is a term of its own, whatever it was coded as."""
+    if record.get("comparison"):
+        return record["expression"]
     if record["as"] == "categorical":
         reference = record.get("reference")
         return f"categories, reference {reference}" if reference else "categories"
@@ -179,6 +198,8 @@ def describe(model: Model, variables: dict[str, Variable]) -> str:
     tail = f"{model.n_used} of {model.n_input} rows"
     if model.events is not None:
         tail += f", {model.events} events"
+    if model.trials is not None:
+        tail += f" in {model.trials} trials"
     return f"{head} of {outcome} on {on}; {tail}."
 
 
@@ -203,6 +224,8 @@ def values_of(model: Model) -> dict[str, Value]:
         out.update([value("kind", model.kind, label=True)])
     if model.events is not None:
         out.update([value("events", model.events)])
+    if model.trials is not None:
+        out.update([value("trials", model.trials)])
     return out
 
 
@@ -218,7 +241,9 @@ def table_rows(model: Model, variables: dict[str, Variable]) -> list[list[str]]:
             entered = "; ".join(dict.fromkeys(_entered_as(r) for r in records))
         levels = declared.levels if declared and declared.levels else None
         if levels is None:
-            categorical = next((r for r in records if r["as"] == "categorical"), None)
+            categorical = next(
+                (r for r in records if r["as"] == "categorical" and not r.get("comparison")), None
+            )
             levels = tuple(categorical["levels"]) if categorical else None
         reference = declared.reference if declared else None
         shown = (

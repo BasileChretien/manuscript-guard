@@ -666,8 +666,9 @@ def test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not(
 # --------------------------------------------------------------------------- models named
 
 #: One of every way G15 reads a model named in the Methods, with the kind it names, and
-#: one of every place it must not: hidden from the page, inside a longer word, or in the
-#: Results, where `found` is false.
+#: one of every place it must not: hidden from the page, inside a longer word, after a word
+#: that makes it the name of another model, or in the Results, where `found` is false. A
+#: bar stands where the name begins, after a word that leaves it the name it is.
 _NAMED = (
     ("logistic regression", "logistic regression", True),
     ("Logistic Regression", "logistic regression", True),
@@ -677,6 +678,15 @@ _NAMED = (
     ("<!-- Poisson regression -->", None, False),
     ("`gamma regression`", None, False),
     ("quasilogistic regression", None, False),
+    ("conditional logistic regression", None, False),
+    ("Mixed effects\nlogistic models", None, False),
+    ("zero-inflated negative binomial model", None, False),
+    ("multivariable |logistic regression", "logistic regression", True),
+    ("Modified |Poisson regression", "Poisson regression", True),
+    ("was conditional. |Logistic models", "logistic regression", True),
+    ("was exact\n\n|probit regression", "probit regression", True),
+    ("\n\n## Logistic regression\n\n", None, False),
+    ("\n\nPoisson models\n--------------\n\n", None, False),
 )
 
 
@@ -697,10 +707,11 @@ def _planted_names(draw: st.DrawFn) -> tuple[str, list[tuple[int, str]]]:
     ):
         parts.append(f"{heading}\n\n{filler().strip().capitalize()}")
         for written, kind, counted in draw(st.permutations(_NAMED)):
-            parts.append(filler() + " ")
+            before, _bar, name = written.rpartition("|")
+            parts.append(filler() + " " + before)
             if methods and counted:
                 found.append((len("".join(parts)), kind))
-            parts.append(written)
+            parts.append(name)
         parts.append(f"{filler()}.\n\n")
     return "".join(parts), found
 
@@ -711,7 +722,10 @@ def test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_do
 ) -> None:
     """A model named in the Methods is found in any case, with a space, a hyphen or a line
     break between its words, and in the plural, with the kind it names. Nothing is found in
-    a comment, in code, inside a longer word, or in the Results."""
+    a comment, in code, inside a longer word, in a heading, ATX or setext, or in the
+    Results. Nor directly after a word that makes it the name of another model,
+    "conditional" or "mixed effects", while any other word before it, a full stop or a new
+    paragraph between, leaves it found."""
     text, expected = planted
     found = [(start, kind) for start, _end, kind in models_gate.named_in_methods(text)]
     assert found == expected, text
@@ -1603,6 +1617,27 @@ def _a_model_named_in_a_comment_is_named(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(models_gate, "_hidden", lambda text: text)
 
 
+def _no_word_before_a_name_makes_it_another_model(patch: pytest.MonkeyPatch) -> None:
+    """The rule as #233 merged it: "conditional logistic regression" was the fitted kind."""
+    patch.setattr(models_gate, "_other_model", lambda hidden, start: False)
+
+
+def _any_word_before_a_name_makes_it_another_model(patch: pytest.MonkeyPatch) -> None:
+    def other(hidden: str, start: int) -> bool:
+        return re.search(r"\w[^\S\n]+\Z", hidden[:start]) is not None
+
+    patch.setattr(models_gate, "_other_model", other)
+
+
+def _a_model_named_in_a_heading_is_named(patch: pytest.MonkeyPatch) -> None:
+    """The rule before headings were left alone: a heading was read as the text is."""
+    patch.setattr(models_gate, "_heading_lines", lambda text, headings: [])
+
+
+def _a_new_paragraph_is_a_space_before_a_models_name(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "_BETWEEN", r"[\s.]+")
+
+
 def _any_convention_is_a_threshold(patch: pytest.MonkeyPatch) -> None:
     def every(classifier: Classifier) -> frozenset[str]:
         return frozenset(rule.id for rule in classifier.conventions)
@@ -1907,6 +1942,22 @@ BROKEN = {
     ),
     "a model named in a comment is named": (
         _a_model_named_in_a_comment_is_named,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "no word before a model's name makes it another model": (
+        _no_word_before_a_name_makes_it_another_model,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "any word before a model's name makes it another model": (
+        _any_word_before_a_name_makes_it_another_model,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a model named in a heading is named": (
+        _a_model_named_in_a_heading_is_named,
+        test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a full stop or a new paragraph is a space before a model's name": (
+        _a_new_paragraph_is_a_space_before_a_models_name,
         test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
     ),
     "a parameter is matched by any convention": (

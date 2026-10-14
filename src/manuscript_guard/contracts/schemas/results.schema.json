@@ -319,6 +319,10 @@
               "items": {
                 "type": "string"
               }
+            },
+            "comparison": {
+              "type": "boolean",
+              "description": "True where the outcome is a comparison written in the formula, `I(score > 5)`: a binary outcome of its own, not the variable it reads."
             }
           }
         },
@@ -369,6 +373,10 @@
                     },
                     "reference": {
                       "type": "string"
+                    },
+                    "comparison": {
+                      "type": "boolean",
+                      "description": "True where the expression is a comparison, `I(stage == 'IV')`: a binary term of its own, which G15 does not hold to the kind, the levels or the reference of the variable it reads."
                     }
                   }
                 }
@@ -399,7 +407,12 @@
         "events": {
           "type": "integer",
           "minimum": 0,
-          "description": "For a binary outcome: the rows where it occurred."
+          "description": "For a binary outcome: the rows where it occurred. For grouped data, the events summed over the rows."
+        },
+        "trials": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "For grouped binomial data only, where a row is a group and not an observation: the trials summed over the rows."
         },
         "events_by_level": {
           "type": "object",

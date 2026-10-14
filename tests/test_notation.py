@@ -718,10 +718,27 @@ def test_a_first_bound_in_percent_is_no_level() -> None:
     )
     assert not report.findings, told(report)
     assert report.counts["notation_intervals"] == 3
+    # With decimals too, and with a space before each percent sign.
+    decimal = (
+        "# Results\n\nSensitivity was 87% (95% CI 80.5%-93.5%; 12 studies) and specificity "
+        "91% (95% CI 85%-95%).\n\nThe ratio was 1.5 (95% CI 1.2-1.9).\n"
+    )
+    for text in (decimal, decimal.replace("%", " %")):
+        assert not read(text).findings, told(read(text))
+
+
+def test_a_first_bound_whose_second_has_no_percent_sign_is_taken_for_a_level() -> None:
+    """Written down in Known gaps: the 80% of "CI 80%-93; 12 studies" is read as a level."""
+    report = read(
+        "# Results\n\nSensitivity was 87% (95% CI 80%-93; 12 studies) and specificity "
+        "91% (95% CI 85%-95%).\n\nThe ratio was 1.5 (95% CI 1.2-1.9).\n"
+    )
+    assert "a semicolon once" in report.findings[0].message, told(report)
 
 
 def test_a_level_after_the_letters_is_one_before_a_negative_bound() -> None:
-    """The level is refused only where the sign stands against its percent sign."""
+    """The level is refused only where the sign stands against its percent sign and a
+    bound in percent follows it."""
     report = read(
         "# Results\n\nIt rose by 0.2 (CI 95% 0.1 to 0.3) and by 0.4 (CI 95% 0.2 to 0.6)."
         "\n\nThe difference was 0.1 (CI 95% -0.3, 0.4).\n"

@@ -407,13 +407,13 @@ def _modules_of(name: str) -> set[str]:
     was refused as never imported.
     """
 
-    def same(distribution: str) -> str:
+    def _same(distribution: str) -> str:
         return re.sub(r"[-_.]+", "-", distribution).lower()
 
     modules = {
         module
         for module, owners in importlib.metadata.packages_distributions().items()
-        if any(same(owner) == same(name) for owner in owners)
+        if any(_same(owner) == _same(name) for owner in owners)
     }
     for file in importlib.metadata.distribution(name).files or ():
         top = file.parts[0] if file.parts else ""

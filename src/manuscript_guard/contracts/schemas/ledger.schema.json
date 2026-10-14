@@ -30,7 +30,6 @@
         "unit": { "type": "string" },
         "citekey": {
           "type": "string",
-          "pattern": "\\S",
           "description": "Better BibTeX citation key, pinned. An unpinned key can mutate when metadata changes and silently break a build that was green yesterday."
         },
         "depth": {

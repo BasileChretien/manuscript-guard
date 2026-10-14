@@ -1700,7 +1700,6 @@ _BLANK_FIELDS = [
     ("ledger", "locator", ""),
     ("ledger", "locator", " "),
     ("ledger", "quote", " "),
-    ("ledger", "citekey", ""),
     ("attested", "attested_by", " "),
     ("attested", "statement", "\t"),
     ("attested", "source", " "),

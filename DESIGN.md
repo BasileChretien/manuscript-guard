@@ -654,8 +654,8 @@ Each value ends in one of four verdicts, and the counts of `check` say how many 
 with no stored source used to fit none of them. With `source_file: ""` both checks passed it
 over, `check` added no finding, and the run read as though every value it had looked at was
 verified. The schemas of both files now refuse a blank or all-space field (`source_file`,
-`locator`, `quote` and `citekey` in the ledger; `source`, `locator`, `statement` and
-`attested_by` in `attested.yaml`), and a value that reaches the gates without a source all the
+`locator` and `quote` in the ledger; `source`, `locator`, `statement` and `attested_by`
+in `attested.yaml`), and a value that reaches the gates without a source all the
 same is `literature-source-missing` and counted as failed.
 
 ## Only a person can sign an attestation
@@ -5400,6 +5400,10 @@ Closed since, and why each mattered:
 - **A locator is checked for being there, not for being right.** The schema refuses a blank
   `locator`, and nothing reads the one that is written: "Table 2" on a quote taken from the
   abstract passes. It is for the person checking the value, who is sent to the place it names.
+- **A field the literature schemas call blank is one of spaces only.** Their `\S` is any
+  character that is not a space, and a zero-width space (U+200B) or a byte-order mark is one:
+  `attested_by` made of either passes as a signature that shows nothing. Nobody types one by
+  accident, and a name that is there but wrong passes as well.
 - **A PDF is read as its reader gives it, less a short table of foldings.** Curly quotes,
   the dashes, the hyphens U+2010 and U+2011, the ellipsis and the ligatures fi, fl, ff, ffi
   and ffl are folded before a quote is looked for. Anything else one reader spells out and

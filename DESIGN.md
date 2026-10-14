@@ -4141,7 +4141,7 @@ the campaigns are in the suite, on Hypothesis:
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
   them, the settings typed into a project, a co-author's sessions in Word, texts that
   quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds nine more, each
+  beside what an edit made of it. `tests/test_properties.py` holds ten more, each
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
@@ -4202,12 +4202,13 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty rules are broken in place, one at a time, and the property that is
+the generators. So fifty-two rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops; nine ways `reworded` can misread an edit, from
+sentence, a comment read for its stops, Katakana taken for a script the gates read and a
+character of another script counted twice; nine ways `reworded` can misread an edit, from
 a number's sign taken for no part of it to what a comment holds held to its place; five
 ways a co-author's items can be cut wrong round the citation of a claim, from every stop ending a
 sentence, after "et al." too, to a piece that is only a citation left as an item of its
@@ -5456,6 +5457,29 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
+- **The gates read English text.** Measured 2026-10-14 on a copy of the example with its
+  scripts run, `check` clean before the edit:
+  - G2: Chinese puts no space between words, so in
+    "结果见表1，比值比为{{results.ror.point}}（95%置信区间…）。" the tokens "结果见表1，比值比为" and
+    "（95%置信区间" are read whole and match no rule, and the sentence fails with every result
+    bound; in English it passes. Numbers written in Chinese numerals, "共纳入四千份报告，
+    其中一百二十三份为肝损伤，比值比约为三点四", are not read as numbers, and nothing is
+    found in that sentence. Full-width digits in English prose ("Of ４０００ reports") are
+    read as digits and caught.
+  - G4: words are counted between spaces, so six short Chinese paragraphs added 18 to
+    `main_text_words`. A journal that publishes in Chinese counts characters, and the limits
+    mean nothing for Chinese text.
+  - G6 and G14: the phrasing, the abbreviations, the declared terms and the spelling are
+    lists and rules of English.
+  - `reworded`: a number in numerals is no fact, so one changed passes.
+
+  Japanese and Korean fare the same where they are written without spaces or in numerals.
+  Each manuscript file whose prose holds Han, Hiragana, Katakana or Hangul is said
+  (`script-not-read`, a warning and never a failure, since an English paper may quote a
+  title or a name in another script), with how many characters of each and what was not
+  checked in them. Reading those languages is weeks of work, for word splitting, their
+  conventions and numerals, and counting characters against a limit, and waits until
+  somebody writing in one of them asks.
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.
@@ -8924,7 +8948,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 53 broken rules, and the comparison on eleven
+  - The properties were seen to fail on 55 broken rules, and the comparison on eleven
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

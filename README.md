@@ -139,7 +139,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G11 | a recorded panel has reviewed the manuscript, its major findings are answered, and no reading was changed after it was sealed |
 | G12 | there was an analysis plan, and its sections say something |
 | G13 | every reviewer point is answered, and every claimed revision really happened |
-| G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, it is spelt in one English, and a P value, an interval and a percentage are each written one way (warnings only) |
+| G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, it is spelt in one English, a P value, an interval and a percentage are each written one way, and prose in a script the gates do not read is said (warnings only) |
 | G15 | each model is the model its variables call for: the outcome is one its kind of model is for, each variable entered as the kind it was declared, with its declared reference and levels, the fit converged with events at every level, and the Methods name the model that was fitted |
 
 In place of a gate, a finding can carry one of two labels that are no gate of their own:

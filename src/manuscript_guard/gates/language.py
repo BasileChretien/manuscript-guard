@@ -49,6 +49,7 @@ from manuscript_guard.contracts.project import PAPER_FILE, Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.notation import judge_notation
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
+from manuscript_guard.gates.scripts import judge_scripts
 from manuscript_guard.gates.spelling import judge_spelling
 from manuscript_guard.gates.vocabulary import (
     Passage,
@@ -855,4 +856,6 @@ def check_language(project: Project) -> Report:
         )
         # A P value in an acknowledgement is the author's, so this one reads them all.
         .merge(judge_notation(passages))
+        # And where the prose is in a script none of the readings is written for.
+        .merge(judge_scripts(passages))
     )

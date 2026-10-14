@@ -9720,6 +9720,49 @@ def test_the_example_is_spelt_as_it_declares(project: Path) -> None:
     assert spelling_findings(project) == []
 
 
+# Prose in a script the gates do not read. A Chinese sentence with every result bound still
+# failed G2, and one that wrote its numbers in Chinese numerals had nothing found in it: the
+# gates read English, and nothing said so.
+
+_CHINESE = (
+    "结果见表1，比值比为{{results.ror.point}}（95%置信区间{{results.ror.ci_low}}～"
+    "{{results.ror.ci_high}}）。\n\n共纳入四千份报告，其中一百二十三份为肝损伤，比值比约为三点四。\n"
+)
+
+
+def _script_findings(root: Path) -> list:
+    from manuscript_guard.gates import check_language
+
+    report = check_language(load_project(root)[0])
+    return [f for f in report.findings if f.code == "script-not-read"]
+
+
+def test_prose_in_a_script_the_gates_do_not_read_is_said(project: Path) -> None:
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\n" + _CHINESE, encoding="utf-8")
+    (found,) = _script_findings(project)
+    assert found.severity == "warn"
+    assert "characters of prose" in found.message and "Han (" in found.message
+    assert "numbers written in it" in found.message
+
+
+def test_a_title_quoted_in_another_script_warns_and_fails_nothing(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace(
+        "Several limitations follow from the design.",
+        "Several limitations follow from the design, as the agency's own report, "
+        "「医薬品安全性情報」, says.",
+        1,
+    )
+    main.write_text(text, encoding="utf-8")
+    (found,) = _script_findings(project)
+    assert "Han" in found.message and "Hiragana" not in found.message
+    report, *_ = _run_gates(project, stage="submission")
+    assert "script-not-read" not in codes(report)
+
+
 def test_a_co_author_s_sentence_in_the_other_spelling_is_caught(project: Path) -> None:
     text = main_md(project).read_text(encoding="utf-8")
     old = "Several limitations follow from the design."

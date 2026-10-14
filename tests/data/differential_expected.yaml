@@ -37,5 +37,5 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      `check` counts the literature values that failed, `literature_failed`, so that every
-      value ends in one verdict: verified, unverifiable, failed or attested
+      G14 counts the characters of prose in a script the gates do not read,
+      `prose_not_read`, and says so for each file that has any

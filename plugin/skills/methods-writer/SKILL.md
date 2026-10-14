@@ -90,6 +90,13 @@ a paragraph with an anchor in the middle is refused and has to be made in the .m
 side by side claim the same text. Write the step's name out in the `with` statement; a step in
 a branch the run does not take is not recorded, and an anchor naming it fails.
 
+An anchor goes at the end of a line or on a line of its own. A line that holds nothing but
+anchors prints as no line at all, so it ends no paragraph: with one sentence to a line, the
+anchor can stand on the line under its sentence. It is not a blank line either. Leave a blank
+line under it where the paragraph ends, as under any last line: a list or a table directly
+under the anchor would print as running text. Keep anchors out of headings, where they claim
+nothing and are not checked, and off a line that holds only a quotation's `>` or a list's `-`.
+
 `manuscript-guard methods --explain` lists every claim beside the lines of its step, the
 Methods paragraphs that point at no step, and the steps nothing describes. Read each claim
 against its lines. When the claim and the code agree, record that pair:
@@ -99,12 +106,18 @@ manuscript-guard methods --reconcile ci       # this step's pairs only
 manuscript-guard methods --reconcile          # every pair, and every file
 ```
 
+Either may come first. Once one pair is recorded, every pair nobody has read is reported as
+never read, and `methods-never-reconciled` stays until the second command has been run, which
+is the one that says the files were read. For a project in another folder, name it before
+the option: `manuscript-guard methods path/to/project --reconcile ci`.
+
 From `internal-review`, `check` fails a pair whose code changed (`method-step-changed`), whose
 text changed (`method-claim-changed`, which says what it was) or which was never read
-(`method-pair-unread`), and names the paragraph to read again. A comment or a re-wrapped line
-inside a step changes nothing. `method-step-unknown` is an anchor naming no step the run
-recorded; `method-step-undescribed` is a step no text points at. The same rule holds as for
-the whole file: reconcile a pair after you read it, never to clear the finding.
+(`method-pair-unread`), and names the paragraph to read again. A pair whose code and text both
+changed is reported as never read. A comment or a re-wrapped line inside a step changes
+nothing. `method-step-unknown` is an anchor naming no step the run recorded;
+`method-step-undescribed` is a step no text points at. The same rule holds as for the whole
+file: reconcile a pair after you read it, never to clear the finding.
 
 ## Declaring the choices the code makes
 

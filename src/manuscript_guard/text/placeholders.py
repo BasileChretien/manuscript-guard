@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_right
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from manuscript_guard.text.masking import blank_comments
@@ -126,17 +127,57 @@ def parse(text: str) -> tuple[list[Placeholder], list[tuple[str, int, int]]]:
     return good, malformed
 
 
-def substitute(text: str, rendered: dict[str, str]) -> str:
-    """Replace every placeholder whose ref is in `rendered`, and every anchor with nothing.
-    Others are left untouched.
+def anchor_cuts(text: str, placeholders: Iterable[Placeholder]) -> list[tuple[int, int]]:
+    """What the anchors among `placeholders` take out of `text` when it is printed, in order:
+    each anchor, and the whole of a line that holds nothing but anchors and spaces, with its
+    line break. Everything that prints a manuscript takes these out and nothing else for an
+    anchor: the build, the annotated copy, `render` and a review panel's prompt.
 
-    Substitution walks backwards so that earlier offsets stay valid.
+    An anchor on a line of its own, after the sentence it is about, once left that line
+    behind, empty, and an empty line ends a paragraph: the document broke a paragraph in two
+    where the source has one. A line with anything else on it stays, less its anchors. That
+    includes the mark of a quotation or a list, `> {{method.a}}`: what a mark with nothing
+    after it reads as depends on the lines around it, and this does not look.
+    """
+    anchors = sorted((found.start, found.end) for found in placeholders if found.is_anchor)
+    cuts: list[tuple[int, int]] = []
+    first = 0
+    while first < len(anchors):
+        # The line the anchor stands on, to the end of the line its last brace is on: one
+        # line, unless the braces were typed on lines of their own.
+        start = text.rfind("\n", 0, anchors[first][0]) + 1
+        end = text.find("\n", anchors[first][1]) + 1 or len(text)
+        after = first + 1
+        while after < len(anchors) and anchors[after][0] < end:
+            end = text.find("\n", anchors[after][1]) + 1 or len(text)
+            after += 1
+        here = anchors[first:after]
+        beside = zip([start, *(b for _a, b in here)], [*(a for a, _b in here), end], strict=True)
+        alone = not "".join(text[a:b] for a, b in beside).strip(" \t\r\n")
+        cuts += [(start, end)] if alone else here
+        first = after
+    return cuts
+
+
+def spliced(text: str, pieces: Iterable[tuple[int, int, str]]) -> str:
+    """`text` with each `(start, end, replacement)` put in. No two may overlap."""
+    out: list[str] = []
+    at = 0
+    for start, end, replacement in sorted(pieces):
+        out += [text[at:start], replacement]
+        at = end
+    return "".join([*out, text[at:]])
+
+
+def substitute(text: str, rendered: dict[str, str]) -> str:
+    """Replace every placeholder whose ref is in `rendered`, and print nothing for an anchor
+    (`anchor_cuts`). Others are left untouched.
     """
     placeholders, _ = parse(text)
-    out = text
-    for placeholder in sorted(placeholders, key=lambda p: p.start, reverse=True):
-        if placeholder.is_anchor:
-            out = out[: placeholder.start] + out[placeholder.end :]
-        elif placeholder.ref in rendered:
-            out = out[: placeholder.start] + rendered[placeholder.ref] + out[placeholder.end :]
-    return out
+    pieces = [(start, end, "") for start, end in anchor_cuts(text, placeholders)]
+    pieces += [
+        (found.start, found.end, rendered[found.ref])
+        for found in placeholders
+        if not found.is_anchor and found.ref in rendered
+    ]
+    return spliced(text, pieces)

@@ -37,7 +37,7 @@ from manuscript_guard.text.masking import (
     front_matter_problem,
     front_matter_title,
 )
-from manuscript_guard.text.placeholders import parse
+from manuscript_guard.text.placeholders import anchor_cuts, parse, spliced
 from manuscript_guard.text.sections import rules_opening_blocks
 
 GATE = "BUILD"
@@ -305,7 +305,8 @@ def assemble(
         raw, _declared = strip_front_matter(source)
         text = tag(raw, relative, mark=mark)
         placeholders, _ = parse(text)
-        rendered = text
+        # An anchor prints nothing, and a line of nothing but anchors is no line.
+        pieces = [(start, end, "") for start, end in anchor_cuts(text, placeholders)]
 
         for placeholder in sorted(placeholders, key=lambda p: p.start, reverse=True):
             replacement: str | None = None
@@ -315,7 +316,7 @@ def assemble(
                 if value is not None:
                     replacement = value.display
             elif placeholder.is_anchor:
-                replacement = ""
+                continue
             elif placeholder.namespace == "table":
                 table = results.tables.get(placeholder.key)
                 if table is None:
@@ -353,10 +354,8 @@ def assemble(
                 replacement = f"![]({relative_to_root(project, figure)})"
 
             if replacement is not None:
-                rendered = (
-                    rendered[: placeholder.start] + replacement + rendered[placeholder.end :]
-                )
+                pieces.append((placeholder.start, placeholder.end, replacement))
 
-        out.append(Assembled(path=path, text=rendered))
+        out.append(Assembled(path=path, text=spliced(text, pieces)))
 
     return out, report.with_counts(assembled_files=len(out))

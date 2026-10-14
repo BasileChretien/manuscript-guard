@@ -2070,6 +2070,16 @@ def cmd_checker(args: argparse.Namespace) -> int:
 
 def cmd_methods(args: argparse.Namespace) -> int:
     """Report or record the state of the Methods against the analysis."""
+    # `--reconcile <project>` named the project before steps had names, and takes it for a
+    # step's now. A folder holding a paper.yaml is that, whatever folder this runs in.
+    for name in args.reconcile or ():
+        if (Path(name) / "paper.yaml").is_file():
+            print(
+                f"error: {name} is a project, and --reconcile takes the names of steps: name "
+                f"the project first, `manuscript-guard methods {name} --reconcile`",
+                file=sys.stderr,
+            )
+            return 2
     project, _ = load_project(args.path)
     if args.explain:
         from manuscript_guard.gates.methods import explain_methods

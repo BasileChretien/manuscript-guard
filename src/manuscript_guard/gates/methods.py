@@ -21,8 +21,9 @@ claims is the text before it, back to the anchor before it or the start of its p
 its extent is where the author put the anchors, and nothing guesses where a sentence ends.
 The lock then records each step and its claim as a pair, with a digest of the step's code
 read as code and the claim as written, and the report names the pair whose code or whose
-text changed since it was read. An anchor that names no step the run recorded fails, which
-is how a claim about a branch the analysis never took is caught.
+text changed since it was read. An anchor in a paragraph that names no step the run recorded
+fails, which is how a claim about a branch the analysis never took is caught. One on a
+heading's line is in no paragraph and is not judged.
 
 Two additions make the prompt useful rather than annoying. The report names *which* files
 changed, so the reconciliation is targeted. And a handful of parameters that must agree —
@@ -268,7 +269,7 @@ def check_methods(
         results = results if results is not None else loaded[1]
     current = analysis_digests(project)
     lock = read_lock(project)
-    pairs = _pairs(project, results, lock if current and lock.get("analysis") else None)
+    pairs = _pairs(project, results, lock if current and _reconciled(lock) else None)
     if not current:
         return pairs.with_counts(analysis_files=0)
 
@@ -326,6 +327,16 @@ class Pair:
 def _locked(lock: dict) -> list[dict]:
     pairs = lock.get("pairs") or []
     return [pair for pair in pairs if isinstance(pair, dict)]
+
+
+def _reconciled(lock: dict) -> bool:
+    """Whether `lock` is one the pairs are held to: it records the files, or a pair.
+
+    It was the files alone. `methods --reconcile <step>` run before any `methods --reconcile`
+    writes a lock with that pair and no file, which then counted as no lock: every pair was
+    passed over, the one just read with them, and its step could change unreported.
+    """
+    return bool(lock.get("analysis") or _locked(lock))
 
 
 def _judged(claims: list[Claim], steps: dict[str, Step], locked: list[dict] | None) -> list[Pair]:
@@ -515,7 +526,7 @@ def explain_methods(project: Project, results: Results | None = None) -> list[st
         results = load_namespace(project)[1]
     lock = read_lock(project)
     claims, open_ = anchored(project)
-    locked = _locked(lock) if lock.get("analysis") else None
+    locked = _locked(lock) if _reconciled(lock) else None
     root = project.root
 
     def at(path: Path, line: int) -> str:
@@ -604,7 +615,8 @@ def reconcile(
 
     With `steps`, only the pairs of those steps are recorded, each with its claims as they
     now read and its code as it now stands: the files, and every other pair, stay as the lock
-    has them, since nobody has re-read those.
+    has them, since nobody has re-read those. Where there was no lock, the one written holds
+    no file and no day the files were read on, and `check` goes on saying they never were.
     """
     if results is None:
         from manuscript_guard.contracts import load_namespace
@@ -626,7 +638,7 @@ def reconcile(
                 f"analysis ran, so there is no pair to record"
             )
         analysis = existing.get("analysis", {})
-        reconciled_on = existing.get("reconciled_on", today)
+        reconciled_on = existing.get("reconciled_on")
         kept = [pair for pair in _locked(existing) if pair.get("step") not in steps]
         fresh = [pair for pair in current if pair.step in steps]
     recorded = kept + [
@@ -636,7 +648,9 @@ def reconcile(
     ]
     document = {
         "schema": "manuscript-guard/methods-lock/1",
-        "reconciled_on": reconciled_on,
+        # The day the files were read against the Methods: of a lock that holds only pairs,
+        # no day. Each pair has its own, `read_on`.
+        **({"reconciled_on": reconciled_on} if reconciled_on else {}),
         "parameters": parameters if parameters is not None else existing.get("parameters", {}),
         "analysis": analysis,
     }

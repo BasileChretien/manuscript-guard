@@ -50,7 +50,7 @@ from manuscript_guard.text.inline import (
     markable_core,
 )
 from manuscript_guard.text.masking import front_matter_end, mask
-from manuscript_guard.text.placeholders import parse
+from manuscript_guard.text.placeholders import anchor_cuts, parse
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
@@ -211,8 +211,8 @@ def annotate(
     pieces = [
         *_value_pieces(placeholders, namespace, counter, unmarkable),
         *_block_pieces(placeholders, results, project, counter),
-        # An anchor prints nothing, here as in the build.
-        *(_Piece(p.start, p.end, "") for p in placeholders if p.is_anchor),
+        # An anchor prints nothing, and its line no line, here as in the build.
+        *(_Piece(start, end, "") for start, end in anchor_cuts(text, placeholders)),
         *_number_pieces(text, masked, classifier, counter, unmarkable),
     ]
     pieces.sort(key=lambda piece: piece.start)

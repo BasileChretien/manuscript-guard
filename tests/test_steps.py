@@ -173,6 +173,17 @@ def test_a_step_whose_block_cannot_be_read_is_refused(tmp_path: Path, line: str)
         run(tmp_path, script)
 
 
+def test_a_step_marked_where_there_is_no_script_says_that_is_why(tmp_path: Path) -> None:
+    """A notebook cell and `python -c` are no file to read the block from. The refusal said
+    to write the name out, which it was."""
+    cell = compile(
+        'with em.step("ci"):\n    pass\n', "<ipython-input-3-0123456789ab>", "exec"
+    )
+    with pytest.raises(ValueError, match="no file the block can be read from") as refused:
+        exec(cell, {"em": Emitter(tmp_path / "a.py", root=tmp_path)})
+    assert "write the name out" not in str(refused.value)
+
+
 def test_one_name_for_two_blocks_is_refused_and_one_block_run_twice_is_not(
     tmp_path: Path,
 ) -> None:
@@ -311,6 +322,141 @@ def test_a_project_with_no_steps_and_no_anchors_reads_as_before(tmp_path: Path) 
     assert not any(key.startswith("method") for key in report.counts), report.counts
 
 
+# ---------------------------------------------------------------------- what an anchor prints
+
+
+@pytest.mark.parametrize(
+    ("written", "printed"),
+    [
+        ("A.\n{{method.a}}\nB. {{method.b}}\n", "A.\nB. \n"),
+        ("A.\n \t{{method.a}} {{method.b}}\t \nB.\n", "A.\nB.\n"),
+        ("A.\n{{method.a}}\n\nB.\n", "A.\n\nB.\n"),
+        ("A.\r\n{{method.a}}\r\nB.\r\n", "A.\r\nB.\r\n"),
+        ("A.\n{{method.a}}", "A.\n"),
+        ("A.\n{{\n  method.a\n}}\nB.\n", "A.\nB.\n"),
+        ("A. {{method.a}}\nB.\n", "A. \nB.\n"),
+        ("A.\n{{method.a}} B.\n", "A.\n B.\n"),
+        ("A.\n{{method.a}} {{results.x}}\nB.\n", "A.\n 12\nB.\n"),
+        ("A.\n{{method.a}} <!-- a note -->\nB.\n", "A.\n <!-- a note -->\nB.\n"),
+        ("A.\n<!-- {{method.a}} -->\nB.\n", "A.\n<!-- {{method.a}} -->\nB.\n"),
+        ("> A.\n> {{method.a}}\n> B.\n", "> A.\n> \n> B.\n"),
+        ("- A.\n- {{method.a}}\n", "- A.\n- \n"),
+        ("A.\n{{method.a}}\n## B\n", "A.\n## B\n"),
+        ("A.\n{{method.a}}\n- B\n", "A.\n- B\n"),
+    ],
+    ids=[
+        "a line of its own", "two, with spaces", "ending the paragraph", "ended as Windows does",
+        "the last line, not ended", "written over three lines", "at the end of a line",
+        "opening a line", "beside a value", "beside a comment", "in a comment",
+        "behind a quotation's mark", "behind a list's mark",
+        "over a heading and no blank line", "over a list and no blank line",
+    ],
+)  # fmt: skip
+def test_a_line_of_nothing_but_anchors_prints_as_no_line(written: str, printed: str) -> None:
+    """An anchor on a line of its own left the line behind, empty, and an empty line ends a
+    paragraph. A line with anything else on it stays, less its anchors: what stands behind a
+    quotation's or a list's mark is not told from the mark, and that line is left too. The
+    last two are the limit DESIGN.md writes down: the anchors' line is no blank line, so what
+    needs one above it to be a heading or a list has to be given one."""
+    assert substitute(written, {"results.x": "12"}) == printed
+
+
+INSIDE = (
+    "# Methods\n\n"
+    "The ratio was computed from two counts.\n{{method.ror}}\n"
+    "Its standard error is half the usual one.\n{{method.ci}}\n\n"
+    "# Results\n\nThe ratio was {{results.ror}}.\n"
+)
+ONE_PARAGRAPH = (
+    "The ratio was computed from two counts.\nIts standard error is half the usual one.\n\n"
+)
+
+
+def _doors(root: Path) -> dict[str, str]:
+    """`main.md` as each thing that prints it prints it: the build, the annotated copy,
+    `render` and a review panel's prompt."""
+    from manuscript_guard.annotate import annotate
+    from manuscript_guard.build.assemble import assemble
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.panel.prompt import _as_read
+
+    project, _ = load_project(root)
+    namespace, results, _literature, _loaded = load_namespace(project)
+    text = (root / "manuscript" / "main.md").read_text(encoding="utf-8")
+    (built,), _report = assemble(project, namespace, results)
+    assert main(["render", str(root)]) == 0
+    return {
+        "build": built.text,
+        "annotated": annotate(text, namespace, Classifier.load(), counter=[0])[0],
+        "render": (root / "build" / "rendered" / "main.md").read_text(encoding="utf-8"),
+        "prompt": _as_read(text, namespace, results)[0] + "\n",
+    }
+
+
+def test_an_anchor_on_a_line_of_its_own_ends_no_paragraph_wherever_it_is_printed(
+    tmp_path: Path,
+) -> None:
+    for door, printed in _doors(make(tmp_path, methods=INSIDE)).items():
+        assert ONE_PARAGRAPH in printed, (door, printed)
+        assert "{{method" not in printed, door
+
+
+def _blocks_read(markdown: str) -> list:
+    """The blocks pandoc reads in `markdown`."""
+    import json
+    import subprocess
+
+    read = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown.encode("utf-8"),
+        capture_output=True,
+        check=True,
+        timeout=120,
+    )
+    return json.loads(read.stdout)["blocks"]
+
+
+def _paragraphs_read(markdown: str) -> list[str]:
+    """The words of each paragraph pandoc reads in `markdown`."""
+
+    def words(inlines: list) -> str:
+        said = {"Space": " ", "SoftBreak": " "}
+        return "".join(
+            inline["c"] if inline["t"] == "Str" else said.get(inline["t"], "") for inline in inlines
+        )
+
+    return [words(block["c"]) for block in _blocks_read(markdown) if block["t"] == "Para"]
+
+
+@needs_pandoc
+def test_pandoc_reads_one_paragraph_where_the_source_has_one(tmp_path: Path) -> None:
+    for door, printed in _doors(make(tmp_path, methods=INSIDE)).items():
+        assert _paragraphs_read(printed)[0] == " ".join(ONE_PARAGRAPH.split()), door
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "written",
+    [
+        "One.\n{{method.a}}\n\nTwo.\n",
+        "One.\n{{method.a}} {{method.b}}\n\n## Statistics\n\nTwo.\n",
+        "One.\n{{method.a}}\n\n- Two.\n",
+        "One.\r\n{{method.a}}\r\n\r\nTwo.\r\n",
+        "One.\n\nTwo.\n{{method.a}}",
+    ],
+    ids=["a paragraph", "a heading", "a list", "ended as Windows does", "the file's last line"],
+)
+def test_anchors_ending_a_paragraph_on_a_line_of_their_own_change_nothing_pandoc_reads(
+    written: str,
+) -> None:
+    """The paragraph ended at the blank line under its anchors before the anchors' line
+    printed as none, and it ends there still."""
+    as_it_was = written
+    for anchor in reversed(parse(written)[0]):
+        as_it_was = as_it_was[: anchor.start] + as_it_was[anchor.end :]
+    assert _blocks_read(substitute(written, {})) == _blocks_read(as_it_was)
+
+
 # ------------------------------------------------------------------------ the gate, locked
 
 
@@ -415,6 +561,70 @@ def test_the_command_reconciles_one_step(tmp_path: Path, capsys) -> None:
     assert main(["methods", str(root)]) == 0
 
 
+def _one_step_first(root: Path) -> Path:
+    """A project nobody has reconciled, in which one step is read against its text first."""
+    make(root)
+    assert not lock_path(load_project(root)[0]).exists()
+    assert main(["methods", str(root), "--reconcile", "ror"]) == 0
+    return root
+
+
+def test_one_step_reconciled_first_is_a_lock_for_the_pairs(tmp_path: Path, capsys) -> None:
+    """The lock then holds one pair and no file. It was taken for no lock at all, and every
+    pair was passed over: the step's code could change and nothing but the warning said so."""
+    root = _one_step_first(tmp_path)
+    assert "recorded 1 pair(s) of step ror" in capsys.readouterr().out
+    project = load_project(root)[0]
+    lock = yaml.safe_load(lock_path(project).read_text(encoding="utf-8"))
+    assert [pair["step"] for pair in lock["pairs"]] == ["ror"] and lock["analysis"] == {}
+    assert "reconciled_on" not in lock, "no file was read against the Methods, on any day"
+    report = judged(root)
+    assert [(f.code, f.line) for f in report.failures] == [("method-pair-unread", 5)]
+    assert [f.code for f in report.warnings] == ["methods-never-reconciled"]
+    assert report.counts["method_pairs_stale"] == 1
+    said = "\n".join(explain_methods(project))
+    assert "read          manuscript/main.md:3  step ror" in said
+    assert "never read    manuscript/main.md:5  step ci" in said
+    # The files are read next, and the pair already recorded is recorded again with the rest.
+    assert main(["methods", str(root), "--reconcile"]) == 0
+    assert not judged(root).findings
+    assert "reconciled_on" in yaml.safe_load(lock_path(project).read_text(encoding="utf-8"))
+
+
+def test_a_step_reconciled_first_is_held_to_its_code(tmp_path: Path) -> None:
+    root = _one_step_first(tmp_path)
+    run(root, SCRIPT.replace("ror = a / b", "ror = b / a"))
+    report = judged(root)
+    assert [(f.code, f.line) for f in report.failures] == [
+        ("method-step-changed", 3),
+        ("method-pair-unread", 5),
+    ], report.render(tmp_path)
+    assert [f.code for f in report.warnings] == ["methods-never-reconciled"], "once, of the files"
+
+
+def test_a_step_reconciled_first_is_held_to_its_text(tmp_path: Path) -> None:
+    root = _one_step_first(tmp_path)
+    edit(root, "manuscript/main.md", "computed from two counts", "computed from three counts")
+    report = judged(root)
+    found = [f for f in report.failures if f.code == "method-claim-changed"]
+    assert [f.context for f in found] == ["was: The ratio was computed from two counts."]
+    assert codes(report) == {
+        "method-claim-changed", "method-pair-unread", "methods-never-reconciled"
+    }  # fmt: skip
+
+
+def test_a_project_given_for_a_step_is_refused_and_says_where_it_goes(
+    tmp_path: Path, capsys
+) -> None:
+    """`methods --reconcile <project>` reconciled that project before steps had names. It is
+    read as a step's name now, and the refusal was for whatever folder the command ran in."""
+    root = make(tmp_path)
+    assert main(["methods", "--reconcile", str(root)]) == 2
+    said = capsys.readouterr().err
+    assert "takes the names of steps" in said and f"methods {root} --reconcile" in said
+    assert not lock_path(load_project(root)[0]).exists()
+
+
 def test_explain_lists_every_claim_what_backs_it_and_what_nothing_backs(
     tmp_path: Path, capsys
 ) -> None:
@@ -489,30 +699,72 @@ def test_a_reworded_paragraph_with_an_anchor_inside_it_is_refused_and_says_why(
     assert "Methods anchor" in refusal.why[0] and "Make the edit in the .md" in refusal.why[0]
 
 
-@needs_pandoc
-def test_an_edit_in_word_comes_back_with_the_anchor_and_the_binding(
-    project: Path, tmp_path: Path
-) -> None:
-    """The example's paragraph on the estimate and its intervals holds a binding and ends
-    with two anchors. A co-author's rewording in Word comes back into it with all three
-    where they were."""
-    assert main(["build", str(project), "--offline"]) == 0
-    document = project / "build" / "manuscript.docx"
-    returned = tmp_path / "returned.docx"
+ENDS = "signal-detection practice. {{method.ror}} {{method.ci}}"
+
+
+def _reworded_in_word(document: Path, returned: Path, was: str, now: str) -> None:
+    """A copy of `document` in which a co-author typed `now` over `was`."""
     with zipfile.ZipFile(document) as zin, zipfile.ZipFile(returned, "w") as zout:
         for item in zin.infolist():
             data = zin.read(item.filename)
             if item.filename == "word/document.xml":
                 xml = data.decode("utf-8")
-                assert "Confidence intervals were derived" in xml
-                xml = xml.replace("Confidence intervals were derived", "Intervals were derived", 1)
-                data = xml.encode("utf-8")
+                assert was in xml and "{{method" not in xml
+                data = xml.replace(was, now, 1).encode("utf-8")
             zout.writestr(item, data)
-    with zipfile.ZipFile(document) as built:
-        assert "{{method" not in built.read("word/document.xml").decode("utf-8")
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "ends",
+    [ENDS, ENDS.replace(". {{", ".\n{{"), ENDS.replace(". {{", ".\n{{").replace("}} {{", "}}\n{{")],
+    ids=["on its last line", "on a line of their own", "on a line each"],
+)
+def test_an_edit_in_word_comes_back_with_the_anchor_and_the_binding(
+    project: Path, tmp_path: Path, ends: str
+) -> None:
+    """The example's paragraph on the estimate and its intervals holds a binding and ends
+    with two anchors. A co-author's rewording in Word comes back into it with all three
+    where they were, on whichever lines the anchors stand."""
+    source = project / "manuscript" / "main.md"
+    source.write_bytes(source.read_bytes().replace(ENDS.encode(), ends.encode()))
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = tmp_path / "returned.docx"
+    _reworded_in_word(
+        project / "build" / "manuscript.docx",
+        returned,
+        "Confidence intervals were derived",
+        "Intervals were derived",
+    )
     assert main(["import", str(returned), str(project), "--apply"]) == 0
-    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    text = source.read_text(encoding="utf-8")
     assert "Intervals were derived from the standard error" in text
     paragraph = text[text.index("Intervals were derived") :].split("\n\n")[0]
     assert "{{results.param.alpha}}" in paragraph
-    assert paragraph.rstrip().endswith("signal-detection practice. {{method.ror}} {{method.ci}}")
+    assert paragraph.rstrip().endswith(ends)
+
+
+@needs_pandoc
+def test_an_anchor_on_a_line_of_its_own_inside_a_paragraph_ends_none_in_the_document(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    """The example's paragraph with its first anchor on a line of its own, after the sentence
+    it is about. The built document ended a paragraph there. It is one paragraph, and an edit
+    to it in Word is refused as any edit to a paragraph with an anchor inside it is."""
+    source = project / "manuscript" / "main.md"
+    text = source.read_text(encoding="utf-8")
+    moved = text.replace("database. Confidence", "database.\n{{method.ror}}\nConfidence")
+    moved = moved.replace(ENDS, ENDS.replace(". {{method.ror}} ", ".\n"))
+    assert moved.count("{{method.ror}}") == 1 and "practice.\n{{method.ci}}" in moved
+    source.write_text(moved, encoding="utf-8", newline="")
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    document = project / "build" / "manuscript.docx"
+    xml = zipfile.ZipFile(document).read("word/document.xml").decode("utf-8")
+    first, second = xml.index("all other drugs in the"), xml.index("Confidence intervals were")
+    assert "</w:p>" not in xml[first:second]
+    returned = tmp_path / "returned.docx"
+    _reworded_in_word(document, returned, "Confidence intervals were", "Intervals were")
+    capsys.readouterr()
+    main(["import", str(returned), str(project), "--apply"])
+    assert "Methods anchor" in "".join(capsys.readouterr())
+    assert source.read_text(encoding="utf-8") == moved

@@ -21,8 +21,10 @@ through this one, which is the third thing the reviews did.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from bisect import bisect_left
@@ -87,7 +89,7 @@ from manuscript_guard.reworded import (
     compare,
     facts,
 )
-from manuscript_guard.text import tokens
+from manuscript_guard.text import placeholders, tokens
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.placeholders import parse as parse_bindings
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -801,6 +803,90 @@ def test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph
     claims, open_ = methods_gate._anchored_in(Path("main.md"), text)
     assert [(c.steps, c.text, c.line, c.anchor_line) for c in claims] == expected, text
     assert [paragraph.line for paragraph in open_] == bare, text
+
+
+#: Every place an anchor stands in a paragraph. Each example holds one of each, as
+#: `_CLAIM_KINDS` says why.
+_ANCHOR_PLACES = (
+    "a line of its own inside", "a line of its own at the end", "two lines of their own",
+    "side by side on a line of their own", "the end of a line", "inside a line",
+    "under a heading", "nowhere",
+)  # fmt: skip
+
+
+@st.composite
+def _anchored_methods(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A Methods section with an anchor in every place one stands, its words drawn each time,
+    and the words of each of its paragraphs, in order. Its lines end as Unix ends them or as
+    Windows does, and the last one may not be ended."""
+    names = (f"step{n}" for n in range(100))
+
+    def sentence() -> str:
+        said = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=5)))
+        return said[0].upper() + said[1:] + "."
+
+    def anchor() -> str:
+        return f"{{{{method.{next(names)}}}}}"
+
+    blocks, paragraphs = ["# Methods"], []
+    for place in draw(st.permutations(_ANCHOR_PLACES)):
+        one, two = sentence(), sentence()
+        pad = draw(st.sampled_from(("", " ", "\t", "  ")))
+        if place == "a line of its own inside":
+            block = f"{one}\n{pad}{anchor()}{pad}\n{two}"
+        elif place == "a line of its own at the end":
+            block = f"{one}\n{two}\n{anchor()}{pad}"
+        elif place == "two lines of their own":
+            block = f"{one}\n{anchor()}\n{pad}{anchor()}\n{two} {anchor()}"
+        elif place == "side by side on a line of their own":
+            block = f"{one}\n{anchor()}{pad}{anchor()}\n{two}"
+        elif place == "the end of a line":
+            block = f"{one} {anchor()}\n{two}"
+        elif place == "inside a line":
+            block = f"{one} {anchor()} {two}"
+        elif place == "under a heading":
+            blocks.append(draw(st.sampled_from(_SUBHEADINGS)))
+            block = f"{one}\n{anchor()}\n{two}"
+        else:
+            block = f"{one}\n{two}"
+        blocks.append(block)
+        paragraphs.append(f"{one} {two}")
+    text = "\n\n".join(blocks) + draw(st.sampled_from(("\n", "")))
+    return text.replace("\n", draw(st.sampled_from(("\n", "\r\n")))), paragraphs
+
+
+def _paragraphs_pandoc_reads(markdown: str) -> list[str]:
+    """The words of each paragraph pandoc reads in `markdown`, a line break between two as a
+    space and anything else that is no word by its name."""
+    pandoc = shutil.which("pandoc")
+    if pandoc is None:
+        pytest.skip("pandoc is not installed, and the paragraphs are the ones it reads")
+    read = subprocess.run(
+        [pandoc, "-f", "markdown", "-t", "json"],
+        input=markdown.encode("utf-8"),
+        capture_output=True,
+        check=True,
+        timeout=120,
+    )
+
+    def said(inline: dict) -> str:
+        kind = inline["t"]
+        return inline["c"] if kind == "Str" else " " if kind in ("Space", "SoftBreak") else kind
+
+    return [
+        "".join(said(inline) for inline in block["c"])
+        for block in json.loads(read.stdout)["blocks"]
+        if block["t"] == "Para"
+    ]
+
+
+@holds(40, _anchored_methods())
+def test_an_anchor_prints_nothing_and_ends_no_paragraph(planted: tuple[str, list[str]]) -> None:
+    """Pandoc reads as many paragraphs in the text as printed as the source has, each with
+    the words it has in the source: an anchor prints nothing wherever it stands, and a line
+    of nothing but anchors is no line, where an empty one would end the paragraph."""
+    text, paragraphs = planted
+    assert _paragraphs_pandoc_reads(placeholders.substitute(text, {})) == paragraphs, text
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -1750,9 +1836,16 @@ def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
 
 
 def _an_anchor_in_a_comment_is_an_anchor(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard.text import placeholders
-
     patch.setattr(placeholders, "_without_comments", lambda text: text)
+
+
+def _an_anchors_own_line_is_left_empty(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it was released: each anchor is taken out, and its line stays."""
+    patch.setattr(
+        placeholders,
+        "anchor_cuts",
+        lambda text, found: [(one.start, one.end) for one in found if one.is_anchor],
+    )
 
 
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
@@ -1805,6 +1898,10 @@ BROKEN = {
     "an anchor in a comment is an anchor": (
         _an_anchor_in_a_comment_is_an_anchor,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "an anchor's own line is left behind, empty": (
+        _an_anchors_own_line_is_left_empty,
+        test_an_anchor_prints_nothing_and_ends_no_paragraph,
     ),
     "a quotation is read as the paper's own words": (
         _a_quotation_is_the_papers_own,

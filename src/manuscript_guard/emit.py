@@ -896,6 +896,12 @@ class Emitter:
         caller = sys._getframe(1)
         script = Path(caller.f_code.co_filename)
         record = step_code(script, caller.f_lineno, name)
+        if record is None and not script.is_file():
+            # A notebook cell, or `python -c`: the name may well be written out.
+            raise ValueError(
+                f"step {name!r}: it was called from {script}, which is no file the block can "
+                f"be read from; mark a step in a script, not in a notebook cell or `python -c`"
+            )
         if record is None:
             raise ValueError(
                 f"step {name!r}: no `with ....step({name!r}):` block was found in {script} "

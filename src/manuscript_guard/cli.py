@@ -267,11 +267,20 @@ def _round_lines(summary) -> list[str]:
 
 def cmd_review(args: argparse.Namespace) -> int:
     """Show where the review stands, and write the record a reviewer has to file."""
-    if args.reading is not None and not args.record:
+    if args.reading is not None and not (args.record or args.seal):
         # Ignored in silence, it looked as though a reading had been filed.
         print(
-            "manuscript-guard: --reading names who made a reading and goes with --record: "
-            "`review --record <reviewer> --reading <reader> --verdict <verdict>`",
+            "manuscript-guard: --reading names who made a reading and goes with --record or "
+            "--seal: `review --record <reviewer> --reading <reader> --verdict <verdict>`",
+            file=sys.stderr,
+        )
+        return 2
+    if args.seal and (
+        args.record or args.record_figure or args.providers or args.run or args.dry_run
+    ):
+        print(
+            "manuscript-guard: --seal seals a reading already filed, on its own: "
+            "`review --seal <reviewer> --round <n>`",
             file=sys.stderr,
         )
         return 2
@@ -312,6 +321,26 @@ def cmd_review(args: argparse.Namespace) -> int:
         print(digest)
         return 0
 
+    if args.seal:
+        from manuscript_guard.record import RecordError, seal_review
+
+        try:
+            sealed = seal_review(
+                project,
+                args.seal,
+                round_number=1 if args.round is None else args.round,
+                reading=args.reading,
+            )
+        except RecordError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        print(f"sealed {sealed}")
+        print(
+            "Answer its findings in `resolution:` or `overridden:`. Anything else changed "
+            "in what the reader wrote is reported as reading-altered."
+        )
+        return 0
+
     if args.record or args.record_figure:
         from manuscript_guard.record import RecordError, write_figure_review, write_review
 
@@ -345,6 +374,13 @@ def cmd_review(args: argparse.Namespace) -> int:
             print(f"panel: {written.panel}")
         print(f"wrote {written.path}")
         print("Add the findings there. An empty list says the reviewer found nothing.")
+        if args.record:
+            again = f" --round {args.round}" if args.round is not None else ""
+            named = f' --reading "{args.reading}"' if args.reading else ""
+            print(
+                "Then seal what the reader wrote: "
+                f"`manuscript-guard review --seal {args.record}{again}{named}`"
+            )
         return 0
 
     if args.files:
@@ -2487,10 +2523,19 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument(
         "--reading",
         metavar="READER",
-        help="with --record: who made this reading, where a remit is read more than once "
+        help="with --record or --seal: who made this reading, where a remit is read more "
+        "than once "
         "(openai/<model>, or a person's name). Written as review/round-N/REVIEWER.READER.yaml "
         "beside the reviewer's plain record, so neither replaces the other, and listed among "
         "the reviewer's readers in the panel, which is what makes the gate read it",
+    )
+    review.add_argument(
+        "--seal",
+        metavar="REVIEWER",
+        help="seal review/round-N/REVIEWER.yaml (or its reading, with --reading) once its "
+        "findings are written: adds reading_sha256, a digest of what the reader wrote, and "
+        "G11 reports reading-altered if that changes. Once only; `review --run` seals what "
+        "it files",
     )
     review.add_argument(
         "--record-figure",

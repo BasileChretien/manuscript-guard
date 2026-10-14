@@ -38,7 +38,7 @@ import yaml
 from manuscript_guard import __version__
 from manuscript_guard.contracts._schema import validate
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.gates.review import reading_path, reading_slug, round_dir
+from manuscript_guard.gates.review import reading_digest, reading_path, reading_slug, round_dir
 from manuscript_guard.panel import client
 from manuscript_guard.panel.client import CallFailed, Reply, Transport
 from manuscript_guard.panel.plan import Call, Plan
@@ -278,7 +278,7 @@ def _record(
         "output_tokens": reply.output_tokens,
         "tool_version": __version__,
     }
-    return {
+    record = {
         "schema": "manuscript-guard/review/1",
         "round": plan.round,
         "reviewer": call.reviewer,
@@ -294,6 +294,10 @@ def _record(
             {"id": f"r{plan.round}-{index:02d}", **finding}
             for index, finding in enumerate(parsed["findings"], start=1)
         ],
+    }
+    return {
+        **record,
+        "reading_sha256": reading_digest(record),
         "provenance": {key: value for key, value in provenance.items() if value is not None},
     }
 
@@ -302,7 +306,8 @@ HEADER = (
     "# Filed by `manuscript-guard review --run` from the reply of the reader named below.\n"
     "# Answer each major finding by adding `resolution:` (what was done) or `overridden:`\n"
     "# (why it was not) to it. Nothing else here is yours to edit: the digests say which\n"
-    "# version was read, and a second reading is a further round.\n"
+    "# version was read, `reading_sha256` seals what the reader wrote, and a second\n"
+    "# reading is a further round.\n"
 )
 
 

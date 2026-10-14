@@ -50,3 +50,4 @@ findings:
   finding: 'The comparison with the class-level estimate is handled well: the text
     says plainly that the two are not directly comparable and why. Worth keeping in
     revision.'
+reading_sha256: b7a1623fb72522f13974e61be3e557a454b0de34509d53feeab6ac6425a30275

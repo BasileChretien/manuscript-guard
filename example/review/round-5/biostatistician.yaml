@@ -27,3 +27,4 @@ findings:
   where: Methods
   finding: Each estimator choice now sits in a paragraph of its own, and the interval for the
     adjusted estimate is stated. The two points of round four on the intervals are answered.
+reading_sha256: 01f4d8a59903123486a095a6277a37379e6373010d7b769fe14349d09cffbff1

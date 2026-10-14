@@ -21,8 +21,10 @@ through this one, which is the third thing the reviews did.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from bisect import bisect_left
@@ -87,7 +89,7 @@ from manuscript_guard.reworded import (
     compare,
     facts,
 )
-from manuscript_guard.text import tokens
+from manuscript_guard.text import placeholders, tokens
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.placeholders import parse as parse_bindings
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -831,6 +833,114 @@ def test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph
     claims, open_ = methods_gate._anchored_in(Path("main.md"), text)
     assert [(c.steps, c.text, c.line, c.anchor_line) for c in claims] == expected, text
     assert [paragraph.line for paragraph in open_] == bare, text
+
+
+#: Every place an anchor stands in a paragraph. Each example holds one of each, as
+#: `_CLAIM_KINDS` says why.
+_ANCHOR_PLACES = (
+    "a line of its own inside", "a line of its own at the end", "two lines of their own",
+    "a line each at the end", "side by side on a line of their own", "the end of a line",
+    "inside a line", "under a heading", "over a list", "opening its paragraph",
+    "under a heading, no blank line", "nowhere",
+)  # fmt: skip
+
+
+@st.composite
+def _anchored_methods(draw: st.DrawFn) -> tuple[str, list[str], list[int]]:
+    """A Methods section with an anchor in every place one stands, its words drawn each time;
+    the words of each paragraph pandoc is to read in it as printed, in order; and the first
+    line of each run of lines of nothing but anchors inside a paragraph, where the run ends
+    one. Its lines end as Unix ends them or as Windows does, and the last one may not be
+    ended."""
+    names = (f"step{n}" for n in range(1000))
+    lines: list[str] = ["# Methods"]
+    paragraphs: list[str] = []
+    inside: list[int] = []
+
+    def sentence() -> str:
+        said = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=5)))
+        return said[0].upper() + said[1:] + "."
+
+    def anchor() -> str:
+        return f"{{{{method.{next(names)}}}}}"
+
+    def add(*block: str, splits: tuple[int, ...] = ()) -> None:
+        """A blank line, then `block`; `splits` are its lines that end a paragraph."""
+        lines.append("")
+        inside.extend(len(lines) + 1 + at for at in splits)
+        lines.extend(block)
+
+    for place in draw(st.permutations(_ANCHOR_PLACES)):
+        one, two = sentence(), sentence()
+        pad = draw(st.sampled_from(("", " ", "\t", "  ")))
+        whole, apart, splits_before = [f"{one} {two}"], [one, two], len(inside)
+        if place == "a line of its own inside":
+            add(one, f"{pad}{anchor()}{pad}", two, splits=(1,))
+        elif place == "a line of its own at the end":
+            add(one, two, f"{anchor()}{pad}")
+        elif place == "two lines of their own":
+            add(one, anchor(), f"{pad}{anchor()}", f"{two} {anchor()}", splits=(1,))
+        elif place == "a line each at the end":
+            add(one, two, anchor(), f"{pad}{anchor()}{pad}")
+        elif place == "side by side on a line of their own":
+            add(one, f"{anchor()}{pad}{anchor()}", two, splits=(1,))
+        elif place == "the end of a line":
+            add(f"{one} {anchor()}", two)
+        elif place == "inside a line":
+            add(f"{one} {anchor()} {two}")
+        elif place == "under a heading":
+            add(draw(st.sampled_from(_SUBHEADINGS)))
+            add(one, anchor(), two, splits=(1,))
+        elif place == "over a list":
+            add(one, anchor(), f"- {two}", splits=(1,))
+            apart = [one]  # the item is a list's, not a paragraph
+        elif place == "opening its paragraph":
+            add(anchor(), one, two)
+        elif place == "under a heading, no blank line":
+            add(draw(st.sampled_from(_SUBHEADINGS)), anchor(), one, two)
+        else:
+            add(one, two)
+        paragraphs += apart if len(inside) > splits_before else whole
+    text = "\n".join(lines) + draw(st.sampled_from(("\n", "")))
+    return text.replace("\n", draw(st.sampled_from(("\n", "\r\n")))), paragraphs, inside
+
+
+def _paragraphs_pandoc_reads(markdown: str) -> list[str]:
+    """The words of each paragraph pandoc reads in `markdown`, a line break between two as a
+    space and anything else that is no word by its name."""
+    pandoc = shutil.which("pandoc")
+    if pandoc is None:
+        pytest.skip("pandoc is not installed, and the paragraphs are the ones it reads")
+    read = subprocess.run(
+        [pandoc, "-f", "markdown", "-t", "json"],
+        input=markdown.encode("utf-8"),
+        capture_output=True,
+        check=True,
+        timeout=120,
+    )
+
+    def said(inline: dict) -> str:
+        kind = inline["t"]
+        return inline["c"] if kind == "Str" else " " if kind in ("Space", "SoftBreak") else kind
+
+    return [
+        "".join(said(inline) for inline in block["c"])
+        for block in json.loads(read.stdout)["blocks"]
+        if block["t"] == "Para"
+    ]
+
+
+@holds(40, _anchored_methods())
+def test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document(
+    planted: tuple[str, list[str], list[int]],
+) -> None:
+    """The warning names exactly the lines of nothing but anchors that make pandoc read
+    more paragraphs in the text as printed than the source has between its blank lines: one
+    inside a paragraph, and not one that opens or ends it, under a heading or not. Pandoc's
+    reading is held too, so that the lines the generator says end a paragraph do."""
+    text, paragraphs, inside = planted
+    assert _paragraphs_pandoc_reads(placeholders.substitute(text, {})) == paragraphs, text
+    assert methods_gate.anchor_lines(text) == inside, text
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -1836,9 +1946,22 @@ def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
 
 
 def _an_anchor_in_a_comment_is_an_anchor(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard.text import placeholders
-
     patch.setattr(placeholders, "_without_comments", lambda text: text)
+
+
+def _the_line_below_an_anchors_line_is_not_looked_at(patch: pytest.MonkeyPatch) -> None:
+    real = methods_gate._inside
+    patch.setattr(methods_gate, "_inside", lambda above, below: real(above, "a line"))
+
+
+def _the_line_above_an_anchors_line_is_not_looked_at(patch: pytest.MonkeyPatch) -> None:
+    real = methods_gate._inside
+    patch.setattr(methods_gate, "_inside", lambda above, below: real("a line", below))
+
+
+def _each_anchors_line_is_its_own_run(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood at 43739a94: the line directly below counts, whatever it holds."""
+    patch.setattr(methods_gate, "_runs", lambda numbers: [(number, number) for number in numbers])
 
 
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
@@ -1891,6 +2014,18 @@ BROKEN = {
     "an anchor in a comment is an anchor": (
         _an_anchor_in_a_comment_is_an_anchor,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "the line below an anchor's own line is not looked at": (
+        _the_line_below_an_anchors_line_is_not_looked_at,
+        test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document,
+    ),
+    "the line above an anchor's own line is not looked at": (
+        _the_line_above_an_anchors_line_is_not_looked_at,
+        test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document,
+    ),
+    "the line directly below an anchor's own line counts, though it holds only anchors": (
+        _each_anchors_line_is_its_own_run,
+        test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document,
     ),
     "a quotation is read as the paper's own words": (
         _a_quotation_is_the_papers_own,

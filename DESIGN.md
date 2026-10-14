@@ -1402,11 +1402,27 @@ with em.step("ci"):                          # R: em$step("ci", { ... })
 ```
 
 The Methods end the text that describes it with `{{method.ci}}`, an anchor that prints nothing,
-in the document or the annotated copy, or to a review panel.
+in the document or the annotated copy, from `render`, or to a review panel. Its line stays,
+so a line that holds nothing but anchors and spaces prints as an empty line, and an empty line
+ends a paragraph. Inside a paragraph, with one sentence to a line and an anchor on the line
+under its sentence, the document then breaks the paragraph in two where the source has one.
+`check` warns of each such line (`method-anchor-line`): one with a line of the paragraph above
+it and, below it, a line that is neither blank nor another such line. Lines of anchors one
+under the other are one run, warned of once at its first line, where the paragraph ends; so
+anchors one to a line at the end of a paragraph, above a blank line, are not warned of. As
+first written the rule looked only at the line directly below, and warned of `{{method.a}}`
+over `{{method.b}}` at the end of a paragraph, which ends nothing. The line was printed as no line for a while, and that turned a list
+or a table written directly under the anchors into running text, with nothing reported. What
+stands under the line cannot say whether the author meant a new block or the same paragraph,
+so the printing is left as it was and the author is told. A property holds that the lines
+warned of are exactly those after which pandoc reads a new paragraph that the source does not
+have.
 
 **What an anchor claims.** The text before it, back to the anchor before it or the start of
 its paragraph. A blank line or a heading starts a paragraph, and a comment on a line of its own
 does not. Anchors side by side claim the same text, for a sentence that describes two steps.
+An anchor on a heading's own line is in no paragraph, so it claims nothing and nothing judges
+it (Known gaps).
 The extent is where the author put the anchors. A rule that found the sentence an anchor ends
 would have to know where sentences end, after "e.g." and "et al." and a number, and a pandoc
 span around the claim would make every Methods paragraph harder to read in the source. An
@@ -1425,14 +1441,25 @@ the claim as written with its spaces read as one, the digest of the code, and th
 read. `methods --reconcile` records every pair and every file; `methods --reconcile ci` only
 the pairs of `ci`, leaving the files and the other pairs as they were, since nobody read those.
 
+Either may come first. A lock that records a pair is a lock for the pairs, whether or not it
+records a file: after `methods --reconcile ci` in a project nobody has reconciled, the pair of
+`ci` is held to its code and its text, every other pair is one never read, and
+`methods-never-reconciled` goes on saying, once, that the files were never read against the
+Methods. Such a lock has no `reconciled_on`, which is the day the files were read; each pair
+has its own `read_on`. As first released, a lock counted only once it recorded the files, so
+the step read first could change with nothing reported but that warning.
+
 **What is checked.**
 
-- An anchor that names no step the run recorded fails, at every stage. A sensitivity analysis
-  described in the Methods and left in a branch no run takes is found this way.
+- An anchor in a paragraph that names no step the run recorded fails, at every stage. A
+  sensitivity analysis described in the Methods and left in a branch no run takes is found
+  this way.
 - From `internal-review`, a pair fails when its step's code changed since it was read, when its
   text changed (the finding says what it was), or when it was never read. A second text
   pointing at a step is a pair never read, not the first one changed.
 - A step no text points at is a warning.
+- A line of nothing but anchors inside a paragraph is a warning at every stage,
+  `method-anchor-line`: the document ends the paragraph there.
 - A Methods paragraph that points at no step is counted, and listed by
   `manuscript-guard methods --explain`, not reported as a finding. A paragraph on ethics
   approval or on the data source has no step to point at, and a warning nobody can clear is
@@ -6984,15 +7011,60 @@ Closed since, and why each mattered:
   inside a step still changes it, and the whole file's digest changes with any edit, so
   `methods --reconcile <step>` clears the pair and not the file.
 - **A step follows only the analysis's own functions, in its own script.** In Python, a
-  function defined at the top level of the same script and called by name; in R, a function
-  defined outside a package and found from where the step runs. A method of an object, a
-  function imported from a helper module and anything a package does are not followed, so a
-  change there leaves the step's digest as it was. The R digest is R's `deparse`, which can
-  write the same code differently in another version of R.
+  function defined with `def` at the top level of the same script and called by its name,
+  `half(x)`; in R, a function defined outside a package whose name stands anywhere in the
+  step and is found from where the step runs. A method of an object, a function imported
+  from a helper module and anything a package does are not followed, so a change there
+  leaves the step's digest as it was. Nor is anything the step reads that is no function: a
+  constant of the script (`K = 2` above a step that divides by `K`) and a variable computed
+  before the block (`root = math.sqrt(...)`, then `se = root / 2` in the step) can change
+  with the digest as it was, in both languages. In Python the same holds of a `lambda` bound
+  to a name, of a function defined inside `main()` beside the step, and of a helper handed
+  on by its name, `map(half, values)`. R follows a function defined inside the function the
+  step runs in and one handed on by its name, `sapply(values, half)`, and not one kept in a
+  list (`h$half(x)`) or named by a string (`do.call("half", ...)`). The file's own digest
+  changes with each of these, so `methods-drift` still says that the file changed. The R
+  digest is R's `deparse`, which can write the same code differently in another version of R.
+- **A Python step is marked in a script.** `with em.step("ci"):` in a notebook cell or under
+  `python -c` is refused: the block is read from the file that calls it, and there is none.
 - **An anchor inside a paragraph stops the round trip for that paragraph.** An edit made in
   Word to a paragraph with an anchor before its end is refused, and has to be made in the .md.
 - **A claim's extent is the author's.** An anchor at the end of a paragraph of five sentences
   claims all five, and the gate cannot tell whether the step backs them all.
+- **An anchor on a heading's line is not judged.** `## Statistical analysis {{method.typo}}`
+  is in no paragraph, so it makes no claim, `methods --explain` does not list it, and it gives
+  no `method-step-unknown` though no step of that name ran. It prints nothing there either.
+- **G9 takes any line that opens with `#` and a space for a heading.** Pandoc reads one
+  with no blank line above it as text of the paragraph. For "The first line", then "# of
+  reports was counted", then "and the second. {{method.a}}", the claim is "and the second."
+  and not the three lines. `check` passes it. The build does not: it asks pandoc, and stops
+  with "pandoc reads as text ... the level-1 heading".
+- **An anchor's own line inside a paragraph ends it in the document.** "One.", then
+  `{{method.a}}`, then "Two." is one paragraph to G9, which claims "One." for `a`, and two in
+  the document, since the anchor's line prints as an empty line. `check` warns of it,
+  `method-anchor-line`, and changes nothing: what stands under the line may be meant as a
+  block of its own, a list or a table, which the empty line makes one. An edit in Word to
+  either half is refused on import, as one to a paragraph with an anchor inside it is. Two
+  such lines one under the other between two sentences are warned of once, at the first.
+- **Behind a mark, an anchor's line is left, and not warned of.** `> {{method.a}}` between
+  two lines of a quotation prints as `> `, which ends the paragraph inside the quotation, and
+  `- {{method.a}}` prints as an empty list item. Put the anchor at the end of the line above.
+- **Two anchors at the end of a line inside a paragraph break the line.** "One.
+  {{method.a}} {{method.b}}" with "Two." on the next line prints "One." followed by two
+  spaces, which pandoc reads as a line break inside the paragraph. At the end of a paragraph
+  the spaces print nothing, which is where the example has its two.
+- **Taking the anchor off a pair that fails leaves a warning.** A pair whose step changed
+  fails as `method-step-changed`. With its anchor deleted there is no pair: the step is one
+  no text points at, `method-step-undescribed`, a warning. Whether the text still describes
+  the step is then nobody's question, and `methods-drift` is what is left to ask it.
+- **A pair whose text and code both changed is one never read.** A text is a changed one
+  only while the step's code is as the lock has it. With both changed since the pair was
+  read, the finding is `method-pair-unread` and does not say what the text was.
+- **`methods --reconcile <project>` is read as a step's name.** Before steps had names it
+  reconciled that project. A folder that holds a `paper.yaml` is refused with the command
+  to type, `methods <project> --reconcile`. A folder inside a project is not known for one:
+  `methods --reconcile example/manuscript` is refused as a step nobody marked, or for want
+  of a `paper.yaml` where the command was run.
 - **A parameter that is read is not shown to be used.** The emitters record whether the value
   `parameter()` returns is read again, by name. A read inside a `print` or in a branch that
   never runs counts, and so does a name of the same spelling read elsewhere in the same

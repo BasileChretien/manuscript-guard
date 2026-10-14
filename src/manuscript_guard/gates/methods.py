@@ -21,8 +21,9 @@ claims is the text before it, back to the anchor before it or the start of its p
 its extent is where the author put the anchors, and nothing guesses where a sentence ends.
 The lock then records each step and its claim as a pair, with a digest of the step's code
 read as code and the claim as written, and the report names the pair whose code or whose
-text changed since it was read. An anchor that names no step the run recorded fails, which
-is how a claim about a branch the analysis never took is caught.
+text changed since it was read. An anchor in a paragraph that names no step the run recorded
+fails, which is how a claim about a branch the analysis never took is caught. One on a
+heading's line is in no paragraph and is not judged.
 
 Two additions make the prompt useful rather than annoying. The report names *which* files
 changed, so the reconciliation is targeted. And a handful of parameters that must agree —
@@ -134,6 +135,67 @@ def _paragraphs(text: str) -> list[tuple[int, int]]:
     if start is not None:
         spans.append((start, at))
     return spans
+
+
+def _inside(above: str | None, below: str | None) -> bool:
+    """Whether a line between `above` and `below` is inside a paragraph as written: under a
+    line of the paragraph, which a blank line or a heading is not, and over any line."""
+    return bool(above and above.strip() and not _HEADING.match(above) and below and below.strip())
+
+
+def anchor_lines(text: str) -> list[int]:
+    """The first line, counted from 1, of each run of lines that hold nothing but anchors and
+    spaces inside a paragraph.
+
+    An anchor prints nothing and its line stays, so such a line prints as an empty line and
+    the document ends the paragraph there, where the source has none. What stands under it
+    then starts a block of its own: a sentence a paragraph, `- ...` a list, `## ...` a
+    heading. Which of those the author meant cannot be told, so each is warned of. A line
+    with a quotation's or a list's mark on it holds more than anchors, and the first and last
+    lines of a paragraph end nothing it does not end already: anchors one to a line at the
+    end of a paragraph, which is how two steps' anchors are written in the skill's style, are
+    a run whose line below is blank. A run is warned of once, at its first line, which is
+    where the paragraph ends.
+    """
+    lines = text.split("\n")
+    found = []
+    for first, last in _runs(_lines_of_anchors(text, lines)):
+        above = lines[first - 2] if first > 1 else None
+        below = lines[last] if last < len(lines) else None
+        if _inside(above, below):
+            found.append(first)
+    return found
+
+
+def _lines_of_anchors(text: str, lines: list[str]) -> list[int]:
+    """The lines, counted from 1, that hold nothing but anchors and spaces."""
+    anchors = [found for found in parse(text)[0] if found.is_anchor]
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line) + 1)
+    on: dict[int, list] = {}
+    for anchor in anchors:
+        on.setdefault(anchor.line, []).append(anchor)
+    found = []
+    for number, here in sorted(on.items()):
+        start, end = starts[number - 1], starts[number - 1] + len(lines[number - 1])
+        if any(anchor.end > end for anchor in here):
+            continue  # braces typed over several lines
+        bounds = zip([start, *(a.end for a in here)], [*(a.start for a in here), end], strict=True)
+        if not "".join(text[a:b] for a, b in bounds).strip(" \t\r"):
+            found.append(number)
+    return found
+
+
+def _runs(numbers: list[int]) -> list[tuple[int, int]]:
+    """`numbers`, in order, as runs of consecutive ones: the first and last of each."""
+    runs: list[tuple[int, int]] = []
+    for number in numbers:
+        if runs and runs[-1][1] == number - 1:
+            runs[-1] = (runs[-1][0], number)
+        else:
+            runs.append((number, number))
+    return runs
 
 
 #: A paragraph that says nothing a step could back: a table or figure placed by its binding,
@@ -268,7 +330,7 @@ def check_methods(
         results = results if results is not None else loaded[1]
     current = analysis_digests(project)
     lock = read_lock(project)
-    pairs = _pairs(project, results, lock if current and lock.get("analysis") else None)
+    pairs = _pairs(project, results, lock if current and _reconciled(lock) else None)
     if not current:
         return pairs.with_counts(analysis_files=0)
 
@@ -326,6 +388,16 @@ class Pair:
 def _locked(lock: dict) -> list[dict]:
     pairs = lock.get("pairs") or []
     return [pair for pair in pairs if isinstance(pair, dict)]
+
+
+def _reconciled(lock: dict) -> bool:
+    """Whether `lock` is one the pairs are held to: it records the files, or a pair.
+
+    It was the files alone. `methods --reconcile <step>` run before any `methods --reconcile`
+    writes a lock with that pair and no file, which then counted as no lock: every pair was
+    passed over, the one just read with them, and its step could change unreported.
+    """
+    return bool(lock.get("analysis") or _locked(lock))
 
 
 def _judged(claims: list[Claim], steps: dict[str, Step], locked: list[dict] | None) -> list[Pair]:
@@ -407,6 +479,7 @@ def _pairs(project: Project, results: Results, lock: dict | None) -> Report:
                     line=claim.anchor_line,
                 )
             )
+    findings += _anchor_line_findings(project)
     pairs = _judged(claims, results.steps, locked)
     described = {pair.step for pair in pairs}
     stale = 0
@@ -439,6 +512,25 @@ def _pairs(project: Project, results: Results, lock: dict | None) -> Report:
         method_pairs_stale=stale,
         methods_open=len(open_),
     )
+
+
+def _anchor_line_findings(project: Project) -> list[Finding]:
+    """A warning for each line of nothing but anchors inside a paragraph (`anchor_lines`)."""
+    return [
+        Finding(
+            gate=GATE,
+            code="method-anchor-line",
+            severity=WARN,
+            message="this line holds nothing but anchors, and prints as an empty line, so the "
+            "paragraph ends here in the document though it goes on in the source",
+            hint="put the anchor at the end of the line above, or leave a blank line after it "
+            "if a new paragraph or a list is meant",
+            path=path,
+            line=line,
+        )
+        for path in source_files(project.path("manuscript"))
+        for line in anchor_lines(read_text(path))
+    ]
 
 
 def _anchors(steps: tuple[str, ...]) -> str:
@@ -515,7 +607,7 @@ def explain_methods(project: Project, results: Results | None = None) -> list[st
         results = load_namespace(project)[1]
     lock = read_lock(project)
     claims, open_ = anchored(project)
-    locked = _locked(lock) if lock.get("analysis") else None
+    locked = _locked(lock) if _reconciled(lock) else None
     root = project.root
 
     def at(path: Path, line: int) -> str:
@@ -604,7 +696,8 @@ def reconcile(
 
     With `steps`, only the pairs of those steps are recorded, each with its claims as they
     now read and its code as it now stands: the files, and every other pair, stay as the lock
-    has them, since nobody has re-read those.
+    has them, since nobody has re-read those. Where there was no lock, the one written holds
+    no file and no day the files were read on, and `check` goes on saying they never were.
     """
     if results is None:
         from manuscript_guard.contracts import load_namespace
@@ -626,7 +719,7 @@ def reconcile(
                 f"analysis ran, so there is no pair to record"
             )
         analysis = existing.get("analysis", {})
-        reconciled_on = existing.get("reconciled_on", today)
+        reconciled_on = existing.get("reconciled_on")
         kept = [pair for pair in _locked(existing) if pair.get("step") not in steps]
         fresh = [pair for pair in current if pair.step in steps]
     recorded = kept + [
@@ -636,7 +729,9 @@ def reconcile(
     ]
     document = {
         "schema": "manuscript-guard/methods-lock/1",
-        "reconciled_on": reconciled_on,
+        # The day the files were read against the Methods: of a lock that holds only pairs,
+        # no day. Each pair has its own, `read_on`.
+        **({"reconciled_on": reconciled_on} if reconciled_on else {}),
         "parameters": parameters if parameters is not None else existing.get("parameters", {}),
         "analysis": analysis,
     }

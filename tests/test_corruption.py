@@ -10265,6 +10265,35 @@ def test_a_change_inside_a_step_names_the_paragraph_to_read_again(project: Path)
     assert "methods-drift" in {f.code for f in report.failures}
 
 
+def test_a_step_read_before_any_file_was_is_still_held_to_its_code(project: Path) -> None:
+    """The example before anybody reconciled it, and one step read against its text first.
+    The lock then holds that pair and no file, and it was taken for no lock: the same change
+    to the step went by with a warning that the files had never been read."""
+    from manuscript_guard.gates import reconcile
+
+    (project / "methods.lock").unlink()
+    reconcile(load_project(project)[0], steps=["ci"])
+    _replace_once(_analysis(project), "1.645 * se)\n        high90", "1.64 * se)\n        high90")
+    _rerun_disproportionality(project)
+    report = _methods_report(project)
+    assert [f.message for f in report.failures if f.code == "method-step-changed"] == [
+        "step 'ci' changed after the text pointing at it was last read against it"
+    ], report.render(project)
+    unread = [f.message.split("'")[1] for f in report.failures if f.code == "method-pair-unread"]
+    assert sorted(unread) == ["adjusted", "ror", "signal"]
+    assert [f.code for f in report.warnings] == ["methods-never-reconciled"]
+
+
+def test_an_anchor_moved_to_a_line_of_its_own_inside_a_paragraph_is_warned(project: Path) -> None:
+    """The example's first anchor, on a line of its own after the sentence it is about. The
+    line prints as an empty line, and the document ends the paragraph there."""
+    _replace_once(main_md(project), "database. Confidence", "database.\n{{method.ror}}\nConfidence")
+    _replace_once(main_md(project), "practice. {{method.ror}} {{method", "practice. {{method")
+    report = _methods_report(project)
+    found = [f for f in report.warnings if f.code == "method-anchor-line"]
+    assert [f.line for f in found] == [_line_of(project, "{{method.ror}}")], report.render(project)
+
+
 def test_a_comment_added_inside_a_step_leaves_its_pair_read(project: Path) -> None:
     _replace_once(_analysis(project), "        ror = (a / b) / (c / d)\n",
                   "        # the ratio of the two odds\n        ror = (a / b) / (c / d)\n")

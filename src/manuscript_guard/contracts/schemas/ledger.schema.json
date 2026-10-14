@@ -38,15 +38,18 @@
         },
         "source_file": {
           "type": "string",
-          "description": "Path relative to literature/, e.g. sources/smith2020Prevalence.pdf."
+          "pattern": "\\S",
+          "description": "Path relative to literature/, e.g. sources/smith2020Prevalence.pdf. A blank one names no source, and the value would be checked against nothing."
         },
         "locator": {
           "type": "string",
+          "pattern": "\\S",
           "description": "Where in the source, e.g. 'Table 2, p. 415'. Precise enough for someone else to check without reading the whole paper."
         },
         "quote": {
           "type": "string",
           "minLength": 1,
+          "pattern": "\\S",
           "description": "Verbatim text containing the value. This is the evidence; a ledger entry without it is an assertion."
         },
         "verified_on": { "type": "string", "format": "date" },

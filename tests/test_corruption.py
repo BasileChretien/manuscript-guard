@@ -1690,6 +1690,133 @@ def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypat
     )
 
 
+# A literature value with a blank field. `source_file: ""` was passed over by both gates:
+# `check --stage drafting` added no finding, and the value was simply not counted as
+# verified, so the run claimed every value it had checked was verified.
+
+_BLANK_FIELDS = [
+    ("ledger", "source_file", ""),
+    ("ledger", "source_file", "   "),
+    ("ledger", "locator", ""),
+    ("ledger", "locator", " "),
+    ("ledger", "quote", " "),
+    ("attested", "attested_by", " "),
+    ("attested", "statement", "\t"),
+    ("attested", "source", " "),
+    ("attested", "locator", " "),
+]
+
+
+@pytest.mark.parametrize(
+    ("file", "field", "blank"),
+    _BLANK_FIELDS,
+    ids=[f"{file}-{field}-{len(blank)}" for file, field, blank in _BLANK_FIELDS],
+)
+def test_a_literature_value_with_a_blank_field_fails(
+    project: Path, file: str, field: str, blank: str
+) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    path = project / "literature" / f"{file}.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0][field] = blank
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    report, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    assert any(
+        f.code == "schema-violation" and f"entries/0/{field}" in f.message
+        for f in report.failures
+    ), report.render(project)
+
+
+def _literature_report(root: Path, change=None):
+    """G7's two literature checks, run as `check` runs them; `change` edits the loaded
+    values first, to reach the gates with what the schema would have refused."""
+    from manuscript_guard.gates import check_citations, check_literature_chain
+
+    project, _ = load_project(root)
+    _namespace, _results, literature, load_report = load_namespace(project)
+    if change is not None:
+        literature = change(literature)
+    return merge_all(
+        [
+            load_report,
+            check_citations(project, literature),
+            check_literature_chain(project, literature),
+        ]
+    )
+
+
+def _without_source(literature):
+    from dataclasses import replace
+
+    from manuscript_guard.contracts.literature import Literature
+
+    key = "background.reported_incidence"
+    value = literature.values[key]
+    changed = replace(value, detail={**value.detail, "source_file": " "})
+    return Literature({**literature.values, key: changed}, literature.root)
+
+
+def _source_removed(root: Path) -> None:
+    (root / "literature" / "sources" / "fictionalHepaticCohort2021.txt").unlink()
+
+
+def _misquoted(root: Path) -> None:
+    source = root / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text("A different paper entirely.\n", encoding="utf-8")
+
+
+def _value_not_quoted(root: Path) -> None:
+    path = root / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0].update(value=17.0, display="17")
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _unreadable(root: Path) -> None:
+    path = root / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["source_file"] = "sources/fictionalHepaticCohort2021.docx"
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    (root / "literature" / "sources" / "fictionalHepaticCohort2021.docx").write_bytes(b"PK")
+
+
+@pytest.mark.parametrize(
+    ("edit", "change", "verdict", "code"),
+    [
+        (None, None, "literature_verified", None),
+        (None, _without_source, "literature_failed", "literature-source-missing"),
+        (_source_removed, None, "literature_failed", "literature-source-missing"),
+        (_misquoted, None, "literature_failed", "quote-not-in-source"),
+        (_value_not_quoted, None, "literature_failed", "value-not-in-quote"),
+        (_unreadable, None, "literature_unverifiable", None),
+    ],
+    ids=["clean", "no source named", "source gone", "quote", "value", "unreadable"],
+)
+def test_every_literature_value_ends_in_one_verdict(
+    project: Path, edit, change, verdict: str, code: str | None
+) -> None:
+    """Verified, unverifiable, failed or attested: one of the four for every value, so a
+    value the gates passed over shows as a count that does not add up."""
+    if edit is not None:
+        edit(project)
+    report = _literature_report(project, change)
+    counts = report.counts
+    verdicts = ("verified", "unverifiable", "failed", "attested")
+    assert sum(counts[f"literature_{name}"] for name in verdicts) == counts[
+        "literature_values"
+    ], counts
+    # The edited value, the first of the two ledger entries, is the one that moved.
+    expected = {"literature_verified": 2, "literature_unverifiable": 0, "literature_failed": 0}
+    if verdict != "literature_verified":
+        expected["literature_verified"] = 1
+        expected[verdict] = 1
+    assert {name: counts[name] for name in expected} == expected, counts
+    if code is not None:
+        assert code in codes(report), report.render(project)
+
+
 # --------------------------------------------------------------------- the journal gate
 # A journal's limits, sections and statements are about the document the editor receives,
 # and the build strips every file's front matter before printing it.

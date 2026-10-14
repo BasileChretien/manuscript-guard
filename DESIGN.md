@@ -648,6 +648,16 @@ dependency: a toolkit that will not install without a PDF stack is a toolkit peo
 install. `pdftotext` is asked for UTF-8 and read as UTF-8 whatever the locale, and a
 `pdftotext` that fails or gives nothing leaves the PDF to `pypdf`.
 
+Each value ends in one of four verdicts, and the counts of `check` say how many in each:
+`literature_verified`, `literature_unverifiable` (a source nothing can read),
+`literature_failed` and `literature_attested`. Together they are `literature_values`. A value
+with no stored source used to fit none of them. With `source_file: ""` both checks passed it
+over, `check` added no finding, and the run read as though every value it had looked at was
+verified. The schemas of both files now refuse a blank or all-space field (`source_file`,
+`locator` and `quote` in the ledger; `source`, `locator`, `statement` and `attested_by`
+in `attested.yaml`), and a value that reaches the gates without a source all the
+same is `literature-source-missing` and counted as failed.
+
 ## Only a person can sign an attestation
 
 `attested.yaml` exists to record that **a named human read something the toolkit could not
@@ -5387,6 +5397,13 @@ Closed since, and why each mattered:
   what the manuscript says it means is a judgement, and belongs to the review panels.
 - **Nothing checks that a stored source is the work the citekey names.** Saving the wrong
   PDF under the right name passes, provided the quote is in it.
+- **A locator is checked for being there, not for being right.** The schema refuses a blank
+  `locator`, and nothing reads the one that is written: "Table 2" on a quote taken from the
+  abstract passes. It is for the person checking the value, who is sent to the place it names.
+- **A field the literature schemas call blank is one of spaces only.** Their `\S` is any
+  character that is not a space, and a zero-width space (U+200B) or a byte-order mark is one:
+  `attested_by` made of either passes as a signature that shows nothing. Nobody types one by
+  accident, and a name that is there but wrong passes as well.
 - **A PDF is read as its reader gives it, less a short table of foldings.** Curly quotes,
   the dashes, the hyphens U+2010 and U+2011, the ellipsis and the ligatures fi, fl, ff, ffi
   and ffl are folded before a quote is looked for. Anything else one reader spells out and

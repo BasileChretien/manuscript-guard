@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.findings import Finding, Report
 from manuscript_guard.literature.bibfile import read_entries
 
 GATE = "G7"
@@ -128,7 +128,6 @@ def check_identifiers(project: Project) -> Report:
                 Finding(
                     gate=GATE,
                     code=code,
-                    severity=WARN,
                     message=message,
                     path=path,
                     hint=_HINTS[code],

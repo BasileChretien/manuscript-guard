@@ -1698,6 +1698,22 @@ def test_a_malformed_identifier_or_a_missing_field_is_said(
     assert len(found) == 1 and said in found[0][1], found
 
 
+def test_a_malformed_identifier_fails_from_internal_review(project: Path) -> None:
+    """Deferred while drafting, when an entry may be a placeholder, and a failure once the
+    reference list is printed for others to read."""
+    from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
+
+    _bib_field(project, "doi", "1016/j.example.2021.01.001")
+    _bib_field(project, "journal", None)
+    report = _g7(project)
+    codes = {"identifier-malformed", "reference-field-missing"}
+    drafting, deferred = apply_stage(report, DRAFTING)
+    assert not [f for f in drafting.failures if f.code in codes]
+    assert deferred.get(INTERNAL_REVIEW, 0) >= 2
+    reviewed, _ = apply_stage(report, INTERNAL_REVIEW)
+    assert {f.code for f in reviewed.failures} >= codes
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [

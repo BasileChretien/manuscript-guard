@@ -667,8 +667,10 @@ through the same small reader the co-author items use (`literature/bibfile.py`):
 and a stop after it are taken off, so a legacy SICI DOI passes; a PMID is digits, a PMCID
 "PMC" and digits; an ISBN-10 or -13 has the right check digit; an arXiv identifier one of
 its two forms; and an entry has the fields BibTeX's standard styles print for its type
-(btxdoc), under BibTeX's name or BibLaTeX's (`journaltitle`, `date`). Each is a warning
-(`identifier-malformed`, `reference-field-missing`) until its stage is decided. Whether a
+(btxdoc), under BibTeX's name or BibLaTeX's (`journaltitle`, `date`). Each fails from
+internal-review (`identifier-malformed`, `reference-field-missing`), when the reference
+list is first printed for others to read; while drafting, an entry can still be a
+placeholder, and it is reported and deferred. Whether a
 DOI is registered, names the work the entry describes, or was retracted is for a lookup
 that records what it found, and none is made here.
 

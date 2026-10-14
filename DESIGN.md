@@ -1278,8 +1278,9 @@ number and is no threshold. The figure after it is, in an atom of its own or in 
 
 **Declared is not used.** A parameter bound in the Methods prints the right number for a step
 the code may not take, which is exactly what the example's signal criterion was. Each
-emitter therefore reads the code where `parameter()` is called, with Python's `ast`
-and R's parse data, and records whether the value handed back is read again (`read`). The
+emitter therefore reads the code round the call to `parameter()`, Python with its `ast` in
+the file the call stands in, R with its parse data in the script the emitter was given,
+and records whether the value handed back is read again (`read`). The
 value thrown away, or assigned to a name nothing in its scope reads, is `false`, and G2 fails
 it from the `analysis` stage. Where the value goes somewhere the reading does not follow, as
 onto a class or into a list, nothing is recorded and nothing fails: a parameter kept as
@@ -1442,12 +1443,18 @@ read. `methods --reconcile` records every pair and every file; `methods --reconc
 the pairs of `ci`, leaving the files and the other pairs as they were, since nobody read those.
 
 Either may come first. A lock that records a pair is a lock for the pairs, whether or not it
-records a file: after `methods --reconcile ci` in a project nobody has reconciled, the pair of
-`ci` is held to its code and its text, every other pair is one never read, and
-`methods-never-reconciled` goes on saying, once, that the files were never read against the
-Methods. Such a lock has no `reconciled_on`, which is the day the files were read; each pair
-has its own `read_on`. As first released, a lock counted only once it recorded the files, so
-the step read first could change with nothing reported but that warning.
+records a file, wherever the analysis folder holds a file G9 reads: after
+`methods --reconcile ci` in a project nobody has reconciled, the pair of `ci` is held to its
+code and its text, every other pair is one never read, and `methods-never-reconciled` goes
+on saying, once, that the files were never read against the Methods. Where the analysis
+folder holds none, as with steps marked in scripts outside `analysis/`, `check` holds no
+pair to the lock and says nothing of a step that changed, while `methods --explain` reports
+each pair as it stands whenever the lock records one. A lock of pairs alone written now has
+no `reconciled_on`, which is the day the files were read; each pair has its own `read_on`.
+One written by 0.2.436 keeps the day it recorded, and a later `methods --reconcile <step>`
+keeps it too. No gate reads that day. As first released, a lock counted only once it
+recorded the files, so the step read first could change with nothing reported but that
+warning.
 
 **What is checked.**
 
@@ -4101,16 +4108,22 @@ Since 2026-10-07 a review reads the diff and may run the project's own tests, an
 campaign of its own. Where a change needs one, the finding is that the suite lacks it. So
 the campaigns are in the suite, on Hypothesis:
 
-- `tests/generated.py` holds the generators: manuscripts, vocabularies, one-line titles,
-  sources with quotations of them, the settings typed into a project, a co-author's
-  sessions in Word, texts that quote the bounds of intervals, the same with comments
-  typed into them, and a manuscript beside what an edit made of it.
+- `tests/generated.py` holds twelve generators: manuscripts, and the bare signs and the
+  bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
+  them, the settings typed into a project, a co-author's sessions in Word, texts that
+  quote the bounds of intervals, the same with comments typed into them, and a manuscript
+  beside what an edit made of it. `tests/test_properties.py` holds nine more, each
+  planting what one property looks for among drawn words: cited clauses, typed
+  parameters, models' names, anchors and what they claim, anchors' own lines, terms a
+  vocabulary gave up and each way such a term is written, American spellings in a British
+  paper, and rewordings.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its
   sentence, the quotation check, `check --json` on a new project, and the round trip: a
-  paper typed into a new project, built, edited in Word and imported. And two more: the
-  order an interval's bounds are quoted in, and what `reworded` makes of an edit.
+  paper typed into a new project, built, edited in Word and imported. And three more: the
+  order an interval's bounds are quoted in, what `reworded` makes of an edit, and the
+  sentences a co-author's items are cut into. Eighteen in all.
 - `tests/test_properties.py` holds what a reading owes its input, and
   `tests/test_generated_sessions.py` what an import owes the source.
 - `tests/test_differential.py` puts each input through the base branch's source and
@@ -4160,13 +4173,23 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So nineteen rules are broken in place, one at a time, and the property that is
+the generators. So fifty rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops, and nine ways `reworded` can misread an edit, from
-a number's sign taken for no part of it to what a comment holds held to its place.
+sentence, a comment read for its stops; nine ways `reworded` can misread an edit, from
+a number's sign taken for no part of it to what a comment holds held to its place; five
+ways a co-author's items can be cut wrong round the citation of a claim, from every stop ending a
+sentence, after "et al." too, to a piece that is only a citation left as an item of its
+own; seven ways an anchor can claim the wrong text, from a claim that runs back past the
+anchor before it to an anchor in a comment taken for one; three ways the warning of an
+anchor's own line can be wrong about where the document ends a paragraph, the last a run
+of such lines at a paragraph's end; nine ways G15 can find a model's name where it is not
+or miss it where it is, from a name matched in one case only to a full stop or a new
+paragraph taken for a space before it; and seven ways a typed parameter can be misread,
+from a threshold matched under any convention to the name of a statistic taken for a
+threshold like the figure beside it.
 The import is broken three times the same way: a rewording written over the next
 paragraph, one written a second time, and one written over the next paragraph only where
 an identified paragraph did not come back at all. Each is known by the sentence that
@@ -7046,6 +7069,19 @@ Closed since, and why each mattered:
   block of its own, a list or a table, which the empty line makes one. An edit in Word to
   either half is refused on import, as one to a paragraph with an anchor inside it is. Two
   such lines one under the other between two sentences are warned of once, at the first.
+  The warning reads lines, not blocks, and is wrong in four shapes. A setext underline or a
+  comment above the anchor's line passes for a line of the paragraph, so
+  `Design\n------\n{{method.a}}\nB.` and `A.\n\n<!-- n -->\n{{method.a}}\nB.` are warned of,
+  though pandoc reads a heading or a raw block and then a paragraph the anchor's line only
+  opens. An anchor's line inside a fenced code block is warned of, since code is not
+  blanked. An anchor whose braces are typed over two lines is no line of anchors, so in
+  `A.\n{{method.a}}\n{{method.b\n}}\n\nB.` it stands as the line below the run and line 2
+  is warned of, though both anchors print nothing. (A line break inside the name,
+  `{{method.\nb}}`, makes no anchor at all: it prints as text, and the paragraph does end
+  there.) And a comment after the last anchor of a run counts as text, so
+  `A.\n{{method.a}}\n{{method.b}} <!-- checked -->\n\nB.` is warned of at line 2. In the
+  last two nothing splits in the document, and the message that the paragraph ends there
+  is false.
 - **Behind a mark, an anchor's line is left, and not warned of.** `> {{method.a}}` between
   two lines of a quotation prints as `> `, which ends the paragraph inside the quotation, and
   `- {{method.a}}` prints as an empty list item. Put the anchor at the end of the line above.
@@ -7077,7 +7113,9 @@ Closed since, and why each mattered:
   expression of a block, which is the block's value. An argument is a read in both, so
   `cfg <- list(alpha = em$parameter("alpha", 0.05))` and
   `cfg = dict(alpha=em.parameter("alpha", 0.05))` are recorded as read whatever becomes of
-  `cfg`.
+  `cfg`. Python looks only at what stands directly round the call, so a walrus inside a
+  display, `levels = [(a := em.parameter("a", 1))]` with `a` never read again, is
+  recorded as read.
 - **R reads a parameter more loosely than Python does.** Python looks for the name in the
   scope that assigned it. R looks for a symbol of that spelling anywhere in the file, so
   `alpha <- em$parameter("alpha", 0.05)` with `alpha <- 0.01` on the next line, with an
@@ -7092,9 +7130,15 @@ Closed since, and why each mattered:
   importing script reads the name as the module's attribute:
   `ALPHA = em.parameter("alpha", 0.05)` in `settings.py`, read as `settings.ALPHA`, was
   once recorded as unread and failed. A parameter declared there and applied nowhere is
-  therefore not found. The emitter's own script is not imported, so a name at its top level
-  that nothing in it reads is still unread; that holds of a module that makes an emitter of
-  its own, too, whoever imports it.
+  therefore not found, and one the helper reads itself, which 0.2.436 recorded as read, is
+  recorded as neither: no finding changes, since only an unread one fails, but the results
+  file of an unchanged analysis does. The emitter's own script is not imported, so a name
+  at its top level that nothing in it reads is still unread; that holds of a module that
+  makes an emitter of its own, too, whoever imports it. Which file counts as imported is
+  told by its resolved path alone: any file whose path differs from the script's is one.
+  An analysis run from a temporary copy while the emitter names the original, or named in
+  another case on macOS, records nothing for a top-level parameter nobody reads, where it
+  was unread and failed.
 - **G15 reads two kinds of fit.** The statsmodels formula API in Python and `lm`/`glm` in R.
   Anything else (a Cox model, a mixed model, scikit-learn) cannot be recorded with
   `em.model` yet. A fit `data/models.yaml` has no entry for is a warning, and its outcome is
@@ -7122,11 +7166,17 @@ Closed since, and why each mattered:
   proportion are the prior weights, as `binomial()` defines them, and are read when they and
   the events are whole numbers. In both languages a 0/1 outcome with frequency weights is
   counted by its rows, not by its weights, and in R so is a table of proportions that are
-  all 0 or 1. A column of a grouped outcome may be declared `count` or `continuous`, since
+  all 0 or 1: `glm(p ~ x, binomial, weights = n)` with every `p` 0 or 1 records as events
+  the rows where `p` is 1, and no trials, where R's own likelihood counts `sum(p * n)`.
+  Python does the same with the trials as `var_weights`. A wrong number, if it is bound. A
+  column of a grouped outcome may be declared `count` or `continuous`, since
   the gate cannot tell a count from a proportion, so a count declared continuous passes. A
   text outcome of two levels, or a comparison as the outcome, reaches statsmodels as one
   column a level, and statsmodels takes the first level for the event: the card counts that
-  level, as the fit does.
+  level, as the fit does. R counts the level `glm` models, the second, so one analysis gives
+  other events in each language: for `I(score > 5)` Python counts the rows with
+  `score <= 5` and R those with `score > 5`. A proportion with weights has events and
+  trials in R and none in Python.
 - **A model's terms are those of its formula.** A variable transformed in the formula
   (`np.log(x)`) is recorded with its expression and checked as the variable it reads; one
   derived before the formula is a variable of its own, and must be declared as one. A
@@ -7141,7 +7191,11 @@ Closed since, and why each mattered:
   variable from an object of the script, so every name in the formula is recorded
   (`knots` in `splines::ns(x, knots = knots)`), and so it is where `data` is an
   environment. An `lm` keeps no copy of its data: a data frame replaced or changed between
-  the fit and `em$model()` is read as it now is. A level is written as Python prints it,
+  the fit and `em$model()` is read as it now is. Its `call$data` is evaluated in the
+  formula's environment, not the caller's: a formula made at the top level and fitted
+  inside a function on a local data frame named as one at the top level is checked against
+  the top level's columns, and a variable the analysis never declared can go unreported. A
+  level is written as Python prints it,
   an integer-valued float as the integer, except that a numpy float of another width
   (`float32`) handed to `values=` as an array keeps its `.0`.
 - **A word that changes the model is known from a list.** `data/models.yaml` lists the words
@@ -8819,7 +8873,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 22 broken rules, and the comparison on eleven
+  - The properties were seen to fail on 53 broken rules, and the comparison on eleven
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

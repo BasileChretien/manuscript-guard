@@ -24,7 +24,8 @@ schema: manuscript-guard/models/1
 # binding that misnames the model. So after one of these words the name is not read at all:
 # neither as the kind that was fitted nor as a model that was not. A word is matched as a
 # whole word in any case, with a space, a hyphen or a line break inside it either way
-# ("mixed effects"), and with a space, a hyphen or one line break after it.
+# ("mixed effects"), and with spaces or one line break after it, not a hyphen. A name
+# straight after a hyphen is not read as a name at all.
 #
 # Not here, on purpose, are the words that leave the model the fit it is: multivariable,
 # multivariate, univariable, adjusted, crude, weighted, stratified, and also modified and

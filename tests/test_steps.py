@@ -21,7 +21,13 @@ from manuscript_guard.cli import main
 from manuscript_guard.contracts import load_namespace, load_project
 from manuscript_guard.emit import Emitter
 from manuscript_guard.gates import check_methods, reconcile
-from manuscript_guard.gates.methods import anchored, claims_in, explain_methods, lock_path
+from manuscript_guard.gates.methods import (
+    anchor_lines,
+    anchored,
+    claims_in,
+    explain_methods,
+    lock_path,
+)
 from manuscript_guard.policy import BINDS_AT, INTERNAL_REVIEW
 from manuscript_guard.text.placeholders import parse, substitute
 
@@ -328,37 +334,17 @@ def test_a_project_with_no_steps_and_no_anchors_reads_as_before(tmp_path: Path) 
 @pytest.mark.parametrize(
     ("written", "printed"),
     [
-        ("A.\n{{method.a}}\nB. {{method.b}}\n", "A.\nB. \n"),
-        ("A.\n \t{{method.a}} {{method.b}}\t \nB.\n", "A.\nB.\n"),
-        ("A.\n{{method.a}}\n\nB.\n", "A.\n\nB.\n"),
-        ("A.\r\n{{method.a}}\r\nB.\r\n", "A.\r\nB.\r\n"),
-        ("A.\n{{method.a}}", "A.\n"),
-        ("A.\n{{\n  method.a\n}}\nB.\n", "A.\nB.\n"),
+        ("A.\n{{method.a}}\nB. {{method.b}}\n", "A.\n\nB. \n"),
+        ("A.\n{{method.a}} {{method.b}}\n\nB.\n", "A.\n \n\nB.\n"),
         ("A. {{method.a}}\nB.\n", "A. \nB.\n"),
-        ("A.\n{{method.a}} B.\n", "A.\n B.\n"),
-        ("A.\n{{method.a}} {{results.x}}\nB.\n", "A.\n 12\nB.\n"),
-        ("A.\n{{method.a}} <!-- a note -->\nB.\n", "A.\n <!-- a note -->\nB.\n"),
         ("A.\n<!-- {{method.a}} -->\nB.\n", "A.\n<!-- {{method.a}} -->\nB.\n"),
-        ("> A.\n> {{method.a}}\n> B.\n", "> A.\n> \n> B.\n"),
-        ("- A.\n- {{method.a}}\n", "- A.\n- \n"),
-        ("A.\n{{method.a}}\n## B\n", "A.\n## B\n"),
-        ("A.\n{{method.a}}\n- B\n", "A.\n- B\n"),
     ],
-    ids=[
-        "a line of its own", "two, with spaces", "ending the paragraph", "ended as Windows does",
-        "the last line, not ended", "written over three lines", "at the end of a line",
-        "opening a line", "beside a value", "beside a comment", "in a comment",
-        "behind a quotation's mark", "behind a list's mark",
-        "over a heading and no blank line", "over a list and no blank line",
-    ],
-)  # fmt: skip
-def test_a_line_of_nothing_but_anchors_prints_as_no_line(written: str, printed: str) -> None:
-    """An anchor on a line of its own left the line behind, empty, and an empty line ends a
-    paragraph. A line with anything else on it stays, less its anchors: what stands behind a
-    quotation's or a list's mark is not told from the mark, and that line is left too. The
-    last two are the limit DESIGN.md writes down: the anchors' line is no blank line, so what
-    needs one above it to be a heading or a list has to be given one."""
-    assert substitute(written, {"results.x": "12"}) == printed
+    ids=["a line of its own", "ending the paragraph", "at the end of a line", "in a comment"],
+)
+def test_an_anchor_prints_nothing_and_leaves_its_line(written: str, printed: str) -> None:
+    """A line of nothing but anchors prints as an empty line, which ends a paragraph:
+    `check` warns of it where the source has none (`method-anchor-line`)."""
+    assert substitute(written, {}) == printed
 
 
 INSIDE = (
@@ -366,9 +352,6 @@ INSIDE = (
     "The ratio was computed from two counts.\n{{method.ror}}\n"
     "Its standard error is half the usual one.\n{{method.ci}}\n\n"
     "# Results\n\nThe ratio was {{results.ror}}.\n"
-)
-ONE_PARAGRAPH = (
-    "The ratio was computed from two counts.\nIts standard error is half the usual one.\n\n"
 )
 
 
@@ -393,16 +376,17 @@ def _doors(root: Path) -> dict[str, str]:
     }
 
 
-def test_an_anchor_on_a_line_of_its_own_ends_no_paragraph_wherever_it_is_printed(
+def test_an_anchors_own_line_prints_as_an_empty_line_wherever_it_is_printed(
     tmp_path: Path,
 ) -> None:
     for door, printed in _doors(make(tmp_path, methods=INSIDE)).items():
-        assert ONE_PARAGRAPH in printed, (door, printed)
+        gap = printed[printed.index("two counts.") + 11 : printed.index("Its standard")]
+        assert gap.replace(" ", "").replace("\t", "") == "\n\n", (door, gap)
         assert "{{method" not in printed, door
 
 
 def _blocks_read(markdown: str) -> list:
-    """The blocks pandoc reads in `markdown`."""
+    """The kinds of block pandoc reads in `markdown`."""
     import json
     import subprocess
 
@@ -413,48 +397,80 @@ def _blocks_read(markdown: str) -> list:
         check=True,
         timeout=120,
     )
-    return json.loads(read.stdout)["blocks"]
-
-
-def _paragraphs_read(markdown: str) -> list[str]:
-    """The words of each paragraph pandoc reads in `markdown`."""
-
-    def words(inlines: list) -> str:
-        said = {"Space": " ", "SoftBreak": " "}
-        return "".join(
-            inline["c"] if inline["t"] == "Str" else said.get(inline["t"], "") for inline in inlines
-        )
-
-    return [words(block["c"]) for block in _blocks_read(markdown) if block["t"] == "Para"]
-
-
-@needs_pandoc
-def test_pandoc_reads_one_paragraph_where_the_source_has_one(tmp_path: Path) -> None:
-    for door, printed in _doors(make(tmp_path, methods=INSIDE)).items():
-        assert _paragraphs_read(printed)[0] == " ".join(ONE_PARAGRAPH.split()), door
+    return [block["t"] for block in json.loads(read.stdout)["blocks"]]
 
 
 @needs_pandoc
 @pytest.mark.parametrize(
-    "written",
+    ("written", "read"),
     [
-        "One.\n{{method.a}}\n\nTwo.\n",
-        "One.\n{{method.a}} {{method.b}}\n\n## Statistics\n\nTwo.\n",
-        "One.\n{{method.a}}\n\n- Two.\n",
-        "One.\r\n{{method.a}}\r\n\r\nTwo.\r\n",
-        "One.\n\nTwo.\n{{method.a}}",
+        ("One.\n{{method.a}}\nTwo.\n", ["Para", "Para"]),
+        ("One.\n{{method.a}}\n- two\n- three\n", ["Para", "BulletList"]),
+        ("One.\n{{method.a}}\n| a | b |\n|---|---|\n| 1 | 2 |\n", ["Para", "Table"]),
+        ("One.\n{{method.a}}\n## Two\n", ["Para", "Header"]),
     ],
-    ids=["a paragraph", "a heading", "a list", "ended as Windows does", "the file's last line"],
+    ids=["a sentence", "a list", "a pipe table", "a heading"],
 )
-def test_anchors_ending_a_paragraph_on_a_line_of_their_own_change_nothing_pandoc_reads(
-    written: str,
+def test_what_stands_under_an_anchors_own_line_prints_as_what_it_is(
+    written: str, read: list[str]
 ) -> None:
-    """The paragraph ended at the blank line under its anchors before the anchors' line
-    printed as none, and it ends there still."""
-    as_it_was = written
-    for anchor in reversed(parse(written)[0]):
-        as_it_was = as_it_was[: anchor.start] + as_it_was[anchor.end :]
-    assert _blocks_read(substitute(written, {})) == _blocks_read(as_it_was)
+    """The empty line ends the paragraph, so a list, a table or a heading under it is one in
+    the document, and a sentence under it is a paragraph of its own. Nothing tells which was
+    meant, and `check` warns of each."""
+    assert _blocks_read(substitute(written, {})) == read
+    assert anchor_lines(written) == [2]
+
+
+# ------------------------------------------------------------------- an anchor's own line
+
+
+@pytest.mark.parametrize(
+    ("written", "warned"),
+    [
+        ("A.\n{{method.a}}\nB. {{method.b}}\n", [2]),
+        ("A.\n{{method.a}}\n- b\n- c\n", [2]),
+        ("A.\n \t{{method.a}} {{method.b}}\t \nB.\n", [2]),
+        ("A.\r\n{{method.a}}\r\nB.\r\n", [2]),
+        ("A.\n<!-- a note -->\n{{method.a}}\nB.\n", [3]),
+        ("A.\n{{method.a}}\n## B\n", [2]),
+        ("A.\n{{method.a}}\n{{method.b}}\nC.\n", [2, 3]),
+        ("A.\n{{method.a}}\n\nB.\n", []),
+        ("A.\n{{method.a}}\r\n\r\nB.\r\n", []),
+        ("A.\n{{method.a}}", []),
+        ("A.\n{{method.a}}\n", []),
+        ("{{method.a}}\nA.\n", []),
+        ("A.\n\n{{method.a}}\nB.\n", []),
+        ("## A\n{{method.a}}\nB.\n", []),
+        ("> A.\n> {{method.a}}\n> B.\n", []),
+        ("- A.\n- {{method.a}}\n- B.\n", []),
+        ("A.\n{{method.a}} <!-- a note -->\nB.\n", []),
+        ("A.\n<!-- {{method.a}} -->\nB.\n", []),
+        ("A. {{method.a}}\nB.\n", []),
+        ("A.\n{{results.x}}\nB.\n", []),
+    ],
+    ids=[
+        "inside a paragraph", "over a list", "two, with spaces", "ended as Windows does",
+        "under a comment line", "over a heading", "two lines of them",
+        "ending its paragraph", "ending its paragraph, as Windows does", "the last line, not ended",
+        "the last line", "the first line", "opening its paragraph", "under a heading",
+        "behind a quotation's mark", "behind a list's mark", "beside a comment", "in a comment",
+        "at the end of a line", "a value's own line",
+    ],
+)  # fmt: skip
+def test_an_anchors_own_line_inside_a_paragraph_is_found(written: str, warned: list[int]) -> None:
+    assert anchor_lines(written) == warned
+
+
+def test_an_anchors_own_line_inside_a_paragraph_is_warned_at_every_stage(
+    tmp_path: Path,
+) -> None:
+    report = judged(make(tmp_path, methods=INSIDE))
+    found = [f for f in report.warnings if f.code == "method-anchor-line"]
+    assert [f.line for f in found] == [4], report.render(tmp_path)
+    assert "prints as an empty line" in found[0].message
+    assert "end of the line above" in found[0].hint and "blank line" in found[0].hint
+    assert "method-anchor-line" not in BINDS_AT, "a warning, whatever the stage"
+    assert not [f for f in judged(make(tmp_path / "b")).findings if f.code == "method-anchor-line"]
 
 
 # ------------------------------------------------------------------------ the gate, locked
@@ -742,29 +758,3 @@ def test_an_edit_in_word_comes_back_with_the_anchor_and_the_binding(
     paragraph = text[text.index("Intervals were derived") :].split("\n\n")[0]
     assert "{{results.param.alpha}}" in paragraph
     assert paragraph.rstrip().endswith(ends)
-
-
-@needs_pandoc
-def test_an_anchor_on_a_line_of_its_own_inside_a_paragraph_ends_none_in_the_document(
-    project: Path, tmp_path: Path, capsys
-) -> None:
-    """The example's paragraph with its first anchor on a line of its own, after the sentence
-    it is about. The built document ended a paragraph there. It is one paragraph, and an edit
-    to it in Word is refused as any edit to a paragraph with an anchor inside it is."""
-    source = project / "manuscript" / "main.md"
-    text = source.read_text(encoding="utf-8")
-    moved = text.replace("database. Confidence", "database.\n{{method.ror}}\nConfidence")
-    moved = moved.replace(ENDS, ENDS.replace(". {{method.ror}} ", ".\n"))
-    assert moved.count("{{method.ror}}") == 1 and "practice.\n{{method.ci}}" in moved
-    source.write_text(moved, encoding="utf-8", newline="")
-    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
-    document = project / "build" / "manuscript.docx"
-    xml = zipfile.ZipFile(document).read("word/document.xml").decode("utf-8")
-    first, second = xml.index("all other drugs in the"), xml.index("Confidence intervals were")
-    assert "</w:p>" not in xml[first:second]
-    returned = tmp_path / "returned.docx"
-    _reworded_in_word(document, returned, "Confidence intervals were", "Intervals were")
-    capsys.readouterr()
-    main(["import", str(returned), str(project), "--apply"])
-    assert "Methods anchor" in "".join(capsys.readouterr())
-    assert source.read_text(encoding="utf-8") == moved

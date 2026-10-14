@@ -40,7 +40,7 @@ from manuscript_guard.gates.numbers import is_supplementary, printed_order, sour
 from manuscript_guard.gates.reporting import checklist_path
 from manuscript_guard.paths import SHIPPED
 from manuscript_guard.text.masking import blank_comments
-from manuscript_guard.text.placeholders import anchor_cuts, parse, spliced
+from manuscript_guard.text.placeholders import parse
 
 FROM_PAPER = "title, short title, keywords, target journal, reporting guideline, English variant"
 
@@ -190,15 +190,14 @@ def _as_read(text: str, namespace: dict, results) -> tuple[str, int]:
     """
     text = blank_comments(strip_front_matter(text)[0])
     placeholders, _ = parse(text)
-    pieces = [(start, end, "") for start, end in anchor_cuts(text, placeholders)]
     missing = 0
-    for placeholder in placeholders:
+    for placeholder in sorted(placeholders, key=lambda p: p.start, reverse=True):
         replacement: str | None = None
         if placeholder.is_value:
             value = namespace.get(placeholder.ref)
             replacement = value.display if value is not None else None
         elif placeholder.is_anchor:
-            continue
+            replacement = ""
         elif placeholder.namespace == "table":
             table = results.tables.get(placeholder.key)
             replacement = render_table(table) if table is not None else None
@@ -207,8 +206,7 @@ def _as_read(text: str, namespace: dict, results) -> tuple[str, int]:
         if replacement is None:
             missing += 1
             continue
-        pieces.append((placeholder.start, placeholder.end, replacement))
-    text = spliced(text, pieces)
+        text = text[: placeholder.start] + replacement + text[placeholder.end :]
     # A blanked comment leaves its lines behind as spaces.
     lines = [line.rstrip() for line in text.splitlines()]
     return _BLANK_RUNS.sub("\n\n", "\n".join(lines)), missing

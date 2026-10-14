@@ -10047,6 +10047,16 @@ def test_a_step_read_before_any_file_was_is_still_held_to_its_code(project: Path
     assert [f.code for f in report.warnings] == ["methods-never-reconciled"]
 
 
+def test_an_anchor_moved_to_a_line_of_its_own_inside_a_paragraph_is_warned(project: Path) -> None:
+    """The example's first anchor, on a line of its own after the sentence it is about. The
+    line prints as an empty line, and the document ends the paragraph there."""
+    _replace_once(main_md(project), "database. Confidence", "database.\n{{method.ror}}\nConfidence")
+    _replace_once(main_md(project), "practice. {{method.ror}} {{method", "practice. {{method")
+    report = _methods_report(project)
+    found = [f for f in report.warnings if f.code == "method-anchor-line"]
+    assert [f.line for f in found] == [_line_of(project, "{{method.ror}}")], report.render(project)
+
+
 def test_a_comment_added_inside_a_step_leaves_its_pair_read(project: Path) -> None:
     _replace_once(_analysis(project), "        ror = (a / b) / (c / d)\n",
                   "        # the ratio of the two odds\n        ror = (a / b) / (c / d)\n")

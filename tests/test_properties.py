@@ -810,16 +810,21 @@ def test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph
 _ANCHOR_PLACES = (
     "a line of its own inside", "a line of its own at the end", "two lines of their own",
     "side by side on a line of their own", "the end of a line", "inside a line",
-    "under a heading", "nowhere",
+    "under a heading", "over a list", "opening its paragraph",
+    "under a heading, no blank line", "nowhere",
 )  # fmt: skip
 
 
 @st.composite
-def _anchored_methods(draw: st.DrawFn) -> tuple[str, list[str]]:
-    """A Methods section with an anchor in every place one stands, its words drawn each time,
-    and the words of each of its paragraphs, in order. Its lines end as Unix ends them or as
-    Windows does, and the last one may not be ended."""
-    names = (f"step{n}" for n in range(100))
+def _anchored_methods(draw: st.DrawFn) -> tuple[str, list[str], list[int]]:
+    """A Methods section with an anchor in every place one stands, its words drawn each time;
+    the words of each paragraph pandoc is to read in it as printed, in order; and the lines
+    of nothing but anchors that stand inside a paragraph, each of which ends one there. Its
+    lines end as Unix ends them or as Windows does, and the last one may not be ended."""
+    names = (f"step{n}" for n in range(1000))
+    lines: list[str] = ["# Methods"]
+    paragraphs: list[str] = []
+    inside: list[int] = []
 
     def sentence() -> str:
         said = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=5)))
@@ -828,31 +833,43 @@ def _anchored_methods(draw: st.DrawFn) -> tuple[str, list[str]]:
     def anchor() -> str:
         return f"{{{{method.{next(names)}}}}}"
 
-    blocks, paragraphs = ["# Methods"], []
+    def add(*block: str, splits: tuple[int, ...] = ()) -> None:
+        """A blank line, then `block`; `splits` are its lines that end a paragraph."""
+        lines.append("")
+        inside.extend(len(lines) + 1 + at for at in splits)
+        lines.extend(block)
+
     for place in draw(st.permutations(_ANCHOR_PLACES)):
         one, two = sentence(), sentence()
         pad = draw(st.sampled_from(("", " ", "\t", "  ")))
+        whole, apart, splits_before = [f"{one} {two}"], [one, two], len(inside)
         if place == "a line of its own inside":
-            block = f"{one}\n{pad}{anchor()}{pad}\n{two}"
+            add(one, f"{pad}{anchor()}{pad}", two, splits=(1,))
         elif place == "a line of its own at the end":
-            block = f"{one}\n{two}\n{anchor()}{pad}"
+            add(one, two, f"{anchor()}{pad}")
         elif place == "two lines of their own":
-            block = f"{one}\n{anchor()}\n{pad}{anchor()}\n{two} {anchor()}"
+            add(one, anchor(), f"{pad}{anchor()}", f"{two} {anchor()}", splits=(1, 2))
         elif place == "side by side on a line of their own":
-            block = f"{one}\n{anchor()}{pad}{anchor()}\n{two}"
+            add(one, f"{anchor()}{pad}{anchor()}", two, splits=(1,))
         elif place == "the end of a line":
-            block = f"{one} {anchor()}\n{two}"
+            add(f"{one} {anchor()}", two)
         elif place == "inside a line":
-            block = f"{one} {anchor()} {two}"
+            add(f"{one} {anchor()} {two}")
         elif place == "under a heading":
-            blocks.append(draw(st.sampled_from(_SUBHEADINGS)))
-            block = f"{one}\n{anchor()}\n{two}"
+            add(draw(st.sampled_from(_SUBHEADINGS)))
+            add(one, anchor(), two, splits=(1,))
+        elif place == "over a list":
+            add(one, anchor(), f"- {two}", splits=(1,))
+            apart = [one]  # the item is a list's, not a paragraph
+        elif place == "opening its paragraph":
+            add(anchor(), one, two)
+        elif place == "under a heading, no blank line":
+            add(draw(st.sampled_from(_SUBHEADINGS)), anchor(), one, two)
         else:
-            block = f"{one}\n{two}"
-        blocks.append(block)
-        paragraphs.append(f"{one} {two}")
-    text = "\n\n".join(blocks) + draw(st.sampled_from(("\n", "")))
-    return text.replace("\n", draw(st.sampled_from(("\n", "\r\n")))), paragraphs
+            add(one, two)
+        paragraphs += apart if len(inside) > splits_before else whole
+    text = "\n".join(lines) + draw(st.sampled_from(("\n", "")))
+    return text.replace("\n", draw(st.sampled_from(("\n", "\r\n")))), paragraphs, inside
 
 
 def _paragraphs_pandoc_reads(markdown: str) -> list[str]:
@@ -881,12 +898,16 @@ def _paragraphs_pandoc_reads(markdown: str) -> list[str]:
 
 
 @holds(40, _anchored_methods())
-def test_an_anchor_prints_nothing_and_ends_no_paragraph(planted: tuple[str, list[str]]) -> None:
-    """Pandoc reads as many paragraphs in the text as printed as the source has, each with
-    the words it has in the source: an anchor prints nothing wherever it stands, and a line
-    of nothing but anchors is no line, where an empty one would end the paragraph."""
-    text, paragraphs = planted
+def test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document(
+    planted: tuple[str, list[str], list[int]],
+) -> None:
+    """The warning names exactly the lines of nothing but anchors that make pandoc read
+    more paragraphs in the text as printed than the source has between its blank lines: one
+    inside a paragraph, and not one that opens or ends it, under a heading or not. Pandoc's
+    reading is held too, so that the lines the generator says end a paragraph do."""
+    text, paragraphs, inside = planted
     assert _paragraphs_pandoc_reads(placeholders.substitute(text, {})) == paragraphs, text
+    assert methods_gate.anchor_lines(text) == inside, text
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -1839,13 +1860,14 @@ def _an_anchor_in_a_comment_is_an_anchor(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(placeholders, "_without_comments", lambda text: text)
 
 
-def _an_anchors_own_line_is_left_empty(patch: pytest.MonkeyPatch) -> None:
-    """The rule as it was released: each anchor is taken out, and its line stays."""
-    patch.setattr(
-        placeholders,
-        "anchor_cuts",
-        lambda text, found: [(one.start, one.end) for one in found if one.is_anchor],
-    )
+def _the_line_below_an_anchors_line_is_not_looked_at(patch: pytest.MonkeyPatch) -> None:
+    real = methods_gate._inside
+    patch.setattr(methods_gate, "_inside", lambda above, below: real(above, "a line"))
+
+
+def _the_line_above_an_anchors_line_is_not_looked_at(patch: pytest.MonkeyPatch) -> None:
+    real = methods_gate._inside
+    patch.setattr(methods_gate, "_inside", lambda above, below: real("a line", below))
 
 
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
@@ -1899,9 +1921,13 @@ BROKEN = {
         _an_anchor_in_a_comment_is_an_anchor,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
     ),
-    "an anchor's own line is left behind, empty": (
-        _an_anchors_own_line_is_left_empty,
-        test_an_anchor_prints_nothing_and_ends_no_paragraph,
+    "the line below an anchor's own line is not looked at": (
+        _the_line_below_an_anchors_line_is_not_looked_at,
+        test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document,
+    ),
+    "the line above an anchor's own line is not looked at": (
+        _the_line_above_an_anchors_line_is_not_looked_at,
+        test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document,
     ),
     "a quotation is read as the paper's own words": (
         _a_quotation_is_the_papers_own,

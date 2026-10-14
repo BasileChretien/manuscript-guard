@@ -1357,13 +1357,17 @@ with em.step("ci"):                          # R: em$step("ci", { ... })
 ```
 
 The Methods end the text that describes it with `{{method.ci}}`, an anchor that prints nothing,
-in the document or the annotated copy, from `render`, or to a review panel. A line that holds
-nothing but anchors and spaces prints as no line at all. Such a line was first left behind
-empty, and an empty line ends a paragraph: with one sentence to a line and each anchor on the
-line under its sentence, the built document broke the paragraph in two where the source has
-one. The four that print a manuscript take out the same spans, from one rule
-(`placeholders.anchor_cuts`), and a property holds that pandoc reads the paragraphs of the
-printed text as the source has them.
+in the document or the annotated copy, from `render`, or to a review panel. Its line stays,
+so a line that holds nothing but anchors and spaces prints as an empty line, and an empty line
+ends a paragraph. Inside a paragraph, with one sentence to a line and an anchor on the line
+under its sentence, the document then breaks the paragraph in two where the source has one.
+`check` warns of each such line (`method-anchor-line`): one with a line of the paragraph above
+it and any line below it. The line was printed as no line for a while, and that turned a list
+or a table written directly under the anchors into running text, with nothing reported. What
+stands under the line cannot say whether the author meant a new block or the same paragraph,
+so the printing is left as it was and the author is told. A property holds that the lines
+warned of are exactly those after which pandoc reads a new paragraph that the source does not
+have.
 
 **What an anchor claims.** The text before it, back to the anchor before it or the start of
 its paragraph. A blank line or a heading starts a paragraph, and a comment on a line of its own
@@ -1405,6 +1409,8 @@ the step read first could change with nothing reported but that warning.
   text changed (the finding says what it was), or when it was never read. A second text
   pointing at a step is a pair never read, not the first one changed.
 - A step no text points at is a warning.
+- A line of nothing but anchors inside a paragraph is a warning at every stage,
+  `method-anchor-line`: the document ends the paragraph there.
 - A Methods paragraph that points at no step is counted, and listed by
   `manuscript-guard methods --explain`, not reported as a finding. A paragraph on ethics
   approval or on the data source has no step to point at, and a warning nobody can clear is
@@ -6984,15 +6990,15 @@ Closed since, and why each mattered:
   reports was counted", then "and the second. {{method.a}}", the claim is "and the second."
   and not the three lines. `check` passes it. The build does not: it asks pandoc, and stops
   with "pandoc reads as text ... the level-1 heading".
-- **The line of an anchor is no blank line.** A line of nothing but anchors prints as no
-  line, so what stands under it with no blank line between continues the paragraph, as it
-  would with that line deleted. "One.", then `{{method.a}}`, then "- two" prints as the
-  paragraph "One. - two", where 0.2.436 printed a list under a paragraph. A quotation, a
-  table or `{{table.key}}` directly under the anchors goes the same way, as each does under
-  a line of text, and nothing reports it. A heading there, "## Two", is reported: the build
-  stops, as above. Leave a blank line under the anchors where the paragraph ends.
-- **Behind a mark, an anchor's line is left.** `> {{method.a}}` between two lines of a
-  quotation prints as `> `, which ends the paragraph inside the quotation, and
+- **An anchor's own line inside a paragraph ends it in the document.** "One.", then
+  `{{method.a}}`, then "Two." is one paragraph to G9, which claims "One." for `a`, and two in
+  the document, since the anchor's line prints as an empty line. `check` warns of it,
+  `method-anchor-line`, and changes nothing: what stands under the line may be meant as a
+  block of its own, a list or a table, which the empty line makes one. An edit in Word to
+  either half is refused on import, as one to a paragraph with an anchor inside it is. Two
+  such lines one under the other are warned of twice.
+- **Behind a mark, an anchor's line is left, and not warned of.** `> {{method.a}}` between
+  two lines of a quotation prints as `> `, which ends the paragraph inside the quotation, and
   `- {{method.a}}` prints as an empty list item. Put the anchor at the end of the line above.
 - **Two anchors at the end of a line inside a paragraph break the line.** "One.
   {{method.a}} {{method.b}}" with "Two." on the next line prints "One." followed by two

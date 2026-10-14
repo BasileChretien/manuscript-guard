@@ -90,12 +90,13 @@ a paragraph with an anchor in the middle is refused and has to be made in the .m
 side by side claim the same text. Write the step's name out in the `with` statement; a step in
 a branch the run does not take is not recorded, and an anchor naming it fails.
 
-An anchor goes at the end of a line or on a line of its own. A line that holds nothing but
-anchors prints as no line at all, so it ends no paragraph: with one sentence to a line, the
-anchor can stand on the line under its sentence. It is not a blank line either. Leave a blank
-line under it where the paragraph ends, as under any last line: a list or a table directly
-under the anchor would print as running text. Keep anchors out of headings, where they claim
-nothing and are not checked, and off a line that holds only a quotation's `>` or a list's `-`.
+An anchor prints nothing, but its line stays: a line that holds nothing but anchors prints as
+an empty line, and an empty line ends a paragraph. So inside a paragraph, put the anchor at the
+end of the sentence's line, not on the line under it. On a line of its own it belongs only
+after the paragraph's last line. `check` warns of one inside a paragraph
+(`method-anchor-line`); if a new paragraph or a list is meant there, leave a blank line after
+the anchor. Keep anchors out of headings, where they claim nothing and are not checked, and off
+a line that holds only a quotation's `>` or a list's `-`.
 
 `manuscript-guard methods --explain` lists every claim beside the lines of its step, the
 Methods paragraphs that point at no step, and the steps nothing describes. Read each claim
@@ -116,7 +117,8 @@ text changed (`method-claim-changed`, which says what it was) or which was never
 (`method-pair-unread`), and names the paragraph to read again. A pair whose code and text both
 changed is reported as never read. A comment or a re-wrapped line inside a step changes
 nothing. `method-step-unknown` is an anchor naming no step the run recorded;
-`method-step-undescribed` is a step no text points at. The same rule holds as for the whole
+`method-step-undescribed` is a step no text points at, and `method-anchor-line` an anchor's own
+line inside a paragraph, both warnings. The same rule holds as for the whole
 file: reconcile a pair after you read it, never to clear the finding.
 
 ## Declaring the choices the code makes

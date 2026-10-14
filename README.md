@@ -136,7 +136,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G8 | one quantity is not emitted twice under two names |
 | G9 | the analysis has not changed since the Methods were last read against it, and, step by step, neither a marked step nor the text pointing at it has |
 | G10 | every figure has a current review by someone who looked at it |
-| G11 | a recorded panel has reviewed the manuscript, and its major findings are answered |
+| G11 | a recorded panel has reviewed the manuscript, its major findings are answered, and no reading was changed after it was sealed |
 | G12 | there was an analysis plan, and its sections say something |
 | G13 | every reviewer point is answered, and every claimed revision really happened |
 | G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, it is spelt in one English, and a P value, an interval and a percentage are each written one way (warnings only) |
@@ -257,7 +257,7 @@ number in the file and the rule that classified it.
 | `sync-bib` | rewrite `references.bib` from Zotero |
 | `methods` | check or record that the Methods were read against the code; `--explain` lists each claim beside the step that backs it |
 | `models` | print each fitted model as its card, with what G15 says of it |
-| `review` | show where the review panel stands; `--run` has it read by the models you list |
+| `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand |
 | `checker` | send a co-author one file of things to confirm, and record what they answered |
 | `import` | bring a co-author's Word edits back into the manuscript source |
 | `reworded` | check that an edit changed the wording and no binding, citation or typed number |

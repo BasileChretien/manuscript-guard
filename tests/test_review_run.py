@@ -176,6 +176,16 @@ def test_the_record_says_what_the_model_said_and_nothing_else(
         assert set(finding) == {"id", "severity", "where", "finding"}, "no answer is written"
 
 
+def test_every_reading_is_filed_sealed(unreviewed: Path, providers: Providers) -> None:
+    from manuscript_guard.gates.review import reading_digest
+
+    assert run(unreviewed, "--yes") == 0
+    for path in readings(unreviewed):
+        document = read_structured(path)
+        assert document["reading_sha256"] == reading_digest(document), path.name
+        assert "reading_sha256" in path.read_text(encoding="utf-8").split("provenance:")[0]
+
+
 def test_the_record_carries_the_digests_of_what_was_sent(
     unreviewed: Path, providers: Providers
 ) -> None:
@@ -270,13 +280,14 @@ def test_a_major_finding_from_a_model_blocks_until_it_is_answered(
 def test_the_second_round_is_a_different_panel_and_is_blinded(
     unreviewed: Path, providers: Providers
 ) -> None:
+    # The marker is what round one's readers said: a filed reading is sealed, so it is put
+    # in their replies rather than written into the records afterwards.
+    marked = [{"severity": "minor", "where": "Abstract", "finding": "ZZ-ROUND-ONE-ZZ"}]
+    providers.default = lambda request: answer(reply_text(findings=marked))
     assert run(unreviewed, "--yes") == 0
     for path in readings(unreviewed):
-        path.write_text(
-            path.read_text(encoding="utf-8").replace("Say synthetic.", "ZZ-ROUND-ONE-ZZ"),
-            encoding="utf-8",
-            newline="\n",
-        )
+        assert "ZZ-ROUND-ONE-ZZ" in path.read_text(encoding="utf-8")
+    providers.default = lambda request: answer(reply_text())
     providers.requests.clear()
 
     assert run(unreviewed, "--yes") == 0, "with round one read, a run goes on to round two"

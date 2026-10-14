@@ -151,7 +151,7 @@ Each finding names a code. The code says where to go:
 | `figure-unreviewed`, `figure-review-stale` | [figure-review](../figure-review/SKILL.md) |
 | `journal-profile-missing`, `over-journal-limit`, `missing-required-*` | [journal-profile](../journal-profile/SKILL.md) |
 | `checklist-*` | [reporting-checklist](../reporting-checklist/SKILL.md) |
-| `no-review`, `review-missing`, `reading-missing`, `reading-misfiled`, `reading-unreadable`, `review-stale`, `open-major-finding` | [review-panel](../review-panel/SKILL.md) |
+| `no-review`, `review-missing`, `reading-missing`, `reading-misfiled`, `reading-unreadable`, `reading-altered`, `reading-unsealed`, `review-stale`, `open-major-finding` | [review-panel](../review-panel/SKILL.md) |
 | a co-author should check what no gate can | [co-author-checking](../co-author-checking/SKILL.md) |
 | a co-author's edited .docx | [word-roundtrip](../word-roundtrip/SKILL.md) |
 | `point-unanswered`, `claimed-change-*` | [reviewer-response](../reviewer-response/SKILL.md) |

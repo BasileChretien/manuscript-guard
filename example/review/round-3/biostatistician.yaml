@@ -38,3 +38,4 @@ findings:
   finding: The interval uses 1.96 for an alpha of 0.05, the normal quantile to two places.
     That is the usual Wald interval and matches every bound reported; the round-one point
     about naming it Wald was left deliberately and I see no reason to reopen it.
+reading_sha256: c9384616f3d1932c6a954ace3d5e623f864b3df8cb63381ef4b89bc27e6b33ba

@@ -21,3 +21,4 @@ findings:
   finding: The reporting year is still neither used nor discussed. Calendar time is a common
     adjustment in disproportionality analyses, and one sentence saying why it was left out
     would do; here the generator draws the year independently of the drug.
+reading_sha256: 0e8c23707d7a0698240b984601e79d8c1d45fe4250f8a1ebede60e988073d063

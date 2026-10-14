@@ -1,6 +1,6 @@
 ---
 name: review-panel
-description: Assemble a review panel for a manuscript, have it read by an agent, by people or by models from several providers, and record the readings. Use before submission, when check reports no-review, review-missing or reading-missing, or when a round is complete and a second is due.
+description: Assemble a review panel for a manuscript, have it read by an agent, by people or by models from several providers, and record the readings. Use before submission, when check reports no-review, review-missing, reading-missing, reading-altered or reading-unsealed, or when a round is complete and a second is due.
 ---
 
 # Reviewing a manuscript before a journal does
@@ -69,7 +69,18 @@ that somebody looked. `--by` names who did the reading and defaults to the revie
 command refuses to overwrite a record, so a second reading of a changed manuscript is a
 further round (step 3).
 
-Then add the findings to the file. If the manuscript is split across several files and this
+Then add the findings to the file, and seal it once they are all there:
+
+```bash
+manuscript-guard review --seal <reviewer-id> --round <n>   # --reading "<who>" for a named reading
+```
+
+The seal is a digest of what the reader wrote: the verdict, the summary, the rejection tests
+and each finding. Answering a finding later is not covered by it; changing what the reader
+wrote is, and `check` reports that as `reading-altered`. Seal what the reader wrote, not a
+version you have tidied. A reading is sealed once.
+
+If the manuscript is split across several files and this
 reviewer read only some of them, delete the other files' lines under `file_sha256`, so that a
 later edit elsewhere does not void their work. `manuscript-guard review --files` prints those
 lines, and `--digest` prints the digest of the whole manuscript, if you want to compare.
@@ -130,8 +141,9 @@ numbers and tables as a reader sees them, and that reviewer's role and remit. Fi
 not sent, so a model's reading says nothing about them. The authors, the results files and
 the earlier rounds are not sent either.
 
-A model's record is filed with its findings numbered and none answered. Do not answer them
-for the author, and do not edit what the model said: the record is what that reader found.
+A model's record is filed with its findings numbered and none answered, and sealed. Do not
+answer them for the author, and do not edit what the model said: the record is what that
+reader found, and an edit to it is `reading-altered`.
 
 ## Severity means something
 

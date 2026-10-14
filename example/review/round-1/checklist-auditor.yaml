@@ -31,3 +31,4 @@ findings:
   where: reporting/DEMO-OBS.yaml
   finding: 'Item 10 points at "Funding", which exists and states there was none. Correct:
     a funding statement saying there was no funding is an answer, not a blank.'
+reading_sha256: 81a34af2ed1e856a292c2d70b2a92f4c903a2a6320c36482920e139b7732626a

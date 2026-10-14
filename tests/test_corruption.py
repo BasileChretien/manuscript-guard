@@ -1161,6 +1161,17 @@ def test_a_pointer_to_what_the_document_does_not_carry_is_said(
     assert f"points at {names}," in said[0][1], said
 
 
+def test_a_pointer_to_nothing_fails_from_the_internal_review(project: Path) -> None:
+    """Basile's choice on 2026-10-14: while the draft is written its tables move."""
+    from manuscript_guard.cli import _run_gates
+
+    _add_to_results(project, "As Table 9 shows.")
+    drafting, *_ = _run_gates(project, stage="drafting")
+    assert [f.severity for f in drafting.findings if f.code == "pointer-to-nothing"] == ["info"]
+    reviewing, *_ = _run_gates(project, stage="internal-review")
+    assert "pointer-to-nothing" in codes(reviewing)
+
+
 def test_tables_first_cited_out_of_order_are_said(project: Path) -> None:
     _add_to_results(project, "Table 2 has the counts.")
     main = main_md(project)

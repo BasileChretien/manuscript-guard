@@ -347,8 +347,9 @@ excluded, as Table 4000 and Figure 9 show" passed whole, a count hidden behind "
 two pointers at nothing. The example called its two tables "Table 2" and "Table 3" from the
 day its first table moved to the supplement as Table S1, and nothing said so: the build
 prints a table's caption as written and numbers nothing. LaTeX refuses a `\ref` to a label
-nobody defined; G2 now does the same for a pointer typed as text, as a warning while its
-stage is decided.
+nobody defined; G2 now does the same for a pointer typed as text. Each finding fails from
+the internal-review stage, Basile's choice on 2026-10-14: while the draft is written its
+tables move and are numbered again.
 
 What the document carries is counted where the build prints it, in the order the files
 print: each table placed by `{{table.<key>}}` or written by hand as a pipe table, and each

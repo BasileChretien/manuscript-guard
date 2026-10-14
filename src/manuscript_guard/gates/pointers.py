@@ -17,6 +17,9 @@ The main text's tables and figures are also held to the order ICMJE asks for: ea
 least once, and numbered in the order they are first cited ("Number tables consecutively in
 the order of their first citation in the text", icmje.org, Preparing for Submission, read
 2026-10-14). The supplement has no such rule there, and none is applied to it.
+
+Each finding fails from the internal-review stage, Basile's choice on 2026-10-14: while the
+draft is written its tables move and are numbered again, and a failure then is noise.
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.findings import Finding, Report
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
 from manuscript_guard.text.blocks import find_headings, scannable
 from manuscript_guard.text.masking import without_front_matter
@@ -158,7 +161,6 @@ def check_pointers(project: Project) -> Report:
             Finding(
                 gate=GATE,
                 code="pointer-to-nothing",
-                severity=WARN,
                 message=f"{pointer.shown!r} points at {pointer.kind} "
                 f"{'S' if pointer.supplementary else ''}{pointer.number}, and {where} "
                 f"places {has}",
@@ -199,7 +201,6 @@ def _in_order(
                     Finding(
                         gate=GATE,
                         code="cited-out-of-order",
-                        severity=WARN,
                         message=f"{kind.capitalize()} {number} is first cited before "
                         f"{kind} {expected}",
                         path=pointer.path,
@@ -216,7 +217,6 @@ def _in_order(
                     Finding(
                         gate=GATE,
                         code="display-not-cited",
-                        severity=WARN,
                         message=f"{kind.capitalize()} {number} is placed in the main text and "
                         "cited nowhere",
                         path=root,

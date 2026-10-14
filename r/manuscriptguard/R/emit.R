@@ -359,28 +359,15 @@ mg_git <- function(root, args) {
   if (is.null(out) || length(out) == 0) NULL else trimws(paste(out, collapse = "\n"))
 }
 
-#' Create a results emitter
-#'
-#' The only supported way for an R analysis to publish a number.
-#'
-#' @param script Path to the analysis script. Inside a script, pass its own path.
-#' @param inputs Character vector of data files read, project-relative or absolute.
-#' @param root Project root. Detected from `script` when omitted.
-#' @return A list of functions: `value()`, `interval()`, `cell()`, `table()`, `code_list()`,
-#'   `add_input()`, `write()`.
-#' @examples
-#' \dontrun{
-#' em <- mg_emitter("analysis/01_model.R", inputs = "data/reports.csv")
-#' em$value("cohort.n_reports", 4000L)
-#' em$interval("ror", 3.8439, 2.1032, 7.0210, digits = 2)
-#' em$write()
-#' }
-#' @export
-# Whether the value `parameter(key, ...)` hands back is read again by the script, mirroring
+# Whether the value `parameter(key, ...)` hands back is read again by the script, after
 # the Python emitter's `parameter_read`. FALSE when the call is a statement of its own or
 # assigns a name no other line reads; TRUE when the name is read, or when the call sits inside
 # a larger expression. NULL when the script cannot be parsed, the call is not found, or the
-# value goes somewhere this does not follow. A name read again is all this establishes.
+# value goes somewhere this does not follow: a list or an environment, or out of a block as
+# its last expression. A name read again is all this establishes.
+# Looser than the Python rule, and DESIGN.md says so: the name is looked for as a symbol
+# anywhere in the file and not in the scope that assigned it, and a call with no braces
+# round it, after `if (x)`, sits inside a larger expression.
 mg_parameter_read <- function(path, key) {
   parsed <- tryCatch(parse(path, keep.source = TRUE), error = function(e) NULL)
   if (is.null(parsed)) return(NULL)
@@ -404,8 +391,10 @@ mg_parameter_read <- function(path, key) {
   if (around == 0) return(FALSE)
   siblings <- children(around)
   if ("'{'" %in% siblings$token) {
-    # The last expression of a block is its value, which a function returns.
-    exprs <- siblings$id[siblings$token != "'{'" & siblings$token != "'}'"]
+    # The last expression of a block is its value, which a function returns. A comment is
+    # a row of the block too: one typed after the last expression made it not the last, and
+    # a parameter a function returns was recorded as never read.
+    exprs <- siblings$id[!siblings$terminal]
     return(if (utils::tail(exprs, 1) == call) NULL else FALSE)
   }
   arrows <- c("LEFT_ASSIGN", "EQ_ASSIGN", "RIGHT_ASSIGN")
@@ -557,6 +546,23 @@ mg_read_fit <- function(fit) {
   card
 }
 
+#' Create a results emitter
+#'
+#' The only supported way for an R analysis to publish a number.
+#'
+#' @param script Path to the analysis script. Inside a script, pass its own path.
+#' @param inputs Character vector of data files read, project-relative or absolute.
+#' @param root Project root. Detected from `script` when omitted.
+#' @return A list of functions: `value()`, `interval()`, `cell()`, `table()`, `code_list()`,
+#'   `add_input()`, `write()`.
+#' @examples
+#' \dontrun{
+#' em <- mg_emitter("analysis/01_model.R", inputs = "data/reports.csv")
+#' em$value("cohort.n_reports", 4000L)
+#' em$interval("ror", 3.8439, 2.1032, 7.0210, digits = 2)
+#' em$write()
+#' }
+#' @export
 mg_emitter <- function(script, inputs = character(), root = NULL) {
   script_path <- normalizePath(script, winslash = "/", mustWork = TRUE)
   project_root <- if (is.null(root)) mg_find_root(dirname(script_path)) else normalizePath(root, winslash = "/")

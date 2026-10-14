@@ -9936,6 +9936,125 @@ def test_a_parameter_equal_to_a_name_is_not_a_typed_threshold(project: Path) -> 
     assert "typed-parameter" not in codes(gate_report(project))
 
 
+_CRITERION = "interval of the reporting odds ratio above 1."
+_OMEGA = "\N{GREEK CAPITAL LETTER OMEGA}"
+_AT_LEAST = "\N{GREATER-THAN OR EQUAL TO}"
+
+
+def _declare_a_parameter_of(root: Path, value: int) -> None:
+    _replace_once(
+        _analysis(root),
+        '    min_cases = em.parameter("signal.min_cases", 3)\n',
+        '    min_cases = em.parameter("signal.min_cases", 3)\n'
+        f'    other = em.parameter("other", {value})\n'
+        f"    assert other == {value}\n",
+    )
+    _rerun_disproportionality(root)
+
+
+@pytest.mark.parametrize(
+    ("typed", "name", "digits", "threshold"),
+    [
+        ("I2 > 50%", "I2", 2, "50%"),
+        (f"X2 {_AT_LEAST} 4", "X2", 2, "4"),
+        (f"{_OMEGA}025 > 0", f"{_OMEGA}025", 25, "0"),
+    ],
+)
+def test_the_name_of_a_statistic_is_no_threshold_whatever_its_digits_equal(
+    project: Path, typed: str, name: str, digits: int, threshold: str
+) -> None:
+    """The convention that accepts a published criterion covers the statistic's name with
+    its threshold. The name was read from its first digit: with a parameter of 2 declared,
+    `I2` failed as a typed copy of it, and with none it was a threshold no parameter has.
+    Only the threshold beside the name is one."""
+    _declare_a_parameter_of(project, digits)
+    _replace_once(main_md(project), _CRITERION, f"{_CRITERION} Another rule asked for {typed}.")
+    report = gate_report(project)
+    said = [
+        (f.code, f.message.split()[0])
+        for f in report.findings
+        if f.code in ("typed-parameter", "threshold-undeclared")
+    ]
+    assert said == [("threshold-undeclared", repr(threshold))], report.render(project)
+    assert not any(repr(name) in f.message for f in report.findings), report.render(project)
+
+
+def test_a_threshold_typed_against_the_name_of_its_statistic_is_still_read(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`I2>50%` is one atom. Its name states nothing and its 50 is the threshold, as the
+    0.05 of `P<0.05` is: a declared parameter of 50 makes it a typed copy, in `check` and
+    in `explain`, and the name alone is passed by both."""
+    from manuscript_guard.cli import main
+
+    _declare_a_parameter_of(project, 50)
+    _replace_once(
+        main_md(project),
+        _CRITERION,
+        f"{_CRITERION} One rule asked for I2>50% and another for I2 > 75%.",
+    )
+    report = gate_report(project)
+    said = [
+        (f.code, f.message.split()[0])
+        for f in report.findings
+        if f.code in ("typed-parameter", "threshold-undeclared")
+    ]
+    assert said == [("typed-parameter", "'I2>50%'"), ("threshold-undeclared", "'75%'")]
+    typed = next(f for f in report.failures if f.code == "typed-parameter")
+    assert "{{results.param.other}}" in typed.hint
+
+    main(["explain", str(main_md(project))])
+    rows = {line.split()[2]: line for line in capsys.readouterr().out.splitlines()}
+    assert rows["I2>50%"].startswith("FAIL") and "typed: write" in rows["I2>50%"]
+    assert rows["I2"].startswith("ok") and "typed" not in rows["I2"], rows["I2"]
+
+
+@pytest.mark.parametrize(
+    ("atom", "figure", "states"),
+    [
+        # A figure typed against a letter is part of a name.
+        ("I2", None, None),
+        ("X2", None, None),
+        ("R2", None, None),
+        ("IC025", None, None),
+        ("EB05", None, None),
+        ("\N{GREEK SMALL LETTER CHI}2", None, None),
+        (f"{_OMEGA}025", None, None),
+        ("omega025", None, None),
+        # A figure after anything else is the atom's own.
+        ("0.05", "0.05", 0.05),
+        (".05", ".05", 0.05),
+        ("P<0.05", "0.05", 0.05),
+        ("p<.05", ".05", 0.05),
+        ("n=3", "3", 3),
+        (f"{_AT_LEAST}3", "3", 3),
+        ("=3", "3", 3),
+        ("50%", "50%", 50),
+        ("alpha=0.05", "0.05", 0.05),
+        ("\N{GREEK SMALL LETTER ALPHA}=0.05", "0.05", 0.05),
+        ("SMD<0.1", "0.1", 0.1),
+        ("PRR>2", "2", 2),
+        ("1,000", "1,000", 1000),
+        # After a name in the same atom, too.
+        ("I2>50%", "50%", 50),
+        ("IC025>0", "0", 0),
+        (f"\N{GREEK SMALL LETTER CHI}2{_AT_LEAST}4", "4", 4),
+        # A figure of its own that is not one number: a threshold still, and equal to none.
+        ("1:1", "1:1", None),
+        # The limit DESIGN.md writes down: a threshold typed against the word before it.
+        ("power80%", None, None),
+        ("caliper0.2", None, None),
+    ],
+)
+def test_a_figure_typed_against_a_letter_is_part_of_a_name(
+    atom: str, figure: str | None, states: float | None
+) -> None:
+    from manuscript_guard.gates.numbers import own_figure, stated_number
+
+    assert own_figure(atom) == figure
+    assert stated_number(atom) == states
+
+
 def test_explain_says_a_declared_threshold_is_typed(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

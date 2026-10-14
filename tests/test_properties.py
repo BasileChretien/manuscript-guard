@@ -571,17 +571,25 @@ def _seen_and_judged(text: str) -> None:
 # ------------------------------------------------------------------------------ parameters
 
 #: What an analysis declares in the property below: a threshold, a count, a version, and a
-#: parameter that equals the name of a structure.
+#: parameter that equals the name of a structure. The last equals the 25 of a threshold and
+#: of the name of a statistic, `Ω025`, as the 2 above equals the 2 of `I2`.
 _DECLARED = (
     Value("param.alpha", 0.05, "0.05", RESULTS, role="parameter", read=True),
     Value("param.signal.min_cases", 3, "3", RESULTS, role="parameter", read=True),
     Value("param.rows", 2, "2", RESULTS, role="parameter", read=True),
     Value("software.r", "4.6.0", "4.6.0", RESULTS, label=True, role="software"),
+    Value("param.heterogeneity", 25, "25", RESULTS, role="parameter", read=True),
 )
+
+#: In place of a key: a threshold typed in the Methods that no declared parameter equals,
+#: which G2 names as `threshold-undeclared`.
+_NO_PARAMETER = "a threshold no parameter has"
 
 #: One of every kind G2 reads a typed parameter in, with `|` where its atom starts, the key it
 #: states, and whether it is a version, which is read wherever it stands. A threshold is
 #: read in the Methods alone, and `2 x 2` is read nowhere, whatever a parameter equals.
+#: Nor is the name of a statistic, whose figure is typed against a letter of any alphabet:
+#: the threshold beside it is read, in an atom of its own or in the name's.
 _TYPED = (
     ("an alpha of |0.05", "param.alpha", False),
     ("p < |.05", "param.alpha", False),
@@ -589,6 +597,10 @@ _TYPED = (
     ("at least |3 cases", "param.signal.min_cases", False),
     ("R |4.6.0", "software.r", True),
     ("a |2 x 2 table", None, False),
+    ("I2 > |25%", "param.heterogeneity", False),
+    ("|I2>25%", "param.heterogeneity", False),
+    ("\N{GREEK CAPITAL LETTER OMEGA}025 > |0", _NO_PARAMETER, False),
+    ("matched |1:1", _NO_PARAMETER, False),
 )
 
 _METHODS_HEADINGS = ("# Methods", "# Materials and methods", "# Methods\n\n## Statistical analysis")
@@ -632,8 +644,10 @@ def test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not(
 ) -> None:
     """A threshold the analysis declares is found typed in the Methods, written with or
     without its nought and with or without spaces round its comparison, and a declared
-    version wherever it stands. Nothing else is: not the same threshold in the Results,
-    where it is no convention, and not the `2` of a `2 x 2` table that equals a parameter."""
+    version wherever it stands. A threshold there that equals no parameter is found as
+    one. Nothing else is: not the same threshold in the Results, where it is no convention,
+    not the `2` of a `2 x 2` table that equals a parameter, and not the name of a statistic
+    whose digits equal one, which the convention accepts with the threshold beside it."""
     text, expected = planted
     headings, notes = heading_index(text), footnote_index(text)
     scan = CLASSIFIER.scan(text)
@@ -644,6 +658,8 @@ def test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not(
         typed = numbers_gate.typed_choice(atom.text, verdict, list(_DECLARED), chosen)
         if typed is not None:
             found.add((atom.line, atom.col, typed.key))
+        elif numbers_gate.typed_threshold(atom.text, verdict, chosen):
+            found.add((atom.line, atom.col, _NO_PARAMETER))
     assert found == expected, text
 
 
@@ -1606,6 +1622,41 @@ def _a_figure_without_its_nought_is_not_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(numbers_gate, "stated_number", stated)
 
 
+def _the_digits_of_a_name_are_its_figure(patch: pytest.MonkeyPatch) -> None:
+    def own(text: str) -> str | None:
+        at = re.search(r"\d|\.\d", text)
+        return None if at is None else text[at.start() :]
+
+    patch.setattr(numbers_gate, "own_figure", own)
+
+
+def _an_atom_that_opens_with_a_name_states_nothing(patch: pytest.MonkeyPatch) -> None:
+    def own(text: str) -> str | None:
+        at = re.search(r"\d|\.\d", text)
+        if at is None or text[: at.start()][-1:].isalpha():
+            return None
+        return text[at.start() :]
+
+    patch.setattr(numbers_gate, "own_figure", own)
+
+
+def _only_a_latin_letter_makes_a_name(patch: pytest.MonkeyPatch) -> None:
+    def own(text: str) -> str | None:
+        for figure in re.finditer(r"\d[\d.,]*|\.\d+", text):
+            if not re.fullmatch(r"[A-Za-z]", text[: figure.start()][-1:]):
+                return text[figure.start() :]
+        return None
+
+    patch.setattr(numbers_gate, "own_figure", own)
+
+
+def _a_name_is_a_threshold_like_the_figure_beside_it(patch: pytest.MonkeyPatch) -> None:
+    def threshold(text: str, verdict: Any, chosen: frozenset[str]) -> bool:
+        return verdict.kind == CONVENTION and verdict.rule in chosen
+
+    patch.setattr(numbers_gate, "typed_threshold", threshold)
+
+
 def _a_nought_is_trimmed_off_a_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(tokens, "_TRAIL", tokens._TRAIL + "0")
 
@@ -1868,6 +1919,22 @@ BROKEN = {
     ),
     "a typed parameter written without its nought is not read": (
         _a_figure_without_its_nought_is_not_read,
+        test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "the digits in the name of a statistic are read as its figure": (
+        _the_digits_of_a_name_are_its_figure,
+        test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "an atom that opens with the name of a statistic states no number": (
+        _an_atom_that_opens_with_a_name_states_nothing,
+        test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "only a letter of the Latin alphabet makes a figure part of a name": (
+        _only_a_latin_letter_makes_a_name,
+        test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "the name of a statistic is a threshold like the figure beside it": (
+        _a_name_is_a_threshold_like_the_figure_beside_it,
         test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
     ),
     "a nought is trimmed off a number": (

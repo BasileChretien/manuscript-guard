@@ -790,6 +790,14 @@ def test_a_parameter_still_rounds_when_asked(scratch: Path) -> None:
         'def f():\n    min_cases = em.parameter("signal.min_cases", 3)\n'
         "def g(min_cases=0):\n    return 1\n"
         "f()\n",
+        # A local name, in a function that declares another one global.
+        "def f():\n    global other\n    other = 1\n"
+        '    min_cases = em.parameter("signal.min_cases", 3)\n'
+        "f()\n",
+        # A local name, where a function inside declares its own of that spelling global.
+        'def f():\n    min_cases = em.parameter("signal.min_cases", 3)\n'
+        "    def g():\n        global min_cases\n"
+        "f()\n",
     ],
 )
 def test_a_parameter_declared_and_never_read_says_so(scratch: Path, body: str) -> None:
@@ -804,22 +812,132 @@ def test_a_parameter_declared_and_never_read_says_so(scratch: Path, body: str) -
         'def f():\n    min_cases = em.parameter("signal.min_cases", 3)\n    return min_cases\n'
         "f()\n",
         'if (min_cases := em.parameter("signal.min_cases", 3)) > 0:\n    pass\n',
+        # Named at the top of the script, and read inside a function.
+        'min_cases = em.parameter("signal.min_cases", 3)\n'
+        "def f():\n    return 5 >= min_cases\n"
+        "f()\n",
+        # Named in a method, which is a function like any other.
+        "class Rule:\n    def applies(self):\n"
+        '        min_cases = em.parameter("signal.min_cases", 3)\n'
+        "        return 5 >= min_cases\n"
+        "Rule().applies()\n",
+        'signal = max(em.parameter("signal.min_cases", 3), 1)\n',
     ],
 )
 def test_a_parameter_read_again_says_so(scratch: Path, body: str) -> None:
     assert _run(scratch, body)["param.signal.min_cases"]["read"] is True
 
 
-def test_where_a_parameter_goes_unfollowed_nothing_is_claimed(scratch: Path) -> None:
-    """An attribute is a place the reading does not follow, so it records nothing rather
-    than a guess either way."""
-    values = _run(
-        scratch,
+@pytest.mark.parametrize(
+    "body",
+    [
         "class Settings:\n    pass\n"
         "settings = Settings()\n"
         'settings.min_cases = em.parameter("signal.min_cases", 3)\n',
+        # Kept on a class, and read from outside it as the class's attribute. The name was
+        # looked for in the whole script, where nothing reads it as a name.
+        'class Settings:\n    MIN_CASES = em.parameter("signal.min_cases", 3)\n'
+        "signal = 5 >= Settings.MIN_CASES\n",
+        # Assigned as a global by a function, and read outside it.
+        "def setup():\n    global min_cases\n"
+        '    min_cases = em.parameter("signal.min_cases", 3)\n'
+        "setup()\nsignal = 5 >= min_cases\n",
+        "def outer():\n    min_cases = 0\n"
+        "    def inner():\n        nonlocal min_cases\n"
+        '        min_cases = em.parameter("signal.min_cases", 3)\n'
+        "    inner()\n    return 5 >= min_cases\n"
+        "outer()\n",
+        # Into a tuple, a list, a set or a dictionary written round the call.
+        'alpha, min_cases = 0.05, em.parameter("signal.min_cases", 3)\n',
+        'levels = [em.parameter("signal.min_cases", 3)]\n',
+        'levels = {em.parameter("signal.min_cases", 3)}\n',
+        'levels = {"min_cases": em.parameter("signal.min_cases", 3)}\n',
+    ],
+)
+def test_where_a_parameter_goes_unfollowed_nothing_is_claimed(scratch: Path, body: str) -> None:
+    """An attribute, a class's own name, a name of another scope and a tuple are places the
+    reading does not follow, so it records nothing rather than a guess either way."""
+    assert "read" not in _run(scratch, body)["param.signal.min_cases"]
+
+
+def test_two_parameters_declared_on_one_line_into_a_tuple_claim_nothing(scratch: Path) -> None:
+    """`a, b = em.parameter(...), em.parameter(...)` was recorded as read for both, since
+    each call sits inside the tuple, and neither name need be read."""
+    values = _run(scratch, 'a, b = em.parameter("a", 1), em.parameter("b", 2)\n')
+    assert "read" not in values["param.a"] and "read" not in values["param.b"]
+
+
+def _run_beside_settings(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch, settings: str, body: str
+) -> dict:
+    """Run `body` as the project's analysis script beside a module `settings.py` it imports,
+    which holds `settings` and declares on the script's emitter, and return the values."""
+    import runpy
+    import sys
+
+    analysis = scratch / "analysis"
+    (analysis / "shared.py").write_text("em = None\n", encoding="utf-8")
+    (analysis / "settings.py").write_text("from shared import em\n" + settings, encoding="utf-8")
+    (analysis / "run.py").write_text(
+        "import shared\n"
+        "from manuscript_guard.emit import Emitter\n"
+        "em = shared.em = Emitter(__file__)\n"
+        "import settings\n" + body + "em.write()\n",
+        encoding="utf-8",
     )
+    monkeypatch.syspath_prepend(str(analysis))
+    try:
+        runpy.run_path(str(analysis / "run.py"), run_name="__main__")
+    finally:
+        for module in ("shared", "settings"):
+            sys.modules.pop(module, None)
+    return json.loads((scratch / "results" / "run.json").read_text(encoding="utf-8"))["values"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "signal = 5 >= settings.MIN_CASES\n",
+        "from settings import MIN_CASES\nsignal = 5 >= MIN_CASES\n",
+    ],
+)
+def test_a_name_at_the_top_of_a_module_the_script_imports_claims_nothing(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch, body: str
+) -> None:
+    """Other files read a module's names as its attributes, which the reading of the module
+    does not follow. Looked for in the module alone, a threshold kept in a shared
+    `settings.py` and applied by the script was recorded as never read, and failed."""
+    declared = 'MIN_CASES = em.parameter("signal.min_cases", 3)\n'
+    values = _run_beside_settings(scratch, monkeypatch, declared, body)
     assert "read" not in values["param.signal.min_cases"]
+
+
+@pytest.mark.parametrize(
+    ("settings", "body", "read"),
+    [
+        # In the script the emitter was given, which nothing imports: unread, as before.
+        ("", 'MIN_CASES = em.parameter("signal.min_cases", 3)\n', False),
+        # In a function of the module, where the name is the function's own.
+        (
+            'def declare():\n    min_cases = em.parameter("signal.min_cases", 3)\n',
+            "settings.declare()\n",
+            False,
+        ),
+        (
+            'def declare():\n    min_cases = em.parameter("signal.min_cases", 3)\n'
+            "    return min_cases\n",
+            "signal = 5 >= settings.declare()\n",
+            True,
+        ),
+        # Thrown away at the top of the module: no name is assigned for anything to read.
+        ('em.parameter("signal.min_cases", 3)\n', "", False),
+    ],
+)
+def test_a_module_the_script_imports_is_judged_where_a_name_is_its_own(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch, settings: str, body: str, read: bool
+) -> None:
+    values = _run_beside_settings(scratch, monkeypatch, settings, body)
+    assert values["param.signal.min_cases"]["read"] is read
 
 
 @pytest.mark.parametrize("key", ["Alpha", "alpha level", "alpha-level", ".alpha", "alpha."])
@@ -862,6 +980,32 @@ def test_software_is_found_imported_without_a_top_level_txt(
 
     monkeypatch.setattr(importlib.metadata, "packages_distributions", lambda: {})
     assert emitter(scratch).software("hypothesis") == importlib.metadata.version("hypothesis")
+
+
+def test_software_named_with_an_underscore_for_its_hyphen_is_found_imported(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The version lookup reads `python_dateutil` as `python-dateutil`. Its modules were then
+    looked up under the name as spelt, so where the distribution lists no files, as one a
+    system package manager installed may not, the run was refused as never having imported
+    what it had."""
+    import importlib.metadata
+
+    pytest.importorskip("dateutil")
+    installed = importlib.metadata.distribution
+
+    class Unlisted:
+        files = None
+
+        def __init__(self, name: str) -> None:
+            self._installed = installed(name)
+
+        def __getattr__(self, attribute: str) -> object:
+            return getattr(self._installed, attribute)
+
+    monkeypatch.setattr(importlib.metadata, "distribution", Unlisted)
+    version = installed("python-dateutil").version
+    assert emitter(scratch).software("python_dateutil") == version
 
 
 def test_software_installed_and_never_imported_is_refused(scratch: Path) -> None:

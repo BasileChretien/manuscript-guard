@@ -549,6 +549,72 @@ def test_r_and_python_declare_and_read_parameters_alike(tmp_path: Path) -> None:
     ]
 
 
+UNFOLLOWED_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+cfg <- list()
+cfg$alpha <- em$parameter("in_a_list", 0.05)
+cfg[["beta"]] <- em$parameter("in_a_list_by_name", 0.2)
+env <- new.env()
+env$min_cases <- em$parameter("in_an_environment", 3L)
+both <- list(low = em$parameter("an_argument", 1L))
+returned <- function() {
+  1
+  em$parameter("returned", 2L)  # the value of the block
+}
+returned_too <- function() {
+  em$parameter("returned_too", 6L)
+  # a line of comment after it
+}
+dropped <- function() {
+  em$parameter("dropped", 4L)  # not the last
+  1
+}
+signal <- returned() + returned_too() + dropped() + cfg$alpha + env$min_cases
+level <- em$parameter("assigned_again", 0.1)
+level <- 0.5
+if (signal > 0) em$parameter("unbraced", 5L)
+em$write()
+"""
+
+
+def test_r_claims_nothing_where_a_parameter_goes_unfollowed(tmp_path: Path) -> None:
+    """Into a list or an environment the value is not followed, and R says nothing of it, as
+    Python says nothing of an attribute. So does a call that is the value of its block,
+    which a comment typed after it used to turn into a parameter never read. The last two
+    are the limits DESIGN.md writes down: a name spelt the same anywhere in the file is a
+    read, and so is a call with no braces round it and nothing reading it."""
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "unfollowed.R"
+    script.write_text(
+        UNFOLLOWED_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode == 0, f"{out.stdout}\n{out.stderr}"
+    path = root / "results" / "unfollowed.json"
+    values = json.loads(path.read_text(encoding="utf-8"))["values"]
+    read = {
+        key.removeprefix("param."): entry.get("read")
+        for key, entry in values.items()
+        if key.startswith("param.")
+    }
+    assert read == {
+        "in_a_list": None,
+        "in_a_list_by_name": None,
+        "in_an_environment": None,
+        "an_argument": True,
+        "returned": None,
+        "returned_too": None,
+        "dropped": False,
+        "assigned_again": True,
+        "unbraced": True,
+    }
+
+
 def test_r_software_is_the_version_the_session_loaded(tmp_path: Path) -> None:
     root = _parameter_project(tmp_path)
     script = root / "analysis" / "soft.R"

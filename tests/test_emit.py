@@ -867,6 +867,79 @@ def test_two_parameters_declared_on_one_line_into_a_tuple_claim_nothing(scratch:
     assert "read" not in values["param.a"] and "read" not in values["param.b"]
 
 
+def _run_beside_settings(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch, settings: str, body: str
+) -> dict:
+    """Run `body` as the project's analysis script beside a module `settings.py` it imports,
+    which holds `settings` and declares on the script's emitter, and return the values."""
+    import runpy
+    import sys
+
+    analysis = scratch / "analysis"
+    (analysis / "shared.py").write_text("em = None\n", encoding="utf-8")
+    (analysis / "settings.py").write_text("from shared import em\n" + settings, encoding="utf-8")
+    (analysis / "run.py").write_text(
+        "import shared\n"
+        "from manuscript_guard.emit import Emitter\n"
+        "em = shared.em = Emitter(__file__)\n"
+        "import settings\n" + body + "em.write()\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(analysis))
+    try:
+        runpy.run_path(str(analysis / "run.py"), run_name="__main__")
+    finally:
+        for module in ("shared", "settings"):
+            sys.modules.pop(module, None)
+    return json.loads((scratch / "results" / "run.json").read_text(encoding="utf-8"))["values"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "signal = 5 >= settings.MIN_CASES\n",
+        "from settings import MIN_CASES\nsignal = 5 >= MIN_CASES\n",
+    ],
+)
+def test_a_name_at_the_top_of_a_module_the_script_imports_claims_nothing(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch, body: str
+) -> None:
+    """Other files read a module's names as its attributes, which the reading of the module
+    does not follow. Looked for in the module alone, a threshold kept in a shared
+    `settings.py` and applied by the script was recorded as never read, and failed."""
+    declared = 'MIN_CASES = em.parameter("signal.min_cases", 3)\n'
+    values = _run_beside_settings(scratch, monkeypatch, declared, body)
+    assert "read" not in values["param.signal.min_cases"]
+
+
+@pytest.mark.parametrize(
+    ("settings", "body", "read"),
+    [
+        # In the script the emitter was given, which nothing imports: unread, as before.
+        ("", 'MIN_CASES = em.parameter("signal.min_cases", 3)\n', False),
+        # In a function of the module, where the name is the function's own.
+        (
+            'def declare():\n    min_cases = em.parameter("signal.min_cases", 3)\n',
+            "settings.declare()\n",
+            False,
+        ),
+        (
+            'def declare():\n    min_cases = em.parameter("signal.min_cases", 3)\n'
+            "    return min_cases\n",
+            "signal = 5 >= settings.declare()\n",
+            True,
+        ),
+        # Thrown away at the top of the module: no name is assigned for anything to read.
+        ('em.parameter("signal.min_cases", 3)\n', "", False),
+    ],
+)
+def test_a_module_the_script_imports_is_judged_where_a_name_is_its_own(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch, settings: str, body: str, read: bool
+) -> None:
+    values = _run_beside_settings(scratch, monkeypatch, settings, body)
+    assert values["param.signal.min_cases"]["read"] is read
+
+
 @pytest.mark.parametrize("key", ["Alpha", "alpha level", "alpha-level", ".alpha", "alpha."])
 def test_a_parameter_key_the_methods_cannot_bind_is_refused(scratch: Path, key: str) -> None:
     with pytest.raises(ValueError, match="lowercase letters"):

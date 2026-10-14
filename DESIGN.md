@@ -1265,15 +1265,16 @@ it reads from the re-run, so a fragment edited to call a changed result "softwar
 a difference. A fitted model's last digits are the machine's too: an iterative fit
 on macOS and on Linux agree to about fifteen digits and not to the last bit. So verify holds
 a float to agreeing in nine significant digits, and its display, which is what the paper
-prints, to agreeing exactly. G2 fails a declared value typed instead: a Methods-only convention whose
-number equals a parameter, or a software version equal to a declared one. Only the
-Methods-only conventions count, because they are the thresholds an author chooses in advance;
-the `2` of a `2 x 2` table names a structure whatever a parameter equals. A figure typed
-against a letter, of any alphabet, is part of a name too. The convention that accepts "I2 > 50%" covers the
-name of the statistic with its threshold, and read from its first digit `I2` stated 2: an
-analysis that declared a parameter of 2 was told to bind the name, and one that declared
-none of 2 was told `I2` was a threshold no parameter has. A name states no number and is no
-threshold. The figure after it is, in an atom of its own or in the name's (`I2>50%`).
+prints, to agreeing exactly. G2 fails a declared value typed instead: a Methods-only
+convention whose number equals a parameter, or a software version equal to a declared one.
+Only the Methods-only conventions count, because they are the thresholds an author chooses in
+advance; the `2` of a `2 x 2` table names a structure whatever a parameter equals. A figure
+typed against a letter, of any alphabet, is part of a name too. The convention that accepts
+"I2 > 50%" covers the name of the statistic with its threshold, and read from its first digit
+`I2` stated 2: an analysis that declared a parameter of 2 was told to bind the name, and one
+that declared none of 2 was told `I2` was a threshold no parameter has. A name states no
+number and is no threshold. The figure after it is, in an atom of its own or in the name's
+(`I2>50%`).
 
 **Declared is not used.** A parameter bound in the Methods prints the right number for a step
 the code may not take, which is exactly what the example's signal criterion was. Each
@@ -6975,13 +6976,17 @@ Closed since, and why each mattered:
   `alpha` that is another function's own, or with `cfg$alpha` somewhere, is recorded as
   read. A call with no braces round it, `if (strict) em$parameter("alpha", 0.05)`, is
   recorded as read though nothing takes its value.
-- **A parameter declared in a helper is read differently by the two emitters.** Python reads
-  the file the call stands in. A name a helper module assigns at its top level and only the
-  importing script reads is therefore recorded as unread, and fails:
-  `ALPHA = em.parameter("alpha", 0.05)` in `settings.py`, read as `settings.ALPHA`. Hand the
-  value back from a function, or read it where it is declared. R reads the script the
-  emitter was given, finds no call there for a parameter declared in a file it sources, and
-  records nothing.
+- **A parameter declared in a helper is read differently by the two emitters.** R reads the
+  script the emitter was given, finds no call there for a parameter declared in a file it
+  sources, and records nothing. Python reads the file the call stands in. Inside a function
+  of a helper module the name is judged as anywhere, and one nothing in the function reads
+  is unread. At the helper's top level the record says nothing, read or not, because the
+  importing script reads the name as the module's attribute:
+  `ALPHA = em.parameter("alpha", 0.05)` in `settings.py`, read as `settings.ALPHA`, was
+  once recorded as unread and failed. A parameter declared there and applied nowhere is
+  therefore not found. The emitter's own script is not imported, so a name at its top level
+  that nothing in it reads is still unread; that holds of a module that makes an emitter of
+  its own, too, whoever imports it.
 - **G15 reads two kinds of fit.** The statsmodels formula API in Python and `lm`/`glm` in R.
   Anything else (a Cox model, a mixed model, scikit-learn) cannot be recorded with
   `em.model` yet. A fit `data/models.yaml` has no entry for is a warning, and its outcome is

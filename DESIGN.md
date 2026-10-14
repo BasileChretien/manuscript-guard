@@ -1250,14 +1250,20 @@ methods" answered a required Methods section. G9 found the Methods by a pattern 
 "Methods" or "Materials and methods" at the start of a heading, and under either of the
 others it compared the lock's parameters with no text: a wrong `alpha: 0.07` was reported
 under "# Methods" and passed under "# 2. Methods", with nothing said. Since 2026-10-14 one
-test says which heading is the Methods, `text/section_names.py`: a heading with the word
-"methods", "method" or "methodology" in it, numbered or not. G4 uses it for a required
-section named "Methods", G9 reads the first such section of the main text, and a project
-with analysis code and no such heading is told so (`methods-not-found`, a warning), with
-what was therefore not read. G2 and G15 read the Methods as places, where a heading names
-the method without the word ("Statistical analysis", "Study design"); they take numbered
-headings and "<anything> and methods" too now. They read fewer headings than G4 counts, and
-a Methods they miss makes them report a number, not pass one.
+test says which heading is the Methods, `text/section_names.py`: a title that "methods",
+"method" or "methodology" heads, numbered or not, after up to four words and "and"
+("Patients and methods") or a word that qualifies it ("Statistical methods"). A title that
+only holds the word is not the Methods: "# A method for signal detection", a paper's title
+written as a heading over `##` sections, was the first heading holding it, and G9 read the
+whole paper as the Methods, a wrong parameter in the Results among them. G4 uses the test
+for a required section named "Methods", G9 reads the first such section of the main text,
+and a project with analysis code and no such heading is told so (`methods-not-found`, a
+warning). G2 and G15 read the Methods as places, where a heading names the method without
+the word ("Statistical analysis", "Study design"); they take numbered headings and
+"<anything> and methods" too now, and never a heading that also names the results:
+"Methods and results", a research letter's combined section, let every threshold convention
+through under its results. They read fewer headings than G4 counts, and a Methods they miss
+makes them report a number, not pass one.
 
 The abstract is found the same way for G4's limit and its headings, G14's regions and the
 word count: "Abstract" or "Structured abstract", numbered or not, or the title the
@@ -5445,14 +5451,20 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
-- **The Methods are found by a word, and two gates read fewer headings than G4 counts.**
-  G4 and G9 take any heading with "methods", "method" or "methodology" in it for the
-  Methods, so a top-level "Limitations of the methods" before the real Methods would be the
-  section G9 reads. G2 and G15 read "Methods", numbered or not, "<anything> and methods",
-  "Methods and <anything>" and the names of the method's own subsections, and not "Methods
-  of the study": there G2 reports a number written in the Methods where it could have let
-  it through, and G15 reads no model's name. `methods-not-found` is said only where the
+- **The Methods are found by the word that heads a title, and two gates read fewer
+  headings than G4 counts.** G4 and G9 take a title that "methods", "method" or
+  "methodology" heads for the Methods, so "Methods used by others" ahead of the real Methods
+  would be what G9 reads, and "Overview of methods" is no Methods to either: G4 asked for
+  the Methods where its substring test of before found them in it. G2 and G15 read
+  "Methods", numbered or not, "<anything> and methods", "Methods and <anything>" and the
+  names of the method's own subsections, and not "Methods: data sources" or "Methods of
+  the study": there G2 reports a number written in the Methods where it could have let it
+  through, and G15 reads no model's name. `methods-not-found` is said only where the
   project has analysis code, since a case report or a narrative review has no Methods.
+- **A body under an abstract heading of a higher level is the abstract's.** With
+  `# Abstract` and the paper's sections at `##`, every section is inside the abstract: G4
+  finds none of the required sections, and the word count has the whole body as abstract,
+  as it did before.
 - **An abstract under any other title is main text.** Without `abstract_title` in the
   profile, "Summary" or "Overview" is a section of the paper: its words count as main text,
   its subheadings are the paper's sections and its "Methods" can be the Methods G9 reads.

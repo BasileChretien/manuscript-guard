@@ -675,7 +675,10 @@ _THE_METHODS = (
     "Methods", "2. Methods", "2.1 Methods", "II. Methods", "(3) Methods", "Patients and methods",
     "Materials and methods", "Methods and analysis", "Statistical methods", "Methodology",
 )  # fmt: skip
-_NO_METHODS = ("Approach", "Study population", "Analyses")
+_NO_METHODS = (
+    "Approach", "Study population", "Analyses", "A method for signal detection",
+    "Limitations of existing methods",
+)  # fmt: skip
 #: What a paper calls its abstract, and what a journal's profile may call it.
 _THE_ABSTRACT = ("Abstract", "1. Abstract", "Structured abstract", "Summary", "Overview")
 _ABSTRACT_TITLES = (None, "Summary")

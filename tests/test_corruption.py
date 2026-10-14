@@ -1763,6 +1763,58 @@ def test_a_wrong_parameter_is_found_under_any_heading_g4_counts_as_the_methods(
     assert "missing-required-section" not in codes(_journal(project))
 
 
+def test_a_methods_and_results_section_is_no_methods_for_g2(project: Path) -> None:
+    """A research letter's combined section. Taken for the Methods, it let every threshold
+    convention through under its results: a reported p value passed as the alpha."""
+    from manuscript_guard.classify import is_methods
+
+    assert not is_methods(("Methods and results",))
+    assert not is_methods(("2. Results and methods",))
+    _methods_retitled(project, "Methods and results")
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "# Methods and results\n", "# Methods and results\n\nThe difference was "
+            "significant (p < 0.001).\n", 1
+        ),
+        encoding="utf-8",
+    )
+    assert any(
+        f.code == "unclassified-number" and "0.001" in f.message
+        for f in gate_report(project).failures
+    )
+
+
+def test_a_paper_s_title_written_as_a_heading_is_not_its_methods(project: Path) -> None:
+    """With the title an H1 over `##` sections, a heading holding the word was the first
+    that named the Methods, and G9 read the whole paper as them: a wrong parameter stated in
+    the Results passed."""
+    from manuscript_guard.gates import check_methods
+    from manuscript_guard.gates.methods import methods_in
+
+    text = (
+        "# A method for signal detection\n\n## Background\n\nWords.\n\n"
+        "## Limitations of existing methods\n\nWords.\n\n## Methods\n\nNo alpha here."
+        "\n\n## Results\n\nAn alpha of 0.07 was used.\n"
+    )
+    assert methods_in(text) == "\n\nNo alpha here.\n\n"
+    main = main_md(project)
+    body = main.read_text(encoding="utf-8").split("---\n", 2)
+    demoted = body[2].replace("\n# ", "\n## ")
+    main.write_text(
+        f"---{body[1]}---\n\n# A method for signal detection\n{demoted}", encoding="utf-8"
+    )
+    _wrong_alpha_in_the_lock(project)
+    main.write_text(
+        main.read_text(encoding="utf-8") + "\nAn alpha of 0.07 was used.\n", encoding="utf-8"
+    )
+    report = check_methods(load_project(project)[0])
+    assert any(
+        f.code == "methods-parameter-absent" and "alpha = 0.07" in f.message
+        for f in report.warnings
+    ), report.render(project)
+
+
 def test_no_heading_that_names_the_methods_is_said(project: Path) -> None:
     from manuscript_guard.gates import check_methods
 

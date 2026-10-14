@@ -16,11 +16,21 @@ import re
 
 #: A heading's number, which is no part of its name: "2", "2.", "2.1", "2.1.3.", "II.",
 #: "A.", "2)", "(2)".
-_NUMBER = re.compile(r"^\s*(?:\(\d+\)|\d+(?:\.\d+)*[.)]?|[IVXLC]+[.)]|[A-Z][.)])\s+")
-#: The Methods, as G4 has counted them present since it was written: a heading holding the
-#: word. "Methods", "2. Methods", "Materials and methods", "Patients and methods",
-#: "Methods and analysis", "Statistical methods", and "Method" and "Methodology".
-_METHODS = re.compile(r"\b(?:methods?|methodology)\b", re.IGNORECASE)
+_NUMBER = re.compile(
+    r"^\s*(?:\(\d+\)|\d+(?:\.\d+)*[.)]?|[IVXLC]+[.)]|[A-Z][.)])\s+", re.IGNORECASE
+)
+#: The Methods: a title the word heads, after a heading's number and its marks. "Methods",
+#: "2. Methods", "Methods and analysis", "Methods: data sources", "Materials and methods",
+#: "Patients and methods", "Statistical methods", "Method", "Methodology". A title that only
+#: holds the word is not: "A method for signal detection", a paper's title written as a
+#: heading, made G9 read the whole paper as its Methods, and "Limitations of existing
+#: methods" an Introduction's subsection.
+_METHODS = re.compile(
+    r"(?:(?:[^\W\d_][\w',-]*\s+){1,4}?and\s+"
+    r"|(?:statistical|study|research|experimental|analytical)\s+)?"
+    r"(?:methods?|methodology)\b",
+    re.IGNORECASE,
+)
 _ABSTRACT = re.compile(r"(?:structured\s+)?abstract\b", re.IGNORECASE)
 
 
@@ -31,7 +41,7 @@ def bare(title: str) -> str:
 
 def names_methods(title: str) -> bool:
     """Whether a heading names the Methods."""
-    return bool(_METHODS.search(title))
+    return bool(_METHODS.match(bare(title).lstrip("*_")))
 
 
 def names_abstract(title: str, named: str | None = None) -> bool:

@@ -242,9 +242,12 @@ class Classifier:
 # which is the direction to fail in.
 METHODS_SECTIONS = re.compile(
     r"^\s*(?:\d+(?:\.\d+)*[.)]?\s*|[IVXLC]+[.)]\s*)?"  # numbered headings: "2. Methods", "II."
+    # Never a section that reports what was found as well: "Methods and results", a research
+    # letter's combined section, let every threshold convention through under its results.
+    r"(?!.*\b(?:results?|findings|discussion|conclusions?)\b)"
     # "Materials and methods", "Patients and methods", "Methods and analysis": the Methods by
     # another name, which G4 has always counted as a required Methods section present.
-    r"(?:[^\n]+?\s+and\s+methods|methods\s+and\s+[^\n]+|methods|methodology|"
+    r"(?:[^\n]*?\band\s+methods|methods\s+and\s+[^\n]+|methods|methodology|"
     r"statistical\s+(?:analysis|analyses|methods)|analysis\s+plan|statistical\s+plan|"
     r"study\s+design|design|protocol|sensitivity\s+analys[ei]s)"
     r"\s*$",

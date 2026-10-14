@@ -353,12 +353,12 @@ def _no_methods(project: Project) -> Report:
                 gate=GATE,
                 code="methods-not-found",
                 severity=WARN,
-                message="no heading in the manuscript names the Methods: G9 compared the "
-                "parameters with no text and found no Methods paragraph, G2 read no number "
-                "as written in the Methods, and G15 read no model's name in them",
+                message="no heading in the main text names the Methods, so the parameters "
+                "in methods.lock were compared with no text",
                 path=project.path("manuscript"),
-                hint='a heading with the word "methods", "method" or "methodology" in it, '
-                'numbered or not, is the Methods: "2. Methods", "Patients and methods"',
+                hint='a heading that "methods", "method" or "methodology" heads, numbered or '
+                'not, is the Methods: "2. Methods", "Patients and methods", "Statistical '
+                'methods"',
             ),
         )
     )

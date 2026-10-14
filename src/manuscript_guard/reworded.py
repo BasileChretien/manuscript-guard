@@ -20,6 +20,8 @@ binding, every citation key and every typed number. The words between them are f
   is gone or new fails. After a mark that can open or close, `*n*-1` or `10^3^-10^5^`,
   the dash may be that of a range: there one that came or went is shown with a warning,
   for the same reason.
+- A **sign of comparison** before a number or a binding is part of it: "P < 0.05" made
+  "P > 0.05" is a number gone and one new, and so is "(n = 12)" made "(12)".
 
 A number is compared as it is typed. "3" spelt out as "three", "1,200" closed up to "1200"
 and "0.50" cut to "0.5" are each reported: the first two may be a matter of style, the third
@@ -30,8 +32,9 @@ comparison, a hyphen made a true minus sign.
 The text before is the last commit's, or any commit's, or a copy somebody kept. It is a
 command and no gate: `check` has one text and this needs two.
 
-What it does not hold is in DESIGN.md's Known gaps: a unit, a sign of comparison, a "not",
-"increased" for "decreased". Those are words, and reading them is a reviewer's work.
+What it does not hold is in DESIGN.md's Known gaps: a unit, a "not", "increased" for
+"decreased", a sign of comparison spelt out. Those are words, and reading them is a
+reviewer's work.
 """
 
 from __future__ import annotations
@@ -102,16 +105,49 @@ _SUPERSCRIPT = (
     "\N{SUPERSCRIPT FOUR}-\N{SUPERSCRIPT NINE}"
 )
 _SUBSCRIPT = "\N{SUBSCRIPT ZERO}-\N{SUBSCRIPT NINE}"
-#: A number as it is typed, with the dash or the plus that stands against it, whatever
-#: that turns out to be. Figures, with commas between groups of three and one decimal
-#: point: "0,5" is two numbers here and "1,2,3" three, so that a space typed after a comma
-#: changes nothing. A point and figures with no nought before them, ".05", where nothing
-#: that joins and no point stands before the point: "Fig.5", "1.2.3" and a note's number
-#: after "45%." are read without it. A run of raised or lowered figures with its own sign,
-#: as in ten to the minus eight typed with the characters, or the fifty of an IC50 typed
-#: low: G2 leaves those out because a square metre claims nothing, and here nothing is
-#: claimed, only compared. A fraction or an enclosed figure is a number by itself.
+#: The signs of a comparison as they are typed, and the sign each is compared as. "<=" and
+#: "\N{LESS-THAN OR EQUAL TO}" are one sign typed two ways, and making one into the other is a
+#: language edit; "<" and ">" are two, and "P < 0.05" made "P > 0.05" says the opposite.
+RELATIONS = {
+    "<": "<",
+    ">": ">",
+    "=": "=",
+    "<=": "\N{LESS-THAN OR EQUAL TO}",
+    "\N{LESS-THAN OR EQUAL TO}": "\N{LESS-THAN OR EQUAL TO}",
+    "\N{LESS-THAN OVER EQUAL TO}": "\N{LESS-THAN OR EQUAL TO}",
+    "\N{LESS-THAN OR SLANTED EQUAL TO}": "\N{LESS-THAN OR EQUAL TO}",
+    ">=": "\N{GREATER-THAN OR EQUAL TO}",
+    "\N{GREATER-THAN OR EQUAL TO}": "\N{GREATER-THAN OR EQUAL TO}",
+    "\N{GREATER-THAN OVER EQUAL TO}": "\N{GREATER-THAN OR EQUAL TO}",
+    "\N{GREATER-THAN OR SLANTED EQUAL TO}": "\N{GREATER-THAN OR EQUAL TO}",
+    "!=": "\N{NOT EQUAL TO}",
+    "\N{NOT EQUAL TO}": "\N{NOT EQUAL TO}",
+    "\N{FULLWIDTH LESS-THAN SIGN}": "<",
+    "\N{FULLWIDTH GREATER-THAN SIGN}": ">",
+    "\N{FULLWIDTH EQUALS SIGN}": "=",
+}
+#: A sign of comparison, the two-character ones first, and the space a sentence may have
+#: between it and its number: any width, and one line break where the editor wrapped it.
+_RELATION = "|".join(sorted(map(re.escape, RELATIONS), key=len, reverse=True))
+_SPACE = "[ \t\N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE}]"
+_GAP = _SPACE + "*(?:\n" + _SPACE + "*)?"
+#: A sign of comparison ending a stretch of text, with its gap: what stands before a binding.
+_RELATION_BEFORE = re.compile("(?P<relation>" + _RELATION + ")" + _GAP + r"\Z")
+#: What stands before the ">" that ends an HTML tag, "<sup>2": a "<" and a letter, a slash
+#: or a "!", and no other angle bracket, on the same line.
+_TAG_OPEN = re.compile(r"<[A-Za-z/!][^<>\n]*\Z")
+#: A number as it is typed, with the sign of a comparison before it and the dash or the plus
+#: that stands against it, whatever that turns out to be. Figures, with commas between
+#: groups of three and one decimal point: "0,5" is two numbers here and "1,2,3" three, so
+#: that a space typed after a comma changes nothing. A point and figures with no nought
+#: before them, ".05", where nothing that joins and no point stands before the point:
+#: "Fig.5", "1.2.3" and a note's number after "45%." are read without it. A run of raised or
+#: lowered figures with its own sign, as in ten to the minus eight typed with the
+#: characters, or the fifty of an IC50 typed low: G2 leaves those out because a square metre
+#: claims nothing, and here nothing is claimed, only compared. A fraction or an enclosed
+#: figure is a number by itself.
 _NUMBER = re.compile(
+    "(?:(?P<relation>" + _RELATION + ")" + _GAP + ")?"
     "(?P<sign>[" + _MINUS + "+])?(?P<figures>"
     r"\d+(?:,\d{3}(?!\d))*(?:[.\N{MIDDLE DOT}]\d+)?"
     r"|(?<![^\W_])(?<![." + _CLOSING + r"])\.\d+"
@@ -135,12 +171,15 @@ class Fact:
     """One thing a rewording leaves alone, and where it stands."""
 
     kind: str
-    #: What is compared: a binding's name, a citation's key, a number's figures as typed.
+    #: What is compared: a binding's name, a citation's key, a number's figures as typed,
+    #: each after the sign of a comparison that stands before it.
     text: str
     start: int
     line: int
     #: Of a number: whether a dash stands against it as its minus sign, for sure or perhaps.
     minus: int = NO
+    #: Of a number or a binding: the sign of a comparison before it, as it is compared.
+    relation: str = ""
 
     @property
     def key(self) -> tuple[str, str]:
@@ -148,11 +187,12 @@ class Fact:
 
     @property
     def shown(self) -> str:
+        own = self.text[len(self.relation) :]
         if self.kind == BINDING:
-            return "{{" + self.text + "}}"
+            return f"{self.relation} {{{{{own}}}}}" if self.relation else "{{" + own + "}}"
         if self.kind == CITATION:
             return "@" + self.text
-        return f"'{'-' if self.minus == SURE else ''}{self.text}'"
+        return f"'{self.relation}{'-' if self.minus == SURE else ''}{own}'"
 
 
 def _numbers_in(text: str) -> str:
@@ -224,21 +264,59 @@ def _sign(text: str, at: int) -> int:
     return SURE
 
 
+def _compared(text: str, at: int, typed: str) -> str:
+    """The sign of a comparison typed at `at`, as it is compared, or "" where it is none.
+
+    A ">" is none where it ends an HTML tag, and where it is the mark of a block quotation:
+    at the start of its line, after nothing but other marks and spaces, with no line before
+    it or a line before it that is blank or quoted too. A ">" that starts a line in the
+    middle of a paragraph is the sign of a sentence that was wrapped there: pandoc opens no
+    quotation without a blank line before it."""
+    if typed != ">":
+        return RELATIONS[typed]
+    before = text[max(0, at - _WORD) : at]
+    if _TAG_OPEN.search(before):
+        return ""
+    line = text.rfind("\n", 0, at) + 1
+    if text[line:at].strip(" \t>"):
+        return ">"
+    if line == 0:
+        return ""
+    above = text[text.rfind("\n", 0, line - 1) + 1 : line - 1].strip()
+    return ">" if above and not above.startswith(">") else ""
+
+
+def _relation_before(text: str, at: int) -> str:
+    """The sign of a comparison that stands before what starts at `at`, as it is compared."""
+    before = text[max(0, at - _WORD) : at]
+    found = _RELATION_BEFORE.search(before)
+    if found is None:
+        return ""
+    return _compared(text, at - len(before) + found.start("relation"), found["relation"])
+
+
 def facts(text: str) -> list[Fact]:
     """Every binding, citation key and typed number of a manuscript file, in the order they
-    stand."""
+    stand. A sign of comparison before a number or a binding is part of it: "P < 0.05" is
+    read as `<0.05`, so a sign gone, new or turned round is a fact gone and one new. The
+    space around the sign is not part of it, and "<=" is read as the sign it is typed for."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     breaks = [found.start() for found in re.finditer("\n", text)]
 
-    def fact(kind: str, held: str, start: int, minus: int = NO) -> Fact:
-        return Fact(kind, held, start, bisect_left(breaks, start) + 1, minus)
+    def fact(kind: str, held: str, start: int, minus: int = NO, relation: str = "") -> Fact:
+        return Fact(kind, relation + held, start, bisect_left(breaks, start) + 1, minus, relation)
 
     # What pandoc drops holds no binding and no citation. The bindings are the ones
     # `placeholders.parse` calls well formed, found here by its pattern: every fact's line
     # is looked up once, among the line breaks above.
     printed = blank_comments(text) if "<!--" in text else text
     found = [
-        fact(BINDING, f"{binding['ns']}.{binding['key']}", binding.start())
+        fact(
+            BINDING,
+            f"{binding['ns']}.{binding['key']}",
+            binding.start(),
+            relation=_relation_before(printed, binding.start()),
+        )
         for binding in PLACEHOLDER.finditer(printed)
         if binding["ns"] in NAMESPACES
     ]
@@ -247,12 +325,14 @@ def facts(text: str) -> list[Fact]:
     for number in _NUMBER.finditer(shown):
         sign, figures = number["sign"], number["figures"]
         start, minus = number.start("figures"), NO
-        read = _sign(shown, number.start()) if sign else NO
+        read = _sign(shown, number.start("sign")) if sign else NO
         if sign == "+" and read == SURE:
-            figures, start = "+" + figures, number.start()
+            figures, start = "+" + figures, number.start("sign")
         elif sign and sign != "+" and read != NO:
-            minus, start = read, number.start()
-        found.append(fact(NUMBER, figures, start, minus))
+            minus, start = read, number.start("sign")
+        typed = number["relation"]
+        relation = _compared(shown, number.start("relation"), typed) if typed else ""
+        found.append(fact(NUMBER, figures, start, minus, relation))
     return sorted(found, key=lambda one: one.start)
 
 
@@ -450,7 +530,8 @@ def _sign_failure(
     (sure, dashed), (sure_now, dashed_now) = _signed(was), _signed(now)
     maybe, maybe_now = len(dashed) - len(sure), len(dashed_now) - len(sure_now)
     gone, come = max(len(was) - len(now), 0), max(len(now) - len(was), 0)
-    number, signed = f"the number '{figures}'", f"'-{figures}'"
+    relation = (*was, *now)[0].relation
+    number, signed = f"the number '{figures}'", f"'{relation}-{figures[len(relation) :]}'"
     lost = len(sure) - gone > len(sure_now) + _newly(maybe_now, maybe)
     come_sure = len(sure_now) - come > len(sure) + _newly(maybe, maybe_now)
     if lost and (not same or _at_a_place(was, now, SURE, NO)):

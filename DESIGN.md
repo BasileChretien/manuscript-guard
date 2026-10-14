@@ -1574,6 +1574,22 @@ A number with no nought keeps its point, ".05", and raised and lowered figures a
 figures: the first review found "-.30" read as "30", and ten to the minus eight typed with
 the characters made ten to the minus six with nothing said.
 
+**A sign of comparison belongs to its number.** Until 2026-10-14 only the spaces around
+one were spoken of, and the sign itself was free with them: "The association was
+significant (P < 0.05)" made "(P > 0.05)" was reported as nothing to report, and the sign
+says the opposite. Now `<`, `>`, `=`, `≤`, `≥` and `≠` before a number or a binding are
+read with it, so "P < 0.05" is the fact `<0.05`, and a sign that is gone, new or turned
+round is a fact gone and a fact new, which fails, as a changed number does. The spaces
+around the sign are still free, any width and one line break, and so is how it is typed:
+"<=", "≤" and "⩽" are one sign, and so are the full-width forms and the escape `\<`
+that Word's round trip writes. A ">" is no sign where it ends an HTML tag, "<sup>2", or
+marks a block quotation: at the start of its line, after a blank line, a quoted line or
+nothing. A ">" that starts a line in the middle of a paragraph is the sign of a sentence
+wrapped there, since pandoc opens no quotation without a blank line before it. The sign
+before a binding is held as well, because "P < {{results.p}}" made "P > {{results.p}}"
+turns the result round as surely as a typed one. "≈" and "~" are not signs of a
+comparison and are left as they were.
+
 **It is read once, with a count.** Whether a fact is gone or new is known from how often it
 stands in each text. Where the order changed is known from a count of what one text has had
 that the other has not: each stretch ends where the count is settled, so two clauses moved
@@ -4173,13 +4189,15 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty rules are broken in place, one at a time, and the property that is
+the generators. So fifty-three rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops; nine ways `reworded` can misread an edit, from
-a number's sign taken for no part of it to what a comment holds held to its place; five
+sentence, a comment read for its stops; twelve ways `reworded` can misread an edit, from
+a number's sign taken for no part of it, and a sign of comparison taken for none, read as
+it is typed or read only hard against its number, to what a comment holds held to its
+place; five
 ways a co-author's items can be cut wrong round the citation of a claim, from every stop ending a
 sentence, after "et al." too, to a piece that is only a citation left as an item of its
 own; seven ways an anchor can claim the wrong text, from a claim that runs back past the
@@ -4353,11 +4371,12 @@ it.
   like any other and is compared: it used to end the process that was answering.
 - **The comparison is held to being one.** Two processes on this source under two hash
   seeds must answer alike on every reading, which also catches a reading that walks a
-  set. And eleven lines are changed in a copy of the source, one at a time, and the reading
+  set. And twelve lines are changed in a copy of the source, one at a time, and the reading
   that goes through each must differ: among them the mutant the review of #181 found
   alive, the offset of a quotation's lines losing a character at each line break, an
-  import that writes no rewording, and a finding that points at another file with its
-  line kept, which the readings did not compare at first.
+  import that writes no rewording, a finding that points at another file with its line
+  kept, which the readings did not compare at first, and a sign of comparison that is no
+  part of its number.
 
 Run against main as it was before #181 and #183, it reports the vocabulary reading
 changed, on a vocabulary of one entry, and `check` changed; passes over the spelling
@@ -8453,9 +8472,14 @@ Closed since, and why each mattered:
   while timing. Both are left to the wall clock.
 
 - **`reworded` holds bindings, citation keys and typed numbers, and nothing else.**
-  - A unit, a sign of comparison, a "not" and "increased" for "decreased" are words, and
-    are not held: "5 mg" made "5 g", "P < 0.05" made "P > 0.05" and "did not differ" made
-    "differed" all pass. So does a number written in words: "three" made "four".
+  - A unit, a "not" and "increased" for "decreased" are words, and are not held: "5 mg"
+    made "5 g" and "did not differ" made "differed" both pass. So does a number written in
+    words: "three" made "four".
+  - A sign of comparison is held only as a sign. Spelt out, "P < 0.05" made "P less than
+    0.05" fails as a sign gone, though the sentence says the same; "less than" made
+    "more than" passes. Typed in TeX, `$p \leq 0.05$`, it is letters and not held. A
+    ">" after what looks like an HTML tag opened on its line, "x<y and z>3", is taken for
+    the end of the tag and is no sign there.
   - A number spelt out, "3" made "three", is reported as gone, and so is a thousands
     separator taken out. The edit may be harmless; nothing here decides that.
   - Where a fact stands more often or less often than it did, which of them came or went
@@ -8873,7 +8897,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 53 broken rules, and the comparison on eleven
+  - The properties were seen to fail on 56 broken rules, and the comparison on twelve
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

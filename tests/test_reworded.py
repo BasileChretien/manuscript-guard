@@ -225,6 +225,8 @@ def test_a_binding_here_is_one_the_gates_call_well_formed() -> None:
         ("p \\< 0.05", ["<0.05"]),  # the escape Word's round trip writes
         # a ">" that is no sign
         ("from 5 -> 10", ["5", "10"]),  # the head of an arrow
+        ("from 5 -\\> 10", ["5", "10"]),  # escaped, as pandoc writes it
+        ("5\N{FULLWIDTH HYPHEN-MINUS}\N{FULLWIDTH GREATER-THAN SIGN}10", ["5", "10"]),
         ("from 5 --> 10", ["5", "10"]),
         ("from 5 => 10", ["5", "10"]),
         ("from 5 \N{EN DASH}> 10", ["5", "10"]),
@@ -380,6 +382,8 @@ def test_a_sign_of_comparison_gone_new_or_turned_round_fails(
         ("a mean age = 54", "a mean age of 54"),
         # an arrow retyped
         ("from 5 -> 10 mg", "from 5 \N{RIGHTWARDS ARROW} 10 mg"),
+        ("from 5 -\\> 10 mg", "from 5 \N{RIGHTWARDS ARROW} 10 mg"),
+        ("5\N{FULLWIDTH HYPHEN-MINUS}\N{FULLWIDTH GREATER-THAN SIGN}10", "5\N{RIGHTWARDS ARROW}10"),
         ("from 5 --> 10 mg", "from 5 to 10 mg"),
         ("from 5 => 10 mg", "from 5 \N{RIGHTWARDS DOUBLE ARROW} 10 mg"),
         # any width of space, and any space a word processor puts there

@@ -38,5 +38,6 @@ expected:
   - reading: reworded
     why: >-
       a sign of comparison before a number or a binding is part of it, so "P < 0.05" made
-      "P > 0.05", or "(n = 12)" made "(12)", is a fact gone and a fact new; the space around
-      the sign stays free, and "<=" is read as the sign it is typed for
+      "P > 0.05", or "P = 0.04" made "P < 0.04", is a fact gone and a fact new; an "=" is
+      read as none, an arrow's head is no sign, the space around the sign stays free, and
+      "<=" is read as the sign it is typed for

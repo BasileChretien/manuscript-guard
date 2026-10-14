@@ -1349,6 +1349,7 @@ _RESPACED = (
     ("\N{LESS-THAN OR SLANTED EQUAL TO}0.047", "\N{LESS-THAN OR EQUAL TO} 0.047"),
     ("= 0.047", "0.047"),
     ("5 -> 47", "5 \N{RIGHTWARDS ARROW} 47"),
+    ("5 -\\> 47", "5 to 47"),
     ("< 0.047", "<\N{HAIR SPACE}0.047"),
 )
 #: Each of the hyphens typed for a minus sign.
@@ -1487,7 +1488,6 @@ def _rewordings(draw: st.DrawFn, did: str) -> tuple[str, str, str, list[str], in
 
     comment = draw(st.integers(0, len(before)))
     turned = draw(st.sampled_from(_TURNED))
-    respaced = draw(st.sampled_from(_RESPACED))
     texts_of = []
     for sentences, hidden in (
         (before, "<!--\n```r\nset.seed(14)\nx <- {{results.gone}} [@gone2001]\n```\n-->"),
@@ -1518,9 +1518,11 @@ def _rewordings(draw: st.DrawFn, did: str) -> tuple[str, str, str, list[str], in
             typed = turned[0][0] if sentences is before else turned[1][0]
             paragraphs.append(f"{filler().capitalize()} P {typed} {filler()}.")
         if did == "respaced":
-            # The same sign typed and spaced another way, which is a language edit.
-            typed = respaced[0] if sentences is before else respaced[1]
-            paragraphs.append(f"{filler().capitalize()} P {typed} {filler()}.")
+            # The same sign typed and spaced another way, which is a language edit: every
+            # way of it in every example, so that a rule broken for one is always seen.
+            for pair in _RESPACED:
+                typed = pair[0] if sentences is before else pair[1]
+                paragraphs.append(f"{filler().capitalize()} P {typed} {filler()}.")
         if did == "unsure":
             # A range whose first bound ends on a mark that may close, joined by a dash in
             # the text before and by "to" in the text after: the dash may have been a sign.
@@ -1887,6 +1889,14 @@ def _a_sign_of_comparison_is_compared_as_typed(patch: pytest.MonkeyPatch) -> Non
     patch.setattr(reworded_module, "RELATIONS", {sign: sign for sign in RELATIONS})
 
 
+def _an_arrow_s_head_is_a_sign(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reworded_module, "_ARROW_TAIL", "")
+
+
+def _an_equals_sign_is_a_sign(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reworded_module, "RELATIONS", {**RELATIONS, "=": "="})
+
+
 def _a_sign_of_comparison_is_read_only_against_its_number(patch: pytest.MonkeyPatch) -> None:
     pattern = reworded_module._NUMBER.pattern.replace(reworded_module._GAP, "", 1)
     patch.setattr(reworded_module, "_NUMBER", re.compile(pattern))
@@ -2219,6 +2229,14 @@ BROKEN = {
     ),
     "a sign of comparison is compared as it is typed": (
         _a_sign_of_comparison_is_compared_as_typed,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "an arrow's head is read as a sign": (
+        _an_arrow_s_head_is_a_sign,
+        test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "an equals sign is read as a sign": (
+        _an_equals_sign_is_a_sign,
         test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
     ),
     "a sign of comparison is read only hard against its number": (

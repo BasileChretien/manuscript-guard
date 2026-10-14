@@ -137,8 +137,10 @@ _SPACE = (
     "[ \t\N{NO-BREAK SPACE}\N{OGHAM SPACE MARK}\N{EN QUAD}-\N{HAIR SPACE}"
     "\N{NARROW NO-BREAK SPACE}\N{MEDIUM MATHEMATICAL SPACE}\N{IDEOGRAPHIC SPACE}]"
 )
-#: What a ">" after it is the head of, and no sign: an arrow, "->", "-->", "=>".
-_ARROW_TAIL = "=" + _MINUS
+#: What a ">" after it is the head of, and no sign: an arrow, "->", "-->", "=>", typed in
+#: full width too.
+_ARROW_TAIL = "=\N{FULLWIDTH EQUALS SIGN}" + _MINUS
+_GREATER = (">", "\N{FULLWIDTH GREATER-THAN SIGN}")
 _GAP = _SPACE + "*(?:\n" + _SPACE + "*)?"
 #: A sign of comparison ending a stretch of text, with its gap: what stands before a binding.
 _RELATION_BEFORE = re.compile("(?P<relation>" + _RELATION + ")" + _GAP + r"\Z")
@@ -282,10 +284,17 @@ def _compared(text: str, at: int, typed: str) -> str:
     quoted too. A ">" that starts a line in the middle of a paragraph is the sign of a
     sentence that was wrapped there: pandoc opens no quotation without a blank line before
     it."""
+    if typed not in _GREATER:
+        return RELATIONS[typed]
+    # An arrow's tail stands before its head, or before the escape pandoc writes for it,
+    # "5 -\> 10", which `mask` has made NUL.
+    tail = at - 1
+    if tail >= 0 and text[tail] in "\\" + NUL:
+        tail -= 1
+    if tail >= 0 and text[tail] in _ARROW_TAIL:
+        return ""
     if typed != ">":
         return RELATIONS[typed]
-    if at and text[at - 1] in _ARROW_TAIL:
-        return ""
     before = text[max(0, at - _WORD) : at]
     if _TAG_OPEN.search(before):
         return ""

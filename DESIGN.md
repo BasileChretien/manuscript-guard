@@ -1585,9 +1585,9 @@ number standing alone says: "(OR = 1.52)" made "(OR 1.52)" is a copy-edit and pa
 width and one line break, and so is how it is typed:
 "<=", "≤" and "⩽" are one sign, and so are the full-width forms and the escape `\<`
 that Word's round trip writes. A ">" is no sign where it is the head of an arrow, "5 ->
-10", where it ends an HTML tag, "<sup>2", or
-marks a block quotation: at the start of its line, after a blank line, a quoted line or
-nothing. A ">" that starts a line in the middle of a paragraph is the sign of a sentence
+10", escaped as pandoc writes one, `5 -\> 10`, or in full width; where it ends an HTML tag,
+"<sup>2"; or where it marks a block quotation: at the start of its line, after a blank
+line, a quoted line or nothing. A ">" that starts a line in the middle of a paragraph is the sign of a sentence
 wrapped there, since pandoc opens no quotation without a blank line before it. The sign
 before a binding is held as well, because "P < {{results.p}}" made "P > {{results.p}}"
 turns the result round as surely as a typed one. "≈" and "~" are not signs of a
@@ -4192,15 +4192,15 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty-three rules are broken in place, one at a time, and the property that is
+the generators. So fifty-five rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops; twelve ways `reworded` can misread an edit, from
+sentence, a comment read for its stops; fourteen ways `reworded` can misread an edit, from
 a number's sign taken for no part of it, and a sign of comparison taken for none, read as
-it is typed or read only hard against its number, to what a comment holds held to its
-place; five
+it is typed, read only hard against its number, an arrow's head or an equals sign taken
+for one, to what a comment holds held to its place; five
 ways a co-author's items can be cut wrong round the citation of a claim, from every stop ending a
 sentence, after "et al." too, to a piece that is only a citation left as an item of its
 own; seven ways an anchor can claim the wrong text, from a claim that runs back past the
@@ -8486,7 +8486,8 @@ Closed since, and why each mattered:
     directly under a heading or a closing fence, with no blank line between, has its ">"
     read as a sign, and a quoted paragraph rewrapped before its own sign loses it. The ">"
     of a folded value in the front matter, `abstract: >`, is read as the sign of the first
-    number under it; G2 asks for the abstract under a heading instead.
+    number under it; G2 asks for the abstract under a heading instead. "=>" is the head of
+    an arrow, though some authors type it for "≥": "age => 18" made "age 18" passes.
   - A number spelt out, "3" made "three", is reported as gone, and so is a thousands
     separator taken out. The edit may be harmless; nothing here decides that.
   - Where a fact stands more often or less often than it did, which of them came or went
@@ -8904,7 +8905,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 56 broken rules, and the comparison on twelve
+  - The properties were seen to fail on 58 broken rules, and the comparison on twelve
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

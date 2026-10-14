@@ -433,7 +433,13 @@ def test_what_stands_under_an_anchors_own_line_prints_as_what_it_is(
         ("A.\r\n{{method.a}}\r\nB.\r\n", [2]),
         ("A.\n<!-- a note -->\n{{method.a}}\nB.\n", [3]),
         ("A.\n{{method.a}}\n## B\n", [2]),
-        ("A.\n{{method.a}}\n{{method.b}}\nC.\n", [2, 3]),
+        ("A.\n{{method.a}}\n{{method.b}}\nC.\n", [2]),
+        ("A.\r\n{{method.a}}\r\n{{method.b}}\r\nC.\r\n", [2]),
+        ("A.\n{{method.a}}\n{{method.b}}\n\nB.\n", []),
+        ("A.\n{{method.a}}\n{{method.b}}\n{{method.c}}\n\nB.\n", []),
+        ("A.\r\n{{method.a}}\r\n{{method.b}}\r\n\r\nB.\r\n", []),
+        ("A.\n{{method.a}}\n{{method.b}}", []),
+        ("A.\r\n{{method.a}}\r\n{{method.b}}", []),
         ("A.\n{{method.a}}\n\nB.\n", []),
         ("A.\n{{method.a}}\r\n\r\nB.\r\n", []),
         ("A.\n{{method.a}}", []),
@@ -450,7 +456,10 @@ def test_what_stands_under_an_anchors_own_line_prints_as_what_it_is(
     ],
     ids=[
         "inside a paragraph", "over a list", "two, with spaces", "ended as Windows does",
-        "under a comment line", "over a heading", "two lines of them",
+        "under a comment line", "over a heading", "two lines of them, once",
+        "two lines of them, as Windows ends them", "two ending their paragraph, a line each",
+        "three ending their paragraph", "two ending their paragraph, as Windows ends them",
+        "two ending the file, not ended", "two ending the file, as Windows ends them",
         "ending its paragraph", "ending its paragraph, as Windows does", "the last line, not ended",
         "the last line", "the first line", "opening its paragraph", "under a heading",
         "behind a quotation's mark", "behind a list's mark", "beside a comment", "in a comment",
@@ -458,6 +467,9 @@ def test_what_stands_under_an_anchors_own_line_prints_as_what_it_is(
     ],
 )  # fmt: skip
 def test_an_anchors_own_line_inside_a_paragraph_is_found(written: str, warned: list[int]) -> None:
+    """Lines of nothing but anchors one under the other are one run, and the run is warned
+    of once, at its first line, where the paragraph ends in the document. Anchors one to a
+    line at the end of a paragraph end nothing it does not end already."""
     assert anchor_lines(written) == warned
 
 

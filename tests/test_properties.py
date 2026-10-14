@@ -809,8 +809,8 @@ def test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph
 #: `_CLAIM_KINDS` says why.
 _ANCHOR_PLACES = (
     "a line of its own inside", "a line of its own at the end", "two lines of their own",
-    "side by side on a line of their own", "the end of a line", "inside a line",
-    "under a heading", "over a list", "opening its paragraph",
+    "a line each at the end", "side by side on a line of their own", "the end of a line",
+    "inside a line", "under a heading", "over a list", "opening its paragraph",
     "under a heading, no blank line", "nowhere",
 )  # fmt: skip
 
@@ -818,9 +818,10 @@ _ANCHOR_PLACES = (
 @st.composite
 def _anchored_methods(draw: st.DrawFn) -> tuple[str, list[str], list[int]]:
     """A Methods section with an anchor in every place one stands, its words drawn each time;
-    the words of each paragraph pandoc is to read in it as printed, in order; and the lines
-    of nothing but anchors that stand inside a paragraph, each of which ends one there. Its
-    lines end as Unix ends them or as Windows does, and the last one may not be ended."""
+    the words of each paragraph pandoc is to read in it as printed, in order; and the first
+    line of each run of lines of nothing but anchors inside a paragraph, where the run ends
+    one. Its lines end as Unix ends them or as Windows does, and the last one may not be
+    ended."""
     names = (f"step{n}" for n in range(1000))
     lines: list[str] = ["# Methods"]
     paragraphs: list[str] = []
@@ -848,7 +849,9 @@ def _anchored_methods(draw: st.DrawFn) -> tuple[str, list[str], list[int]]:
         elif place == "a line of its own at the end":
             add(one, two, f"{anchor()}{pad}")
         elif place == "two lines of their own":
-            add(one, anchor(), f"{pad}{anchor()}", f"{two} {anchor()}", splits=(1, 2))
+            add(one, anchor(), f"{pad}{anchor()}", f"{two} {anchor()}", splits=(1,))
+        elif place == "a line each at the end":
+            add(one, two, anchor(), f"{pad}{anchor()}{pad}")
         elif place == "side by side on a line of their own":
             add(one, f"{anchor()}{pad}{anchor()}", two, splits=(1,))
         elif place == "the end of a line":
@@ -1870,6 +1873,11 @@ def _the_line_above_an_anchors_line_is_not_looked_at(patch: pytest.MonkeyPatch) 
     patch.setattr(methods_gate, "_inside", lambda above, below: real("a line", below))
 
 
+def _each_anchors_line_is_its_own_run(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood at 43739a94: the line directly below counts, whatever it holds."""
+    patch.setattr(methods_gate, "_runs", lambda numbers: [(number, number) for number in numbers])
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -1927,6 +1935,10 @@ BROKEN = {
     ),
     "the line above an anchor's own line is not looked at": (
         _the_line_above_an_anchors_line_is_not_looked_at,
+        test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document,
+    ),
+    "the line directly below an anchor's own line counts, though it holds only anchors": (
+        _each_anchors_line_is_its_own_run,
         test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document,
     ),
     "a quotation is read as the paper's own words": (

@@ -1362,7 +1362,11 @@ so a line that holds nothing but anchors and spaces prints as an empty line, and
 ends a paragraph. Inside a paragraph, with one sentence to a line and an anchor on the line
 under its sentence, the document then breaks the paragraph in two where the source has one.
 `check` warns of each such line (`method-anchor-line`): one with a line of the paragraph above
-it and any line below it. The line was printed as no line for a while, and that turned a list
+it and, below it, a line that is neither blank nor another such line. Lines of anchors one
+under the other are one run, warned of once at its first line, where the paragraph ends; so
+anchors one to a line at the end of a paragraph, above a blank line, are not warned of. As
+first written the rule looked only at the line directly below, and warned of `{{method.a}}`
+over `{{method.b}}` at the end of a paragraph, which ends nothing. The line was printed as no line for a while, and that turned a list
 or a table written directly under the anchors into running text, with nothing reported. What
 stands under the line cannot say whether the author meant a new block or the same paragraph,
 so the printing is left as it was and the author is told. A property holds that the lines
@@ -6996,7 +7000,7 @@ Closed since, and why each mattered:
   `method-anchor-line`, and changes nothing: what stands under the line may be meant as a
   block of its own, a list or a table, which the empty line makes one. An edit in Word to
   either half is refused on import, as one to a paragraph with an anchor inside it is. Two
-  such lines one under the other are warned of twice.
+  such lines one under the other between two sentences are warned of once, at the first.
 - **Behind a mark, an anchor's line is left, and not warned of.** `> {{method.a}}` between
   two lines of a quotation prints as `> `, which ends the paragraph inside the quotation, and
   `- {{method.a}}` prints as an empty list item. Put the anchor at the end of the line above.

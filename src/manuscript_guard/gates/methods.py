@@ -144,19 +144,32 @@ def _inside(above: str | None, below: str | None) -> bool:
 
 
 def anchor_lines(text: str) -> list[int]:
-    """The lines, counted from 1, that hold nothing but anchors and spaces inside a paragraph.
+    """The first line, counted from 1, of each run of lines that hold nothing but anchors and
+    spaces inside a paragraph.
 
     An anchor prints nothing and its line stays, so such a line prints as an empty line and
     the document ends the paragraph there, where the source has none. What stands under it
     then starts a block of its own: a sentence a paragraph, `- ...` a list, `## ...` a
     heading. Which of those the author meant cannot be told, so each is warned of. A line
     with a quotation's or a list's mark on it holds more than anchors, and the first and last
-    line of a paragraph end nothing it does not end already.
+    lines of a paragraph end nothing it does not end already: anchors one to a line at the
+    end of a paragraph, which is how two steps' anchors are written in the skill's style, are
+    a run whose line below is blank. A run is warned of once, at its first line, which is
+    where the paragraph ends.
     """
-    anchors = [found for found in parse(text)[0] if found.is_anchor]
-    if not anchors:
-        return []
     lines = text.split("\n")
+    found = []
+    for first, last in _runs(_lines_of_anchors(text, lines)):
+        above = lines[first - 2] if first > 1 else None
+        below = lines[last] if last < len(lines) else None
+        if _inside(above, below):
+            found.append(first)
+    return found
+
+
+def _lines_of_anchors(text: str, lines: list[str]) -> list[int]:
+    """The lines, counted from 1, that hold nothing but anchors and spaces."""
+    anchors = [found for found in parse(text)[0] if found.is_anchor]
     starts = [0]
     for line in lines:
         starts.append(starts[-1] + len(line) + 1)
@@ -169,13 +182,20 @@ def anchor_lines(text: str) -> list[int]:
         if any(anchor.end > end for anchor in here):
             continue  # braces typed over several lines
         bounds = zip([start, *(a.end for a in here)], [*(a.start for a in here), end], strict=True)
-        if "".join(text[a:b] for a, b in bounds).strip(" \t\r"):
-            continue
-        above = lines[number - 2] if number > 1 else None
-        below = lines[number] if number < len(lines) else None
-        if _inside(above, below):
+        if not "".join(text[a:b] for a, b in bounds).strip(" \t\r"):
             found.append(number)
     return found
+
+
+def _runs(numbers: list[int]) -> list[tuple[int, int]]:
+    """`numbers`, in order, as runs of consecutive ones: the first and last of each."""
+    runs: list[tuple[int, int]] = []
+    for number in numbers:
+        if runs and runs[-1][1] == number - 1:
+            runs[-1] = (runs[-1][0], number)
+        else:
+            runs.append((number, number))
+    return runs
 
 
 #: A paragraph that says nothing a step could back: a table or figure placed by its binding,

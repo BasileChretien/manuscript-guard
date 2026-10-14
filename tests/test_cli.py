@@ -974,6 +974,30 @@ def test_audit_strict_exits_zero_when_everything_matches(project: Path) -> None:
     assert run("audit", str(paper), "--against", str(project / "results"), "--strict") == 0
 
 
+@pytest.mark.parametrize("words", ["", "No figure here at all.\n"])
+def test_audit_strict_fails_a_paper_with_no_number_in_it(
+    project: Path, capsys, words: str
+) -> None:
+    """It printed "0 numeric tokens" and exited 0 under --strict: an audit that read nothing
+    passed as one that found nothing wrong."""
+    paper = project / "empty.md"
+    paper.write_text(words, encoding="utf-8")
+    against = str(project / "results")
+    assert run("audit", str(paper), "--against", against, "--strict") == 1
+    assert "read no number" in capsys.readouterr().err
+    assert run("audit", str(paper), "--against", against) == 0
+
+
+def test_bind_with_no_manuscript_to_read_says_so(project: Path, capsys) -> None:
+    """"every number in the manuscript is accounted for." was said of a folder that held
+    no Markdown at all."""
+    for path in (project / "manuscript").rglob("*.md"):
+        path.rename(path.with_suffix(".qmd"))
+    assert run("bind", str(project)) == 2
+    err = capsys.readouterr().err
+    assert "holds no Markdown file the gates read" in err and ".qmd" in err
+
+
 def test_audit_with_nothing_to_read_exits_two(tmp_path: Path, capsys) -> None:
     empty = tmp_path / "empty"
     empty.mkdir()

@@ -590,11 +590,12 @@ NOTATED = (
 # ---------------------------------------------------------------------- what an edit holds
 
 #: A binding, a citation and a number in each of the ways one is written: what `reworded`
-#: holds to its place.
+#: holds to its place. A sign of comparison before a number or a binding is part of it.
 HELD = (
     "{{results.ror.point}}", "{{ results.n.total }}", "{{lit.agency.count}}", "[@smith2020]",
     "[@smith2020; @lee2019, p. 12]", "@doe2018", "-@lee2019", "3.84", "-0.5", "1,200", "77",
-    "(n = 12)", "5 %",
+    "(n = 12)", "5 %", "(P < 0.05)", "P \N{LESS-THAN OR EQUAL TO} {{results.p}}", "age >= 18",
+    "P \\> 0.2",
 )  # fmt: skip
 
 

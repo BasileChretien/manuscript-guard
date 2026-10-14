@@ -88,6 +88,39 @@ def source_files(manuscript_dir: Path, *, main_text_only: bool = False) -> list[
     return out
 
 
+def why_no_manuscript(project: Project) -> str | None:
+    """Why the gates have no manuscript to read, in a sentence, or None where they have one.
+
+    A folder that holds no Markdown the gates read is a `.qmd` draft, a mistyped
+    `paths.manuscript`, or every file kept under `_drafts/`. The gates that read the
+    manuscript then read nothing, and the run failed only through what that left behind:
+    every result quoted nowhere, one finding each."""
+    folder = project.path("manuscript")
+    if source_files(folder):
+        return None
+    try:
+        shown = folder.relative_to(project.root).as_posix() + "/"
+    except ValueError:
+        shown = str(folder)
+    if not folder.exists():
+        return f"there is no manuscript folder: {shown} does not exist"
+    found = [path for path in folder.rglob("*") if path.is_file()]
+    said = (
+        f"{shown} holds no Markdown file the gates read: they read every {SOURCE_GLOB} in "
+        "it and its subfolders, except one whose name, or a folder's above it, starts "
+        "with '.' or '_'"
+    )
+    aside = sum(1 for path in found if path.match(SOURCE_GLOB))
+    if aside == 1:
+        said += "; 1 such file is set aside by its name"
+    elif aside:
+        said += f"; {aside} such files are set aside by their names"
+    others = sorted({path.suffix.lower() for path in found if not path.match(SOURCE_GLOB)} - {""})
+    if others:
+        said += f"; it holds {', '.join(others)} file(s), which are not read"
+    return said
+
+
 def is_supplementary(manuscript_dir: Path, path: Path) -> bool:
     """Does this source belong to the supplement rather than to the paper?"""
     try:
@@ -284,7 +317,22 @@ def check_numbers(
             )
         )
 
-    report = report.merge(_coverage(results, literature, referenced))
+    empty = why_no_manuscript(project) if not totals["files"] else None
+    if empty is None:
+        report = report.merge(_coverage(results, literature, referenced))
+    else:
+        # One finding that says what is wrong, in place of one for each result that the
+        # manuscript nobody could read quotes nowhere.
+        report = report.with_findings(
+            Finding(
+                gate="G0",
+                code="manuscript-empty",
+                message=empty,
+                path=project.path("manuscript"),
+                hint="put the manuscript's .md files there, or point `paths.manuscript` in "
+                "paper.yaml at them; a draft in another format has to be Markdown first",
+            )
+        )
     return report.with_counts(
         source_files=totals["files"],
         numeric_atoms=totals["atoms"],

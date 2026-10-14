@@ -285,6 +285,11 @@ def check_numbers(
         )
 
     report = report.merge(_coverage(results, literature, referenced))
+    # A pointer to a table or a figure is let through above as a cross-reference; what it
+    # points at is held here (`gates/pointers.py`).
+    from manuscript_guard.gates.pointers import check_pointers
+
+    report = report.merge(check_pointers(project))
     return report.with_counts(
         source_files=totals["files"],
         numeric_atoms=totals["atoms"],

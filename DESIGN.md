@@ -339,6 +339,36 @@ reviewer, or the author six months later. Both files feed the same `lit.` namesp
 G7 reports the three depths separately. Abstract-only status is flagged but never fails a
 build; a `user-attested` entry missing its attester or statement does fail.
 
+## A pointer names what the document carries
+
+"As Table 4 shows" is a number like any other, and G2 let it through as a cross-reference:
+the rule read the word and whatever digits followed it. So "In step 1204 reports were
+excluded, as Table 4000 and Figure 9 show" passed whole, a count hidden behind "step" and
+two pointers at nothing. The example called its two tables "Table 2" and "Table 3" from the
+day its first table moved to the supplement as Table S1, and nothing said so: the build
+prints a table's caption as written and numbers nothing. LaTeX refuses a `\ref` to a label
+nobody defined; G2 now does the same for a pointer typed as text, as a warning while its
+stage is decided.
+
+What the document carries is counted where the build prints it, in the order the files
+print: each table placed by `{{table.<key>}}` or written by hand as a pipe table, and each
+figure placed by `{{figure.<key>}}` or as an image, the main text and the supplement apart.
+"Table 3" names the main text's third table; "Table S1" and "Supplementary Table 1" the
+supplement's first. A pointer to one there is not is `pointer-to-nothing`, a list read
+whole ("Tables 1 and 2", "Figures 2–4"), and a list joined by a word only after a plural:
+"Table 2 and 3 patients" is one pointer. The main text's tables and figures are held to
+what ICMJE asks for: each cited (`display-not-cited`), and first cited in the order they
+are numbered (`cited-out-of-order`). "Number tables consecutively in the order of their
+first citation in the text" and "Be sure that each table is cited in the text", from
+icmje.org, Preparing for Submission, read 2026-10-14; it says the same of the figures'
+order and gives the supplement no rule, so none is applied to it.
+
+The words that point at nothing a gate can check, a step, a panel, a box, an item, take a
+small number only: up to 20, as `categorical-label` does, and an item up to 99, since a
+checklist runs to 27 items. "Step 1204" is a count. A list after a plural is read as
+pointers by G2 too, where only its first number was before: "Tables 1 and 2 show" left its
+2 unbound.
+
 ## The corruption harness
 
 The claim "no stale number" is worth exactly as much as the evidence that the gate catches
@@ -4141,7 +4171,7 @@ the campaigns are in the suite, on Hypothesis:
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
   them, the settings typed into a project, a co-author's sessions in Word, texts that
   quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds nine more, each
+  beside what an edit made of it. `tests/test_properties.py` holds ten more, each
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
@@ -4202,12 +4232,13 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty rules are broken in place, one at a time, and the property that is
+the generators. So fifty-three rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops; nine ways `reworded` can misread an edit, from
+sentence, a comment read for its stops; three ways a pointer to a table can be misread,
+from a list read as its first number to a table written by hand left uncounted; nine ways `reworded` can misread an edit, from
 a number's sign taken for no part of it to what a comment holds held to its place; five
 ways a co-author's items can be cut wrong round the citation of a claim, from every stop ending a
 sentence, after "et al." too, to a piece that is only a citation left as an item of its
@@ -5456,6 +5487,13 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
+- **A pointer is held to the number of a placement, not to its key.** "Table 2" passes
+  wherever the main text places two tables, whichever two they are: the check sees the
+  numbering, not which table a sentence means. A table placed some other way, a grid
+  table, raw HTML or one the build is handed in a file of its own, is not counted, and nor
+  is an image inside a paragraph, which pandoc prints as no figure. A pointer in a heading
+  is checked for a target and not counted as the citation that numbers a table.
+  "Appendix", "Box", "Section" and "Equation" point at nothing the check counts.
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.
@@ -8924,7 +8962,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 53 broken rules, and the comparison on eleven
+  - The properties were seen to fail on 56 broken rules, and the comparison on eleven
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

@@ -1113,6 +1113,95 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
     assert "unemitted-table-number" in codes
 
 
+# ------------------------------------------------- a pointer names what the document carries
+# "In step 1204 reports were excluded, as Table 4000 and Figure 9 show." passed G2 whole: each
+# number followed a pointer word. The example itself called its two tables "Table 2" and
+# "Table 3", after its first had moved to the supplement.
+
+
+def _pointer_findings(root: Path) -> list[tuple[str, str]]:
+    return [
+        (f.code, f.message)
+        for f in gate_report(root).findings
+        if f.code in ("pointer-to-nothing", "cited-out-of-order", "display-not-cited")
+    ]
+
+
+def _add_to_results(root: Path, sentence: str) -> None:
+    main = main_md(root)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("Baseline characteristics are shown in Table 1.",
+                     f"Baseline characteristics are shown in Table 1. {sentence}", 1),
+        encoding="utf-8",
+    )  # fmt: skip
+
+
+def test_the_example_points_at_what_it_carries(project: Path) -> None:
+    assert _pointer_findings(project) == []
+
+
+@pytest.mark.parametrize(
+    ("sentence", "names"),
+    [
+        ("As Table 4000 shows.", "table 4000"),
+        ("As Figure 9 shows.", "figure 9"),
+        ("As Table S5 shows.", "table S5"),
+        ("As Supplementary Figure 1 shows.", "figure S1"),
+        ("As Tables 1 and 3 show.", "table 3"),
+        ("As Figures 1\N{EN DASH}2 show.", "figure 2"),
+    ],
+)
+def test_a_pointer_to_what_the_document_does_not_carry_is_said(
+    project: Path, sentence: str, names: str
+) -> None:
+    _add_to_results(project, sentence)
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["pointer-to-nothing"], said
+    assert f"points at {names}," in said[0][1], said
+
+
+def test_tables_first_cited_out_of_order_are_said(project: Path) -> None:
+    _add_to_results(project, "Table 2 has the counts.")
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("Baseline characteristics are shown in Table 1. Table 2 has the counts.",
+                     "Table 2 has the counts. Baseline characteristics are shown in Table 1.", 1),
+        encoding="utf-8",
+    )  # fmt: skip
+    assert [code for code, _ in _pointer_findings(project)] == ["cited-out-of-order"]
+
+
+def test_a_table_cited_nowhere_is_said(project: Path) -> None:
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("in Table 2, so", "below, so", 1), encoding="utf-8")
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["display-not-cited"], said
+    assert said[0][1].startswith("Table 2 ")
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    ["In step 1204 reports were excluded.", "Box 47 lists the reports.",
+     "Panel 312 shows the reports.", "Item 125 lists them."],
+)  # fmt: skip
+def test_a_count_after_a_word_with_nothing_to_check_it_against_is_a_count(
+    project: Path, sentence: str
+) -> None:
+    _add_to_results(project, sentence)
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_list_of_tables_is_one_pointer(project: Path) -> None:
+    """"Tables 1 and 2 show" left its 2 bound to nothing."""
+    _add_to_results(project, "Tables 1 and 2 show the reports.")
+    report = gate_report(project)
+    assert "unclassified-number" not in codes(report)
+    assert _pointer_findings(project) == []
+
+
 # ------------------------------------------------- an interval is a declared thing
 
 
@@ -8310,18 +8399,18 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    six read revisions with the earlier rounds in front of them, so the sixth supersedes
-    the five before it and each says it was not blinded."""
+    seven read revisions with the earlier rounds in front of them, so the seventh supersedes
+    the six before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok, report.render(project)
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
-                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2))
+                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 4, report.render(project)
-    assert report.counts["review_rounds_complete"] == 6
+    assert said == superseded + [("round-not-blinded", "review")] * 5, report.render(project)
+    assert report.counts["review_rounds_complete"] == 7
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:

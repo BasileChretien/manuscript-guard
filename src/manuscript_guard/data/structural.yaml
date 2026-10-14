@@ -24,7 +24,25 @@ structural:
     # and only the word form was recognised, so fifteen of that paper's unexplained numbers
     # were §3.1, §2.4 and the like. And the number was `\d+`, undotted — so "Section 4.2"
     # matched "Section 4" and left `4.2` as the atom, which the span then failed to cover.
-    pattern: '(?i)(?:\b(?:table|tables|figure|figures|fig\.?|figs\.?|appendix|annex|box|panel|equation|eq\.?|section|chapter|step|item|supplementary(?=\s)[^\S\n]*(?:\n[^\S\n]*)?(?:table|figure|file|material|method)s?|supplement|additional(?=\s)[^\S\n]*(?:\n[^\S\n]*)?file)[^\S\n]*(?:\n[^\S\n]*)?(?:[-–][^\S\n]*(?:\n[^\S\n]*)?)?S?\d+(?:\.\d+)*[A-Za-z]?|§[^\S\n]*(?:\n[^\S\n]*)?\d+(?:\.\d+)*[A-Za-z]?)\b'
+    # A pointer to a table or a figure is held to what the document carries, by
+    # `gates/pointers.py`; the words with nothing to hold them to are `numbered-part`.
+    pattern: '(?i)(?:\b(?:table|tables|figure|figures|fig\.?|figs\.?|appendix|annex|equation|eq\.?|section|chapter|supplementary(?=\s)[^\S\n]*(?:\n[^\S\n]*)?(?:table|figure|file|material|method)s?|supplement|additional(?=\s)[^\S\n]*(?:\n[^\S\n]*)?file)[^\S\n]*(?:\n[^\S\n]*)?(?:[-–][^\S\n]*(?:\n[^\S\n]*)?)?S?\d+(?:\.\d+)*[A-Za-z]?|§[^\S\n]*(?:\n[^\S\n]*)?\d+(?:\.\d+)*[A-Za-z]?)\b'
+
+  - id: pointer-list
+    why: Several tables or figures pointed at at once, "Tables 1 and 2", "Figures 2-4".
+    # The rule above took the first number of a list and left the rest: "Tables 1 and 2
+    # show" was a 2 bound to nothing. Only after a plural, where the list cannot be a count
+    # in the sentence, and every number of it is held to what the document carries by
+    # `gates/pointers.py`. A join stands between any two gaps, so no run of spaces is shared.
+    pattern: '(?i)\b(?:tables|figures|figs\.?)[^\S\n]*(?:\n[^\S\n]*)?S?\d+[A-Za-z]?(?:[^\S\n]*(?:,|and|&|to|[-–])[^\S\n]*S?\d+[A-Za-z]?)+\b'
+
+  - id: numbered-part
+    why: The number of a step, a panel, a box or an item, which nothing else can check.
+    # These words took any digits after them as a cross-reference, so "In step 1204 reports
+    # were excluded" filed a count as a pointer. There is no step 1204, and no panel or box
+    # past twenty: they take what `categorical-label` takes, 0 to 20. An item takes two
+    # digits, since checklists run to 27 items and questionnaires further.
+    pattern: '(?i)\b(?:(?:step|panel|box)s?[^\S\n]*(?:\n[^\S\n]*)?(?:\d|1\d|20)|items?[^\S\n]*(?:\n[^\S\n]*)?\d{1,2})[A-Za-z]?\b'
 
   - id: supplement-tag
     why: Supplement identifiers of the form S1, S2.

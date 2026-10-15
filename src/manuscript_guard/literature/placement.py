@@ -162,7 +162,7 @@ def _walk(
     each at most `GAP` words after the one before; and which of them are split words.
 
     Of the readings that find as many words, the one with the fewest interruptions, then
-    the fewest words in them, then the one that finds each word latest. A running header
+    the fewest words in them, then the one whose first word that differs is latest. A header
     with "The" in it is one interruption, not the quote's "the" between two (round 1 of
     #301); the first occurrence of each word was taken, and named the wrong words.
     """
@@ -215,7 +215,7 @@ def place(source: str, quote: str) -> Placement | None:
         where.setdefault(token.word, []).append(k)
         if k + 1 < len(tokens) and _split_at(source, tokens, k, token.word + tokens[k + 1].word):
             where.setdefault(token.word + tokens[k + 1].word, []).append(k)
-    best: tuple[tuple[int, int, int], int, list[int], list[int]] | None = None
+    best: tuple[tuple[int, int, int, int], int, list[int], list[int]] | None = None
     for first in range(min(STARTS, len(words))):
         for at in where.get(words[first], ()):
             found, splits = _walk(source, tokens, words, first, at)

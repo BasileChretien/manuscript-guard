@@ -5702,8 +5702,8 @@ Closed since, and why each mattered:
   in one digit is a quote with one word retyped. Words more than twelve apart are not read
   as the quote's, so a quote broken by a long footnote is said to be partly there. A source
   that holds the quote's words in order in two places is read at the one with the most of
-  them, then the one with least between them, which need not be where the author copied
-  from. A soft hyphen inside a word fails the quote, as it always did, and is said to split
+  them, then the fewest interruptions, then the fewest words in them, which need not be
+  where the author copied from. A soft hyphen inside a word fails the quote, as it always did, and is said to split
   it. Only the first two interruptions are named, and the rest counted.
 - **An ellipsis set against a value hides it.** The ellipsis is folded to three full stops
   and a value is not read with a full stop before it, so a quote holding `…14 per 100 000`

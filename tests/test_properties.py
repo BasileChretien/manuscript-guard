@@ -1290,8 +1290,11 @@ _PEOPLE_WRITTEN = (
     ("A. Example", "Ada Example"),
     ("A.Example", "Ada Example"),
     ("Example, A.", "Ada Example"),
-    ("Example A", "Ada Example"),
-    ("Example AB", "Ada Example"),
+    ("Example, A", "Ada Example"),
+    ("Example,\nAB", "Ada Example"),
+    ("Sean O'Brien", "Sean O'Brien"),
+    ("Sean O\N{RIGHT SINGLE QUOTATION MARK}Brien", "Sean O'Brien"),
+    ("S. O\N{RIGHT SINGLE QUOTATION MARK}Brien", "Sean O'Brien"),
     ("Mary Ann van der Berg", "Mary Ann van der Berg"),
     ("Mary\nAnn van der\tBerg", "Mary Ann van der Berg"),
     ("M. van der Berg", "Mary Ann van der Berg"),
@@ -1301,6 +1304,10 @@ _PEOPLE_WRITTEN = (
     ("department of clinical\npharmacology", "Department of Clinical Pharmacology"),
     ("DEPARTMENT OF CLINICAL PHARMACOLOGY", "Department of Clinical Pharmacology"),
     ("Ada Examples", None),
+    ("A Example", None),
+    ("Example A", None),
+    ("Example AB", None),
+    ("O\N{RIGHT SINGLE QUOTATION MARK}Brien", None),
     ("Ada Exampel", None),
     ("ada example", None),
     ("Example", None),
@@ -2211,12 +2218,28 @@ def _an_institution_is_in_its_own_case(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(blinding, "_words", lambda piece, flags=0: real(piece))
 
 
-def _a_name_is_not_read_family_name_first(patch: pytest.MonkeyPatch) -> None:
+def _an_initial_needs_no_stop(patch: pytest.MonkeyPatch) -> None:
     def name(given: str, family: str) -> re.Pattern[str]:
         initial, surname = re.escape(given[0]), blinding._spaced(family)
         return re.compile(
             rf"(?<!\w)(?:{blinding._spaced(given)}\s+{surname}|{initial}(?:\.\s*|\s+)"
-            rf"{surname})(?!\w)"
+            rf"{surname}|{surname},?\s+{initial}[A-Z]?\.?)(?!\w)"
+        )
+
+    patch.setattr(blinding, "_name", name)
+
+
+def _an_apostrophe_is_matched_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(
+        blinding, "_spaced", lambda words: r"\s+".join(re.escape(w) for w in words.split())
+    )
+
+
+def _a_name_is_not_read_family_name_first(patch: pytest.MonkeyPatch) -> None:
+    def name(given: str, family: str) -> re.Pattern[str]:
+        initial, surname = re.escape(given[0]), blinding._spaced(family)
+        return re.compile(
+            rf"(?<!\w)(?:{blinding._spaced(given)}\s+{surname}|{initial}\.\s*{surname})(?!\w)"
         )
 
     patch.setattr(blinding, "_name", name)
@@ -2589,6 +2612,14 @@ BROKEN = {
     ),
     "an institution is found in its own case only": (
         _an_institution_is_in_its_own_case,
+        test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
+    ),
+    "an initial needs no stop": (
+        _an_initial_needs_no_stop,
+        test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
+    ),
+    "an apostrophe is matched as it is typed": (
+        _an_apostrophe_is_matched_as_typed,
         test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
     ),
     "a name is not read with the family name first": (

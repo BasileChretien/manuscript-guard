@@ -2091,13 +2091,16 @@ each tracked change and comment, and the list of people Word keeps. A name found
 exits 1, and `submit` does not assemble the pack. `submit --document` reads the copy it is
 given, which is the one that comes back from a co-author with Word's fields filled in.
 
-A name is looked for as one is written: the given and the family name, and the initial with
-the family name before it or after, any space between the words. The family name alone is
-not, because many are ordinary words; an institution is the part of an affiliation between
-its commas that has three words or more, in any case, because a city or a country names
-many other things. The reference list is not read: the journals that review blind mostly ask
-for the authors' own work to be cited in the third person, not taken out, and a
-self-citation prints their names there.
+A name is looked for as one is written: the given and the family name, the initial with its
+stop before the family name ("A. Example"), and after it behind a comma ("Example, A."), any
+space between the words and either apostrophe, since pandoc prints a typed one curly. A bare
+initial is not read: "A Cross-sectional study" does not name Anna Cross, nor "Ward A" Alice
+Ward. The family name alone is not, because many are ordinary words; an institution is the
+part of an affiliation between its commas that has three words or more, in any case, because
+a city or a country names many other things. The reference list, a paragraph whose style is
+named "Bibliography", is not read: the journals that review blind mostly ask for the
+authors' own work to be cited in the third person, not taken out, and a self-citation
+prints their names there.
 
 ## The submission pack writes nothing twice
 

@@ -3418,7 +3418,8 @@ def _named(root: Path, document: Path) -> list[tuple[str, str]]:
     found = check_blinded(project, document).findings
     assert all(f.code == "blind-document-names-author" and f.severity == "fail" for f in found)
     return sorted(
-        (re.match(r"'([^']*)'", f.message)[1], re.search(r" is in (.*) of ", f.message)[1])
+        (re.match(r"(['\"])(.*?)\1 is in ", f.message)[2],
+         re.search(r" is in (.*) of ", f.message)[1])
         for f in found
     )
 
@@ -3483,6 +3484,22 @@ _CORE_NS = (
             [("Example University Graduate School of Medicine", "a figure (image1.svg)")],
             id="the text of a figure the document holds",
         ),
+        # Round 1 of #273: matplotlib writes a DOCTYPE into every SVG, and the parser's
+        # refusal of it stopped the whole check. One with entities is read for nothing, and
+        # the rest of the document still is.
+        pytest.param(
+            "<w:p><w:r><w:t>Ada Example.</w:t></w:r></w:p>",
+            {"word__media__a.svg": '<?xml version="1.0"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG '
+             '1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg xmlns='
+             '"http://www.w3.org/2000/svg"><text>B. Sample</text></svg>',
+             "word__media__b.svg": '<!DOCTYPE svg [<!ENTITY e "x">]><svg><text>&e;</text></svg>'},
+            [("Ada Example", "the text"), ("Blaise Sample", "a figure (a.svg)")],
+            id="a figure with a DOCTYPE",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:t>As B. O\N{RIGHT SINGLE QUOTATION MARK}Sample said.</w:t></w:r></w:p>",
+            {}, [("Blaise O'Sample", "the text")], id="an apostrophe printed curly",
+        ),
     ],
 )  # fmt: skip
 def test_a_document_reviewed_blind_names_no_author_anywhere_word_keeps_one(
@@ -3492,6 +3509,10 @@ def test_a_document_reviewed_blind_names_no_author_anywhere_word_keeps_one(
     e-mail address or institution is found in the text, a figure, and every field Word
     keeps an author in, which a co-author's copy comes back with."""
     _blind(project)
+    authors = project / "authors.yaml"
+    if "O'Sample" in str(said):
+        authors.write_text(authors.read_text(encoding="utf-8").replace(
+            "family: Sample", "family: \"O'Sample\""), encoding="utf-8")  # fmt: skip
     document = _word(tmp_path / "manuscript.docx", body, **parts)
     assert _named(project, document) == sorted(said)
 
@@ -3500,17 +3521,25 @@ def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
     project: Path, tmp_path: Path
 ) -> None:
     """A self-citation prints the authors' names in the reference list, which the journals
-    ask for in the third person rather than taken out. A family name alone, a name with a
-    letter more, a city and a country name nobody; and a review that is not blind is not
-    read."""
+    ask for in the third person rather than taken out, and a localised Word may give the
+    list's style another identifier. A family name alone, a name with a letter more, a city
+    and a country name nobody, nor does an article before the family name or a letter after
+    it (round 1 of #273: "A Cross-sectional study" named Anna Cross); and a review that is
+    not blind is not read."""
     _blind(project)
     body = (
         "<w:p><w:pPr><w:pStyle w:val='Bibliography'/></w:pPr><w:r><w:t>Example A, Sample B. "
         "A study. 2019.</w:t></w:r></w:p>"
-        "<w:p><w:r><w:t>Example data from Springfield, Japan, as Ada Examples said.</w:t></w:r>"
+        "<w:p><w:pPr><w:pStyle w:val='ab'/></w:pPr><w:r><w:t>Example, A. A study.</w:t></w:r>"
         "</w:p>"
+        "<w:p><w:r><w:t>Example data from Springfield, Japan, as Ada Examples said. A Example "
+        "study, on Example A and Example B.</w:t></w:r></w:p>"
     )
-    assert _named(project, _word(tmp_path / "a.docx", body)) == []
+    styles = (
+        f"<w:styles {_W_NS}><w:style w:type='paragraph' w:styleId='ab'>"
+        "<w:name w:val='Bibliography'/></w:style></w:styles>"
+    )
+    assert _named(project, _word(tmp_path / "a.docx", body, word__styles_xml=styles)) == []
     named = "<w:p><w:r><w:t>As Ada Example showed.</w:t></w:r></w:p>"
     assert _named(project, _word(tmp_path / "b.docx", named)) == [("Ada Example", "the text")]
     _blind(project, "single")

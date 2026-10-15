@@ -83,17 +83,27 @@ def sought(authors: dict | None) -> list[Sought]:
 
 
 def _name(given: str, family: str) -> re.Pattern[str]:
-    """A name as it is written: "Ada Example", "A. Example", "Example A", "Example, A."."""
+    """A name as it is written: "Ada Example", "A. Example", "Example, A.". An initial counts
+    with its stop before the family name and after a comma behind it, and not bare: "A Cross-
+    sectional study" and "patients on Ward A" name nobody (round 1 of #273)."""
     initial = re.escape(given[0])
     surname = _spaced(family)
     return re.compile(
-        rf"(?<!\w)(?:{_spaced(given)}{_SPACE}{surname}|{initial}(?:\.\s*|{_SPACE}){surname}"
-        rf"|{surname},?{_SPACE}{initial}[A-Z]?\.?)(?!\w)"
+        rf"(?<!\w)(?:{_spaced(given)}{_SPACE}{surname}|{initial}\.\s*{surname}"
+        rf"|{surname},{_SPACE}{initial}[A-Z]?\.?)(?!\w)"
     )
 
 
+#: An apostrophe as `authors.yaml` types it, and as pandoc prints it: "O'Brien" is printed
+#: "O\N{RIGHT SINGLE QUOTATION MARK}Brien" (round 1 of #273).
+_APOSTROPHE = "['\N{RIGHT SINGLE QUOTATION MARK}]"
+
+
 def _spaced(words: str) -> str:
-    return _SPACE.join(re.escape(word) for word in words.split())
+    return _SPACE.join(
+        "".join(_APOSTROPHE if c in _APOSTROPHE[1:-1] else re.escape(c) for c in word)
+        for word in words.split()
+    )
 
 
 def _words(piece: str, flags: int = 0) -> re.Pattern[str]:
@@ -181,15 +191,16 @@ def _places(document: Path) -> list[tuple[str, str]]:
     places: list[tuple[str, str]] = []
     with open_archive(document) as archive:
         names = archive.namelist()
+        listed = _bibliography_styles(archive) if "word/styles.xml" in names else set()
         for name in names:
             if _TEXT_PART.fullmatch(name):
                 root = read_part(archive, name)
-                places.append(("the text", "\n".join(_paragraphs(root))))
+                places.append(("the text", "\n".join(_paragraphs(root, listed))))
                 authors = {node.get(f"{_W}author") for node in root.iter()} - {None}
                 places += [("the author of a tracked change or a comment", a) for a in authors]
             elif name.startswith("word/media/") and name.lower().endswith(".svg"):
-                places.append((f"a figure ({name[len('word/media/') :]})", _svg_text(
-                    read_member(archive, name))))  # fmt: skip
+                figure = f"a figure ({name[len('word/media/') :]})"
+                places.append((figure, _svg_text(read_member(archive, name))))
         if "docProps/core.xml" in names:
             for node in read_part(archive, "docProps/core.xml"):
                 if node.tag in _CORE and node.text:
@@ -201,13 +212,25 @@ def _places(document: Path) -> list[tuple[str, str]]:
     return places
 
 
-def _paragraphs(root: ET.Element) -> list[str]:
+def _bibliography_styles(archive) -> set[str]:
+    """The identifiers of the styles named "Bibliography". Word keeps a built-in style's name
+    in English, and a localised Word may give it another identifier (round 1 of #273)."""
+    root = read_part(archive, "word/styles.xml")
+    return {
+        style.get(f"{_W}styleId", "")
+        for style in root.iter(f"{_W}style")
+        if (style.find(f"{_W}name") is not None)
+        and style.find(f"{_W}name").get(f"{_W}val", "").casefold() == "bibliography"
+    }
+
+
+def _paragraphs(root: ET.Element, listed: set[str] = frozenset()) -> list[str]:
     """Each paragraph's text, deleted text included, a reference list's left out. A tab or a
     break inside a paragraph is a space, so a name split by one is still found."""
     out = []
     for paragraph in root.iter(f"{_W}p"):
         style = paragraph.find(f"{_W}pPr/{_W}pStyle")
-        if style is not None and style.get(f"{_W}val") == "Bibliography":
+        if style is not None and style.get(f"{_W}val") in {"Bibliography", *listed}:
             continue
         pieces = []
         for node in paragraph.iter():
@@ -220,9 +243,17 @@ def _paragraphs(root: ET.Element) -> list[str]:
 
 
 def _svg_text(data: bytes) -> str:
+    """The text of an SVG figure. matplotlib writes a DOCTYPE into every SVG it saves, which
+    `parse_xml` refuses, and that refusal stopped the whole check (round 1 of #273): one with
+    no internal subset declares no entity and is taken out first. An SVG still unreadable is
+    read for nothing, as a raster figure is."""
     from manuscript_guard.safexml import parse_xml
 
-    root = parse_xml(data, what="an SVG figure")
+    data = re.sub(rb"<!DOCTYPE[^\[>]*>", b"", data, count=1)
+    try:
+        root = parse_xml(data, what="an SVG figure")
+    except UnsafeDocument:
+        return ""
     return "\n".join(node.text for node in root.iter() if node.text and node.text.strip())
 
 

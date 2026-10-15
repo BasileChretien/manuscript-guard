@@ -29,6 +29,7 @@ from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.literature import ATTESTED, Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.gates.duplicates import check_duplicates
 from manuscript_guard.gates.identifiers import check_identifiers
 from manuscript_guard.gates.lookups import check_lookups
 from manuscript_guard.gates.numbers import source_files
@@ -147,6 +148,7 @@ def check_citations(project: Project, literature: Literature) -> Report:
     # What the registries said of each cited reference, read from the records `lookup`
     # wrote; nothing is asked here.
     report = report.merge(check_lookups(project, sorted(seen)))
+    report = report.merge(check_duplicates(project, seen))
     stale = sorted(committed - seen) if committed else []
     for citekey in stale:
         report = report.with_findings(

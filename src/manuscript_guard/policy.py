@@ -156,6 +156,8 @@ BINDS_AT = {
     "lookup-date-future": INTERNAL_REVIEW,
     "lookup-record-unreadable": INTERNAL_REVIEW,
     "lookup-record-misfiled": INTERNAL_REVIEW,
+    # One work cited under two keys is printed twice in the reference list.
+    "reference-duplicate": INTERNAL_REVIEW,
     # -- submission -------------------------------------------------------------
     # The panel's verdict is the last thing to bind, because a panel reviews a draft
     # that is otherwise finished.

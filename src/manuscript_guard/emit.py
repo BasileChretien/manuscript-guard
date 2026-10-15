@@ -389,17 +389,18 @@ RELATIONS = {"sum": 0, "difference": 2, "ratio": 2, "at_most": 1, "in_order": 1}
 
 
 def flow_problem(
-    stages: list[int], exclusions: list[list[int]], arms: list[int], overlapping: bool
+    stages: list[int], exclusions: list[list[int]], arms: list[int], overlapping: bool | list
 ) -> str | None:
     """What is wrong with a flow's arithmetic, or None. Shared with G8, which reads the
-    counts back from the results."""
+    counts back from the results. `overlapping` is True for every step, or the numbers of
+    the steps whose reasons overlap: step n goes from stage n to stage n + 1."""
     steps = zip(stages, stages[1:], exclusions, strict=False)
     for n, (here, there, reasons) in enumerate(steps, 1):
         excluded = here - there
         if excluded < 0:
             return f"stage {n + 1} ({there}) is larger than stage {n} ({here})"
-        if overlapping:
-            if reasons and (sum(reasons) < excluded or max(reasons) > excluded):
+        if overlapping is True or (isinstance(overlapping, list) and n in overlapping):
+            if sum(reasons) < excluded or max(reasons, default=0) > excluded:
                 return (f"the reasons after stage {n} ({', '.join(map(str, reasons))}) cannot "
                         f"account for the {excluded} excluded, even overlapping")  # fmt: skip
         elif sum(reasons) != excluded:
@@ -408,6 +409,21 @@ def flow_problem(
     if arms and sum(arms) != stages[-1]:
         return f"the arms sum to {sum(arms)}, and the last stage is {stages[-1]}"
     return None
+
+
+def _overlapping(key: str, overlapping: object, steps: int) -> bool | list[int]:
+    """True, False, or the step numbers in order, each once; anything else is refused."""
+    if isinstance(overlapping, bool):
+        return overlapping
+    numbers = list(overlapping) if isinstance(overlapping, (list, tuple, set, frozenset)) else []
+    if not numbers or any(
+        isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= steps for n in numbers
+    ):
+        raise ValueError(
+            f"flow {key!r}: overlapping is True, False, or the numbers of the steps whose "
+            f"reasons overlap, from 1 to {steps}"
+        )
+    return sorted(set(numbers))
 
 
 #: What a variable can be meant to be. The data hold numbers and strings, and cannot say
@@ -1488,7 +1504,7 @@ class Emitter:
         exclusions: list[dict[str, int]],
         *,
         arms: dict[str, int] | None = None,
-        overlapping: bool = False,
+        overlapping: bool | list[int] = False,
     ) -> None:
         """Record a flow of participants or records, every count a result of its own.
 
@@ -1499,8 +1515,10 @@ class Emitter:
 
         `exclusions` holds, for each step from one stage to the next, the reasons and their
         counts. Each stage less its exclusions is the next stage, and the arms sum to the
-        last stage; `overlapping=True` says one record can be excluded for several reasons,
-        which waives the sum of the reasons and keeps the total. The counts are written as
+        last stage. Where one record can be excluded for several reasons, `overlapping`
+        names the steps where that happens, `[3]` for the step from stage 3 to stage 4, or
+        is True for every step: their reasons may then sum to more than the step removed,
+        and the stages must still agree. The counts are written as
         `flow.<key>.stage.<n>`, `flow.<key>.excluded.<n>.<m>` and `flow.<key>.arm.<n>`, to be
         bound in the text and drawn by a figure script from the results; a count that breaks
         the arithmetic is refused here, as G8 refuses it on disk.
@@ -1518,6 +1536,7 @@ class Emitter:
                   *(arms or {}).values()]  # fmt: skip
         if any(isinstance(n, bool) or not isinstance(n, int) or n < 0 for n in counts):
             raise ValueError(f"flow {key!r}: every count is a whole number, none below 0")
+        overlapping = _overlapping(key, overlapping, len(stages) - 1)
         problem = flow_problem(list(stages.values()),
                                [list(step.values()) for step in exclusions],
                                list((arms or {}).values()), overlapping)  # fmt: skip

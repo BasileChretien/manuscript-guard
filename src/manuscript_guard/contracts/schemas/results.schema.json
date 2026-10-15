@@ -81,9 +81,51 @@
             }
           },
           "scale": {
-            "type": "number"
+            "type": "number",
+            "exclusiveMinimum": 0
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "difference",
+                    "ratio"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "of": {
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "at_most",
+                    "in_order"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "of": {
+                  "maxItems": 1
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "flows": {
@@ -171,7 +213,21 @@
             }
           },
           "overlapping": {
-            "type": "boolean"
+            "description": "True where any step's reasons may overlap, or the numbers of those steps: step n goes from stage n to stage n + 1.",
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            ]
           }
         }
       }

@@ -661,9 +661,10 @@ em$flow("consort",
 em$flow("prisma",
         stages = c("Records" = 120, "Screened" = 100, "Included" = 12),
         exclusions = list(c("Duplicates" = 20), c("Not relevant" = 70, "No outcome" = 30)),
-        overlapping = TRUE)
+        overlapping = 2)
 em$value("cohort.n", 300L)
-em$relation("sum", "cohort.n", c("flow.consort.arm.1", "flow.consort.arm.2"))
+# sapply names what it returns: a named `of` is still an array of keys.
+em$relation("sum", "cohort.n", sapply(1:2, function(n) paste0("flow.consort.arm.", n)))
 em$relation("ratio", "cohort.n", c("flow.consort.stage.2", "flow.consort.stage.1"), scale = 412)
 em$relation("at_most", "flow.prisma.stage.3", "flow.prisma.stage.2")
 em$write()
@@ -679,7 +680,7 @@ em.flow("consort",
 em.flow("prisma",
         stages={"Records": 120, "Screened": 100, "Included": 12},
         exclusions=[{"Duplicates": 20}, {"Not relevant": 70, "No outcome": 30}],
-        overlapping=True)
+        overlapping=[2])
 em.value("cohort.n", 300)
 em.relation("sum", "cohort.n", ["flow.consort.arm.1", "flow.consort.arm.2"])
 em.relation("ratio", "cohort.n", ["flow.consort.stage.2", "flow.consort.stage.1"], scale=412)
@@ -720,6 +721,8 @@ def test_r_and_python_write_the_same_flows_and_relations(tmp_path: Path) -> None
     from_python = written()
     assert from_r["relations"] == from_python["relations"]
     assert from_r["flows"] == from_python["flows"]
+    assert from_python["flows"]["prisma"]["overlapping"] == [2]
+    assert from_python["relations"][0]["of"] == ["flow.consort.arm.1", "flow.consort.arm.2"]
     assert from_python["flows"]["prisma"]["exclusions"][0] == [
         {"reason": "Duplicates", "key": "flow.prisma.excluded.1.1"}
     ]
@@ -741,6 +744,10 @@ def test_r_and_python_write_the_same_flows_and_relations(tmp_path: Path) -> None
         ('em$flow("c", stages = c(412, 300), exclusions = list(c(X = 112)))', "by its label"),
         ('em$flow("c", stages = c(A = 412, B = 300), exclusions = list(c(X = 60, Y = 40)), '
          'overlapping = TRUE)', "cannot account for the 112 excluded"),
+        ('em$flow("c", stages = c(A = 412, B = 300), exclusions = list(c(X = 112)), '
+         'overlapping = 2)', "from 1 to 1"),
+        ('em$flow("c", stages = c(A = 3, B = 2, C = 1), exclusions = list(c(X = 1, Y = 1), '
+         'c(Z = 2)), overlapping = 1)', "stage 2 (2) less its exclusions (2)"),
         ('em$relation("mean", "a", "b")', "the kinds are"),
         ('em$relation("difference", "a", "b")', "is of 2 key"),
         ('em$relation("ratio", "a", c("b", "c"), scale = 0)', "positive number"),

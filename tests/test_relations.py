@@ -241,6 +241,74 @@ def test_the_emitter_refuses_a_relation_it_cannot_write(
         _emitter(scratch).relation(*args, **kwargs)
 
 
+PRISMA = {
+    "stages": {"Records": 1200, "Screened": 1000, "Sought": 300, "Assessed": 250},
+    "exclusions": [{"Duplicates": 150, "Automation": 80}, {"Excluded": 700},
+                   {"Not retrieved": 50}],
+}  # fmt: skip
+
+
+def test_overlap_named_for_one_step_leaves_the_others_exact(scratch: Path) -> None:
+    """Round 1 of #293: one flag waived every step, so the first step's reasons, 230 for
+    the 200 removed before screening, passed because the reports step overlapped."""
+    with pytest.raises(ValueError, match="stage 1 .1200. less its exclusions .230."):
+        _emitter(scratch).flow("prisma", **PRISMA, overlapping=[3])
+    _emitter(scratch).flow("prisma", **PRISMA, overlapping=[1])
+    em = _emitter(scratch)
+    em.flow("prisma", **PRISMA, overlapping=(1, 1))
+    assert em._flows["prisma"]["overlapping"] == [1]
+
+
+@pytest.mark.parametrize("overlapping", [[0], [4], ["1"], [True], [], 1, "yes"])
+def test_an_overlap_that_names_no_step_is_refused(scratch: Path, overlapping: object) -> None:
+    with pytest.raises(ValueError, match="numbers of the steps whose reasons overlap, from 1 to 3"):
+        _emitter(scratch).flow("prisma", **PRISMA, overlapping=overlapping)
+
+
+def test_an_overlapping_step_with_no_reasons_accounts_for_nothing(scratch: Path) -> None:
+    unexplained = {"stages": {"A": 412, "B": 300}, "exclusions": [{}]}
+    with pytest.raises(ValueError, match="cannot account for the 112 excluded"):
+        _emitter(scratch).flow("consort", **unexplained, overlapping=True)
+
+
+def test_a_flow_on_disk_is_held_to_the_steps_it_names(scratch: Path) -> None:
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    em = _emitter(scratch)
+    em.flow("prisma", **PRISMA, overlapping=[1])
+    em.write()
+    fragment = scratch / "results" / "run.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    assert document["flows"]["prisma"]["overlapping"] == [1]
+    document["flows"]["prisma"]["overlapping"] = [3]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    results, report = load_results(scratch / "results")
+    assert report.ok, report.findings
+    assert [f.code for f in check_relations(results).findings] == ["flow-broken"]
+
+
+@pytest.mark.parametrize(
+    "relation",
+    [
+        {"kind": "difference", "key": "risk.difference", "of": ["risk.treated"]},
+        {"kind": "ratio", "key": "rate.per_1000", "of": ["events.n"]},
+        {"kind": "at_most", "key": "cohort.n_men", "of": ["cohort.n", "cohort.n_women"]},
+    ],
+)
+def test_a_relation_with_the_wrong_number_of_keys_is_refused_not_a_crash(relation: dict) -> None:
+    """Round 1 of #293: the schema let a difference of one key through, and the gate raised.
+    The schema refuses it now; a gate given one anyway says so."""
+    from manuscript_guard.contracts import validate
+
+    report = _check(relation)
+    assert _codes(report) == [("relation-unresolved", FAIL)]
+    document = {"schema": "manuscript-guard/results/1", "values": {}, "relations": [relation]}
+    assert not validate(document, "results", Path("r.json")).ok
+
+
 def test_a_relation_may_name_another_script_s_keys(scratch: Path) -> None:
     """G8 reads every fragment together, so the total and its parts can be two scripts'."""
     (scratch / "analysis" / "other.py").write_text("# other\n", encoding="utf-8")

@@ -95,13 +95,15 @@ reasons and arms are named vectors there: `stages = c("Randomised" = 300, ...)`.
   diagram's script read them from the results.
 - **The emitter refuses a flow whose arithmetic fails.** Each stage less its exclusions must
   be the next stage, and the arms must sum to the last stage.
-- **Overlapping reasons.** Where one record can be excluded for several reasons, pass
-  `overlapping=True`. The reasons may then sum to more than the step removed, and the stages
-  still have to agree.
+- **Overlapping reasons.** Where one record can be excluded for several reasons at a step,
+  name that step: `overlapping=[3]` for the step from stage 3 to stage 4 (`overlapping = 3`
+  in R), or `True` for every step. Its reasons may then sum to more than the step removed,
+  and the stages still have to agree. Every other step's reasons must still sum exactly.
 - **PRISMA 2020.** The records removed before screening (duplicates, automation, other) are
-  the exclusions of the first step. A report excluded for several reasons is
-  `overlapping=True`. Studies are not a subtraction from reports: end the flow at the
-  reports, and declare the studies `at_most` the reports included.
+  the exclusions of the first step. Where a report is excluded for several reasons, name the
+  step from reports assessed to reports included in `overlapping`. Studies are not a
+  subtraction from reports: end the flow at the reports, and declare the studies `at_most`
+  the reports included.
 - **A 2x2 table.** Declare each margin as a sum of its cells, and the total as the sum of all
   four.
 

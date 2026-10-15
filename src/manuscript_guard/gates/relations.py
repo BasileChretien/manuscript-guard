@@ -31,7 +31,7 @@ from decimal import Decimal, DivisionByZero, InvalidOperation
 
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
-from manuscript_guard.emit import flow_problem
+from manuscript_guard.emit import RELATIONS, flow_problem
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
 
 GATE = "G8"
@@ -68,6 +68,10 @@ def _relation(relation: dict, values: dict[str, Value]) -> list[Finding]:
     if missing:
         return [_unresolved(f"a {kind} declared of {key} names {', '.join(missing)}, which "
                             "nothing emits", source)]  # fmt: skip
+    expected = RELATIONS.get(kind)
+    if expected is None or (expected and len(of) != expected):
+        return [_unresolved(f"a {kind} of {key} names {len(of)} key(s); "
+                            f"{_takes(kind)}", source)]  # fmt: skip
     if kind in ("at_most", "in_order"):
         return _order(kind, key, of[0], values, source)
     numbers = [_number(values[name].value) for name in (key, *of)]
@@ -92,6 +96,13 @@ def _relation(relation: dict, values: dict[str, Value]) -> list[Finding]:
             )
         ]
     return _printed(kind, key, of, relation.get("scale", 1), values, source)
+
+
+def _takes(kind: str) -> str:
+    expected = RELATIONS.get(kind)
+    if expected is None:
+        return f"the kinds are {', '.join(RELATIONS)}"
+    return f"a {kind} is of {expected}"
 
 
 def _equal(result: float, computed: float, exact: bool) -> bool:
@@ -230,11 +241,12 @@ def _flow(key: str, flow: dict, values: dict[str, Value]) -> list[Finding]:
     def counts(step: list[dict]) -> list[int]:
         return [counted[entry["key"]] for entry in step]
 
+    overlapping = flow.get("overlapping", False)
     problem = flow_problem(
         counts(flow["stages"]),
         [counts(step) for step in flow["exclusions"]],
         counts(flow.get("arms", [])),
-        bool(flow.get("overlapping")),
+        overlapping if isinstance(overlapping, (bool, list)) else False,
     )
     if problem is None:
         return []

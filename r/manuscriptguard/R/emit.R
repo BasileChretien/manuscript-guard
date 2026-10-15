@@ -1070,7 +1070,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
                              scale > 0)) {
       stop("relation '", key, "': a ratio's scale is a positive number", call. = FALSE)
     }
-    entry <- list(kind = kind, key = key, of = as.list(of))
+    # unname: a named vector, as sapply returns, would be written as a JSON object.
+    entry <- list(kind = kind, key = key, of = as.list(unname(of)))
     if (!is.null(scale)) entry$scale <- scale
     state$relations[[length(state$relations) + 1L]] <- entry
     invisible(NULL)
@@ -1085,8 +1086,10 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   #           exclusions = list(c("Not meeting criteria" = 87, "Declined" = 25)),
   #           arms = c(Drug = 151, Placebo = 149))
   #
-  # Each stage less its exclusions is the next stage, and the arms sum to the last stage;
-  # `overlapping = TRUE` waives the sum of the reasons and keeps the total.
+  # Each stage less its exclusions is the next stage, and the arms sum to the last stage.
+  # `overlapping` names the steps whose reasons overlap, `3` for the step from stage 3 to
+  # stage 4, or is TRUE for every step: their reasons may then sum to more than the step
+  # removed, and the stages must still agree.
   flow <- function(key, stages, exclusions, arms = NULL, overlapping = FALSE) {
     if (!is.character(key) || length(key) != 1L || !grepl("^[a-z][a-z0-9_]*$", key)) {
       stop("flow '", key, "': a key is lowercase letters, digits and underscores",
@@ -1114,12 +1117,23 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
         stop("flow '", key, "': every count is named by its label", call. = FALSE)
       }
     }
+    steps <- length(stages) - 1L
+    if (is.logical(overlapping) && length(overlapping) == 1L && !is.na(overlapping)) {
+      overlapping <- isTRUE(overlapping)
+    } else if (is.numeric(overlapping) && length(overlapping) > 0L &&
+               all(is.finite(overlapping)) && all(overlapping == round(overlapping)) &&
+               all(overlapping >= 1) && all(overlapping <= steps)) {
+      overlapping <- as.list(sort(unique(as.integer(unname(overlapping)))))
+    } else {
+      stop("flow '", key, "': overlapping is TRUE, FALSE, or the numbers of the steps whose ",
+           "reasons overlap, from 1 to ", steps, call. = FALSE)
+    }
     whole <- function(counts) if (length(counts) == 0L) integer() else as.integer(counts)
     problem <- mg_flow_problem(whole(stages), lapply(exclusions, whole), whole(arms),
-                               isTRUE(overlapping))
+                               overlapping)
     if (!is.null(problem)) stop("flow '", key, "': ", problem, call. = FALSE)
 
-    record <- list(stages = list(), exclusions = list(), overlapping = isTRUE(overlapping))
+    record <- list(stages = list(), exclusions = list(), overlapping = overlapping)
     for (n in seq_along(stages)) {
       name <- sprintf("flow.%s.stage.%d", key, n)
       value(name, as.integer(stages[[n]]))
@@ -1269,7 +1283,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
 }
 
 # What is wrong with a flow's arithmetic, or NULL: the Python `flow_problem`, word for word,
-# which G8 also runs on the counts read back from the results.
+# which G8 also runs on the counts read back from the results. `overlapping` is TRUE, FALSE
+# or a list of the step numbers whose reasons overlap.
 mg_flow_problem <- function(stages, exclusions, arms, overlapping) {
   for (n in seq_len(length(stages) - 1L)) {
     here <- stages[[n]]
@@ -1279,8 +1294,8 @@ mg_flow_problem <- function(stages, exclusions, arms, overlapping) {
     if (excluded < 0L) {
       return(sprintf("stage %d (%d) is larger than stage %d (%d)", n + 1L, there, n, here))
     }
-    if (isTRUE(overlapping)) {
-      if (length(reasons) > 0L && (sum(reasons) < excluded || max(reasons) > excluded)) {
+    if (isTRUE(overlapping) || (is.list(overlapping) && n %in% unlist(overlapping))) {
+      if (sum(reasons) < excluded || max(c(reasons, 0L)) > excluded) {
         return(sprintf(
           "the reasons after stage %d (%s) cannot account for the %d excluded, even overlapping",
           n, paste(reasons, collapse = ", "), excluded

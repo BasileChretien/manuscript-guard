@@ -4887,8 +4887,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   may say so rather than change a number.
 - **A flow's record is checked step by step, and nothing more.** "One study, several
   reports" (PRISMA 2020) is not a subtraction, so a flow stops at the reports and the studies
-  are an `at_most` of them. One record excluded for several reasons is `overlapping=True`,
-  which waives the sum of that step's reasons but not its total. The flow diagram is not yet
+  are an `at_most` of them. Where one record can be excluded for several reasons, the step is
+  named in `overlapping`, which waives the sum of that step's reasons but not its total; the
+  reasons are still each at most what the step removed, and together at least that. The flow diagram is not yet
   drawn from the record: a figure script reads the counts from the results like any other.
 - **A UTF-16 input without a BOM is normalised as if it were 8-bit text.** Its 0x0D and 0x0A
   bytes can belong to ordinary characters, so an edit that swaps one such character for

@@ -1,0 +1,25 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 7
+reviewer: pharmacoepidemiologist
+reviewed_by: Claude Code
+reviewed_on: '2026-10-16'
+manuscript_sha256: a30bcbeaf6202c15e36f1b2086e4f5c4415818baf2bf7fe34bdc0f0663a14bff
+file_sha256:
+  main.md: a311507746e68073566d3873acc1a06f6cc3e297f21be0595d4c3525308b50a9
+  supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
+verdict: pass
+summary: Table S1 now names the dictionary the outcome was coded with and its release, bound
+  from what the analysis wrote, so the release printed is the one the case definition used.
+  The note says that a real study codes with MedDRA and names its version, which is the point
+  a reader of a disproportionality analysis needs made. Nothing from the earlier rounds is
+  reopened.
+findings:
+- id: r7-pe-01
+  severity: comment
+  where: Table S1
+  finding: The note names the generator's own term list rather than MedDRA, which is true of
+    these data; a reader copying the example should change it to the dictionary and release
+    their events were coded with, and the binding will then print that release.
+reading_sha256: 6fd1c7841a17b5d5b598088f8d7c961a3da38f66f00438db244e1398ac7c9bcd

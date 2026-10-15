@@ -179,6 +179,11 @@ def main() -> None:
         caption="Reports by drug group. Values are n (%) unless stated.",
     )
 
+    # The dictionary the events were coded with, and its release, quoted where the code
+    # lists are. A real study names MedDRA and its version (`release_file=` reads it from
+    # MedDRA's own `meddra_release.asc`); this one's events are the data generator's terms.
+    em.dictionary("Generator event terms", "1")
+
     # The code lists the analysis selected on, published as RECORD 6.1 requires and as
     # READUS-PV expects for a case definition. Handed over as lists rather than as a typed
     # string: the emitter joins them, so the printed table is its output and the same

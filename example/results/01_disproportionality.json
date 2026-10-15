@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "de6e2e0b647fe0ce0ed61ec58ae46a7a646ae0825b91bcd746ced177600fefd0",
-    "generated_at": "2026-10-09T08:39:29+00:00",
+    "generated_by_sha256": "211d07d4594fd0da5e4e913228e2d9dae329c44a4405941be011ef79acc14a60",
+    "generated_at": "2026-10-15T22:40:12+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.435"
+      "version": "0.2.440"
     },
     "vcs": {
-      "sha": "878e6e58ade2f97ac400a9e47077de57e2dc505b",
+      "sha": "8925f700232b2703e9f6d2329a1015e7d7960fdf",
       "dirty": true,
-      "branch": "claude/ecstatic-shannon-ja5omd-example"
+      "branch": "feat/coding-dictionaries"
     },
     "inputs": [
       {
@@ -22,8 +22,8 @@
     ],
     "session": {
       "language": "Python",
-      "version": "3.13.16",
-      "platform": "Linux-6.18.44-fc-v80-x86_64-with-glibc2.39"
+      "version": "3.12.3",
+      "platform": "Windows-11-10.0.26300-SP0"
     }
   },
   "values": {
@@ -50,31 +50,31 @@
       "label": true
     },
     "software.python": {
-      "value": "3.13.16",
-      "display": "3.13.16",
+      "value": "3.12.3",
+      "display": "3.12.3",
       "label": true,
       "role": "software"
     },
     "software.statsmodels": {
-      "value": "0.15.0",
-      "display": "0.15.0",
+      "value": "0.14.2",
+      "display": "0.14.2",
       "label": true,
       "role": "software"
     },
     "ror_adjusted.point": {
-      "value": 3.844764571464015,
+      "value": 3.844764571463996,
       "display": "3.845",
       "digits": 3
     },
     "ror_adjusted.ci_low": {
-      "value": 2.8852237873895215,
+      "value": 2.885223787389507,
       "display": "2.885",
       "digits": 3,
       "bounds": "ror_adjusted.point",
       "bound": "low"
     },
     "ror_adjusted.ci_high": {
-      "value": 5.123420469009598,
+      "value": 5.123420469009574,
       "display": "5.123",
       "digits": 3,
       "bounds": "ror_adjusted.point",
@@ -168,6 +168,12 @@
       "value": 3380,
       "display": "3380",
       "quoted": false
+    },
+    "dictionary.generator_event_terms": {
+      "value": "1",
+      "display": "1",
+      "label": true,
+      "role": "dictionary"
     }
   },
   "tables": {
@@ -623,6 +629,7 @@
       "n_used": 4000,
       "n_dropped": 0,
       "converged": true,
+      "covariance": "nonrobust",
       "events": 271,
       "events_by_level": {
         "age_group": {

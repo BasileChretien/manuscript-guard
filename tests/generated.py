@@ -577,6 +577,25 @@ SPELT = (
 )  # fmt: skip
 
 
+#: What names a dataset, one of each kind the data statement rule knows; links to storage
+#: that is neither persistent nor archived, one of each kind; and links to a fixed version of
+#: a repository, which are neither. What the data statement reading must tell apart.
+DATA_IDENTIFIERS = (
+    "10.5281/zenodo.1234567", "GSE123456", "SRP123456", "PRJNA123456", "EGAS00001000001",
+    "E-MTAB-1234", "phs000001.v1", "hdl.handle.net/10000/1", "ark:/13030/qt1",
+    "https://zenodo.org/records/123", "https://osf.io/ab3cd",
+    "https://web.archive.org/web/2020/x", "https://perma.cc/AB12-CD34",
+)  # fmt: skip
+TEMPORARY_LINKS = (
+    "https://drive.google.com/file/x", "https://www.dropbox.com/s/x", "https://1drv.ms/u/x",
+    "https://github.com/someone/study", "https://gitlab.com/someone/study/",
+)  # fmt: skip
+FIXED_LINKS = (
+    "https://github.com/someone/study/releases/tag/v1.0",
+    "https://github.com/someone/study/tree/4f2a9c1",
+)
+
+
 #: A statistic in each of the ways one is written, typed and bound, and a number with
 #: its unit: what the notation reading must count apart.
 NOTATED = (
@@ -719,6 +738,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
     "abbreviations": st.fixed_dictionaries(
         {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}
     ),

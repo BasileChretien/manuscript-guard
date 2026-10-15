@@ -828,6 +828,21 @@ Two smaller decisions fell out of this:
 - **"n/a" is rejected as a reason.** A checklist item excluded needs a reason a reviewer
   could read — "no interventions were assigned" — because a reviewer does read this file.
 
+**What the Data availability statement says is the journal's rule, not the tool's.** G4 found
+the statement's heading and read nothing under it. Publishers differ on what it must hold:
+Springer Nature asks that data which cannot be shared openly say why, PLOS accepts "on
+request" only for data that cannot be public and holds a paper until its identifiers come
+(both pages read 2026-10-15), and this toolkit's own example names no identifier at all. A
+universal rule would be wrong for most of them. So a profile records its journal's policy in
+`data_availability`, with the page and the day it was read: the phrasings the journal does
+not accept, each with what makes it acceptable (`unless`, a reason or a route), whether a
+persistent identifier is required, and the journal's own forms for an article with no data.
+G4 reads the statement against them and fails what the journal does not accept, from
+internal review. Two warnings follow wherever a profile records a policy: storage that is
+neither persistent nor archived, a shared drive or a repository on a code host linked bare
+(a release, a tag or a commit is a fixed version), and a dataset DOI that the reference list
+does not cite, since data a paper rests on are cited like any other source.
+
 ## Word counting is a stated rule
 
 A limit is only checkable if both sides agree what is counted, and journals rarely say. The
@@ -4216,19 +4231,20 @@ the campaigns are in the suite, on Hypothesis:
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
   them, the settings typed into a project, a co-author's sessions in Word, texts that
   quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds ten more, each
+  beside what an edit made of it. `tests/test_properties.py` holds eleven more, each
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
-  paper, rewordings, and ISBNs written in a field every way one holds them, and with one
-  digit changed.
+  paper, rewordings, ISBNs written in a field every way one holds them and with one digit
+  changed, and the identifiers and links of a Data availability statement.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its
   sentence, the quotation check, `check --json` on a new project, and the round trip: a
   paper typed into a new project, built, edited in Word and imported. And three more: the
   order an interval's bounds are quoted in, what `reworded` makes of an edit, and the
-  sentences a co-author's items are cut into. Eighteen in all.
+  sentences a co-author's items are cut into, and what G4 says of a Data availability
+  statement. Nineteen in all.
 - `tests/test_properties.py` holds what a reading owes its input, and
   `tests/test_generated_sessions.py` what an import owes the source.
 - `tests/test_differential.py` puts each input through the base branch's source and
@@ -4278,13 +4294,14 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty-seven rules are broken in place, one at a time, and the property that is
+the generators. So fifty-nine rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10 and an ISBN's
-groups read as ISBNs;
+sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10, an ISBN's
+groups read as ISBNs, an accession number taken for no identifier and a link to a release
+taken for a temporary one;
 fourteen ways `reworded` can misread an edit, from
 a number's sign taken for no part of it, and a sign of comparison taken for none, read as
 it is typed, read only hard against its number, an arrow's head or an equals sign taken
@@ -7175,6 +7192,15 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A data statement is read by patterns, and only where the profile records a policy.** An
+  identifier is a DOI, an accession number of the archives listed in
+  `gates/data_statement.py` (GEO, SRA and its peers, BioProject, EGA, ArrayExpress, dbGaP),
+  a handle or an ARK, a Zenodo record, an OSF project, or a page archived by the Internet
+  Archive or Perma.cc; another archive's accession is found only where the profile lists it.
+  An identifier anywhere in the statement satisfies the rule, whatever it names. A forbidden
+  phrasing is matched as the profile writes it, and its `unless` anywhere in the statement
+  accepts it. The statement is the section under its heading, its subsections included; a
+  statement written as a paragraph with no heading of its own is not read.
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.
@@ -9033,7 +9059,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 60 broken rules, and the comparison on twelve
+  - The properties were seen to fail on 62 broken rules, and the comparison on twelve
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

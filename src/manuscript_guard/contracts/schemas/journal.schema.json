@@ -72,6 +72,34 @@
         }
       }
     },
+    "data_availability": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The journal's policy on what the Data availability statement says, read from its own page and dated. Nothing is checked of the statement where this is absent.",
+      "required": ["source", "retrieved_on"],
+      "properties": {
+        "source": { "type": "string", "pattern": "^https?://", "description": "The page the rules below are read from." },
+        "retrieved_on": { "type": "string", "format": "date", "description": "The day the page was read." },
+        "heading": { "type": "string", "description": "Python regular expression matched against section titles to find the statement. Default: data availability, availability of data, data sharing." },
+        "forbidden": {
+          "type": "array",
+          "description": "Phrasings the journal does not accept as they stand.",
+          "items": {
+            "type": "object",
+            "required": ["pattern"],
+            "additionalProperties": false,
+            "properties": {
+              "pattern": { "type": "string", "description": "Python regular expression." },
+              "unless": { "type": "string", "description": "Python regular expression: the phrasing is accepted where the statement also matches this, a reason or a route." },
+              "why": { "type": "string" }
+            }
+          }
+        },
+        "identifier_required": { "type": "boolean", "description": "The statement must name a persistent identifier (a DOI, an accession number, an archived URL), or be one of `no_data`." },
+        "identifier_patterns": { "type": "array", "items": { "type": "string" }, "description": "Python regular expressions for identifiers of the journal's own repositories, beside the ones built in." },
+        "no_data": { "type": "array", "items": { "type": "string" }, "description": "Python regular expressions for the journal's own forms for an article with no data." }
+      }
+    },
     "references": {
       "type": "object",
       "additionalProperties": false,

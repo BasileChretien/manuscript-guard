@@ -1113,6 +1113,112 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
     assert "unemitted-table-number" in codes
 
 
+# ------------------------------------------------- what the data statement says
+
+
+_DATA_POLICY = {
+    "source": "https://example.org/data-policy",
+    "retrieved_on": "2026-10-15",
+    "forbidden": [
+        {
+            "pattern": r"(?i)\bon (?:reasonable )?request\b",
+            "unless": r"(?i)\b(?:because|privacy|committee)\b",
+            "why": "say why the data cannot be shared, and how to ask",
+        },
+        {"pattern": r"(?i)\bupon acceptance\b", "why": "deposit before publication"},
+    ],
+    "identifier_required": True,
+    "no_data": [r"(?i)\bdoes not report data\b"],
+}
+
+
+def _data_statement(root: Path, statement: str, policy: dict | None = None) -> list:
+    from manuscript_guard.gates import check_journal
+
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["data_availability"] = policy or _DATA_POLICY
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    path = main_md(root)
+    text = path.read_text(encoding="utf-8")
+    start, end = text.index("# Data availability"), text.index("# Funding")
+    path.write_text(text[:start] + f"# Data availability\n\n{statement}\n\n" + text[end:],
+                    encoding="utf-8")  # fmt: skip
+    project, _ = load_project(root)
+    codes_ = {"data-statement-forbidden", "data-identifier-missing", "data-link-temporary",
+              "data-doi-uncited"}  # fmt: skip
+    return sorted((f.code, f.severity) for f in check_journal(project).findings if f.code in codes_)
+
+
+@pytest.mark.parametrize(
+    ("statement", "said"),
+    [
+        # Item 16: on request with no reason or route, and a promise for later.
+        ("Data are available on reasonable request.",
+         [("data-identifier-missing", "fail"), ("data-statement-forbidden", "fail")]),
+        ("Data will be deposited upon acceptance.",
+         [("data-identifier-missing", "fail"), ("data-statement-forbidden", "fail")]),
+        # No identifier where the journal requires one.
+        ("The data are held by the study team.", [("data-identifier-missing", "fail")]),
+        # A shared drive and a bare repository are neither persistent nor archived.
+        ("Data: https://drive.google.com/x and doi:10.5281/zenodo.1234567.",
+         [("data-doi-uncited", "warn"), ("data-link-temporary", "warn")]),
+        ("Code and data: https://github.com/someone/study, GSE123456.",
+         [("data-link-temporary", "warn")]),
+    ],
+)  # fmt: skip
+def test_a_data_statement_the_journal_does_not_accept_is_reported(
+    project: Path, statement: str, said: list
+) -> None:
+    assert _data_statement(project, statement) == said
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "Data are available on reasonable request from the data access committee, because "
+        "of patient privacy. GEO accession GSE123456.",
+        "The dataset is in GEO under GSE123456, and the code at "
+        "https://github.com/someone/study/releases/tag/v1.0.",
+        "This article does not report data.",
+    ],
+)
+def test_a_data_statement_the_journal_accepts_passes(project: Path, statement: str) -> None:
+    assert _data_statement(project, statement) == []
+
+
+def test_a_dataset_doi_the_reference_list_cites_passes(project: Path) -> None:
+    bib = project / "literature" / "references.bib"
+    opening = "@article{fictionalHepaticCohort2021,\n"
+    bib.write_text(bib.read_text(encoding="utf-8").replace(
+        opening, opening + "  doi = {10.5281/zenodo.1234567},\n", 1), encoding="utf-8")  # fmt: skip
+    assert _data_statement(project, "Data: https://doi.org/10.5281/ZENODO.1234567.") == []
+
+
+def test_a_profile_with_no_data_policy_reads_nothing_under_the_heading(project: Path) -> None:
+    from manuscript_guard.gates import check_journal
+
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    said = text.replace("The synthetic dataset", "On request only. The synthetic dataset", 1)
+    path.write_text(said, encoding="utf-8")
+    project_, _ = load_project(project)
+    assert not [f for f in check_journal(project_).findings if f.code.startswith("data-")]
+
+
+def test_a_forbidden_data_statement_fails_from_internal_review(project: Path) -> None:
+    from manuscript_guard.gates import check_journal
+    from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
+
+    _data_statement(project, "Data are available on request.")
+    project_, _ = load_project(project)
+    report = check_journal(project_)
+    drafting, _ = apply_stage(report, DRAFTING)
+    assert "data-statement-forbidden" not in {f.code for f in drafting.failures}
+    reviewed, _ = apply_stage(report, INTERNAL_REVIEW)
+    assert "data-statement-forbidden" in {f.code for f in reviewed.failures}
+
+
 # ------------------------------------------------- an interval is a declared thing
 
 

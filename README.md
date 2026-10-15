@@ -132,7 +132,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G4 | word counts, required sections and required statements match the target journal |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason |
 | G6 | model artefacts, AI phrasing, and unsupported appeals to authority |
-| G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote |
+| G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote; each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there |
 | G8 | one quantity is not emitted twice under two names |
 | G9 | the analysis has not changed since the Methods were last read against it, and, step by step, neither a marked step nor the text pointing at it has |
 | G10 | every figure has a current review by someone who looked at it |
@@ -352,6 +352,7 @@ everywhere.
 | [Auditing a paper you already wrote](docs/audit.md) | one command for a manuscript with no bindings, and how little a match means |
 | [DESIGN.md](DESIGN.md) | the architecture, the reasons for its decisions, and the known gaps |
 | [ATTRIBUTION.md](ATTRIBUTION.md) | the reporting guidelines' licences, and the one data file derived from another work |
+| [SECURITY.md](SECURITY.md) | reporting a vulnerability, and what is in scope |
 
 ## Status
 

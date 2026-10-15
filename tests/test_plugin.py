@@ -40,6 +40,16 @@ def skill_names() -> set[str]:
     return {path.parent.name for path in SKILLS.glob("*/SKILL.md")}
 
 
+def skill_pages() -> list[Path]:
+    """Every page of instructions an agent loads: each SKILL.md, and each page under a
+    skill's references/ that it reads when it needs it."""
+    return sorted([*SKILLS.glob("*/SKILL.md"), *SKILLS.glob("*/references/*.md")])
+
+
+def page_name(page: Path) -> str:
+    return page.relative_to(SKILLS).as_posix()
+
+
 def frontmatter(path: Path) -> dict:
     match = re.match(r"---\n(.*?)\n---\n", path.read_text(encoding="utf-8"), re.DOTALL)
     assert match, f"{path.relative_to(REPO)} has no frontmatter"
@@ -85,10 +95,10 @@ def test_every_link_between_skills_resolves_inside_the_plugin():
     # Installing copies plugin/ alone into Claude Code's cache, so a link that climbs out of
     # it resolves here and is dead for every user.
     plugin = PLUGIN.resolve()
-    for skill in SKILLS.glob("*/SKILL.md"):
-        for target in re.findall(r"\]\((\.\./[^)#]+)\)", skill.read_text(encoding="utf-8")):
-            resolved = (skill.parent / target).resolve()
-            where = f"{skill.parent.name} -> {target}"
+    for page in [*SKILLS.glob("*/SKILL.md"), *SKILLS.glob("*/references/*.md")]:
+        for target in re.findall(r"\]\(([^)#:\s]+)\)", page.read_text(encoding="utf-8")):
+            resolved = (page.parent / target).resolve()
+            where = f"{page.relative_to(SKILLS)} -> {target}"
             assert resolved.is_file(), where
             assert resolved.is_relative_to(plugin), f"{where} leaves plugin/"
 
@@ -444,7 +454,9 @@ def test_the_plugin_holds_its_manifest_its_hooks_and_its_skills_and_nothing_else
     files = sorted(path.relative_to(PLUGIN).as_posix() for path in PLUGIN.rglob("*")
                    if path.is_file() or path.is_symlink())  # fmt: skip
     allowed = {".claude-plugin/plugin.json", "hooks/hooks.json"}
-    skill = re.compile(r"skills/[^/]+/SKILL\.md")
+    # A skill's own SKILL.md, and the reference pages it reads only when it needs them, one
+    # level down, as the Agent Skills specification lays them out.
+    skill = re.compile(r"skills/[^/]+/(?:SKILL|references/[a-z0-9-]+)\.md")
     other = [f for f in files if f not in allowed and not skill.fullmatch(f)]
     assert other == [], other
     links = [path for path in PLUGIN.rglob("*") if path.is_symlink()]
@@ -472,8 +484,8 @@ UNSAFE = {
 
 def test_no_skill_tells_an_agent_to_do_something_unsafe() -> None:
     found = []
-    for name in sorted(skill_names()):
-        text = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
+    for page in skill_pages():
+        text, name = page.read_text(encoding="utf-8"), page_name(page)
         found += [(name, why) for pattern, why in UNSAFE.items()
                   if re.search(pattern, text, re.IGNORECASE)]  # fmt: skip
         found += [(name, f"`{fragment}`: a review sent without the author being asked")
@@ -498,6 +510,83 @@ def test_the_unsafe_instructions_are_found_where_a_skill_gives_them() -> None:
         ), text
     shown = command_fragments("Run `manuscript-guard review --run --yes`.")
     assert any("--run" in f and "--yes" in f for f in shown)
+
+
+#: What the Agent Skills specification recommends for a SKILL.md body: under 5000 tokens,
+#: counted here as characters divided by four, and under 500 lines. What goes past them is
+#: what a skill needs only sometimes, and belongs in a page under references/.
+MOST_TOKENS = 5000
+MOST_LINES = 500
+#: Skills over the limit, each with why, until it is brought under. The list may only shrink.
+OVER = {}
+
+
+def body_of(path: Path) -> str:
+    return path.read_text(encoding="utf-8").split("---\n", 2)[2]
+
+
+def test_every_skill_is_a_readable_size() -> None:
+    over = {
+        name: (len(body_of(SKILLS / name / "SKILL.md")) // 4,
+               body_of(SKILLS / name / "SKILL.md").count("\n"))
+        for name in sorted(skill_names())
+    }  # fmt: skip
+    over = {n: size for n, size in over.items() if size[0] > MOST_TOKENS or size[1] > MOST_LINES}
+    assert set(over) == set(OVER), (
+        f"over {MOST_TOKENS} tokens or {MOST_LINES} lines: {over}; move what is needed only "
+        "sometimes into references/, or name it in OVER with the reason"
+    )
+
+
+#: Paths a skill names that resolve nowhere in the repository, each with why. Anything else a
+#: skill names as a path has to be found: in the skill's folder, in the example, in what
+#: `init` makes, or in the package.
+NAMED_NOWHERE = {
+    "n/a": "not a path: what a checklist item says when it does not apply",
+    "provider/model": "not a path: how a model is named in paper.yaml",
+    "checks/items.json": "written by `checker build`",
+    "checks/decisions.csv": "written by `checker` when the answers come back",
+    "profiles/journals/journal-of-examples.yaml": "an example of a profile's name",
+    "supplementary/S1.md": "an example of a supplement's file",
+    "build/response-to-reviewers.md": "written by `respond`",
+    "build/manuscript.docx": "written by `build`",
+    "build/supplementary.docx": "written by `build`",
+    "build/records/": "written by `build`",
+    "profiles/reporting/STROBE.yaml": "written by `transcribe`, and kept out of git",
+    "profiles/reporting/sources/": "where `fetch` puts the guidelines, kept out of git",
+}
+
+
+def named_paths(text: str) -> set[str]:
+    """What a skill names as a path: a code span or a link target holding a folder, less a
+    placeholder (`<name>`), a pattern (`*.md`), a URL or a command."""
+    found = {span.strip() for span in re.findall(r"`([^`\n]+)`", text)}
+    found |= set(re.findall(r"\]\(([^)\s#]+)", text))
+    return {
+        name for name in found
+        if "/" in name and not re.search(r"[\s<>*(){}^$]", name)
+        and not name.startswith(("http", "-"))
+    }  # fmt: skip
+
+
+def test_every_path_a_skill_names_is_there(tmp_path: Path) -> None:
+    from manuscript_guard.cli import main
+
+    scaffold = tmp_path / "paper"
+    assert main(["init", str(scaffold)]) == 0
+    roots = [REPO / "example", scaffold, REPO / "src" / "manuscript_guard", REPO / "src", REPO]
+    named, nowhere = set(), set()
+    for page in [*SKILLS.glob("*/SKILL.md"), *SKILLS.glob("*/references/*.md")]:
+        folder = page.parent if page.name == "SKILL.md" else page.parent.parent
+        for name in named_paths(page.read_text(encoding="utf-8")):
+            named.add(name)
+            if not any((root / name).exists() for root in [folder, page.parent, *roots]):
+                nowhere.add(name)
+    # A path the tool writes may be on a machine that ran it; listed, it is not required
+    # to be missing, only to be still named.
+    unlisted, unnamed = nowhere - set(NAMED_NOWHERE), set(NAMED_NOWHERE) - named
+    assert not unlisted, f"named and found nowhere: {sorted(unlisted)}"
+    assert not unnamed, f"listed and no longer named: {sorted(unnamed)}"
 
 
 def cli_options() -> dict[str, set[str]]:
@@ -549,11 +638,11 @@ def test_every_command_a_skill_tells_you_to_run_exists():
     options = cli_options()
     named = 0
     wrong: dict[str, list[str]] = {}
-    for skill in sorted(SKILLS.glob("*/SKILL.md")):
-        text = skill.read_text(encoding="utf-8")
+    for page in skill_pages():
+        text = page.read_text(encoding="utf-8")
         named += sum(bool(MENTION.search(f)) for f in command_fragments(text))
         if problems := command_problems(text, options):
-            wrong[skill.parent.name] = problems
+            wrong[page_name(page)] = problems
     assert named > 30, "the skills name no commands; the pattern no longer matches"
     assert not wrong, wrong
 
@@ -734,9 +823,9 @@ def test_every_skill_follows_the_open_skill_format():
 
 def test_no_skill_speaks_to_the_reader_of_one_agent_tool_only():
     wrong = {
-        skill.parent.name: problems
-        for skill in sorted(SKILLS.glob("*/SKILL.md"))
-        if (problems := wording_problems(skill.read_text(encoding="utf-8")))
+        page_name(page): problems
+        for page in skill_pages()
+        if (problems := wording_problems(page.read_text(encoding="utf-8")))
     }
     assert not wrong, wrong
 

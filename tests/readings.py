@@ -41,6 +41,21 @@ READINGS: dict[str, Callable[[], Reading]] = {}
 MAIN = Path("manuscript") / "main.md"
 PAPER = Path("paper.yaml")
 
+#: The authors a blind review is not to see, as `authors.yaml` holds them: a given name of
+#: two words, a family name of three and one with an apostrophe, an ORCID iD, an e-mail
+#: address and an institution.
+PEOPLE = {
+    "authors": [
+        {"given": "Ada", "family": "Example", "orcid": "0000-0002-1825-0097",
+         "email": "ada.example@invalid.example"},
+        {"given": "Mary Ann", "family": "van der Berg"},
+        {"given": "Sean", "family": "O'Brien"},
+    ],
+    "affiliations": [
+        {"text": "Department of Clinical Pharmacology, Example University, Springfield, Japan"}
+    ],
+}  # fmt: skip
+
 
 def reading(name: str) -> Callable[[Callable[[], Reading]], Callable[[], Reading]]:
     def register(find: Callable[[], Reading]) -> Callable[[], Reading]:
@@ -307,6 +322,18 @@ def _spelling() -> Reading:
     return spelling
 
 
+@reading("units after")
+def _units_after() -> Reading:
+    """The unit written right after each results binding, which G2 holds to the unit the
+    analysis emitted."""
+    from manuscript_guard.gates.bound_units import units_after
+
+    def units(text: str) -> list[list[Any]]:
+        return [[found.key, found.start, found.unit] for found in units_after(text)]
+
+    return units
+
+
 @reading("notation")
 def _notation() -> Reading:
     from manuscript_guard.gates.notation import judge_notation
@@ -348,6 +375,20 @@ def _checker_sentences() -> Reading:
         return [[line, sentence] for line, sentence in _sentences_of(text)]
 
     return checker_sentences
+
+
+@reading("blind names")
+def _blind_names() -> Reading:
+    """What names an author of `generated.PEOPLE` in a text, and where: what the build reads
+    a document reviewed blind for."""
+    from manuscript_guard.build.blinding import names_in, sought
+
+    wanted = sought(PEOPLE)
+
+    def blind_names(text: str) -> list[list[Any]]:
+        return [[what, start] for what, start in names_in(text, wanted)]
+
+    return blind_names
 
 
 # ------------------------------------------------------------------- titles and quotes
@@ -395,6 +436,18 @@ def _quotation() -> Reading:
         }
 
     return quotation
+
+
+@reading("quote words")
+def _quote_words() -> Reading:
+    """The words a ledger quote holds beside its value, which G7 counts to say a quote that
+    holds little more than the value."""
+    from manuscript_guard.literature.sources import words_beside
+
+    def quote_words(given: dict[str, Any]) -> list[str]:
+        return words_beside(given["quote"], given["value"])
+
+    return quote_words
 
 
 # -------------------------------------------------------------------- a whole project

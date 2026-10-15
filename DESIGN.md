@@ -4156,6 +4156,21 @@ The gates themselves do not look at it: a stale skill is not a finding about the
 The test suite sets it to a folder that does not exist, so that a run never reads the copy
 of whoever is running it.
 
+**The skill folders are held as files, too.** What an installer, an agent tool or a reader
+relies on is tested in `tests/test_plugin.py`, so that an edit does not break it quietly:
+every folder under `plugin/skills` holds a `SKILL.md`, since one a level deeper is skipped
+by every tool that follows the Agent Skills layout; every finding code a description says it
+answers ("Use when check reports ...") is one the package holds, and no code is answered by
+two skills; a description holds no `<` or `>`, and no skill's name holds "claude" or
+"anthropic"; the only folder called `skills` is the plugin's, since some installers take one
+at any depth; `plugin/` holds its manifest, its hooks and the `SKILL.md` files and nothing
+else, with no link out of it, so that a script added to a skill folder, which
+`install-skills` would copy onto users' machines, is a decision; and no skill pipes a
+download into a shell, installs a package, turns off a safety switch or the sandbox, shows
+`review --run` with `--yes`, chooses the language the user is spoken to in, or adds a
+reference to the paper. The last two are read by patterns, and a skill can say either in
+words the patterns do not know.
+
 ## Generated inputs belong to the suite
 
 Between 24 September and 6 October 2026, 192 of the 516 independent-review verdicts posted

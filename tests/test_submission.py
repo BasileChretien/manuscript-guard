@@ -226,7 +226,10 @@ def test_a_paper_with_no_abstract_section_gets_no_abstract_file(project: Path) -
      # round 3: a link with words of its own, a block that is no paragraph
      "as [the trial](https://example.org) says.", "\n\n::: {.keywords}\nKeywords: x\n:::",
      # round 4: words struck out
-     "as ~~not~~ shown."],
+     "as ~~not~~ shown.",
+     # round 5: a power or a unit, which written flat is another number
+     "A dose of 2.1 \N{MULTIPLICATION SIGN} 10^\N{MINUS SIGN}3^ mg.", "In mg kg^−1^ daily.",
+     "At 10^0.5^ times.", "As x^*2*^."],
 )  # fmt: skip
 def test_an_abstract_the_build_formats_and_plain_text_cannot_is_left_out(
     project: Path, added: str

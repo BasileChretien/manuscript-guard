@@ -413,9 +413,34 @@ _PLAIN_INLINES = frozenset({
     "Str", "Space", "SoftBreak", "LineBreak", "Emph", "Strong", "Underline",
     "Superscript", "Subscript", "SmallCaps", "Span", "Quoted",
 })  # fmt: skip
-#: What a sub- or superscript may hold for the plain writer to print it as one in Unicode;
-#: anything else it writes as `_(max)`, and it is written as its letters instead ("Cmax").
+#: What a sub- or superscript may hold for the plain writer to print it as one in Unicode.
 _SCRIPTABLE = re.compile(r"[0-9+\-=() ]*")
+#: A sub- or superscript of letters alone, a label ("C~max~", "2^nd^"), is written as its
+#: letters. Any other the plain writer cannot print as one (`10^−3^`, `kg^−1^`, `e^−kt^`)
+#: leaves the abstract out: written flat it would be another number.
+_LETTERS = re.compile(r"[A-Za-z]+")
+
+
+def _script(item: dict) -> str:
+    """What becomes of a sub- or superscript: "kept" for the plain writer to print as one,
+    "flat" as its letters, "refused"."""
+    words = item["c"]
+    if not all(isinstance(n, dict) and n.get("t") in ("Str", "Space") for n in words):
+        return "refused"
+    said = _text(words)
+    if _SCRIPTABLE.fullmatch(said):
+        return "kept"
+    return "flat" if _LETTERS.fullmatch(said) else "refused"
+
+
+def _refused_script(node: object) -> bool:
+    if isinstance(node, dict):
+        if node.get("t") in ("Subscript", "Superscript") and _script(node) == "refused":
+            return True
+        return any(_refused_script(value) for value in node.values())
+    if isinstance(node, list):
+        return any(_refused_script(item) for item in node)
+    return False
 _PLAIN_BLOCKS = frozenset({"Para", "Plain", "Header"})
 #: A table or a figure placed by its binding, which `substitute` leaves as it is written.
 _DISPLAY = re.compile(r"\{\{\s*(?:table|figure)\.")
@@ -495,7 +520,7 @@ def _unscripted(node: object) -> object:
         if (
             isinstance(item, dict)
             and item.get("t") in ("Subscript", "Superscript")
-            and not _SCRIPTABLE.fullmatch(_text(item["c"]))
+            and _script(item) == "flat"
         ):
             out.extend(_unscripted(item["c"]))
         else:
@@ -561,7 +586,7 @@ def abstract_text(project: Project) -> tuple[str | None, str | None]:
     blocks = _abstract_blocks(document["blocks"])
     if not blocks:
         return None, None
-    blocks = _unscripted(_until_keywords(blocks))
+    blocks = _until_keywords(blocks)
     said = _text(blocks)
     if not _plain(blocks) or _DISPLAY.search(said):
         return None, _LEFT_OUT + (
@@ -569,12 +594,17 @@ def abstract_text(project: Project) -> tuple[str | None, str | None]:
             "footnote, maths, code, an image, a table, a figure, a link with words of its "
             "own, or a block other than a paragraph or a heading); copy it from the document"
         )
+    if _refused_script(blocks):
+        return None, _LEFT_OUT + (
+            "the abstract holds a sub- or superscript plain text cannot show (a power such "
+            "as 10^-3, a unit such as kg^-1); copy it from the document"
+        )
     if _KEYWORDS_ANYWHERE.search(said):
         return None, _LEFT_OUT + (
             "a keywords label stands inside a paragraph of the abstract; put the keywords in "
             "a paragraph of their own"
         )
-    document["blocks"] = blocks
+    document["blocks"] = _unscripted(blocks)
     plain = _pandoc("-f", "json", "-t", "plain", "--wrap=none", given=json.dumps(document))
     return (plain.strip() + "\n", None) if plain.strip() else (None, None)
 

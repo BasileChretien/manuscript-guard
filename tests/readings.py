@@ -362,6 +362,18 @@ def _spelling() -> Reading:
     return spelling
 
 
+@reading("units after")
+def _units_after() -> Reading:
+    """The unit written right after each results binding, which G2 holds to the unit the
+    analysis emitted."""
+    from manuscript_guard.gates.bound_units import units_after
+
+    def units(text: str) -> list[list[Any]]:
+        return [[found.key, found.start, found.unit] for found in units_after(text)]
+
+    return units
+
+
 @reading("notation")
 def _notation() -> Reading:
     from manuscript_guard.gates.notation import judge_notation

@@ -529,6 +529,79 @@ def test_the_command_fails_and_names_what_it_left(tmp_path: Path, monkeypatch, c
     assert (folder / "project-setup" / "SKILL.md").is_file(), "the rest was still copied"
 
 
+# ------------------------------------------------------------------ verify, and take away
+
+
+def test_verify_says_what_is_as_it_was_copied_and_changes_nothing(tmp_path: Path) -> None:
+    folder = tmp_path / "skills"
+    skillcopy.install(folder)
+    (folder / "review-panel" / "SKILL.md").write_bytes(b"edited\n")
+    shutil.rmtree(folder / "figure-review")
+    before = tree(folder)
+    checked = skillcopy.verify(folder)
+    assert tree(folder) == before
+    assert checked.edited == (("review-panel", skillcopy.CHANGED),)
+    assert checked.missing == ("figure-review",)
+    assert "project-setup" in checked.matching and checked.version == __version__
+
+
+def test_remove_takes_away_what_it_copied_and_leaves_what_was_edited(tmp_path: Path) -> None:
+    """The edited skill is named and left, the others go, and the stamp then records the
+    edited one alone, so that a later copy still knows it was this tool's."""
+    folder = tmp_path / "skills"
+    (folder / "theirs").mkdir(parents=True)
+    (folder / "theirs" / "SKILL.md").write_bytes(b"someone else's\n")
+    skillcopy.install(folder)
+    (folder / "review-panel" / "SKILL.md").write_bytes(b"edited\n")
+    done = skillcopy.remove(folder)
+    assert done.left == (("review-panel", skillcopy.CHANGED),) and not done.stamp_removed
+    assert sorted(p.name for p in folder.iterdir()) == [skillcopy.STAMP, "review-panel", "theirs"]
+    assert list(stamp_of(folder)["skills"]) == ["review-panel"]
+    assert (folder / "theirs" / "SKILL.md").read_bytes() == b"someone else's\n"
+
+
+def test_remove_takes_the_stamp_last_once_nothing_is_left(tmp_path: Path) -> None:
+    folder = tmp_path / "skills"
+    skillcopy.install(folder)
+    done = skillcopy.remove(folder)
+    assert done.stamp_removed and not done.left
+    assert list(folder.iterdir()) == []
+
+
+def test_a_dry_run_of_remove_changes_nothing(tmp_path: Path, capsys) -> None:
+    folder = tmp_path / "skills"
+    skillcopy.install(folder)
+    before = tree(folder)
+    assert main(["install-skills", "--dir", str(folder), "--remove", "--dry-run"]) == 0
+    assert tree(folder) == before
+    out = capsys.readouterr().out
+    assert f"would remove {folder / 'project-setup'}" in out and "nothing was changed" in out
+
+
+def test_remove_where_nothing_was_copied_touches_nothing(tmp_path: Path, capsys) -> None:
+    folder = tmp_path / "skills"
+    (folder / "review-panel").mkdir(parents=True)
+    (folder / "review-panel" / "SKILL.md").write_bytes(b"theirs\n")
+    assert skillcopy.remove(folder) is None
+    assert main(["install-skills", "--dir", str(folder), "--remove"]) == 0
+    assert (folder / "review-panel" / "SKILL.md").read_bytes() == b"theirs\n"
+    assert "has no stamp" in capsys.readouterr().out
+
+
+def test_the_commands_say_what_they_found(tmp_path: Path, capsys) -> None:
+    folder = tmp_path / "skills"
+    assert main(["install-skills", "--dir", str(folder), "--verify"]) == 1
+    skillcopy.install(folder)
+    assert main(["install-skills", "--dir", str(folder), "--verify"]) == 0
+    (folder / "review-panel" / "SKILL.md").write_bytes(b"edited\n")
+    assert main(["install-skills", "--dir", str(folder), "--verify"]) == 1
+    assert main(["install-skills", "--dir", str(folder), "--remove"]) == 1
+    captured = capsys.readouterr()
+    assert f"{folder / 'review-panel'} {skillcopy.CHANGED}" in captured.out
+    assert "left as it is" in captured.err
+    assert main(["install-skills", "--dir", str(folder), "--dry-run"]) == 2
+
+
 @pytest.mark.parametrize("form", ["--project", "--dir"])
 def test_the_way_forward_is_not_the_option_already_given(
     form: str, project: Path, monkeypatch, capsys

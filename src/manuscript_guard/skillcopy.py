@@ -288,6 +288,76 @@ def install(folder: Path) -> Copied:
     return Copied(folder, tuple(written), tuple(unchanged), tuple(removed), tuple(left))
 
 
+@dataclass(frozen=True)
+class Checked:
+    """What a folder holds of the skills its stamp records."""
+
+    folder: Path
+    #: The release the stamp names; None where the folder has no stamp.
+    version: str | None
+    matching: tuple[str, ...]
+    #: Each skill whose folder is not as it was copied, with why.
+    edited: tuple[tuple[str, str], ...]
+    missing: tuple[str, ...]
+
+
+GONE = "is no longer there"
+
+
+def verify(folder: Path) -> Checked:
+    """Each skill the stamp records, against what its folder holds now. Changes nothing."""
+    folder = Path(folder)
+    stamp = read_stamp(folder)
+    if stamp is None:
+        return Checked(folder, None, (), (), ())
+    matching: list[str] = []
+    edited: list[tuple[str, str]] = []
+    missing: list[str] = []
+    for name, recorded in sorted(stamp["skills"].items()):
+        target = folder / name
+        if not target.exists() and not _is_link(target):
+            missing.append(name)
+            continue
+        why = _why_left(target, recorded)
+        if why:
+            edited.append((name, why))
+        else:
+            matching.append(name)
+    return Checked(folder, stamp["version"], tuple(matching), tuple(edited), tuple(missing))
+
+
+@dataclass(frozen=True)
+class Removed:
+    """What a removal did, or with `dry_run` would do."""
+
+    folder: Path
+    removed: tuple[str, ...]
+    left: tuple[tuple[str, str], ...]
+    #: Whether the stamp went too: only once nothing it records is left.
+    stamp_removed: bool
+
+
+def remove(folder: Path, *, dry_run: bool = False) -> Removed | None:
+    """Take away every skill the stamp records whose folder is still as it was copied, then
+    the stamp. A skill edited since, or something else under its name, is left and named, and
+    the stamp then keeps it alone, so that a later copy still knows it was this tool's. None
+    where the folder has no stamp: nothing in it is this tool's to remove."""
+    checked = verify(folder)
+    if checked.version is None:
+        return None
+    folder = Path(folder)
+    stamp = read_stamp(folder) or {"skills": {}}
+    if not dry_run:
+        for name in checked.matching:
+            _swap(folder / name, None)
+        kept = {name: stamp["skills"][name] for name, _why in checked.edited}
+        if kept:
+            _write_stamp(folder, kept)
+        else:
+            (folder / STAMP).unlink()
+    return Removed(folder, checked.matching, checked.edited, not checked.edited)
+
+
 def _numbers(version: str) -> tuple[int, ...] | None:
     """`0.2.400` as (0, 2, 400); None for anything that is not plain dotted digits."""
     if not re.fullmatch(r"\d{1,9}(?:\.\d{1,9})*", version.strip()):

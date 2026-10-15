@@ -2334,6 +2334,11 @@ def cmd_install_skills(args: argparse.Namespace) -> int:
     else:
         folder = skillcopy.user_folder()
 
+    if args.verify or args.remove:
+        return _skills_kept(skillcopy, folder, args)
+    if args.dry_run:
+        print("manuscript-guard: --dry-run goes with --remove", file=sys.stderr)
+        return 2
     try:
         done = skillcopy.install(folder)
     except (skillcopy.SkillsMissing, skillcopy.StampUnreadable, OSError) as exc:
@@ -2360,6 +2365,51 @@ def cmd_install_skills(args: argparse.Namespace) -> int:
             f"{skillcopy.way_forward(why, shared=shared)}",
             file=sys.stderr,
         )
+    return 1 if done.left else 0
+
+
+def _skills_kept(skillcopy, folder: Path, args: argparse.Namespace) -> int:
+    """`install-skills --verify` and `--remove`: what a folder holds of the copied skills,
+    and taking them away. Exit 1 where something is not as it was copied, or not there."""
+    try:
+        if args.verify:
+            checked = skillcopy.verify(folder)
+        else:
+            done = skillcopy.remove(folder, dry_run=args.dry_run)
+    except (skillcopy.StampUnreadable, OSError) as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    if args.verify:
+        if checked.version is None:
+            print(f"no skills of manuscript-guard in {folder}: it has no stamp")
+            return 1
+        print(
+            f"{len(checked.matching)} skill(s) of manuscript-guard {checked.version} in "
+            f"{folder} are as they were copied"
+        )
+        for name, why in checked.edited:
+            print(f"{folder / name} {why}")
+        for name in checked.missing:
+            print(f"{folder / name} {skillcopy.GONE}")
+        return 1 if checked.edited or checked.missing else 0
+    if done is None:
+        print(f"nothing to remove: {folder} has no stamp, so nothing in it is manuscript-guard's")
+        return 0
+    verb = "would remove" if args.dry_run else "removed"
+    for name in done.removed:
+        print(f"{verb} {folder / name}")
+    for name, why in done.left:
+        print(
+            f"manuscript-guard: {folder / name} {why}, so it was left as it is; delete it "
+            "yourself if it should go",
+            file=sys.stderr,
+        )
+    if done.stamp_removed:
+        print(f"{verb} {folder / skillcopy.STAMP}")
+    elif not args.dry_run:
+        print(f"kept {folder / skillcopy.STAMP}, which now records only what was left")
+    if args.dry_run:
+        print("nothing was changed")
     return 1 if done.left else 0
 
 
@@ -2807,6 +2857,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="into .agents/skills of the project you are in, not of your home",
     )
     where.add_argument("--dir", type=Path, default=None, help="into this folder")
+    kept = skills.add_mutually_exclusive_group()
+    kept.add_argument(
+        "--verify",
+        action="store_true",
+        help="say which copied skills are as they were copied, and change nothing",
+    )
+    kept.add_argument(
+        "--remove",
+        action="store_true",
+        help="take away the copied skills that are as they were copied, then the stamp",
+    )
+    skills.add_argument("--dry-run", action="store_true", help="with --remove: change nothing")
     skills.set_defaults(func=cmd_install_skills)
 
     return parser

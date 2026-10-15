@@ -154,6 +154,19 @@ stops and touches nothing.
 and `build` say so: when a copy in either folder is from another release than the tool, one
 line follows their own output, with the command to run.
 
+**To check or remove them,** add `--verify` or `--remove` to the same command, with the same
+`--project` or `--dir` if you gave one:
+
+```bash
+manuscript-guard install-skills --verify            # which copied skills are as they were copied
+manuscript-guard install-skills --remove --dry-run  # what would be removed
+manuscript-guard install-skills --remove            # remove them, then the stamp
+```
+
+`--verify` changes nothing. `--remove` takes away each skill whose files are still as they
+were copied, then the stamp. A skill you have edited is named and left, and the stamp is
+kept with that skill alone in it; delete it yourself if it should go.
+
 **There are no hooks under these tools.** Nothing is caught at the moment of the mistake.
 `check`, `build` and `submit` hold as they do everywhere, so an edited results file or an
 unbound number is reported when one of them next runs.

@@ -33,6 +33,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python: ["3.10", "3.13"]
+        # The newest Python, on one platform: it finds what a new release breaks, and
+        # Windows, the slowest runner, is kept to two jobs.
+        include:
+          - os: ubuntu-latest
+            python: "3.14"
     runs-on: ${{ matrix.os }}
     # A suite that stalls would hold its runner for GitHub's own six hours. The slowest
     # healthy job, on Windows, takes about 47 minutes, so twice that is a stall.

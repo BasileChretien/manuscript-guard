@@ -702,11 +702,16 @@ def test_the_export_asks_nothing_of_python_that_3_10_11_lacks(
 ) -> None:
     """`tarfile` took its extraction filters in 3.10.12, and 3.10.11 is the last 3.10 with
     an installer: it is what CI's Windows and macOS jobs run. There `extractall` has no
-    `filter` to be given, and the export raised. This is `tarfile` as 3.10.11 has it."""
+    `filter` to be given, and the export raised. This is `tarfile` as 3.10.11 has it.
+
+    The real `extractall` underneath is handed the module's filter by name: from 3.14 it
+    looks the filter up in the module when none is given, and the module no longer has it."""
     real = tarfile.TarFile.extractall
+    kept = getattr(tarfile, "data_filter", None)
 
     def extractall(self, path=".", members=None, *, numeric_owner=False):  # noqa: ANN001
-        return real(self, path, members, numeric_owner=numeric_owner)
+        given = {"filter": kept} if kept is not None else {}
+        return real(self, path, members, numeric_owner=numeric_owner, **given)
 
     monkeypatch.setattr(tarfile.TarFile, "extractall", extractall)
     monkeypatch.delattr(tarfile, "data_filter", raising=False)

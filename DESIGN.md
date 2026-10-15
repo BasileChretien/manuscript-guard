@@ -4233,6 +4233,28 @@ The gates themselves do not look at it: a stale skill is not a finding about the
 The test suite sets it to a folder that does not exist, so that a run never reads the copy
 of whoever is running it.
 
+**The skill folders are held as files, too.** What an installer, an agent tool or a reader
+relies on is tested in `tests/test_plugin.py`, so that an edit does not break it quietly:
+every folder under `plugin/skills` holds a `SKILL.md`, since one a level deeper is skipped
+by every tool that follows the Agent Skills layout; every finding code a description says it
+answers ("Use when check reports ...") is one the package holds, and no code is answered by
+two skills; a description holds no `<` or `>`, and no skill's name holds "claude" or
+"anthropic"; the only folder called `skills` is the plugin's, since some installers take one
+at any depth; `plugin/` holds its manifest, its hooks and the `SKILL.md` files and nothing
+else, with no link out of it, so that a script added to a skill folder, which
+`install-skills` would copy onto users' machines, is a decision; and no skill pipes a
+download into a shell, installs a package, turns off a safety switch or the sandbox, or
+shows `review --run` with `--yes`. Two rules are not tested: that no skill chooses the
+language the user is spoken to in, and that none tells the agent to add a reference to the
+paper. Each was read by a pattern, and in two rounds of review each pattern was found both
+missing a sentence that gives the instruction and failing one that keeps the rule. The
+first missed "Always respond in English."; widened, it took "Respond to each reviewer point
+in English, as the journal asks" for a choice of the user's language, and its exception for
+a negated sentence let "If the user has not said otherwise, always respond in English."
+through. The second missed "Add the missing reference to the paper."; widened, it took "Ask
+the author to add the reference to the paper" for the agent adding it. A sentence that
+gives such an instruction is a reviewer's to catch.
+
 ## Generated inputs belong to the suite
 
 Between 24 September and 6 October 2026, 192 of the 516 independent-review verdicts posted
@@ -5608,6 +5630,10 @@ Closed since, and why each mattered:
   at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
   input is missing by mistake rather than by design is caught only where another finding
   depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
+- **No test reads a skill for the user's language or for a reference added to the paper.**
+  A skill that tells the agent which language to speak to the user in, or to add a
+  reference to the paper itself, is caught by whoever reviews the skill, not by
+  `tests/test_plugin.py` (see "The skill folders are held as files, too").
 - **The manifest lists the review overrides, and no other decision a person made.** A
   reporting checklist item marked not applicable, a parameter accepted in `methods.lock`, or
   an exemption in `paper.yaml` is a decision too, and the pack does not list it. Who

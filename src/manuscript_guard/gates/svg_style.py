@@ -24,9 +24,6 @@ SVG = "{http://www.w3.org/2000/svg}"
 READ = ("font-size", "font", "stroke", "stroke-width", "display", "visibility")
 
 _COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
-#: A rule: its selectors, and its declarations between braces. An at-rule's block is not
-#: one, and what is inside it is read as rules of its own.
-_RULE = re.compile(r"([^{}@;]+)\{([^{}]*)\}")
 _COMPOUND = re.compile(r"(?P<tag>\*|[A-Za-z][\w-]*)?(?P<rest>(?:[.#][\w-]+)*)")
 _IMPORTANT = re.compile(r"\s*!\s*important\s*$", re.IGNORECASE)
 
@@ -52,6 +49,23 @@ def declarations(text: str) -> dict[str, str]:
         if key and value:
             said[key] = value
     return said
+
+
+def _rules(text: str):
+    """Each rule's selectors and declarations, in one pass over the stylesheet: an at-rule's
+    block is stepped into, and its rules read as rules. A pattern tried at every character
+    took time quadratic in a run with no brace, as a font embedded in a stylesheet makes
+    (round 2 of #302)."""
+    at = 0
+    while (opened := text.find("{", at)) >= 0:
+        closed = text.find("}", opened)
+        if closed < 0:
+            return
+        if text.find("{", opened + 1, closed) >= 0:
+            at = opened + 1
+            continue
+        yield text[at:opened].rsplit(";", 1)[-1].rsplit("}", 1)[-1], text[opened + 1 : closed]
+        at = closed + 1
 
 
 def _tag(node: ET.Element) -> str:
@@ -88,13 +102,11 @@ class Sheet:
             if _tag(node) != "style":
                 continue
             text = _COMMENT.sub(" ", "".join(node.itertext()))
-            for match in _RULE.finditer(text):
-                declared = {
-                    k: v for k, v in declarations(match.group(2)).items() if k in READ
-                }
+            for head, body in _rules(text):
+                declared = {k: v for k, v in declarations(body).items() if k in READ}
                 if not declared:
                     continue
-                for written in match.group(1).split(","):
+                for written in head.split(","):
                     selector = _selector(written)
                     if selector is None:
                         continue

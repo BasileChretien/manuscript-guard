@@ -95,6 +95,7 @@ source_url: https://...        # the page you actually read
 retrieved_on: 2026-08-03
 article_type: "Original Research Article"
 english_variant: en-GB          # only if the journal insists; overrides paper.yaml
+blinding: double                # how its peer review is blinded, where the page says
 
 limits:                         # omit anything the journal does not state
   abstract_words: 250

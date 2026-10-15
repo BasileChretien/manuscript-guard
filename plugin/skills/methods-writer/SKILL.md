@@ -165,6 +165,11 @@ comparison to its levels or its reference. A comparison inside another call
 (`C(stage == 'IV')`, `np.where(...)`, `ifelse(...)`) is not known for one. Derive that
 variable before the fit and declare it as a variable of its own.
 
+Where a patient or a site can have more than one row, a visit each or many patients, name
+the column that says which with `unit=`: `em.model("adjusted", fit, name=..., unit="patient_id")`
+(R: `em$model(..., unit = "patient_id")`). The card counts the units among the rows used, and
+G15 warns where rows outnumber units and the fit treats each row as independent.
+
 For grouped data, where a row is a group with its events and its trials
 (`"cases + others ~ ..."` in statsmodels, `cbind(cases, others) ~ ...` or a proportion with
 `weights` in R), declare the columns of counts as `count`. The card then holds the events and
@@ -202,6 +207,7 @@ What G15 reports, and what to do:
 | `typed-model-kind` | the Methods type the kind of the model fitted: bind `{{results.model.<key>.kind}}` |
 | `model-ordinal-as-trend`, `model-number-as-categories`, `model-few-events`, `model-kind-unfitted` | warnings: say in the Methods why, or change the model |
 | `model-engine-unknown` | a warning: the toolkit's list has no name for this fit, so its outcome is not checked and it has no kind to bind; name the model in your own words |
+| `unit-rows-independent` | a warning: the rows outnumber the declared units and the standard errors take each row as independent. Cluster them by the unit (`cov_type="cluster"`) or fit a mixed model, and say so in the Methods |
 
 ## Locking the parameters worth checking
 

@@ -134,6 +134,19 @@ def abstract_title(project: Project) -> str | None:
     """The abstract's title in the target journal's profile, for the gates that read the
     abstract and are not G4. None where there is no profile, or none that can be read: G4
     says what is wrong with it."""
+    document = _profile(project)
+    return None if document is None else abstract_title_of(document)
+
+
+def blinding(project: Project) -> str | None:
+    """How the target journal's peer review is blinded, as its profile says ("double"), for
+    the build. None where the profile says nothing, or cannot be read: G4 says why."""
+    document = _profile(project)
+    return None if document is None else document.get("blinding")
+
+
+def _profile(project: Project) -> dict | None:
+    """The target journal's profile, where there is one that can be read and is valid."""
     slug = project.target_journal
     path = profile_path(project, slug) if slug else None
     if path is None:
@@ -144,7 +157,7 @@ def abstract_title(project: Project) -> str | None:
         return None
     if not isinstance(document, dict) or not validate(document, "journal", path).ok:
         return None
-    return abstract_title_of(document)
+    return document
 
 
 def _check_abstract_found(document: dict, text: str, path: Path) -> Report:

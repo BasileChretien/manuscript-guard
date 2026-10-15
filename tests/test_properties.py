@@ -59,9 +59,11 @@ from generated import (
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.database import InMemoryExampleDatabase
-from readings import MAIN, PAPER, READINGS, Unavailable, answer
+from readings import MAIN, PAPER, PEOPLE, READINGS, Unavailable, answer
 
 from manuscript_guard import reworded as reworded_module
+from manuscript_guard.build import blinding
+from manuscript_guard.build.blinding import names_in, sought
 from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
@@ -1314,6 +1316,76 @@ def test_the_sentence_of_a_conflict_is_worded_by_the_order_of_the_entries() -> N
     ]
 
 
+# ------------------------------------------------------------- an author in a blind document
+
+#: Each way of writing what names an author of `PEOPLE`, with what the build says it names,
+#: and what names nobody. A bar stands where the finding begins, inside a link to the iD.
+_PEOPLE_WRITTEN = (
+    ("Ada Example", "Ada Example"),
+    ("Ada\nExample", "Ada Example"),
+    ("Ada\N{NO-BREAK SPACE}Example", "Ada Example"),
+    ("A. Example", "Ada Example"),
+    ("A.Example", "Ada Example"),
+    ("Example, A.", "Ada Example"),
+    ("Example, A", "Ada Example"),
+    ("Example,\nAB", "Ada Example"),
+    ("Sean O'Brien", "Sean O'Brien"),
+    ("Sean O\N{RIGHT SINGLE QUOTATION MARK}Brien", "Sean O'Brien"),
+    ("S. O\N{RIGHT SINGLE QUOTATION MARK}Brien", "Sean O'Brien"),
+    ("Mary Ann van der Berg", "Mary Ann van der Berg"),
+    ("Mary\nAnn van der\tBerg", "Mary Ann van der Berg"),
+    ("M. van der Berg", "Mary Ann van der Berg"),
+    ("van der Berg, M.", "Mary Ann van der Berg"),
+    ("https://orcid.org/|0000-0002-1825-0097", "the ORCID iD 0000-0002-1825-0097"),
+    ("ADA.EXAMPLE@INVALID.EXAMPLE", "the e-mail address ada.example@invalid.example"),
+    ("department of clinical\npharmacology", "Department of Clinical Pharmacology"),
+    ("DEPARTMENT OF CLINICAL PHARMACOLOGY", "Department of Clinical Pharmacology"),
+    ("Ada Examples", None),
+    ("A Example", None),
+    ("Example A", None),
+    ("Example AB", None),
+    ("O\N{RIGHT SINGLE QUOTATION MARK}Brien", None),
+    ("Ada Exampel", None),
+    ("ada example", None),
+    ("Example", None),
+    ("Ada", None),
+    ("van der Berg", None),
+    ("Example University", None),
+    ("Springfield", None),
+    ("Japan", None),
+    ("0000-0002-1825-0098", None),
+)
+
+
+@st.composite
+def _planted_people(draw: st.DrawFn) -> tuple[str, list[tuple[str, int]]]:
+    """Every way of writing an author above, and every way that names nobody, in an order
+    and among words drawn each time, with what the build should find and where."""
+    parts: list[str] = []
+    found: list[tuple[str, int]] = []
+    for written, what in draw(st.permutations(_PEOPLE_WRITTEN)):
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4))
+        parts.append(" ".join(words) + draw(st.sampled_from((" ", "\n", "; "))))
+        before, _bar, name = written.rpartition("|")
+        parts.append(before)
+        if what is not None:
+            found.append((what, len("".join(parts))))
+        parts.append(name + draw(st.sampled_from((" ", ". ", "\n", ", "))))
+    return "".join(parts), sorted(found, key=lambda item: (item[1], item[0]))
+
+
+@holds(150, _planted_people())
+def test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else(
+    planted: tuple[str, list[tuple[str, int]]],
+) -> None:
+    """A name with any space between its words, a line break or a no-break space among
+    them; an initial before the family name or after it; an ORCID iD inside its link; an
+    e-mail address and an institution in any case. Not a family name or a given name alone,
+    a city, a country, two words of an institution, nor a name a letter away."""
+    text, expected = planted
+    assert names_in(text, sought(PEOPLE)) == expected, text
+
+
 # --------------------------------------------------------------------------------- spelling
 
 #: Words American usage writes and British does not, which a British paper is told of.
@@ -1728,6 +1800,43 @@ def _held_to_its_edit(drawn: tuple[str, str, str, list[str], int]) -> None:
         assert what in by_code[code].message, (before, after, said)
     if "fact-new" in by_code:
         assert by_code["fact-new"].line == line, (before, after, said)
+
+
+# ------------------------------------------------------------ the words beside a quoted value
+
+#: A value a ledger records, as its display is written, one of each kind: a decimal, a whole
+#: number, a value with words inside it, and one with letters.
+_LEDGER_VALUES = ("2.6", "14", "1 in 4", "IgG4")
+#: What stands in a quote and is no word, and words that hold a digit, which are.
+_NO_WORDS = ("95%", "2.1-3.2", "(", ")", "3.84", "-", "\N{EN DASH}", "12/40", "100 000")
+_DIGIT_WORDS = ("COVID-19", "CYP3A4", "HbA1c", "person-years.")
+_QUOTE_GAPS = (" ", "  ", "\n", ", ", "; ", " (", ") ", "\N{NO-BREAK SPACE}")
+
+
+@st.composite
+def _quotes_beside(draw: st.DrawFn) -> list[tuple[str, str, int]]:
+    """A quote for each kind of value, of filler words, words with a digit and pieces with
+    no letter, in an order drawn each time, with the value among them, and how many words
+    stand beside it."""
+    quotes = []
+    for value in _LEDGER_VALUES:
+        words = draw(st.lists(st.sampled_from(FILLER), max_size=6))
+        pieces = draw(st.permutations([*words, *_DIGIT_WORDS, *_NO_WORDS, value]))
+        gaps = [draw(st.sampled_from(_QUOTE_GAPS)) for _ in pieces]
+        quote = "".join(gap + piece for gap, piece in zip(gaps, pieces, strict=True))
+        quotes.append((quote, value, len(words) + len(_DIGIT_WORDS)))
+    return quotes
+
+
+@holds(150, _quotes_beside())
+def test_the_words_beside_a_quoted_value_are_its_words_and_no_more(
+    quotes: list[tuple[str, str, int]],
+) -> None:
+    """A word is a run between spaces that holds a letter, a digit in it or not; the value is
+    taken out first, so "1 in 4" counts no "in"; and a percentage, an interval, a bracket or
+    a number alone is no word."""
+    for quote, value, count in quotes:
+        assert len(literature_sources.words_beside(quote, value)) == count, (quote, value)
 
 
 # -------------------------------------------------------------------------------- quotations
@@ -2187,6 +2296,42 @@ def _a_comment_holds_facts(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reworded_module, "blank_comments", lambda text: text)
 
 
+def _a_name_is_one_space_apart(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(blinding, "_SPACE", " ")
+
+
+def _an_institution_is_in_its_own_case(patch: pytest.MonkeyPatch) -> None:
+    real = blinding._words
+    patch.setattr(blinding, "_words", lambda piece, flags=0: real(piece))
+
+
+def _an_initial_needs_no_stop(patch: pytest.MonkeyPatch) -> None:
+    def name(given: str, family: str) -> re.Pattern[str]:
+        initial, surname = re.escape(given[0]), blinding._spaced(family)
+        return re.compile(
+            rf"(?<!\w)(?:{blinding._spaced(given)}\s+{surname}|{initial}(?:\.\s*|\s+)"
+            rf"{surname}|{surname},?\s+{initial}[A-Z]?\.?)(?!\w)"
+        )
+
+    patch.setattr(blinding, "_name", name)
+
+
+def _an_apostrophe_is_matched_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(
+        blinding, "_spaced", lambda words: r"\s+".join(re.escape(w) for w in words.split())
+    )
+
+
+def _a_name_is_not_read_family_name_first(patch: pytest.MonkeyPatch) -> None:
+    def name(given: str, family: str) -> re.Pattern[str]:
+        initial, surname = re.escape(given[0]), blinding._spaced(family)
+        return re.compile(
+            rf"(?<!\w)(?:{blinding._spaced(given)}\s+{surname}|{initial}\.\s*{surname})(?!\w)"
+        )
+
+    patch.setattr(blinding, "_name", name)
+
+
 def _every_dash_before_a_figure_is_its_sign(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reworded_module, "_sign", lambda text, at: SURE)
 
@@ -2310,6 +2455,20 @@ def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
 
 
+def _a_word_with_a_digit_is_no_word(patch: pytest.MonkeyPatch) -> None:
+    real = literature_sources.words_beside
+    patch.setattr(
+        literature_sources,
+        "words_beside",
+        lambda quote, display: [w for w in real(quote, display) if not any(c.isdigit() for c in w)],
+    )
+
+
+def _the_value_is_left_in_the_quote(patch: pytest.MonkeyPatch) -> None:
+    real = literature_sources.words_beside
+    patch.setattr(literature_sources, "words_beside", lambda quote, display: real(quote, ""))
+
+
 def _an_anchor_in_a_comment_is_an_anchor(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(placeholders, "_without_comments", lambda text: text)
 
@@ -2375,6 +2534,14 @@ BROKEN = {
     "a claim keeps its line breaks": (
         _a_claim_keeps_its_line_breaks,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a word with a digit in it is no word": (
+        _a_word_with_a_digit_is_no_word,
+        test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
+    ),
+    "the value is left in the quote": (
+        _the_value_is_left_in_the_quote,
+        test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
     ),
     "an anchor in a comment is an anchor": (
         _an_anchor_in_a_comment_is_an_anchor,
@@ -2555,6 +2722,26 @@ BROKEN = {
     "the order of the facts is not looked at": (
         _the_order_is_not_looked_at,
         test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "a name's words are one space apart": (
+        _a_name_is_one_space_apart,
+        test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
+    ),
+    "an institution is found in its own case only": (
+        _an_institution_is_in_its_own_case,
+        test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
+    ),
+    "an initial needs no stop": (
+        _an_initial_needs_no_stop,
+        test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
+    ),
+    "an apostrophe is matched as it is typed": (
+        _an_apostrophe_is_matched_as_typed,
+        test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
+    ),
+    "a name is not read with the family name first": (
+        _a_name_is_not_read_family_name_first,
+        test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
     ),
     "every dash before a figure is its sign": (
         _every_dash_before_a_figure_is_its_sign,

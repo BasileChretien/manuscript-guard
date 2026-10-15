@@ -2235,12 +2235,23 @@ def test_an_estimate_bound_from_one_analysis_and_its_interval_from_another_is_fo
     assert _recomputed(project).counts["printed_intervals_read"] == 5
 
 
-def test_a_quote_whose_interval_does_not_fit_its_p_is_found(project: Path) -> None:
+@pytest.mark.parametrize(
+    ("interval", "code"),
+    [
+        ("rate ratio 1.9, 95% CI 1.2-3.0, P = 0.40", "quote-p-against-interval"),
+        ("rate ratio 2.6, 95% CI 1.2-3.2", "quote-interval-asymmetric"),
+        # Round 2 of #300: each code G7 says of a quote has a case.
+        ("rate ratio 2.6, 95% CI 2.1-2.3", "quote-interval-excludes-estimate"),
+    ],
+)
+def test_a_quote_whose_interval_does_not_fit_its_p_is_found(
+    project: Path, interval: str, code: str
+) -> None:
     """The source's own numbers disagree, so the value taken from them may be the wrong
     one."""
     said = (
         "The crude incidence of drug-induced hepatic injury was 14 per 100 000 "
-        "person-years (rate ratio 1.9, 95% CI 1.2-3.0, P = 0.40)."
+        f"person-years ({interval})."
     )
     source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
     source.write_text(source.read_text(encoding="utf-8") + "\n" + said + "\n", encoding="utf-8")
@@ -2249,9 +2260,7 @@ def test_a_quote_whose_interval_does_not_fit_its_p_is_found(project: Path) -> No
     document["entries"][0]["quote"] = said
     path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     report = _literature_report(project)
-    assert [f.code for f in report.findings if f.code.startswith("quote-")] == [
-        "quote-p-against-interval"
-    ]
+    assert [f.code for f in report.findings if f.code.startswith("quote-")] == [code]
     assert report.counts["literature_verified"] == 2
 
 

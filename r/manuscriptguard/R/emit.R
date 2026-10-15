@@ -642,6 +642,34 @@ mg_read_fit <- function(fit, unit = NULL) {
   card
 }
 
+# Keep the plan as it stands the first time the analysis writes results, and never again,
+# mirroring the Python emitter's `freeze_plan`: design/plan.frozen.yaml holds the plan's
+# text, its digest, the day and the script, written as JSON, which is YAML too.
+mg_freeze_plan <- function(project_root, script) {
+  plan <- file.path(project_root, "design", "plan.md")
+  frozen <- file.path(project_root, "design", "plan.frozen.yaml")
+  if (!file.exists(plan) || file.exists(frozen)) return(invisible(NULL))
+  stamp <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z", tz = "UTC")
+  stamp <- sub("([+-]\\d{2})(\\d{2})$", "\\1:\\2", stamp)
+  # A plan that is not UTF-8 text, or holds a NUL as a UTF-16 one does, is not kept, as in
+  # Python: rawToChar() stops on a NUL, after the results were written (round 1 of #271).
+  bytes <- readBin(plan, "raw", file.info(plan)$size)
+  if (any(bytes == as.raw(0))) return(invisible(NULL))
+  text <- rawToChar(bytes)
+  Encoding(text) <- "UTF-8"
+  if (!validUTF8(text)) return(invisible(NULL))
+  record <- list(
+    schema = "manuscript-guard/plan-frozen/1",
+    frozen_at = stamp,
+    by = script,
+    sha256 = mg_source_digest(plan),
+    plan = text
+  )
+  json <- jsonlite::toJSON(record, auto_unbox = TRUE, pretty = 2)
+  mg_write_lf(as.character(json), frozen)
+  invisible(frozen)
+}
+
 #' Create a results emitter
 #'
 #' The only supported way for an R analysis to publish a number.
@@ -1135,6 +1163,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     # you just wrote, so a later hand-edit cannot pass unnoticed.
     checksum <- digest::digest(file = path, algo = "sha256")
     mg_write_lf(paste0(checksum, "  ", basename(path)), paste0(path, ".sha256"))
+    mg_freeze_plan(project_root, relative(script_path))
     invisible(path)
   }
 

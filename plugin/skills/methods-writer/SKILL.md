@@ -83,6 +83,9 @@ Confidence intervals were derived from the standard error of the log odds ratio.
 {{method.ci}}
 ```
 
+(The standard error in the example, the square root of the sum of the reciprocals of the
+four cells, is Woolf's: B. Woolf, *Annals of Human Genetics* 19:251-253, 1955.)
+
 The anchor claims the text before it, back to the anchor before it or the start of its
 paragraph. Put it at the **end of the paragraph** where you can: give each step its own short
 paragraph. A co-author's edit in Word then comes back with the anchor in place, and an edit to

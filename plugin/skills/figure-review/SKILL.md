@@ -42,7 +42,7 @@ having done it, so write what you actually saw in each case.
 | `legend-and-marks-explained` | Is every mark, colour, line style and series accounted for? Is anything drawn that nothing names? |
 | `no-unexplained-number` | Is anything visible that is neither a result nor part of the scale? |
 | `scale-not-misleading` | Does the visual encoding overstate the finding? Baseline not at zero, area used for a linear quantity, a ratio on a linear axis? |
-| `readable-and-accessible` | Legible at print size? Does any information depend on colour alone? |
+| `readable-and-accessible` | Legible at print size? Does any information depend on colour alone? Do the lines, markers and shading that carry meaning stand out from what is beside them, at a contrast of at least 3:1 (WCAG 2.2, success criteria 1.4.1 and 1.4.11)? |
 
 The check that most often finds something is `caption-agrees`, because the text and the
 figure are edited at different times and drift apart quietly. Read the manuscript sentence

@@ -181,8 +181,11 @@ def main() -> None:
 
     # The dictionary the events were coded with, and its release, quoted where the code
     # lists are. A real study names MedDRA and its version (`release_file=` reads it from
-    # MedDRA's own `meddra_release.asc`); this one's events are the data generator's terms.
-    em.dictionary("Generator event terms", "1")
+    # MedDRA's own `meddra_release.asc`); this one's events are the data generator's terms,
+    # whose release is the first line of the list the generator writes.
+    terms = "data/event_terms.txt"
+    release = (ROOT / terms).read_text(encoding="utf-8").splitlines()[0]
+    em.dictionary("Generator event terms", release, release_file=terms)
 
     # The code lists the analysis selected on, published as RECORD 6.1 requires and as
     # READUS-PV expects for a case definition. Handed over as lists rather than as a typed

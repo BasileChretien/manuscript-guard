@@ -1184,6 +1184,21 @@ def test_a_reply_names_places_by_number_and_types_no_threshold(project: Path) ->
     assert any("0.001" in m for m in said), said
 
 
+@pytest.mark.parametrize(
+    ("reply", "typed"),
+    [
+        # Round 2 of #266: a comma after a place does not run on to the count after it.
+        ("As suggested by Reviewer 1, 312 controls were added.", "312"),
+        ("In response to comment 1.3, 41 reports were reclassified.", "41"),
+        # A place word at the end of a paragraph names nothing in the next.
+        ("We thank the reviewers\n\n41 cases were excluded.", "41"),
+    ],
+)
+def test_a_count_after_a_place_is_still_a_count(project: Path, reply: str, typed: str) -> None:
+    _round_with(project, [_point(response=reply, rebutted="x")])
+    assert any(f"{typed!r}" in m for m in _reply_numbers(project)), _reply_numbers(project)
+
+
 def test_a_number_typed_in_a_reply_fails_at_submission_only(project: Path) -> None:
     from manuscript_guard.policy import DRAFTING, SUBMISSION, apply_stage
 

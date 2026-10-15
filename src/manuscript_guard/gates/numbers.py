@@ -496,12 +496,13 @@ def replies(document: object, number: int) -> list[tuple[str, str]]:
 #: the Results, and not the alpha the Methods chose (round 1 of #266).
 REPLY_SECTION = ("Response to reviewers",)
 #: A place in the letter, the paper or the review a reply names by number: "line 120",
-#: "lines 120-125", "Reviewer 2", "comment 1.3", "page 4". Not a result, and no binding
-#: could give it.
+#: "lines 120-125", "lines 120 and 125", "Reviewer 2", "comment 1.3", "page 4". Not a result,
+#: and no binding could give it. A comma alone does not run on from a place: "As Reviewer 1
+#: asked, 312 controls were added" types a count (round 2 of #266). Nor does a blank line.
 _REPLY_PLACE = re.compile(
     r"(?i)\b(?:lines?|ll?\.|pages?|pp?\.|paragraphs?|para\.|reviewers?|referees?|comments?"
-    r"|points?|queries|query|questions?|remarks?|issues?)\s*#?\s*"
-    r"(?:\d+(?:\.\d+)*\s*(?:[-\u2013\u2014,]|and|to|&)\s*)*$"
+    r"|points?|queries|query|questions?|remarks?|issues?)[^\S\n]*(?:\n[^\S\n]*)?#?[^\S\n]*"
+    r"(?:\d+(?:\.\d+)*[^\S\n]*(?:[-\u2013\u2014]|,?[^\S\n]*(?:and|&)|to|through)[^\S\n]*)*\Z"
 )
 
 

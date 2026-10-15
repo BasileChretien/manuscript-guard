@@ -170,7 +170,8 @@ manuscript-guard respond --submission    # the same findings, as failures
 | `response-leak` | the tool's name, a gate with its finding code, or a place in the source files (`main.md:120`), none of which the journal should read |
 | `reply-unbound-number` | G2: a result typed into `response` or `rebutted`; bind it |
 
-All of these warn during the revision and fail at submission. A round opened before the copy
+All of these warn during the revision and fail at submission, but `reply-unbound-number`,
+which is a note until submission. A round opened before the copy
 was kept says `quoted-text-unchecked`, a note, where a quote cannot be checked for being
 new. `respond` ignores `stage:` in
 `paper.yaml`, so pass `--submission` yourself. For `claimed-change-missed-the-point`, if

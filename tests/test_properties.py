@@ -611,6 +611,42 @@ def test_each_identifier_names_data_and_each_temporary_link_is_found(
     assert temporary == sorted(drawn_links + list(TEMPORARY_LINKS)), (temporary, linked)
 
 
+# ------------------------------------------------------------- what the plan's deviations say
+
+
+@st.composite
+def _deviations_twice(draw: st.DrawFn) -> tuple[str, str, str]:
+    """A plan whose Deviations section is drawn words, the same plan with them wrapped another
+    way, and the same with a word more. The section comes before drawn text: after it, an
+    empty footnote or an open fence the draw left would take its heading, as pandoc reads."""
+    words = draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=20))
+    wrap = [draw(st.sampled_from((" ", "\n", "  ", " \n"))) for _ in words[1:]]
+    # A line break and a doubled space in every example, wherever else the draw put them.
+    wrap[0], wrap[-1] = "\n", "  "
+    rewrapped = words[0] + "".join(gap + word for gap, word in zip(wrap, words[1:], strict=True))
+    after = draw(texts())
+
+    def plan(deviations: str) -> str:
+        return f"# Analysis plan\n\n## Deviations from the plan\n\n{deviations}\n\n" \
+            f"## Outcome\n\n{after}\n"  # fmt: skip
+
+    said = " ".join(words)
+    return plan(said), plan(rewrapped), plan(said + " " + draw(st.sampled_from(FILLER)))
+
+
+@holds(100, _deviations_twice())
+def test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not(
+    drawn: tuple[str, str, str],
+) -> None:
+    """Whatever the plan above it, the Deviations section says the same however its lines
+    are wrapped, and something else with a word added."""
+    from manuscript_guard.gates.design import deviations_said
+
+    plan, rewrapped, longer = drawn
+    assert deviations_said(plan) == deviations_said(rewrapped), rewrapped
+    assert deviations_said(plan) != deviations_said(longer), longer
+
+
 # ------------------------------------------------------------------------------ parameters
 
 #: What an analysis declares in the property below: a threshold, a count, a version, and a
@@ -2258,6 +2294,22 @@ def _a_release_is_temporary(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(data_statement, "TEMPORARY", re.compile(loose, re.IGNORECASE))
 
 
+def _a_deviation_is_read_with_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    def as_typed(text: str) -> str:
+        pattern = dict((name, rule) for name, rule, _ in design.REQUIRED)["deviations"]
+        sections = design._plan_sections(text)
+        return "".join(
+            part.body
+            for index, section in enumerate(sections)
+            if re.search(pattern, section.title)
+            for part in design.subsections(sections, index)
+        )
+
+    patch.setattr(design, "deviations_said", as_typed)
+
+
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
@@ -2757,6 +2809,10 @@ BROKEN = {
     "a link to a release is temporary": (
         _a_release_is_temporary,
         test_each_identifier_names_data_and_each_temporary_link_is_found,
+    ),
+    "a deviation is read with its line breaks": (
+        _a_deviation_is_read_with_its_line_breaks,
+        test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not,
     ),
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,

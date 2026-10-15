@@ -1009,14 +1009,6 @@ _CONCLUDES = "synthetic data. Disproportionality"
 _SERIOUS = "synthetic data, {{results.case.n_serious}} of them serious. Disproportionality"
 
 
-def _line_of(root: Path, words: str) -> int:
-    return next(
-        number
-        for number, line in enumerate(main_md(root).read_text(encoding="utf-8").splitlines(), 1)
-        if words in line
-    )
-
-
 def test_a_number_a_summary_gives_and_the_paper_reports_nowhere_is_warned(project: Path) -> None:
     """An abstract or a conclusion introduces no data. The example's abstract gives
     nothing the Methods or the Results do not, and passes; a key given in the Abstract, or

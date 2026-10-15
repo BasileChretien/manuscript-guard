@@ -682,6 +682,11 @@ def build_document(
                 except Exception as exc:
                     report = report.merge(_record_not_written(output, exc))
             stamp_into(output, digest, paragraphs, printed)
+        # A document that may be sent names none of its authors where the review is blind.
+        if not sent:
+            from manuscript_guard.build.blinding import check_blinded
+
+            report = report.merge(check_blinded(project, output))
     return BuildResult(output=output, mode=mode, report=report)
 
 

@@ -40,9 +40,10 @@ _ANY = re.compile("[" + "".join(SCRIPTS.values()) + "]")
 _EACH = {name: re.compile("[" + span + "]") for name, span in SCRIPTS.items()}
 
 _NOT_READ = (
-    "numbers written in it, numerals or figures run into its characters; the word count, "
-    "which counts words between spaces; and AI phrasing, abbreviations, terms and spelling, "
-    "which are read in English"
+    "numbers written in its numerals, which are not seen as numbers; figures run into its "
+    "characters, which G2 reads together with them and fails even where every result is "
+    "bound; the word count, which counts words between spaces; and AI phrasing, "
+    "abbreviations, terms and spelling, which are read in English"
 )
 
 
@@ -80,8 +81,7 @@ def judge_scripts(passages: list[Passage]) -> Report:
                 path=passage.path,
                 line=passage.line_of(first.start()) if first else None,
                 hint="a quoted title or name in another script is fine where it is; a "
-                "manuscript written in it is read by these gates as English, and the numbers "
-                "in it go unchecked",
+                "manuscript written in it is read by these gates as English",
             )
         )
     return report.with_counts(prose_not_read=total)

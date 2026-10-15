@@ -30,7 +30,8 @@ definitions and is otherwise held to its own.
 The gate has three more readings: of the terms the paper keeps to, in
 `gates/vocabulary.py`, of its spelling, in `gates/spelling.py`, and of its notation, in
 `gates/notation.py`. They take the files read here, so the manuscript is masked once,
-and `check_language` gives all four.
+and `check_language` gives all four, and says where the prose is in a script none of
+them reads (`gates/scripts.py`).
 """
 
 from __future__ import annotations
@@ -840,7 +841,7 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
 
 def check_language(project: Project) -> Report:
     """The four readings of the manuscript: its abbreviations, the terms it keeps to,
-    its spelling and its notation."""
+    its spelling and its notation; and where its prose is in a script none of them reads."""
     files = _read(project)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
     # A contributions statement names its roles as CRediT spells them and a funding

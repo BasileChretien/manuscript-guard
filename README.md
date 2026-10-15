@@ -264,7 +264,7 @@ number in the file and the rule that classified it.
 | `respond` | open a revision round, or write the point-by-point response |
 | `submit` | assemble the submission pack |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |
-| `install-skills` | copy the skills to a folder an agent tool reads |
+| `install-skills` | copy the skills to a folder an agent tool reads; `--verify` checks the copy, `--remove` takes it away |
 
 Each takes `--help`. `verify` is a separate command because it executes your analysis, which
 a gate never does, and because it takes as long as the analysis does.

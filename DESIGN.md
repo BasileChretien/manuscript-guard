@@ -1431,6 +1431,18 @@ each card for that reading: the author's name and description beside the kind an
 generated sentence, and the table of variables. Once a co-author page can carry items, the
 card is the item, and its digest covers both descriptions.
 
+**The unit of analysis is declared, and counted from the fit.** A model fitted on several
+rows per patient, a visit each, with ordinary standard errors is one of the commonest
+statistical errors in clinical papers: every interval is too narrow, and nothing in the
+numbers shows it. `em.model(..., unit="patient_id")` names the column of the data whose
+values the rows belong to, in both emitters, and the card records how many units the rows
+used hold, beside the fit's covariance type: statsmodels' `cov_type`, and "model-based" for
+an R `lm` or `glm`, whose fit keeps no sandwich estimate. G15 warns
+(`unit-rows-independent`) where there are more rows than units and the fit is neither
+cluster-robust (`cluster`, or a HAC by group or panel) nor a mixed model or estimating
+equations. The R emitter finds the data in the fit (`glm`) or where the call names it
+(`lm`), and leaves out the rows the fit dropped.
+
 ## A step of the code and the text that points at it
 
 The ledger of G9 records that a person read the Methods against the analysis, file by file.
@@ -7292,7 +7304,12 @@ Closed since, and why each mattered:
 - **G15 reads two kinds of fit.** The statsmodels formula API in Python and `lm`/`glm` in R.
   Anything else (a Cox model, a mixed model, scikit-learn) cannot be recorded with
   `em.model` yet. A fit `data/models.yaml` has no entry for is a warning, and its outcome is
-  not checked. Whether a variance was made robust, or an assumption holds, is not read.
+  not checked. Whether an assumption holds is not read. A unit is checked only where the
+  analysis declares one with `unit=`; a model fitted on repeated rows with no unit declared
+  says nothing. In R a sandwich estimate computed beside an `lm` or a `glm`, with
+  `sandwich::vcovCL` for instance, is not part of the fit and is not seen: such a model is
+  reported, and the warning says to cluster. A fit made with `subset=` counts its units over
+  the whole data less the rows dropped for missing values.
   In R whatever inherits from `lm` is read, so `MASS::glm.nb` is: it is recorded with the
   package `stats` and the family `Negative Binomial(<theta>)`, which no entry matches, and
   is such a warning. So is a statsmodels fit made with one of the deprecated lower-case

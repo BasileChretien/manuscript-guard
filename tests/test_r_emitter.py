@@ -658,7 +658,8 @@ data <- read.csv("%(data)s", stringsAsFactors = FALSE)
 em$variable("g", "categorical", label = "group", levels = c("a", "b", "c"), reference = "a",
             values = data$g)
 fit <- glm(y ~ x + g, data = data, family = binomial())
-em$model("adjusted", fit, name = "Adjusted model", description = "The primary analysis.")
+em$model("adjusted", fit, name = "Adjusted model", description = "The primary analysis.",
+         unit = "pid")
 em$write()
 """
 
@@ -676,7 +677,10 @@ def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> 
 
     root = _parameter_project(tmp_path)
     draw = random.Random(2)
-    rows = [{"y": int(draw.random() < 0.3), "x": i % 10, "g": "abc"[i % 3]} for i in range(300)]
+    rows = [
+        {"y": int(draw.random() < 0.3), "x": i % 10, "g": "abc"[i % 3], "pid": i // 3}
+        for i in range(300)
+    ]
     data = pd.DataFrame(rows)
     data["x"] = data["x"].astype(float)
     data.loc[7, "x"] = float("nan")
@@ -697,7 +701,8 @@ def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> 
 
     em = Emitter(root / "analysis" / "model.R", root=root)
     fit = smf.glm("y ~ x + C(g, Treatment('a'))", data, family=sm.families.Binomial()).fit()
-    em.model("adjusted", fit, name="Adjusted model", description="The primary analysis.")
+    em.model("adjusted", fit, name="Adjusted model", description="The primary analysis.",
+             unit="pid")  # fmt: skip
     from_python = em.document()["models"]["adjusted"]
 
     def facts(card: dict) -> dict:
@@ -706,7 +711,7 @@ def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> 
             for t in card["terms"] for r in t["entered"]
         )  # fmt: skip
         keep = ("parameters", "n_input", "n_used", "n_dropped", "converged", "events",
-                "events_by_level", "name", "description")  # fmt: skip
+                "events_by_level", "name", "description", "unit")  # fmt: skip
         return {
             "kind": engine_of(card["engine"]).kind,
             "outcome": card["outcome"]["variables"],
@@ -715,6 +720,8 @@ def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> 
         }
 
     assert facts(from_r) == facts(from_python)
+    assert from_python["unit"] == {"column": "pid", "units": 100}
+    assert (from_r["covariance"], from_python["covariance"]) == ("model-based", "nonrobust")
     assert document["variables"]["g"]["observed"] == {
         "distinct": 3, "missing": 0, "levels": ["a", "b", "c"],
     }  # fmt: skip

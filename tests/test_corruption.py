@@ -1113,6 +1113,49 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
     assert "unemitted-table-number" in codes
 
 
+# ------------------------------------------------- the unit of analysis
+
+
+def _model_card_has(root: Path, **fields) -> None:
+    """Give the example's model card these fields, and sign the fragment again."""
+    for fragment in (root / "results").glob("*.json"):
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        for card in (document.get("models") or {}).values():
+            card.update(fields)
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+
+
+def _unit_said(root: Path) -> list[tuple[str, str]]:
+    project, _ = load_project(root)
+    _namespace, results, _literature, _report = load_namespace(project)
+    assert results.models, "the example fits a model"
+    said = check_models(project, results).findings
+    return [(f.code, f.severity) for f in said if f.code == "unit-rows-independent"]
+
+
+def test_rows_of_one_unit_taken_as_independent_are_a_warning(project: Path) -> None:
+    """Item 14: a model fitted on several rows a patient, with ordinary standard errors,
+    passed."""
+    _model_card_has(project, unit={"column": "patient", "units": 3}, covariance="nonrobust")
+    assert _unit_said(project) == [("unit-rows-independent", "warn")]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"unit": {"column": "patient", "units": 3}, "covariance": "cluster"},
+        {"unit": {"column": "patient", "units": 3},
+         "engine": {"language": "Python", "package": "statsmodels", "class": "MixedLM"}},
+        {"unit": {"column": "patient", "units": 100000}, "covariance": "nonrobust"},
+        {"covariance": "nonrobust"},
+    ],
+)  # fmt: skip
+def test_rows_of_one_unit_accounted_for_say_nothing(project: Path, fields: dict) -> None:
+    _model_card_has(project, **fields)
+    assert _unit_said(project) == []
+
+
 # ------------------------------------------------- an interval is a declared thing
 
 

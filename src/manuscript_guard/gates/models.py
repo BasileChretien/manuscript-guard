@@ -120,6 +120,43 @@ def _observed(name: str, variable: Variable) -> Report:
     return Report(tuple(findings))
 
 
+#: Covariance types that take the rows of one unit together, as statsmodels names them.
+CLUSTERED = frozenset({"cluster", "hac-groupsum", "hac-panel"})
+#: Fits whose structure accounts for rows of one unit: mixed models and estimating equations.
+GROUPED_FITS = frozenset(
+    {"MixedLM", "BinomialBayesMixedGLM", "PoissonBayesMixedGLM", "GEE", "OrdinalGEE",
+     "NominalGEE", "lmerMod", "glmerMod", "geeglm"}
+)  # fmt: skip
+
+
+def _unit(model: Model) -> list[Finding]:
+    """Several rows of one unit, fitted as if each row were a unit of its own.
+
+    A model fitted on several rows per patient with ordinary standard errors is one of the
+    commonest statistical errors in clinical papers: the intervals are too narrow, and
+    nothing in the numbers shows it. Read from the fit, as everything here is: the unit the
+    analysis declared, how many of them the rows used hold, and the covariance the fit used.
+    """
+    if not model.unit or model.unit.get("units", 0) >= model.n_used:
+        return []
+    if model.covariance in CLUSTERED or model.engine.get("class") in GROUPED_FITS:
+        return []
+    column, units = model.unit["column"], model.unit["units"]
+    how = f"({model.covariance})" if model.covariance else "(no covariance type recorded)"
+    return [
+        _finding(
+            model,
+            "unit-rows-independent",
+            f"it was fitted on {model.n_used} rows of {units} {column} values, and its "
+            f"standard errors take each row as independent {how}",
+            "fit standard errors clustered by the unit (in statsmodels, "
+            ".fit(cov_type='cluster', cov_kwds={'groups': ...})), or a mixed model; and if "
+            "each unit should have one row, find why the data hold more",
+            warn=True,
+        )
+    ]
+
+
 def _model(model: Model, variables: dict[str, Variable], referenced: set[str]) -> Report:
     findings: list[Finding] = []
     engine = engine_of(model.engine)
@@ -159,6 +196,8 @@ def _model(model: Model, variables: dict[str, Variable], referenced: set[str]) -
         for name in record["variables"]:
             if name in variables:
                 findings.extend(_entered(model, record, variables[name]))
+
+    findings.extend(_unit(model))
 
     if not model.converged:
         findings.append(

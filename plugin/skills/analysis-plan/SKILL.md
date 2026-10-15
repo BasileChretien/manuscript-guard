@@ -1,6 +1,6 @@
 ---
 name: analysis-plan
-description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing or plan-section-empty, or when the analysis is about to do something the plan did not say.
+description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty or plan-changed-after-results, or when the analysis is about to do something the plan did not say.
 ---
 
 # Writing down what you meant to do, before you do it
@@ -87,10 +87,16 @@ Fill in the `Agreed <date>` line with the real date.
 When the analysis departs from the plan, write it under the deviations heading at the time,
 not at the end. For each one:
 
-- when it happened, and what prompted it;
+- the date, and what prompted it;
 - what the plan said, and what was done instead;
-- why;
+- why, and who decided;
+- whether the results it affects were known when it was decided;
 - whether anything was re-run because of it, and whether the result moved.
+
+The first time the analysis writes results, the emitter keeps the plan as it stood in
+`design/plan.frozen.yaml`, and never writes it again. Change the plan in `design/plan.md`,
+never the frozen copy; a plan changed after that with its Deviations section as it was is
+`plan-changed-after-results`, a warning that says the change was not declared.
 
 `None so far.` is a legitimate entry as long as it is true. Every deviation also belongs
 in the paper's Methods; the [methods-writer](../methods-writer/SKILL.md) skill covers that.

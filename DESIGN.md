@@ -2200,6 +2200,18 @@ with no plan behind it, and when a plan's section is a heading with nothing unde
 "Deviations from the plan" heading followed by nothing is the common case, and naming it is
 most of the value.
 
+**The plan is frozen when the first results are written.** A plan rewritten after the
+results are known is the pattern of a hypothesis fitted to its results, and it can be told
+mechanically. The first time either emitter writes results, it keeps the plan as it stood:
+`design/plan.frozen.yaml` holds its text, its digest, the day and the script, and nothing
+writes it again; the write hook refuses an edit of it. In a file of its own, beside the plan,
+because the results folder is cleared and written again on every run, and a copy kept there
+would be frozen again on the changed plan. Written as JSON, which is YAML too, so that R needs
+no package to write it. G12 warns (`plan-changed-after-results`) when the plan's words differ
+from the copy's and its Deviations section says what it said then: changed with nothing said.
+A plan re-wrapped without a word changed is unchanged. Results with no copy, written before
+the emitters kept one, are a note.
+
 ## Stages: not every gate binds on day one
 
 The first version of `check` ran all twelve gates unconditionally, which meant that someone
@@ -7390,6 +7402,12 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A frozen plan holds the plan of the first run, whenever that was.** A plan written after
+  results already existed is frozen as it stood on the next run, and cannot be told from one
+  written first; nor can a plan changed between writing the analysis and running it. Any
+  change to the Deviations section, a word or a date, satisfies the check, whatever it says.
+  The copy is in version control like the plan, and a person can delete it; the next run then
+  freezes the plan as it is. A plan that is not UTF-8 text is not frozen until it is.
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.

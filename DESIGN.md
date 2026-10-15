@@ -684,9 +684,9 @@ its two forms; and an entry has the fields BibTeX's standard styles print for it
 (btxdoc), under BibTeX's name or BibLaTeX's (`journaltitle`, `date`). Each fails from
 internal-review (`identifier-malformed`, `reference-field-missing`), when the reference
 list is first printed for others to read; while drafting, an entry can still be a
-placeholder, and it is reported and deferred. Whether a
-DOI is registered, names the work the entry describes, or was retracted is for a lookup
-that records what it found, and none is made here.
+placeholder, and it is reported and deferred. Whether a DOI is registered, names the work
+the entry describes, or was retracted is for a lookup that records what it found, and none
+is made here.
 
 ## Only a person can sign an attestation
 
@@ -4194,7 +4194,7 @@ the campaigns are in the suite, on Hypothesis:
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
-  paper, and rewordings.
+  paper, rewordings, and ISBNs with one digit changed.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its

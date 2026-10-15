@@ -1095,3 +1095,43 @@ def test_a_unit_missing_in_a_row_the_model_used_is_refused(scratch: Path) -> Non
     fit = smf.ols("y ~ x", data).fit()
     with pytest.raises(ValueError, match="missing in 1 of the rows"):
         emitter(scratch).model("m", fit, name="M", unit="pid")
+
+
+def test_a_card_records_an_offset_or_an_exposure(scratch: Path) -> None:
+    """Round 1 of #289: a Poisson model of an event with a person-time offset is a rate
+    model, and G15 has to know the offset is there."""
+    np = pytest.importorskip("numpy")
+    pd = pytest.importorskip("pandas")
+    sm = pytest.importorskip("statsmodels.api")
+    smf = pytest.importorskip("statsmodels.formula.api")
+
+    data = pd.DataFrame({"event": [0, 1, 0, 1, 0, 0, 1, 0], "x": [1, 2, 3, 4, 5, 6, 7, 8],
+                         "time": [2.0, 3.0, 1.5, 4.0, 2.5, 3.5, 1.0, 2.0]})  # fmt: skip
+    em = emitter(scratch)
+    poisson = sm.families.Poisson()
+    em.model("rate", smf.glm("event ~ x", data, family=poisson,
+                             offset=np.log(data["time"])).fit(), name="Rate")  # fmt: skip
+    em.model("exposure", smf.glm("event ~ x", data, family=poisson,
+                                 exposure=data["time"]).fit(), name="Exposure")  # fmt: skip
+    em.model("risk", smf.glm("event ~ x", data, family=poisson).fit(), name="Risk")
+    models = em.document()["models"]
+    assert models["rate"]["offset"] is True and models["exposure"]["offset"] is True
+    assert "offset" not in models["risk"]
+
+
+def test_a_card_records_the_rows_its_fit_used(scratch: Path) -> None:
+    """Item 36: a covariate's missing value drops a row from the adjusted fit only, and the
+    two cards said nothing of which rows each used."""
+    pd = pytest.importorskip("pandas")
+    smf = pytest.importorskip("statsmodels.formula.api")
+    from manuscript_guard.emit import rows_digest
+
+    data = pd.DataFrame({"y": [1.0, 2.0, 3.0, 4.0, 5.0, 7.0], "x": [1.0, 2.0, 3.0, 4.0, 6.0, 5.0],
+                         "z": [0.0, 1.0, float("nan"), 1.0, 0.0, 1.0]},
+                        index=[10, 11, 12, 13, 14, 15])  # fmt: skip
+    em = emitter(scratch)
+    em.model("crude", smf.ols("y ~ x", data).fit(), name="Crude")
+    em.model("adjusted", smf.ols("y ~ x + z", data).fit(), name="Adjusted")
+    models = em.document()["models"]
+    assert models["crude"]["rows_sha256"] == rows_digest(["10", "11", "12", "13", "14", "15"])
+    assert models["adjusted"]["rows_sha256"] == rows_digest(["10", "11", "13", "14", "15"])

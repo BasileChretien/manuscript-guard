@@ -827,6 +827,15 @@ def test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_
         given, reported = reported_gate.Walk(named).read(text)
         found = {one.key for one in given if one.key not in reported}
         assert found == unreported, (text, named)
+        # And as two files of one paper, the second opening inside the Results the first
+        # leaves open: the headings are carried from one file into the next, and what a
+        # section of the first was is not taken by one of the second (round 1 of #272).
+        cut = text.index("{{results.b}} {{results.e}}")
+        walk = reported_gate.Walk(named)
+        first, second = walk.read(text[:cut]), walk.read(text[cut:])
+        reported = first[1] | second[1]
+        found = {one.key for one in first[0] + second[0] if one.key not in reported}
+        assert found == unreported, (text[:cut], text[cut:], named)
 
 
 # --------------------------------------------------------------------------- models named
@@ -2341,6 +2350,16 @@ def _the_abstracts_results_report(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reported_gate.Walk, "_place", place)
 
 
+def _the_headings_of_a_file_are_not_carried_into_the_next(patch: pytest.MonkeyPatch) -> None:
+    real = reported_gate.Walk.read
+
+    def read(self: reported_gate.Walk, text: str) -> tuple[list, set[str]]:
+        self.chain.clear()
+        return real(self, text)
+
+    patch.setattr(reported_gate.Walk, "read", read)
+
+
 def _a_title_over_the_paper_is_its_results(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reported_gate.Walk, "_opens", lambda self, section, methods: False)
 
@@ -2405,6 +2424,10 @@ BROKEN = {
     ),
     "the abstract's own Results report": (
         _the_abstracts_results_report,
+        test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "the headings of one file are not carried into the next": (
+        _the_headings_of_a_file_are_not_carried_into_the_next,
         test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
     ),
     "a paper's title over it all is its Results": (

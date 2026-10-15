@@ -72,11 +72,15 @@ class Walk:
     chain: list[Section] = field(default_factory=list)
     reports: set[int] = field(default_factory=set)
     summaries: set[int] = field(default_factory=set)
+    #: Every section met, kept so that the identity `reports` and `summaries` hold for each
+    #: is not given to a section of a later file once the first is freed (round 1 of #272).
+    kept: list[Section] = field(default_factory=list)
 
     def read(self, text: str) -> tuple[list[Given], set[str]]:
         """The results keys `text` binds in a summary, and those it binds where the paper
         reports them."""
         sections = [section for section in split_sections(scannable(text)) if section.level]
+        self.kept += sections
         self._name(sections)
         starts, places = [0], [self._place()]
         for section in sections:

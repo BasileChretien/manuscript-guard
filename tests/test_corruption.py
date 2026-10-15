@@ -1089,6 +1089,22 @@ def test_a_number_printed_in_a_table_or_a_figure_the_paper_places_is_reported(
     ]
 
 
+def test_a_section_of_a_later_file_is_not_taken_for_one_of_an_earlier() -> None:
+    """Round 1 of #272: which sections report and which summarise was kept by identity, and
+    once a file's sections were freed a section of the next file could be given the address
+    of one of them. A conclusion in the second file was then read as the Results of the
+    first, now and then: about one read in twenty with forty Results subsections."""
+    from manuscript_guard.gates.reported import Given, Walk
+
+    subgroups = "".join(f"## Subgroup {i}\n\nz\n\n" for i in range(40))
+    paper = "# Abstract\n\n{{results.a}}\n\n# Methods\n\nm\n\n# Results\n\n{{results.a}}\n\n"
+    discussion = "# Discussion\n\nd\n\n## Conclusions\n\n{{results.y}}\n\n## Limitations\n\nl\n"
+    for _ in range(300):
+        walk = Walk(None)
+        walk.read(paper + subgroups)
+        assert walk.read(discussion) == ([Given("y", "Conclusions", 7)], set())
+
+
 def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
     """The supplement reports what the paper has no room for, under any heading."""
     _swap(project, "{{results.case.n_serious}} were flagged", "some were flagged")

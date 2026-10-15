@@ -130,82 +130,9 @@ the `.md`, or taken back to the analysis if it touched a number.
 
 ## 4. What `import` refuses on its own, and what still needs you
 
-Each of these once corrupted the source while `import` reported success. They are now
-handled, and each has a test:
-
-- A move together with rewording is applied in one pass: the paragraph goes to its new
-  place in its section, reworded if it was. A move into another section is reported and not
-  applied, rather than pushing a paragraph out of every section in between.
-- A paragraph cut and pasted with Track Changes on is moved, not reported deleted. Word
-  leaves a paragraph's identifier behind when it cuts the paragraph, and the move is read
-  from Word's record of it instead. Two paragraphs moved together are no longer reported as
-  a join, and Enter pressed at the start of a paragraph no longer reports that paragraph
-  deleted. A move made with Track Changes off is refused and named as a move, never
-  reported as a deletion to act on.
-- A paragraph split in two in Word is refused, not cut down to its first half, even with a
-  moved paragraph pasted between the halves; that move is not applied either.
-- A move beside an HTML comment with a blank line in it no longer writes the moved paragraph
-  inside the comment. A paragraph with a fence, `</div>`, `\end`, a definition or a
-  heading's underline written directly under it is neither moved nor reworded: its edit is
-  listed or refused.
-- Tables and figures are recognised by what they hold, so deleting a table or pasting in a
-  picture no longer hides a paragraph moved past a figure. A heading, table, figure or
-  display equation dragged elsewhere, and a table, figure or equation deleted, is reported
-  rather than passed over. A deleted heading or caption is listed with the other paragraphs
-  without an identifier.
-- Two paragraphs joined in Word are reported as joined and left alone, not duplicated.
-  So is a heading joined into the paragraph under it.
-- A paragraph deleted just before a heading, a table caption or the reference list is
-  reported deleted, even when that heading was retitled or that caption edited in the same
-  round; it used to be merged as the new title. Not when the new title or caption and the
-  deleted paragraph share most of their words: that still merges into the paragraph's slot.
-- A tab or other Word layout in a paragraph no longer leaks XML into the merge.
-- A digit added to a number (`3.84` to `13.84`), or a sign or dash glued in front of it
-  (`–3.84`, `<3.84`), is refused as a changed number. A sign separated by a space, or a unit
-  added after the number, is not caught: read those in the diff.
-- A citation ending a paragraph, "(Smith et al. 2020).", is no longer cut at "al."; a
-  narrative `@key` comes back as `@key`, not as the text "Smith (2020)"; and apostrophes
-  and dashes no longer stop a paragraph with a binding from taking a rewording.
-- A rewording is refused, not merged, when the edited text carries something Word's text
-  cannot bring back: a footnote, an HTML comment, a link, an image, an equation, raw TeX or
-  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a hard line break,
-  emphasis or code wrapped around a binding, or code holding a `--`, a `...` or a quote
-  (written back as text, `--offline` printed as "–offline"). The reason names it. In a
-  paragraph with a binding, markup of those kinds on one side of the binding does not stop
-  an edit on the other side. Markup the import does not recognise does: `[Methods]`, a link
-  to the heading, refuses every edit to its paragraph. A paragraph without a binding is all
-  one piece, so one `kg/m^2^` in it refuses every edit to it.
-- A no-break space comes back as the character it is, so a rewording around it merges and
-  keeps it: one in the source ("5 mg", `\ `, `&nbsp;`), and one Word's French AutoCorrect
-  put before a colon or inside « ».
-- An edit that would make pandoc read a citation differently is refused: a space deleted
-  after a full stop before a citation, or between two citations, or text deleted between a
-  citation and a number.
-- What comes back is written as text, not Markdown: a `*`, an `@name`, a `<` or a `{{` the
-  co-author typed is escaped, so it cannot become italics, a citation, a tag or a binding.
-- A move or a rewording after which the next build would not find a paragraph again is
-  refused: each file is worked out as it would be written and read the way the build reads
-  it. A footnote marked because an indented block below would run into it prints as text;
-  moved in Word over a plain paragraph, it would become a footnote again and leave the body.
-  No move in its section is applied, and the moves are named; rewordings there, and changes
-  elsewhere, still land.
-
-What is still yours to do by hand: every refused, joined or deleted paragraph, and every
-paragraph without an identifier. Port those edits from the dry run and the text diff above.
-`--apply` takes all the safe changes at once; there is no way to pick among them, so if the
-dry run shows a merge you do not want, port the whole import by hand instead.
-
-Some things still need care:
-
-- A paragraph moved where Word recorded no move - Track Changes off, a document built
-  before Word could record moves, or move tracking turned off in Word - is reported as
-  `moved in Word` and left where it was. Move it in the `.md` and port any rewording from
-  the copy shown under it. Do not delete it and paste Word's copy in: its numbers and
-  citations would come back as typed text, and `check` would then report each one as
-  unbound.
-- A footnote or an equation edited in Word, a changed link address, or a deleted footnote
-  is not seen at all: `import` reads each paragraph's text, and those live elsewhere in the
-  file. Look for them in the text diff above.
+When the dry run names a move, a join, a split, a deletion or anything else it will not
+apply, read [references/refusals.md](references/refusals.md): what each refusal protects the
+source from, and what is left for you to do by hand.
 
 ## 5. Apply, then read what was written
 
@@ -250,95 +177,11 @@ built document is out of date. Rebuild before sending anything on.
 
 ## 6. Comments, and several co-authors
 
-Comments are printed, never stored. Recording them is the reader's job:
-
-- A co-author's or internal reviewer's comment belongs in an internal review record, so G11
-  sees it answered: `manuscript-guard review --record <reviewer> --remit "…" --verdict …`,
-  then write each comment into its `findings` with a severity. The
-  [review-panel](../review-panel/SKILL.md) skill covers the record.
-- A journal reviewer's comment belongs in a revision round. Run
-  `manuscript-guard respond --open --from returned.docx` **before** `import --apply`, because
-  applying changes the source the comments point at. See
-  [reviewer-response](../reviewer-response/SKILL.md).
-
-A built document records what each of its paragraphs said in the source, what came before
-it, and the headings, captions, tables and comments around it. `import` merges an edit only
-into a paragraph that still reads that way where it stands.
-
-The build also writes what the document printed, block by block, to a file under
-`build/records/`, and the document carries that file's name. `import` reads it to know
-what a paragraph deleted or cut in Word had said, and which heading, caption or list item
-stood under a paragraph, even after the source changed or the analysis was re-run. The file
-stays on the machine that built the document and is never sent. If `import` says the
-document `names a record of what it printed ... which is not here`, it is being imported
-on another machine or after `build/` was cleaned: nothing wrong is written, but more edits
-are refused. Import where the document was built, or carry the refused edits over by hand.
-A build that warns `the record of what manuscript.docx printed could not be written` made
-such a document: rebuild once `build/` can be written to, and send that one.
-Old records are small and safe to delete once every document built from them is back.
-
-Two refusals come from that record. `its identifier came back on text that is either this
-paragraph, reworded, or the text that stood above (or under) it` means a paragraph was
-rewritten past most of its words in the same round as a block beside it with no identifier
-(a caption, a line block, the text after an equation) was deleted or edited, or that the
-paragraph was deleted and that block edited: the document is the same either way. `its
-identifier came back inside another block, behind '...'` means the paragraph's line was
-joined up to the block above it. In both, look at the document: delete the paragraph in
-the `.md` if the co-author deleted it, or make the rewording there.
-
-Below a paragraph added or removed since the build, identifiers move by one block and name
-their neighbours. A
-paragraph there is followed to where it stands now when all of the following read as they
-did at the build:
-- its text, the block before it and the blocks around it;
-- the paragraphs directly before and after it;
-- that whole stretch is found once in its file;
-- the paragraphs compared keep their order.
-
-A followed paragraph is compared, moved and anchored like any other. Its rewording is still
-refused beside a heading or caption missing from the returned document, and when the
-paragraph after it as sent did not come back; so is the rewording of the paragraph just
-before a followed one that did not come back. Either may be only a deletion.
-
-These are listed as `were not compared`, because the identifier now names other text, and
-have to be carried over by hand:
-- a paragraph whose own text you changed since the build;
-- below a paragraph you added or removed: the one directly below it, and one with a
-  heading, caption, table or comment beside it changed too, or the paragraph before or
-  after it changed;
-- below such a change, one whose text and surroundings are found more than once in its
-  file, then or now, and one out of order with the paragraphs compared: of two runs of
-  paragraphs you swapped, the middle of one is followed and the rest is not;
-- a paragraph you moved into another file;
-- in a document built before the record held the blocks around each paragraph, every one
-  below a paragraph you added or removed.
-
-A paragraph beside one you reworded, or directly above one you added, keeps its
-identifier and is compared as usual. So is the middle of a run of three or more that you
-moved together within a file: it stands between the same paragraphs, and is followed.
-
-A paragraph that reads word for word like another in its file, such as "Not applicable."
-under two declarations, is also listed once the block before it changed. One of these
-deleted or cut with Track Changes off leaves its identifier on the paragraph after it, or
-on the line it emptied, and is listed there. Deleted or cut with Track Changes on, or
-joined by retyping across the break, it is listed as `did not come back`. A followed
-paragraph reported as moved into another section is marked as having the `.md` changed
-above it: a heading you moved past it reads the same as a move in Word, so check before
-moving it back.
-
-When several people edited copies of the same build, dry-run every copy before applying any.
-Apply one, then `--force` the others: each merges only into paragraphs the earlier imports
-left alone, and lists the ones they changed as not compared, for you to port by hand. An
-edit beside one of those is refused if the two may have been joined in Word. Every hunk
-still has to be read: a changed result changes what a paragraph displays without changing
-its source, and a paragraph moved past one that was not compared may not be reported as
-moved. DESIGN.md's Known gaps lists what the record cannot tell apart.
-
-A document built before paragraphs were recorded in it is refused, `--force` included, and
-so is `respond --open --from` on it, when anything it was built from has changed since the
-build, the results included. Otherwise it is refused only when a file it carries has front
-matter that is now read differently. Rebuild, send the new document, and carry over by hand
-anything already written in the old one.
+When the returned document carries comments, or more than one co-author sends theirs back,
+read [references/comments-and-co-authors.md](references/comments-and-co-authors.md): how
+comments are recorded so that G11 sees them answered, what a build records of each paragraph
+and what `import` merges because of it, and how several returned copies are brought in one
+after another.
 
 ## If you are a model doing this
 

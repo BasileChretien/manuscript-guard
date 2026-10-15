@@ -7,10 +7,11 @@ name them. `paper.yaml` says what the custodian's minimum is:
     custodian:
       minimum_cell_count: 5
 
-and G2 then fails each count the manuscript or the supplement binds that is at least one and
-below the minimum (`count-below-minimum`), naming the key. A count is a whole number the
-analysis emitted with no unit, that is neither a parameter, a software version nor a label:
-"5 years" is emitted with its unit and is no count of people. Nought is not a small cell.
+and G2 then fails each count the manuscript or the supplement binds that prints a number at
+least one and below the minimum (`count-below-minimum`), naming the key. A count is a whole
+number the analysis emitted with no unit, that is neither a parameter, a software version nor
+a label: "5 years" is emitted with its unit and is no count of people. Nought is not a small
+cell, and a count whose display hides it ("<5") prints no small number.
 
 And an input the analysis declares restricted (`em.add_input(path, restricted=True)`, or
 `em$add_input(path, restricted = TRUE)` in R) is data that may not leave the custodian's
@@ -20,6 +21,7 @@ is a copy of it outside them.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -32,6 +34,8 @@ from manuscript_guard.text.placeholders import parse
 
 #: How long `git ls-files` may take before the check says it could not ask.
 GIT_SECONDS = 10
+#: A display that prints a whole number and nothing else, its thousands grouped or not.
+_WHOLE = re.compile(r"\d{1,3}(?:[,\s]\d{3})*|\d+")
 
 
 def minimum_cell_count(project: Project) -> int | None:
@@ -66,7 +70,7 @@ def check_small_cells(project: Project, results: Results) -> Report:
             if placeholder.namespace != "results" or placeholder.key in said:
                 continue
             value = results.values.get(placeholder.key)
-            if value is None or not is_count(value) or not 0 < value.value < minimum:
+            if value is None or not is_count(value) or not 0 < _printed(value.display) < minimum:
                 continue
             said.add(placeholder.key)
             report = report.with_findings(
@@ -77,12 +81,20 @@ def check_small_cells(project: Project, results: Results) -> Report:
                     f"the data custodian's minimum of {minimum}",
                     path=path,
                     line=placeholder.line,
-                    hint="report it as fewer than the minimum, or merge the category with "
+                    hint="report it as fewer than the minimum with a display such as \"<5\", "
+                    "or merge the category with "
                     "another, in the analysis; a number that is no count of people is "
                     "emitted with its unit",
                 )
             )
     return report
+
+
+def _printed(display: str) -> int:
+    """The whole number a display prints, or 0 where it prints something else: "<5" holds a
+    count back, and is how the emitter lets an analysis do so (round 1 of #275)."""
+    found = _WHOLE.fullmatch(display.strip())
+    return int(re.sub(r"[,\s]", "", found.group(0))) if found else 0
 
 
 def check_restricted_inputs(project: Project, results: Results) -> Report:

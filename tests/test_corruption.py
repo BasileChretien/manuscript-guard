@@ -1030,12 +1030,17 @@ def test_a_count_below_the_custodians_minimum_is_not_printed(project: Path) -> N
     _custodian(project, 3)
     assert _small(project) == []
     _custodian(project, 5)
-    for fields in ({"value": 0, "display": "0"}, {"unit": "years"}, {"label": True}):
+    # Round 1 of #275: a count the analysis holds back with its display prints no small one.
+    for fields in ({"value": 0, "display": "0"}, {"unit": "years"}, {"label": True},
+                   {"display": "<5"}):  # fmt: skip
         _emitted(project, "case.n_serious", value=3, display="3", unit=None, label=False)
         _emitted(project, "case.n_serious", **fields)
         assert _small(project) == [], fields
-    # `param.signal.min_cases` is 3, and is bound in the Methods: a parameter, no count.
+    # `param.signal.min_cases` is 3, and is bound in the Methods: a parameter, no count. And
+    # the example's period, three years long, carries its unit (round 1 of #275).
     assert "{{results.param.signal.min_cases}}" in main_md(project).read_text(encoding="utf-8")
+    _emitted(project, "cohort.n_years", value=3, display="3")
+    assert _small(project) == []
 
     _emitted(project, "case.n_serious", value=3, display="3", unit=None, label=False)
     report, _project, _chosen, _deferred = _run_gates(project, stage="drafting")

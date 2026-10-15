@@ -1797,6 +1797,86 @@ def test_an_entry_complete_in_either_format_needs_no_other_field(fields: dict) -
     assert problems("k", fields) == []
 
 
+# One work cited under two keys: the reference list prints it twice.
+
+
+def _both_have(root: Path, first: dict[str, str], second: dict[str, str]) -> None:
+    """Give each of the example's two references the fields named."""
+    bib = root / "literature" / "references.bib"
+    text = bib.read_text(encoding="utf-8")
+    pairs = (("fictionalHepaticCohort2021", first), ("fictionalClassSignal2019", second))
+    for key, fields in pairs:
+        opening = f"@article{{{key},\n"
+        added = "".join(f"  {name} = {{{value}}},\n" for name, value in fields.items())
+        text = text.replace(opening, opening + added, 1)
+    bib.write_text(text, encoding="utf-8")
+
+
+def _duplicate_findings(root: Path) -> list[tuple[str, str, str]]:
+    return [
+        (f.code, f.severity, f.message)
+        for f in _g7(root).findings
+        if f.code in ("reference-duplicate", "reference-title-duplicate")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "named"),
+    [
+        ({"doi": "10.5555/x.1"}, {"doi": "https://doi.org/10.5555/X.1."}, "DOI"),
+        ({"pmid": "31000001"}, {"pmid": "031000001"}, "PMID"),
+        ({"pmcid": "PMC1234"}, {"pmcid": "pmc1234"}, "PMCID"),
+        ({"isbn": "0-306-40615-2"}, {"isbn": "978-0-306-40615-7"}, "ISBN"),
+    ],
+)
+def test_one_work_cited_under_two_keys_fails(
+    project: Path, first: dict, second: dict, named: str
+) -> None:
+    _both_have(project, first, second)
+    said = _duplicate_findings(project)
+    assert [(code, severity) for code, severity, _ in said] == [("reference-duplicate", "fail")]
+    assert f"by the same {named}" in said[0][2]
+
+
+def test_one_work_under_two_keys_fails_from_internal_review(project: Path) -> None:
+    from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
+
+    _both_have(project, {"doi": "10.5555/x.1"}, {"doi": "10.5555/x.1"})
+    report = _g7(project)
+    drafting, _ = apply_stage(report, DRAFTING)
+    assert "reference-duplicate" not in {f.code for f in drafting.failures}
+    reviewed, _ = apply_stage(report, INTERNAL_REVIEW)
+    assert "reference-duplicate" in {f.code for f in reviewed.failures}
+
+
+def test_two_entries_with_one_title_are_a_warning(project: Path) -> None:
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8").replace(
+            "A disproportionality signal for a fictional drug class",
+            "HEPATIC INJURY IN A FICTIONAL NATIONAL COHORT, 2010--2019",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    said = _duplicate_findings(project)
+    assert [(code, severity) for code, severity, _ in said] == [
+        ("reference-title-duplicate", "warn")
+    ]  # fmt: skip
+
+
+def test_different_works_and_an_uncited_duplicate_say_nothing(project: Path) -> None:
+    _both_have(project, {"doi": "10.5555/x.1"}, {"doi": "10.5555/x.2"})
+    assert _duplicate_findings(project) == []
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8")
+        + "\n@article{uncitedCopy2021,\n  doi = {10.5555/x.1},\n  title = {T},\n}\n",
+        encoding="utf-8",
+    )
+    assert _duplicate_findings(project) == []
+
+
 def _zotero(monkeypatch, items: list[dict]) -> None:
     from test_zotero import FakeBBT
 

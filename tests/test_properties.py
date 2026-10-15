@@ -1728,6 +1728,53 @@ def test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not(
         assert [code for code, _said in found] == ["identifier-malformed"], (field, found)
 
 
+# ------------------------------------------------------------- one work under two keys
+
+
+@st.composite
+def _one_work_two_ways(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, str]]:
+    """Two entries naming one work, each identifier written another way in the second:
+    a DOI dressed and in other case, a PMID with leading noughts, a PMCID in lower case,
+    and an ISBN-10 beside the ISBN-13 it is. Every kind in every example."""
+    ends = st.text("abcdefghij0123456789", min_size=1, max_size=4)
+    suffix = draw(ends) + draw(st.text("abcdefghij0123456789.-/", max_size=8)) + draw(ends)
+    doi = f"10.{draw(st.integers(1000, 99999))}/{suffix}"
+    ten = draw(
+        st.lists(st.integers(0, 9), min_size=9, max_size=9).filter(
+            lambda digits: digits[:3] not in ([9, 7, 8], [9, 7, 9])
+        )
+    )
+    check = (11 - sum((10 - at) * d for at, d in enumerate(ten)) % 11) % 11
+    isbn10 = "".join(map(str, ten)) + ("X" if check == 10 else str(check))
+    # Worked out here, not by the code under test: 978, the first nine, a new check digit.
+    body = [9, 7, 8, *ten]
+    isbn13 = "".join(map(str, body)) + str(
+        (10 - sum(d * (1 if at % 2 == 0 else 3) for at, d in enumerate(body)) % 10) % 10
+    )
+    pmid = draw(st.integers(1, 10**6))  # nine digits at most, its noughts included
+    pmcid = draw(st.integers(1, 10**8))
+    first = {"doi": doi, "pmid": str(pmid), "pmcid": f"PMC{pmcid}", "isbn": isbn13}
+    second = {
+        "doi": draw(st.sampled_from(("https://doi.org/", "doi:", ""))) + doi.upper() + ".",
+        "pmid": "0" * draw(st.integers(1, 2)) + str(pmid),
+        "pmcid": f"pmc{pmcid}",
+        "isbn": "-".join([isbn10[:1], isbn10[1:4], isbn10[4:9], isbn10[9:]]),
+    }
+    return first, second
+
+
+@holds(200, _one_work_two_ways())
+def test_one_work_is_one_work_however_its_identifiers_are_written(
+    drawn: tuple[dict[str, str], dict[str, str]],
+) -> None:
+    from manuscript_guard.gates.duplicates import identifiers_of
+
+    first, second = drawn
+    for kind in ("doi", "pmid", "pmcid", "isbn"):
+        a, b = identifiers_of({kind: first[kind]}), identifiers_of({kind: second[kind]})
+        assert a and a == b, (kind, first[kind], second[kind], a, b)
+
+
 # --------------------------------------------------------------------------------------- TeX
 
 
@@ -1930,6 +1977,12 @@ def _a_name_is_a_threshold_like_the_figure_beside_it(patch: pytest.MonkeyPatch) 
 
 def _a_nought_is_trimmed_off_a_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(tokens, "_TRAIL", tokens._TRAIL + "0")
+
+
+def _an_isbn_10_is_not_read_as_its_isbn_13(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import duplicates
+
+    patch.setattr(duplicates, "isbn_13", lambda written: re.sub(r"[\s-]", "", written).upper())
 
 
 def _an_isbn_s_groups_are_read_as_isbns(patch: pytest.MonkeyPatch) -> None:
@@ -2300,6 +2353,10 @@ BROKEN = {
     "an ISBN-13 is weighed as an ISBN-10": (
         _an_isbn_13_is_weighed_as_an_isbn_10,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "an ISBN-10 is not read as its ISBN-13": (
+        _an_isbn_10_is_not_read_as_its_isbn_13,
+        test_one_work_is_one_work_however_its_identifiers_are_written,
     ),
     "an ISBN's groups are read as ISBNs": (
         _an_isbn_s_groups_are_read_as_isbns,

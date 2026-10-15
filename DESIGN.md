@@ -692,6 +692,16 @@ placeholder, and it is reported and deferred. Whether a DOI is registered, names
 the entry describes, or was retracted is for a lookup that records what it found, and none
 is made here.
 
+**One work is cited under one key.** Two cited entries with the same DOI, PMID, PMCID or
+ISBN are one work, and the reference list prints it twice, numbered twice; G7 caught one key
+carried by two items in Zotero and not two keys for one work. Each identifier is compared as
+it names the work (`gates/duplicates.py`): a DOI undressed and in lower case, a PMID without
+leading noughts, a PMCID in capitals, an ISBN-10 as the ISBN-13 it is. Such a pair fails
+from internal-review (`reference-duplicate`), as the other findings about the reference
+list do. Two cited entries with the same title of four words or more and no identifier in
+common are a warning (`reference-title-duplicate`): they may be one work, or a correction
+and the paper it corrects.
+
 ## Only a person can sign an attestation
 
 `attested.yaml` exists to record that **a named human read something the toolkit could not
@@ -4194,12 +4204,12 @@ the campaigns are in the suite, on Hypothesis:
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
   them, the settings typed into a project, a co-author's sessions in Word, texts that
   quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds ten more, each
+  beside what an edit made of it. `tests/test_properties.py` holds eleven more, each
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
-  paper, rewordings, and ISBNs written in a field every way one holds them, and with one
-  digit changed.
+  paper, rewordings, ISBNs written in a field every way one holds them and with one digit
+  changed, and one work's identifiers written two ways.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its
@@ -4256,13 +4266,13 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty-seven rules are broken in place, one at a time, and the property that is
+the generators. So fifty-eight rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10 and an ISBN's
-groups read as ISBNs;
+sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10, an ISBN's
+groups read as ISBNs and an ISBN-10 not read as its ISBN-13;
 fourteen ways `reworded` can misread an edit, from
 a number's sign taken for no part of it, and a sign of comparison taken for none, read as
 it is typed, read only hard against its number, an arrow's head or an equals sign taken
@@ -5523,6 +5533,10 @@ Closed since, and why each mattered:
   first three digits are no ISBN prefix. An ISBN-10 that opens with 978 or 979, followed in
   the same field by another ISBN and parted from it by a space only, is read as the start
   of an ISBN-13 and reported.
+- **Two keys for one work are found by an identifier or a title, and only among what is
+  cited.** Two entries of one work with no identifier in common and titles that differ, a
+  preprint and its article, or a translation, are not found. A title of fewer than four
+  words is not compared.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
   citation, no reporting guideline, no analysis code, no fitted model or no revision round
   has nothing for G3, G10, G7, G8r, G9, G15 or G13 to read, and each passes with its count
@@ -9007,7 +9021,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 60 broken rules, and the comparison on twelve
+  - The properties were seen to fail on 61 broken rules, and the comparison on twelve
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

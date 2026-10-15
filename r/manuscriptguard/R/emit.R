@@ -534,11 +534,36 @@ mg_successes <- function(fit, frame) {
   list(rows = round(y * weights), trials = sum(round(weights)))
 }
 
+# How many distinct values of `unit` the rows the model used hold, mirroring the Python
+# emitter's `_units`. A glm keeps its data; an lm does not, and its data is found where the
+# call names it. The rows used are the model frame's, `subset=` and the rows dropped for
+# missing values both left out; a row with no unit is refused, as in Python.
+mg_fit_units <- function(fit, unit) {
+  data <- fit$data
+  if (!is.data.frame(data)) {
+    data <- tryCatch(
+      eval(fit$call$data, environment(stats::formula(fit))),
+      error = function(e) NULL
+    )
+  }
+  if (!is.data.frame(data) || !(unit %in% names(data))) {
+    stop("model: unit ", unit, " is not a column of the data the model was fitted on",
+         call. = FALSE)
+  }
+  data <- as.data.frame(data)
+  values <- data[rownames(stats::model.frame(fit)), unit, drop = TRUE]
+  if (anyNA(values)) {
+    stop("model: unit ", unit, " is missing in ", sum(is.na(values)), " of the rows the ",
+         "model used, so how many units they hold cannot be counted", call. = FALSE)
+  }
+  list(column = unit, units = length(unique(values)))
+}
+
 # The model card of an lm or glm fit, read from the fit, mirroring the Python emitter's
 # `read_statsmodels`. Facts only; the name a model goes by is derived when results are read.
 # Whatever inherits from lm is read, so a fit built on glm (`MASS::glm.nb`) is too, with the
 # family it gives itself, which the list of models may have no entry for.
-mg_read_fit <- function(fit) {
+mg_read_fit <- function(fit, unit = NULL) {
   if (!inherits(fit, "lm")) {
     stop("model: only lm and glm fits, and fits that inherit from them, are read, so the ",
          "terms cannot be read from this one", call. = FALSE)
@@ -603,8 +628,12 @@ mg_read_fit <- function(fit) {
     n_input = stats::nobs(fit) + dropped,
     n_used = stats::nobs(fit),
     n_dropped = dropped,
-    converged = if (inherits(fit, "glm")) isTRUE(fit$converged) else TRUE
+    converged = if (inherits(fit, "glm")) isTRUE(fit$converged) else TRUE,
+    # An lm or a glm keeps the standard errors its own model gives; sandwich estimators are
+    # computed beside the fit, and nothing in it says so.
+    covariance = "model-based"
   )
+  if (!is.null(unit)) card$unit <- mg_fit_units(fit, unit)
   if (!is.null(counted)) {
     card$events <- as.integer(sum(counted$rows))
     if (!is.null(counted$trials)) card$trials <- as.integer(counted$trials)
@@ -782,7 +811,10 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   }
 
   # Record a fitted model as the fit describes it, mirroring the Python `model()`.
-  model <- function(key, fit, name, description = NULL) {
+  # `unit` names the column of the data whose values the rows belong to, mirroring the
+  # Python `model()`: G15 warns where there are more rows than units and the fit is neither
+  # cluster-robust nor mixed.
+  model <- function(key, fit, name, description = NULL, unit = NULL) {
     if (!grepl("^[a-z][a-z0-9_]*$", key)) {
       stop("model ", key, ": a key is lowercase letters, digits and underscores, so that ",
            "its values and its table can be bound", call. = FALSE)
@@ -790,7 +822,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     if (!is.null(state$models[[key]])) {
       stop("model ", key, " recorded twice by ", script_path, call. = FALSE)
     }
-    card <- mg_read_fit(fit)
+    card <- mg_read_fit(fit, unit)
     card$name <- name
     if (!is.null(description)) card$description <- description
     state$models[[key]] <- card

@@ -1133,8 +1133,6 @@ _DATA_POLICY = {
 
 
 def _data_statement(root: Path, statement: str, policy: dict | None = None) -> list:
-    from manuscript_guard.gates import check_journal
-
     profile = root / "profiles" / "journals" / "demo-journal.yaml"
     document = yaml.safe_load(profile.read_text(encoding="utf-8"))
     document["data_availability"] = policy or _DATA_POLICY
@@ -1144,6 +1142,12 @@ def _data_statement(root: Path, statement: str, policy: dict | None = None) -> l
     start, end = text.index("# Data availability"), text.index("# Funding")
     path.write_text(text[:start] + f"# Data availability\n\n{statement}\n\n" + text[end:],
                     encoding="utf-8")  # fmt: skip
+    return _data_findings(root)
+
+
+def _data_findings(root: Path) -> list:
+    from manuscript_guard.gates import check_journal
+
     project, _ = load_project(root)
     codes_ = {"data-statement-forbidden", "data-identifier-missing", "data-link-temporary",
               "data-doi-uncited"}  # fmt: skip
@@ -1187,12 +1191,56 @@ def test_a_data_statement_the_journal_accepts_passes(project: Path, statement: s
     assert _data_statement(project, statement) == []
 
 
+def test_a_dataset_cited_by_its_key_is_named_by_its_doi(project: Path) -> None:
+    """Round 1 of #269: a data citation made as the journal asks, by its key, counted as no
+    identifier, though the reference list prints its DOI."""
+    bib = project / "literature" / "references.bib"
+    opening = "@article{fictionalHepaticCohort2021,\n"
+    bib.write_text(bib.read_text(encoding="utf-8").replace(
+        opening, opening + "  doi = {10.5281/zenodo.1234567},\n", 1), encoding="utf-8")  # fmt: skip
+    assert _data_statement(project, "Data are in Zenodo [@fictionalHepaticCohort2021].") == []
+
+
+@pytest.mark.parametrize(
+    ("before", "heading"),
+    [
+        # A Methods subsection that matches the default words is not the statement.
+        ("## Data sharing between sites\n\nThe sites shared records weekly.\n\n",
+         "# Data availability"),
+        ("", "# 7. Data availability"),
+        ("", "# Data and code availability"),
+    ],
+)  # fmt: skip
+def test_the_statement_is_found_under_its_heading_however_written(
+    project: Path, before: str, heading: str
+) -> None:
+    def said(statement: str) -> list:
+        _data_statement(project, statement)
+        path = main_md(project)
+        text = path.read_text(encoding="utf-8").replace("# Results", before + "# Results", 1)
+        path.write_text(text.replace("# Data availability", heading, 1), encoding="utf-8")
+        return _data_findings(project)
+
+    assert said("The dataset is in GEO, GSE123456.") == []
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8").replace(before, "", 1)
+    path.write_text(text.replace(heading, "# Data availability", 1), encoding="utf-8")
+    assert said("Data are held by the team.") == [("data-identifier-missing", "fail")]
+
+
 def test_a_dataset_doi_the_reference_list_cites_passes(project: Path) -> None:
     bib = project / "literature" / "references.bib"
     opening = "@article{fictionalHepaticCohort2021,\n"
     bib.write_text(bib.read_text(encoding="utf-8").replace(
         opening, opening + "  doi = {10.5281/zenodo.1234567},\n", 1), encoding="utf-8")  # fmt: skip
     assert _data_statement(project, "Data: https://doi.org/10.5281/ZENODO.1234567.") == []
+    # A DOI with a parenthesis of its own, and one set in bold, are read whole.
+    other = "@article{fictionalClassSignal2019,\n"
+    lancet = "  doi = {10.1016/S0140-6736(20)30183-5},\n"
+    bib.write_text(bib.read_text(encoding="utf-8").replace(other, other + lancet, 1), "utf-8")
+    assert _data_statement(
+        project, "Data: 10.1016/S0140-6736(20)30183-5 and **10.5281/zenodo.1234567**."
+    ) == []
 
 
 def test_a_profile_with_no_data_policy_reads_nothing_under_the_heading(project: Path) -> None:

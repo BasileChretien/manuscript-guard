@@ -31,14 +31,18 @@ from manuscript_guard.text.sections import scannable, split_sections
 GATE = "G4"
 BIB_FILE = "references.bib"
 
-#: The statement's heading where the profile names none.
-HEADING = r"(?i)^\W*(data availability|availability of data|data sharing)\b"
+#: The statement's heading where the profile names none, numbered or not: "7. Data
+#: availability", "Data and code availability".
+HEADING = (
+    r"(?i)^[\W\d]*(?:data (?:and code |and materials )?availability|availability of data"
+    r"|data sharing)\b"
+)
 
 #: What names a dataset so that it can be found again: a DOI, an accession number of the
 #: archives clinical and biomedical data go to, a handle or an ARK, and a page archived by a
 #: web archive. A profile adds the journal's own with `identifier_patterns`.
 IDENTIFIERS = (
-    r"\b10\.\d{4,9}/[^\s,;)\]>]+",  # a DOI, bare or in a doi.org link
+    r"\b10\.\d{4,9}/\S",  # a DOI, bare or in a doi.org link
     r"\bGS[EM]\d{3,}\b",  # GEO series and samples
     r"\b[SED]R[APRSXZ]\d{6,}\b",  # SRA, ENA and DDBJ studies, runs and samples
     r"\bPRJ[EDN][A-Z]\d+\b",  # BioProject
@@ -64,25 +68,29 @@ TEMPORARY = re.compile(
     re.IGNORECASE,
 )
 
-_DOI = re.compile(r"\b10\.\d{4,9}/[^\s,;)\]>]+")
+#: A DOI as a statement writes it: a parenthesis inside it is the DOI's own, "10.1016/
+#: S0140-6736(20)30183-5", and the marks of emphasis or quotation round it are not.
+_DOI = re.compile(r"\b10\.\d{4,9}/(?:[^\s,;()<>\[\]\"\u201d*]|\([^\s()]*\))+")
 
 
 def statement_text(text: str, heading: str | None = None) -> str | None:
     """The text under the Data availability heading, comments and listings blanked, or None
-    where the manuscript has no such heading."""
-    wanted = re.compile(heading or HEADING)
-    for section in split_sections(scannable(text)):
-        if section.title and wanted.search(section.title):
-            return section.enclosed
-    return None
+    where the manuscript has no such heading. Of several headings that match, the outermost:
+    "### Data sharing between sites" in the Methods is not the statement (round 1 of #269)."""
+    wanted = re.compile(heading or HEADING, re.IGNORECASE)
+    found = [s for s in split_sections(scannable(text)) if s.title and wanted.search(s.title)]
+    if not found:
+        return None
+    return min(found, key=lambda section: section.level).enclosed
 
 
 def judge_statement(statement: str, policy: dict, cited: set[str], path: Path) -> Report:
     """What the journal's data policy says of one statement."""
     report = Report()
     for rule in policy.get("forbidden") or []:
-        found = re.search(rule["pattern"], statement)
-        if found is None or (rule.get("unless") and re.search(rule["unless"], statement)):
+        found = re.search(rule["pattern"], statement, re.IGNORECASE)
+        unless = rule.get("unless")
+        if found is None or (unless and re.search(unless, statement, re.IGNORECASE)):
             continue
         report = report.with_findings(
             Finding(
@@ -143,7 +151,7 @@ def _identified(statement: str, policy: dict) -> bool:
 
 
 def _plain_doi(written: str) -> str:
-    return written.rstrip(".").lower()
+    return written.rstrip(".:").lower()
 
 
 def cited_dois(project: Project) -> set[str]:
@@ -161,6 +169,24 @@ def cited_dois(project: Project) -> set[str]:
     }
 
 
+def cited_in(statement: str, project: Project) -> str:
+    """The DOIs of the references the statement cites by key, as the reference list prints
+    them: a dataset cited as `[@doe2024]`, which is how a data citation is meant to be made,
+    is named by its DOI (round 1 of #269)."""
+    from manuscript_guard.gates.identifiers import normal_doi
+    from manuscript_guard.literature.bibfile import read_entries
+    from manuscript_guard.zotero import find_citations
+
+    path = project.path("literature") / BIB_FILE
+    keys = {use.citekey for use in find_citations(statement, path)}
+    if not keys or not path.is_file():
+        return ""
+    entries = read_entries(path)
+    return " ".join(
+        normal_doi(entries[key]["doi"]) for key in sorted(keys) if entries.get(key, {}).get("doi")
+    )
+
+
 def check_data_statement(document: dict, text: str, path: Path, project: Project) -> Report:
     """The statement held to the profile's data policy, where the profile declares one."""
     policy = document.get("data_availability")
@@ -169,4 +195,5 @@ def check_data_statement(document: dict, text: str, path: Path, project: Project
     statement = statement_text(text, policy.get("heading"))
     if statement is None:
         return Report()  # the required statement's own check says it is missing
-    return judge_statement(statement, policy, cited_dois(project), path)
+    printed = f"{statement}\n{cited_in(statement, project)}"
+    return judge_statement(printed, policy, cited_dois(project), path)

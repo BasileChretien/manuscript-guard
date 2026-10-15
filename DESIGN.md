@@ -7197,10 +7197,16 @@ Closed since, and why each mattered:
   `gates/data_statement.py` (GEO, SRA and its peers, BioProject, EGA, ArrayExpress, dbGaP),
   a handle or an ARK, a Zenodo record, an OSF project, or a page archived by the Internet
   Archive or Perma.cc; another archive's accession is found only where the profile lists it.
-  An identifier anywhere in the statement satisfies the rule, whatever it names. A forbidden
-  phrasing is matched as the profile writes it, and its `unless` anywhere in the statement
-  accepts it. The statement is the section under its heading, its subsections included; a
-  statement written as a paragraph with no heading of its own is not read.
+  An identifier anywhere in the statement satisfies the rule, whatever it names, and so does
+  the DOI of a reference the statement cites by its key. A forbidden phrasing is matched as
+  the profile writes it, without regard to case, and its `unless` anywhere in the statement
+  accepts it. The statement is the section under its heading, its subsections included, the
+  outermost where several headings match; a statement written as a paragraph with no heading
+  of its own is not read. A link to a repository with any path after its name, a branch's as
+  much as a release's, is taken for a fixed version, and a bare repository is warned of even
+  where the statement names its archive too. A dataset's DOI counts as cited when an entry of
+  `references.bib` holds it, whether the text cites that entry or not. A regular expression
+  in the profile that does not compile stops G4, as one in its required statements does.
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.

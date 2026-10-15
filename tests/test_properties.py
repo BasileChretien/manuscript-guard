@@ -51,6 +51,7 @@ from generated import (
     sources,
     texts,
     typed,
+    vector_figures,
     vocabularies,
 )
 from hypothesis import given, settings
@@ -1905,6 +1906,81 @@ def test_a_value_is_stated_whole_or_not_at_all(drawn: tuple[str, str]) -> None:
             assert contains(quote, value), (quote, value)
 
 
+# ------------------------------------------------------------- the text of a vector figure
+
+
+@holds(100, vector_figures())
+def test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn(
+    drawn: tuple[str, dict[str, float], list[float]],
+) -> None:
+    """G4 holds a vector figure's smallest text and thinnest line to a journal's, at the
+    width it prints: each text's height is its size, in units whatever unit it was set in,
+    through every transform around it, taken along its upright; and each line's width the
+    same, by the transforms' scale. A size not set is SVG's 16, an em or a percent is of
+    the size around it, and a text drawn through `<use>` is read where it is used."""
+    from manuscript_guard.gates.figure_svg import parse_svg
+
+    document, texts, lines = drawn
+    svg = parse_svg(document)
+    assert svg is not None, document
+    read = {mark.text: mark.units for mark in svg.texts}
+    assert read.keys() == texts.keys(), (read, texts)
+    for label, units in texts.items():
+        assert read[label] == pytest.approx(units, rel=1e-9), (label, read[label], document)
+    assert sorted(mark.units for mark in svg.lines) == pytest.approx(lines, rel=1e-9), document
+
+
+def _transforms_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_transform", lambda written: figure_svg.IDENTITY)
+
+
+def _transforms_are_composed_the_other_way(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    multiply = figure_svg._multiply
+    patch.setattr(figure_svg, "_multiply", lambda left, right: multiply(right, left))
+
+
+def _a_point_is_a_unit(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_UNITS", {**figure_svg._UNITS, "pt": 1.0})
+
+
+def _an_em_is_of_the_default_size(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    length = figure_svg._length
+    default = figure_svg.DEFAULT_FONT_UNITS
+    patch.setattr(figure_svg, "_length", lambda value, relative_to: length(value, default))
+
+
+def _a_use_is_not_followed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_use", lambda *drawn: None)
+
+
+def _a_text_is_as_tall_as_a_line_is_wide(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_height", figure_svg._widened)
+
+
+def _a_size_not_set_is_ten(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "DEFAULT_FONT_UNITS", 10.0)
+
+
+def _a_line_is_not_widened(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_widened", lambda matrix: 1.0)
+
+
 # ------------------------------------------------------------- a unit written after a binding
 
 #: What may follow a binding, with the unit read there, or None where none is: a gap of each
@@ -2697,6 +2773,38 @@ BROKEN = {
     "the line directly below an anchor's own line counts, though it holds only anchors": (
         _each_anchors_line_is_its_own_run,
         test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document,
+    ),
+    "a vector figure's transforms are not read": (
+        _transforms_are_not_read,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a vector figure's transforms are composed the other way round": (
+        _transforms_are_composed_the_other_way,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a point in a vector figure is read as a unit": (
+        _a_point_is_a_unit,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "an em is taken of SVG's default size, not of the size around it": (
+        _an_em_is_of_the_default_size,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a text drawn through use is not read": (
+        _a_use_is_not_followed,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a text is as tall as a line under the same transforms is wide": (
+        _a_text_is_as_tall_as_a_line_is_wide,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a text's size not set is 10": (
+        _a_size_not_set_is_ten,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a line is not widened by the transforms around it": (
+        _a_line_is_not_widened,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
     ),
     "a quotation is read as the paper's own words": (
         _a_quotation_is_the_papers_own,

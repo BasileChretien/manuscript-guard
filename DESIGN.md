@@ -468,6 +468,20 @@ wide and printed at 89 mm prints the 10 pt text a plotting library draws at 5.4 
 its resolution passes. The size of a raster is read from its own header, PNG, JPEG or TIFF,
 with the standard library.
 
+An SVG figure is scaled to the width it prints at, and its text and lines with it, so its
+smallest text and its thinnest line are held to the journal's least at that width
+(`figure-text-small`, `figure-line-thin`), and a text anchored outside what it shows, its
+`viewBox`, is said to be cut off (`figure-text-clipped`). Each text's size and each line's
+width is read from the SVG (`gates/figure_svg.py`): set on the element or inherited, in
+units whatever unit it is written in, SVG's 16 where none is set, an em or a percentage of
+the size around it. It is carried through every transform around the element, a `<use>`
+read where it is used and nothing in `<defs>` where it is defined, and a `<tspan>` is a text
+of its own, as a sub- or superscript is drawn. A text's size is its height through the
+transforms, the length its upright takes: under `scale(2, 0.5)` a text is half its size,
+turned a quarter it is twice it. A line is widened by the square root of the transforms'
+determinant. The printed size is that, times the printed width over the `viewBox`'s; where
+no width is given, at the figure's own width, a width with no unit read as pixels.
+
 A figure's print width and kind are in its `<name>.guard.yaml` (`print_width_mm`, `kind`).
 Without them the narrowest width the journal prints at is taken, so that a resolution found
 too low is too low at any width, and the kind is halftone. A figure placed only in the
@@ -5177,15 +5191,22 @@ Added by the adversarial review, verified and **not** fixed:
   of #153 the second one's matches replaced the first's, under either kind of shared name,
   and a number the first was written for failed as unbound.
 - **A figure file is read for its pixels only where it is a PNG, JPEG or TIFF.** The text
-  size and line width of a vector figure, SVG, PDF or EPS, and the fonts a PDF embeds, are
-  not read yet, nor is a raster inside an EPS or PDF. `min_line_pt` is in the profile and
-  checked against nothing. A figure the build places is the first of its files in the
+  size and line width of a PDF or EPS figure, and the fonts a PDF embeds, are not read yet,
+  nor is a raster inside an EPS, a PDF or an SVG's `<image>`. A figure the build places is the first of its files in the
   build's order, PNG first, and every file of it is held to the rules, so a figure kept as
   PNG and TIFF is held to the journal's limits twice. A JPEG whose JFIF header records no
   resolution, or a PNG with no `pHYs` chunk, is not said to shrink: how large it was drawn
   is unknown. A legend is the paragraph straight after the figure that opens with "Figure"
   and its number; a legend written above it, or in the figure, is not counted. A megabyte
   is 1,048,576 bytes, the larger of the two a journal may mean.
+- **An SVG's text and lines are read from its elements, not drawn.** A size or a width a
+  stylesheet sets through a class or a selector is not read: the element's own, or SVG's
+  16 and 1, is. A text is cut off only where its anchor is outside the `viewBox`; one that
+  starts inside and runs past the edge, or is hidden by a `clipPath`, is not said. A line
+  with `vector-effect: non-scaling-stroke` is widened all the same, a `<marker>` is not read,
+  a `stroke-width` in percent is taken of the font size and not of the figure, and a text's
+  `dx`, `dy` and `text-anchor` do not move its anchor. A `<use>` that refers to itself is
+  followed sixteen deep.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.

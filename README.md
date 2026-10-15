@@ -129,7 +129,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since |
 | G2 | every number is classified, and every declared value is quoted; a unit written after a binding is the one emitted |
 | G3 | numbers in a figure's output *and in its source* trace back to results |
-| G4 | word counts, required sections and required statements match the target journal, and the figure files meet its artwork rules (warnings) |
+| G4 | word counts, required sections and required statements match the target journal, and the figure files meet its artwork rules, an SVG's smallest text and thinnest line at the width it prints among them (warnings) |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason |
 | G6 | model artefacts, AI phrasing, and unsupported appeals to authority |
 | G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote, with more than the value; each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there, and no work is cited under two keys |

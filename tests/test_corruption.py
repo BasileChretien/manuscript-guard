@@ -2440,6 +2440,62 @@ def test_a_figure_file_the_journal_would_refuse_is_a_warning(
     assert _artwork_said(project, side, **rules) == said
 
 
+#: What G4 says of the text and lines inside a vector figure.
+_VECTOR_CODES = ("figure-text-small", "figure-line-thin", "figure-text-clipped")
+
+
+def _vector_said(root: Path, side: dict | None = None, **rules) -> list[tuple[str, str]]:
+    _artwork_said(root, side, **rules)
+    return [(f.code, f.severity) for f in _journal(root).findings if f.code in _VECTOR_CODES]
+
+
+@pytest.mark.parametrize(
+    ("rules", "side", "said"),
+    [
+        # forest.svg is 468 units wide, and its smallest text 8 units: at 89 mm, 4.31 pt.
+        ({"min_text_pt": 5, "widths_mm": [89, 183]}, None, [("figure-text-small", "warn")]),
+        ({"min_text_pt": 4, "widths_mm": [89, 183]}, None, []),
+        # Printed 120 mm wide it is 5.8 pt; at 183, 8.9.
+        ({"min_text_pt": 5, "widths_mm": [89]}, {"print_width_mm": 120}, []),
+        ({"min_text_pt": 5, "widths_mm": [183]}, None, []),
+        # Its thinnest line is 0.6 units: at 89 mm, 0.32 pt.
+        ({"min_line_pt": 0.5, "widths_mm": [89]}, None, [("figure-line-thin", "warn")]),
+        ({"min_line_pt": 0.25, "widths_mm": [89]}, None, []),
+        # Without a print width, at its own: 468 pt, where 8 units are 8 pt.
+        ({"min_text_pt": 9}, None, [("figure-text-small", "warn")]),
+        ({"min_text_pt": 5, "widths_mm": [89], "applies_from": "acceptance"}, None,
+         [("figure-text-small", "info")]),
+    ],
+)  # fmt: skip
+def test_text_or_lines_too_small_where_a_vector_figure_prints_are_a_warning(
+    project: Path, rules: dict, side: dict | None, said: list
+) -> None:
+    """Item 17: a vector figure is scaled to the width it prints at, and its text and lines
+    with it; a journal's least text and line are at the printed size."""
+    assert _vector_said(project, side, **rules) == said
+
+
+def test_a_text_anchored_outside_a_vector_figure_is_a_warning(project: Path) -> None:
+    """Item 17: a label placed past the edge of what an SVG shows is cut off in print."""
+    figure = project / "figures" / "forest.svg"
+    text = figure.read_text(encoding="utf-8")
+    assert _vector_said(project, None, formats=["png", "svg"]) == []
+    figure.write_text(text.replace('x="87.64" y="131.038437"', 'x="487.64" y="131.038437"', 1),
+                      encoding="utf-8")  # fmt: skip
+    said = [f for f in _journal(project).findings if f.code == "figure-text-clipped"]
+    assert [(f.severity, f.path.name) for f in said] == [("warn", "forest.svg")]
+    assert "anchored at (488, 131)" in said[0].message
+
+
+def test_the_message_says_how_small_a_vector_figure_s_text_prints(project: Path) -> None:
+    _artwork_said(project, None, min_text_pt=5, widths_mm=[89])
+    said = [f for f in _journal(project).findings if f.code == "figure-text-small"]
+    assert len(said) == 1
+    assert "prints at 4.31 pt at 89 mm wide, the narrowest the journal prints at," in (
+        said[0].message
+    ), said[0].message
+
+
 @pytest.mark.parametrize("written", ["tif", "TIF", "tiff"])
 def test_a_tiff_is_taken_however_the_journal_writes_it(project: Path, written: str) -> None:
     """Round 1 of #291: "tif" in a profile matched no file, and the message said the TIFF

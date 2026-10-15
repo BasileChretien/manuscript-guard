@@ -1678,11 +1678,16 @@ def test_a_manuscript_folder_the_gates_cannot_read_is_named(project: Path, empty
 
 
 def _g7(root: Path):
+    """G7 as it reads with Zotero closed, so that what it says does not depend on the
+    machine: CI has no Zotero, and a test opens no connection."""
+    from unittest import mock
+
     from manuscript_guard.gates import check_citations
 
     project, _ = load_project(root)
     _namespace, _results, literature, _ = load_namespace(project)
-    return check_citations(project, literature)
+    with mock.patch("manuscript_guard.gates.citations.available", return_value=False):
+        return check_citations(project, literature)
 
 
 # The identifiers of `references.bib` and the fields each entry needs, read offline: nothing
@@ -1831,7 +1836,9 @@ def _looked_up(root: Path, *, on: str = "2026-10-01", pmid: str | None = None, *
 
 
 def _g7_codes(root: Path) -> dict[str, str]:
-    return {f.code: f.severity for f in _g7(root).findings}
+    """What G7 says of the registries' records; with Zotero closed it also warns that no
+    citation key was checked for pinning, which is not what these tests are about."""
+    return {f.code: f.severity for f in _g7(root).findings if f.code != "pinning-unchecked"}
 
 
 def _retraction(kind: str = "retraction") -> dict:

@@ -981,6 +981,61 @@ def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
     assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
 
 
+# ------------------------------------------------ the unit written after a binding
+
+
+def _unit_emitted(root: Path, key: str, unit: str | None) -> None:
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    entry = document["values"][key]
+    if unit is None:
+        entry.pop("unit", None)
+    else:
+        entry["unit"] = unit
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def _units_said(root: Path) -> list[tuple[str, int]]:
+    from manuscript_guard.gates import check_bound_units
+
+    project, _ = load_project(root)
+    _, results, _, _ = load_namespace(project)
+    found = check_bound_units(project, results).findings
+    assert all(f.code == "unit-differs-from-emitted" and f.severity == "warn" for f in found)
+    return [(f.message.split()[0], f.line) for f in found]
+
+
+@pytest.mark.parametrize(
+    ("emitted", "written", "said"),
+    [
+        ("\N{PER MILLE SIGN}", None, True),  # the example's "%" after a share emitted per mille
+        ("%", None, False),  # as the example has it
+        ("\N{MICRO SIGN}g", " mg", True),
+        ("\N{MICRO SIGN}g", " mcg", False),
+        ("\N{MICRO SIGN}g", " \N{GREEK SMALL LETTER MU}g", False),
+        ("mg/kg", " mg/kg", False),
+        ("years", " mg", False),  # no symbol emitted: nothing to compare
+        (None, " mg", False),  # no unit emitted
+    ],
+)
+def test_a_unit_written_after_a_binding_is_the_one_emitted(
+    project: Path, emitted: str | None, written: str | None, said: bool
+) -> None:
+    """"{{results.dose}} mg" printed "250 mg" of a value emitted in micrograms. A
+    unit written after a binding that is not the emitted one is said; spellings of one unit
+    are one unit, and a value emitted with no unit, or none of symbols, is not compared."""
+    _unit_emitted(project, "case.pct_serious", emitted)
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    if written is not None:
+        binding = "{{results.case.pct_serious}}"
+        text = text.replace(binding + "%", binding + written, 1)
+        path.write_text(text, encoding="utf-8")
+    line = next(n for n, row in enumerate(text.splitlines(), 1) if "case.pct_serious" in row)
+    assert _units_said(project) == ([("results.case.pct_serious", line)] if said else [])
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 
@@ -1111,6 +1166,73 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
 
     codes = {f.code for f in gate_report(project).findings}
     assert "unemitted-table-number" in codes
+
+
+# ------------------------------------------------- the plan when the results were first known
+
+
+def _plan_said(root: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates import check_design
+
+    project, _ = load_project(root)
+    return [
+        (f.code, f.severity)
+        for f in check_design(project).findings
+        if f.code.startswith("plan-") and f.code not in ("plan-complete",)
+    ]
+
+
+def _plan_edited(root: Path, old: str, new: str) -> None:
+    plan = root / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert old in text, old
+    plan.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def test_the_plan_is_kept_as_it_stood_when_the_first_results_were_written(
+    project: Path,
+) -> None:
+    """Item 26: nothing recorded whether the plan was rewritten after the results."""
+    frozen = project / "design" / "plan.frozen.yaml"
+    record = yaml.safe_load(frozen.read_text(encoding="utf-8"))
+    assert record["plan"] == (project / "design" / "plan.md").read_text(encoding="utf-8")
+    assert _plan_said(project) == []
+
+
+def test_a_plan_changed_after_the_results_with_nothing_said_is_a_warning(project: Path) -> None:
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome, chosen later.\n")
+    assert _plan_said(project) == [("plan-changed-after-results", "warn")]
+
+
+def test_a_plan_changed_with_its_deviation_said_passes(project: Path) -> None:
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome, chosen later.\n")
+    _plan_edited(project, "## Deviations from the plan",
+                 "## Deviations from the plan\n\n2026-10-15: a second outcome was added, "
+                 "decided by the authors, before its results were known.\n")  # fmt: skip
+    assert _plan_said(project) == []
+
+
+def test_a_plan_rewrapped_says_what_it_said(project: Path) -> None:
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    plan.write_text(text.replace("\n\n", "\n\n\n").replace(". ", ".\n"), encoding="utf-8")
+    assert _plan_said(project) == []
+
+
+def test_the_kept_plan_is_never_written_again(project: Path) -> None:
+    from conftest import run_analysis
+
+    frozen = project / "design" / "plan.frozen.yaml"
+    kept = frozen.read_bytes()
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome, chosen later.\n")
+    run_analysis(project)
+    assert frozen.read_bytes() == kept
+    assert _plan_said(project) == [("plan-changed-after-results", "warn")]
+
+
+def test_results_with_no_kept_plan_are_a_note(project: Path) -> None:
+    (project / "design" / "plan.frozen.yaml").unlink()
+    assert _plan_said(project) == [("plan-not-frozen", "info")]
 
 
 # ------------------------------------------------- the unit of analysis

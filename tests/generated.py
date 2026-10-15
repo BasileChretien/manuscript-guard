@@ -579,6 +579,17 @@ SPELT = (
 
 #: A statistic in each of the ways one is written, typed and bound, and a number with
 #: its unit: what the notation reading must count apart.
+#: Bindings with a unit written after them, each way a unit is written.
+BOUND_UNITS = (
+    "{{results.dose}} mg",
+    "{{results.dose}}\N{NO-BREAK SPACE}\N{MICRO SIGN}g/kg",
+    "{{results.share}}%",
+    "{{results.share}} \N{PER MILLE SIGN}", "{{results.level}}\nmmol/L", "{{results.t}} min",
+    "{{results.t}} minutes",
+    "{{results.area}} cm\N{SUPERSCRIPT TWO}",
+    "{{results.temp}} \N{DEGREE SIGN}C",
+)  # fmt: skip
+
 NOTATED = (
     "P = 0.03", "p=0.04", "*P* < 0.001", "p-value", "n = 12", "n=3", "N= 40",
     "95% CI 1.2 to 3.4", "95% CI 1.2-3.4", "(95% CI {{results.low}} to {{results.high}})",
@@ -717,6 +728,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "interval order": intervals(),
+    "deviations": texts(),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
     "quote words": st.fixed_dictionaries(
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
@@ -729,6 +741,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "units after": texts(BOUND_UNITS),
     "abbreviations": st.fixed_dictionaries(
         {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}
     ),

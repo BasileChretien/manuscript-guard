@@ -2211,6 +2211,18 @@ warning, as the rest of this gate is: an author may know the data from a registr
 report. Once the analysis runs, its results say what the data hold, and the question is not
 asked again.
 
+**The plan is frozen when the first results are written.** A plan rewritten after the
+results are known is the pattern of a hypothesis fitted to its results, and it can be told
+mechanically. The first time either emitter writes results, it keeps the plan as it stood:
+`design/plan.frozen.yaml` holds its text, its digest, the day and the script, and nothing
+writes it again; the write hook refuses an edit of it. In a file of its own, beside the plan,
+because the results folder is cleared and written again on every run, and a copy kept there
+would be frozen again on the changed plan. Written as JSON, which is YAML too, so that R needs
+no package to write it. G12 warns (`plan-changed-after-results`) when the plan's words differ
+from the copy's and its Deviations section says what it said then: changed with nothing said.
+A plan re-wrapped without a word changed is unchanged. Results with no copy, written before
+the emitters kept one, are a note.
+
 ## Stages: not every gate binds on day one
 
 The first version of `check` ran all twelve gates unconditionally, which meant that someone
@@ -2692,6 +2704,18 @@ missed:
 And `verify` had three of its own, of which one was serious enough to invalidate the
 command: see its module docstring for what it now does and does not prove, and the Known
 gaps below for what remains.
+
+## A unit after a binding is the unit emitted
+
+The analysis records a value's unit, and only G8 read it, to keep a count of 56 apart from a
+share of 56.0%. "{{results.dose}} mg" printed "250 mg" of a dose emitted in micrograms, and
+nothing said so. G2 now reads the symbol written right after each binding, from the list of
+symbols G14 knows a number is not to run into, and `%` and `‰`, with a power after it or a
+slash and what it divides by, and warns (`unit-differs-from-emitted`) where it is not the unit
+emitted. Spellings of one unit are one: µg, μg and mcg; mL and ml; °C and ℃. A value emitted
+with no unit, or with one that is no symbol ("years"), has nothing to compare it with. The
+gap between the binding and its unit may be any space or one line break, which pandoc prints
+as a space; a blank line, or a word between, ends the unit's claim to the binding.
 
 ## A rule names values, not shapes
 
@@ -7211,6 +7235,11 @@ Closed since, and why each mattered:
   strictly, so `# **Methods**` is not Methods. In a .docx a heading style is what makes a
   heading, so a styled paragraph typed as `References {-}` starts a list, although Word
   prints the braces.
+- **A unit after a binding is read from a list of symbols.** "mg" is read and "milligrams"
+  is not, so a unit written out in words is compared with nothing; one-letter symbols other
+  than g and h (m, L, s) are left out as G14 leaves them, so "{{results.length}} m" is not
+  read. Units that mean the same and are spelt apart ("mg/kg" against "mg kg-1") are taken
+  for two.
 - **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
   `- Results` over an underline as a list item holding a heading titled "Results". The
   gates keep the marker in the title, so it ends the section above; "- Results" is read as
@@ -7251,6 +7280,11 @@ Closed since, and why each mattered:
   term under a definition. Inside a list item's lines pandoc folds the digits in some
   positions and not others, and there an indented "1." under `\newpage` is still taken for
   numbering.
+- **`import` compares a returned document with an offline build in the default citation
+  style.** A document built with `--csl` comes back with every paragraph that cites refused,
+  its citations read as changed. A Zotero field is read by the words it shows and never by
+  its code, so a field a co-author refreshed into another style refuses its paragraph, and
+  one that shows the default style's words passes whatever item it names.
 - **Every indented line under a list is the list's for headings.** Pandoc ends a list at a
   line indented less than the item's text that starts no item, at a definition under it,
   and at a rule at the margin. The walk ends the items there, so a count opening a later
@@ -7385,6 +7419,12 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A frozen plan holds the plan of the first run, whenever that was.** A plan written after
+  results already existed is frozen as it stood on the next run, and cannot be told from one
+  written first; nor can a plan changed between writing the analysis and running it. Any
+  change to the Deviations section, a word or a date, satisfies the check, whatever it says.
+  The copy is in version control like the plan, and a person can delete it; the next run then
+  freezes the plan as it is. A plan that is not UTF-8 text is not frozen until it is.
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.

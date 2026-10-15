@@ -64,6 +64,7 @@ from manuscript_guard.build.blinding import names_in, sought
 from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
+from manuscript_guard.gates import bound_units as bound_units_gate
 from manuscript_guard.gates import language as language_gate
 from manuscript_guard.gates import methods as methods_gate
 from manuscript_guard.gates import models as models_gate
@@ -571,6 +572,42 @@ def _seen_and_judged(text: str) -> None:
             with_scan = CLASSIFIER.classify(atom, chain, scan)
             assert with_scan == CLASSIFIER.classify(atom, chain), (text, atom.text)
             assert with_scan.kind in (TERM, STRUCTURAL, CONVENTION, UNCLASSIFIED)
+
+
+# ------------------------------------------------------------- what the plan's deviations say
+
+
+@st.composite
+def _deviations_twice(draw: st.DrawFn) -> tuple[str, str, str]:
+    """A plan whose Deviations section is drawn words, the same plan with them wrapped another
+    way, and the same with a word more. The section comes before drawn text: after it, an
+    empty footnote or an open fence the draw left would take its heading, as pandoc reads."""
+    words = draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=20))
+    wrap = [draw(st.sampled_from((" ", "\n", "  ", " \n"))) for _ in words[1:]]
+    # A line break and a doubled space in every example, wherever else the draw put them.
+    wrap[0], wrap[-1] = "\n", "  "
+    rewrapped = words[0] + "".join(gap + word for gap, word in zip(wrap, words[1:], strict=True))
+    after = draw(texts())
+
+    def plan(deviations: str) -> str:
+        return f"# Analysis plan\n\n## Deviations from the plan\n\n{deviations}\n\n" \
+            f"## Outcome\n\n{after}\n"  # fmt: skip
+
+    said = " ".join(words)
+    return plan(said), plan(rewrapped), plan(said + " " + draw(st.sampled_from(FILLER)))
+
+
+@holds(100, _deviations_twice())
+def test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not(
+    drawn: tuple[str, str, str],
+) -> None:
+    """Whatever the plan above it, the Deviations section says the same however its lines
+    are wrapped, and something else with a word added."""
+    from manuscript_guard.gates.design import deviations_said
+
+    plan, rewrapped, longer = drawn
+    assert deviations_said(plan) == deviations_said(rewrapped), rewrapped
+    assert deviations_said(plan) != deviations_said(longer), longer
 
 
 # ------------------------------------------------------------------------------ parameters
@@ -1868,6 +1905,59 @@ def test_a_value_is_stated_whole_or_not_at_all(drawn: tuple[str, str]) -> None:
             assert contains(quote, value), (quote, value)
 
 
+# ------------------------------------------------------------- a unit written after a binding
+
+#: What may follow a binding, with the unit read there, or None where none is: a gap of each
+#: kind, a power, a slash, a symbol of the list, and words that open with a symbol's letters.
+_AFTER_A_BINDING = (
+    (" mg", "mg"),
+    ("\N{NO-BREAK SPACE}\N{MICRO SIGN}g/kg", "\N{MICRO SIGN}g/kg"),
+    ("\N{THIN SPACE}\N{GREEK SMALL LETTER MU}g", "\N{GREEK SMALL LETTER MU}g"),
+    ("%", "%"),
+    (" \N{PER MILLE SIGN}", "\N{PER MILLE SIGN}"),
+    ("\nmmol/L", "mmol/L"),
+    (" cm\N{SUPERSCRIPT TWO}", "cm\N{SUPERSCRIPT TWO}"),
+    (" min-1", "min-1"),
+    (" \N{DEGREE SIGN}C", "\N{DEGREE SIGN}C"),
+    (" mg/kg/day", "mg/kg/day"),
+    (" minutes", None),
+    (" mgs", None),
+    (" group", None),
+    (" hours", None),
+    ("\n\nmg", None),
+    (" and 5 mg", None),
+    (" cases", None),
+)
+
+
+@st.composite
+def _units_planted(draw: st.DrawFn) -> tuple[str, list[tuple[str, int, str]]]:
+    """A binding before each way of writing what follows it, in an order and among words
+    drawn each time, with the unit that should be read after each."""
+    parts: list[str] = []
+    found: list[tuple[str, int, str]] = []
+    for index, (after, unit) in enumerate(draw(st.permutations(_AFTER_A_BINDING))):
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4))
+        parts.append(" ".join(words) + draw(st.sampled_from((" ", "\n", "; "))))
+        key = f"k{index}"
+        if unit is not None:
+            found.append((key, len("".join(parts)), unit))
+        parts.append(f"{{{{results.{key}}}}}" + after + draw(st.sampled_from((". ", ", ", "; "))))
+    return "".join(parts), found
+
+
+@holds(150, _units_planted())
+def test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is(
+    planted: tuple[str, list[tuple[str, int, str]]],
+) -> None:
+    """A symbol after any space, a no-break or thin space or one line break, with its power
+    or a slash and what it divides by; not a word that opens with a symbol's letters, not a
+    unit after a blank line, and not one after another word."""
+    text, expected = planted
+    found = [(w.key, w.start, w.unit) for w in bound_units_gate.units_after(text)]
+    assert found == expected, text
+
+
 # ---------------------------------------------------------------------- an ISBN's check digit
 
 
@@ -2154,6 +2244,22 @@ def _an_isbn_13_is_weighed_as_an_isbn_10(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(identifiers, "isbn_valid", valid)
 
 
+def _a_deviation_is_read_with_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    def as_typed(text: str) -> str:
+        pattern = dict((name, rule) for name, rule, _ in design.REQUIRED)["deviations"]
+        sections = design._plan_sections(text)
+        return "".join(
+            part.body
+            for index, section in enumerate(sections)
+            if re.search(pattern, section.title)
+            for part in design.subsections(sections, index)
+        )
+
+    patch.setattr(design, "deviations_said", as_typed)
+
+
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
@@ -2401,6 +2507,23 @@ def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> N
     patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
 
 
+def _a_unit_is_read_after_a_plain_space_only(patch: pytest.MonkeyPatch) -> None:
+    pattern = bound_units_gate._UNIT.pattern.replace(bound_units_gate._GAP, " ?", 1)
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
+def _a_unit_is_read_inside_a_longer_word(patch: pytest.MonkeyPatch) -> None:
+    pattern = bound_units_gate._UNIT.pattern.rsplit("(?!", 1)[0]
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
+def _a_slash_divides_by_symbols_only(patch: pytest.MonkeyPatch) -> None:
+    pattern = bound_units_gate._UNIT.pattern.replace(
+        r"/[^\W\d_]+", "/(?:" + bound_units_gate._SYMBOL + ")", 1
+    )
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
 def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
 
@@ -2480,6 +2603,18 @@ BROKEN = {
     "a heading is part of the paragraph under it": (
         _a_heading_is_part_of_the_paragraph_under_it,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a unit is read after a plain space only": (
+        _a_unit_is_read_after_a_plain_space_only,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
+    ),
+    "a unit is read inside a longer word": (
+        _a_unit_is_read_inside_a_longer_word,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
+    ),
+    "a slash divides by the list's symbols only": (
+        _a_slash_divides_by_symbols_only,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
     ),
     "a claim keeps its line breaks": (
         _a_claim_keeps_its_line_breaks,
@@ -2616,6 +2751,10 @@ BROKEN = {
     "an ISBN's groups are read as ISBNs": (
         _an_isbn_s_groups_are_read_as_isbns,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "a deviation is read with its line breaks": (
+        _a_deviation_is_read_with_its_line_breaks,
+        test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not,
     ),
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,

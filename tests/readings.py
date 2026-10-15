@@ -262,6 +262,13 @@ INTERVALS = (
 )
 
 
+@reading("deviations")
+def _deviations() -> Reading:
+    from manuscript_guard.gates.design import deviations_said
+
+    return deviations_said
+
+
 @reading("interval order")
 def _interval_order() -> Reading:
     from manuscript_guard.contracts.values import RESULTS, Value
@@ -320,6 +327,18 @@ def _spelling() -> Reading:
 
     _file("")
     return spelling
+
+
+@reading("units after")
+def _units_after() -> Reading:
+    """The unit written right after each results binding, which G2 holds to the unit the
+    analysis emitted."""
+    from manuscript_guard.gates.bound_units import units_after
+
+    def units(text: str) -> list[list[Any]]:
+        return [[found.key, found.start, found.unit] for found in units_after(text)]
+
+    return units
 
 
 @reading("notation")

@@ -488,8 +488,12 @@ its objects where they stand and inside object streams, its streams where they a
 Flate-compressed, which is how plotting libraries write them. A text's size is the size
 `Tf` sets, through the text matrix (`Tm`, `Td`), every `cm` around it and a form's
 `/Matrix`, as the height that takes on the page; a line's width is the `w` it is stroked
-at, through the same, and a path only filled is no line. The printed size is that times the
-printed width over the page's. And each font the page uses is said where it is Type 3
+at, through the same, and a path only filled is no line. A form draws with the line width
+and the font size of what draws it, as matplotlib's markers do, and a page's content
+streams draw as one. The printed size is that times the printed width over the page's: its
+CropBox where it has one, else its MediaBox, its height where `/Rotate` turns it a quarter.
+A text in a composite (Type 0) font is measured and not quoted, since its bytes may be
+glyph numbers. And each font the page uses is said where it is Type 3
 (`figure-font-type3`), which matplotlib writes unless `pdf.fonttype` is 42 (its
 `rcParamsDefault` says 3, read on 3.9.0), or where its file is not in the PDF
 (`figure-font-not-embedded`), as R's `pdf()` leaves Helvetica: a printer then sets the text

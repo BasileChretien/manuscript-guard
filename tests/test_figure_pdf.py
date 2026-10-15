@@ -140,5 +140,94 @@ def test_a_figure_matplotlib_saves_is_read_as_it_was_drawn(
     read = read_pdf(path)
     assert read is not None and read.width_pt == 216
     assert [(f.subtype, f.embedded) for f in read.fonts] == [(subtype, True)]
-    assert ("Title", 6.0) in [(t, round(s, 6)) for t, s in read.texts]
+    # A Type 0 font's text is not quoted: its bytes may be glyph numbers (round 1 of #303).
+    quoted = "Title" if subtype == "Type3" else ""
+    assert (quoted, 6.0) in [(t, round(s, 6)) for t, s in read.texts]
     assert 0.4 in [round(w, 6) for w in read.lines]
+
+
+def _raw(*objects: bytes) -> bytes:
+    """A PDF of these objects, numbered from 1, in this order."""
+    out = b"%PDF-1.7\n"
+    for number, body in enumerate(objects, 1):
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    return out
+
+
+def _stream(data: bytes, extra: bytes = b"") -> bytes:
+    return b"<< /Length %d%s >>\nstream\n" % (len(data), extra) + data + b"\nendstream"
+
+
+PAGES = b"<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 216 144] >>"
+PAGE = b"<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /Contents %s %s >>"
+
+
+@pytest.mark.parametrize(
+    ("content", "form", "texts", "lines"),
+    [
+        (b"0.2 w /X1 Do", b"0 0 m 1 1 l S", [], [0.2]),
+        (b"BT /F1 7 Tf ET /X1 Do", b"BT (a) Tj ET", [7.0], []),
+    ],
+)
+def test_a_form_draws_with_the_line_width_and_font_size_it_is_drawn_with(
+    content: bytes, form: bytes, texts: list, lines: list
+) -> None:
+    """Round 1 of #303: matplotlib sets a marker's width before `/M0 Do`, and the form drew
+    with a width of 1 of its own."""
+    figure = parse_pdf(pdf_document(content, forms={"X1": (form, "1 0 0 1 0 0")}))
+    assert figure is not None
+    assert [s for _t, s in figure.texts] == texts and figure.lines == lines
+
+
+def test_the_streams_of_a_page_s_contents_are_drawn_as_one() -> None:
+    """Round 1 of #303: a page wrapped in a scaled `q ... Q` by a later editor."""
+    document = _raw(
+        b"<< /Type /Catalog /Pages 2 0 R >>", PAGES,
+        PAGE % (b"[5 0 R 6 0 R 7 0 R]", b""),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        _stream(b"q 0.5 0 0 0.5 0 0 cm"), _stream(b"BT /F1 10 Tf (a) Tj ET"), _stream(b"Q"),
+    )  # fmt: skip
+    figure = parse_pdf(document)
+    assert figure is not None and [s for _t, s in figure.texts] == [5.0]
+
+
+@pytest.mark.parametrize(
+    ("boxes", "width"),
+    [
+        (b"/MediaBox [0 0 612 792] /CropBox [0 0 216 144]", 216),
+        (b"/MediaBox [0 0 144 216] /Rotate 90", 216),
+        (b"/MediaBox [0 0 216 144] /Rotate 180", 216),
+    ],
+)
+def test_a_page_prints_its_crop_box_and_turned_as_it_says(boxes: bytes, width: float) -> None:
+    """Round 1 of #303: the MediaBox was taken, where a crop or a turn prints otherwise."""
+    document = _raw(
+        b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        PAGE % (b"5 0 R", boxes), b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        _stream(b""),
+    )  # fmt: skip
+    figure = parse_pdf(document)
+    assert figure is not None and figure.width_pt == width
+
+
+def test_an_object_written_again_later_in_an_object_stream_is_the_one_read() -> None:
+    """Round 1 of #303: an update that wrote a newer font into an object stream after the
+    first was ignored."""
+    newer = b"4 0 << /Type /Font /Subtype /TrueType /BaseFont /Arial /FontDescriptor 9 0 R >>"
+    document = _raw(
+        b"<< /Type /Catalog /Pages 2 0 R >>", PAGES, PAGE % (b"5 0 R", b""),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", _stream(b""),
+        b"null", b"null",
+        _stream(b"4 0 " + newer[4:], b" /Type /ObjStm /N 1 /First 4"),
+        b"<< /Type /FontDescriptor /FontFile2 6 0 R >>",
+    )  # fmt: skip
+    figure = parse_pdf(document)
+    assert figure is not None
+    assert [(f.name, f.embedded) for f in figure.fonts] == [("Arial", True)]
+
+
+def test_a_text_in_a_composite_font_is_not_quoted_by_its_glyph_numbers() -> None:
+    """Round 1 of #303: the bytes of a Type 0 font's text are glyph numbers, and were quoted
+    as characters: a finding named '$' for glyph 36."""
+    figure = parse_pdf(pdf_document(b"BT /F1 4 Tf <0024> Tj ET", {"F1": TYPE0}))
+    assert figure is not None and figure.texts == [("", 4.0)]

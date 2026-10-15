@@ -2043,6 +2043,23 @@ def _a_filled_path_is_a_line(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(figure_pdf, "_STROKES", {*figure_pdf._STROKES, b"f"})
 
 
+def _a_form_draws_with_a_state_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    form = figure_pdf._form
+    patch.setattr(figure_pdf, "_form", lambda *drawn: form(*drawn[:6], figure_pdf.START))
+
+
+def _a_page_s_streams_are_drawn_apart(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    def apart(streams, resources, objects, figure):
+        for data in streams:
+            figure_pdf._draw(data, resources, figure_pdf.IDENTITY, objects, figure, 0)
+
+    patch.setattr(figure_pdf, "_draw_page", apart)
+
+
 def _a_pdf_text_is_as_tall_as_a_line_is_wide(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import figure_pdf
 
@@ -2911,6 +2928,14 @@ BROKEN = {
     ),
     "a filled path in a PDF is a line": (
         _a_filled_path_is_a_line,
+        test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a PDF form draws with a line width and font size of its own": (
+        _a_form_draws_with_a_state_of_its_own,
+        test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a page's content streams are drawn apart": (
+        _a_page_s_streams_are_drawn_apart,
         test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
     ),
     "a PDF text is as tall as a line under the same transforms is wide": (

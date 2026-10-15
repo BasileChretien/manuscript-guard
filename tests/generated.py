@@ -690,11 +690,13 @@ def pdf_document(
     width: float = 216,
     compress: bool = True,
     packed: bool = False,
+    split: bool = False,
 ) -> bytes:
     """A PDF of one page that draws `content`, with `fonts` (a name and the font's own
     dictionary, which may refer to the objects after it as `{n}`) and `forms` (a name, and
     the form's content and `/Matrix`). Its fonts are packed in an object stream where
-    `packed` is set. No cross-reference table: what reads it reads its objects."""
+    `packed` is set, and its content in a stream for each line where `split` is. No
+    cross-reference table: what reads it reads its objects."""
     fonts = fonts or {"F1": b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"}
     forms = forms or {}
     objects: list[bytes] = []
@@ -714,7 +716,9 @@ def pdf_document(
     add(b"<< /Type /Catalog /Pages 2 0 R >>")
     add(b"<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 %g 144] >>" % width)
     add(b"")  # the page, once its resources are known
-    add(stream(content))
+    pieces = content.split(b"\n") if split else [content]
+    for piece in pieces:
+        add(stream(piece))
     font_refs, packed_bodies = [], []
     for name, body in fonts.items():
         number = len(objects) + 1 if not packed else 100 + len(packed_bodies)
@@ -735,7 +739,9 @@ def pdf_document(
         number = add(stream(data, b" /Type /XObject /Subtype /Form /BBox [0 0 216 144] "
                                   b"/Matrix [" + matrix.encode() + b"]"))  # fmt: skip
         form_refs.append(b"/%s %d 0 R" % (name.encode(), number))
-    objects[2] = (b"<< /Type /Page /Parent 2 0 R /Contents 4 0 R /Resources << /Font << "
+    contents = b"[" + b" ".join(b"%d 0 R" % (4 + i) for i in range(len(pieces))) + b"]"
+    objects[2] = (b"<< /Type /Page /Parent 2 0 R /Contents " + contents
+                  + b" /Resources << /Font << "
                   + b" ".join(font_refs) + b" >> /XObject << " + b" ".join(form_refs)
                   + b" >> >> >>")  # fmt: skip
     out = b"%PDF-1.5\n"
@@ -799,14 +805,24 @@ def pdf_figures(draw: st.DrawFn) -> tuple[bytes, list[float], list[float]]:
             lines.append(width * math.sqrt(abs(inner[0] * inner[3] - inner[1] * inner[2])))
         return content, texts, lines
 
-    content, texts, lines = drawing((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
+    # The whole page under a transform that one content stream opens and another closes,
+    # as an editor wraps a page: the streams draw as one.
+    wrap = matrix()
+    content, texts, lines = drawing(wrap)
     # A transform left open by a q that a Q closes: what follows is drawn without it.
     content = b"q " + written(matrix()) + b" cm Q\n" + content
     form_matrix, placed = matrix(), matrix()
-    # A form draws under its /Matrix, and that under the page's transform where `Do` is.
-    form_drawn, form_texts, form_lines = drawing(_row(form_matrix, placed))
-    content += b"q " + written(placed) + b" cm /X1 Do Q\n"
-    document = pdf_document(content, forms={"X1": (form_drawn, written(form_matrix).decode())})
+    # A form draws under its /Matrix, and that under the page's transform where `Do` is;
+    # and with the line width set before `Do`, until it sets one of its own.
+    inner = _row(form_matrix, _row(placed, wrap))
+    form_drawn, form_texts, form_lines = drawing(inner)
+    inherited = draw(st.integers(1, 30)) / 10
+    form_drawn = b"0 0 m 3 3 l S\n" + form_drawn
+    form_lines.append(inherited * math.sqrt(abs(inner[0] * inner[3] - inner[1] * inner[2])))
+    content += b"q " + written(placed) + b" cm %g w /X1 Do Q\n" % inherited
+    content = b"q " + written(wrap) + b" cm\n" + content.rstrip(b"\n").replace(b"\n", b" ") + b"\nQ"
+    document = pdf_document(content, forms={"X1": (form_drawn, written(form_matrix).decode())},
+                            split=True)  # fmt: skip
     return document, sorted(texts + form_texts), sorted(lines + form_lines)
 
 

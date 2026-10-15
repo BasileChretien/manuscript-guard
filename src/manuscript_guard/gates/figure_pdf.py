@@ -184,8 +184,9 @@ class _Object:
 
 def _objects(data: bytes) -> dict[int, _Object]:
     """Every object of a PDF, by its number: those where they stand, and those inside an
-    object stream. Where a number is written twice, the later is the one an update made."""
-    objects: dict[int, _Object] = {}
+    object stream. Where a number is written twice, the later in the file is the one an
+    update made, whether it stands alone or in an object stream (round 1 of #303)."""
+    found: list[tuple[int, int, _Object]] = []
     for match in _OBJECT.finditer(data):
         parser = _Parser(data, match.end())
         try:
@@ -202,26 +203,31 @@ def _objects(data: bytes) -> dict[int, _Object]:
                 stream = data[opened.end() : opened.end() + length]
             elif end >= 0:
                 stream = data[opened.end() : end].rstrip(b"\r\n")
-        objects[int(match.group(1))] = _Object(value, stream)
-    for number, held in list(objects.items()):
+        found.append((match.start(), int(match.group(1)), _Object(value, stream)))
+    standing = {number: held for _at, number, held in found}
+    for at, _number, held in list(found):
         if isinstance(held.value, dict) and _name(held.value.get("Type")) == "ObjStm":
-            _unpack(number, held, objects)
+            found += [(at, number, inner) for number, inner in _unpack(held, standing)]
+    objects: dict[int, _Object] = {}
+    for _at, number, held in sorted(found, key=lambda each: each[0]):
+        objects[number] = held
     return objects
 
 
-def _unpack(number: int, held: _Object, objects: dict[int, _Object]) -> None:
+def _unpack(held: _Object, objects: dict[int, _Object]) -> list[tuple[int, _Object]]:
     """The objects an object stream holds: its header pairs a number with where it starts."""
     data = _decoded(held, objects)
     count, first = held.value.get("N"), held.value.get("First")
     if data is None or not isinstance(count, int) or not isinstance(first, int):
-        return
+        return []
     numbers = [int(n) for n in _NUMBER.findall(data[:first])]
+    unpacked = []
     for i in range(0, min(len(numbers), 2 * count) - 1, 2):
         try:
-            value = _Parser(data, first + numbers[i + 1]).value()
+            unpacked.append((numbers[i], _Object(_Parser(data, first + numbers[i + 1]).value())))
         except (ValueError, IndexError):
             continue
-        objects.setdefault(numbers[i], _Object(value))
+    return unpacked
 
 
 def _name(value: object) -> str:
@@ -317,6 +323,20 @@ def _shown(operands: list) -> str:
     return text if text.isprintable() else ""
 
 
+#: The graphics state a stream starts with: the line width, the font size, and whether the
+#: font is a composite one, whose bytes are glyph numbers and not characters.
+State = tuple[float, float, bool]
+START: State = (1.0, 0.0, False)
+
+
+def _composite(resources: dict, name: object, objects: dict[int, _Object]) -> bool:
+    """Whether the font a page's resources name is a composite (Type 0) one."""
+    fonts = _resolved(resources.get("Font"), objects)
+    font = _resolved(fonts.get(name.name), objects) if isinstance(fonts, dict) and isinstance(
+        name, Name) else None  # fmt: skip
+    return isinstance(font, dict) and _name(font.get("Subtype")) == "Type0"
+
+
 def _draw(
     data: bytes,
     resources: dict,
@@ -324,16 +344,18 @@ def _draw(
     objects: dict[int, _Object],
     figure: PdfFigure,
     depth: int,
+    state: State = START,
 ) -> None:
-    """What one content stream draws, with the transform it is drawn under."""
-    stack: list[tuple[Matrix, float, float]] = []
-    width, size = 1.0, 0.0
+    """What one content stream draws, with the transform and the graphics state it is drawn
+    under: a form takes over the state of what draws it (round 1 of #303)."""
+    stack: list[tuple[Matrix, State]] = []
+    width, size, composite = state
     tm = tlm = IDENTITY
     for operands, op in _operations(data):
         if op == b"q":
-            stack.append((ctm, width, size))
+            stack.append((ctm, (width, size, composite)))
         elif op == b"Q" and stack:
-            ctm, width, size = stack.pop()
+            ctm, (width, size, composite) = stack.pop()
         elif op == b"cm" and (n := _numbers(operands, 6)):
             ctm = _multiply((n[0], n[1], n[2], n[3], n[4], n[5]), ctm)
         elif op == b"w" and (n := _numbers(operands, 1)):
@@ -344,14 +366,18 @@ def _draw(
             tm = tlm = IDENTITY
         elif op == b"Tf" and (n := _numbers(operands, 1)):
             size = n[0]
+            composite = _composite(resources, operands[0] if operands else None, objects)
         elif op == b"Tm" and (n := _numbers(operands, 6)):
             tm = tlm = (n[0], n[1], n[2], n[3], n[4], n[5])
         elif op in (b"Td", b"TD") and (n := _numbers(operands, 2)):
             tm = tlm = _multiply((1.0, 0.0, 0.0, 1.0, n[0], n[1]), tlm)
         elif op in _SHOWS and size:
-            figure.texts.append((_shown(operands), abs(size) * _height(_multiply(tm, ctm))))
+            # A composite font's bytes are glyph numbers: the text is not quoted.
+            shown = "" if composite else _shown(operands)
+            figure.texts.append((shown, abs(size) * _height(_multiply(tm, ctm))))
         elif op == b"Do" and operands and isinstance(operands[-1], Name) and depth < DEPTH:
-            _form(operands[-1].name, resources, ctm, objects, figure, depth)
+            _form(operands[-1].name, resources, ctm, objects, figure, depth,
+                  (width, size, composite))  # fmt: skip
 
 
 def _form(
@@ -361,6 +387,7 @@ def _form(
     objects: dict[int, _Object],
     figure: PdfFigure,
     depth: int,
+    state: State = START,
 ) -> None:
     """What a form drawn by `Do` draws, under its own `/Matrix`."""
     forms = _resolved(resources.get("XObject"), objects)
@@ -374,7 +401,7 @@ def _form(
     own = _form_matrix(held, objects)
     inner = _resolved(held.value.get("Resources"), objects)
     _draw(data, inner if isinstance(inner, dict) else resources,
-          _multiply(own, ctm), objects, figure, depth + 1)  # fmt: skip
+          _multiply(own, ctm), objects, figure, depth + 1, state)  # fmt: skip
 
 
 def _form_matrix(held: _Object, objects: dict[int, _Object]) -> Matrix:
@@ -452,20 +479,41 @@ def parse_pdf(data: bytes) -> PdfFigure | None:
     if not pages:
         return None
     page = pages[0]
-    box = _inherited(page, "MediaBox", objects)
-    numbers = [float(x) for x in box or () if isinstance(x, (int, float))]
-    numbers = numbers if isinstance(box, list) else []
-    figure = PdfFigure(abs(numbers[2] - numbers[0]) if len(numbers) == 4 else None)
+    figure = PdfFigure(_printed_width(page, objects))
     resources = _inherited(page, "Resources", objects)
     resources = resources if isinstance(resources, dict) else {}
     seen: dict[str, Font] = {}
     _fonts(resources, objects, seen)
     figure.fonts = list(seen.values())
+    # A page's contents may be several streams, which draw as one: a transform one opens,
+    # the next draws under (round 1 of #303).
     contents = _resolved(page.get("Contents"), objects)
+    streams = []
     for ref in contents if isinstance(contents, list) else [page.get("Contents")]:
         held = objects.get(ref.number) if isinstance(ref, Ref) else None
         data = _decoded(held, objects) if held else None
-        if data is None:
-            continue
-        _draw(data, resources, IDENTITY, objects, figure, 0)
+        if data is not None:
+            streams.append(data)
+    _draw_page(streams, resources, objects, figure)
     return figure
+
+
+def _draw_page(
+    streams: list[bytes], resources: dict, objects: dict[int, _Object], figure: PdfFigure
+) -> None:
+    """A page's content streams, drawn as the one stream they are."""
+    _draw(b"\n".join(streams), resources, IDENTITY, objects, figure, 0)
+
+
+def _printed_width(page: dict, objects: dict[int, _Object]) -> float | None:
+    """How wide a page prints: its CropBox, where it has one, else its MediaBox, and its
+    height where `/Rotate` turns it a quarter (round 1 of #303)."""
+    for key in ("CropBox", "MediaBox"):
+        box = _inherited(page, key, objects)
+        numbers = [float(x) for x in box if isinstance(x, (int, float))] if isinstance(
+            box, list) else []  # fmt: skip
+        if len(numbers) == 4:
+            turned = _inherited(page, "Rotate", objects)
+            quarter = isinstance(turned, int) and turned % 180 == 90
+            return abs(numbers[3] - numbers[1]) if quarter else abs(numbers[2] - numbers[0])
+    return None

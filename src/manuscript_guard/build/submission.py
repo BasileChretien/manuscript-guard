@@ -397,6 +397,53 @@ def supplement_for(project: Project, document: Path) -> Path:
     return beside if beside.exists() else project.path("build") / beside.name
 
 
+#: The longest pandoc is given to turn the abstract into plain text.
+PANDOC_SECONDS = 60
+
+
+def abstract_source(project: Project) -> str | None:
+    """The abstract as the source writes it: the body of the main text's section headed
+    "Abstract", subheadings included. None where there is none. (An abstract in the front
+    matter is refused by the gates and the build, `front-matter-abstract`.)"""
+    from manuscript_guard.gates.journal import main_text
+    from manuscript_guard.text.sections import split_sections
+
+    section = next((s for s in split_sections(main_text(project)) if s.is_abstract), None)
+    return section.enclosed if section is not None and section.enclosed.strip() else None
+
+
+def abstract_text(project: Project) -> str | None:
+    """The abstract for a submission portal's box: every binding filled in with the value
+    the build prints, and no Markdown, as pandoc writes plain text. A citation is
+    formatted from `references.bib` where there is one, with no list of references."""
+    import subprocess
+
+    from manuscript_guard.build.document import BuildError, pandoc
+    from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.text.placeholders import substitute
+
+    source = abstract_source(project)
+    if source is None or shutil.which("pandoc") is None:
+        # Without pandoc there is no document to submit either; `submit` builds it first.
+        return None
+    namespace = load_namespace(project)[0]
+    filled = substitute(source, {ref: value.display for ref, value in namespace.items()})
+    command = [pandoc(), "-f", "markdown", "-t", "plain", "--wrap=none"]
+    bib = project.path("literature") / "references.bib"
+    if bib.is_file():
+        command += ["--citeproc", "--bibliography", str(bib), "-M", "suppress-bibliography=true"]
+    try:
+        finished = subprocess.run(
+            command, input=filled, capture_output=True, text=True, encoding="utf-8",
+            timeout=PANDOC_SECONDS, check=False,
+        )  # fmt: skip
+    except subprocess.TimeoutExpired:
+        raise BuildError(f"pandoc gave no plain abstract within {PANDOC_SECONDS} s") from None
+    if finished.returncode != 0:
+        raise BuildError(f"pandoc could not write the abstract as text:\n{finished.stderr}")
+    return finished.stdout.strip() + "\n"
+
+
 def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> Pack:
     """Copy or generate every part of the submission into build/submission/.
 
@@ -435,6 +482,9 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
         # left it out entirely: `respond` wrote it to build/ and nothing collected it, so the
         # one artefact whose claims G13 checks was the one not sent.
         ("response-to-reviewers.md", response_letter(project)),
+        # For the portal's abstract box: pasted from the .docx it carries whatever Word
+        # and the clipboard make of it; this is the checked numbers and nothing else.
+        ("abstract.txt", abstract_text(project)),
     ]
     for name, text in generated:
         if text is None:

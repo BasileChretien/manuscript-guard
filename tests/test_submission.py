@@ -171,6 +171,51 @@ def test_the_manifest_records_what_was_sent(project: Path) -> None:
     assert len(manifest["manuscript_sha256"]) == 64
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_the_pack_holds_the_abstract_as_plain_text_with_its_numbers(project: Path) -> None:
+    """For the portal's abstract box: every binding filled in with the value the build
+    prints, and no Markdown."""
+    from manuscript_guard.contracts import load_namespace
+
+    projekt, _ = load_project(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+    pack = assemble_pack(projekt, document)
+    text = (pack.directory / "abstract.txt").read_text(encoding="utf-8")
+    point = load_namespace(projekt)[0]["results.ror.point"].display
+    assert text.startswith("Background. Drug-induced hepatic injury")
+    assert f"The reporting odds ratio was {point}" in text
+    assert "{{" not in text and "**" not in text and "# " not in text
+    manifest = yaml.safe_load(pack.manifest.read_text(encoding="utf-8"))
+    assert "abstract.txt" in [entry["file"] for entry in manifest["files"]]
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_structured_abstract_keeps_its_headings_as_lines(project: Path) -> None:
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("**Background.** Drug-induced", "## Background\n\nDrug-induced", 1),
+        encoding="utf-8",
+    )
+    plain = abstract_text(load_project(project)[0])
+    assert plain.startswith("Background\n\nDrug-induced hepatic injury"), plain
+
+
+def test_a_paper_with_no_abstract_section_gets_no_abstract_file(project: Path) -> None:
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("# Abstract\n", "# Overview\n", 1),
+        encoding="utf-8",
+    )
+    assert abstract_text(load_project(project)[0]) is None
+
+
 def test_the_pack_offers_a_checklist_a_journal_can_read(project: Path) -> None:
     """What the pack sent in answer to "attach your completed STROBE checklist" was YAML.
 

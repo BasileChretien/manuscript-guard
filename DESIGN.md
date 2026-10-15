@@ -2039,6 +2039,12 @@ declaration** — an empty field is not a declaration of none, and journals ask 
 The manifest records every file with its sha256, because six months later "which version
 did the journal actually get" has no reliable answer otherwise.
 
+The abstract goes in as `abstract.txt` as well, for the box every submission system has for
+it: the section headed "Abstract" with every binding filled in by the value the build
+prints, as pandoc writes plain text, a citation formatted from `references.bib` and no list
+of references. Pasted from the .docx, it carried whatever Word and the clipboard made of
+its emphasis and its line breaks; this is the checked numbers and nothing else.
+
 The pack refuses to assemble while `check --submission` fails. That is what the check is
 for.
 

@@ -37,5 +37,5 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G7 reads every entry of the committed references.bib for its identifiers and fields,
-      and counts them, `references_read`
+      the paper.yaml that init writes has five more lines, a commented study_type, so a
+      setting typed below them that cannot be parsed is reported five lines lower

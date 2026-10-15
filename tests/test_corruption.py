@@ -9956,6 +9956,48 @@ def test_a_run_nobody_agreed_to_changes_nothing(project: Path, monkeypatch) -> N
 
 
 # --------------------------------------------------------------------------------------
+# What the data can answer, while the plan is written
+# --------------------------------------------------------------------------------------
+
+
+def _feasibility_said(root: Path, stage: str, **values: int) -> list[str]:
+    """G12 at a stage, with these values emitted besides the example's."""
+    from manuscript_guard.gates import check_design
+
+    if values:
+        fragment = next((root / "results").glob("*.json"))
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        for key, value in values.items():
+            document["values"][key.replace("__", ".")] = {"value": value, "display": str(value)}
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    project, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(project)
+    return [f.code for f in check_design(project, results, stage).findings
+            if f.code == "feasibility-not-run"]  # fmt: skip
+
+
+def test_a_plan_written_before_the_data_were_looked_at_is_a_warning(project: Path) -> None:
+    """Item 47: a plan could set out an analysis of data nobody had counted, and nothing
+    said so while it was written."""
+    assert _feasibility_said(project, "design") == ["feasibility-not-run"]
+    assert _feasibility_said(project, "drafting") == []
+
+
+def test_a_plan_with_feasibility_results_says_nothing(project: Path) -> None:
+    assert _feasibility_said(project, "design", feasibility__n_reports=4000) == []
+
+
+def test_a_plan_with_no_analysis_yet_is_not_asked_for_feasibility(project: Path) -> None:
+    """An empty Analysis is its own finding; the feasibility results wait for an analysis."""
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    start, end = text.index("## Analysis\n"), text.index("## Sample size")
+    plan.write_text(text[:start] + "## Analysis\n\nTBD\n\n" + text[end:], encoding="utf-8")
+    assert _feasibility_said(project, "design") == []
+
+
+# --------------------------------------------------------------------------------------
 # TeX outside dollar signs in what the build prints of paper.yaml
 # --------------------------------------------------------------------------------------
 

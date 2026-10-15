@@ -67,6 +67,7 @@ from manuscript_guard.build.blinding import names_in, sought
 from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
+from manuscript_guard.gates import bound_units as bound_units_gate
 from manuscript_guard.gates import language as language_gate
 from manuscript_guard.gates import methods as methods_gate
 from manuscript_guard.gates import models as models_gate
@@ -1911,6 +1912,59 @@ def test_a_value_is_stated_whole_or_not_at_all(drawn: tuple[str, str]) -> None:
             assert contains(quote, value), (quote, value)
 
 
+# ------------------------------------------------------------- a unit written after a binding
+
+#: What may follow a binding, with the unit read there, or None where none is: a gap of each
+#: kind, a power, a slash, a symbol of the list, and words that open with a symbol's letters.
+_AFTER_A_BINDING = (
+    (" mg", "mg"),
+    ("\N{NO-BREAK SPACE}\N{MICRO SIGN}g/kg", "\N{MICRO SIGN}g/kg"),
+    ("\N{THIN SPACE}\N{GREEK SMALL LETTER MU}g", "\N{GREEK SMALL LETTER MU}g"),
+    ("%", "%"),
+    (" \N{PER MILLE SIGN}", "\N{PER MILLE SIGN}"),
+    ("\nmmol/L", "mmol/L"),
+    (" cm\N{SUPERSCRIPT TWO}", "cm\N{SUPERSCRIPT TWO}"),
+    (" min-1", "min-1"),
+    (" \N{DEGREE SIGN}C", "\N{DEGREE SIGN}C"),
+    (" mg/kg/day", "mg/kg/day"),
+    (" minutes", None),
+    (" mgs", None),
+    (" group", None),
+    (" hours", None),
+    ("\n\nmg", None),
+    (" and 5 mg", None),
+    (" cases", None),
+)
+
+
+@st.composite
+def _units_planted(draw: st.DrawFn) -> tuple[str, list[tuple[str, int, str]]]:
+    """A binding before each way of writing what follows it, in an order and among words
+    drawn each time, with the unit that should be read after each."""
+    parts: list[str] = []
+    found: list[tuple[str, int, str]] = []
+    for index, (after, unit) in enumerate(draw(st.permutations(_AFTER_A_BINDING))):
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4))
+        parts.append(" ".join(words) + draw(st.sampled_from((" ", "\n", "; "))))
+        key = f"k{index}"
+        if unit is not None:
+            found.append((key, len("".join(parts)), unit))
+        parts.append(f"{{{{results.{key}}}}}" + after + draw(st.sampled_from((". ", ", ", "; "))))
+    return "".join(parts), found
+
+
+@holds(150, _units_planted())
+def test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is(
+    planted: tuple[str, list[tuple[str, int, str]]],
+) -> None:
+    """A symbol after any space, a no-break or thin space or one line break, with its power
+    or a slash and what it divides by; not a word that opens with a symbol's letters, not a
+    unit after a blank line, and not one after another word."""
+    text, expected = planted
+    found = [(w.key, w.start, w.unit) for w in bound_units_gate.units_after(text)]
+    assert found == expected, text
+
+
 # ---------------------------------------------------------------------- an ISBN's check digit
 
 
@@ -2472,6 +2526,23 @@ def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> N
     patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
 
 
+def _a_unit_is_read_after_a_plain_space_only(patch: pytest.MonkeyPatch) -> None:
+    pattern = bound_units_gate._UNIT.pattern.replace(bound_units_gate._GAP, " ?", 1)
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
+def _a_unit_is_read_inside_a_longer_word(patch: pytest.MonkeyPatch) -> None:
+    pattern = bound_units_gate._UNIT.pattern.rsplit("(?!", 1)[0]
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
+def _a_slash_divides_by_symbols_only(patch: pytest.MonkeyPatch) -> None:
+    pattern = bound_units_gate._UNIT.pattern.replace(
+        r"/[^\W\d_]+", "/(?:" + bound_units_gate._SYMBOL + ")", 1
+    )
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
 def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
 
@@ -2551,6 +2622,18 @@ BROKEN = {
     "a heading is part of the paragraph under it": (
         _a_heading_is_part_of_the_paragraph_under_it,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a unit is read after a plain space only": (
+        _a_unit_is_read_after_a_plain_space_only,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
+    ),
+    "a unit is read inside a longer word": (
+        _a_unit_is_read_inside_a_longer_word,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
+    ),
+    "a slash divides by the list's symbols only": (
+        _a_slash_divides_by_symbols_only,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
     ),
     "a claim keeps its line breaks": (
         _a_claim_keeps_its_line_breaks,

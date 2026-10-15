@@ -430,12 +430,17 @@ NARRATIVE_SHOWN = "&lt;Do Zotero Refresh: @fictionalClassSignal2019&gt;"
 
 @needs_pandoc
 @pytest.mark.parametrize(
-    ("edited", "merged"),
-    [({}, True), ({"Fictional and Fictional </w:t>": "Fictional et al. </w:t>"}, False)],
-    ids=["refreshed only", "the printed name edited"],
-)
+    ("edited", "merged", "written"),
+    [
+        ({}, True, NARRATIVE),
+        ({"reported previously by": "reported earlier by"}, True,
+         "reported earlier by @fictionalClassSignal2019"),
+        ({"Fictional and Fictional </w:t>": "Fictional et al. </w:t>"}, False, NARRATIVE),
+    ],
+    ids=["refreshed only", "the prose before it reworded", "the printed name edited"],
+)  # fmt: skip
 def test_a_live_narrative_citation_is_read_with_the_name_before_it(
-    project: Path, tmp_path: Path, monkeypatch, capsys, edited: dict, merged: bool
+    project: Path, tmp_path: Path, monkeypatch, capsys, edited: dict, merged: bool, written: str
 ) -> None:
     """Round 1 of #296: Better BibTeX prints a narrative citation's author as text before its
     field, and the comparison, printing `@key`, had no name there. A document sent back
@@ -457,8 +462,11 @@ def test_a_live_narrative_citation_is_read_with_the_name_before_it(
     assert main(["import", str(returned), str(project), "--apply"]) == (0 if merged else 1)
     out = capsys.readouterr().out
     assert ("NOT merged" in out) is not merged, out
-    assert "Fictional and Fictional @" not in main_md.read_text(encoding="utf-8")
-    assert main_md.read_text(encoding="utf-8") == before
+    after = main_md.read_text(encoding="utf-8")
+    assert "Fictional and Fictional @" not in after
+    assert written in " ".join(after.split())
+    if written == NARRATIVE:
+        assert after == before
 
 
 @needs_pandoc

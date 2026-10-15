@@ -622,11 +622,12 @@ def build_document(
             # No citeproc and no Zotero: a citation prints as the source writes it, a
             # narrative one after the author's name the live build printed (`narrative`).
             if narrative:
-                names = output.with_name(f"{output.stem}.narrative.json")
-                names.write_text(json.dumps(narrative, ensure_ascii=False), encoding="utf-8")
+                # In hexadecimal, so that the command line carries it whatever the names hold,
+                # and pandoc reads it as the string it is. See narrative.lua.
+                names = json.dumps(narrative, ensure_ascii=False).encode("utf-8").hex()
                 command += [
                     f"--lua-filter={NARRATIVE_LUA.resolve()}",
-                    f"--metadata=mg-narrative:{names.resolve().as_posix()}",
+                    f"--metadata=mg-narrative:{names}",
                 ]
             if cites:
                 command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]

@@ -10,21 +10,30 @@ where the live build's name stood, it reads the same on both sides and is part o
 citation, as a style's would be.
 
 The names are the live build's own, read from the document it made and recorded beside it,
-and handed over in a JSON file named by the `mg-narrative` metadata: the source text of each
-narrative citation, and the name printed before it.
+and handed over in the `mg-narrative` metadata as JSON written in hexadecimal: the source text
+of each narrative citation, and the name printed before it. Not in a file: Lua opens a file
+by a path in the bytes Windows gives it, and a temporary folder under a name with an accent
+was not opened, the names were none, and the name was read as prose again. Names that cannot
+be read stop the build, which `import` then reports, rather than compare without them.
 ]]
 
 local names = {}
 
 local function Meta(meta)
-  local file = meta['mg-narrative']
-  if file == nil then return nil end
+  local given = meta['mg-narrative']
+  if given == nil then return nil end
   meta['mg-narrative'] = nil
-  local handle = io.open(pandoc.utils.stringify(file), 'r')
-  if handle ~= nil then
-    names = pandoc.json.decode(handle:read('a'))
-    handle:close()
+  local hex = pandoc.utils.stringify(given)
+  local ok, decoded = pcall(function()
+    -- In parentheses: gsub also returns its count, which decode would take as an argument.
+    return pandoc.json.decode((hex:gsub('..', function(pair)
+      return string.char(tonumber(pair, 16))
+    end)))
+  end)
+  if not ok or type(decoded) ~= 'table' then
+    error('narrative.lua: the names of the narrative citations could not be read')
   end
+  names = decoded
   return meta
 end
 

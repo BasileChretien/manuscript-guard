@@ -671,7 +671,13 @@ def narrative_names(document: Path) -> dict[str, str]:
                 code, lead = [], before
             elif "separate" in marks and code is not None:
                 cited = citation_of("".join(code))
-                if cited is not None and lead and cited.formatted.startswith("@"):
+                # Only a field that leaves the author out has the name printed before it.
+                if (
+                    cited is not None
+                    and lead
+                    and cited.formatted.startswith("@")
+                    and all(item.get("suppress-author") for item in json.loads(cited.identity))
+                ):
                     found.setdefault(cited.formatted, set()).add(lead)
                 code = None
             elif code is not None:
@@ -683,8 +689,9 @@ def narrative_names(document: Path) -> dict[str, str]:
 
 def read_citations(build_dir: Path, document: Path, *, supplementary: bool = False) -> dict:
     """What the record of `document` says of how its citations were made: `{"fields":
-    {...}}` for a live document, `{"style": path}` for one built with `--csl`, and `{}`
-    where it says nothing or is no record of this document (`read_printed`)."""
+    {...}, "names": {...}}` for a live document (`write_printed`), `{"style": path}` for one
+    built with `--csl`, and `{}` where it says nothing or is no record of this document
+    (`read_printed`)."""
     name = printed_of(document)
     if name is None:
         return {}

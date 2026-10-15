@@ -10338,6 +10338,94 @@ def test_import_takes_back_a_document_built_before_tex_in_the_text_was_refused(
 
 
 # --------------------------------------------------------------------------------------
+# What a plan for each study design says, and the guideline its paper follows
+# --------------------------------------------------------------------------------------
+
+
+def _declare(root: Path, **settings) -> None:
+    paper = root / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document.update(settings)
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _plan_asked(root: Path) -> list[str]:
+    """The sections G12 says the plan does not have."""
+    from manuscript_guard.gates import check_design
+
+    project, report = load_project(root)
+    assert report.ok, report.render()
+    return sorted(f.message.removeprefix("the plan says nothing about ")
+                  for f in check_design(project).findings
+                  if f.code == "plan-section-missing")  # fmt: skip
+
+
+def test_a_plan_is_asked_for_what_its_design_needs(project: Path) -> None:
+    """Item 45: G12 asked every plan for the same seven sections, so a disproportionality
+    analysis with no case definition or comparator, or a trial with no estimand, passed."""
+    assert _plan_asked(project) == []
+    _declare(project, study_type="disproportionality")
+    # The example's plan has "Sensitivity analyses", and none of the others.
+    assert _plan_asked(project) == ["case definition", "comparator", "deduplication", "measure"]
+    _declare(project, study_type="trial")
+    assert _plan_asked(project) == ["estimand", "interim analyses", "missing data",
+                                    "randomisation"]  # fmt: skip
+
+
+def test_a_section_the_design_needs_says_where_it_comes_from(project: Path) -> None:
+    from manuscript_guard.gates import check_design
+
+    _declare(project, study_type="trial")
+    project_, _ = load_project(project)
+    hints = {f.message: f.hint for f in check_design(project_).findings}
+    assert "ICH E9(R1)" in hints["the plan says nothing about estimand"]
+
+
+def test_a_design_s_section_written_is_found(project: Path) -> None:
+    _declare(project, study_type="disproportionality")
+    plan = project / "design" / "plan.md"
+    plan.write_text(
+        plan.read_text(encoding="utf-8")
+        + "\n## Deduplication\n\nReports sharing a case identifier are kept once.\n"
+        + "\n## Case definition\n\nHepatic injury by its MedDRA terms, as coded.\n"
+        + "\n## Comparator\n\nEvery other report in the database.\n"
+        + "\n## Measure\n\nThe reporting odds ratio, a signal where its lower bound is above 1.\n",
+        encoding="utf-8",
+    )
+    assert _plan_asked(project) == []
+
+
+def _guideline_said(root: Path) -> list[str]:
+    from manuscript_guard.gates import check_reporting
+
+    project, _ = load_project(root)
+    return [f.message for f in check_reporting(project).findings
+            if f.code == "reporting-guideline-for-design"]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("design", "guidelines", "said"),
+    [
+        ("cohort", ["STROBE"], False),
+        ("cohort", ["RECORD-PE"], False),
+        ("cohort", [], True),
+        ("cohort", ["CONSORT"], True),
+        ("prediction-model", ["TRIPOD+AI"], False),
+        ("disproportionality", ["READUS-PV"], False),
+        (None, [], False),
+    ],
+)
+def test_a_paper_whose_design_has_none_of_its_guidelines_is_told(
+    project: Path, design: str | None, guidelines: list[str], said: bool
+) -> None:
+    """The same table names the guidelines a design is reported with."""
+    if design:
+        _declare(project, study_type=design)
+    _declare(project, reporting_guideline=guidelines)
+    assert bool(_guideline_said(project)) is said
+
+
+# --------------------------------------------------------------------------------------
 # A number written with pandoc's subscript and superscript signs
 # --------------------------------------------------------------------------------------
 

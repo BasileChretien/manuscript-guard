@@ -115,6 +115,24 @@ gate wants a reason a reviewer could read: *"no interventions were assigned"*, n
 Re-running `checklist` after a guideline revision preserves the answers already given and
 adds only the new items.
 
+## Which guideline for which design
+
+Where `paper.yaml` names the design (`study_type`), G5 says when none of its guidelines is
+declared. The table is the one G12 reads the plan's sections from
+(`src/manuscript_guard/data/study_types.yaml`), read on each guideline's own page on
+2026-10-15. An extension counts for its base: RECORD and RECORD-PE for STROBE, TRIPOD+AI for
+TRIPOD.
+
+| study_type | the paper | the protocol |
+|---|---|---|
+| trial | CONSORT | SPIRIT |
+| cohort | STROBE, RECORD, TARGET (a target trial emulated) | |
+| case-control | STROBE, RECORD | |
+| self-controlled | STROBE, RECORD (no guideline is written for the design) | |
+| disproportionality | READUS-PV | |
+| systematic-review | PRISMA | PRISMA-P |
+| prediction-model | TRIPOD | |
+
 ## Why this is worth doing early
 
 A reporting checklist filled in the night before submission is filled in backwards, by

@@ -149,10 +149,44 @@ def _claimed_in_prose(project: Project, declared: set[str]) -> Report:
     return report
 
 
+def _for_design(project: Project, declared: set[str]) -> Report:
+    """Said where paper.yaml names a study design and none of its guidelines.
+
+    The same table gives the plan's sections and the guidelines (`data/study_types.yaml`):
+    a cohort study is reported with STROBE, or an extension of it such as RECORD, and a
+    paper that declares a design and no guideline for it is checked against none of them.
+    A guideline counts by its name, or the name an extension or a version adds to
+    (STROBE-ME, TRIPOD+AI).
+    """
+    from manuscript_guard.gates.design import study_types
+
+    design = project.study_type
+    types = study_types()
+    if design is None or design not in types:
+        return Report()
+    names = [str(name).upper() for name in types[design]["guidelines"]]
+    if any(given.startswith(name) for given in declared for name in names):
+        return Report()
+    said = ", ".join(sorted(declared)) if declared else "none"
+    return Report(
+        (
+            Finding(
+                gate=GATE,
+                code="reporting-guideline-for-design",
+                severity=WARN,
+                message=f"a {types[design]['label']} is reported with "
+                f"{' or '.join(types[design]['guidelines'])}, and paper.yaml declares {said}",
+                hint="add the guideline to reporting_guideline in paper.yaml, or say why "
+                "another one fits this design better",
+            ),
+        )
+    )
+
+
 def check_reporting(project: Project) -> Report:
     wanted = project.reporting_guidelines
     declared = {str(name).upper() for name in wanted}
-    claims = _claimed_in_prose(project, declared)
+    claims = _claimed_in_prose(project, declared).merge(_for_design(project, declared))
     if not wanted:
         return claims.with_counts(checklists=0)
 

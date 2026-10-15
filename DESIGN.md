@@ -698,6 +698,19 @@ placeholder, and it is reported and deferred. Whether a DOI is registered, names
 the entry describes, or was retracted is for a lookup that records what it found, and none
 is made here.
 
+**One work is cited under one key.** Two cited entries with the same DOI, PMID, PMCID or
+ISBN are one work, and the reference list prints it twice, numbered twice; G7 caught one key
+carried by two items in Zotero and not two keys for one work. Each identifier is compared as
+it names the work (`gates/duplicates.py`): a DOI undressed and in lower case, a PMID without
+leading noughts, a PMCID in capitals, an ISBN-10 as the ISBN-13 it is. Such a pair fails
+from internal-review (`reference-duplicate`), as the other findings about the reference
+list do. An ISBN names a book, and a chapter or a conference paper can carry its book's
+ISBN or DOI, so a part of a book (`@incollection`, `@inbook`, `@inproceedings` and their
+like) is compared by its title alone, and an ISBN is read only from a whole book, with its
+volume. Two cited entries with the same title of four words or more and no identifier in
+common are a warning (`reference-title-duplicate`): they may be one work, or a correction
+and the paper it corrects.
+
 ## Only a person can sign an attestation
 
 `attested.yaml` exists to record that **a named human read something the toolkit could not
@@ -5741,6 +5754,13 @@ Closed since, and why each mattered:
   first three digits are no ISBN prefix. An ISBN-10 that opens with 978 or 979, followed in
   the same field by another ISBN and parted from it by a space only, is read as the start
   of an ISBN-13 and reported.
+- **Two keys for one work are found by an identifier or a title, and only among what is
+  cited.** Two entries of one work with no identifier in common and titles that differ, a
+  preprint and its article, or a translation, are not found. A title of fewer than four
+  words is not compared. A chapter or a conference paper cited twice is found only by its
+  title, a warning, and a book cited twice with a volume in one entry only is not found. A
+  DOI is compared as the file writes it, so `\_` is not read as `_` nor `%28` as `(`, and a
+  title's TeX accents and commands are read as letters: `Caf\'e` is two words.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
   citation, no reporting guideline, no analysis code, no fitted model or no revision round
   has nothing for G3, G10, G7, G8r, G9, G15 or G13 to read, and each passes with its count

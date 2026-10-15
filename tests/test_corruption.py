@@ -1963,6 +1963,120 @@ def test_an_entry_complete_in_either_format_needs_no_other_field(fields: dict) -
     assert problems("k", fields) == []
 
 
+# One work cited under two keys: the reference list prints it twice.
+
+
+def _both_have(
+    root: Path, first: dict[str, str], second: dict[str, str], types: tuple[str, str] = ("", "")
+) -> None:
+    """Give each of the example's two references the fields named, and the entry type. Their
+    volumes go, so that a volume is only the one a test gives."""
+    bib = root / "literature" / "references.bib"
+    text = bib.read_text(encoding="utf-8")
+    text = text.replace("  volume  = {12},\n", "").replace("  volume  = {7},\n", "")
+    keys = ("fictionalHepaticCohort2021", "fictionalClassSignal2019")
+    for key, fields, kind in zip(keys, (first, second), types, strict=True):
+        opening = f"@article{{{key},\n"
+        added = "".join(f"  {name} = {{{value}}},\n" for name, value in fields.items())
+        text = text.replace(opening, "@" + (kind or "article") + opening[8:] + added, 1)
+    bib.write_text(text, encoding="utf-8")
+
+
+def _duplicate_findings(root: Path) -> list[tuple[str, str, str]]:
+    return [
+        (f.code, f.severity, f.message)
+        for f in _g7(root).findings
+        if f.code in ("reference-duplicate", "reference-title-duplicate")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "named"),
+    [
+        ({"doi": "10.5555/x.1"}, {"doi": "https://doi.org/10.5555/X.1."}, "DOI"),
+        ({"pmid": "31000001"}, {"pmid": "031000001"}, "PMID"),
+        ({"pmcid": "PMC1234"}, {"pmcid": "pmc1234"}, "PMCID"),
+        ({"isbn": "0-306-40615-2"}, {"isbn": "978-0-306-40615-7"}, "ISBN"),
+    ],
+)
+def test_one_work_cited_under_two_keys_fails(
+    project: Path, first: dict, second: dict, named: str
+) -> None:
+    _both_have(project, first, second, ("book", "collection") if named == "ISBN" else ("", ""))
+    said = _duplicate_findings(project)
+    assert [(code, severity) for code, severity, _ in said] == [("reference-duplicate", "fail")]
+    assert f"by the same {named}" in said[0][2]
+
+
+def test_one_work_under_two_keys_fails_from_internal_review(project: Path) -> None:
+    from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
+
+    _both_have(project, {"doi": "10.5555/x.1"}, {"doi": "10.5555/x.1"})
+    report = _g7(project)
+    drafting, _ = apply_stage(report, DRAFTING)
+    assert "reference-duplicate" not in {f.code for f in drafting.failures}
+    reviewed, _ = apply_stage(report, INTERNAL_REVIEW)
+    assert "reference-duplicate" in {f.code for f in reviewed.failures}
+
+
+def test_two_entries_with_one_title_are_a_warning(project: Path) -> None:
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8").replace(
+            "A disproportionality signal for a fictional drug class",
+            "HEPATIC INJURY IN A FICTIONAL NATIONAL COHORT, 2010--2019",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    said = _duplicate_findings(project)
+    assert [(code, severity) for code, severity, _ in said] == [
+        ("reference-title-duplicate", "warn")
+    ]  # fmt: skip
+
+
+_ISBN = "978-0-306-40615-7"
+
+
+@pytest.mark.parametrize(
+    ("types", "first", "second"),
+    [
+        # Two chapters of one book carry its ISBN, or its DOI.
+        (("incollection", "incollection"), {"isbn": _ISBN}, {"isbn": "0-306-40615-2"}),
+        (("inbook", "inbook"), {"doi": "10.5555/book.1"}, {"doi": "10.5555/book.1"}),
+        # Two papers of one proceedings volume.
+        (("inproceedings", "inproceedings"), {"isbn": _ISBN}, {"isbn": _ISBN}),
+        # A book cited beside one of its chapters.
+        (
+            ("book", "incollection"),
+            {"isbn": _ISBN, "doi": "10.5555/book.1"},
+            {"isbn": _ISBN, "doi": "10.5555/book.1"},
+        ),
+        # Two volumes of one set, under the set's ISBN.
+        (("book", "book"), {"isbn": _ISBN, "volume": "1"}, {"isbn": _ISBN, "volume": "2"}),
+        # An ISBN on an article or a misc entry names no book that is cited.
+        (("article", "misc"), {"isbn": _ISBN}, {"isbn": _ISBN}),
+    ],
+)
+def test_parts_of_one_book_are_two_works(
+    project: Path, types: tuple[str, str], first: dict, second: dict
+) -> None:
+    _both_have(project, first, second, types)
+    assert _duplicate_findings(project) == []
+
+
+def test_different_works_and_an_uncited_duplicate_say_nothing(project: Path) -> None:
+    _both_have(project, {"doi": "10.5555/x.1"}, {"doi": "10.5555/x.2"})
+    assert _duplicate_findings(project) == []
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8")
+        + "\n@article{uncitedCopy2021,\n  doi = {10.5555/x.1},\n  title = {T},\n}\n",
+        encoding="utf-8",
+    )
+    assert _duplicate_findings(project) == []
+
+
 def _zotero(monkeypatch, items: list[dict]) -> None:
     from test_zotero import FakeBBT
 

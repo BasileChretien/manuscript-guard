@@ -285,6 +285,22 @@ def _matches(path: Path, recorded: str, suffixes: frozenset[str]) -> bool:
     return any(recorded == hashlib.sha256(text).hexdigest() for text in candidates)
 
 
+def _belongs(key: str, of: str | None, over: str | None, family: str | None) -> dict:
+    """What a statistic says it belongs to, checked: the fields `value()` writes for it."""
+    if of == key or over == key:
+        raise ValueError(f"{key!r} declares itself as what it belongs to")
+    if over is not None and of is None:
+        raise ValueError(
+            f"{key!r}: a share names its numerator with `of` beside its denominator `over`"
+        )
+    if family is not None and (of is None or over is not None):
+        raise ValueError(
+            f"{key!r}: a family is of p values, each naming its estimate with `of` and no `over`"
+        )
+    fields = {"of": of, "over": over, "family": family}
+    return {name: named for name, named in fields.items() if named is not None}
+
+
 def input_digest(path: Path) -> str:
     """The digest of a file an analysis READ, ignoring line endings where they are formatting.
 
@@ -909,6 +925,7 @@ class Emitter:
     _models: dict[str, dict] = field(default_factory=dict, init=False)
     # The steps of the analysis that ran, each with where its code is and a digest of it.
     _steps: dict[str, dict] = field(default_factory=dict, init=False)
+    _corrections: dict[str, dict] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
@@ -946,6 +963,9 @@ class Emitter:
         bounds: str | None = None,
         bound: str | None = None,
         level: str | None = None,
+        of: str | None = None,
+        over: str | None = None,
+        family: str | None = None,
     ) -> None:
         """Record one value. Raises immediately on a duplicate key or unformattable float.
 
@@ -954,6 +974,17 @@ class Emitter:
         key — a headline figure repeated for an abstract, a value recomputed by a second
         script. G8 otherwise notices two keys only while they still *agree*, and goes quiet
         at the moment they diverge.
+
+        A statistic that means nothing alone says what it belongs to, and G2 warns where a
+        sentence quotes it without that:
+
+            em.value("ror.p", 0.003, of="ror.point", family="secondary")
+            em.value("female.pct", 52.1, digits=1, of="female.n", over="cohort.n")
+
+        A p value names its estimate with `of`, and the family of tests it is one of with
+        `family`; `correction()` says how the family is corrected, and G8 warns on a family
+        of more than one with none declared. A share names its numerator with `of` and its
+        denominator with `over`: "n/N (%)", not a percentage alone.
         """
         if key in self._values:
             raise ValueError(f"{key!r} emitted twice by {self.script}")
@@ -987,7 +1018,27 @@ class Emitter:
                 spec["level"] = level
         elif level is not None:
             raise ValueError(f"{key!r} declares a level without being a bound of anything")
+        spec.update(_belongs(key, of, over, family))
         self._values[key] = spec
+
+    def correction(self, family: str, method: str, *, reason: str | None = None) -> None:
+        """Declare how a family of p values is corrected for multiple comparisons.
+
+            em.correction("secondary", "holm")
+            em.correction("exploratory", "none", reason="hypothesis-generating, as stated")
+
+        "none" is a declaration too, and needs its `reason`. Families are declared, never
+        guessed: G8 warns on a family of more than one p value with no correction declared.
+        """
+        if not family or not method:
+            raise ValueError("correction: a family and a method, both named")
+        if family in self._corrections:
+            raise ValueError(f"correction for {family!r} declared twice by {self.script}")
+        if method.strip().lower() == "none" and not reason:
+            raise ValueError(
+                f"correction for {family!r}: 'none' is a decision, and needs its reason"
+            )
+        self._corrections[family] = {"method": method, **({"reason": reason} if reason else {})}
 
     def parameter(
         self,
@@ -1450,6 +1501,8 @@ class Emitter:
             document["models"] = dict(self._models)
         if self._steps:
             document["steps"] = dict(self._steps)
+        if self._corrections:
+            document["corrections"] = dict(self._corrections)
         return document
 
     def _composition_of(self, key: str) -> dict:

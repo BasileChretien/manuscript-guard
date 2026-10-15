@@ -25,6 +25,9 @@ em.value("cohort.n_exposed", n, display=f"{n:,}")      # when the journal wants 
 em.value("case.pct_serious", pct, digits=1)            # a float needs digits or display
 em.value("model.p", p, display="<0.001")               # a comparator only has to hold
 em.interval("ror", point, low, high, digits=2)         # ror.point, ror.ci_low, ror.ci_high
+em.value("ror.p", p, digits=3, of="ror.point", family="secondary")  # a p value names its estimate
+em.value("female.pct", pct, digits=1, of="female.n", over="cohort.n")  # a share, its counts
+em.correction("secondary", "holm")                     # how the family is corrected; "none" + reason
 em.value("table2x2.a", a, quoted=False)                # published but not quoted in the text
 alpha = em.parameter("alpha", 0.05)                    # param.alpha: a choice, handed back to use
 em.software("statsmodels")                             # software.statsmodels, as imported
@@ -41,6 +44,8 @@ library(manuscriptguard)
 em <- mg_emitter("analysis/02_model.R", inputs = "data/cohort.csv")  # run from the project root
 em$value("model.n", 412L)
 em$interval("model.or", 2.5, 1.8, 3.4, digits = 2)
+em$value("model.p", 0.012, digits = 3, of = "model.or.point", family = "secondary")
+em$correction("secondary", "holm")
 alpha <- em$parameter("alpha", 0.05)
 em$software("survival")
 em$write()
@@ -205,6 +210,9 @@ checked like any other.
 | `declared-same-but-differs` | two keys declared one quantity with `same_as=` have drifted apart |
 | `interval-reversed` | the text quotes the upper bound first; swap the two bindings |
 | `estimate-outside-interval`, `interval-inverted` | fix the interval in the analysis, with `interval()` |
+| `quoted-alone` | a warning: a p value quoted in a sentence without its estimate, or a share without either of its counts. Quote them together: n/N (%) |
+| `interval-not-quoted-whole` | a warning: the estimate is quoted, and no sentence anywhere quotes both bounds of its interval |
+| `family-uncorrected` | a warning: a family of more than one p value, and no `correction()` declared for it. "none" with a reason is a declaration |
 
 ## If you are a model doing this
 

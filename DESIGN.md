@@ -1288,6 +1288,25 @@ The lock can also carry parameters that must appear in the prose — the signifi
 threshold, the software version. Presence, not correctness, but those are exactly what a
 reviewer queries and exactly what is left behind when an analysis is redone.
 
+## A statistic is reported with what it belongs to
+
+A p value means nothing without the estimate it tests, a percentage without the counts it
+is a share of, and an estimate without its interval. Bound one by one, each passed G2 alone:
+"P = 0.012" in a sentence of its own, "52.1% were women" with no n/N, an odds ratio quoted
+everywhere with its upper bound only.
+
+So a statistic says what it belongs to when it is emitted, in both emitters: `of` names a p
+value's estimate or a share's numerator, `over` a share's denominator, and `family` the tests
+a p value is one of. G2 reads which bindings sit together in a sentence, and nothing of what
+the sentence says: a p value quoted in a sentence that binds no estimate of it, or a share in
+one that binds neither of its counts, is `quoted-alone`; an estimate emitted with an
+interval and quoted in no sentence with both its bounds is `interval-not-quoted-whole`. Both
+are warnings: a paper may rightly give a p value again a line after its estimate.
+
+Multiple comparisons are declared, never guessed. `correction("secondary", "holm")` says how
+a family is corrected, and "none" is a declaration too, with its reason. G8 warns on a
+family of more than one p value with no correction declared (`family-uncorrected`).
+
 ## A choice the code makes is declared, bound and read
 
 The ledger records that someone looked. Some of what they look for needs no reading: the
@@ -4216,19 +4235,20 @@ the campaigns are in the suite, on Hypothesis:
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
   them, the settings typed into a project, a co-author's sessions in Word, texts that
   quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds ten more, each
+  beside what an edit made of it. `tests/test_properties.py` holds eleven more, each
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
-  paper, rewordings, and ISBNs written in a field every way one holds them, and with one
-  digit changed.
+  paper, rewordings, ISBNs written in a field every way one holds them and with one digit
+  changed, and statistics quoted with and without what they belong to.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its
   sentence, the quotation check, `check --json` on a new project, and the round trip: a
   paper typed into a new project, built, edited in Word and imported. And three more: the
   order an interval's bounds are quoted in, what `reworded` makes of an edit, and the
-  sentences a co-author's items are cut into. Eighteen in all.
+  sentences a co-author's items are cut into, and the statistics a text quotes with and
+  without what they belong to. Nineteen in all.
 - `tests/test_properties.py` holds what a reading owes its input, and
   `tests/test_generated_sessions.py` what an import owes the source.
 - `tests/test_differential.py` puts each input through the base branch's source and
@@ -4278,13 +4298,13 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty-seven rules are broken in place, one at a time, and the property that is
+the generators. So fifty-nine rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10 and an ISBN's
-groups read as ISBNs;
+sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10, an ISBN's
+groups read as ISBNs, every stop read in one sentence and a share held to nothing;
 fourteen ways `reworded` can misread an edit, from
 a number's sign taken for no part of it, and a sign of comparison taken for none, read as
 it is typed, read only hard against its number, an arrow's head or an equals sign taken
@@ -7175,6 +7195,14 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A statistic is held to what it declares it belongs to, and only by sentence.** A p
+  value or a share emitted without `of` is held to nothing, and nothing guesses that a key
+  named `.p` is a p value. A sentence is read as the interval check reads one, so a binding
+  of the estimate in the same sentence passes whatever the sentence says of it, and a
+  sentence that ends at an abbreviation's stop parts a p value from its estimate. An
+  estimate quoted only in a table, or a percentage in a table cell, is not read. A family
+  is counted across the whole results, and a correction declared twice for one family in two
+  fragments keeps the last read.
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.
@@ -9033,7 +9061,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 60 broken rules, and the comparison on twelve
+  - The properties were seen to fail on 62 broken rules, and the comparison on twelve
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

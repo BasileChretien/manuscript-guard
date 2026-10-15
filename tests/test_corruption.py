@@ -1113,6 +1113,108 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
     assert "unemitted-table-number" in codes
 
 
+# ------------------------------------------------- a statistic reported whole
+
+
+#: A fragment declaring a p value of an estimate, a second p value of its family, a share
+#: of two counts, and the estimate's interval.
+_WHOLE = {
+    "or.point": {"value": 2.5, "display": "2.50"},
+    "or.ci_low": {"value": 1.4, "display": "1.40", "bounds": "or.point", "bound": "low"},
+    "or.ci_high": {"value": 3.8, "display": "3.80", "bounds": "or.point", "bound": "high"},
+    "or.p": {"value": 0.012, "display": "0.012", "of": "or.point", "family": "secondary"},
+    "hr.p": {"value": 0.043, "display": "0.043", "of": "or.point", "family": "secondary"},
+    "female.pct": {"value": 52.1, "display": "52.1", "of": "female.n", "over": "cohort.n"},
+    "female.n": {"value": 521, "display": "521"},
+    "cohort.n": {"value": 1000, "display": "1000"},
+}
+
+
+def _with_whole(root: Path, paragraph: str, corrections: dict | None = None) -> None:
+    document = {
+        "schema": "manuscript-guard/results/1",
+        "provenance": {
+            "generated_by": "analysis/01_disproportionality.py",
+            "generated_at": "2026-10-15T00:00:00+00:00",
+        },
+        "values": {f"whole.{key}": dict(spec) for key, spec in _WHOLE.items()},
+    }
+    for spec in document["values"].values():
+        for field in ("bounds", "of", "over"):
+            if field in spec:
+                spec[field] = f"whole.{spec[field]}"
+    if corrections is not None:
+        document["corrections"] = corrections
+    fragment = root / "results" / "02_whole.json"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    path = main_md(root)
+    path.write_text(path.read_text(encoding="utf-8") + f"\n\n{paragraph}\n", encoding="utf-8")
+
+
+def _whole_said(root: Path) -> list[tuple[str, str]]:
+    codes_ = ("quoted-alone", "interval-not-quoted-whole", "family-uncorrected")
+    return [(f.code, f.severity) for f in gate_report(root).findings if f.code in codes_]
+
+
+_ESTIMATE = "{{results.whole.or.point}} (95% CI {{results.whole.or.ci_low}} to " \
+    "{{results.whole.or.ci_high}})"
+
+
+@pytest.mark.parametrize(
+    ("paragraph", "said"),
+    [
+        # A p value in the sentence after its estimate.
+        (f"The ratio was {_ESTIMATE}. P was {{{{results.whole.or.p}}}}.", ["quoted-alone"]),
+        # A share with neither count.
+        (f"The ratio was {_ESTIMATE}. Women were {{{{results.whole.female.pct}}}}%.",
+         ["quoted-alone"]),
+        # An estimate quoted, and its interval never whole.
+        ("The ratio was {{results.whole.or.point}}, below {{results.whole.or.ci_high}}.",
+         ["interval-not-quoted-whole"]),
+    ],
+)  # fmt: skip
+def test_a_statistic_quoted_without_what_it_belongs_to_is_a_warning(
+    project: Path, paragraph: str, said: list[str]
+) -> None:
+    """Item 13: nothing tied a p value to its estimate, a share to its counts, or asked that
+    an interval's two bounds be quoted together anywhere."""
+    _with_whole(project, paragraph, {"secondary": {"method": "holm"}})
+    assert _whole_said(project) == [(code, "warn") for code in said]
+
+
+@pytest.mark.parametrize(
+    "paragraph",
+    [
+        f"The ratio was {_ESTIMATE} (P = {{{{results.whole.or.p}}}}).",
+        f"The ratio was {_ESTIMATE}. Of {{{{results.whole.cohort.n}}}} patients, "
+        "{{results.whole.female.n}} ({{results.whole.female.pct}}%) were women.",
+        f"The ratio was {_ESTIMATE}. It was {{{{results.whole.or.point}}}} again.",
+    ],
+)
+def test_a_statistic_quoted_with_what_it_belongs_to_passes(project: Path, paragraph: str) -> None:
+    _with_whole(project, paragraph, {"secondary": {"method": "holm"}})
+    assert _whole_said(project) == []
+
+
+def test_a_family_of_p_values_with_no_correction_is_a_warning(project: Path) -> None:
+    _with_whole(project, f"The ratio was {_ESTIMATE}.")
+    assert _whole_said(project) == [("family-uncorrected", "warn")]
+
+
+def test_none_is_a_correction_with_its_reason(project: Path) -> None:
+    from manuscript_guard.contracts import load_namespace
+
+    _with_whole(project, f"The ratio was {_ESTIMATE}.", {"secondary": {"method": "none"}})
+    projekt, _ = load_project(project)
+    _namespace, _results, _literature, report = load_namespace(projekt)
+    assert any(f.path and f.path.name == "02_whole.json" for f in report.failures)
+    _with_whole(
+        project, "", {"secondary": {"method": "none", "reason": "exploratory, as stated"}}
+    )
+    assert _whole_said(project) == []
+
+
 # ------------------------------------------------- an interval is a declared thing
 
 

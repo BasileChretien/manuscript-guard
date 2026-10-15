@@ -577,6 +577,15 @@ SPELT = (
 )  # fmt: skip
 
 
+#: The bindings of statistics that say what they belong to, as `whole_namespace` in
+#: tests/readings.py declares them: what the reading of a statistic quoted whole sorts.
+WHOLE = (
+    "{{results.or.point}}", "{{results.or.ci_low}}", "{{results.or.ci_high}}",
+    "{{results.or.p}}", "{{results.hr.p}}", "{{results.female.pct}}",
+    "{{results.female.n}}", "{{results.cohort.n}}",
+)  # fmt: skip
+
+
 #: A statistic in each of the ways one is written, typed and bound, and a number with
 #: its unit: what the notation reading must count apart.
 NOTATED = (
@@ -710,6 +719,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "interval order": intervals(),
+    "quoted whole": texts(WHOLE),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
     "spelling": st.fixed_dictionaries(
         {

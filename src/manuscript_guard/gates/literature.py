@@ -31,6 +31,7 @@ from manuscript_guard.literature.sources import (
     read_source,
     states_value,
 )
+from manuscript_guard.stats.reported import described, judge, reported_tests
 
 GATE = "G7"
 
@@ -132,6 +133,7 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
             continue
 
         verified += 1
+        report = report.merge(_tests_in_quote(key, value, quote))
         if detail.get("depth") == ABSTRACT_ONLY:
             report = report.with_findings(
                 Finding(
@@ -150,6 +152,29 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
         literature_unverifiable=unverifiable,
         literature_failed=failed,
     )
+
+
+def _tests_in_quote(key: str, value, quote: str) -> Report:
+    """A quote whose statistic and P disagree: the source's own numbers do not agree with
+    each other, and the value taken from them may be the wrong one of the two."""
+    findings = []
+    for test in reported_tests(quote):
+        verdict = judge(test)
+        if verdict is None or not verdict.inconsistent:
+            continue
+        findings.append(
+            Finding(
+                gate=GATE,
+                code="quote-p-inconsistent",
+                severity=WARN,
+                message=f"{key}: in the source, {described(test, verdict)}",
+                path=value.source,
+                context=quote[:140],
+                hint="the source may carry a misprint; read its tables before citing a value "
+                "this sentence supports",
+            )
+        )
+    return Report(tuple(findings))
 
 
 def _check_attestation(key: str, value, detail: dict) -> Report:

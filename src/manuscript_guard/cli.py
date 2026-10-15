@@ -53,6 +53,7 @@ from manuscript_guard.gates import (
     check_methods,
     check_models,
     check_numbers,
+    check_recomputed,
     check_reporting,
     check_review,
     check_revision,
@@ -136,6 +137,7 @@ def _run_gates(
         ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project)),
         ("G8", lambda: check_consistency(results)),
+        ("G8", lambda: check_recomputed(project, namespace, results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
         ("G14", lambda: check_language(project)),
         ("G15", lambda: check_models(project, results)),
@@ -143,7 +145,8 @@ def _run_gates(
     ):
         report = _guarded(name, gate, unreadable)
         if report is None:
-            stopped.append(name)
+            if name not in stopped:
+                stopped.append(name)
         else:
             gate_reports.append(report)
 

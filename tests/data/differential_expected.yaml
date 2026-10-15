@@ -37,5 +37,5 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G7 reads every entry of the committed references.bib for its identifiers and fields,
-      and counts them, `references_read`
+      G8 works out the P each t, F, chi-squared or z statistic in the manuscript gives, and
+      counts them, `p_values_recomputed`

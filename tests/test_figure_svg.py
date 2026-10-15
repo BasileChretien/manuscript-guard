@@ -145,3 +145,18 @@ def test_a_figure_that_is_not_xml_or_refers_to_itself_is_read_safely(tmp_path: P
     assert read_svg(broken) is None
     looped = _svg(tmp_path, '<g id="g"><text x="1" y="1">a</text><use href="#g"/></g>')
     assert 1 < len(looped.texts) <= 17
+
+
+def test_a_long_stylesheet_is_read_in_time_linear_in_it(tmp_path: Path) -> None:
+    """Round 2 of #302: the rule pattern was tried again at every character of a run with
+    no brace, and 20,000 characters took seconds. A font embedded in a stylesheet makes such
+    runs; the figure is read in one pass, and an at-rule's own rules are read."""
+    import time
+
+    run = "QUJD" * 50_000
+    started = time.perf_counter()
+    svg = _svg(tmp_path, f"<style>{run} @media print {{ .s {{ font-size: 3px }} }} "
+                         f"@font-face {{ src: url(data:font/woff2,{run}) }}</style>"
+                         '<text class="s">a</text>')  # fmt: skip
+    assert time.perf_counter() - started < 2.0
+    assert [(mark.text, mark.units) for mark in svg.texts] == [("a", 3.0)]

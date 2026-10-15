@@ -505,7 +505,10 @@ def _git(root: Path, *args: str) -> str | None:
         done = subprocess.run(
             ["git", "-c", "core.fsmonitor=false", "-C", str(root), *args],
             capture_output=True,
-            text=True,
+            # git writes UTF-8 whatever the locale: a path in a message, read as cp932 or
+            # cp1252, would otherwise raise.
+            encoding="utf-8",
+            errors="replace",
             timeout=GIT_SECONDS,
             check=False,
         )

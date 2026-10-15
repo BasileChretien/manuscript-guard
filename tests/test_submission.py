@@ -207,6 +207,43 @@ def test_the_manifest_names_who_left_a_finding_as_it_was(project: Path) -> None:
     assert overrides["r2-de-01"]["decided_by"] == "Anne Fictional"
 
 
+def test_a_record_that_cannot_be_read_is_listed_and_the_pack_is_assembled(
+    project: Path,
+) -> None:
+    """G11 reports the record; a pack assembled with --skip-checks despite it is assembled,
+    as it was before the manifest listed the overrides (round 1 of #250)."""
+    record = project / "review" / "round-1" / "biostatistician.yaml"
+    record.write_text(
+        record.read_text(encoding="utf-8") + "resolution: Fixed: it now says reporting\n",
+        encoding="utf-8",
+    )
+    projekt, _ = load_project(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+    pack = assemble_pack(projekt, document, checked=False)
+    manifest = yaml.safe_load(pack.manifest.read_text(encoding="utf-8"))
+    assert {"round": 1, "reviewer": "biostatistician", "unreadable": "a record"} in (
+        manifest["overrides"]
+    )
+
+
+def test_git_s_output_is_read_as_utf_8_whatever_the_locale(monkeypatch) -> None:
+    import subprocess
+
+    from manuscript_guard.build import submission
+
+    asked = {}
+
+    def run(*args, **kwargs):
+        asked.update(kwargs)
+        return subprocess.CompletedProcess(args, 0, stdout="0" * 40 + "\n", stderr="")
+
+    monkeypatch.setattr(submission.subprocess, "run", run)
+    assert submission._git(Path("."), "rev-parse", "HEAD") == "0" * 40 + "\n"
+    assert (asked["encoding"], asked["errors"]) == ("utf-8", "replace")
+
+
 def test_a_pack_outside_git_says_so(project: Path) -> None:
     manifest = _pack_manifest(project)
     if manifest["commit"].startswith("none"):

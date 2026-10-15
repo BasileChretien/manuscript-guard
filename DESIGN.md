@@ -894,6 +894,36 @@ and its finding was put on the blank line above the paragraph.
 reported only when no citation sits within 240 characters, because in a manuscript the fix
 is a reference rather than a rewrite.
 
+**A placeholder is a kind of slot, looked for wherever the document's text comes from.** The
+rules name kinds, not spellings:
+- an instruction to the writer in brackets, "[describe the cohort]";
+- a thing to be supplied, "[Repository]", "[DOI/accession]", "[citation needed]";
+- words in capitals in brackets, "[TO BE COMPLETED]";
+- filler, and instructions left for the writer: "lorem ipsum", "fill in later.", "this
+  section is a template";
+- the words that mark a gap: TODO, TBD, FIXME, a doubled TKTK, a run of three X or more, a
+  date of Xs and a name such as INSERT_SOURCE_URL.
+
+"XXX" was matched only whole, so "n = XXXX patients" passed, and G2 does not see it, since
+it holds no digit. What is no slot: a link's text, a bracketed span, a title translated into
+English in brackets as PubMed gives it ("[Add-on therapy in epilepsy]"), a karyotype
+("47,XXX"), "XXX syndrome", and a single "TK", which in medicine is a kinase. The same rules
+read the text of each figure G3 reads, the caption of each table in the results, and the
+printed fields of each cited entry of `references.bib`: a "TBD" drawn in a figure, or a
+"TODO" in a reference's note, reaches the document as surely as one in the prose. There the
+words count in capitals only, since "Todo" opens many a Spanish title; in the manuscript
+they count in any case, as they always did. Each is a failure from drafting, as the other
+artefacts are.
+
+The phrasing rules gained what the essay, read again on 2026-10-15, lists as communication
+with the user of a chat ("I hope this helps", "let me know if"), disclaimers about the
+sources a model was given ("while specific details are limited", "in the provided search
+results"), a hedge on a hedge ("could potentially"), the upbeat close about the future ("the
+future of ... lies in"), text about the text ("In this section, we will discuss") and an
+instruction to whoever fills the text in ("the user should add"). Each is a warning. Not
+"not widely available" or "not widely reported", which a paper says of a drug or an adverse
+event.
+
 ## Abbreviations are checked against the manuscript, not against a style guide
 
 G14 is the first check on the language itself, and it is built on one distinction. Whether
@@ -4202,19 +4232,20 @@ the campaigns are in the suite, on Hypothesis:
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
   them, the settings typed into a project, a co-author's sessions in Word, texts that
   quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds ten more, each
+  beside what an edit made of it. `tests/test_properties.py` holds eleven more, each
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
-  paper, rewordings, and ISBNs written in a field every way one holds them, and with one
-  digit changed.
+  paper, rewordings, ISBNs written in a field every way one holds them and with one digit
+  changed, and placeholders of every kind among what only looks like one.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its
   sentence, the quotation check, `check --json` on a new project, and the round trip: a
   paper typed into a new project, built, edited in Word and imported. And three more: the
   order an interval's bounds are quoted in, what `reworded` makes of an edit, and the
-  sentences a co-author's items are cut into. Eighteen in all.
+  sentences a co-author's items are cut into, and what G6's artefact rules find in a text
+  read as the manuscript and as a figure's text. Nineteen in all.
 - `tests/test_properties.py` holds what a reading owes its input, and
   `tests/test_generated_sessions.py` what an import owes the source.
 - `tests/test_differential.py` puts each input through the base branch's source and
@@ -4264,13 +4295,14 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty-seven rules are broken in place, one at a time, and the property that is
+the generators. So sixty rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10 and an ISBN's
-groups read as ISBNs;
+sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10, an ISBN's
+groups read as ISBNs, a karyotype read as a placeholder, a word in lower case read as one
+outside the manuscript and a link's text read as a slot;
 fourteen ways `reworded` can misread an edit, from
 a number's sign taken for no part of it, and a sign of comparison taken for none, read as
 it is typed, read only hard against its number, an arrow's head or an equals sign taken
@@ -7161,6 +7193,16 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A placeholder is found by its kind, and only in the text the gate reads.** In the
+  manuscript TODO and TBD count in any case, as they always did, so a Spanish "todo" quoted
+  in the prose is one. A slot in brackets in a form the rules do not name, "[Name of the
+  hospital]", is not found, nor a lone "XX" or a single "TK". Outside the manuscript the
+  gate reads the text of an SVG or a PDF figure (not a raster one, which G3 reports), a
+  table's caption and not its cells, and the fields of a cited entry that a reference list
+  can print; an abstract, a file or keywords are not read, nor an entry nothing cites. The
+  essay as read on 2026-10-15 gives none of "holds great promise", "the future looks
+  bright" or "may possibly"; the hedge rule takes "may possibly" as a form of the essay's
+  "could potentially", and the other two are not read.
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.
@@ -9019,7 +9061,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 60 broken rules, and the comparison on twelve
+  - The properties were seen to fail on 63 broken rules, and the comparison on twelve
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

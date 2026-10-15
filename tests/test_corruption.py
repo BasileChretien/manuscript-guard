@@ -1113,6 +1113,161 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
     assert "unemitted-table-number" in codes
 
 
+# ------------------------------------------------- a placeholder, wherever it is written
+
+
+def _g6(root: Path, results=None):
+    from manuscript_guard.gates import check_writing
+
+    project, _ = load_project(root)
+    if results is None:
+        _namespace, results, _literature, _report = load_namespace(project)
+    return check_writing(project, results)
+
+
+def _placeholders(report) -> list[tuple[str, str]]:
+    return [(f.severity, f.message) for f in report.findings if f.code == "model-artefact"]
+
+
+def _with_paragraph(root: Path, paragraph: str) -> None:
+    path = main_md(root)
+    path.write_text(path.read_text(encoding="utf-8") + f"\n\n{paragraph}\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "slot",
+    [
+        "n = XXXX patients",
+        "[TO BE COMPLETED]",
+        "[CLAIM NEEDS EVIDENCE]",
+        "[PLACEHOLDER - VERIFY]",
+        "[Repository]",
+        "[DOI/accession]",
+        "[citation needed]",
+        "[describe the cohort]",
+        "Lorem ipsum dolor sit amet",
+        "FIXME",
+        "TKTK",
+        "fill in later.",
+        "This section is a template.",
+        "Discussion prompt: what else?",
+        "dated 2025-XX-XX",
+        "INSERT_SOURCE_URL_30",
+    ],
+)
+def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None:
+    """Item 10.6: `XXX` was read only whole, so `XXXX` passed, and a slot in capitals, a
+    thing to supply in brackets, filler text and an instruction to the writer passed too."""
+    _with_paragraph(project, f"The cohort was {slot} as planned.")
+    said = _placeholders(_g6(project))
+    assert [severity for severity, _ in said] == ["fail"], said
+
+
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "The karyotype was 47,XXX in one patient.",
+        "Women with XXX syndrome were not excluded.",
+        "The code is in a [repository](https://example.org/code).",
+        "As the review put it [Add-on therapy in epilepsy] (in Spanish).",
+        "Drugs that replace later lines of therapy were counted.",
+        "TK inhibitors were the reference group.",
+    ],
+)
+def test_what_looks_like_a_placeholder_and_is_prose_passes(project: Path, prose: str) -> None:
+    _with_paragraph(project, prose)
+    assert _placeholders(_g6(project)) == []
+
+
+def test_a_placeholder_drawn_in_a_figure_fails(project: Path) -> None:
+    """A "TBD" in a figure reached the document: G6 read only the manuscript."""
+    figure = project / "figures" / "forest.svg"
+    text = figure.read_text(encoding="utf-8")
+    figure.write_text(text.replace("</svg>", "<text>Panel TBD</text></svg>", 1), encoding="utf-8")
+    report = _g6(project)
+    said = [f for f in report.findings if f.code == "model-artefact"]
+    assert [(f.severity, f.path.name) for f in said] == [("fail", "forest.svg")]
+    assert "the text of forest.svg" in said[0].message
+
+
+def test_a_placeholder_in_a_table_caption_fails(project: Path) -> None:
+    """The caption an analysis writes for its table was read by no gate for a placeholder."""
+    from dataclasses import replace
+
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(project_)
+    baseline = replace(results.tables["baseline"], caption="Reports by drug group. TODO units.")
+    results = replace(results, tables={**results.tables, "baseline": baseline})
+    said = _placeholders(_g6(project, results))
+    assert len(said) == 1 and "the caption of table 'baseline'" in said[0][1], said
+
+
+def _cited_entry_has(root: Path, field: str) -> None:
+    bib = root / "literature" / "references.bib"
+    opening = "@article{fictionalHepaticCohort2021,\n"
+    text = bib.read_text(encoding="utf-8")
+    bib.write_text(text.replace(opening, opening + f"  {field},\n", 1), encoding="utf-8")
+
+
+def test_a_placeholder_in_a_cited_reference_fails_on_its_line(project: Path) -> None:
+    """A "TBD" in a field of a cited entry is printed in the reference list."""
+    _cited_entry_has(project, "number = {TBD}")
+    report = _g6(project)
+    said = [f for f in report.findings if f.code == "model-artefact"]
+    assert [(f.severity, f.path.name) for f in said] == [("fail", "references.bib")]
+    assert "the number of @fictionalHepaticCohort2021" in said[0].message
+    lines = (project / "literature" / "references.bib").read_text(encoding="utf-8").splitlines()
+    assert "TBD" in lines[said[0].line - 1]
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        # Capitals only outside the manuscript: "Todo" opens many a Spanish title.
+        "title = {Todo sobre la farmacovigilancia}",
+        "title = {Drug response in women with a 47,XXX karyotype}",
+        # Fields no reference list prints.
+        "abstract = {TODO}",
+        "file = {TBD.pdf}",
+    ],
+)
+def test_what_a_cited_reference_holds_and_is_no_placeholder_passes(
+    project: Path, field: str
+) -> None:
+    _cited_entry_has(project, field)
+    assert _placeholders(_g6(project)) == []
+
+
+def test_a_placeholder_in_an_uncited_reference_says_nothing(project: Path) -> None:
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8") + "\n@article{uncitedDraft2024,\n  title = {TODO},\n}\n",
+        encoding="utf-8",
+    )
+    assert _placeholders(_g6(project)) == []
+
+
+@pytest.mark.parametrize(
+    ("rule", "prose"),
+    [
+        ("chat-closer", "I hope this helps the reader."),
+        ("source-disclaimer", "While specific details about the cohort are limited, it grew."),
+        ("stacked-hedge", "The signal could potentially reflect stimulated reporting."),
+        ("upbeat-close", "The future of pharmacovigilance lies in its ability to adapt."),
+        ("text-about-text", "In this section, we will discuss the background."),
+        ("user-should", "The user should add the dose here."),
+    ],
+)
+def test_the_phrasing_the_essay_lists_is_a_warning(project: Path, rule: str, prose: str) -> None:
+    """Item 10.6: phrasing the source essay lists and G6 did not read, each a warning and
+    never a failure."""
+    _with_paragraph(project, prose)
+    report = _g6(project)
+    said = [f for f in report.findings if f.message.startswith(f"{rule}:")]
+    assert [(f.code, f.severity) for f in said] == [("ai-phrasing", "warn")], said
+    assert _placeholders(report) == []
+
+
 # ------------------------------------------------- an interval is a declared thing
 
 

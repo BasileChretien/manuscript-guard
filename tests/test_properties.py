@@ -37,6 +37,9 @@ from generated import (
     FILLER,
     HELD,
     INPUTS,
+    LOOKALIKES,
+    LOWERED,
+    PLACEHOLDERS,
     SOURCE_GAPS,
     SOURCE_WORDS,
     TERMS,
@@ -1298,6 +1301,46 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
     assert report.counts["spelling_other"] == sum(len(places) for places in stands.values())
 
 
+# ------------------------------------------------------------------------- placeholders
+
+
+@st.composite
+def _planted_placeholders(draw: st.DrawFn) -> tuple[str, str]:
+    """A text, and the same with a placeholder of every kind G6 reads, the words that are
+    one only in the manuscript, and what looks like one and is prose, each put in at a
+    place drawn. Every kind in every example."""
+    text = draw(texts())
+    pieces = text.split(" ")
+    for planted in [written for written, _ in PLACEHOLDERS + LOWERED] + list(LOOKALIKES):
+        pieces.insert(draw(st.integers(0, len(pieces))), planted)
+    return text, " ".join(pieces)
+
+
+@holds(200, _planted_placeholders())
+def test_every_placeholder_is_found_and_nothing_that_looks_like_one(
+    drawn: tuple[str, str],
+) -> None:
+    """Whatever the text, each placeholder put into it is found once, a word in lower case
+    only in the manuscript, and nothing that only looks like one is."""
+    from collections import Counter
+
+    from manuscript_guard.gates.writing import artefacts_in, load_rules
+
+    text, planted = drawn
+    rules = load_rules()
+    for manuscript, expected in ((True, PLACEHOLDERS + LOWERED), (False, PLACEHOLDERS)):
+
+        def found(written: str, manuscript: bool = manuscript) -> Counter[str]:
+            return Counter(
+                match.group(0)
+                for rule, match in artefacts_in(rules, written, manuscript=manuscript)
+                if rule["id"].startswith("placeholder")
+            )
+
+        added = Counter(match for _typed, match in expected)
+        assert found(planted) == found(text) + added, (manuscript, planted)
+
+
 # ------------------------------------------------------------------------- a rewording
 
 #: A fact as a finding names it. A number by its figures and the mark after them: its
@@ -1955,6 +1998,31 @@ def _an_isbn_13_is_weighed_as_an_isbn_10(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(identifiers, "isbn_valid", valid)
 
 
+def _placeholder_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    artefacts = tuple(
+        {**rule, "pattern": change(rule["pattern"])} if rule["id"] == rule_id else rule
+        for rule in rules.artefacts
+    )
+    patch.setattr(writing, "load_rules", lambda: replace(rules, artefacts=artefacts))
+
+
+def _a_karyotype_is_a_placeholder(patch: pytest.MonkeyPatch) -> None:
+    _placeholder_rule(patch, "placeholder-word", lambda p: p.replace("(?<!\\d,)", ""))
+
+
+def _a_word_in_lower_case_is_a_placeholder_anywhere(patch: pytest.MonkeyPatch) -> None:
+    _placeholder_rule(patch, "placeholder-word", lambda p: "(?i)" + p)
+
+
+def _a_links_text_is_a_slot(patch: pytest.MonkeyPatch) -> None:
+    _placeholder_rule(patch, "placeholder-slot", lambda p: p.replace("(?![(\\[{:])", ""))
+
+
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
@@ -2304,6 +2372,18 @@ BROKEN = {
     "an ISBN's groups are read as ISBNs": (
         _an_isbn_s_groups_are_read_as_isbns,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "a karyotype is read as a placeholder": (
+        _a_karyotype_is_a_placeholder,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a word in lower case is a placeholder outside the manuscript": (
+        _a_word_in_lower_case_is_a_placeholder_anywhere,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a link's text is read as a slot": (
+        _a_links_text_is_a_slot,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
     ),
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,

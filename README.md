@@ -131,7 +131,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G3 | numbers in a figure's output *and in its source* trace back to results |
 | G4 | word counts, required sections and required statements match the target journal |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason |
-| G6 | model artefacts, AI phrasing, and unsupported appeals to authority |
+| G6 | model artefacts and unfilled placeholders, in the prose, the figures, the tables' captions and the cited references; AI phrasing; and unsupported appeals to authority |
 | G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote; each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there |
 | G8 | one quantity is not emitted twice under two names |
 | G9 | the analysis has not changed since the Methods were last read against it, and, step by step, neither a marked step nor the text pointing at it has |

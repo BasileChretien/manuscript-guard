@@ -37,5 +37,5 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G7 reads every entry of the committed references.bib for its identifiers and fields,
-      and counts them, `references_read`
+      G6 also reads the text of the figures, the tables' captions and the cited references
+      for a placeholder, and counts what it read, `writing_texts_elsewhere`

@@ -615,22 +615,38 @@ def _bib_entries(project) -> dict[str, dict[str, str]]:
 
 
 def _plain_title(text: str) -> str:
-    return " ".join(re.sub(r"[^0-9a-z]+", " ", text.replace("{", "").lower()).split())
+    """A title as compared: letters and digits of any script, case and the rest folded."""
+    return " ".join(re.sub(r"[\W_]+", " ", text.replace("{", "").replace("}", "")).lower().split())
+
+
+def _first_family(authors: str) -> str:
+    """The first author's family name in a `.bib` author field: before the comma, or the
+    last word."""
+    first = authors.replace("{", "").replace("}", "").split(" and ")[0].strip()
+    family = first.split(",")[0] if "," in first else (first.split() or [""])[-1]
+    return family.strip().lower()
+
+
+def _the_work(work, fields: dict[str, str]) -> bool:
+    """Whether a `.bib` entry is the work a citation field names: by its DOI, or by its
+    title, and then by its year and first author wherever both say them. A title alone
+    was too little: two works whose titles share only "COVID-19" in Latin letters were one."""
+    doi = work.doi.lower().removeprefix("https://doi.org/")
+    if doi:
+        return fields.get("doi", "").lower().removeprefix("https://doi.org/") == doi
+    title = _plain_title(work.title)
+    if not title or _plain_title(fields.get("title", "")) != title:
+        return False
+    year = fields.get("year", "").strip()
+    if work.year and year and work.year != year:
+        return False
+    family = _first_family(fields.get("author", ""))
+    return not (work.author and family and work.author.strip().lower() != family)
 
 
 def _said_inserted(work, entries: dict[str, dict[str, str]]) -> str:
     """What the import says of a work a co-author cited with their reference manager."""
-    doi = work.doi.lower().removeprefix("https://doi.org/")
-    title = _plain_title(work.title)
-    key = next(
-        (
-            key
-            for key, fields in entries.items()
-            if (doi and fields.get("doi", "").lower().removeprefix("https://doi.org/") == doi)
-            or (title and _plain_title(fields.get("title", "")) == title)
-        ),
-        None,
-    )
+    key = next((key for key, fields in entries.items() if _the_work(work, fields)), None)
     said = f"{work} was cited in Word with a reference manager, whose field the build does not read"
     if key is not None:
         return f"{said}: cite it in the .md as [@{key}]"
@@ -917,8 +933,18 @@ def cmd_import(args: argparse.Namespace) -> int:
         printed=printed,
     )
     if inserted:
+        # Only the paragraphs compared: one that is not is said to be so below, and named in
+        # a refusal it had no file to be named in.
+        compared_now = {now_named(name) for name in known}
         plan = _refused_inserted(
-            plan, {now_named(name): works for name, works in inserted.items()}, renamed, project
+            plan,
+            {
+                now_named(name): works
+                for name, works in inserted.items()
+                if now_named(name) in compared_now
+            },
+            renamed,
+            project,
         )
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table

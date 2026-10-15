@@ -601,6 +601,30 @@ def test_a_citation_a_co_author_inserted_is_named_not_merged_as_prose(
 
 
 @needs_pandoc
+def test_a_citation_inserted_in_a_paragraph_not_compared_stops_nothing(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    """Round 1 of #298: a paragraph changed in the source since the build is not compared,
+    and a citation inserted in it was refused under a name with no file, a traceback."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    capsys.readouterr()
+    main_md = project / "manuscript" / "main.md"
+    main_md.write_text(
+        main_md.read_text(encoding="utf-8").replace("drug class as a whole", "class as a whole"),
+        encoding="utf-8",
+    )
+    inserted = _field_runs(_csl_code(UNKNOWN_ITEM), " (Other 2020)")
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx",
+        _inserted_after_prose(inserted),
+    )  # fmt: skip
+    assert main(["import", str(returned), str(project), "--force"]) in (0, 1)
+    assert "Traceback" not in capsys.readouterr().err
+
+
+@needs_pandoc
 def test_a_new_citation_in_a_live_document_is_named_not_merged(
     project: Path, tmp_path: Path, monkeypatch, capsys
 ) -> None:

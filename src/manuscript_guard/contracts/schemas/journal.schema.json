@@ -16,6 +16,35 @@
     },
     "retrieved_on": { "type": "string", "format": "date" },
     "retrieved_by": { "type": "string" },
+    "page_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Where the instructions page is stored as text, from the project's root. Without it, profiles/journals/sources/<name>.txt."
+    },
+    "page_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The digest of the stored page's text, line endings as LF, as G4 prints it: the text the quotes were read from."
+    },
+    "quotes": {
+      "type": "object",
+      "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, reporting_guidelines. G4 holds each to the stored page, and a limit's number to its quote.",
+      "propertyNames": { "minLength": 1 },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "manual": {
+      "type": "array",
+      "description": "The rules of the page no gate checks (a running title, the cover letter's contents, the order of the title page), each with its quote, so that none is dropped without a trace.",
+      "items": {
+        "type": "object",
+        "required": ["rule", "quote"],
+        "additionalProperties": false,
+        "properties": {
+          "rule": { "type": "string", "minLength": 1 },
+          "quote": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "article_type": {
       "type": "string",
       "description": "Limits usually differ by type; one profile describes one type."

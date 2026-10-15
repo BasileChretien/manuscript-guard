@@ -334,6 +334,18 @@ def _units_after() -> Reading:
     return units
 
 
+@reading("limit stated")
+def _limit_stated() -> Reading:
+    """Whether the quote of a journal profile's limit states its number, which G4 fails
+    where it does not."""
+    from manuscript_guard.gates.journal_quotes import _states
+
+    def stated(given: dict[str, Any]) -> bool:
+        return _states(given["text"], given["value"])
+
+    return stated
+
+
 @reading("notation")
 def _notation() -> Reading:
     from manuscript_guard.gates.notation import judge_notation

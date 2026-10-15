@@ -1,0 +1,33 @@
+Journal of Demonstrative Pharmacoepidemiology: instructions for authors
+
+INVENTED FOR THE MANUSCRIPT-GUARD WORKED EXAMPLE. There is no such journal, and this is not
+any real journal's page. It stands where a real journal's page would be stored, as text,
+when its profile is filled.
+
+Original research
+
+Abstracts should not exceed 300 words.
+
+The main text, from the Introduction to the end of the Discussion, should not exceed 3500
+words.
+
+Cite no more than 50 references.
+
+Include no more than four figures and no more than four tables.
+
+Organise the article under the headings Introduction, Methods, Results and Discussion.
+
+Every research article must include a data availability statement.
+
+Declare all sources of funding, including where there was none.
+
+All authors must declare their competing interests.
+
+Cite in the Vancouver style, with references numbered in the order they are first cited.
+
+Write in British English throughout.
+
+Observational studies follow the DEMO-OBS checklist, completed and submitted with the
+manuscript.
+
+Send a cover letter of no more than one page with every submission.

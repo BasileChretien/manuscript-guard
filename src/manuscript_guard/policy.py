@@ -118,6 +118,9 @@ BINDS_AT = {
     # How many rows a model lost to missing values is for the finished draft to say.
     "model-rows-dropped": INTERNAL_REVIEW,
     "over-journal-limit": INTERNAL_REVIEW,
+    # A rule of the profile read wrong, or never on the journal's page.
+    "journal-quote-not-on-page": INTERNAL_REVIEW,
+    "journal-limit-not-in-quote": INTERNAL_REVIEW,
     "missing-required-section": INTERNAL_REVIEW,
     "missing-abstract": INTERNAL_REVIEW,
     "abstract-headings-missing": INTERNAL_REVIEW,

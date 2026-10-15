@@ -217,7 +217,13 @@ def test_exceeding_a_word_limit_is_caught(project: Path) -> None:
 def test_approaching_a_limit_warns(project: Path) -> None:
     text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
     actual = measure(text).main_text_words
-    edit_yaml(project / JOURNAL, lambda d: d["limits"].update(main_text_words=actual + 1))
+
+    def near(document: dict) -> None:
+        document["limits"].update(main_text_words=actual + 1)
+        # A limit the page does not state fails its quote; unquoted, it is a warning.
+        document["quotes"].pop("limits.main_text_words")
+
+    edit_yaml(project / JOURNAL, near)
     report = journal_report(project)
     assert report.ok
     assert any(f.code == "near-journal-limit" for f in report.warnings)
@@ -266,6 +272,108 @@ def test_an_old_profile_warns(project: Path) -> None:
     edit_yaml(project / JOURNAL, lambda d: d.update(retrieved_on="2020-01-01"))
     report = journal_report(project)
     assert any(f.code == "journal-profile-stale" for f in report.warnings)
+
+
+# ------------------------------------------------- the rules of a profile, on its page
+
+PAGE = Path("profiles") / "journals" / "sources" / "demo-journal.txt"
+QUOTED = {
+    "journal-quote-not-on-page",
+    "journal-limit-not-in-quote",
+    "journal-rule-unquoted",
+    "journal-quote-names-no-rule",
+    "journal-page-not-stored",
+    "journal-page-changed",
+}
+
+
+def _quoted(report) -> list[tuple[str, str]]:
+    return sorted((f.code, f.severity) for f in report.findings if f.code in QUOTED)
+
+
+def test_every_rule_of_the_example_s_profile_is_on_its_page(project: Path) -> None:
+    assert _quoted(journal_report(project)) == []
+
+
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        # A rule read wrong: the page says four.
+        (lambda d: d["limits"].update(figures=5), "journal-limit-not-in-quote"),
+        # A rule never on the page, quoted all the same.
+        (lambda d: d["quotes"].update({"limits.tables": "no more than six tables"}),
+         "journal-quote-not-on-page"),
+        (lambda d: d["manual"].append({"rule": "title page", "quote": "Order the title page."}),
+         "journal-quote-not-on-page"),
+    ],
+)  # fmt: skip
+def test_a_rule_not_on_the_page_fails(project: Path, change, said: str) -> None:
+    edit_yaml(project / JOURNAL, change)
+    report = journal_report(project)
+    assert said in codes(report)
+    assert all(f.path == project / JOURNAL for f in report.failures if f.code in QUOTED)
+
+
+def test_a_rule_without_a_quote_is_named_and_only_warned_of(project: Path) -> None:
+    def unquote(document: dict) -> None:
+        document["quotes"].pop("limits.references")
+        document["quotes"].pop("required_statements.funding")
+
+    edit_yaml(project / JOURNAL, unquote)
+    report = journal_report(project)
+    assert report.ok
+    said = [f for f in report.warnings if f.code == "journal-rule-unquoted"]
+    assert len(said) == 1
+    assert "limits.references, required_statements.funding" in said[0].message
+
+
+def test_a_quote_for_a_rule_the_profile_does_not_state_is_warned_of(project: Path) -> None:
+    edit_yaml(project / JOURNAL, lambda d: d["quotes"].update({"limits.keywords": "Cite"}))
+    assert _quoted(journal_report(project)) == [("journal-quote-names-no-rule", "warn")]
+
+
+def test_a_page_not_stored_or_changed_since_is_warned_of(project: Path) -> None:
+    from manuscript_guard.gates.journal_quotes import page_digest
+
+    page = project / PAGE
+    text = page.read_text(encoding="utf-8")
+    page.write_text(text.replace("Cite no more than 50", "Cite no more than 60"), encoding="utf-8")
+    report = journal_report(project)
+    said = [("journal-page-changed", "warn"), ("journal-quote-not-on-page", "fail")]
+    assert _quoted(report) == said
+    changed = next(f for f in report.findings if f.code == "journal-page-changed")
+    assert page_digest(page.read_text(encoding="utf-8")) in changed.hint
+    page.unlink()
+    assert _quoted(journal_report(project)) == [("journal-page-not-stored", "warn")]
+
+
+def test_the_page_may_be_stored_where_the_profile_says(project: Path) -> None:
+    moved = project / "guidelines" / "demo.txt"
+    moved.parent.mkdir()
+    (project / PAGE).replace(moved)
+    edit_yaml(project / JOURNAL, lambda d: d.update(page_file="guidelines/demo.txt"))
+    assert _quoted(journal_report(project)) == []
+
+
+@pytest.mark.parametrize(
+    ("quote", "value", "states"),
+    [
+        ("should not exceed 3500 words", 3500, True),
+        ("should not exceed 3,500 words", 3500, True),
+        ("a 3500-word limit", 3500, True),
+        ("no more than four figures", 4, True),
+        ("no more than fourteen figures", 4, False),
+        ("should not exceed 13500 words", 3500, False),
+        ("should not exceed 3500.5 words", 3500, False),
+        ("three hundred words", 300, False),
+    ],
+)
+def test_a_limit_is_stated_as_digits_or_a_small_number_word(
+    quote: str, value: int, states: bool
+) -> None:
+    from manuscript_guard.gates.journal_quotes import _states
+
+    assert _states(quote, value) is states
 
 
 # ---------------------------------------------------------------- the reporting gate

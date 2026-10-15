@@ -24,6 +24,10 @@
       "enum": ["en-GB", "en-US", "either"],
       "description": "Overrides the project's choice when the journal insists."
     },
+    "blinding": {
+      "enum": ["single", "double", "triple", "open"],
+      "description": "How the journal's peer review is blinded, as its own page says. Double or triple: the reviewers are not to know the authors, and the build fails a document that names one of them, an institution of theirs, or their ORCID iD or e-mail address."
+    },
     "limits": {
       "type": "object",
       "additionalProperties": false,

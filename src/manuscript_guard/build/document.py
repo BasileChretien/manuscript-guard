@@ -76,6 +76,9 @@ PLAIN = "plain"
 # field and document preferences Word's Zotero plugin needs, which zotero.lua writes for
 # LibreOffice only. See the file's header.
 ZOTERO_WORD_LUA = Path(__file__).with_name("zotero_word.lua")
+# Ours, run on the build `import` compares a live document with: the author's name before a
+# narrative citation, as the live build printed it (`roundtrip.narrative_names`).
+NARRATIVE_LUA = Path(__file__).with_name("narrative.lua")
 
 # Also ours, run on every docx build: the paragraph after a figure is styled as its caption,
 # so a reader can see where the caption ends. See the file's header and `build/styles.py`.
@@ -523,6 +526,7 @@ def build_document(
     supplementary: bool = False,
     verify_reading: bool = True,
     sent: bool = False,
+    narrative: dict[str, str] | None = None,
 ) -> BuildResult:
     """Make the document.
 
@@ -615,7 +619,15 @@ def build_document(
             if cites:
                 command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
         elif mode == PLAIN:
-            # No citeproc and no Zotero: a citation prints as the source writes it.
+            # No citeproc and no Zotero: a citation prints as the source writes it, a
+            # narrative one after the author's name the live build printed (`narrative`).
+            if narrative:
+                names = output.with_name(f"{output.stem}.narrative.json")
+                names.write_text(json.dumps(narrative, ensure_ascii=False), encoding="utf-8")
+                command += [
+                    f"--lua-filter={NARRATIVE_LUA.resolve()}",
+                    f"--metadata=mg-narrative:{names.resolve().as_posix()}",
+                ]
             if cites:
                 command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
         else:

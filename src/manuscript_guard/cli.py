@@ -700,12 +700,13 @@ def cmd_import(args: argparse.Namespace) -> int:
 
     # The comparison is built as the document was: see `roundtrip.CITED_PROPERTY`.
     citations = read_citations(project.path("build"), edited, supplementary=supplementary)
-    mode, style = OFFLINE, None
+    mode, style, narrative = OFFLINE, None, None
     if cited == LIVE_CITATIONS:
         # Each citation as the source writes it, on both sides: in the build compared with,
         # and in the returned document, each field read by what it cites.
         mode = PLAIN
         fields = citations.get("fields")
+        narrative = citations.get("names")
         if fields is None:
             print(
                 f"{edited.name} was built with live Zotero citations, and the record of what "
@@ -750,6 +751,7 @@ def cmd_import(args: argparse.Namespace) -> int:
                     assembly,
                     mode=mode,
                     csl=style,
+                    narrative=narrative,
                     output=output,
                     supplementary=supplementary,
                     verify_reading=False,

@@ -333,7 +333,8 @@ def test_a_style_moved_since_the_build_is_asked_for(
 
 #: Better BibTeX's zotero.lua as far as `import` reads what it writes: each citation a
 #: Zotero field whose code names each work by a URI and holds the citation as the source
-#: writes it, and shows "<Do Zotero Refresh: ...>" until Zotero formats it.
+#: writes it, and shows "<Do Zotero Refresh: ...>" until Zotero formats it. A narrative
+#: citation is the author's name in a run of its own, then a field that leaves it out.
 FAKE_ZOTERO_LUA = """
 local function xml(text)
   return (text:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'):gsub('"', '&quot;'))
@@ -342,15 +343,21 @@ end
 function Cite(cite)
   local content = pandoc.utils.stringify(cite.content)
   local items = {}
+  local lead = ''
   for _, citation in ipairs(cite.citations) do
     local key = (citation.id:gsub('[^%w]', '')):upper():sub(-8)
-    table.insert(items, {id = 1, uris = {'http://zotero.org/users/1/items/' .. key}})
+    local item = {id = 1, uris = {'http://zotero.org/users/1/items/' .. key}}
+    if citation.mode == 'AuthorInText' then
+      item['suppress-author'] = true
+      lead = '<w:r><w:t xml:space="preserve">Fictional and Fictional </w:t></w:r>'
+    end
+    table.insert(items, item)
   end
   local code = {
     citationID = 'x', properties = {formattedCitation = content, noteIndex = 0},
     citationItems = items,
   }
-  return pandoc.RawInline('openxml', table.concat({
+  return pandoc.RawInline('openxml', lead .. table.concat({
     '<w:r><w:fldChar w:fldCharType="begin"/></w:r>',
     '<w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION ',
     xml(pandoc.json.encode(code)), ' </w:instrText></w:r>',
@@ -414,6 +421,44 @@ def test_a_live_document_refreshed_by_zotero_comes_back_as_it_was_sent(
     text = " ".join((project / "manuscript" / "main.md").read_text(encoding="utf-8").split())
     merged = "the whole drug class (ROR {{lit.background.class_ror}}) [@fictionalClassSignal2019]"
     assert merged in text, text
+
+
+#: A narrative citation of the example's, and its field's words once Zotero formats it.
+NARRATIVE = "reported previously by @fictionalClassSignal2019"
+NARRATIVE_SHOWN = "&lt;Do Zotero Refresh: @fictionalClassSignal2019&gt;"
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("edited", "merged"),
+    [({}, True), ({"Fictional and Fictional </w:t>": "Fictional et al. </w:t>"}, False)],
+    ids=["refreshed only", "the printed name edited"],
+)
+def test_a_live_narrative_citation_is_read_with_the_name_before_it(
+    project: Path, tmp_path: Path, monkeypatch, capsys, edited: dict, merged: bool
+) -> None:
+    """Round 1 of #296: Better BibTeX prints a narrative citation's author as text before its
+    field, and the comparison, printing `@key`, had no name there. A document sent back
+    refreshed and nothing else read as reworded by "Fictional and Fictional ", and the name
+    was the import's to write into the source. The name is read as part of the citation on
+    both sides, and one edited in Word is a citation changed."""
+    from manuscript_guard.cli import main
+
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    main_md.write_text(
+        text.replace("reported previously [@fictionalClassSignal2019]", NARRATIVE, 1),
+        encoding="utf-8",
+    )
+    built = _built_live(project, tmp_path, monkeypatch, capsys)
+    before = main_md.read_text(encoding="utf-8")
+    replacements = {NARRATIVE_SHOWN: "(2019)", **edited}
+    returned = edit_docx(built, tmp_path / "back.docx", replacements)
+    assert main(["import", str(returned), str(project), "--apply"]) == (0 if merged else 1)
+    out = capsys.readouterr().out
+    assert ("NOT merged" in out) is not merged, out
+    assert "Fictional and Fictional @" not in main_md.read_text(encoding="utf-8")
+    assert main_md.read_text(encoding="utf-8") == before
 
 
 @needs_pandoc

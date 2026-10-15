@@ -46,7 +46,7 @@ from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.docxtext import TOKEN, spaced
-from manuscript_guard.safexml import UnsafeDocument, read_member
+from manuscript_guard.safexml import UnsafeDocument, parse_xml, read_member
 from manuscript_guard.text.fences import fenced_spans
 from manuscript_guard.text.placeholders import PLACEHOLDER, VALUE_NAMESPACES, parse
 
@@ -534,7 +534,8 @@ def write_printed(
         # One identity written two ways in the source, `[@a]` and `[@a ]`, cannot say which
         # its field was: left out, the field is read as its words.
         record["citations"] = {
-            "fields": {key: next(iter(texts)) for key, texts in cites.items() if len(texts) == 1}
+            "fields": {key: next(iter(texts)) for key, texts in cites.items() if len(texts) == 1},
+            "names": narrative_names(document),
         }
     elif style is not None:
         record["citations"] = {"style": style}
@@ -631,16 +632,53 @@ def _blocks_of(record: object, stamp: str | None, supplementary: bool) -> list |
 def _citations_of(record: dict) -> dict | None:
     """The `citations` of a record in the shape `write_printed` gives it, or None."""
     found = record.get("citations")
-    if not isinstance(found, dict) or len(found) != 1:
+    if not isinstance(found, dict):
         return None
-    if "style" in found:
+    if set(found) == {"style"}:
         return found if _writable(found["style"]) and found["style"] else None
-    fields = found.get("fields")
-    if not isinstance(fields, dict):
+    if set(found) != {"fields", "names"}:
         return None
-    if not all(_writable(key) and _writable(text) for key, text in fields.items()):
-        return None
+    for part in (found["fields"], found["names"]):
+        if not isinstance(part, dict):
+            return None
+        if not all(_writable(key) and _writable(text) for key, text in part.items()):
+            return None
     return found
+
+
+def narrative_names(document: Path) -> dict[str, str]:
+    """The author's name a live build printed before each narrative citation, by the
+    citation as the source writes it (`@key`): Better BibTeX's zotero.lua writes it as a run
+    of plain text before a field that leaves the author out. The build `import` compares
+    with puts it before the citation as the live build did (`build/narrative.lua`); a
+    citation printed with two names is left out."""
+    from manuscript_guard.citationfields import citation_of
+
+    try:
+        with zipfile.ZipFile(document) as archive:
+            root = parse_xml(read_member(archive, "word/document.xml"), what=document.name)
+    except (OSError, zipfile.BadZipFile, KeyError, UnsafeDocument):
+        return {}
+    w = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    found: dict[str, set[str]] = {}
+    for paragraph in root.iter(w + "p"):
+        before: str | None = None
+        code: list[str] | None = None
+        lead: str | None = None
+        for run in paragraph.iter(w + "r"):
+            marks = [m.get(w + "fldCharType") for m in run.iter(w + "fldChar")]
+            if "begin" in marks:
+                code, lead = [], before
+            elif "separate" in marks and code is not None:
+                cited = citation_of("".join(code))
+                if cited is not None and lead and cited.formatted.startswith("@"):
+                    found.setdefault(cited.formatted, set()).add(lead)
+                code = None
+            elif code is not None:
+                code += [node.text or "" for node in run.iter(w + "instrText")]
+            texts = [node.text or "" for node in run.iter(w + "t")]
+            before = "".join(texts) if texts and not marks else None
+    return {said: next(iter(names)) for said, names in found.items() if len(names) == 1}
 
 
 def read_citations(build_dir: Path, document: Path, *, supplementary: bool = False) -> dict:

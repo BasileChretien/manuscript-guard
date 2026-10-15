@@ -222,7 +222,9 @@ def test_a_paper_with_no_abstract_section_gets_no_abstract_file(project: Path) -
     ["as reported [@fictionalHepaticCohort2021].", "as @fictionalHepaticCohort2021 found.",
      "as noted.[^a]\n\n[^a]: A note.", "as {{table.baseline}} shows.",
      # round 2 of #259: a braced key, an inline note, an image
-     "as reported [@{10.1000/xyz}].", "as noted.^[A note.]", "\n\n![Flow](figures/flow.png)"],
+     "as reported [@{10.1000/xyz}].", "as noted.^[A note.]", "\n\n![Flow](figures/flow.png)",
+     # round 3: a link with words of its own, a block that is no paragraph
+     "as [the trial](https://example.org) says.", "\n\n::: {.keywords}\nKeywords: x\n:::"],
 )  # fmt: skip
 def test_an_abstract_the_build_formats_and_plain_text_cannot_is_left_out(
     project: Path, added: str
@@ -243,10 +245,42 @@ def test_an_abstract_the_build_formats_and_plain_text_cannot_is_left_out(
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_footnote_defined_at_the_end_of_the_text_is_still_a_footnote(project: Path) -> None:
+    """Round 3 of #259: read alone, the abstract's `[^a]` had no definition, was no
+    footnote to pandoc, and was written as the literal marker."""
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8").replace("cannot establish risk.", "risk.[^a]", 1)
+    main.write_text(text + "\n\n[^a]: A note.\n", encoding="utf-8")
+    plain, why = abstract_text(load_project(project)[0])
+    assert plain is None and "footnote" in why
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("joined", ["\N{REVERSE SOLIDUS}\nKeywords: x", "  \nKeywords: x"])
+def test_a_keywords_label_inside_a_paragraph_leaves_the_abstract_out(
+    project: Path, joined: str
+) -> None:
+    """Round 3 of #259: a label after a hard break is in the paragraph above it, so no
+    block opens with it; the abstract is left out rather than written with it."""
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("establish risk.", f"establish risk.{joined}", 1),
+        encoding="utf-8",
+    )
+    plain, why = abstract_text(load_project(project)[0])
+    assert plain is None and "keywords label" in why
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 @pytest.mark.parametrize(
     "keywords",
     ["## Keywords\n\nhepatotoxicity", "**Keywords:** hepatotoxicity",
-     "*Keywords*: hepatotoxicity", "Key words: hepatotoxicity"],
+     "*Keywords*: hepatotoxicity", "Key words: hepatotoxicity",
+     "**Keywords: hepatotoxicity**"],
 )  # fmt: skip
 def test_the_abstract_s_keywords_are_not_its_text(project: Path, keywords: str) -> None:
     from manuscript_guard.build.submission import abstract_text
@@ -272,6 +306,9 @@ def test_the_abstract_s_keywords_are_not_its_text(project: Path, keywords: str) 
         # an @ that is no citation
         "Write to jane@example.org about the 412 reports.",
         "<!-- ask @smith --> The 412 reports.",
+        # round 3: an emphasised word that opens a sentence, a binding inside a comment
+        "\n\n*Key words* in titles were screened in 412 reports.",
+        "<!-- move {{table.baseline}} here? --> The 412 reports.",
     ],
 )
 def test_an_abstract_that_only_mentions_keywords_or_an_at_sign_is_written_whole(

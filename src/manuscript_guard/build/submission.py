@@ -404,28 +404,26 @@ def supplement_for(project: Project, document: Path) -> Path:
 PANDOC_SECONDS = 60
 
 
-def abstract_source(project: Project) -> str | None:
-    """The abstract as the source writes it: the body of the main text's section headed
-    "Abstract", subheadings included. None where there is none. (An abstract in the front
-    matter is refused by the gates and the build, `front-matter-abstract`.)"""
-    from manuscript_guard.gates.journal import main_text
-    from manuscript_guard.text.sections import split_sections
-
-    section = next((s for s in split_sections(main_text(project)) if s.is_abstract), None)
-    return section.enclosed if section is not None and section.enclosed.strip() else None
-
-
-#: What the build makes of an abstract and plain text cannot, as pandoc reads it: a
-#: citation, formatted in the journal's style or as a live Zotero field; a footnote; an
-#: image, a table or a figure.
-_NOT_PLAIN = frozenset({"Cite", "Note", "Image", "Table", "Figure"})
+#: What an abstract may hold and still be written as plain text that says what the
+#: document says: words, their emphasis, sub- and superscripts, quotation marks, and a link
+#: that shows its own address. Anything else, a citation, a footnote, maths, code, an image,
+#: a table, a link with words of its own, is formatted by the build, and plain text written
+#: another way would not be what the document prints.
+_PLAIN_INLINES = frozenset({
+    "Str", "Space", "SoftBreak", "LineBreak", "Emph", "Strong", "Underline", "Strikeout",
+    "Superscript", "Subscript", "SmallCaps", "Span", "Quoted",
+})  # fmt: skip
+_PLAIN_BLOCKS = frozenset({"Para", "Plain", "Header"})
 #: A table or a figure placed by its binding, which `substitute` leaves as it is written.
 _DISPLAY = re.compile(r"\{\{\s*(?:table|figure)\.")
-#: The label that opens an abstract's keywords: "Keywords:", "Key words:", "Key-words:".
-_KEYWORDS = re.compile(r"key[\s-]?words?\s*:?", re.IGNORECASE)
+#: The label that opens an abstract's keywords, as a heading or at a paragraph's start.
+_KEYWORDS_HEADING = re.compile(r"\s*key[\s-]?words?\s*:?\s*", re.IGNORECASE)
+_KEYWORDS_LABEL = re.compile(r"\s*key[\s-]?words?\s*:", re.IGNORECASE)
+_KEYWORDS_ANYWHERE = re.compile(r"\bkey[\s-]?words?\s*:", re.IGNORECASE)
+_ABSTRACT_TITLE = re.compile(r"\s*(?:\d+[.)]?\s*)?(?:structured\s+)?abstract\b", re.IGNORECASE)
 
 
-def _pandoc_json(*args: str, given: str) -> str:
+def _pandoc(*args: str, given: str) -> str:
     import subprocess
 
     from manuscript_guard.build.document import BuildError, pandoc
@@ -442,72 +440,115 @@ def _pandoc_json(*args: str, given: str) -> str:
     return finished.stdout
 
 
-def _words(inlines: list) -> str:
-    """What a run of pandoc's inlines says, as text."""
-    out = []
-    for node in inlines:
-        kind, content = node.get("t"), node.get("c")
-        if kind == "Str":
-            out.append(content)
-        elif kind in ("Space", "SoftBreak", "LineBreak"):
-            out.append(" ")
-        elif kind in ("Strong", "Emph", "Underline", "SmallCaps", "Span"):
-            out.append(_words(content if kind != "Span" else content[1]))
-    return "".join(out)
-
-
-def _opens_keywords(block: dict) -> bool:
-    """Whether a block is where the abstract's keywords begin: a heading that names them,
-    or a paragraph that opens with their label ("Keywords:", "**Keywords**")."""
-    kind, content = block.get("t"), block.get("c")
-    if kind == "Header":
-        return bool(_KEYWORDS.fullmatch(_words(content[2]).strip()))
-    if kind not in ("Para", "Plain") or not content:
-        return False
-    first = content[0]
-    if first.get("t") in ("Strong", "Emph", "Underline", "SmallCaps"):
-        return bool(_KEYWORDS.fullmatch(_words(first["c"]).strip()))
-    opening = _words(content)[:20]
-    return bool(re.match(r"key[\s-]?words?\s*:", opening, re.IGNORECASE))
-
-
-def _holds(node: object, kinds: frozenset[str]) -> bool:
-    if isinstance(node, dict):
-        return node.get("t") in kinds or any(_holds(v, kinds) for v in node.values())
+def _text(node: object) -> str:
+    """What a piece of pandoc's tree says, as text."""
     if isinstance(node, list):
-        return any(_holds(v, kinds) for v in node)
+        return "".join(_text(item) for item in node)
+    if not isinstance(node, dict):
+        return ""
+    kind, content = node.get("t"), node.get("c")
+    if kind == "Str":
+        return content
+    if kind in ("Space", "SoftBreak", "LineBreak"):
+        return " "
+    if kind in ("RawInline", "RawBlock"):
+        return ""
+    return _text(content)
+
+
+def _plain(node: object) -> bool:
+    """Whether a piece of the tree is plain text the plain writer prints as the build does.
+    An HTML comment, which neither prints, is allowed."""
+    if isinstance(node, list):
+        return all(_plain(item) for item in node)
+    if not isinstance(node, dict) or "t" not in node:
+        return True
+    kind, content = node["t"], node.get("c")
+    if kind in ("RawInline", "RawBlock"):
+        return content[0] == "html" and content[1].lstrip().startswith("<!--")
+    if kind == "Link":
+        attr, words, (target, _title) = content
+        return _plain(words) and _text(words).strip() == target.strip()
+    if kind == "Header":
+        return _plain(content[2])
+    if kind == "Span":
+        return _plain(content[1])
+    if kind == "Quoted":
+        return _plain(content[1])
+    if kind in _PLAIN_INLINES or kind in _PLAIN_BLOCKS:
+        return _plain(content)
     return False
+
+
+def _abstract_blocks(blocks: list) -> list | None:
+    """The blocks under the main text's heading "Abstract", up to the next heading of its
+    level or above, or None where no heading names it."""
+    for at, block in enumerate(blocks):
+        if block.get("t") == "Header" and _ABSTRACT_TITLE.match(_text(block["c"][2])):
+            level = block["c"][0]
+            out = []
+            for later in blocks[at + 1 :]:
+                if later.get("t") == "Header" and later["c"][0] <= level:
+                    break
+                out.append(later)
+            return out
+    return None
+
+
+def _until_keywords(blocks: list) -> list:
+    """The abstract up to its keywords: a heading that names them, or a block that opens
+    with their label ("Keywords:", "**Keywords:**")."""
+    for at, block in enumerate(blocks):
+        said = _text(block["c"][2] if block.get("t") == "Header" else block.get("c"))
+        if block.get("t") == "Header" and _KEYWORDS_HEADING.fullmatch(said):
+            return blocks[:at]
+        if block.get("t") in ("Para", "Plain") and _KEYWORDS_LABEL.match(said):
+            return blocks[:at]
+    return blocks
+
+
+_LEFT_OUT = "abstract.txt is not written: "
 
 
 def abstract_text(project: Project) -> tuple[str | None, str | None]:
     """The abstract for a submission portal's box, and why there is none where there is
     none: every binding filled in with the value the build prints, and no Markdown, as
-    pandoc writes plain text, its keywords left out. An abstract that pandoc reads as
-    holding a citation, a footnote, an image, a table or a figure is left out rather than
-    written differently from the document: these are the build's to format."""
+    pandoc writes plain text, up to its keywords.
+
+    The main text is read whole, as pandoc reads it, so that a footnote defined at its end
+    is a footnote. The abstract is written only where everything in it is plain text the
+    plain writer prints as the build does; anything else, and a keywords label inside a
+    paragraph, leaves it out with the reason, rather than write it otherwise than the
+    document says it."""
     import json
 
     from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.gates.journal import main_text
     from manuscript_guard.text.placeholders import substitute
 
-    source = abstract_source(project)
-    if source is None:
-        return None, None
     if shutil.which("pandoc") is None:
-        return None, "abstract.txt is not written: pandoc is not on PATH"
+        return None, _LEFT_OUT + "pandoc is not on PATH"
     namespace = load_namespace(project)[0]
-    filled = substitute(source, {ref: value.display for ref, value in namespace.items()})
-    document = json.loads(_pandoc_json("-f", "markdown", "-t", "json", given=filled))
-    blocks = document["blocks"]
-    cut = next((at for at, block in enumerate(blocks) if _opens_keywords(block)), len(blocks))
-    document["blocks"] = blocks[:cut]
-    if _DISPLAY.search(filled) or _holds(document["blocks"], _NOT_PLAIN):
-        return None, (
-            "abstract.txt is not written: the abstract cites, or holds a footnote, an image, "
-            "a table or a figure, which the build formats and plain text cannot; copy it from "
-            "the document"
+    filled = substitute(main_text(project), {ref: v.display for ref, v in namespace.items()})
+    document = json.loads(_pandoc("-f", "markdown", "-t", "json", given=filled))
+    blocks = _abstract_blocks(document["blocks"])
+    if not blocks:
+        return None, None
+    blocks = _until_keywords(blocks)
+    said = _text(blocks)
+    if not _plain(blocks) or _DISPLAY.search(said):
+        return None, _LEFT_OUT + (
+            "the abstract holds what the build formats and plain text cannot (a citation, a "
+            "footnote, maths, code, an image, a table, a figure, a link with words of its "
+            "own, or a block other than a paragraph or a heading); copy it from the document"
         )
-    plain = _pandoc_json("-f", "json", "-t", "plain", "--wrap=none", given=json.dumps(document))
+    if _KEYWORDS_ANYWHERE.search(said):
+        return None, _LEFT_OUT + (
+            "a keywords label stands inside a paragraph of the abstract; put the keywords in "
+            "a paragraph of their own"
+        )
+    document["blocks"] = blocks
+    plain = _pandoc("-f", "json", "-t", "plain", "--wrap=none", given=json.dumps(document))
     return plain.strip() + "\n", None
 
 

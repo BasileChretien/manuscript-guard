@@ -10386,6 +10386,10 @@ def test_a_section_the_design_needs_says_where_it_comes_from(project: Path) -> N
     [
         # Round 1 of #292: "Case-control" holds "case" and "control" as words of their own.
         ("case-control", "## Case-control design", ["cases", "controls"]),
+        # Round 2: and so does any other joiner, the en dash of a typeset protocol first.
+        ("case-control", "## Case\N{EN DASH}control design", ["cases", "controls"]),
+        ("case-control", "## Case control design", ["cases", "controls"]),
+        ("case-control", "## Case/control design", ["cases", "controls"]),
         ("disproportionality", "## Background\n\nWhy this.\n\n## Disproportionality analysis",
          ["comparator", "measure"]),
         ("disproportionality", "## Outcome measures", ["comparator", "measure"]),
@@ -10411,6 +10415,26 @@ def test_a_design_s_section_written_is_found(project: Path) -> None:
         + "\n## Case definition\n\nHepatic injury by its MedDRA terms, as coded.\n"
         + "\n## Comparator\n\nEvery other report in the database.\n"
         + "\n## Measure\n\nThe reporting odds ratio, a signal where its lower bound is above 1.\n",
+        encoding="utf-8",
+    )
+    assert _plan_asked(project) == []
+
+
+@pytest.mark.parametrize(
+    "heading",
+    ["## 3. Disproportionality measures", "## 2.4 Measure", "## Choice of measure",
+     "## Primary disproportionality measure", "## Measures of disproportionality"],
+)  # fmt: skip
+def test_a_measure_s_section_numbered_or_qualified_is_found(project: Path, heading: str) -> None:
+    """Round 2 of #292: a section number, or a word before "measure", hid the section."""
+    _declare(project, study_type="disproportionality")
+    plan = project / "design" / "plan.md"
+    plan.write_text(
+        plan.read_text(encoding="utf-8")
+        + "\n## Deduplication\n\nReports sharing a case identifier are kept once.\n"
+        + "\n## Case definition\n\nHepatic injury by its MedDRA terms, as coded.\n"
+        + "\n## Comparator\n\nEvery other report in the database.\n"
+        + f"\n{heading}\n\nThe reporting odds ratio, a signal where its lower bound is above 1.\n",
         encoding="utf-8",
     )
     assert _plan_asked(project) == []

@@ -100,14 +100,15 @@ types:
     guidelines: [STROBE, RECORD]
     sections:
       - id: cases
-        # Not "case" in "Case-control", which names the design.
-        heading: '(?i)\bcases?\b(?!-)|\bascertain'
+        # Not "case" in "Case-control", "Case–control" or "Case crossover", which name a
+        # design: whatever joins the two words.
+        heading: '(?i)\bcases?\b(?!\W{0,3}(?:controls?|crossover|cohort|series)\b)|\bascertain'
         says: the case definition, and the sources and methods of case ascertainment
         source: STROBE, item 6a (case-control)
         url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
         read_on: 2026-10-15
       - id: controls
-        heading: '(?i)(?<!case-)\bcontrols?\b'
+        heading: '(?i)(?<!case\W)(?<!case\W\W)(?<!case\W\W\W)\bcontrols?\b'
         says: the sources and methods of control selection, and why these cases and controls
         source: STROBE, item 6a (case-control)
         url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
@@ -197,9 +198,9 @@ types:
         url: https://doi.org/10.1007/s40264-024-01421-9
         read_on: 2026-10-15
       - id: measure
-        # The measure the paper estimates, not an "Outcome measures" or a "Disproportionality
-        # analysis" every such plan has.
-        heading: '(?i)^\W*(?:disproportionality )?measures?\b|\bmeasures? of disproportionality|\bsignal (?:threshold|detection|criteri)'
+        # The measure the paper estimates, numbered or not, and not an "Outcome measures"
+        # or a "Disproportionality analysis" every such plan has.
+        heading: '(?i)(?<!outcome\W)(?<!outcomes\W)(?<!exposure\W)\bmeasures?\b(?! of (?:outcome|exposure))|\bsignal (?:threshold|detection|criteri)'
         says: the measure of disproportionality and any threshold, with the reasons
         source: READUS-PV, item 7b
         url: https://doi.org/10.1007/s40264-024-01421-9

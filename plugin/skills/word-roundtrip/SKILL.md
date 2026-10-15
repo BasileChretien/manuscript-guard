@@ -177,11 +177,13 @@ built document is out of date. Rebuild before sending anything on.
 
 ## 6. Comments, and several co-authors
 
-When the returned document carries comments, or more than one co-author sends theirs back,
-read [references/comments-and-co-authors.md](references/comments-and-co-authors.md): how
-comments are recorded so that G11 sees them answered, what a build records of each paragraph
-and what `import` merges because of it, and how several returned copies are brought in one
-after another.
+When the returned document carries comments, when more than one co-author sends theirs back,
+when the dry run lists paragraphs that `were not compared`, or when the stamp check refuses
+the document, read
+[references/comments-and-co-authors.md](references/comments-and-co-authors.md): how comments
+are recorded so that G11 sees them answered, what a build records of each paragraph and what
+`import` merges because of it, what to carry over by hand, and how several returned copies
+are brought in one after another.
 
 ## If you are a model doing this
 

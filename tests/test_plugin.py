@@ -40,6 +40,16 @@ def skill_names() -> set[str]:
     return {path.parent.name for path in SKILLS.glob("*/SKILL.md")}
 
 
+def skill_pages() -> list[Path]:
+    """Every page of instructions an agent loads: each SKILL.md, and each page under a
+    skill's references/ that it reads when it needs it."""
+    return sorted([*SKILLS.glob("*/SKILL.md"), *SKILLS.glob("*/references/*.md")])
+
+
+def page_name(page: Path) -> str:
+    return page.relative_to(SKILLS).as_posix()
+
+
 def frontmatter(path: Path) -> dict:
     match = re.match(r"---\n(.*?)\n---\n", path.read_text(encoding="utf-8"), re.DOTALL)
     assert match, f"{path.relative_to(REPO)} has no frontmatter"
@@ -474,8 +484,8 @@ UNSAFE = {
 
 def test_no_skill_tells_an_agent_to_do_something_unsafe() -> None:
     found = []
-    for name in sorted(skill_names()):
-        text = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
+    for page in skill_pages():
+        text, name = page.read_text(encoding="utf-8"), page_name(page)
         found += [(name, why) for pattern, why in UNSAFE.items()
                   if re.search(pattern, text, re.IGNORECASE)]  # fmt: skip
         found += [(name, f"`{fragment}`: a review sent without the author being asked")
@@ -628,11 +638,11 @@ def test_every_command_a_skill_tells_you_to_run_exists():
     options = cli_options()
     named = 0
     wrong: dict[str, list[str]] = {}
-    for skill in sorted(SKILLS.glob("*/SKILL.md")):
-        text = skill.read_text(encoding="utf-8")
+    for page in skill_pages():
+        text = page.read_text(encoding="utf-8")
         named += sum(bool(MENTION.search(f)) for f in command_fragments(text))
         if problems := command_problems(text, options):
-            wrong[skill.parent.name] = problems
+            wrong[page_name(page)] = problems
     assert named > 30, "the skills name no commands; the pattern no longer matches"
     assert not wrong, wrong
 
@@ -813,9 +823,9 @@ def test_every_skill_follows_the_open_skill_format():
 
 def test_no_skill_speaks_to_the_reader_of_one_agent_tool_only():
     wrong = {
-        skill.parent.name: problems
-        for skill in sorted(SKILLS.glob("*/SKILL.md"))
-        if (problems := wording_problems(skill.read_text(encoding="utf-8")))
+        page_name(page): problems
+        for page in skill_pages()
+        if (problems := wording_problems(page.read_text(encoding="utf-8")))
     }
     assert not wrong, wrong
 

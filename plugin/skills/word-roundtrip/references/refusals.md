@@ -64,7 +64,7 @@ handled, and each has a test:
   elsewhere, still land.
 
 What is still yours to do by hand: every refused, joined or deleted paragraph, and every
-paragraph without an identifier. Port those edits from the dry run and the text diff above.
+paragraph without an identifier. Port those edits from the dry run and the text diff of step 3 in SKILL.md.
 `--apply` takes all the safe changes at once; there is no way to pick among them, so if the
 dry run shows a merge you do not want, port the whole import by hand instead.
 
@@ -78,4 +78,4 @@ Some things still need care:
   unbound.
 - A footnote or an equation edited in Word, a changed link address, or a deleted footnote
   is not seen at all: `import` reads each paragraph's text, and those live elsewhere in the
-  file. Look for them in the text diff above.
+  file. Look for them in the text diff of step 3 in SKILL.md.

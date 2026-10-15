@@ -1776,15 +1776,18 @@ def test_a_manuscript_folder_the_gates_cannot_read_is_named(project: Path, empty
 # 9.0.64 does (see tests/test_zotero.py), so these run anywhere.
 
 
-def _g7(root: Path):
+def _g7(root: Path, *, closed: bool = True):
     """G7 as it reads with Zotero closed, so that what it says does not depend on the
-    machine: CI has no Zotero, and a test opens no connection."""
+    machine: CI has no Zotero, and a test opens no connection. A test that stands in for
+    Zotero itself (`_zotero`) passes `closed=False`, and G7 reads that."""
     from unittest import mock
 
     from manuscript_guard.gates import check_citations
 
     project, _ = load_project(root)
     _namespace, _results, literature, _ = load_namespace(project)
+    if not closed:
+        return check_citations(project, literature)
     with mock.patch("manuscript_guard.gates.citations.available", return_value=False):
         return check_citations(project, literature)
 
@@ -2283,7 +2286,7 @@ def test_an_unpinned_cited_key_is_caught(project: Path, monkeypatch) -> None:
     from test_zotero import CLASS, HEPATIC, csl
 
     _zotero(monkeypatch, [csl(HEPATIC, True), csl(CLASS, False)])
-    report = _g7(project)
+    report = _g7(project, closed=False)
     unpinned = [f for f in report.failures if f.code == "citation-key-unpinned"]
     assert [f.message for f in unpinned] == [f"@{CLASS} is not pinned in Zotero"]
     assert f"Citation Key: {CLASS}" in unpinned[0].hint
@@ -2294,7 +2297,7 @@ def test_a_cited_key_carried_by_two_items_is_caught(project: Path, monkeypatch) 
     from test_zotero import CLASS, HEPATIC, csl
 
     _zotero(monkeypatch, [csl(HEPATIC, True), csl(CLASS, True), csl(CLASS, False)])
-    report = _g7(project)
+    report = _g7(project, closed=False)
     assert "citation-key-ambiguous" in codes(report)
     assert "citation-unresolved" not in codes(report)
 
@@ -2308,7 +2311,7 @@ def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypat
     wrapped = f"\nA wrapped claim [@ghostKey2020;\n@{HEPATIC}].\n"
     main.write_text(main.read_text(encoding="utf-8") + wrapped, encoding="utf-8")
     _zotero(monkeypatch, [csl(HEPATIC, True), csl(CLASS, True)])
-    report = _g7(project)
+    report = _g7(project, closed=False)
     assert any(
         f.code == "citation-unresolved" and "ghostKey2020" in f.message for f in report.failures
     )

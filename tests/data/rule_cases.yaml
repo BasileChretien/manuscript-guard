@@ -176,6 +176,26 @@ structural:
       # and a count opening the next paragraph is a count.
       - {text: "The cohort is described in the next section\n\n2 patients were excluded later.", atom: "2"}
 
+  pointer-list:
+    accepts:
+      - {text: "Tables 1 and 2 show the counts.", atom: "2"}
+      - {text: "The estimates are in Figures 2 and 4.", atom: "4"}
+      - {text: "See Tables 1, 2 and 3.", atom: "3"}
+    rejects:
+      # Only a plural opens a list, and nothing may stand between the word and its numbers.
+      - {text: "Across the tables, 47 and 52 patients were excluded.", atom: "52"}
+      - {text: "The figures\n\n2 and 3 reports came later.", atom: "3"}
+
+  numbered-part:
+    accepts:
+      - {text: "In step 2 we pooled the arms.", atom: "2"}
+      - {text: "Item 13 of the checklist is addressed in the Methods.", atom: "13"}
+      - {text: "Panel 3 shows the subgroups.", atom: "3"}
+    rejects:
+      # A step, a panel or a box runs to twenty, an item to two digits: past that it is a count.
+      - {text: "In step 1204 reports were excluded.", atom: "1204"}
+      - {text: "Of the items 412 were answered.", atom: "412"}
+
   supplement-tag:
     accepts:
       - {text: "Reported in S1 of the appendix.", atom: "S1"}

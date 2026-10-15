@@ -5680,7 +5680,7 @@ def test_a_comment_mark_in_a_listing_hides_no_binding_from_the_build(project: Pa
 
 
 # A sentence in the example's Results, one in its Methods, and its last line.
-_IN_RESULTS = "are shown in Table 2."
+_IN_RESULTS = "are shown in Table 1."
 _IN_METHODS = "Reporting follows the checklist declared in `paper.yaml`."
 _AT_END = "None declared.\n"
 

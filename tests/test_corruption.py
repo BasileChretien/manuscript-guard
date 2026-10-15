@@ -1154,7 +1154,8 @@ def _reply_numbers(root: Path) -> list[str]:
     return [
         f.message
         for f in gate_report(root).findings
-        if f.code == "unclassified-number" and f.path and f.path.name == "round-1.yaml"
+        if f.code in ("unclassified-number", "reply-unbound-number")
+        and f.path and f.path.name == "round-1.yaml"
     ]
 
 
@@ -1168,6 +1169,30 @@ def test_a_result_typed_into_a_reply_fails(project: Path) -> None:
     assert any("2.31" in m and "`response`" in m for m in said), said
     assert any("412" in m and "`rebutted`" in m for m in said), said
     assert not any("95" in m for m in said), "a convention is not a result"
+
+
+def test_a_reply_names_places_by_number_and_types_no_threshold(project: Path) -> None:
+    """Round 1 of #266: a line, a reviewer, a comment and a page are places, and a threshold
+    typed in a reply is a result: the Methods' conventions are not the reply's."""
+    _round_with(project, [_point(
+        response="The changes are on lines 120-125 of the revised manuscript, as Reviewer 2 "
+        "asked (see our response to comment 1.3, page 4).",
+        rebutted="The interaction is now significant (p < 0.001).",
+    )])  # fmt: skip
+    said = _reply_numbers(project)
+    assert [m for m in said if "`response`" in m] == [], said
+    assert any("0.001" in m for m in said), said
+
+
+def test_a_number_typed_in_a_reply_fails_at_submission_only(project: Path) -> None:
+    from manuscript_guard.policy import DRAFTING, SUBMISSION, apply_stage
+
+    _round_with(project, [_point(response="The ROR is now 2.31.", rebutted="x")])
+    report = gate_report(project)
+    drafting, _ = apply_stage(report, DRAFTING)
+    assert "reply-unbound-number" not in {f.code for f in drafting.failures}
+    submission, _ = apply_stage(report, SUBMISSION)
+    assert "reply-unbound-number" in {f.code for f in submission.failures}
 
 
 def test_a_result_bound_in_a_reply_passes_and_is_printed(project: Path) -> None:
@@ -1266,6 +1291,8 @@ def test_what_must_not_reach_a_journal_in_a_reply_fails(
     [
         "Certainly, we have revised the Methods.",
         "Cells arrested in G2/M were excluded, as the reviewer asked.",
+        # Round 1 of #266: a tumour's grade, with what it means in brackets.
+        "Most tumours were G1 (well-differentiated).",
         "The changes are on line 120 of the revised manuscript.",
     ],
 )

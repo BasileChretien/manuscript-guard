@@ -1,6 +1,6 @@
 ---
 name: reviewer-response
-description: Answer a journal's reviewers point by point, with every claimed revision checked against the manuscript as it was sent. Use when a decision letter with reviewer comments arrives, before revising anything, when check reports point-unanswered, response-claims-nothing, claimed-change-did-not-happen, claimed-change-missed-the-point, anchor-unrecorded, quoted-text-absent, quoted-text-not-new, quoted-text-elsewhere, response-placeholder, response-artefact or response-leak, or before resubmitting.
+description: Answer a journal's reviewers point by point, with every claimed revision checked against the manuscript as it was sent. Use when a decision letter with reviewer comments arrives, before revising anything, when check reports point-unanswered, response-claims-nothing, claimed-change-did-not-happen, claimed-change-missed-the-point, anchor-unrecorded, quoted-text-absent, quoted-text-not-new, quoted-text-elsewhere, response-placeholder, response-artefact, response-leak or reply-unbound-number, or before resubmitting.
 ---
 
 # Answering the reviewers
@@ -118,7 +118,10 @@ sentence as the paper prints it and, where the response says where, the section:
 
 **Numbers in a reply are held to the results.** `response` and `rebutted` are printed in the
 letter word for word, so G2 reads them as it reads the paper: bind a result with
-`{{results.<key>}}` or `{{lit.<key>}}`, which the letter fills in, and do not type it.
+`{{results.<key>}}` or `{{lit.<key>}}`, which the letter fills in, and do not type it. A
+typed result is `reply-unbound-number`, a failure at submission. A line, a page, a reviewer
+or a comment named by its number ("lines 120-125", "Reviewer 2") is a place, and is not
+held to anything.
 
 **Where the author still has to write something, put `[AUTHOR: what is needed]`** and
 nothing else in its place: "[AUTHOR: the new sample size]". G13 reports each one, so none
@@ -165,6 +168,7 @@ manuscript-guard respond --submission    # the same findings, as failures
 | `response-placeholder` | an `[AUTHOR: ...]` marker, or the template's text in a `comment` |
 | `response-artefact` | a model's markup or a placeholder (`TODO`, `[insert ...]`) in a reply |
 | `response-leak` | the tool's name, a gate with its finding code, or a place in the source files (`main.md:120`), none of which the journal should read |
+| `reply-unbound-number` | G2: a result typed into `response` or `rebutted`; bind it |
 
 All of these warn during the revision and fail at submission. A round opened before the copy
 was kept says `quoted-text-unchecked`, a note, where a quote cannot be checked for being

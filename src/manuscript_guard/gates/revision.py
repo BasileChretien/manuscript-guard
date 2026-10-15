@@ -444,7 +444,16 @@ def _quoted(
 #: What must never reach a journal in a letter: the tool's name, a gate with a finding code
 #: of the tool's, and a place in the source files the journal never sees.
 _TOOL_NAME = re.compile(r"\b(?:manuscript[-_]guard|mguard)\b", re.IGNORECASE)
-_GATE_CODE = re.compile(r"\bG(?:1[0-5]|[1-9])r?\b(?=[ \t]*[:(][ \t]*[a-z]+(?:-[a-z]+)+)")
+#: A gate is said only with one of the tool's own finding codes after a colon, "G13:
+#: point-unanswered": "G1 (well-differentiated)" is a tumour's grade and "G2/M" a phase of the
+#: cell cycle.
+def _gate_code() -> re.Pattern[str]:
+    from manuscript_guard.policy import BINDS_AT
+
+    codes = "|".join(sorted((re.escape(code) for code in BINDS_AT), key=len, reverse=True))
+    return re.compile(rf"\bG(?:1[0-5]|[1-9])r?[ \t]*:[ \t]*(?:{codes})\b")
+
+
 _SOURCE_PLACE = re.compile(r"\b[\w./-]+\.md(?::\d+|,?[ \t]+lines?[ \t]+\d+)", re.IGNORECASE)
 
 
@@ -486,7 +495,7 @@ def _reply(path: Path, number: int, reviewer: str, point: dict, severity: str) -
             ("response-leak", m.group(0), why)
             for pattern, why in (
                 (_TOOL_NAME, "the name of the tool that checked it"),
-                (_GATE_CODE, "a gate of the tool that checked it"),
+                (_gate_code(), "a gate of the tool that checked it"),
                 (_SOURCE_PLACE, "a place in the source files, which the journal never sees"),
             )
             for m in pattern.finditer(text)

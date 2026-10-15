@@ -3522,9 +3522,13 @@ able to build something to read, so ordinary work warns and a resubmission fails
 **The letter is checked like the manuscript.** It goes to the journal with the paper, and
 `response` and `rebutted` were printed in it word for word: "the adjusted OR is now 2.31
 (95% CI 1.40 to 3.80)" typed into a reply went out unchecked, the core rule with a hole in a
-document we send. G2 now reads the authors' own words in each round as it reads prose, and
-a reply binds its results with `{{results.<key>}}` and `{{lit.<key>}}`, which the letter
-fills in. The reviewer's `comment` is the reviewer's, and is not read.
+document we send. G2 now reads the authors' own words in each round as it reads prose, in a
+section of their own, so the Methods' conventions, an alpha among them, do not pass a
+reply's "p < 0.001". A reply binds its results with `{{results.<key>}}` and `{{lit.<key>}}`,
+which the letter fills in; a typed one is `reply-unbound-number`, which fails at submission,
+since the letter is written while the analysis is run again. A number after a word that names
+a place, "lines 120-125", "Reviewer 2", "comment 1.3", "page 4", is that place, and no binding
+could give it. The reviewer's `comment` is the reviewer's, and is not read.
 
 A reply that says the text "now reads" something names it as a `text` entry in `changed`,
 with the `quote` and, where the reply says where, the `section`. Parsing "now reads" out of
@@ -7198,7 +7202,11 @@ Closed since, and why each mattered:
   was kept says that a quote cannot be checked for being new. A place in the source files
   is caught only as a file name with a line, `main.md:120` or `main.md line 120`; "line
   120" alone may be the revised manuscript's, which journals ask for. A gate is caught
-  only with a finding code after it, since "G2/M" is a phase of the cell cycle.
+  only as `G13: point-unanswered`, with a colon and one of the codes that fail after it,
+  since "G2/M" is a phase of the cell cycle and "G1 (well-differentiated)" a tumour's
+  grade; a warning's code after a gate is not caught. A number after a word that names a
+  place is not read, so "line 3.2" or "Reviewer 2 found 41 cases" types its second number
+  past G2 only where a place word stands before it.
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.

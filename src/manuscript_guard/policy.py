@@ -149,6 +149,9 @@ BINDS_AT = {
     "review-missing": SUBMISSION,
     "reading-missing": SUBMISSION,
     "point-unanswered": SUBMISSION,
+    # A number typed into a reply to the reviewers: the letter is written while the
+    # analysis is still being run again, and goes to the journal only at resubmission.
+    "reply-unbound-number": SUBMISSION,
     "response-claims-nothing": SUBMISSION,
     "claimed-change-did-not-happen": SUBMISSION,
             "review-stale": SUBMISSION,

@@ -978,7 +978,7 @@ def test_a_binding_in_a_reply_is_never_read_as_a_number(drawn: tuple[str, str]) 
 
     def loose(written: str) -> Counter[str]:
         said = reply_numbers(written, Path("round-1.yaml"), "w", classifier, {})
-        return Counter(f.context for f in said.findings if f.code == "unclassified-number")
+        return Counter(f.context for f in said.findings if f.code == "reply-unbound-number")
 
     assert sum(loose(planted).values()) == sum(loose(text).values()), planted
 

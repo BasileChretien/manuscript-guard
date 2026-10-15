@@ -981,6 +981,125 @@ def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
     assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
 
 
+# ----------------------------------- a number a summary gives that the paper reports nowhere
+
+
+def _unreported(root: Path) -> list[tuple[str, str, int]]:
+    """What G8 says of a summary: the key, the heading it was given under, the line."""
+    from manuscript_guard.gates import check_reported
+
+    project, _ = load_project(root)
+    _, results, _, _ = load_namespace(project)
+    found = check_reported(project, results).findings
+    assert all(f.severity == "warn" for f in found)
+    return [
+        (f.message.split()[0], re.search(r"under '([^']*)'", f.message)[1], f.line) for f in found
+    ]
+
+
+def _swap(root: Path, old: str, new: str) -> None:
+    path = main_md(root)
+    text = path.read_text(encoding="utf-8")
+    assert text.count(old) == 1, old
+    path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+#: Where the example's abstract concludes, and a count of serious cases written into it.
+_CONCLUDES = "synthetic data. Disproportionality"
+_SERIOUS = "synthetic data, {{results.case.n_serious}} of them serious. Disproportionality"
+
+
+def _line_of(root: Path, words: str) -> int:
+    return next(
+        number
+        for number, line in enumerate(main_md(root).read_text(encoding="utf-8").splitlines(), 1)
+        if words in line
+    )
+
+
+def test_a_number_a_summary_gives_and_the_paper_reports_nowhere_is_warned(project: Path) -> None:
+    """An abstract or a conclusion introduces no data. The example's abstract gives
+    nothing the Methods or the Results do not, and passes; a key given in the Abstract, or
+    under a "Conclusions" heading, and bound in neither, is warned of where it was given."""
+    from manuscript_guard.cli import _run_gates
+
+    assert _unreported(project) == []
+    _swap(project, _CONCLUDES, _SERIOUS)
+    _swap(project, "\n# Data availability", "\n## 5. Conclusions\n\nOf {{results.case.n_cases}}"
+          " cases, {{results.case.n_serious}} were serious.\n\n# Data availability")  # fmt: skip
+    assert _unreported(project) == []  # the Results bind both
+    _swap(project, "{{results.case.n_serious}} were flagged", "some were flagged")
+    said = [
+        ("results.case.n_serious", "Abstract", _line_of(project, "of them serious")),
+        ("results.case.n_serious", "Conclusions", _line_of(project, "were serious.")),
+    ]
+    assert _unreported(project) == said
+    report, _project, _chosen, _deferred = _run_gates(project)
+    assert sum(f.code == "summary-not-reported" for f in report.findings) == 2
+    # The abstract's period is reported in the Methods, which its own Methods restate.
+    _swap(project, "{{results.cohort.period_start}} to {{results.cohort.period_end}}, a period",
+          "the start to the end, a period")  # fmt: skip
+    line = _line_of(project, "covering {{results.cohort.period_start}}")
+    assert _unreported(project) == [
+        ("results.cohort.period_start", "Abstract", line),
+        ("results.cohort.period_end", "Abstract", line),
+        *said,
+    ]
+
+
+def test_a_number_the_same_quantity_as_one_reported_is_reported(project: Path) -> None:
+    """A coarser form for the abstract is a second key emitted with `same_as`, as the
+    emitter's docstring asks: it is reported where the key it is the same as is, either way
+    round the declaration goes."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["case.serious_abstract"] = dict(
+        document["values"]["case.n_serious"], same_as="case.n_serious"
+    )
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    _swap(project, _CONCLUDES, _SERIOUS.replace("n_serious", "serious_abstract"))
+    assert _unreported(project) == []
+    # And the other way round: the Results bind the key that names the other.
+    _swap(project, "{{results.case.n_serious}} were flagged",
+          "{{results.case.serious_abstract}} were flagged")  # fmt: skip
+    _swap(project, _SERIOUS.replace("n_serious", "serious_abstract"), _SERIOUS)
+    assert _unreported(project) == []
+    _swap(project, "{{results.case.serious_abstract}} were flagged", "some were flagged")
+    assert [key for key, _, _ in _unreported(project)] == ["results.case.n_serious"]
+
+
+def test_a_number_printed_in_a_table_or_a_figure_the_paper_places_is_reported(
+    project: Path,
+) -> None:
+    """A count shown only in Table 2, and an estimate drawn only in Figure 1, are reported
+    there: until the paper no longer places the table or the figure."""
+    _swap(project, "Hepatic injury was reported in\n{{results.case.n_cases}} of these",
+          "Hepatic injury was reported in\nsome of these")  # fmt: skip
+    _swap(project, "ratio of {{results.ror.point}} (95% CI", "ratio of this (95% CI")
+    assert _unreported(project) == []  # 77 is in both tables, and 3.84 in the figure
+    _swap(project, "{{table.two_by_two}}", "")
+    assert _unreported(project) == []
+    _swap(project, "{{table.baseline}}", "")
+    _swap(project, "{{figure.forest}}", "")
+    cases = _line_of(project, "{{results.case.n_cases}} described")
+    ratio = _line_of(project, "ratio was {{results.ror.point}}")
+    assert _unreported(project) == [
+        ("results.case.n_cases", "Abstract", cases),
+        ("results.ror.point", "Abstract", ratio),
+    ]
+
+
+def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
+    """The supplement reports what the paper has no room for, under any heading."""
+    _swap(project, "{{results.case.n_serious}} were flagged", "some were flagged")
+    _swap(project, _CONCLUDES, _SERIOUS)
+    assert len(_unreported(project)) == 1
+    supplement = project / "manuscript" / "supplementary" / "s1.md"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_text("# Table S1\n\n{{results.case.n_serious}} serious.\n", encoding="utf-8")
+    assert _unreported(project) == []
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 

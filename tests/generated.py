@@ -358,6 +358,29 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+#: The headings of the parts of a paper, each written more than one way, and bindings to
+#: put under them: what G8 reads to find a number a summary gives and the paper does not.
+SUMMARIES = (
+    "\n\n# Abstract\n\n", "\n\n# 1. Summary\n\n", "\n\n## Results\n\n", "\n\n# 3. Results\n\n",
+    "\n\nFindings\n========\n\n", "\n\n# **Results and discussion**\n\n", "\n\n# Conclusions\n\n",
+    "\n\n## 5.1 Concluding remarks\n\n", "\n\n# Discussion\n\n", "\n\n# Methods\n\n",
+    "\n\n# Introduction\n\n", "{{results.ror.point}}", "{{results.case.n_cases}}",
+    "{{ results.ror.ci_low }}", "{{lit.incidence}}", "{{results.ror.point}}",
+)  # fmt: skip
+
+
+def summaries() -> st.SearchStrategy[str]:
+    """A manuscript holding every heading and binding of `SUMMARIES`, in an order and among
+    pieces of the pool drawn each time: a rule broken for one way of writing a heading is
+    seen whatever the seed."""
+    between = _in_a_row(_pool(()), few=3, many=10)
+    return st.permutations(SUMMARIES).flatmap(
+        lambda order: st.tuples(*(between for _ in order)).map(
+            lambda gaps: "".join(gap + piece for gap, piece in zip(gaps, order, strict=True))
+        )
+    )
+
+
 def bindings() -> st.SearchStrategy[str]:
     """A manuscript with a binding where a line begins: after a line end, of Windows or
     not, and in some texts as the first thing in the file.
@@ -701,6 +724,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "own words": texts(TERMS),
     "spans": texts(),
     "sections": texts(),
+    "summaries": st.fixed_dictionaries(
+        {"text": summaries(), "abstract title": st.sampled_from((None, "Summary"))}
+    ),
     "numbers": st.fixed_dictionaries(
         {
             "text": texts(),

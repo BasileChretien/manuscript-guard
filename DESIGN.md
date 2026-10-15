@@ -4301,23 +4301,16 @@ Since 2026-10-07 a review reads the diff and may run the project's own tests, an
 campaign of its own. Where a change needs one, the finding is that the suite lacks it. So
 the campaigns are in the suite, on Hypothesis:
 
-- `tests/generated.py` holds twelve generators: manuscripts, and the bare signs and the
+- `tests/generated.py` holds the generators: manuscripts, and the bare signs and the
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
-  them, the settings typed into a project, a co-author's sessions in Word, texts that
-  quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds eleven more, each
-  planting what one property looks for among drawn words: cited clauses, typed
-  parameters, models' names, anchors and what they claim, anchors' own lines, terms a
-  vocabulary gave up and each way such a term is written, American spellings in a British
-  paper, rewordings, ISBNs written in a field every way one holds them and with one digit
-  changed, and the headings of a paper's sections.
-- `tests/readings.py` names each way the package reads a text, at the widest door it has:
-  `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
-  sections, G2's reading of every number, the four readings of G14, the TeX rule and its
-  sentence, the quotation check, `check --json` on a new project, and the round trip: a
-  paper typed into a new project, built, edited in Word and imported. And three more: the
-  order an interval's bounds are quoted in, what `reworded` makes of an edit, and the
-  sentences a co-author's items are cut into. Eighteen in all.
+  them, the settings typed into a project, a co-author's sessions in Word, and the inputs
+  each reading is asked about (`INPUTS`). `tests/test_properties.py` holds more, each
+  planting what one property looks for among drawn words, such as cited clauses, typed
+  parameters or the spellings of the other English.
+- `tests/readings.py` names each way the package reads a text, at the widest door it has
+  (`READINGS`): `mask`, the text G14 reads, G2's reading of every number, `check --json` on
+  a new project, and the round trip of a paper typed into a new project, built, edited in
+  Word and imported, among them.
 - `tests/test_properties.py` holds what a reading owes its input, and
   `tests/test_generated_sessions.py` what an import owes the source.
 - `tests/test_differential.py` puts each input through the base branch's source and
@@ -4367,28 +4360,13 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So sixty-one rules are broken in place, one at a time, and the property that is
-there for each has to fail: a quotation read as the paper's own words, hiding that takes
-the line break with it, every finding on line 1, a ligature not folded, a value found
-inside a longer number, a nought trimmed off a number, a variable's name read as a word,
-a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10 and an ISBN's
-groups read as ISBNs; four ways the gates can disagree about a section, from the Methods
-found by the name G9 had for them to a required section found among the abstract's
-headings; fourteen ways `reworded` can misread an edit, from a number's sign taken for no
-part of it, and a sign of comparison taken for none, read as it is typed, read only hard
-against its number, an arrow's head or an equals sign taken for one, to what a comment
-holds held to its place; five
-ways a co-author's items can be cut wrong round the citation of a claim, from every stop ending a
-sentence, after "et al." too, to a piece that is only a citation left as an item of its
-own; seven ways an anchor can claim the wrong text, from a claim that runs back past the
-anchor before it to an anchor in a comment taken for one; three ways the warning of an
-anchor's own line can be wrong about where the document ends a paragraph, the last a run
-of such lines at a paragraph's end; nine ways G15 can find a model's name where it is not
-or miss it where it is, from a name matched in one case only to a full stop or a new
-paragraph taken for a space before it; and seven ways a typed parameter can be misread,
-from a threshold matched under any convention to the name of a statistic taken for a
-threshold like the figure beside it.
+the generators. So each rule a property holds is broken in place, one at a time, and the
+property that is there for it has to fail. `BROKEN` in `tests/test_properties.py` names each
+broken rule, in a sentence that says what is broken, beside the property that has to catch
+it, and `BROKEN` in `tests/test_generated_sessions.py` the ways the import is broken, below;
+`CHANGED` in `tests/test_differential.py` names the lines the comparison changes. The
+lists are kept there and not here: kept by hand in this file, every pull request that added
+a case changed the same lines, and each merge put the next one in conflict.
 The import is broken three times the same way: a rewording written over the next
 paragraph, one written a second time, and one written over the next paragraph only where
 an identified paragraph did not come back at all. Each is known by the sentence that
@@ -9157,10 +9135,11 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 64 broken rules, and the comparison on twelve
-    changed lines. That is a spot check, and not the mutation runs four of the reviews
-    made, which changed every line of a diff. Two of the three broken imports, and the
-    changed line of the import, are shown by the simplest session alone.
+  - The properties were seen to fail on each broken rule of the two `BROKEN`s, and the
+    comparison on each changed line of `CHANGED`. That is a spot check, and not the
+    mutation runs four of the reviews made, which changed every line of a diff. Two of
+    the three broken imports, and the changed line of the import, are shown by the
+    simplest session alone.
   - The hard limit ends the whole run, not the one test: nothing else stops a pattern
     that is backtracking in C.
 

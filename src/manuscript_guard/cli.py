@@ -2339,9 +2339,6 @@ def cmd_install_skills(args: argparse.Namespace) -> int:
         return 2
     if args.verify or args.remove:
         return _skills_kept(skillcopy, folder, args)
-    if args.dry_run:
-        print("manuscript-guard: --dry-run goes with --remove", file=sys.stderr)
-        return 2
     try:
         done = skillcopy.install(folder)
     except (skillcopy.SkillsMissing, skillcopy.StampUnreadable, OSError) as exc:

@@ -560,18 +560,26 @@ def test_remove_takes_away_what_it_copied_and_leaves_what_was_edited(tmp_path: P
     assert (folder / "theirs" / "SKILL.md").read_bytes() == b"someone else's\n"
 
 
-def test_a_stamp_kept_after_a_removal_stays_with_the_release_that_copied(
-    tmp_path: Path, monkeypatch
+@pytest.mark.parametrize("upgraded", ["before", "after"])
+def test_a_stamp_left_by_a_removal_draws_no_notice_to_copy_the_skills_again(
+    tmp_path: Path, monkeypatch, upgraded: str
 ) -> None:
-    """Rewritten as the running release, the stamp of the one skill kept would, after the
-    next upgrade, have `check` advise copying the skills again: the removed ones too."""
-    folder = tmp_path / "skills"
+    """Rounds 1 and 2 of #255: whichever release the stamp names, the notice that the copy
+    is stale would advise copying back the skills just removed. A later copy still knows
+    the edited skill was this tool's."""
+    monkeypatch.setattr(skillcopy, "user_folder", lambda: tmp_path / "home")
+    folder = skillcopy.project_folder(tmp_path)
     monkeypatch.setattr(skillcopy, "__version__", "0.0.1")
     skillcopy.install(folder)
     (folder / "review-panel" / "SKILL.md").write_bytes(b"edited\n")
-    monkeypatch.setattr(skillcopy, "__version__", "0.0.2")
+    if upgraded == "before":
+        monkeypatch.setattr(skillcopy, "__version__", "0.0.2")
     skillcopy.remove(folder)
-    assert stamp_of(folder)["version"] == "0.0.1"
+    monkeypatch.setattr(skillcopy, "__version__", "0.0.3")
+    assert skillcopy.stale_notice(tmp_path) is None
+    again = skillcopy.install(folder)
+    assert again.left == (("review-panel", skillcopy.CHANGED),)
+    assert skillcopy.REMOVED not in stamp_of(folder)
 
 
 def test_remove_says_what_was_no_longer_there(tmp_path: Path, capsys) -> None:

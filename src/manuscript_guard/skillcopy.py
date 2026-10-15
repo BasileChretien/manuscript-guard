@@ -190,10 +190,18 @@ def _why_left(target: Path, recorded: object) -> str | None:
     return None if _digests(target) == recorded else CHANGED
 
 
+#: In a stamp that `install-skills --remove` left for the skills it could not remove. The
+#: notice that a copy is stale says nothing of such a stamp: copying "the current ones"
+#: would bring back the skills just removed.
+REMOVED = "left_by_remove"
+
+
 def _write_stamp(
-    folder: Path, skills: dict[str, dict[str, str]], version: str | None = None
+    folder: Path, skills: dict[str, dict[str, str]], *, removed: bool = False
 ) -> None:
-    document = {"schema": SCHEMA, "version": version or __version__, "skills": skills}
+    document = {"schema": SCHEMA, "version": __version__, "skills": skills}
+    if removed:
+        document[REMOVED] = True
     text = json.dumps(document, indent=2, sort_keys=True) + "\n"
     partial = folder / (STAMP + ".partial")
     partial.write_text(text, encoding="utf-8", newline="\n")
@@ -356,10 +364,7 @@ def remove(folder: Path, *, dry_run: bool = False) -> Removed | None:
             _swap(folder / name, None)
         kept = {name: stamp["skills"][name] for name, _why in checked.edited}
         if kept:
-            # Under the release that copied them: rewritten as this one, the stamp of a
-            # skill kept after an upgrade would have `check` advise copying the skills
-            # again, the ones just removed included.
-            _write_stamp(folder, kept, checked.version)
+            _write_stamp(folder, kept, removed=True)
         else:
             (folder / STAMP).unlink()
     return Removed(
@@ -396,7 +401,7 @@ def stale_notice(root: Path | None) -> str | None:
             # Said by `install-skills`, which is where it can be acted on. Here it must not
             # cost the other folder its line.
             continue
-        if stamp is None:
+        if stamp is None or stamp.get(REMOVED) is True:
             continue
         copy = _numbers(stamp["version"])
         if copy is None or here is None or copy == here:

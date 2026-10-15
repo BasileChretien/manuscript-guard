@@ -11,6 +11,10 @@ Zotero to be open.
 style. Citations are formatted text rather than live fields. This is what CI and a
 co-author without Zotero get.
 
+A third, **plain**, is no one's to send: each citation as the source writes it, `[@key]`,
+and the bibliography field of a live build. It is what `import` compares a document built
+live with, once each of its citation fields is read as the source wrote it.
+
 The document is regenerated from Markdown every time, which is the whole reason numbers
 cannot go stale: nothing is ever carried across by hand, so there is nothing to forget.
 """
@@ -66,6 +70,7 @@ LUA_MAX_BYTES = 2 * 1024 * 1024
 
 LIVE = "live"
 OFFLINE = "offline"
+PLAIN = "plain"
 
 # Ours, shipped with the package, run after zotero.lua on a live build: the bibliography
 # field and document preferences Word's Zotero plugin needs, which zotero.lua writes for
@@ -609,6 +614,10 @@ def build_document(
             # A document with no citations gets no bibliography field (a supplement of tables).
             if cites:
                 command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
+        elif mode == PLAIN:
+            # No citeproc and no Zotero: a citation prints as the source writes it.
+            if cites:
+                command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
         else:
             bib = project.path("literature") / "references.bib"
             if not bib.exists():
@@ -658,6 +667,7 @@ def build_document(
             )
 
             record = paragraph_record(project)
+            cited = _cited(mode, csl, cites)
             paragraphs = {
                 name: record[name] for name in paragraph_order(output) if name in record
             }
@@ -674,20 +684,48 @@ def build_document(
                 # name is known, so that the import of it says the record is missing.
                 try:
                     printed = write_printed(
-                        build_dir, output, digest, supplementary=supplementary
+                        build_dir,
+                        output,
+                        digest,
+                        supplementary=supplementary,
+                        cited=cited,
+                        style=None if csl is None else _style_place(project, csl),
                     )
                 except RecordNotWritten as exc:
                     printed = exc.name
                     report = report.merge(_record_not_written(output, exc))
                 except Exception as exc:
                     report = report.merge(_record_not_written(output, exc))
-            stamp_into(output, digest, paragraphs, printed)
+            stamp_into(output, digest, paragraphs, printed, cited)
         # A document that may be sent names none of its authors where the review is blind.
         if not sent:
             from manuscript_guard.build.blinding import check_blinded
 
             report = report.merge(check_blinded(project, output))
     return BuildResult(output=output, mode=mode, report=report)
+
+
+def _cited(mode: str, csl: Path | None, cites: bool) -> str:
+    """How the document's citations were made, as it records it (`roundtrip.CITED_PROPERTY`):
+    "live" where they are Zotero's fields, "offline" and the style's digest where `--csl`
+    named one, "offline" for the default style."""
+    from manuscript_guard.roundtrip import LIVE_CITATIONS, OFFLINE_CITATIONS, style_digest
+
+    if mode == LIVE and cites:
+        return LIVE_CITATIONS
+    if mode == OFFLINE and csl is not None:
+        return f"{OFFLINE_CITATIONS} {style_digest(csl)}"
+    return OFFLINE_CITATIONS
+
+
+def _style_place(project, csl: Path) -> str:
+    """Where the style was, as the record keeps it: from the project's root where it is in
+    the project, so that a copy of the project finds it; whole where it is not."""
+    found = csl.resolve()
+    try:
+        return found.relative_to(project.root.resolve()).as_posix()
+    except ValueError:
+        return found.as_posix()
 
 
 def _record_not_written(output: Path, reason: Exception) -> Report:

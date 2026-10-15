@@ -101,6 +101,15 @@ _CHUNK = 240
 #: record is not - another machine, a cleaned build/ - the import says so and reads the
 #: document as it read one built before the record.
 PRINTED_PROPERTY = "manuscript-guard-printed"
+
+#: How the document's citations were made, which is how `import` makes them again for the
+#: document it compares a returned one with: "offline" for the default style, "offline "
+#: and the digest of the style for one built with `--csl`, "live" for Zotero's fields. A
+#: document built before it carries none, and is read as "offline". Compared with an offline
+#: build in the default style, a document built in a journal's style came back with every
+#: cited paragraph refused, and one with live fields with every one Zotero had refreshed.
+CITED_PROPERTY = "manuscript-guard-citations"
+LIVE_CITATIONS, OFFLINE_CITATIONS = "live", "offline"
 RECORDS = "records"
 _PRINTED_FORMAT = 1
 _RECORD_NAME = re.compile(r"[0-9a-f]{64}")
@@ -201,7 +210,7 @@ def _ours(element: str) -> bool:
     """A property this stamp writes, or one of pandoc's inputs, which it drops."""
     found = re.search(r'name="([^"]*)"', element)
     name = found.group(1) if found else ""
-    return name in (PROPERTY, PRINTED_PROPERTY, *_BUILD_INPUTS) or name.startswith(
+    return name in (PROPERTY, PRINTED_PROPERTY, CITED_PROPERTY, *_BUILD_INPUTS) or name.startswith(
         f"{PARAGRAPHS_PROPERTY}-"
     )
 
@@ -211,6 +220,7 @@ def _custom_properties(
     digest: str,
     paragraphs: dict[str, str] | None = None,
     printed: str | None = None,
+    cited: str | None = None,
 ) -> str:
     """The custom-properties part with the source stamp added, every other property kept.
 
@@ -221,10 +231,13 @@ def _custom_properties(
 
     The paragraph map goes in beside the digest: see `PARAGRAPHS_PROPERTY`. So does the
     name of the record of what the document printed, `printed`: see `PRINTED_PROPERTY`.
+    And how its citations were made, `cited`: see `CITED_PROPERTY`.
     """
     ours = [_CUSTOM_PROPERTY.format(name=PROPERTY, value=digest)]
     if printed is not None:
         ours.append(_CUSTOM_PROPERTY.format(name=PRINTED_PROPERTY, value=printed))
+    if cited is not None:
+        ours.append(_CUSTOM_PROPERTY.format(name=CITED_PROPERTY, value=cited))
     if paragraphs is not None:
         ours += [
             _CUSTOM_PROPERTY.format(name=f"{PARAGRAPHS_PROPERTY}-{number}", value=chunk)
@@ -255,11 +268,13 @@ def stamp_into(
     digest: str,
     paragraphs: dict[str, str] | None = None,
     printed: str | None = None,
+    cited: str | None = None,
 ) -> None:
     """Record the source digest inside the .docx itself, and what each paragraph
     identifier named when `paragraphs` is given: `paragraph_record`, restricted to the
     paragraphs this document carries and in their order. And the name of the record of what
-    it printed, `printed` (`write_printed`). And let Word record moves.
+    it printed, `printed` (`write_printed`), and how its citations were made, `cited`
+    (`CITED_PROPERTY`). And let Word record moves.
 
     The sidecar `.source.sha256` tells *this* machine whether its own build is current. It
     cannot survive an email, and a document coming back from a co-author is precisely the
@@ -287,7 +302,7 @@ def stamp_into(
             elif item.filename == "word/settings.xml":
                 data = _NO_MOVES.sub("", data.decode("utf-8")).encode("utf-8")
             zout.writestr(item, data)
-        zout.writestr(_CUSTOM, _custom_properties(existing, digest, paragraphs, printed))
+        zout.writestr(_CUSTOM, _custom_properties(existing, digest, paragraphs, printed, cited))
     scratch.replace(document)
 
 
@@ -321,6 +336,53 @@ def stamp_of(document: Path) -> str | None:
     # need not be ours.
     found = re.search(rf'name="{PROPERTY}"[^>]*>\s*<vt:lpwstr>([0-9a-f]{{64}})</vt:lpwstr>', xml)
     return found.group(1) if found else None
+
+
+def cited_of(document: Path) -> str:
+    """How a returned document's citations were made (`CITED_PROPERTY`): "offline" where it
+    does not say, as a document built before it does not, or says what this cannot read."""
+    try:
+        with zipfile.ZipFile(document) as archive:
+            if _CUSTOM not in archive.namelist():
+                return OFFLINE_CITATIONS
+            xml = read_member(archive, _CUSTOM).decode("utf-8")
+    except (OSError, zipfile.BadZipFile, UnsafeDocument) as exc:
+        raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
+    found = re.search(
+        rf'name="{CITED_PROPERTY}"[^>]*>\s*<vt:lpwstr>(live|offline(?: [0-9a-f]{{64}})?)'
+        r"</vt:lpwstr>",
+        xml,
+    )
+    return found.group(1) if found else OFFLINE_CITATIONS
+
+
+def style_digest(style: Path) -> str:
+    """The digest a document built with `style` carries (`CITED_PROPERTY`): of the file's
+    bytes with its line endings as LF, since a checkout can change them and nothing else."""
+    return hashlib.sha256(style.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def own_citation(code: str) -> str | None:
+    """A citation field of a document just built live, read as the source writes it: the
+    build's field shows "<Do Zotero Refresh: ...>" and its code holds the citation's text."""
+    from manuscript_guard.citationfields import citation_of
+
+    found = citation_of(code)
+    return found.formatted if found is not None and found.formatted else None
+
+
+def recorded_citations(fields: dict[str, str]):
+    """A citation field of a returned document, read as the source wrote the citation it
+    still cites (`fields`, from the record of the build): its words are Zotero's, made
+    afresh at every Refresh. A field that cites anything else is read as the words it shows,
+    which the comparison then reads as a changed citation."""
+    from manuscript_guard.citationfields import citation_of
+
+    def read(code: str) -> str | None:
+        found = citation_of(code)
+        return fields.get(found.identity) if found is not None else None
+
+    return read
 
 
 def paragraphs_of(document: Path) -> dict[str, str] | None:
@@ -411,7 +473,13 @@ def _put(path: Path, written: bytes) -> None:
 
 
 def write_printed(
-    build_dir: Path, document: Path, digest: str, *, supplementary: bool = False
+    build_dir: Path,
+    document: Path,
+    digest: str,
+    *,
+    supplementary: bool = False,
+    cited: str = OFFLINE_CITATIONS,
+    style: str | None = None,
 ) -> str:
     """Write the record of what `document` printed under `build_dir`, and return its name
     (`PRINTED_PROPERTY`). `digest` is the source stamp the document carries, which the
@@ -427,12 +495,27 @@ def write_printed(
     same, and records of earlier builds are never removed, a document sent last week being
     still out there.
 
+    And how its citations were made, beside `CITED_PROPERTY`: for a live document, what
+    each citation field cites and the citation as the source writes it, which is how
+    `import` reads a field Zotero has refreshed; for one built with `--csl`, where the style
+    was (`style`), which is how `import` builds with it again.
+
     Raises `RecordNotWritten`, with the record's name, where the file cannot be written.
     """
+    from manuscript_guard.citationfields import citation_of
     from manuscript_guard.docxtext import blocks
 
+    cites: dict[str, set[str]] = {}
+
+    def own(code: str) -> str | None:
+        found = citation_of(code)
+        if found is None or not found.formatted:
+            return None
+        cites.setdefault(found.identity, set()).add(found.formatted)
+        return found.formatted
+
     kept = []
-    for block in blocks(document):
+    for block in blocks(document, fields=own if cited == LIVE_CITATIONS else None):
         entry = {"id": block.names[0]} if block.names else {}
         entry |= {name: getattr(block, name) for name in _PRINTED_FIELDS if getattr(block, name)}
         if block.unread:
@@ -447,6 +530,14 @@ def write_printed(
         "document": _DOCUMENTS[supplementary],
         "blocks": kept,
     }
+    if cited == LIVE_CITATIONS:
+        # One identity written two ways in the source, `[@a]` and `[@a ]`, cannot say which
+        # its field was: left out, the field is read as its words.
+        record["citations"] = {
+            "fields": {key: next(iter(texts)) for key, texts in cites.items() if len(texts) == 1}
+        }
+    elif style is not None:
+        record["citations"] = {"style": style}
     written = (json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
     name = hashlib.sha256(written).hexdigest()
     try:
@@ -500,7 +591,9 @@ def _blocks_of(record: object, stamp: str | None, supplementary: bool) -> list |
     """
     from manuscript_guard.docxtext import Block
 
-    if not isinstance(record, dict) or set(record) != _RECORD_KEYS:
+    if not isinstance(record, dict) or set(record) - {"citations"} != _RECORD_KEYS:
+        return None
+    if "citations" in record and _citations_of(record) is None:
         return None
     version, entries = record["manuscript-guard-printed"], record["blocks"]
     if type(version) is not int or version != _PRINTED_FORMAT:
@@ -533,6 +626,40 @@ def _blocks_of(record: object, stamp: str | None, supplementary: bool) -> list |
             )
         )
     return found
+
+
+def _citations_of(record: dict) -> dict | None:
+    """The `citations` of a record in the shape `write_printed` gives it, or None."""
+    found = record.get("citations")
+    if not isinstance(found, dict) or len(found) != 1:
+        return None
+    if "style" in found:
+        return found if _writable(found["style"]) and found["style"] else None
+    fields = found.get("fields")
+    if not isinstance(fields, dict):
+        return None
+    if not all(_writable(key) and _writable(text) for key, text in fields.items()):
+        return None
+    return found
+
+
+def read_citations(build_dir: Path, document: Path, *, supplementary: bool = False) -> dict:
+    """What the record of `document` says of how its citations were made: `{"fields":
+    {...}}` for a live document, `{"style": path}` for one built with `--csl`, and `{}`
+    where it says nothing or is no record of this document (`read_printed`)."""
+    name = printed_of(document)
+    if name is None:
+        return {}
+    try:
+        written = (build_dir / RECORDS / f"{name}.json").read_bytes()
+        record = json.loads(written.decode("utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return {}
+    if hashlib.sha256(written).hexdigest() != name:
+        return {}
+    if _blocks_of(record, stamp_of(document), supplementary) is None:
+        return {}
+    return _citations_of(record) or {}
 
 
 def read_printed(
@@ -2147,12 +2274,13 @@ def marked_blocks(raw: str) -> list[tuple[int, str, int]]:
     ]
 
 
-def read_blocks(document: Path):
-    """The body of a document as a reader sees it; see `docxtext.blocks`."""
+def read_blocks(document: Path, fields=None):
+    """The body of a document as a reader sees it; see `docxtext.blocks`, and for `fields`,
+    `recorded_citations`."""
     from manuscript_guard.docxtext import DocumentUnreadable, blocks
 
     try:
-        return blocks(document)
+        return blocks(document, fields=fields)
     except DocumentUnreadable as exc:
         raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
 

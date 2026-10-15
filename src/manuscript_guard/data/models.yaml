@@ -88,7 +88,7 @@ engines:
     why: >-
       The log rate of a count. Binary outcomes are allowed because Poisson regression with a
       robust variance (Zou's modified Poisson) is a standard way to estimate a risk ratio;
-      whether the variance was made robust is not read here.
+      G15 warns where the card of such a fit records model-based standard errors.
     fits:
       - {language: Python, class: GLM, family: Poisson, link: Log}
       - {language: Python, class: Poisson}

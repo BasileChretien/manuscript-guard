@@ -505,6 +505,119 @@ def test_a_live_document_without_its_record_says_so(
     assert "is the citation [@fictionalClassSignal2019]" in out
 
 
+# Item 30: a citation a co-author inserted with their own reference manager. Its words came
+# back as prose, merged into the source as text, and G2 then caught the year as a number
+# nobody bound.
+
+#: The CSL data of a work, as a reference manager's citation field carries it.
+CLASS_ITEM = {"itemData": {"title": "A disproportionality signal for a fictional drug class",
+                           "author": [{"family": "Fictional", "given": "Claire"}],
+                           "issued": {"date-parts": [[2019]]}}}  # fmt: skip
+UNKNOWN_ITEM = {"itemData": {"title": "A study that is not in the library",
+                             "author": [{"family": "Other", "given": "Ola"}],
+                             "issued": {"date-parts": [[2020]]}}}  # fmt: skip
+
+
+def _field_runs(code: str, shown: str) -> str:
+    from xml.sax.saxutils import escape
+
+    return (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        f'<w:r><w:instrText xml:space="preserve">{escape(code)}</w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        f'<w:r><w:t xml:space="preserve">{shown}</w:t></w:r>'
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+
+
+def _csl_code(item: dict, *, zotero: bool = True) -> str:
+    import json
+
+    name = "ZOTERO_ITEM CSL_CITATION" if zotero else "CSL_CITATION"
+    citation = {"citationID": "q", "citationItems": [{"id": 9, **item}]}
+    return f" ADDIN {name} {json.dumps(citation)} "
+
+
+def _mendeley_control(item: dict, shown: str) -> str:
+    import base64
+    import json
+
+    data = base64.b64encode(json.dumps({"citationItems": [item]}).encode()).decode()
+    return (
+        f'<w:sdt><w:sdtPr><w:tag w:val="MENDELEY_CITATION_v3_{data}"/></w:sdtPr>'
+        f'<w:sdtContent><w:r><w:t xml:space="preserve">{shown}</w:t></w:r></w:sdtContent></w:sdt>'
+    )
+
+
+ENDNOTE_CODE = (
+    " ADDIN EN.CITE <EndNote><Cite><Author>Other, Ola</Author><Year>2020</Year><RecNum>4"
+    "</RecNum><record><titles><title>A study that is not in the library</title></titles>"
+    "</record></Cite></EndNote>"
+)
+
+
+def _inserted_after_prose(inserted: str) -> dict[str, str]:
+    """A citation put in Word straight after the prose of a cited paragraph."""
+    return {PROSE_CITED: f'{PROSE_CITED}</w:t></w:r>{inserted}<w:r><w:t xml:space="preserve">'}
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("inserted", "said"),
+    [
+        (_field_runs(_csl_code(CLASS_ITEM), " (Fictional and Fictional 2019)"),
+         'Fictional 2019, "A disproportionality signal for a fictional drug class" was cited in '
+         "Word with a reference manager, whose field the build does not read: cite it in the .md "
+         "as [@fictionalClassSignal2019]"),
+        (_field_runs(_csl_code(UNKNOWN_ITEM, zotero=False), " [3]"),
+         'Other 2020, "A study that is not in the library" was cited in Word with a reference '
+         "manager, whose field the build does not read, and is not in references.bib"),
+        (_field_runs(ENDNOTE_CODE, " (Other 2020)"),
+         'Other 2020, "A study that is not in the library" was cited in Word'),
+        (_mendeley_control(CLASS_ITEM, " (Fictional and Fictional 2019)"),
+         "as [@fictionalClassSignal2019]"),
+        (_field_runs(" ADDIN EN.CITE.DATA ", " (Other 2020)"),
+         "a work it does not name was cited in Word"),
+    ],
+    ids=["zotero", "another manager's CSL field", "en.cite", "a tagged control", "unreadable"],
+)  # fmt: skip
+def test_a_citation_a_co_author_inserted_is_named_not_merged_as_prose(
+    project: Path, tmp_path: Path, capsys, inserted: str, said: str
+) -> None:
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    capsys.readouterr()
+    before = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx",
+        _inserted_after_prose(inserted),
+    )  # fmt: skip
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert said in " ".join(out.split()), out
+    assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_a_new_citation_in_a_live_document_is_named_not_merged(
+    project: Path, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Beside the build's own fields, which the record knows, one the co-author added with
+    Zotero is a citation the source does not have."""
+    from manuscript_guard.cli import main
+
+    built = _built_live(project, tmp_path, monkeypatch, capsys)
+    before = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    inserted = _field_runs(_csl_code(UNKNOWN_ITEM), " (Other 2020)")
+    returned = edit_docx(built, tmp_path / "back.docx", _inserted_after_prose(inserted))
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = " ".join(capsys.readouterr().out.split())
+    assert 'Other 2020, "A study that is not in the library" was cited in Word' in out, out
+    assert "[@fictionalClassSignal2019]" not in out.split("cited in Word")[0][-200:]
+    assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == before
+
+
 @needs_pandoc
 def test_an_emoji_inserted_in_word_merges(project: Path, tmp_path: Path) -> None:
     """Written as text only in the fallback, which is not read, the emoji was nothing:

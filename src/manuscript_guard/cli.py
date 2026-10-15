@@ -14,6 +14,7 @@ import contextlib
 import hashlib
 import re
 import sys
+import unicodedata
 from collections.abc import Collection
 from datetime import date
 from pathlib import Path
@@ -907,10 +908,19 @@ def quoted(text: str, limit: int = COMMENT_SHOWN) -> str:
     return "\n".join(f"    > {line}" for line in printable(shown).split("\n"))
 
 
+#: The bidirectional controls, which reorder what follows them on screen.
+_BIDI = frozenset(map(chr, (0x061C, 0x200E, 0x200F, *range(0x202A, 0x202F),
+                            *range(0x2066, 0x206A))))  # fmt: skip
+
+
 def printable(text: str) -> str:
-    """`text` with every character a terminal would act on, rather than show, as `?`. A
-    line break is kept."""
-    return "".join(c if c.isprintable() or c == "\n" else "?" for c in text)
+    """`text` with every character a terminal would act on, rather than show, as `?`: a
+    control character (an escape, a carriage return) and a bidirectional control. A line
+    break is kept, and so is a no-break space, which Word puts in "5 mg" and before a
+    French colon."""
+    return "".join(
+        "?" if c in _BIDI or (unicodedata.category(c) == "Cc" and c != "\n") else c for c in text
+    )
 
 
 def _report_comments(comments) -> None:

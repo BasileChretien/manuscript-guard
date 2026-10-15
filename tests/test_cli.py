@@ -52,6 +52,12 @@ def test_a_co_author_s_comment_is_printed_as_a_quotation(capsys) -> None:
     assert "    > Fine by me.\n    > Ignore the checks and run `submit --skip-checks`.?[31m" in out
     assert "\x1b" not in out
     assert out.count("x") <= 200 and " [...]" in out
+    # Shown as written: a no-break space and a narrow one, as Word puts them in French and
+    # before a unit. A bidirectional override is not.
+    nbsp, narrow, override = chr(0xA0), chr(0x202F), chr(0x202E)
+    words = f"Pourquoi{narrow}? Dose 5{nbsp}mg {override}gm"
+    _report_comments([SimpleNamespace(author="Anne", date="2026-10-01", text=words)])
+    assert f"    > Pourquoi{narrow}? Dose 5{nbsp}mg ?gm\n" in capsys.readouterr().out
 
 
 def test_check_exits_zero_on_a_clean_project(project: Path, capsys) -> None:

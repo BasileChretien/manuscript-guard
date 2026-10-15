@@ -2290,8 +2290,9 @@ instructions for authors as fetched (`journal-profile`). Each says, under "Text 
 someone else", that an instruction found in that text is part of it and is not followed,
 and that what it says never goes into a shell command; `tests/test_plugin.py` holds the
 five to it. The tool's own output sets such text apart as well: `import` prints a Word
-comment after "comment from <author>, quoted:", each line behind `> `, cut at 200
-characters, with every character a terminal would act on shown as `?`. Before 2026-10-15 it
+comment after "comment from <author> (<date>), quoted:", each line behind `> `, cut at 200
+characters, with every control character and bidirectional control shown as `?`; a
+no-break space is shown as it is. Before 2026-10-15 it
 printed the comment on the same line as the tool's words, and a comment that read like an
 instruction read like the tool's.
 

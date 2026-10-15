@@ -1420,7 +1420,10 @@ chapter 8, whose equations `stats/special.py` names, and they are tested against
 SciPy computed once, outside the package. The two agree to a relative 1e-10.
 
 An estimate printed with its confidence interval is held to it the same way, on the same
-three surfaces (`stats/intervals.py`). Two identities hold for a Wald interval:
+three surfaces (`stats/intervals.py`). An estimate outside its own interval over every value
+the printed digits allow, a bound transposed past it or an estimate from another analysis,
+is `interval-excludes-estimate`, whatever kind of interval it is. And two identities hold
+for a Wald interval:
 
 - **A ratio's interval is symmetric on the log scale.** The arm from the lower bound up to
   the estimate equals the arm from the estimate up to the upper bound. A bound misprinted,
@@ -1448,7 +1451,9 @@ P one-sided, or adjusted or corrected for multiplicity, is not judged on the sec
 "Adjusted" alone stands nothing down: it is said of estimates far more often than of P
 values, and an adjusted odds ratio's interval is as symmetric as a crude one's. A P is taken
 as the estimate's own only where no other interval stands between them and nothing near it
-says it is a P for interaction, trend or heterogeneity. Bounds whose signs cannot be read
+says it is a P for interaction, trend or heterogeneity. The words between a name and its
+estimate do not run across another estimate's name: "No difference in mortality, HR 0.83"
+names a hazard ratio, held to 1. Bounds whose signs cannot be read
 for sure are not read: "-0.9--0.1" is an en dash in Markdown or a hyphen and a minus.
 
 ## A model is read from its fit, and each variable says what it is

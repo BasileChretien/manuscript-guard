@@ -916,6 +916,11 @@ _NOT_PLAIN_INTERVAL = (
     "by profile likelihood, ", "with an exact interval, ", "by bootstrap, ",
     "in a Bayesian model, ",
 )  # fmt: skip
+#: The word "difference" before a ratio's name: what a sentence says before the ratio, not
+#: of it.
+_DIFFERENCE_BEFORE = (
+    "there was no difference, ", "with no difference in mortality, ", "the difference: ",
+)  # fmt: skip
 _NOT_PLAIN_P = (
     "after Bonferroni adjustment, ", "one-sided, ", "with P values adjusted for multiple testing, ",
 )  # fmt: skip
@@ -989,22 +994,29 @@ def _planted_intervals(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
     plans: list[tuple[int, str]] = []
     for index, (kind, _form, level) in enumerate(_INTERVAL_FORMS):
         if kind == "difference":
-            plans += [(index, plan) for plan in ("symmetric", "against", "quiet p")]
+            plans += [(index, plan) for plan in ("symmetric", "against", "quiet p", "outside")]
         else:
             first = "level" if level == "90" else "symmetric"
             plans += [
                 (index, plan)
-                for plan in (first, "lopsided", "against", "quiet interval", "quiet p", "adjusted")
-            ]
+                for plan in (first, "lopsided", "against", "quiet interval", "quiet p", "adjusted",
+                             "outside")
+            ]  # fmt: skip
     plans += [(0, plan) for plan in ("next interval", "interaction", "next sentence")]
-    plans += [(7, "hyphens"), (0, "reversed")]
+    plans += [(7, "hyphens"), (0, "reversed"), (0, "after difference")]
     sentences: list[tuple[str, tuple[Any, ...] | None]] = []
     for index, plan in draw(st.permutations(plans)):
         kind, form, level = _INTERVAL_FORMS[index]
         if kind == "ratio":
-            e, low, high, p = ratio(plan if plan != "next interval" else "symmetric", level)
+            plain = plan in ("next interval", "outside", "after difference")
+            e, low, high, p = ratio("symmetric" if plain else plan, level)
         else:
             e, low, high, p = difference(plan if plan != "hyphens" else "against", level)
+        if plan == "outside":
+            # A bound transposed past its estimate: the estimate beyond its upper bound.
+            past = thousandths(150, 600)
+            e = high * (1 + past) if kind == "ratio" else high + past + 0.05
+            p = None
         e_, low_, high_ = shown(e), shown(low), shown(high)
         if plan == "hyphens":
             magnitude = abs(high) + 0.1
@@ -1019,6 +1031,8 @@ def _planted_intervals(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
             "quiet interval": draw(st.sampled_from(_NOT_PLAIN_INTERVAL)),
             "quiet p": draw(st.sampled_from(_NOT_PLAIN_P)),
             "adjusted": "after adjustment for age and sex, ",
+            # A ratio named after the word "difference" is a ratio.
+            "after difference": draw(st.sampled_from(_DIFFERENCE_BEFORE)),
         }.get(plan, "")
         said = p
         if plan == "next interval":
@@ -1032,11 +1046,11 @@ def _planted_intervals(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
             said = None
         elif p is not None:
             text += draw(st.sampled_from(_P_AFTER)).format(sign=p[0], p=p[1])
-        shape = {"lopsided": "far", "quiet interval": None}.get(plan, "zero")
+        shape = {"lopsided": "far", "quiet interval": None, "outside": None}.get(plan, "zero")
         against = plan in ("against", "adjusted")
         sentences.append(
             (lead + text, (len(lead), kind, e_, low_, high_, level, said,
-                           shape if kind == "ratio" else None, against))
+                           shape if kind == "ratio" else None, against, plan == "outside"))
         )  # fmt: skip
 
     parts: list[str] = []
@@ -1064,6 +1078,7 @@ def test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged(
     from manuscript_guard.stats.intervals import (
         ASYMMETRY,
         asymmetry,
+        outside_interval,
         p_against,
         reported_intervals,
     )
@@ -1073,7 +1088,8 @@ def test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged(
     assert [(r.start, r.kind, r.estimate, r.low, r.high, r.level, r.p) for r in found] == [
         planted[:7] for planted in expected
     ], text
-    for interval, (*_read, shape, against) in zip(found, expected, strict=True):
+    for interval, (*_read, shape, against, outside) in zip(found, expected, strict=True):
+        assert outside_interval(interval) is outside, (interval, text)
         share = asymmetry(interval)
         if shape is None:
             assert share is None, (interval, share)
@@ -1141,6 +1157,20 @@ def _adjusted_alone_quiets_an_interval(patch: pytest.MonkeyPatch) -> None:
     for name in ("_INTERVAL_QUIET", "_P_QUIET"):
         pattern = getattr(intervals, name)
         patch.setattr(intervals, name, re.compile(pattern.pattern + r"|adjust\w*", pattern.flags))
+
+
+def _an_estimate_outside_its_interval_is_not_said(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    patch.setattr(intervals, "outside_interval", lambda interval: False)
+
+
+def _a_name_s_words_run_across_another_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    assert intervals._NOT_A_NAME in intervals._INTERVAL.pattern
+    pattern = intervals._INTERVAL.pattern.replace(intervals._NOT_A_NAME, "")
+    patch.setattr(intervals, "_INTERVAL", re.compile(pattern))
 
 
 def _bounds_that_cannot_be_read_for_sure_are_read(patch: pytest.MonkeyPatch) -> None:
@@ -3089,6 +3119,14 @@ BROKEN = {
     ),
     "an adjusted estimate is not judged": (
         _adjusted_alone_quiets_an_interval,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "an estimate outside its own interval is not said": (
+        _an_estimate_outside_its_interval_is_not_said,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "the words between a name and its estimate run across another estimate's name": (
+        _a_name_s_words_run_across_another_name,
         test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
     ),
     "bounds joined by hyphens after a negative one, or the wrong way round, are read": (

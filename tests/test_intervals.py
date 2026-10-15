@@ -158,3 +158,38 @@ def test_a_p_after_another_interval_is_that_one_s() -> None:
 )
 def test_one_less_the_level_is_the_alpha(level: str, alpha: float | None) -> None:
     assert alpha_of(level) == alpha
+
+
+@pytest.mark.parametrize(
+    ("text", "outside"),
+    [
+        ("The odds ratio was 2.6 (95% CI 2.1 to 2.3)", True),
+        ("OR 3.50 (95% CI 1.60 to 3.10)", True),
+        ("MD 1.4 (95% CI 0.2 to 0.9)", True),
+        ("MD -1.4 (95% CI -0.9 to -0.2)", True),
+        ("OR 2.3 (95% CI 2.1 to 2.3)", False),
+        ("OR 2.6 (95% CI 2.1 to 3.2)", False),
+    ],
+)
+def test_an_estimate_outside_its_own_interval_is_found(text: str, outside: bool) -> None:
+    """Round 1 of #300: the most lopsided interval of all, a bound transposed past its
+    estimate, was the one not measured."""
+    from manuscript_guard.stats.intervals import outside_interval
+
+    assert outside_interval(_one(text)) is outside
+
+
+@pytest.mark.parametrize(
+    ("text", "name"),
+    [
+        ("No difference in mortality, HR 0.83 (95% CI 0.65 to 1.05), P = 0.13.", "HR"),
+        ("There was no significant difference, OR 1.2 (95% CI 0.9 to 1.6), P = 0.20.", "OR"),
+        ("The difference, RR 1.5 (95% CI 1.1 to 2.0)", "RR"),
+    ],
+)
+def test_a_ratio_named_after_the_word_difference_is_read_as_a_ratio(text: str, name: str) -> None:
+    """Round 1 of #300: a bare "difference" took the gap after it across the ratio's name,
+    and the ratio was judged against 0."""
+    found = _one(text)
+    assert (found.kind, found.name) == ("ratio", name)
+    assert p_against(found) is None

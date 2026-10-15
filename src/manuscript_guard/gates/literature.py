@@ -38,6 +38,8 @@ from manuscript_guard.stats.intervals import (
     asymmetry,
     described_against,
     described_asymmetry,
+    described_outside,
+    outside_interval,
     p_against,
     reported_intervals,
 )
@@ -203,6 +205,8 @@ def _tests_in_quote(key: str, value, quote: str) -> Report:
         share = asymmetry(interval)
         verdict = p_against(interval)
         said = []
+        if outside_interval(interval):
+            said.append(("quote-interval-excludes-estimate", described_outside(interval)))
         if share is not None and share > ASYMMETRY:
             said.append(("quote-interval-asymmetric", described_asymmetry(interval, share)))
         if verdict is not None:

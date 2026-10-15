@@ -56,10 +56,13 @@ _DIFFERENCE = (
     r"(?<![\w-])(?:MD|RD|ARD|SMD|WMD)(?![\w-])"
     r"|(?i:\b(?:mean|risk|absolute|standardi[sz]ed mean)?\s?differences?\b)"
 )
+#: Where no other estimate's name begins: "No difference in mortality, HR 0.83" names an HR,
+#: and the difference is no estimate of it (round 1 of #300).
+_NOT_A_NAME = rf"(?!{_RATIO}|{_DIFFERENCE})"
 _INTERVAL = re.compile(
     rf"(?:(?P<ratio>{_RATIO})|(?P<difference>{_DIFFERENCE}))"
     # "= 2.6", " of 2.6", " was 2.6", ", 2.6": what stands between the name and its value.
-    rf"(?:[^\d\n()\[\]{{}}]|\n(?![ \t]*\n)){{0,24}}?"
+    rf"(?:{_NOT_A_NAME}(?:[^\d\n()\[\]{{}}]|\n(?![ \t]*\n))){{0,24}}?"
     rf"(?P<estimate>{_NUMBER})"
     rf"{_S}*[(\[,;]?{_S}*"
     # "exact 95% CI", "95% profile-likelihood CI": what the interval is, said before it.
@@ -209,11 +212,25 @@ def _box(printed: str) -> tuple[float, float] | None:
     return float(value - half), float(value + half)
 
 
+def outside_interval(interval: ReportedInterval) -> bool:
+    """Whether the estimate is outside its own interval over every value the printed digits
+    allow: a bound transposed past it, or an estimate from another analysis. Said of any
+    interval, a ratio's or a difference's, whatever kind it is (round 1 of #300)."""
+    estimate, low, high = (_box(n) for n in (interval.estimate, interval.low, interval.high))
+    if estimate is None or low is None or high is None:
+        return False
+    return estimate[1] < low[0] or estimate[0] > high[1]
+
+
+def described_outside(interval: ReportedInterval) -> str:
+    return f"{interval.written}: the estimate is outside its own interval"
+
+
 def asymmetry(interval: ReportedInterval) -> float | None:
     """How much the two arms of a ratio's interval differ on the log scale, as a share of
     its half-width, at the least over every value the printed digits allow; None for a
-    difference, a sentence that says the interval is not the plain one, or numbers that are
-    not a ratio's."""
+    difference, a sentence that says the interval is not the plain one, numbers that are
+    not a ratio's, or an estimate outside its interval, which `outside_interval` says."""
     if interval.kind != "ratio" or interval.quiet:
         return None
     boxes = [_box(n) for n in (interval.estimate, interval.low, interval.high)]

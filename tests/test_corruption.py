@@ -2201,6 +2201,11 @@ def test_an_audited_paper_s_p_that_does_not_follow_is_listed_apart(tmp_path: Pat
          "women, P = 0.40 for interaction.", []),
         ("The risk ratio was 1.50 (90% CI 1.05 to 2.14), P = 0.07.", []),
         ("<!-- The odds ratio was 2.6 (95% CI 1.2 to 3.2). -->", []),
+        # Round 1 of #300: a bound transposed past its estimate, and a ratio named after
+        # the word "difference".
+        ("The odds ratio was 2.6 (95% CI 2.1 to 2.3).", ["interval-excludes-estimate"]),
+        ("The mean difference was 1.4 (95% CI 0.2 to 0.9).", ["interval-excludes-estimate"]),
+        ("No difference in mortality, HR 0.83 (95% CI 0.65 to 1.05), P = 0.13.", []),
     ],
 )  # fmt: skip
 def test_an_interval_that_does_not_fit_its_estimate_or_its_p_is_found(
@@ -2257,14 +2262,17 @@ def test_an_audited_paper_s_interval_that_does_not_fit_is_listed_apart(tmp_path:
     paper = tmp_path / "paper.md"
     paper.write_text(
         "The odds ratio was 2.6 (95% CI 1.2 to 3.2).\n\n"
-        "The hazard ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40.\n",
+        "The hazard ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40.\n\n"
+        "The risk ratio was 2.6 (95% CI 2.1 to 2.3).\n",
         encoding="utf-8",
     )
     report = audit([paper], [])
     assert [(d.line, d.context) for d in report.disagreements] == [
         (1, "odds ratio was 2.6 (95% CI 1.2 to 3.2"),
         (3, "hazard ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40"),
+        (5, "risk ratio was 2.6 (95% CI 2.1 to 2.3"),
     ]
+    assert "outside its own interval" in report.disagreements[2].message
     assert "arms differ" in report.disagreements[0].message
     assert "excludes 1, and P = 0.40 is above 0.05" in report.disagreements[1].message
 

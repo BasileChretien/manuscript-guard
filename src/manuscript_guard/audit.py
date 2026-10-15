@@ -39,6 +39,8 @@ from manuscript_guard.stats.intervals import (
     asymmetry,
     described_against,
     described_asymmetry,
+    described_outside,
+    outside_interval,
     p_against,
     reported_intervals,
 )
@@ -816,6 +818,8 @@ def _disagreements(path: Path, text: str) -> list[Disagreement]:
     for interval in reported_intervals(hidden):
         context = " ".join(hidden[interval.start : interval.end].replace("\x00", " ").split())
         line = hidden.count("\n", 0, interval.start) + 1
+        if outside_interval(interval):
+            found.append(Disagreement(path, line, described_outside(interval), context))
         share = asymmetry(interval)
         if share is not None and share > ASYMMETRY:
             found.append(Disagreement(path, line, described_asymmetry(interval, share), context))

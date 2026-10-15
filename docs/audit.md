@@ -38,8 +38,8 @@ its sentence is held to that P: the P the statistic gives is worked out over eve
 their printed digits allow, and a P that does not follow is listed apart, with whether it
 falls on the other side of 0.05. A one-sided, adjusted or exact test the sentence names
 is not judged, and `--strict` does not count these. Each named estimate with a confidence
-interval after it is held to it the same way: a ratio whose interval is lopsided on the log
-scale, and an interval that excludes its null beside a P above one less its level, or
+interval after it is held to it the same way: an estimate outside its own interval, a
+ratio whose interval is lopsided on the log scale, and an interval that excludes its null beside a P above one less its level, or
 includes it beside one below, are listed with them.
 
 For a paper still being written, bind the numbers instead — then a stale one is impossible

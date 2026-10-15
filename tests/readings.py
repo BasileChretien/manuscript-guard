@@ -376,7 +376,12 @@ def _reported_tests() -> Reading:
 def _reported_intervals() -> Reading:
     """Each named estimate with a confidence interval after it, as it is printed, and what
     G8 says of it: how far its arms differ, and whether it and its P disagree."""
-    from manuscript_guard.stats.intervals import asymmetry, p_against, reported_intervals
+    from manuscript_guard.stats.intervals import (
+        asymmetry,
+        outside_interval,
+        p_against,
+        reported_intervals,
+    )
     from manuscript_guard.text.masking import mask
 
     def reported(text: str) -> list[list[Any]]:
@@ -389,7 +394,8 @@ def _reported_intervals() -> Reading:
                  interval.low, interval.high, interval.level,
                  None if interval.p is None else list(interval.p), interval.quiet,
                  interval.p_quiet, None if share is None else f"{share:.12g}",
-                 None if against is None else [against.excludes, against.alpha, against.null]]
+                 None if against is None else [against.excludes, against.alpha, against.null],
+                 outside_interval(interval)]
             )  # fmt: skip
         return found
 

@@ -13,10 +13,11 @@ significance level, the one the analysis emits as `param.alpha` or 0.05. Both ar
 a test the sentence does not call one-sided or adjusted may still be one, and the reading
 of a sentence is the reading of a sentence.
 
-And an estimate printed with its confidence interval (`stats/intervals.py`): a ratio's
-interval that its estimate does not stand in the middle of on the log scale,
-`ratio-interval-asymmetric`, and an interval that excludes its null beside a P above one
-less its level, or includes it beside a P below, `p-against-interval`. Warnings too.
+And an estimate printed with its confidence interval (`stats/intervals.py`): one outside its
+own interval, `interval-excludes-estimate`; a ratio's interval that its estimate does not
+stand in the middle of on the log scale, `ratio-interval-asymmetric`; and an interval that
+excludes its null beside a P above one less its level, or includes it beside a P below,
+`p-against-interval`. Warnings too.
 """
 
 from __future__ import annotations
@@ -32,6 +33,8 @@ from manuscript_guard.stats.intervals import (
     asymmetry,
     described_against,
     described_asymmetry,
+    described_outside,
+    outside_interval,
     p_against,
     reported_intervals,
 )
@@ -95,6 +98,20 @@ def _interval_findings(interval, printed: str, path) -> list[Finding]:
     context = " ".join(printed[interval.start : interval.end].replace(NUL, " ").split())
     line = printed.count("\n", 0, interval.start) + 1
     found = []
+    if outside_interval(interval):
+        found.append(
+            Finding(
+                gate=GATE,
+                code="interval-excludes-estimate",
+                severity=WARN,
+                message=described_outside(interval),
+                path=path,
+                line=line,
+                context=context,
+                hint="a bound is misprinted, or the estimate and its interval come from "
+                "different analyses; check all three against the analysis",
+            )
+        )
     share = asymmetry(interval)
     if share is not None and share > ASYMMETRY:
         found.append(

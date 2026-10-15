@@ -44,9 +44,18 @@ nothing, but for the submission guard where a command names a project (below).
 | Hook | What it does |
 |---|---|
 | session start | One line: the stage, and how many findings fail and warn. Where a file of the project cannot be used, which file and why, in place of that line. And once, when the installed tool is older than the plugin, a notice with the upgrade command |
-| before a write | Refuses edits to `results/`, `build/` and generated checklist profiles. These are written by something else, and editing one desynchronises it |
+| before a write | Refuses edits to `results/`, `build/` and generated checklist profiles. These are written by something else, and editing one desynchronises it. Puts to you an edit of `literature/attested.yaml` that names an attester, or changes one |
 | after a write | For a manuscript file, classifies the numbers just saved and names any bound to nothing, while you are still in the paragraph. For an analysis file, says the results are now stale and the Methods may no longer describe the code |
-| before a submission-shaped shell command | Runs the submission check and blocks if it fails, or if a file of the project cannot be used and the check cannot run |
+| before a submission-shaped shell command | Runs the submission check and blocks if it fails, or if a file of the project cannot be used and the check cannot run. Puts to you a `review --run --yes`, which would send the manuscript without asking |
+
+**Two decisions are put to you, not taken by the agent.** Sending the manuscript to model
+providers without being asked, `review --run --yes`, and naming who attested a value read in
+a source, `attested_by`, are statements only the author can make. Before either runs, the
+hook answers "ask": Claude Code shows you the call and the reason, auto mode included, and
+it goes ahead only if you approve it. The reason names the models in `review.models`, or the
+attester the edit adds. An edit that leaves the attesters as they were, a value or a date
+changed beside them, is not put to you, nor a run with `--dry-run` or without `--yes`, which
+asks you itself. Under `claude -p`, with nobody to answer, the call is refused.
 
 The submission guard matches against the **whole command string** rather than a prefix rule,
 because `cd example && manuscript-guard submit` and `FOO=1 manuscript-guard submit` both
@@ -110,7 +119,15 @@ caught at the moment of the mistake. `check` and `build` run every gate either w
 | session start | As above |
 | before a write | Codex edits files by applying a patch, which may write several files. A patch that adds or changes a file in `results/`, `build/` or a generated checklist profile, or moves a file into one, is refused whole, and the reason names those files. A patch that only deletes one is not refused |
 | after a write | Each manuscript file in the patch that holds an unbound number, and each analysis file, gets its line |
-| before a submission-shaped shell command | As above |
+| before a submission-shaped shell command | As above, except a `review --run --yes`, which is refused (below) |
+
+**Under Codex the two decisions are refused, not asked.** Codex reads a hook's "ask" and does
+not support it yet: by its documentation it marks the hook as failed and lets the call go
+through. So where the hook cannot tell that Claude Code sent the event, it refuses the call
+with the same reason, and you run the command or make the edit yourself. Claude Code is told
+apart by what it gives a hook (`CLAUDE_PROJECT_DIR`, and an event with no `turn_id`, which
+Codex sends with every tool call); any other tool is refused, the direction in which you are
+not bypassed.
 
 What Codex does not enforce. `check`, `build` and `submit` hold whatever the hooks do:
 

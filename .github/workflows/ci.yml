@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
 
+# A push to a pull request makes the run for its last head moot, and each run is fifteen
+# jobs: with a dozen pull requests open, runs for heads already replaced held the runners
+# for hours while the current ones and the release waited. A pull request's runs share a
+# group and the newer cancels the older; a push to main is grouped by its own commit, so
+# none of main's runs is ever cancelled.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   # The build, the import round trip and the checks on what pandoc prints all need pandoc,
   # and each skips without it: before this was set, no test job had pandoc, and none failed

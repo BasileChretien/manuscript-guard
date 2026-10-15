@@ -37,7 +37,8 @@ someone looks for it.
 | RECORD-PE | **CC BY 4.0**, commercial use permitted. The site's CC BY notice does not say whether it reaches the PE extension, but the RECORD-PE paper itself carries the BMJ open-access statement: *"an Open Access article distributed in accordance with the terms of the Creative Commons Attribution (CC BY 4.0) license, which permits others to distribute, remix, adapt and build upon this work, for commercial use, provided the original work is properly cited."* | PMC6234471 (*The BMJ* 2018;363:k3532) |
 | STROBE | **CC BY** — the statement carrying this checklist was published in *PLoS Medicine* under the Creative Commons Attribution License. The STROBE site itself states only a bare copyright | strobe-statement.org, PMC2020495 |
 | PRISMA 2020 | **CC BY 4.0**, commercial use permitted, via the statement paper — same BMJ open-access wording as RECORD-PE. The site itself states only *"Copyright © 2024-2026 the PRISMA Executive"* and has no terms page (`/terms` is a 404) | PMC8005924 (*BMJ* 2021;372:n71) |
-| ARRIVE 2.0 | **CC BY** for the explanation and elaboration (*PLOS Biology*). The checklist's own terms are not separately stated | arriveguidelines.org |
+| ARRIVE 2.0 | **Not stated** for the guidelines PDF the recipe reads; the site carries only a copyright line of the NC3Rs. The statement and the explanation and elaboration (*PLOS Biology* 2020) are **CC0 1.0** in their Europe PMC records and in Crossref, though the site calls the second CC-BY; an earlier pass recorded that CC-BY here. Read 2026-10-16 | arriveguidelines.org, PMC7360023, PMC7360025 |
+| TRIPOD+AI | **CC BY 4.0**, via the statement paper's licence in its Europe PMC full text and in Crossref. The XML's copyright line also carries the publisher's no-commercial-reuse wording, which the licence it states contradicts. Read 2026-10-16 | PMC11019967 (*BMJ* 2024, doi:10.1136/bmj-2023-078378) |
 | CONSORT 2025 | **Download and copying explicitly permitted**, with a condition and a restriction, quoted in full below | consort-spirit.org/terms-of-use |
 | SPIRIT 2025 | As CONSORT — same site, same terms page | consort-spirit.org/terms-of-use |
 | READUS-PV | **CC BY-NC** — non-commercial. Cannot be redistributed from an MIT repository | Europe PMC |
@@ -75,6 +76,11 @@ built; SANRA, the fourteenth, was added later and verified the same way against 
 served by `down.asp?id=22862`. Anyone with the recipes and a network connection gets the same documents and the same
 profiles.
 
+The two TRIPOD+AI recipes, added on 2026-10-16, read the statement paper itself: its full text
+from Europe PMC (`/rest/PMC11019967/fullTextXML`). They record a digest of the table's rows
+rather than of the file, because Europe PMC can regenerate the XML with nothing in the table
+changed, and `fetch` refuses an answer that is not a JATS article.
+
 Two of those links took a second attempt, and both failures are the kind that would
 otherwise pass unnoticed:
 
@@ -95,7 +101,7 @@ gets the profile the recipe describes.
 ## If you want to redistribute a profile
 
 Some of these would permit it. CC BY allows redistribution with attribution, so a STROBE,
-RECORD or ARRIVE profile could in principle ship with this toolkit, provided the attribution
+RECORD or TRIPOD+AI profile could in principle ship with this toolkit, provided the attribution
 is correct and the licence travels with the file.
 
 It still isn't done, for two reasons. A uniform rule is easier to keep right than a

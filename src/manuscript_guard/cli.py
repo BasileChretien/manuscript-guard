@@ -2352,7 +2352,8 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 def cmd_transcribe(args: argparse.Namespace) -> int:
     """Generate checklist profiles from official documents, via recipes."""
     from manuscript_guard.paths import workspace as find_workspace
-    from manuscript_guard.reporting import RecipeError, build_profile
+    from manuscript_guard.reporting import RecipeError, build_profile, load_recipe
+    from manuscript_guard.reporting.build import rows_digest_of
 
     root = find_workspace(args.root)
     sources_dir = root / "profiles" / "reporting" / "sources"
@@ -2378,6 +2379,10 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
             note = f"  [{len(unverified)} NOT VERBATIM: {', '.join(unverified[:6])}]"
             failed += 1
         print(f"  {path.name}: {count} items{note}")
+        if not load_recipe(recipe)[1].get("rows_sha256"):
+            digest = rows_digest_of(recipe, sources_dir)
+            if digest:
+                print(f"    rows_sha256: {digest}  (record it in the recipe's meta)")
     return 1 if failed else 0
 
 

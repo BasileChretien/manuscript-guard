@@ -1717,6 +1717,65 @@ def test_every_character_of_a_script_the_gates_do_not_read_is_counted(
     assert {name: after[name] - before[name] for name in _FOREIGN} == expected, with_them
 
 
+# ---------------------------------------------------------------------- an ISBN's check digit
+
+
+@st.composite
+def _isbns(draw: st.DrawFn) -> tuple[list[str], list[str]]:
+    """An ISBN-10 and an ISBN-13 with their check digits worked out here, cut into groups
+    where drawn, and written in fields every way a field holds them: each with hyphens, each
+    with spaces, both in one field parted by a space in either order, and both with labels,
+    a qualifier and a semicolon. And each with one digit changed. An ISBN-10 that opens
+    with 978 or 979 is not drawn (DESIGN.md, Known gaps)."""
+    ten = draw(
+        st.lists(st.integers(0, 9), min_size=9, max_size=9).filter(
+            lambda digits: digits[:3] not in ([9, 7, 8], [9, 7, 9])
+        )
+    )
+    check = (11 - sum((10 - at) * d for at, d in enumerate(ten)) % 11) % 11
+    isbn10 = "".join(map(str, ten)) + ("X" if check == 10 else str(check))
+    thirteen = [9, 7, draw(st.sampled_from((8, 9)))] + draw(
+        st.lists(st.integers(0, 9), min_size=9, max_size=9)
+    )
+    check = (10 - sum(d * (1 if at % 2 == 0 else 3) for at, d in enumerate(thirteen)) % 10) % 10
+    isbn13 = "".join(map(str, thirteen)) + str(check)
+    hyphened, spaced, changed = [], [], []
+    for isbn in (isbn10, isbn13):
+        cuts = sorted(draw(st.sets(st.integers(1, len(isbn) - 1), min_size=1, max_size=4)))
+        pieces = [isbn[a:b] for a, b in zip([0, *cuts], [*cuts, len(isbn)], strict=True)]
+        at = draw(st.integers(0, len(isbn) - 2))
+        changed.append(
+            isbn[:at] + str((int(isbn[at]) + draw(st.integers(1, 9))) % 10) + isbn[at + 1 :]
+        )
+        hyphened.append("-".join(pieces))
+        spaced.append(" ".join(pieces))
+    fields = [
+        *hyphened,
+        *spaced,
+        f"{spaced[0]} {spaced[1]}",
+        f"{spaced[1]} {spaced[0]}",
+        f"ISBN-10: {spaced[0]}; ISBN-13: {hyphened[1]} (pbk.)",
+    ]
+    return fields, changed
+
+
+@holds(300, _isbns())
+def test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not(
+    drawn: tuple[list[str], list[str]],
+) -> None:
+    """G7 reads an ISBN field however it holds its numbers, and both forms catch any one
+    digit changed: an ISBN-10 with any check digit, X included, and an ISBN-13 with the
+    weights 1 and 3."""
+    from manuscript_guard.gates.identifiers import problems
+
+    fields, changed = drawn
+    for field in fields:
+        assert problems("k", {"type": "misc", "isbn": field}) == [], field
+    for field in changed:
+        found = problems("k", {"type": "misc", "isbn": field})
+        assert [code for code, _said in found] == ["identifier-malformed"], (field, found)
+
+
 # --------------------------------------------------------------------------------------- TeX
 
 
@@ -1941,6 +2000,29 @@ def _a_character_of_two_scripts_is_counted_twice(patch: pytest.MonkeyPatch) -> N
         return found
 
     patch.setattr(scripts, "scripts_in", counted)
+
+
+def _an_isbn_s_groups_are_read_as_isbns(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    patch.setattr(
+        identifiers, "_isbns",
+        lambda field: [p for p in re.split(r"[,;/]|\s(?=\d{3})", field) if p.strip()],
+    )  # fmt: skip
+
+
+def _an_isbn_13_is_weighed_as_an_isbn_10(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    def valid(written: str) -> bool:
+        digits = re.sub(r"[\s-]", "", written).upper()
+        if not re.fullmatch(r"\d{9}[\dX]|\d{13}", digits):
+            return False
+        weights = range(len(digits), 0, -1)
+        total = sum(w * (10 if d == "X" else int(d)) for w, d in zip(weights, digits, strict=True))
+        return total % 11 == 0
+
+    patch.setattr(identifiers, "isbn_valid", valid)
 
 
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
@@ -2292,6 +2374,14 @@ BROKEN = {
     "a character is counted more than once": (
         _a_character_of_two_scripts_is_counted_twice,
         test_every_character_of_a_script_the_gates_do_not_read_is_counted,
+    ),
+    "an ISBN-13 is weighed as an ISBN-10": (
+        _an_isbn_13_is_weighed_as_an_isbn_10,
+        test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "an ISBN's groups are read as ISBNs": (
+        _an_isbn_s_groups_are_read_as_isbns,
+        test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
     ),
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,

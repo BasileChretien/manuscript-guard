@@ -9,6 +9,10 @@ Each identifier is compared as it names the work, not as it is written: a DOI un
 in lower case, a PMID without leading noughts, a PMCID in capitals, an ISBN-10 as the
 ISBN-13 it is. Two entries with the same title and no identifier in common may be one work
 too, or a correction and the paper it corrects, so that is a warning.
+
+An ISBN names a book, and a chapter or a conference paper can carry the book's ISBN or its
+DOI: two chapters of one book are two works. So a part of a book is compared by its title
+alone, and an ISBN is read only where the entry is a whole book, with its volume.
 """
 
 from __future__ import annotations
@@ -25,6 +29,17 @@ GATE = "G7"
 BIB_FILE = "references.bib"
 #: A title shorter than this, "Editorial" or "Correction", is shared by works that differ.
 TITLE_WORDS = 4
+#: Entry types that are part of a book: what they carry can name the book.
+PARTS = frozenset(
+    {"bookinbook", "conference", "inbook", "incollection", "inproceedings", "inreference",
+     "suppbook", "suppcollection"}
+)  # fmt: skip
+#: Entry types that are a whole book, the only ones whose ISBN names what is cited.
+BOOKS = frozenset(
+    {"book", "booklet", "collection", "manual", "mastersthesis", "mvbook", "mvcollection",
+     "mvproceedings", "mvreference", "phdthesis", "proceedings", "reference", "report",
+     "techreport", "thesis"}
+)  # fmt: skip
 
 
 def isbn_13(written: str) -> str:
@@ -39,8 +54,12 @@ def isbn_13(written: str) -> str:
 
 
 def identifiers_of(fields: dict[str, str]) -> set[tuple[str, str]]:
-    """Each identifier an entry names its work by, as the work is named."""
+    """Each identifier an entry names its work by, as the work is named. None for a part of
+    a book, and an ISBN only for a whole book, with the volume where it gives one."""
     found: set[tuple[str, str]] = set()
+    kind = fields.get("type", "").lower()
+    if kind in PARTS:
+        return found
     doi = normal_doi(fields.get("doi", ""))
     if doi and _DOI.fullmatch(doi):
         found.add(("DOI", doi.lower()))
@@ -55,9 +74,10 @@ def identifiers_of(fields: dict[str, str]) -> set[tuple[str, str]]:
     )
     if pmcid and _PMCID.fullmatch(pmcid):
         found.add(("PMCID", "PMC" + str(int(pmcid[3:]))))
-    for isbn in _isbns(fields.get("isbn", "")):
+    volume = " ".join(fields.get("volume", "").split())
+    for isbn in _isbns(fields.get("isbn", "") if kind in BOOKS else ""):
         if isbn_valid(isbn):
-            found.add(("ISBN", isbn_13(isbn)))
+            found.add(("ISBN", isbn_13(isbn) + (f", volume {volume}" if volume else "")))
     return found
 
 

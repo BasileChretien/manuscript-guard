@@ -1800,15 +1800,19 @@ def test_an_entry_complete_in_either_format_needs_no_other_field(fields: dict) -
 # One work cited under two keys: the reference list prints it twice.
 
 
-def _both_have(root: Path, first: dict[str, str], second: dict[str, str]) -> None:
-    """Give each of the example's two references the fields named."""
+def _both_have(
+    root: Path, first: dict[str, str], second: dict[str, str], types: tuple[str, str] = ("", "")
+) -> None:
+    """Give each of the example's two references the fields named, and the entry type. Their
+    volumes go, so that a volume is only the one a test gives."""
     bib = root / "literature" / "references.bib"
     text = bib.read_text(encoding="utf-8")
-    pairs = (("fictionalHepaticCohort2021", first), ("fictionalClassSignal2019", second))
-    for key, fields in pairs:
+    text = text.replace("  volume  = {12},\n", "").replace("  volume  = {7},\n", "")
+    keys = ("fictionalHepaticCohort2021", "fictionalClassSignal2019")
+    for key, fields, kind in zip(keys, (first, second), types, strict=True):
         opening = f"@article{{{key},\n"
         added = "".join(f"  {name} = {{{value}}},\n" for name, value in fields.items())
-        text = text.replace(opening, opening + added, 1)
+        text = text.replace(opening, "@" + (kind or "article") + opening[8:] + added, 1)
     bib.write_text(text, encoding="utf-8")
 
 
@@ -1832,7 +1836,7 @@ def _duplicate_findings(root: Path) -> list[tuple[str, str, str]]:
 def test_one_work_cited_under_two_keys_fails(
     project: Path, first: dict, second: dict, named: str
 ) -> None:
-    _both_have(project, first, second)
+    _both_have(project, first, second, ("book", "collection") if named == "ISBN" else ("", ""))
     said = _duplicate_findings(project)
     assert [(code, severity) for code, severity, _ in said] == [("reference-duplicate", "fail")]
     assert f"by the same {named}" in said[0][2]
@@ -1863,6 +1867,36 @@ def test_two_entries_with_one_title_are_a_warning(project: Path) -> None:
     assert [(code, severity) for code, severity, _ in said] == [
         ("reference-title-duplicate", "warn")
     ]  # fmt: skip
+
+
+_ISBN = "978-0-306-40615-7"
+
+
+@pytest.mark.parametrize(
+    ("types", "first", "second"),
+    [
+        # Two chapters of one book carry its ISBN, or its DOI.
+        (("incollection", "incollection"), {"isbn": _ISBN}, {"isbn": "0-306-40615-2"}),
+        (("inbook", "inbook"), {"doi": "10.5555/book.1"}, {"doi": "10.5555/book.1"}),
+        # Two papers of one proceedings volume.
+        (("inproceedings", "inproceedings"), {"isbn": _ISBN}, {"isbn": _ISBN}),
+        # A book cited beside one of its chapters.
+        (
+            ("book", "incollection"),
+            {"isbn": _ISBN, "doi": "10.5555/book.1"},
+            {"isbn": _ISBN, "doi": "10.5555/book.1"},
+        ),
+        # Two volumes of one set, under the set's ISBN.
+        (("book", "book"), {"isbn": _ISBN, "volume": "1"}, {"isbn": _ISBN, "volume": "2"}),
+        # An ISBN on an article or a misc entry names no book that is cited.
+        (("article", "misc"), {"isbn": _ISBN}, {"isbn": _ISBN}),
+    ],
+)
+def test_parts_of_one_book_are_two_works(
+    project: Path, types: tuple[str, str], first: dict, second: dict
+) -> None:
+    _both_have(project, first, second, types)
+    assert _duplicate_findings(project) == []
 
 
 def test_different_works_and_an_uncited_duplicate_say_nothing(project: Path) -> None:

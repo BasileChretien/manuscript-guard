@@ -1771,7 +1771,8 @@ def test_one_work_is_one_work_however_its_identifiers_are_written(
 
     first, second = drawn
     for kind in ("doi", "pmid", "pmcid", "isbn"):
-        a, b = identifiers_of({kind: first[kind]}), identifiers_of({kind: second[kind]})
+        a = identifiers_of({"type": "book", kind: first[kind]})
+        b = identifiers_of({"type": "book", kind: second[kind]})
         assert a and a == b, (kind, first[kind], second[kind], a, b)
 
 

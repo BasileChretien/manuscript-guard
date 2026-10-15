@@ -211,9 +211,13 @@ def _poisson_of_binary(model: Model, engine, variables: dict[str, Variable]) -> 
     Poisson regression of a binary outcome estimates a risk ratio, and its model-based
     variance overstates the error; a robust (sandwich) variance corrects it (Zou, Am J
     Epidemiol 2004;159:702-6). Read from the covariance the card records, so a variance made
-    robust after the fit, outside it, is not seen.
+    robust after the fit, outside it, is not seen. A fit with an offset or an exposure is a
+    rate model of events over person-time, whose own variance is the right one (round 1 of
+    #289), and is left alone.
     """
     if engine.kind != "Poisson regression" or (model.covariance or "") not in MODEL_BASED:
+        return []
+    if model.offset:
         return []
     binary = model.outcome.get("comparison") or any(
         name in variables and variables[name].kind == "binary"

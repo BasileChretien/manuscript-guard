@@ -1192,7 +1192,8 @@ def _unit_said(root: Path) -> list[tuple[str, str]]:
 
 def _models_said(root: Path, code: str) -> list[str]:
     project, _ = load_project(root)
-    _namespace, results, _literature, _report = load_namespace(project)
+    _namespace, results, _literature, report = load_namespace(project)
+    assert "adjusted" in results.models, report.render()
     return [f.message for f in check_models(project, results).findings if f.code == code]
 
 
@@ -1269,9 +1270,12 @@ _POISSON = {"language": "Python", "package": "statsmodels", "class": "GLM",
         ({"engine": _POISSON, "covariance": "model-based"}, 1),
         ({"engine": _POISSON, "covariance": "HC0"}, 0),
         ({"engine": _POISSON, "covariance": None}, 0),
+        # Round 1 of #289: with a person-time offset the model estimates a rate ratio, and
+        # its own variance is the right one.
+        ({"engine": _POISSON, "covariance": "nonrobust", "offset": True}, 0),
         ({"covariance": "nonrobust"}, 0),
     ],
-    ids=["nonrobust", "model-based", "robust", "not said", "logistic"],
+    ids=["nonrobust", "model-based", "robust", "not said", "rate", "logistic"],
 )
 def test_a_poisson_model_of_a_binary_outcome_wants_a_robust_variance(
     project: Path, fields: dict, said: int

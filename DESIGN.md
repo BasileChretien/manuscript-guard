@@ -1499,7 +1499,9 @@ subgroup, by design, and are left alone.
 binary outcome estimates a risk ratio, and its model-based variance overstates the error;
 a sandwich variance corrects it (Zou, Am J Epidemiol 2004;159:702-6). G15 warns
 (`poisson-binary-variance`) on a Poisson model of an outcome declared binary, or of a
-comparison written in the formula, whose card records model-based standard errors.
+comparison written in the formula, whose card records model-based standard errors. A fit
+with an offset or an exposure is left alone: events over person-time estimate a rate ratio,
+and that model's own variance is the right one. Each emitter records the offset on the card.
 
 ## A step of the code and the text that points at it
 

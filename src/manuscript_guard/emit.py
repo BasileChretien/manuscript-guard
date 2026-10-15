@@ -704,6 +704,8 @@ def read_statsmodels(fit: object, unit: str | None = None) -> dict:
     labels = getattr(data, "row_labels", None)
     if labels is not None:
         card["rows_sha256"] = rows_digest(str(label) for label in labels)
+    if getattr(model, "offset", None) is not None or getattr(model, "exposure", None) is not None:
+        card["offset"] = True
     if unit is not None:
         card["unit"] = {"column": unit, "units": _units(frame, data, unit)}
     if successes is not None:

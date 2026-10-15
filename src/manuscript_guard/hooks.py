@@ -51,6 +51,12 @@ FORBIDDEN = (
         "the record of who checked what is appended to by `manuscript-guard checker import`; "
         "a decision nobody made cannot be written into it by hand",
     ),
+    (
+        "design/plan.frozen.yaml",
+        "",
+        "it is the plan as it stood when the first results were written, kept by the emitter; "
+        "change the plan in design/plan.md and say why under its Deviations",
+    ),
 )
 
 # Exempt from the rule above. Without this, the guard denies edits to

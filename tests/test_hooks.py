@@ -320,6 +320,8 @@ def test_no_standard_input_at_all_is_an_empty_event(monkeypatch) -> None:
         ("build/manuscript.docx", "regenerated"),
         ("profiles/reporting/STROBE.yaml", "transcribed"),
         ("checks/decisions.csv", "a decision nobody made"),
+        # Item 26: the plan as it stood when the first results were written.
+        ("design/plan.frozen.yaml", "first results were written"),
     ],
 )
 def test_generated_files_cannot_be_edited(

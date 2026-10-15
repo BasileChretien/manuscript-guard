@@ -138,6 +138,10 @@ def main() -> None:
     # 90% interval nested inside a 95% one is correct rather than a contradiction.
     em.interval("ror", low=low90, high=high90, level="90%", digits=2)
 
+    # How a family of p values is corrected is declared, never guessed, and "none" is a
+    # declaration with its reason. This analysis has one prespecified estimate.
+    em.correction("primary", "none", reason="one prespecified estimate, the reporting odds ratio")
+
     em.value("table2x2.a", a, quoted=False)
     em.value("table2x2.b", b, quoted=False)
     em.value("table2x2.c", c, quoted=False)

@@ -4169,11 +4169,14 @@ else, with no link out of it, so that a script added to a skill folder, which
 download into a shell, installs a package, turns off a safety switch or the sandbox, or
 shows `review --run` with `--yes`. Two rules are not tested: that no skill chooses the
 language the user is spoken to in, and that none tells the agent to add a reference to the
-paper. Each was read by a pattern, and two rounds of review found it both missing the usual
-wording ("Always respond in English.", "Add the missing reference to the paper.") and
-failing a skill that keeps the rule ("Never add a reference yourself", "Respond to each
-reviewer point in English, as the journal asks", "Ask the author to add the reference").
-A sentence that gives such an instruction is a reviewer's to catch.
+paper. Each was read by a pattern, and in two rounds of review each pattern was found both
+missing a sentence that gives the instruction and failing one that keeps the rule. The
+first missed "Always respond in English."; widened, it took "Respond to each reviewer point
+in English, as the journal asks" for a choice of the user's language, and its exception for
+a negated sentence let "If the user has not said otherwise, always respond in English."
+through. The second missed "Add the missing reference to the paper."; widened, it took "Ask
+the author to add the reference to the paper" for the agent adding it. A sentence that
+gives such an instruction is a reviewer's to catch.
 
 ## Generated inputs belong to the suite
 
@@ -5517,6 +5520,10 @@ Closed since, and why each mattered:
   at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
   input is missing by mistake rather than by design is caught only where another finding
   depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
+- **No test reads a skill for the user's language or for a reference added to the paper.**
+  A skill that tells the agent which language to speak to the user in, or to add a
+  reference to the paper itself, is caught by whoever reviews the skill, not by
+  `tests/test_plugin.py` (see "The skill folders are held as files, too").
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.

@@ -1045,6 +1045,19 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     # the key is both valid and more honest than writing an empty container.
     if (length(packages) > 0) session$packages <- as.list(packages)
 
+    # The packages the analysis ran with, as the project's lockfiles pin them, mirroring the
+    # Python emitter's `environment`, in the same order: by name, as bytes compare. G1 says
+    # when one changed after the results were written.
+    lock_paths <- unique(c(
+      file.path(project_root, c("renv.lock", "uv.lock", "poetry.lock", "environment.yml")),
+      Sys.glob(file.path(project_root, "requirements*.txt"))
+    ))
+    lock_paths <- lock_paths[file.exists(lock_paths) & !dir.exists(lock_paths)]
+    lock_paths <- lock_paths[order(basename(lock_paths), method = "radix")]
+    environment <- lapply(lock_paths, function(path) {
+      list(path = relative(path), sha256 = mg_input_digest(path))
+    })
+
     # "+0900" is not RFC 3339; the offset needs its colon.
     stamp <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
     stamp <- sub("([+-]\\d{2})(\\d{2})$", "\\1:\\2", stamp)
@@ -1062,6 +1075,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
       generated_at = stamp,
       tool = list(name = "manuscriptguard", version = "0.1.0"),
       inputs = input_records,
+      environment = environment,
       session = session
     )
     if (length(vcs) > 0) provenance$vcs <- vcs

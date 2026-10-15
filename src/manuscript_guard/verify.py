@@ -90,6 +90,8 @@ class Comparison:
     # Software versions (`em.software`) the re-run found other than the ones on disk. The
     # environment, not a result: the re-run is reported, and not as a failure to reproduce.
     environment: tuple[tuple[str, object, object], ...] = ()
+    # The parameters the analysis declares whose names say they seed a random draw.
+    seeds: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -405,8 +407,16 @@ def _compare(name: str, on_disk: dict, rerun: dict) -> Comparison:
             environment.append((key, before[key], after[key]))
         else:
             differed.append((key, before[key], after[key]))
+    seeds = tuple(
+        sorted(
+            key
+            for key, spec in rerun.get("values", {}).items()
+            if spec.get("role") == "parameter" and "seed" in key.lower()
+        )
+    )
     return Comparison(
         fragment=name,
+        seeds=seeds,
         agreed=tuple(agreed),
         differed=tuple(differed),
         environment=tuple(environment),
@@ -438,8 +448,7 @@ def to_report(result: VerifyReport) -> Report:
                     severity=FAIL,
                     message=f"{comparison.fragment}: {key} is {was!r} on disk, but re-running "
                     f"the analysis produced {now!r}",
-                    hint="either the fragment was edited after it was written, or the "
-                    "analysis is not deterministic — set a seed and try again",
+                    hint=_unseeded(comparison.seeds),
                 )
             )
         for key, was, now in comparison.environment:
@@ -480,6 +489,21 @@ def to_report(result: VerifyReport) -> Report:
         fragments_rerun=len(result.comparisons),
         values_reproduced=sum(len(c.agreed) for c in result.comparisons),
         fragments_skipped=len(result.skipped),
+    )
+
+
+def _unseeded(seeds: tuple[str, ...]) -> str:
+    """What to try when a re-run differs, by whether the analysis declares a seed."""
+    if seeds:
+        return (
+            f"either the fragment was edited after it was written, or the analysis is not "
+            f"deterministic although it declares {', '.join(seeds)}: check that every random "
+            f"draw takes that seed"
+        )
+    return (
+        "either the fragment was edited after it was written, or the analysis is not "
+        'deterministic, and it declares no seed: declare one with `em.parameter("seed", ...)`, '
+        "give it to every random draw, and try again"
     )
 
 

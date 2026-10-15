@@ -31,6 +31,7 @@ from pathlib import Path
 from manuscript_guard import __version__
 from manuscript_guard.contracts.project import find_root
 from manuscript_guard.contracts.values import DisplayError, check_string_value, derive_display
+from manuscript_guard.paths import lockfiles
 from manuscript_guard.tables import HEADER_ROW, TABLE_SECTION, problems_in
 
 SCHEMA = "manuscript-guard/results/1"
@@ -1421,6 +1422,15 @@ class Emitter:
             "tool": {"name": "manuscript-guard", "version": __version__},
             "vcs": vcs,
             "inputs": inputs,
+            # The packages the analysis ran with, as the project's lockfiles pin them. G1
+            # says when one changed after these results were written.
+            "environment": [
+                {
+                    "path": str(path.relative_to(root)).replace("\\", "/"),
+                    "sha256": input_digest(path),
+                }
+                for path in lockfiles(root)
+            ],
             "session": {
                 "language": "Python",
                 "version": sys.version.split()[0],

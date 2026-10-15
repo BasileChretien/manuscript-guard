@@ -1764,6 +1764,10 @@ def test_a_malformed_identifier_fails_from_internal_review(project: Path) -> Non
         ("pmcid", "PMC1234567"),
         ("isbn", "978-0-306-40615-7"),
         ("isbn", "0-8044-2957-X"),
+        # round 1 of #249: groups parted by spaces, a label, two in one field
+        ("isbn", "978 0 306 40615 7"),
+        ("isbn", "ISBN 978-0-306-40615-7"),
+        ("isbn", "0306406152 9780306406157"),
         ("year", None),  # a `date` in its place, as BibLaTeX writes it
     ],
 )
@@ -1774,6 +1778,23 @@ def test_a_well_formed_identifier_or_a_field_s_other_name_passes(
     if field == "year":
         _bib_field(project, "date", "2021-03-01")
     assert _bib_findings(project) == []
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        # round 1 of #249: complete in BibLaTeX, which `sync-bib` writes, and short of a
+        # field only BibTeX's styles ask for
+        {"type": "unpublished", "author": "A", "title": "T", "date": "2024"},
+        {"type": "book", "author": "A", "title": "T", "year": "2020"},
+        {"type": "incollection", "author": "A", "title": "T", "booktitle": "B", "date": "2020"},
+        {"type": "inbook", "author": "A", "title": "T", "booktitle": "B", "year": "2020"},
+    ],
+)
+def test_an_entry_complete_in_either_format_needs_no_other_field(fields: dict) -> None:
+    from manuscript_guard.gates.identifiers import problems
+
+    assert problems("k", fields) == []
 
 
 def _zotero(monkeypatch, items: list[dict]) -> None:

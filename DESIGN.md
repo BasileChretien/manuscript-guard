@@ -679,9 +679,13 @@ reference list as they were. G7 now reads every entry of the committed file, cit
 through the same small reader the co-author items use (`literature/bibfile.py`): a DOI is
 "10.", a registrant code, a slash and a suffix, once a `doi:` or a resolver in front of it
 and a stop after it are taken off, so a legacy SICI DOI passes; a PMID is digits, a PMCID
-"PMC" and digits; an ISBN-10 or -13 has the right check digit; an arXiv identifier one of
-its two forms; and an entry has the fields BibTeX's standard styles print for its type
-(btxdoc), under BibTeX's name or BibLaTeX's (`journaltitle`, `date`). Each fails from
+"PMC" and digits; an ISBN-10 or -13 has the right check digit, however the field parts
+its groups and holds several (`978 0 306 40615 7`, `ISBN-13: ...`, two parted by a space);
+an arXiv identifier one of its two forms; and an entry has the fields its type needs in
+both formats a `.bib` file is written in: what BibTeX's standard styles require (btxdoc)
+and BibLaTeX also requires (its manual, section 2.1.1), under either's name
+(`journaltitle`, `date`). `sync-bib` writes BibLaTeX, which asks no publisher of a book
+and no note of an unpublished work, so neither is required. Each fails from
 internal-review (`identifier-malformed`, `reference-field-missing`), when the reference
 list is first printed for others to read; while drafting, an entry can still be a
 placeholder, and it is reported and deferred. Whether a DOI is registered, names the work
@@ -4194,7 +4198,8 @@ the campaigns are in the suite, on Hypothesis:
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
-  paper, rewordings, and ISBNs with one digit changed.
+  paper, rewordings, and ISBNs written in a field every way one holds them, and with one
+  digit changed.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its
@@ -4251,12 +4256,13 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty-six rules are broken in place, one at a time, and the property that is
+the generators. So fifty-seven rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10;
+sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10 and an ISBN's
+groups read as ISBNs;
 fourteen ways `reworded` can misread an edit, from
 a number's sign taken for no part of it, and a sign of comparison taken for none, read as
 it is typed, read only hard against its number, an arrow's head or an equals sign taken
@@ -5514,7 +5520,9 @@ Closed since, and why each mattered:
   another work passes too, as does a PMID that is digits. Only the types BibTeX's standard
   styles define are held to their fields: BibLaTeX's `@online`, `@report` or `@thesis`, and
   `@misc`, need none. An ISBN-13 whose check digit adds up is read as one even where its
-  first three digits are no ISBN prefix.
+  first three digits are no ISBN prefix. An ISBN-10 that opens with 978 or 979, followed in
+  the same field by another ISBN and parted from it by a space only, is read as the start
+  of an ISBN-13 and reported.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
   citation, no reporting guideline, no analysis code, no fitted model or no revision round
   has nothing for G3, G10, G7, G8r, G9, G15 or G13 to read, and each passes with its count
@@ -8999,7 +9007,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 59 broken rules, and the comparison on twelve
+  - The properties were seen to fail on 60 broken rules, and the comparison on twelve
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

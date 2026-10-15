@@ -31,14 +31,16 @@ _PMCID = re.compile(r"PMC\d{1,9}", re.IGNORECASE)
 #: arXiv's two forms: "2101.01234v2" since 2007, "hep-th/9901001" before.
 _ARXIV = re.compile(r"(?:\d{4}\.\d{4,5}|[a-z][a-z.-]*(?:\.[A-Z]{2})?/\d{7})(?:v\d+)?")
 
-#: The fields BibTeX's standard styles print for each type, by the names BibTeX and BibLaTeX
-#: give them (btxdoc, "Entry Types"). Each tuple is one field, any of whose names will do.
+#: The fields an entry of each type needs in both formats a `.bib` file is written in: what
+#: BibTeX's standard styles require (btxdoc, "Entry Types") and BibLaTeX's also require (its
+#: manual, section 2.1.1), under either's name. `sync-bib` writes BibLaTeX, and BibLaTeX asks
+#: no publisher of a book or a collection's chapter and no note of an unpublished work, so
+#: those are not required here. Each tuple is one field, any of whose names will do.
 REQUIRED: dict[str, tuple[tuple[str, ...], ...]] = {
     "article": (("author",), ("title",), ("journal", "journaltitle"), ("year", "date")),
-    "book": (("author", "editor"), ("title",), ("publisher",), ("year", "date")),
-    "inbook": (("author", "editor"), ("title",), ("chapter", "pages"), ("publisher",),
-               ("year", "date")),
-    "incollection": (("author",), ("title",), ("booktitle",), ("publisher",), ("year", "date")),
+    "book": (("author", "editor"), ("title",), ("year", "date")),
+    "inbook": (("author", "editor"), ("title",), ("year", "date")),
+    "incollection": (("author",), ("title",), ("booktitle",), ("year", "date")),
     "inproceedings": (("author",), ("title",), ("booktitle",), ("year", "date")),
     "conference": (("author",), ("title",), ("booktitle",), ("year", "date")),
     "mastersthesis": (("author",), ("title",), ("school", "institution"), ("year", "date")),
@@ -47,7 +49,7 @@ REQUIRED: dict[str, tuple[tuple[str, ...], ...]] = {
     "proceedings": (("title",), ("year", "date")),
     "manual": (("title",),),
     "booklet": (("title",),),
-    "unpublished": (("author",), ("title",), ("note",)),
+    "unpublished": (("author",), ("title",)),
 }  # fmt: skip
 
 
@@ -68,9 +70,35 @@ def isbn_valid(written: str) -> bool:
     return False
 
 
+#: What an ISBN field holds beside its numbers: a label, and a qualifier in brackets.
+_ISBN_ASIDE = re.compile(r"\bISBN(?:-?1[03])?\s*:?|\([^()]*\)", re.IGNORECASE)
+
+
+def _isbn_length(written: str) -> int:
+    return len(re.sub(r"[\s-]", "", written))
+
+
 def _isbns(field: str) -> list[str]:
-    """The ISBNs of one field, which may hold several."""
-    return [part for part in re.split(r"[,;/]|\s(?=\d{3})", field) if part.strip()]
+    """The ISBNs of one field, which may hold several: parted by commas, semicolons or
+    slashes, or by spaces, which can also part the groups of one ISBN ("978 0 306 40615
+    7"). Words are joined until they make ten or thirteen characters. Ten is an ISBN-10
+    unless the run opens as an ISBN-13 does, with 978 or 979, and enough follows to make
+    thirteen: an ISBN-13 is not cut after its tenth character."""
+    found: list[str] = []
+    for part in re.split(r"[,;/]", _ISBN_ASIDE.sub(" ", field)):
+        words = part.split()
+        run: list[str] = []
+        for at, word in enumerate(words):
+            run.append(word)
+            compact = re.sub(r"[\s-]", "", "".join(run))
+            longer = _isbn_length("".join(run + words[at + 1 :]))
+            thirteen_to_come = compact[:3] in ("978", "979") and longer >= 13
+            if len(compact) == 13 or (len(compact) == 10 and not thirteen_to_come):
+                found.append(" ".join(run))
+                run = []
+        if run:
+            found.append(" ".join(run))
+    return found
 
 
 def problems(key: str, fields: dict[str, str]) -> list[tuple[str, str]]:

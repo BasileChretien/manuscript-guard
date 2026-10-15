@@ -366,7 +366,11 @@ def test_an_estimate_with_its_reason_beside_the_figure_is_not_warned(project: Pa
         ('ggplot(d, aes(x, y)) + geom_smooth(method = "lm", se = FALSE)', ["geom_smooth"]),
         ("ggplot(d, aes(arm, y)) + geom_jitter(width = 0.2)", ["geom_jitter"]),
         ("ggplot(d, aes(arm, y)) + geom_jitter(seed = NA)", ["geom_jitter"]),
-        ("ggplot(d, aes(arm, y)) + geom_jitter(seed = 1)", []),
+        # Round 1 of #288: geom_jitter takes no seed, and ggplot2 ignores one given to it.
+        ("ggplot(d, aes(arm, y)) + geom_jitter(seed = 1)", ["geom_jitter"]),
+        ("ggplot(d, aes(arm, y)) + geom_jitter(position = position_jitter(seed = 1))", []),
+        ("ggplot(d, aes(arm, y)) + geom_point(position = position_jitter(width = 0.2))",
+         ["position_jitter"]),
         ("set.seed(3)\nggplot(d, aes(arm, y)) + geom_jitter()", []),
         ("d <- na.omit(d)", ["na.omit"]),
         ("x <- rnorm(10)", ["rnorm"]),

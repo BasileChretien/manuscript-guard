@@ -52,6 +52,7 @@ class Estimating:
     unless: dict[str, tuple[str, ...]]
     stated: str | None
     seeded: bool
+    settle: str | None = None
 
     def calls(self, name: str) -> bool:
         return named(name, self.names) or name.startswith(self.prefixes)
@@ -93,6 +94,7 @@ def rules() -> dict[str, tuple[Estimating, ...]]:
                         for key, values in (entry.get("unless") or {}).items()},
                 stated=entry.get("stated"),
                 seeded=bool(entry.get("seeded")),
+                settle=entry.get("settle"),
             )
             for entry in document[language]
         )  # fmt: skip
@@ -200,7 +202,7 @@ def check_figure_estimates(script: Path, text: str, language: str, allowed: dict
 def _how_to_settle(rule: Estimating) -> str:
     ways = [f"{name}={values[0]}" for name, values in rule.unless.items()]
     if rule.stated:
-        ways.append(f"give {rule.stated}")
+        ways.append(rule.settle or f"give {rule.stated}")
     if rule.seeded:
         ways.append("set a seed in the script")
     return f"; or {' or '.join(ways)}" if ways else ""

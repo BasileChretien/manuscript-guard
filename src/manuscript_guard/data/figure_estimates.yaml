@@ -13,8 +13,9 @@ schema: manuscript-guard/figure-estimates/1
 #   what      what it does unless it is told otherwise, read on the library's own reference
 #             page on the date in `read`;
 #   unless    arguments, and the values of each, that turn the estimate off;
-#   stated    an argument that, given any value, settles what the call does: a seed, or the
-#             divisor of a standard deviation;
+#   stated    an argument that, given any value, settles what the call does: a seed, the
+#             divisor of a standard deviation, or a position judged as a call of its own;
+#   settle    how the hint says to give it, where "give <stated>" would not say enough;
 #   seeded    true when a seed set anywhere in the script (`np.random.seed(1)`,
 #             `random.seed(1)`, `np.random.default_rng(1)`, `set.seed(1)`) settles it.
 
@@ -59,7 +60,15 @@ r:
   - names: [geom_smooth, stat_smooth]
     what: fits a smoother in the plot and draws its 95% band by default
     read: ggplot2 reference page for geom_smooth, 2026-10-15
-  - names: [geom_jitter, position_jitter]
+  - names: [geom_jitter]
+    what: >-
+      moves each point by a random jitter, through a position_jitter whose seed is drawn at
+      random; it takes no seed of its own, and one given to it is ignored
+    read: ggplot2 reference pages for geom_jitter and position_jitter, 2026-10-15
+    stated: position
+    settle: give position = position_jitter(seed = 1)
+    seeded: true
+  - names: [position_jitter]
     what: moves each point by a random jitter, from a seed drawn at random by default (seed = NA)
     read: ggplot2 reference page for position_jitter, 2026-10-15
     stated: seed

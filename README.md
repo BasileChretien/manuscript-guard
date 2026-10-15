@@ -129,10 +129,10 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since |
 | G2 | every number is classified, and every declared value is quoted; a unit written after a binding is the one emitted |
 | G3 | numbers in a figure's output *and in its source* trace back to results |
-| G4 | word counts, required sections and required statements match the target journal |
+| G4 | word counts, required sections and required statements match the target journal, and the figure files meet its artwork rules (warnings) |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason, and a declared study design has one of its guidelines |
 | G6 | model artefacts, AI phrasing, and unsupported appeals to authority |
-| G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote, with more than the value; each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there |
+| G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote, with more than the value; each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there, and no work is cited under two keys |
 | G8 | one quantity is not emitted twice under two names |
 | G9 | the analysis has not changed since the Methods were last read against it, and, step by step, neither a marked step nor the text pointing at it has |
 | G10 | every figure has a current review by someone who looked at it |
@@ -140,7 +140,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G12 | there was an analysis plan, its sections say something, and so do those its declared study design needs; a change to it after the first results is said under Deviations |
 | G13 | every reviewer point is answered, and every claimed revision really happened |
 | G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, it is spelt in one English, and a P value, an interval and a percentage are each written one way (warnings only) |
-| G15 | each model is the model its variables call for: the outcome is one its kind of model is for, each variable entered as the kind it was declared, with its declared reference and levels, the fit converged with events at every level, the rows of one declared unit are not taken as independent, and the Methods name the model that was fitted |
+| G15 | each model is the model its variables call for: the outcome is one its kind of model is for, each variable entered as the kind it was declared, with its declared reference and levels, the fit converged with events at every level, the rows of one declared unit are not taken as independent, a crude and an adjusted model were fitted on the same rows, a Poisson model of a binary outcome has a robust variance, and the Methods name the model that was fitted |
 
 In place of a gate, a finding can carry one of two labels that are no gate of their own:
 `G0`, for a file of the project that cannot be used as it stands, and `BUILD`, for what

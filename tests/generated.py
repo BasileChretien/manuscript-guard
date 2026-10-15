@@ -586,7 +586,7 @@ PLACEHOLDERS = (
     ("[Repository]", "[Repository]"), ("[describe the cohort]", "[describe the cohort]"),
     ("lorem ipsum", "lorem ipsum"), ("fill in later.", "fill in later"), ("TODO", "TODO"),
     ("2025-XX-XX", "2025-XX"), ("INSERT_SOURCE_URL", "INSERT_SOURCE_URL"),
-    ("[insert the\nname]", "[insert the\nname]"),
+    ("[insert the\nname]", "[insert the\nname]"), ("1,XXX", "XXX"),
 )  # fmt: skip
 LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
 LOOKALIKES = (

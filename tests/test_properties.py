@@ -2012,7 +2012,9 @@ def _placeholder_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
 
 
 def _a_karyotype_is_a_placeholder(patch: pytest.MonkeyPatch) -> None:
-    _placeholder_rule(patch, "placeholder-word", lambda p: p.replace("(?<!\\d,)", ""))
+    _placeholder_rule(
+        patch, "placeholder-word", lambda p: p.replace("(?<!\\b4[5-9],)(?<!\\b4[5-9], )", "")
+    )
 
 
 def _a_word_in_lower_case_is_a_placeholder_anywhere(patch: pytest.MonkeyPatch) -> None:

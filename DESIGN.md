@@ -909,9 +909,10 @@ rules name kinds, not spellings:
 
 "XXX" was matched only whole, so "n = XXXX patients" passed, and G2 does not see it, since
 it holds no digit. What is no slot: a link's text, a bracketed span, a title translated into
-English in brackets as PubMed gives it ("[Add-on therapy in epilepsy]"; in a cited entry a
-field wholly in brackets is read without them), a karyotype ("47,XXX"), "XXX syndrome", and
-a single "TK", which in medicine is a kinase. What two rules find in one place is said once. The same rules
+English in brackets as PubMed gives it ("[Add-on therapy in epilepsy]"; outside the
+manuscript "[Your ...]" is no slot either, since its quiz titles open so, "[Your
+diagnosis?]"), a karyotype ("47,XXX", 45 to 49 chromosomes before the comma, so that "1,XXX
+reports" is a gap), "XXX syndrome", and a single "TK", which in medicine is a kinase. What two rules find in one place is said once. The same rules
 read the text of each figure G3 reads, the caption of each table in the results, and the
 printed fields of each cited entry of `references.bib`: a "TBD" drawn in a figure, or a
 "TODO" in a reference's note, reaches the document as surely as one in the prose. There the
@@ -7200,7 +7201,8 @@ Closed since, and why each mattered:
 - **A placeholder is found by its kind, and only in the text the gate reads.** In the
   manuscript TODO and TBD count in any case, as they always did, so a Spanish "todo" quoted
   in the prose is one. A slot in brackets in a form the rules do not name, "[Name of the
-  hospital]", is not found, nor a lone "XX" or a single "TK". Outside the manuscript the
+  hospital]", is not found, nor capitals that name what is missing without saying it is to
+  come, "[ETHICS COMMITTEE]", nor a lone "XX" or a single "TK". Outside the manuscript the
   gate reads the text of an SVG or a PDF figure (not a raster one, which G3 reports), a
   table's caption and not its cells, and the fields of a cited entry that a reference list
   can print; an abstract, a file or keywords are not read, nor an entry nothing cites, so

@@ -223,17 +223,8 @@ def _cited_fields(project: Project, sources: list[str]) -> list[Elsewhere]:
             field = re.compile(r"(?:^|[{,])[ \t]*" + re.escape(name) + r"[ \t]*=", re.M | re.I)
             seen = field.search(written, at)
             line = written.count("\n", 0, seen.end() if seen else at) + 1
-            found.append(Elsewhere(path, _untranslated(value), f"the {name} of @{key}", line))
+            found.append(Elsewhere(path, value, f"the {name} of @{key}", line))
     return found
-
-
-def _untranslated(value: str) -> str:
-    """A field without the brackets PubMed puts round a title it translated into English,
-    "[Your diagnosis?]", "[TREATMENT OF EPILEPSY]": a title, and no slot."""
-    stripped = value.strip()
-    if stripped.startswith("[") and stripped.rstrip(".").endswith("]"):
-        return stripped.rstrip(".")[1:-1]
-    return value
 
 
 def _artefacts_elsewhere(rules: Rules, where: Elsewhere, totals: dict) -> Report:

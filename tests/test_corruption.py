@@ -1157,6 +1157,11 @@ def _with_paragraph(root: Path, paragraph: str) -> None:
         "approved by [insert the name of the\nethics committee]",
         "[insert number]: 2024",
         "[CITATION NEEDED]",
+        # Round 2 of #262: a count of thousands, an instruction marked for Word, and filler
+        # before a list item, which main or round 1 caught.
+        "1,XXX reports",
+        "[insert the date]{.mark}",
+        "- Dose: fill in later\n- Route: oral",
     ],
 )
 def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None:
@@ -1222,12 +1227,15 @@ def _cited_entry_has(root: Path, field: str) -> None:
 def test_a_placeholder_in_a_cited_reference_fails_on_its_line(project: Path) -> None:
     """A "TBD" in a field of a cited entry is printed in the reference list."""
     _cited_entry_has(project, "number = {TBD}")
+    _cited_entry_has(project, "doi = {[DOI]}")
     report = _g6(project)
     said = [f for f in report.findings if f.code == "model-artefact"]
-    assert [(f.severity, f.path.name) for f in said] == [("fail", "references.bib")]
-    assert "the number of @fictionalHepaticCohort2021" in said[0].message
+    assert [(f.severity, f.path.name) for f in said] == [("fail", "references.bib")] * 2
+    # Round 2 of #262: a slot that is the whole of a field, in brackets, is a slot.
+    assert any("the doi of @fictionalHepaticCohort2021" in f.message for f in said)
+    number = [f for f in said if "the number of @fictionalHepaticCohort2021" in f.message]
     lines = (project / "literature" / "references.bib").read_text(encoding="utf-8").splitlines()
-    assert "TBD" in lines[said[0].line - 1]
+    assert len(number) == 1 and "TBD" in lines[number[0].line - 1]
 
 
 @pytest.mark.parametrize(

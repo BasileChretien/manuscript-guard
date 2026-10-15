@@ -2354,6 +2354,7 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
     from manuscript_guard.paths import workspace as find_workspace
     from manuscript_guard.reporting import RecipeError, build_profile, load_recipe
     from manuscript_guard.reporting.build import rows_digest_of
+    from manuscript_guard.safexml import UnsafeDocument
 
     root = find_workspace(args.root)
     sources_dir = root / "profiles" / "reporting" / "sources"
@@ -2370,7 +2371,9 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
             path, count, unverified = build_profile(
                 recipe, sources_dir, out_dir, allow_changed=args.allow_changed
             )
-        except (RecipeError, FileNotFoundError) as exc:
+        except (RecipeError, FileNotFoundError, UnsafeDocument) as exc:
+            # UnsafeDocument: a document that is not well-formed, or that declares a DTD,
+            # which a truncated download or a page saved by hand can be.
             failed += 1
             print(f"  {recipe.name}: {exc}")
             continue

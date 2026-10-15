@@ -24,7 +24,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from manuscript_guard.reporting.transcribe import RecipeError
-from manuscript_guard.safexml import parse_xml
+from manuscript_guard.safexml import UnsafeDocument, parse_xml
 
 #: Elements whose text is a block of its own: words on either side are not one word.
 _BLOCKS = {"p", "break", "list-item", "title", "label", "td", "th", "tr", "caption"}
@@ -33,16 +33,30 @@ MOST_SPAN = 64
 #: The document type some of Europe PMC's full texts open with: a name and the address of
 #: an external DTD, nothing between brackets. The parser never fetches the DTD, and with no
 #: internal subset there is no entity to expand, so it is set aside before parsing; a
-#: document that declares anything more is refused by the parser's own check.
+#: document that declares anything more is refused (`_DECLARES`).
 _EXTERNAL_DOCTYPE = re.compile(
     rb'\A(\s*(?:<\?xml[^>]*\?>)?\s*)<!DOCTYPE\s+article'
     rb'(?:\s+PUBLIC\s+"[^"<>\[\]]*"\s+"[^"<>\[\]]*"|\s+SYSTEM\s+"[^"<>\[\]]*")?\s*>'
 )
+#: A declaration anywhere in the document. The parser's own check reads the first 8 KB, which
+#: is all an office part needs; a downloaded paper is read whole, or a document type with an
+#: entity after a long comment is parsed and its entity read into the checklist.
+_DECLARES = re.compile(rb"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
 
 
 def read_article(path: Path) -> ET.Element:
-    """The article, parsed safely: size-capped, and refused if it declares a DTD."""
-    data = _EXTERNAL_DOCTYPE.sub(rb"\1", path.read_bytes(), count=1)
+    """The article, parsed safely: size-capped, in UTF-8, and refused if it declares
+    anything but the external document type some full texts open with."""
+    data = path.read_bytes()
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")) or b"\x00" in data[:1024]:
+        # UTF-16, which a search of the bytes for a declaration does not read.
+        raise UnsafeDocument(f"{path.name} is not UTF-8, as Europe PMC serves a full text")
+    data = _EXTERNAL_DOCTYPE.sub(rb"\1", data, count=1)
+    if _DECLARES.search(data):
+        raise UnsafeDocument(
+            f"{path.name} declares a DTD or an entity beyond the document type a full text "
+            "names. Refusing to parse it."
+        )
     root = parse_xml(data, what=path.name)
     if _local(root.tag) != "article":
         raise RecipeError(

@@ -138,6 +138,42 @@ def test_a_document_that_declares_more_is_refused(tmp_path: Path, doctype: str) 
         table_rows(_article(tmp_path, ARTICLE.replace("?>", "?>" + doctype, 1)), "tbl2")
 
 
+def test_a_declaration_past_the_first_8_kb_is_refused_too(tmp_path: Path) -> None:
+    """Round 1 of #294: the parser's own check reads the first 8 KB, and a document type with
+    an entity after a long comment was parsed, its entity read into a row."""
+    from manuscript_guard.safexml import UnsafeDocument
+
+    hidden = ARTICLE.replace(
+        "?>", "?><!--" + "x" * 9000 + '--><!DOCTYPE article [<!ENTITY e "Injected">]>', 1
+    ).replace("<td>Analysis</td>", "<td>&e;</td>")
+    with pytest.raises(UnsafeDocument, match="DTD or an entity"):
+        table_rows(_article(tmp_path, hidden), "tbl2")
+
+
+def test_a_full_text_not_in_utf_8_is_refused(tmp_path: Path) -> None:
+    from manuscript_guard.safexml import UnsafeDocument
+
+    path = tmp_path / "paper.xml"
+    path.write_bytes(ARTICLE.replace('encoding="UTF-8"', 'encoding="UTF-16"').encode("utf-16"))
+    with pytest.raises(UnsafeDocument, match="not UTF-8"):
+        table_rows(path, "tbl2")
+
+
+def test_transcribe_says_a_broken_download_is_one_and_goes_on(tmp_path: Path, capsys) -> None:
+    """Round 1 of #294: an unsafe or malformed document was a traceback, not a line."""
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "paper"
+    folder = root / "profiles" / "reporting"
+    (folder / "sources").mkdir(parents=True)
+    (folder / "recipes").mkdir()
+    (root / "paper.yaml").write_text('schema: manuscript-guard/paper/1\ntitle: "T"\n', "utf-8")
+    _article(folder / "sources", "<?xml version='1.0'?><article><p>cut short")
+    _recipe(folder / "recipes")
+    assert main(["transcribe", "IMAGINARY", "--root", str(root)]) == 1
+    assert "IMAGINARY.recipe.yaml:" in capsys.readouterr().out
+
+
 def test_a_document_with_another_root_is_refused(tmp_path: Path) -> None:
     with pytest.raises(RecipeError, match="not a JATS article"):
         table_rows(_article(tmp_path, "<?xml version='1.0'?><html><body/></html>"), "tbl2")

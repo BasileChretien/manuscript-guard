@@ -1981,6 +1981,21 @@ def _a_line_is_not_widened(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(figure_svg, "_widened", lambda matrix: 1.0)
 
 
+def _a_figure_s_stylesheet_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import svg_style
+
+    patch.setattr(svg_style.Sheet, "declared", lambda self, node: {})
+
+
+def _a_font_s_first_number_is_its_size(patch: pytest.MonkeyPatch) -> None:
+    """The reading before round 1 of #302: a weight, "700", read as the size."""
+    from manuscript_guard.gates import figure_svg
+
+    pattern = figure_svg._FONT_SIZE.pattern.replace("|rem|%)|", "|rem|%)?|")
+    assert pattern != figure_svg._FONT_SIZE.pattern
+    patch.setattr(figure_svg, "_FONT_SIZE", re.compile(pattern, re.IGNORECASE))
+
+
 # ------------------------------------------------------------- a unit written after a binding
 
 #: What may follow a binding, with the unit read there, or None where none is: a gap of each
@@ -2804,6 +2819,14 @@ BROKEN = {
     ),
     "a line is not widened by the transforms around it": (
         _a_line_is_not_widened,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a vector figure's stylesheet is not read": (
+        _a_figure_s_stylesheet_is_not_read,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "the first number of a font shorthand is its size": (
+        _a_font_s_first_number_is_its_size,
         test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
     ),
     "a quotation is read as the paper's own words": (

@@ -16,7 +16,8 @@ to the printed page:
   read where it is defined.
 
 A text whose anchor is outside the visible area, the `viewBox`, is cut off where it prints.
-What a stylesheet sets through a class is not read, and is said to be in Known gaps.
+A `<style>` element's rules are read as far as `gates/svg_style.py` says: a stroke svglite
+sets once for every line, and a size Illustrator sets through a class.
 """
 
 from __future__ import annotations
@@ -26,6 +27,8 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
+
+from manuscript_guard.gates.svg_style import READ, Sheet, declarations
 
 SVG = "{http://www.w3.org/2000/svg}"
 XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
@@ -53,9 +56,11 @@ _NAMED = {
     "xx-small": 9.0, "x-small": 10.0, "small": 13.0, "medium": 16.0, "large": 18.0,
     "x-large": 24.0, "xx-large": 32.0, "xxx-large": 48.0,
 }  # fmt: skip
-#: The size in the `font` shorthand: the first length, before its family.
+#: The size in the `font` shorthand: the first length with a unit, or a size's name. A
+#: number without one is a weight, "700" for bold, as matplotlib writes it before the size
+#: (round 1 of #302).
 _FONT_SIZE = re.compile(
-    r"(?:^|\s)((?:\d+\.?\d*|\.\d+)(?:px|pt|pc|in|mm|cm|q|em|ex|rem|%)?|"
+    r"(?:^|\s)((?:\d+\.?\d*|\.\d+)(?:px|pt|pc|in|mm|cm|q|em|ex|rem|%)|"
     r"xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|smaller|larger)"
     r"(?:/\S+)?\s",
     re.IGNORECASE,
@@ -106,11 +111,12 @@ def parse_svg(document: str) -> Svg | None:
         root = ET.fromstring(document)
     except ET.ParseError:
         return None
-    ids = {node.get("id"): node for node in root.iter() if node.get("id")}
+    figure = _Figure({node.get("id"): node for node in root.iter() if node.get("id")},
+                     Sheet(root))  # fmt: skip
     texts: list[Mark] = []
     lines: list[Mark] = []
     state = {"font": DEFAULT_FONT_UNITS, "stroke": "none", "stroke-width": 1.0}
-    _walk(root, IDENTITY, state, ids, texts, lines, 0)
+    _walk(root, IDENTITY, state, figure, texts, lines, 0)
     width, unit = _root_width(root)
     return Svg(tuple(texts), tuple(lines), _view(root), width, unit)
 
@@ -119,17 +125,21 @@ def _tag(node: ET.Element) -> str:
     return node.tag.removeprefix(SVG) if isinstance(node.tag, str) else ""
 
 
-def _style(node: ET.Element) -> dict[str, str]:
-    """An element's presentation attributes, with its `style` over them."""
-    said = {
-        key: value
-        for key, value in node.attrib.items()
-        if key in ("font-size", "font", "stroke", "stroke-width", "display", "visibility")
-    }
-    for part in (node.get("style") or "").split(";"):
-        key, _, value = part.partition(":")
-        if key.strip() and value.strip():
-            said[key.strip().lower()] = value.strip()
+@dataclass(frozen=True)
+class _Figure:
+    """What every element of a figure is read against: the elements by id, for `<use>`,
+    and the figure's stylesheet."""
+
+    ids: dict
+    sheet: Sheet
+
+
+def _style(node: ET.Element, sheet: Sheet) -> dict[str, str]:
+    """What an element is drawn with: its presentation attributes, the stylesheet's rules
+    over them, and its own `style` over those."""
+    said = {key: value for key, value in node.attrib.items() if key in READ}
+    said.update(sheet.declared(node))
+    said.update(declarations(node.get("style") or ""))
     return said
 
 
@@ -212,7 +222,7 @@ def _walk(
     node: ET.Element,
     matrix: Matrix,
     state: dict,
-    ids: dict,
+    figure: _Figure,
     texts: list[Mark],
     lines: list[Mark],
     depth: int,
@@ -220,13 +230,13 @@ def _walk(
     tag = _tag(node)
     if tag in _NOT_DRAWN:
         return
-    said = _style(node)
+    said = _style(node, figure.sheet)
     if said.get("display", "").lower() == "none":
         return
     matrix = _multiply(matrix, _transform(node.get("transform")))
     state = _inherit(state, said)
     if tag == "use":
-        _use(node, matrix, state, ids, texts, lines, depth)
+        _use(node, matrix, state, figure, texts, lines, depth)
         return
     if tag in ("text", "tspan"):
         # A `<tspan>` without its own position is drawn on from its text's.
@@ -241,7 +251,7 @@ def _walk(
         if width > 0:
             lines.append(Mark("", width, _apply(matrix, 0.0, 0.0)))
     for child in node:
-        _walk(child, matrix, state, ids, texts, lines, depth)
+        _walk(child, matrix, state, figure, texts, lines, depth)
 
 
 def _inherit(state: dict, said: dict[str, str]) -> dict:
@@ -259,20 +269,20 @@ def _use(
     node: ET.Element,
     matrix: Matrix,
     state: dict,
-    ids: dict,
+    figure: _Figure,
     texts: list[Mark],
     lines: list[Mark],
     depth: int,
 ) -> None:
     """What a `<use>` draws: what it refers to, moved to its x and y, with its style."""
     href = (node.get(XLINK_HREF) or node.get("href") or "").removeprefix("#")
-    used = ids.get(href)
+    used = figure.ids.get(href)
     if used is None or depth >= DEPTH:
         return
     placed = _multiply(matrix, (1.0, 0.0, 0.0, 1.0, _first(node.get("x")), _first(node.get("y"))))
     # A `<symbol>` is drawn where it is used, though not where it is defined.
     for child in list(used) if _tag(used) == "symbol" else [used]:
-        _walk(child, placed, state, ids, texts, lines, depth + 1)
+        _walk(child, placed, state, figure, texts, lines, depth + 1)
 
 
 def _height(matrix: Matrix) -> float:

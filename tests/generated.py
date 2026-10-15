@@ -569,7 +569,7 @@ def quotations(draw: st.DrawFn) -> tuple[str, str]:
 # ---------------------------------------------------------------------- a vector figure
 
 #: Each kind of text a vector figure holds: what G4 reads the size of.
-TEXT_KINDS = ("unset", "pt", "mm", "em", "tspan", "use", "turned")
+TEXT_KINDS = ("unset", "pt", "mm", "em", "tspan", "use", "turned", "weight", "class")
 
 
 def _composed(left: tuple[float, ...], right: tuple[float, ...]) -> tuple[float, ...]:
@@ -613,7 +613,7 @@ def vector_figures(draw: st.DrawFn) -> tuple[str, dict[str, float], list[float]]
 
     texts: dict[str, float] = {}
     lines: list[float] = []
-    defs, body = [], []
+    defs, body, rules = [], [], []
     for number, kind in enumerate(draw(st.permutations(TEXT_KINDS))):
         label = f"t{number}"
         drawn = draw(st.lists(_transforms(), max_size=3))
@@ -646,6 +646,13 @@ def vector_figures(draw: st.DrawFn) -> tuple[str, dict[str, float], list[float]]
             defs.append(f'<text id="u{number}" x="1" y="1" font-size="{size}">{label}</text>')
             inner = f'<use xlink:href="#u{number}" transform="scale({scale})"/>'
             own = (scale, 0.0, 0.0, scale)
+        elif kind == "weight":
+            # A bold text, its weight before its size, as matplotlib writes it.
+            inner = f"<text x=\"1\" y=\"1\" style=\"font: 700 {size}px sans-serif\">{label}</text>"
+        elif kind == "class":
+            # A size set through a class, as Illustrator writes it, over the attribute.
+            rules.append(f".c{number} {{ font-size: {size}px }}")
+            inner = f'<text x="1" y="1" class="c{number}" font-size="99">{label}</text>'
         elif kind == "turned":
             inner = (f'<g transform="scale(2 0.5)"><g transform="rotate(90)">'
                      f'<text x="1" y="1" font-size="{size}">{label}</text></g></g>')  # fmt: skip
@@ -653,6 +660,9 @@ def vector_figures(draw: st.DrawFn) -> tuple[str, dict[str, float], list[float]]
             own = _composed((2.0, 0.0, 0.0, 0.5), (0.0, 1.0, -1.0, 0.0))
         width = draw(st.integers(1, 30)) / 10
         line = f'<path d="M0 0L1 1" stroke="black" stroke-width="{width}"/>'
+        if kind == "class":
+            # A line stroked by the stylesheet alone, as svglite strokes a black one.
+            line = f'<path class="stroked" d="M0 0L1 1" style="stroke-width: {width}"/>'
         whole = _composed(linear, own)
         texts[label] = units * math.hypot(whole[2], whole[3])
         lines.append(width * math.sqrt(abs(linear[0] * linear[3] - linear[1] * linear[2])))
@@ -663,6 +673,7 @@ def vector_figures(draw: st.DrawFn) -> tuple[str, dict[str, float], list[float]]
     document = (
         '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
         'width="400pt" height="300pt" viewBox="0 0 400 300">'
+        f"<style>.stroked {{ stroke: #000000 }} {' '.join(rules)}</style>"
         f"<defs>{''.join(defs)}</defs>{''.join(body)}</svg>"
     )
     return document, texts, sorted(lines)

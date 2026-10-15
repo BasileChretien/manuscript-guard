@@ -62,16 +62,24 @@ def quotations_in(text: str) -> list[Quotation]:
     line = 1
     for paragraph in blank_comments(text).split("\n\n"):
         flat = " ".join(paragraph.split())
+        quoted = [
+            (match, " ".join((match.group(1) or match.group(2)).split()))
+            for match in _QUOTED.finditer(flat)
+        ]
+        quoted = [(match, quote) for match, quote in quoted
+                  if sum(any(c.isalpha() for c in word) for word in quote.split()) >= WORDS]
+        # Cut into sentences only a paragraph that quotes and cites: the cut reads a long
+        # paragraph slowly, and five thousand lines of one took `check` past its budget.
+        if not quoted or "@" not in flat:
+            line += paragraph.count("\n") + 2
+            continue
         spans, at = [], 0
         for sentence in _split(flat):
             start = flat.find(sentence, at)
             start = at if start < 0 else start
             spans.append((start, start + len(sentence), sentence))
             at = start + len(sentence)
-        for match in _QUOTED.finditer(flat):
-            quote = " ".join((match.group(1) or match.group(2)).split())
-            if sum(any(c.isalpha() for c in word) for word in quote.split()) < WORDS:
-                continue
+        for match, quote in quoted:
             spanned = [s for s in spans if s[0] < match.end() and match.start() < s[1]]
             keys = tuple(dict.fromkeys(k for s in spanned for k in _KEY.findall(s[2])))
             if keys:

@@ -415,55 +415,100 @@ def abstract_source(project: Project) -> str | None:
     return section.enclosed if section is not None and section.enclosed.strip() else None
 
 
-#: What the build makes of an abstract and plain text cannot: a citation, in the journal's
-#: style or as a live Zotero field; a footnote; a table or a figure.
-_NOT_PLAIN = re.compile(
-    r"\[[^\]\n]*@[\w:.#$%&+?<>~/-]|(?<![\w@])@\w|\[\^|\{\{\s*(?:table|figure)\."
-)
-#: Where an abstract's keywords begin: a heading or a paragraph that opens with the word.
-_KEYWORDS = re.compile(
-    r"^[^\S\n]*(?:#+[^\S\n]*)?(?:\*\*|__)?key[^\S\n]?words\b", re.IGNORECASE | re.MULTILINE
-)
+#: What the build makes of an abstract and plain text cannot, as pandoc reads it: a
+#: citation, formatted in the journal's style or as a live Zotero field; a footnote; an
+#: image, a table or a figure.
+_NOT_PLAIN = frozenset({"Cite", "Note", "Image", "Table", "Figure"})
+#: A table or a figure placed by its binding, which `substitute` leaves as it is written.
+_DISPLAY = re.compile(r"\{\{\s*(?:table|figure)\.")
+#: The label that opens an abstract's keywords: "Keywords:", "Key words:", "Key-words:".
+_KEYWORDS = re.compile(r"key[\s-]?words?\s*:?", re.IGNORECASE)
 
 
-def abstract_text(project: Project) -> tuple[str | None, str | None]:
-    """The abstract for a submission portal's box, and why there is none where there is
-    none: every binding filled in with the value the build prints, and no Markdown, as
-    pandoc writes plain text, its keywords left out. An abstract that cites, or holds a
-    footnote or a table or figure, is left out rather than written differently from the
-    document: its citations are the build's to format, in the journal's style."""
+def _pandoc_json(*args: str, given: str) -> str:
     import subprocess
 
     from manuscript_guard.build.document import BuildError, pandoc
-    from manuscript_guard.contracts import load_namespace
-    from manuscript_guard.text.placeholders import substitute
 
-    source = abstract_source(project)
-    if source is None:
-        return None, None
-    keywords = _KEYWORDS.search(source)
-    source = source[: keywords.start()] if keywords else source
-    if _NOT_PLAIN.search(source):
-        return None, (
-            "abstract.txt is not written: the abstract cites, or holds a footnote, a table "
-            "or a figure, which the build formats and plain text cannot; copy it from the "
-            "document"
-        )
-    if shutil.which("pandoc") is None:
-        return None, "abstract.txt is not written: pandoc is not on PATH"
-    namespace = load_namespace(project)[0]
-    filled = substitute(source, {ref: value.display for ref, value in namespace.items()})
-    command = [pandoc(), "-f", "markdown", "-t", "plain", "--wrap=none"]
     try:
         finished = subprocess.run(
-            command, input=filled, capture_output=True, text=True, encoding="utf-8",
+            [pandoc(), *args], input=given, capture_output=True, text=True, encoding="utf-8",
             timeout=PANDOC_SECONDS, check=False,
         )  # fmt: skip
     except subprocess.TimeoutExpired:
         raise BuildError(f"pandoc gave no plain abstract within {PANDOC_SECONDS} s") from None
     if finished.returncode != 0:
         raise BuildError(f"pandoc could not write the abstract as text:\n{finished.stderr}")
-    return finished.stdout.strip() + "\n", None
+    return finished.stdout
+
+
+def _words(inlines: list) -> str:
+    """What a run of pandoc's inlines says, as text."""
+    out = []
+    for node in inlines:
+        kind, content = node.get("t"), node.get("c")
+        if kind == "Str":
+            out.append(content)
+        elif kind in ("Space", "SoftBreak", "LineBreak"):
+            out.append(" ")
+        elif kind in ("Strong", "Emph", "Underline", "SmallCaps", "Span"):
+            out.append(_words(content if kind != "Span" else content[1]))
+    return "".join(out)
+
+
+def _opens_keywords(block: dict) -> bool:
+    """Whether a block is where the abstract's keywords begin: a heading that names them,
+    or a paragraph that opens with their label ("Keywords:", "**Keywords**")."""
+    kind, content = block.get("t"), block.get("c")
+    if kind == "Header":
+        return bool(_KEYWORDS.fullmatch(_words(content[2]).strip()))
+    if kind not in ("Para", "Plain") or not content:
+        return False
+    first = content[0]
+    if first.get("t") in ("Strong", "Emph", "Underline", "SmallCaps"):
+        return bool(_KEYWORDS.fullmatch(_words(first["c"]).strip()))
+    opening = _words(content)[:20]
+    return bool(re.match(r"key[\s-]?words?\s*:", opening, re.IGNORECASE))
+
+
+def _holds(node: object, kinds: frozenset[str]) -> bool:
+    if isinstance(node, dict):
+        return node.get("t") in kinds or any(_holds(v, kinds) for v in node.values())
+    if isinstance(node, list):
+        return any(_holds(v, kinds) for v in node)
+    return False
+
+
+def abstract_text(project: Project) -> tuple[str | None, str | None]:
+    """The abstract for a submission portal's box, and why there is none where there is
+    none: every binding filled in with the value the build prints, and no Markdown, as
+    pandoc writes plain text, its keywords left out. An abstract that pandoc reads as
+    holding a citation, a footnote, an image, a table or a figure is left out rather than
+    written differently from the document: these are the build's to format."""
+    import json
+
+    from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.text.placeholders import substitute
+
+    source = abstract_source(project)
+    if source is None:
+        return None, None
+    if shutil.which("pandoc") is None:
+        return None, "abstract.txt is not written: pandoc is not on PATH"
+    namespace = load_namespace(project)[0]
+    filled = substitute(source, {ref: value.display for ref, value in namespace.items()})
+    document = json.loads(_pandoc_json("-f", "markdown", "-t", "json", given=filled))
+    blocks = document["blocks"]
+    cut = next((at for at, block in enumerate(blocks) if _opens_keywords(block)), len(blocks))
+    document["blocks"] = blocks[:cut]
+    if _DISPLAY.search(filled) or _holds(document["blocks"], _NOT_PLAIN):
+        return None, (
+            "abstract.txt is not written: the abstract cites, or holds a footnote, an image, "
+            "a table or a figure, which the build formats and plain text cannot; copy it from "
+            "the document"
+        )
+    plain = _pandoc_json("-f", "json", "-t", "plain", "--wrap=none", given=json.dumps(document))
+    return plain.strip() + "\n", None
 
 
 def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> Pack:

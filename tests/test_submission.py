@@ -216,10 +216,13 @@ def test_a_paper_with_no_abstract_section_gets_no_abstract_file(project: Path) -
     assert abstract_text(load_project(project)[0]) == (None, None)
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 @pytest.mark.parametrize(
     "added",
     ["as reported [@fictionalHepaticCohort2021].", "as @fictionalHepaticCohort2021 found.",
-     "as noted.[^a]\n\n[^a]: A note.", "as {{table.baseline}} shows."],
+     "as noted.[^a]\n\n[^a]: A note.", "as {{table.baseline}} shows.",
+     # round 2 of #259: a braced key, an inline note, an image
+     "as reported [@{10.1000/xyz}].", "as noted.^[A note.]", "\n\n![Flow](figures/flow.png)"],
 )  # fmt: skip
 def test_an_abstract_the_build_formats_and_plain_text_cannot_is_left_out(
     project: Path, added: str
@@ -241,8 +244,10 @@ def test_an_abstract_the_build_formats_and_plain_text_cannot_is_left_out(
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 @pytest.mark.parametrize(
-    "keywords", ["## Keywords\n\nhepatotoxicity", "**Keywords:** hepatotoxicity"]
-)
+    "keywords",
+    ["## Keywords\n\nhepatotoxicity", "**Keywords:** hepatotoxicity",
+     "*Keywords*: hepatotoxicity", "Key words: hepatotoxicity"],
+)  # fmt: skip
 def test_the_abstract_s_keywords_are_not_its_text(project: Path, keywords: str) -> None:
     from manuscript_guard.build.submission import abstract_text
 
@@ -255,6 +260,34 @@ def test_the_abstract_s_keywords_are_not_its_text(project: Path, keywords: str) 
     )
     plain, _why = abstract_text(load_project(project)[0])
     assert "hepatotoxicity" not in plain and plain.rstrip().endswith("cannot establish risk.")
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "added",
+    [
+        # round 2 of #259: the word in a sentence, not the label that opens the keywords
+        "We searched using\nkeywords for liver injury; 412 reports.",
+        "\n\nKey words in titles were screened in 412 reports.",
+        # an @ that is no citation
+        "Write to jane@example.org about the 412 reports.",
+        "<!-- ask @smith --> The 412 reports.",
+    ],
+)
+def test_an_abstract_that_only_mentions_keywords_or_an_at_sign_is_written_whole(
+    project: Path, added: str
+) -> None:
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "cannot establish risk.", f"cannot establish risk. {added}", 1
+        ),
+        encoding="utf-8",
+    )
+    plain, why = abstract_text(load_project(project)[0])
+    assert why is None and "412" in plain, (plain, why)
 
 
 def test_the_pack_offers_a_checklist_a_journal_can_read(project: Path) -> None:

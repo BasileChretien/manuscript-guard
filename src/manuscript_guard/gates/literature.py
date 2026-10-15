@@ -26,10 +26,12 @@ from manuscript_guard.contracts.literature import ABSTRACT_ONLY, ATTESTED, Liter
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.literature.sources import (
+    WORDS_BESIDE,
     UnreadableSource,
     contains,
     read_source,
     states_value,
+    words_beside,
 )
 from manuscript_guard.stats.reported import described, judge, reported_tests
 
@@ -134,6 +136,21 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
 
         verified += 1
         report = report.merge(_tests_in_quote(key, value, quote))
+        beside = words_beside(quote, value.display)
+        if len(beside) < WORDS_BESIDE:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="quote-too-short",
+                    severity=WARN,
+                    message=f"{key}: the quote holds {len(beside)} word(s) beside "
+                    f"{value.display!r}, which shows only that those digits are in the source",
+                    path=value.source,
+                    context=quote[:140],
+                    hint="quote the sentence that says what the value is of: the measure, the "
+                    "population and the outcome",
+                )
+            )
         if detail.get("depth") == ABSTRACT_ONLY:
             report = report.with_findings(
                 Finding(

@@ -421,6 +421,18 @@ def _quotation() -> Reading:
     return quotation
 
 
+@reading("quote words")
+def _quote_words() -> Reading:
+    """The words a ledger quote holds beside its value, which G7 counts to say a quote that
+    holds little more than the value."""
+    from manuscript_guard.literature.sources import words_beside
+
+    def quote_words(given: dict[str, Any]) -> list[str]:
+        return words_beside(given["quote"], given["value"])
+
+    return quote_words
+
+
 # -------------------------------------------------------------------- a whole project
 
 

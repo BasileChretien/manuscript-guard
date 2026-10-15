@@ -20,13 +20,17 @@ the check.
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
+import subprocess
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 import yaml
 
+from manuscript_guard import __version__
+from manuscript_guard.contracts._schema import ContractError, read_structured
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.text.sections import measure
 
@@ -57,6 +61,8 @@ class Pack:
     directory: Path
     files: tuple[Path, ...]
     manifest: Path
+    #: What the pack left out, and why: said by `submit` with the list of files.
+    notes: tuple[str, ...] = ()
 
 
 def _initials(author: dict) -> str:
@@ -397,6 +403,218 @@ def supplement_for(project: Project, document: Path) -> Path:
     return beside if beside.exists() else project.path("build") / beside.name
 
 
+#: The longest pandoc is given to turn the abstract into plain text.
+PANDOC_SECONDS = 60
+
+
+#: What an abstract may hold and still be written as plain text that says what the
+#: document says: words, their emphasis, sub- and superscripts, quotation marks, and a link
+#: that shows its own address. Anything else, a citation, a footnote, maths, code, an image,
+#: a table, a link with words of its own, is formatted by the build, and plain text written
+#: another way would not be what the document prints.
+_PLAIN_INLINES = frozenset({
+    "Str", "Space", "SoftBreak", "LineBreak", "Emph", "Strong", "Underline",
+    "Superscript", "Subscript", "SmallCaps", "Span", "Quoted",
+})  # fmt: skip
+#: What a sub- or superscript may hold for the plain writer to print it as one in Unicode.
+_SCRIPTABLE = re.compile(r"[0-9+\-\N{MINUS SIGN}=() ]*")
+#: What is written as its letters: a subscript of letters alone, a label ("C~max~"), and an
+#: ordinal's superscript ("2^nd^"). Any other script the plain writer cannot print as one
+#: (`2^k^`, `e^x^`, `10^0.5^`) leaves the abstract out: written flat it would be another
+#: number.
+_LETTERS = re.compile(r"[A-Za-z]+")
+_ORDINAL = re.compile(r"st|nd|rd|th")
+
+
+def _script(item: dict) -> str:
+    """What becomes of a sub- or superscript: "kept" for the plain writer to print as one,
+    "flat" as its letters, "refused"."""
+    words = item["c"]
+    if not all(isinstance(n, dict) and n.get("t") in ("Str", "Space") for n in words):
+        return "refused"
+    said = _text(words)
+    if _SCRIPTABLE.fullmatch(said):
+        return "kept"
+    label = _LETTERS if item["t"] == "Subscript" else _ORDINAL
+    return "flat" if label.fullmatch(said) else "refused"
+
+
+def _refused_script(node: object) -> bool:
+    if isinstance(node, dict):
+        if node.get("t") in ("Subscript", "Superscript") and _script(node) == "refused":
+            return True
+        return any(_refused_script(value) for value in node.values())
+    if isinstance(node, list):
+        return any(_refused_script(item) for item in node)
+    return False
+_PLAIN_BLOCKS = frozenset({"Para", "Plain", "Header"})
+#: A table or a figure placed by its binding, which `substitute` leaves as it is written.
+_DISPLAY = re.compile(r"\{\{\s*(?:table|figure)\.")
+#: The label that opens an abstract's keywords, as a heading or at a paragraph's start.
+_KEYWORDS_HEADING = re.compile(r"\s*key[\s-]?words?\s*:?\s*", re.IGNORECASE)
+_KEYWORDS_LABEL = re.compile(r"\s*key[\s-]?words?\s*:", re.IGNORECASE)
+_KEYWORDS_ANYWHERE = re.compile(r"\bkey[\s-]?words?\s*:", re.IGNORECASE)
+_ABSTRACT_TITLE = re.compile(r"\s*(?:\d+[.)]?\s*)?(?:structured\s+)?abstract\b", re.IGNORECASE)
+
+
+def _pandoc(*args: str, given: str) -> str:
+    import subprocess
+
+    from manuscript_guard.build.document import BuildError, pandoc
+
+    try:
+        finished = subprocess.run(
+            [pandoc(), *args], input=given, capture_output=True, text=True, encoding="utf-8",
+            timeout=PANDOC_SECONDS, check=False,
+        )  # fmt: skip
+    except subprocess.TimeoutExpired:
+        raise BuildError(f"pandoc gave no plain abstract within {PANDOC_SECONDS} s") from None
+    if finished.returncode != 0:
+        raise BuildError(f"pandoc could not write the abstract as text:\n{finished.stderr}")
+    return finished.stdout
+
+
+def _text(node: object) -> str:
+    """What a piece of pandoc's tree says, as text."""
+    if isinstance(node, list):
+        return "".join(_text(item) for item in node)
+    if not isinstance(node, dict):
+        return ""
+    kind, content = node.get("t"), node.get("c")
+    if kind == "Str":
+        return content
+    if kind in ("Space", "SoftBreak", "LineBreak"):
+        return " "
+    if kind in ("RawInline", "RawBlock"):
+        return ""
+    return _text(content)
+
+
+def _plain(node: object) -> bool:
+    """Whether a piece of the tree is plain text the plain writer prints as the build does.
+    An HTML comment, which neither prints, is allowed."""
+    if isinstance(node, list):
+        return all(_plain(item) for item in node)
+    if not isinstance(node, dict) or "t" not in node:
+        return True
+    kind, content = node["t"], node.get("c")
+    if kind in ("RawInline", "RawBlock"):
+        return content[0] == "html" and content[1].lstrip().startswith("<!--")
+    if kind == "Link":
+        attr, words, (target, _title) = content
+        return _plain(words) and _text(words).strip() == target.strip()
+    if kind == "Header":
+        return _plain(content[2])
+    if kind == "Span":
+        return _plain(content[1])
+    if kind == "Quoted":
+        return _plain(content[1])
+    if kind in _PLAIN_INLINES or kind in _PLAIN_BLOCKS:
+        return _plain(content)
+    return False
+
+
+def _unscripted(node: object) -> object:
+    """The tree with each label in a subscript and each ordinal's superscript written as its
+    own letters: `C~max~` as "Cmax", `2^nd^` as "2nd"."""
+    if isinstance(node, dict):
+        return {key: _unscripted(value) for key, value in node.items()}
+    if not isinstance(node, list):
+        return node
+    out: list = []
+    for item in node:
+        if (
+            isinstance(item, dict)
+            and item.get("t") in ("Subscript", "Superscript")
+            and _script(item) == "flat"
+        ):
+            out.extend(_unscripted(item["c"]))
+        else:
+            out.append(_unscripted(item))
+    return out
+
+
+def _abstract_blocks(blocks: list) -> list | None:
+    """The blocks under the main text's heading "Abstract", up to the next heading of its
+    level or above, or None where no heading names it."""
+    for at, block in enumerate(blocks):
+        if block.get("t") == "Header" and _ABSTRACT_TITLE.match(_text(block["c"][2])):
+            level = block["c"][0]
+            out = []
+            for later in blocks[at + 1 :]:
+                if later.get("t") == "Header" and later["c"][0] <= level:
+                    break
+                out.append(later)
+            return out
+    return None
+
+
+def _until_keywords(blocks: list) -> list:
+    """The abstract up to its keywords: a heading that names them, or a block that opens
+    with their label ("Keywords:", "**Keywords:**")."""
+    for at, block in enumerate(blocks):
+        said = _text(block["c"][2] if block.get("t") == "Header" else block.get("c"))
+        if block.get("t") == "Header" and _KEYWORDS_HEADING.fullmatch(said):
+            return blocks[:at]
+        if block.get("t") in ("Para", "Plain") and _KEYWORDS_LABEL.match(said):
+            return blocks[:at]
+    return blocks
+
+
+_LEFT_OUT = "abstract.txt is not written: "
+
+
+def abstract_text(project: Project) -> tuple[str | None, str | None]:
+    """The abstract for a submission portal's box, and why there is none where there is
+    none: every binding filled in with the value the build prints, and no Markdown, as
+    pandoc writes plain text, up to its keywords.
+
+    The main text is read whole, as pandoc reads it, so that a footnote defined at its end
+    is a footnote. The abstract is written only where everything in it is plain text the
+    plain writer prints as the build does; anything else, and a keywords label inside a
+    paragraph, leaves it out with the reason, rather than write it otherwise than the
+    document says it."""
+    import json
+
+    from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.gates.journal import main_text
+    from manuscript_guard.text.placeholders import substitute
+    from manuscript_guard.text.sections import split_sections
+
+    text = main_text(project)
+    if not any(section.is_abstract for section in split_sections(text)):
+        return None, None
+    if shutil.which("pandoc") is None:
+        return None, _LEFT_OUT + "pandoc is not on PATH"
+    namespace = load_namespace(project)[0]
+    filled = substitute(text, {ref: v.display for ref, v in namespace.items()})
+    document = json.loads(_pandoc("-f", "markdown", "-t", "json", given=filled))
+    blocks = _abstract_blocks(document["blocks"])
+    if not blocks:
+        return None, None
+    blocks = _until_keywords(blocks)
+    said = _text(blocks)
+    if not _plain(blocks) or _DISPLAY.search(said):
+        return None, _LEFT_OUT + (
+            "the abstract holds what the build formats and plain text cannot (a citation, a "
+            "footnote, maths, code, an image, a table, a figure, a link with words of its "
+            "own, or a block other than a paragraph or a heading); copy it from the document"
+        )
+    if _refused_script(blocks):
+        return None, _LEFT_OUT + (
+            "the abstract holds a sub- or superscript plain text cannot show (a power such "
+            "as 10^-3, a unit such as kg^-1); copy it from the document"
+        )
+    if _KEYWORDS_ANYWHERE.search(said):
+        return None, _LEFT_OUT + (
+            "a keywords label stands inside a paragraph of the abstract; put the keywords in "
+            "a paragraph of their own"
+        )
+    document["blocks"] = _unscripted(blocks)
+    plain = _pandoc("-f", "json", "-t", "plain", "--wrap=none", given=json.dumps(document))
+    return (plain.strip() + "\n", None) if plain.strip() else (None, None)
+
+
 def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> Pack:
     """Copy or generate every part of the submission into build/submission/.
 
@@ -408,6 +626,8 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
     """
     from manuscript_guard.gates.numbers import is_supplementary, source_files
 
+    # Before the old pack is taken away: a pandoc that fails here leaves it as it was.
+    abstract, left_out = abstract_text(project)
     directory = project.path("build") / "submission"
     # The pack is made afresh, and a document inside it, a co-author's edited copy passed as
     # `--document build/submission/manuscript.docx`, was deleted before it was copied.
@@ -435,6 +655,9 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
         # left it out entirely: `respond` wrote it to build/ and nothing collected it, so the
         # one artefact whose claims G13 checks was the one not sent.
         ("response-to-reviewers.md", response_letter(project)),
+        # For the portal's abstract box: pasted from the .docx it carries whatever Word
+        # and the clipboard make of it; this is the checked numbers and nothing else.
+        ("abstract.txt", abstract),
     ]
     for name, text in generated:
         if text is None:
@@ -487,13 +710,83 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
                 files.append(target)
 
     manifest = _write_manifest(project, directory, files, checked=checked)
-    return Pack(directory=directory, files=tuple(files), manifest=manifest)
+    notes = (left_out,) if left_out else ()
+    return Pack(directory=directory, files=tuple(files), manifest=manifest, notes=notes)
+
+
+#: The longest `git` is waited for. A repository on a network drive, or one with a file
+#: system monitor that hangs, would otherwise hold the pack up for good.
+GIT_SECONDS = 30
+
+
+def _git(root: Path, *args: str) -> str | None:
+    """`git` in the project, or None where it is not a repository or git did not answer.
+    The file system monitor is turned off for the call: started by it, it can outlive it."""
+    try:
+        done = subprocess.run(
+            ["git", "-c", "core.fsmonitor=false", "-C", str(root), *args],
+            capture_output=True,
+            # git writes UTF-8 whatever the locale: a path in a message, read as cp932 or
+            # cp1252, would otherwise raise.
+            encoding="utf-8",
+            errors="replace",
+            timeout=GIT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def _commit(project: Project) -> dict[str, str]:
+    """The commit the project was at, and whether anything in its folder differs from that
+    commit: a changed file, or one git has not been told to ignore and has not been given.
+    The build folder is left out, since the pack being written is in it."""
+    root = project.root
+    head = _git(root, "rev-parse", "HEAD")
+    if head is None:
+        return {"commit": "none: not a git repository, or git could not be run", "tree": "unknown"}
+    build = project.path("build")
+    outside = [] if not build.is_relative_to(root) else [
+        f":(exclude){build.relative_to(root).as_posix()}"
+    ]
+    status = _git(root, "status", "--porcelain", "--", ".", *outside)
+    if status is None:
+        return {"commit": head.strip(), "tree": "unknown: git could not say"}
+    changed = len([line for line in status.splitlines() if line.strip()])
+    tree = "clean" if not changed else f"{changed} file(s) changed or not committed"
+    return {"commit": head.strip(), "tree": tree}
+
+
+def _journal_profile(project: Project) -> Path | None:
+    from manuscript_guard.gates.journal import profile_path
+
+    slug = project.target_journal
+    return profile_path(project, slug) if slug else None
+
+
+def _checklist_profile(project: Project, name: str) -> Path | None:
+    from manuscript_guard.gates.reporting import checklist_path
+
+    return checklist_path(project, name)
+
+
+def _retrieved_on(path: Path | None) -> str:
+    """When the guidelines in a profile were read from their source, as the profile says."""
+    if path is None:
+        return "no profile"
+    try:
+        document = read_structured(path)
+    except ContractError:
+        return "unreadable"
+    found = document.get("retrieved_on") if isinstance(document, dict) else None
+    return str(found) if found else "not stated"
 
 
 def _write_manifest(
     project: Project, directory: Path, files: list[Path], *, checked: bool = True
 ) -> Path:
-    from manuscript_guard.gates.review import manuscript_digest
+    from manuscript_guard.gates.review import manuscript_digest, overrides
 
     entries = []
     for path in files:
@@ -527,6 +820,16 @@ def _write_manifest(
             "was failing. Do not send this without re-running `manuscript-guard "
             "check --submission`."
         ),
+        # What made it, so that a fix to the tool can say which packs to check again, and
+        # a pack can be traced to the commit, the guidelines and the decisions behind it.
+        "checked_with": f"manuscript-guard {__version__}",
+        **_commit(project),
+        "journal_profile_retrieved_on": _retrieved_on(_journal_profile(project)),
+        "checklists": [
+            {"guideline": name, "retrieved_on": _retrieved_on(_checklist_profile(project, name))}
+            for name in project.reporting_guidelines
+        ],
+        "overrides": overrides(project),
         "manuscript_sha256": manuscript_digest(project),
         "files": entries,
     }

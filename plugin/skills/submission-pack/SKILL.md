@@ -33,9 +33,10 @@ the check: the pack is the version you send anywhere.
 | `declarations.md` | funding and competing interests, per author |
 | `supplementary.docx` | built from `manuscript/supplementary/*.md`, when the project has any |
 | `checklist-*.yaml`, `checklist-*.md` — or `scale-*.yaml` and `scale-*.md` where the project adopted an appraisal scale rather than a reporting checklist | the completed reporting checklists, as data and as a table to read |
+| `abstract.txt` | the abstract as plain text, every number filled in, for the submission system's abstract box; not written for an abstract that cites or holds a footnote, a table or a figure |
 | `response-to-reviewers.md` | the point-by-point response, when a revision round has been opened |
 | `figures/` | the `.png`, `.pdf`, `.tif`, `.tiff` and `.eps` files in `figures/`; an `.svg` is not copied |
-| `MANIFEST.yaml` | every file with its sha256 |
+| `MANIFEST.yaml` | every file with its sha256; the version of manuscript-guard that checked it, the commit and whether the tree differed from it, when the journal profile and the checklists were read, and every review finding left as it was, with the reason and who decided |
 
 The manifest matters more than it looks. Six months later, "which version did the journal
 actually get" has no reliable answer without one.

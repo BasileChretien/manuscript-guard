@@ -171,6 +171,293 @@ def test_the_manifest_records_what_was_sent(project: Path) -> None:
     assert len(manifest["manuscript_sha256"]) == 64
 
 
+def _pack_manifest(root: Path) -> dict:
+    projekt, _ = load_project(root)
+    document = root / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+    return yaml.safe_load(assemble_pack(projekt, document).manifest.read_text(encoding="utf-8"))
+
+
+def test_the_manifest_says_what_made_it(project: Path) -> None:
+    """The version that passed it, the dates of the guidelines it was held to, and the
+    review findings a person left as they were, with why and who decided."""
+    from manuscript_guard import __version__
+
+    manifest = _pack_manifest(project)
+    assert manifest["checked_with"] == f"manuscript-guard {__version__}"
+    profile = yaml.safe_load(
+        (project / "profiles" / "journals" / "demo-journal.yaml").read_text(encoding="utf-8")
+    )
+    assert manifest["journal_profile_retrieved_on"] == str(profile["retrieved_on"])
+    assert [c["guideline"] for c in manifest["checklists"]] == ["DEMO-OBS"]
+    dates = [c["retrieved_on"] for c in manifest["checklists"]]
+    assert not {"no profile", "not stated"} & set(dates), dates
+    overrides = manifest["overrides"]
+    assert {(o["round"], o["finding"]) for o in overrides} == {
+        (1, "r1-pe-03"), (1, "r1-bs-02"), (2, "r2-de-01")
+    }  # fmt: skip
+    assert all(o["reason"] and o["decided_by"] == "not recorded" for o in overrides)
+
+
+def test_the_manifest_names_who_left_a_finding_as_it_was(project: Path) -> None:
+    record = project / "review" / "round-2" / "desk-editor.yaml"
+    edit_yaml(record, lambda d: d["findings"][0].update(overridden_by="Anne Fictional"))
+    overrides = {o["finding"]: o for o in _pack_manifest(project)["overrides"]}
+    assert overrides["r2-de-01"]["decided_by"] == "Anne Fictional"
+
+
+def test_a_record_that_cannot_be_read_is_listed_and_the_pack_is_assembled(
+    project: Path,
+) -> None:
+    """G11 reports the record; a pack assembled with --skip-checks despite it is assembled,
+    as it was before the manifest listed the overrides (round 1 of #250)."""
+    record = project / "review" / "round-1" / "biostatistician.yaml"
+    record.write_text(
+        record.read_text(encoding="utf-8") + "resolution: Fixed: it now says reporting\n",
+        encoding="utf-8",
+    )
+    projekt, _ = load_project(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+    pack = assemble_pack(projekt, document, checked=False)
+    manifest = yaml.safe_load(pack.manifest.read_text(encoding="utf-8"))
+    assert {"round": 1, "reviewer": "biostatistician", "unreadable": "a record"} in (
+        manifest["overrides"]
+    )
+
+
+def test_git_s_output_is_read_as_utf_8_whatever_the_locale(monkeypatch) -> None:
+    import subprocess
+
+    from manuscript_guard.build import submission
+
+    asked = {}
+
+    def run(*args, **kwargs):
+        asked.update(kwargs)
+        return subprocess.CompletedProcess(args, 0, stdout="0" * 40 + "\n", stderr="")
+
+    monkeypatch.setattr(submission.subprocess, "run", run)
+    assert submission._git(Path("."), "rev-parse", "HEAD") == "0" * 40 + "\n"
+    assert (asked["encoding"], asked["errors"]) == ("utf-8", "replace")
+
+
+def test_a_pack_outside_git_says_so(project: Path) -> None:
+    manifest = _pack_manifest(project)
+    if manifest["commit"].startswith("none"):
+        assert manifest["tree"] == "unknown"
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_the_manifest_records_the_commit_and_whether_the_tree_differs(project: Path) -> None:
+    import subprocess
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-c", "core.fsmonitor=false", "-c", "user.name=T", "-c",
+             "user.email=t@example.org", "-c", "commit.gpgsign=false", "-C", str(project),
+             *args],
+            capture_output=True, text=True, check=True, timeout=60,
+        ).stdout.strip()  # fmt: skip
+
+    git("init", "-q")
+    git("add", "-A")
+    git("commit", "-q", "-m", "a paper")
+    head = git("rev-parse", "HEAD")
+    manifest = _pack_manifest(project)
+    assert (manifest["commit"], manifest["tree"]) == (head, "clean")
+    main = project / "manuscript" / "main.md"
+    main.write_text(main.read_text(encoding="utf-8") + "\nOne more line.\n", encoding="utf-8")
+    manifest = _pack_manifest(project)
+    assert (manifest["commit"], manifest["tree"]) == (head, "1 file(s) changed or not committed")
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_the_pack_holds_the_abstract_as_plain_text_with_its_numbers(project: Path) -> None:
+    """For the portal's abstract box: every binding filled in with the value the build
+    prints, and no Markdown."""
+    from manuscript_guard.contracts import load_namespace
+
+    projekt, _ = load_project(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+    pack = assemble_pack(projekt, document)
+    text = (pack.directory / "abstract.txt").read_text(encoding="utf-8")
+    point = load_namespace(projekt)[0]["results.ror.point"].display
+    assert text.startswith("Background. Drug-induced hepatic injury")
+    assert f"The reporting odds ratio was {point}" in text
+    assert "{{" not in text and "**" not in text and "# " not in text
+    manifest = yaml.safe_load(pack.manifest.read_text(encoding="utf-8"))
+    assert "abstract.txt" in [entry["file"] for entry in manifest["files"]]
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_structured_abstract_keeps_its_headings_as_lines(project: Path) -> None:
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("**Background.** Drug-induced", "## Background\n\nDrug-induced", 1),
+        encoding="utf-8",
+    )
+    plain, _why = abstract_text(load_project(project)[0])
+    assert plain.startswith("Background\n\nDrug-induced hepatic injury"), plain
+
+
+def test_a_paper_with_no_abstract_section_gets_no_abstract_file(project: Path) -> None:
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("# Abstract\n", "# Overview\n", 1),
+        encoding="utf-8",
+    )
+    assert abstract_text(load_project(project)[0]) == (None, None)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "added",
+    ["as reported [@fictionalHepaticCohort2021].", "as @fictionalHepaticCohort2021 found.",
+     "as noted.[^a]\n\n[^a]: A note.", "as {{table.baseline}} shows.",
+     # round 2 of #259: a braced key, an inline note, an image
+     "as reported [@{10.1000/xyz}].", "as noted.^[A note.]", "\n\n![Flow](figures/flow.png)",
+     # round 3: a link with words of its own, a block that is no paragraph
+     "as [the trial](https://example.org) says.", "\n\n::: {.keywords}\nKeywords: x\n:::",
+     # round 4: words struck out
+     "as ~~not~~ shown.",
+     # round 5: a power or a unit, which written flat is another number
+     "At 10^0.5^ times.", "As x^*2*^.",
+     # round 6: a superscript of letters is a power, not a label
+     "A 2^k^ factorial design.", "As e^x^ grows."],
+)  # fmt: skip
+def test_an_abstract_the_build_formats_and_plain_text_cannot_is_left_out(
+    project: Path, added: str
+) -> None:
+    """Round 1 of #259: a citation came out as the bare key, or in another style than the
+    document's, and a footnote as its marker. Left out, and said."""
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "cannot establish risk.", f"cannot establish risk, {added}", 1
+        ),
+        encoding="utf-8",
+    )
+    plain, why = abstract_text(load_project(project)[0])
+    assert plain is None and "abstract.txt is not written" in why
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_sub_or_superscript_is_written_as_the_plain_writer_can(project: Path) -> None:
+    """Round 4 of #259: `C~max~` came out as `C_(max)`. Digits keep their Unicode form;
+    letters are written as they are."""
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "cannot establish risk.",
+            "cannot establish risk. C~max~ in the 2^nd^ H~2~O at 10^\N{MINUS SIGN}3^ mg.",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    plain, why = abstract_text(load_project(project)[0])
+    assert why is None and (
+        "Cmax in the 2nd H\N{SUBSCRIPT TWO}O at "
+        "10\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT THREE} mg." in plain
+    ), plain
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_footnote_defined_at_the_end_of_the_text_is_still_a_footnote(project: Path) -> None:
+    """Round 3 of #259: read alone, the abstract's `[^a]` had no definition, was no
+    footnote to pandoc, and was written as the literal marker."""
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8").replace("cannot establish risk.", "risk.[^a]", 1)
+    main.write_text(text + "\n\n[^a]: A note.\n", encoding="utf-8")
+    plain, why = abstract_text(load_project(project)[0])
+    assert plain is None and "footnote" in why
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("joined", ["\N{REVERSE SOLIDUS}\nKeywords: x", "  \nKeywords: x"])
+def test_a_keywords_label_inside_a_paragraph_leaves_the_abstract_out(
+    project: Path, joined: str
+) -> None:
+    """Round 3 of #259: a label after a hard break is in the paragraph above it, so no
+    block opens with it; the abstract is left out rather than written with it."""
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("establish risk.", f"establish risk.{joined}", 1),
+        encoding="utf-8",
+    )
+    plain, why = abstract_text(load_project(project)[0])
+    assert plain is None and "keywords label" in why
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "keywords",
+    ["## Keywords\n\nhepatotoxicity", "**Keywords:** hepatotoxicity",
+     "*Keywords*: hepatotoxicity", "Key words: hepatotoxicity",
+     "**Keywords: hepatotoxicity**"],
+)  # fmt: skip
+def test_the_abstract_s_keywords_are_not_its_text(project: Path, keywords: str) -> None:
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "cannot establish risk.\n", f"cannot establish risk.\n\n{keywords}\n", 1
+        ),
+        encoding="utf-8",
+    )
+    plain, _why = abstract_text(load_project(project)[0])
+    assert "hepatotoxicity" not in plain and plain.rstrip().endswith("cannot establish risk.")
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "added",
+    [
+        # round 2 of #259: the word in a sentence, not the label that opens the keywords
+        "We searched using\nkeywords for liver injury; 412 reports.",
+        "\n\nKey words in titles were screened in 412 reports.",
+        # an @ that is no citation
+        "Write to jane@example.org about the 412 reports.",
+        "<!-- ask @smith --> The 412 reports.",
+        # round 3: an emphasised word that opens a sentence, a binding inside a comment
+        "\n\n*Key words* in titles were screened in 412 reports.",
+        "<!-- move {{table.baseline}} here? --> The 412 reports.",
+    ],
+)
+def test_an_abstract_that_only_mentions_keywords_or_an_at_sign_is_written_whole(
+    project: Path, added: str
+) -> None:
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "cannot establish risk.", f"cannot establish risk. {added}", 1
+        ),
+        encoding="utf-8",
+    )
+    plain, why = abstract_text(load_project(project)[0])
+    assert why is None and "412" in plain, (plain, why)
+
+
 def test_the_pack_offers_a_checklist_a_journal_can_read(project: Path) -> None:
     """What the pack sent in answer to "attach your completed STROBE checklist" was YAML.
 

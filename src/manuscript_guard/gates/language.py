@@ -400,7 +400,11 @@ class _Region:
 
 
 def _regions(
-    headings: list[Heading], chain: list[Section], *, supplementary: bool
+    headings: list[Heading],
+    chain: list[Section],
+    *,
+    supplementary: bool,
+    abstract_title: str | None = None,
 ) -> list[_Region]:
     """Which text each stretch of a file belongs to. `chain` is the headings a reader is
     under, carried from one file of a document into the next: a file that opens without a
@@ -412,7 +416,7 @@ def _regions(
         quiet = any(_QUIET.search(section.title) for section in chain)
         if supplementary:
             return _Region(start, SUPPLEMENT, quiet)
-        abstract = any(section.is_abstract for section in chain)
+        abstract = any(section.names_abstract(abstract_title) for section in chain)
         return _Region(start, ABSTRACT if abstract else BODY, quiet)
 
     regions = [here(0)]
@@ -630,7 +634,14 @@ class _File:
         return bisect_left(self.breaks, offset) + 1
 
 
-def _file(order: int, path: Path, text: str, chain: list[Section], supplementary: bool) -> _File:
+def _file(
+    order: int,
+    path: Path,
+    text: str,
+    chain: list[Section],
+    supplementary: bool,
+    abstract_title: str | None = None,
+) -> _File:
     headings = find_headings(text)
     hidden = _hidden(text)
     # A heading in capitals is not an abbreviation, and one that uses an abbreviation is
@@ -638,7 +649,7 @@ def _file(order: int, path: Path, text: str, chain: list[Section], supplementary
     prose = _hide(hidden, (_heading_span(text, heading) for heading in headings)).replace(
         NUL, " "
     )
-    regions = _regions(headings, chain, supplementary=supplementary)
+    regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title)
     ends = [*(region.start for region in regions[1:]), len(text)]
     spans = list(zip(regions, ends, strict=True))
     references = [(region.start, end) for region, end in spans if region.scope is None]
@@ -658,7 +669,11 @@ def _file(order: int, path: Path, text: str, chain: list[Section], supplementary
 
 def _read(project: Project) -> list[_File]:
     """The manuscript as a reader meets it: the paper's files in printed order, then the
-    supplement's."""
+    supplement's. The abstract is the section the journal's profile names as one, where it
+    names one ("Summary"), as G4 reads it."""
+    from manuscript_guard.gates.journal import abstract_title
+
+    named = abstract_title(project)
     root = project.path("manuscript")
     sources = source_files(root)
     paper = printed_order(
@@ -672,7 +687,7 @@ def _read(project: Project) -> list[_File]:
         chain: list[Section] = []
         for path in document:
             text = read_text(path)
-            files.append(_file(len(files), path, text, chain, supplementary))
+            files.append(_file(len(files), path, text, chain, supplementary, named))
     return files
 
 

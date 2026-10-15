@@ -14,6 +14,7 @@ import contextlib
 import hashlib
 import re
 import sys
+import unicodedata
 from collections.abc import Collection
 from datetime import date
 from pathlib import Path
@@ -894,10 +895,41 @@ def _not_compared(
     return said
 
 
+#: How much of a comment is printed: enough to find it in Word.
+COMMENT_SHOWN = 200
+
+
+def quoted(text: str, limit: int = COMMENT_SHOWN) -> str:
+    """Text somebody else wrote, framed as a quotation: each line behind `> `, cut at
+    `limit` characters, and every control character, an escape sequence's included, shown
+    as `?`. Printed this way a co-author's words cannot pass for the tool's own, to a person
+    or to an agent reading the output, and cannot move the cursor or recolour the terminal."""
+    shown = text if len(text) <= limit else text[:limit] + " [...]"
+    return "\n".join(f"    > {line}" for line in printable(shown).split("\n"))
+
+
+#: The bidirectional controls, which reorder what follows them on screen.
+_BIDI = frozenset(map(chr, (0x061C, 0x200E, 0x200F, *range(0x202A, 0x202F),
+                            *range(0x2066, 0x206A))))  # fmt: skip
+
+
+def printable(text: str) -> str:
+    """`text` with every character a terminal would act on, rather than show, as `?`: a
+    control character (an escape, a carriage return) and a bidirectional control. A line
+    break is kept, and so is a no-break space, which Word puts in "5 mg" and before a
+    French colon."""
+    return "".join(
+        "?" if c in _BIDI or (unicodedata.category(c) == "Cc" and c != "\n") else c for c in text
+    )
+
+
 def _report_comments(comments) -> None:
-    """Each co-author comment, and where to record them so G11 can see they were answered."""
+    """Each co-author comment, and where to record them so G11 can see they were answered.
+    The comment is the co-author's text, quoted, never the tool's words."""
     for comment in comments:
-        print(f"\ncomment from {comment.author} ({comment.date}): {comment.text[:200]}")
+        author = printable(f"{comment.author} ({comment.date})").replace("\n", " ")
+        print(f"\ncomment from {author}, quoted:")
+        print(quoted(comment.text))
     if comments:
         print(
             f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "
@@ -1904,6 +1936,8 @@ def cmd_submit(args: argparse.Namespace) -> int:
     for path in pack.files:
         print(f"  {path.relative_to(pack.directory)}")
     print(f"  {pack.manifest.name}")
+    for note in pack.notes:
+        print(f"  {note}")
     print("\nStill to write by hand: the covering letter. No file in the project holds it.")
     return 0
 

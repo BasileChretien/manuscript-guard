@@ -202,6 +202,95 @@ def test_a_prose_edit_merges(project: Path, tmp_path: Path) -> None:
     )
 
 
+# What `import` does today with a document whose citations were not made by the offline
+# build in the default style. Pinned here, and named in the word-roundtrip skill and Known
+# gaps, before `import` is taught to follow how a document was built.
+
+#: A citation of the example as the offline build in the default style prints it.
+CITED = '<w:r><w:t xml:space="preserve">(Fictional and Fictional 2021)</w:t></w:r>'
+#: A Zotero field code, read across two `instrText` runs as Word may split it.
+ZOTERO_CODE = (
+    ' ADDIN ZOTERO_ITEM CSL_CITATION {"citationID":"a1","citationItems":[{"id":1,'
+    '"uris":["http://zotero.org/users/1/items/ABCD1234"],"itemData":{"id":1,'
+    '"type":"article-journal","title":"Hepatic injury"}}],"schema":"x"} '
+)
+
+
+def zotero_field(shown: str) -> str:
+    """The citation as a live Zotero field that shows `shown`."""
+    half = len(ZOTERO_CODE) // 2
+    return (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        f'<w:r><w:instrText xml:space="preserve">{ZOTERO_CODE[:half]}</w:instrText></w:r>'
+        f'<w:r><w:instrText xml:space="preserve">{ZOTERO_CODE[half:]}</w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        f'<w:r><w:t xml:space="preserve">{shown}</w:t></w:r>'
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("shown", "refused"),
+    [("(Fictional and Fictional 2021)", False), ("[1]", True)],
+    ids=["the default style's words", "another style's words"],
+)
+def test_a_live_zotero_field_is_read_by_the_words_it_shows(
+    project: Path, tmp_path: Path, shown: str, refused: bool, capsys
+) -> None:
+    """Today a Zotero field is read by the words it shows, never by its code: one that shows
+    what the offline build prints passes, and one a style switch or a refresh made show
+    something else is a changed citation, its paragraph refused."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    capsys.readouterr()
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", {CITED: zotero_field(shown)}
+    )
+    assert main(["import", str(returned), str(project)]) == (1 if refused else 0)
+    out = capsys.readouterr().out
+    named = "'(Fictional and Fictional 2021)' is the citation [@fictionalHepaticCohort2021]"
+    assert (named in out) is refused, out
+    assert ("NOT merged" in out) is refused, out
+
+
+#: A citation style of the fewest lines, numeric, written here: no style of the official
+#: repository is committed to this one.
+MINIMAL_CSL = """<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0">
+  <info><title>Minimal numeric</title><id>minimal-numeric</id>
+  <updated>2026-01-01T00:00:00+00:00</updated></info>
+  <citation><layout prefix="[" suffix="]" delimiter=","><text variable="citation-number"/>
+  </layout></citation>
+  <bibliography><layout><text variable="citation-number" suffix=". "/>
+  <text variable="title"/></layout></bibliography>
+</style>
+"""
+
+
+@needs_pandoc
+def test_a_document_built_in_a_journal_style_comes_back_with_its_cited_paragraphs_refused(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    """Today a document built with `--csl` and returned unchanged is compared with an offline
+    build in the default style: every paragraph that cites is refused, its citations read as
+    changed. The word-roundtrip skill says to send the offline build without `--csl`."""
+    from manuscript_guard.cli import main
+
+    style = tmp_path / "minimal.csl"
+    style.write_text(MINIMAL_CSL, encoding="utf-8")
+    assert main(["build", str(project), "--offline", "--csl", str(style)]) == 0
+    capsys.readouterr()
+    returned = tmp_path / "back.docx"
+    returned.write_bytes((project / "build" / "manuscript.docx").read_bytes())
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "is the citation [@fictionalHepaticCohort2021]" in out
+    assert "is the citation [@fictionalClassSignal2019]" in out
+    assert out.count("NOT merged") >= 3
+
+
 @needs_pandoc
 def test_an_emoji_inserted_in_word_merges(project: Path, tmp_path: Path) -> None:
     """Written as text only in the fallback, which is not read, the emoji was nothing:

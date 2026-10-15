@@ -453,6 +453,28 @@ manuscript said Figure 1 showed the estimate "against the comparators" and the f
 one row. Every other gate passed it, because every number in the figure was correct. The
 sentence was what was wrong.
 
+## A figure file meets the journal's artwork guide
+
+A journal states the formats it takes, the resolution each kind of figure needs at the width
+it prints, the largest file and the longest legend. These were free text in a profile's
+`notes`, and the first anyone heard of them was the portal refusing the upload. A profile
+now carries them under `figures:`, read from the journal's own artwork guide, with the date
+it was read and whether every value was found on it (`confirmed`). G4 holds each figure the
+manuscript places to them: its formats (`figure-format`), a raster's resolution at the width
+it prints for its kind (`figure-resolution`), its printed height (`figure-height`), the size
+of each file (`figure-file-size`), and the paragraph that labels it (`legend-words`). A
+raster drawn much larger than it prints is said too (`figure-shrinks`): a figure drawn 165 mm
+wide and printed at 89 mm prints the 10 pt text a plotting library draws at 5.4 pt, though
+its resolution passes. The size of a raster is read from its own header, PNG, JPEG or TIFF,
+with the standard library.
+
+A figure's print width and kind are in its `<name>.guard.yaml` (`print_width_mm`, `kind`).
+Without them the narrowest width the journal prints at is taken, so that a resolution found
+too low is too low at any width, and the kind is halftone. A figure placed only in the
+supplement is held to the profile's `supplementary:` rules where it has them. All of it is a
+warning, and a note where the journal applies the rules only once the paper is accepted
+(`applies_from: acceptance`).
+
 ## The build
 
 The .docx is regenerated from Markdown every time and never edited or patched. That is what
@@ -697,6 +719,19 @@ list is first printed for others to read; while drafting, an entry can still be 
 placeholder, and it is reported and deferred. Whether a DOI is registered, names the work
 the entry describes, or was retracted is for a lookup that records what it found, and none
 is made here.
+
+**One work is cited under one key.** Two cited entries with the same DOI, PMID, PMCID or
+ISBN are one work, and the reference list prints it twice, numbered twice; G7 caught one key
+carried by two items in Zotero and not two keys for one work. Each identifier is compared as
+it names the work (`gates/duplicates.py`): a DOI undressed and in lower case, a PMID without
+leading noughts, a PMCID in capitals, an ISBN-10 as the ISBN-13 it is. Such a pair fails
+from internal-review (`reference-duplicate`), as the other findings about the reference
+list do. An ISBN names a book, and a chapter or a conference paper can carry its book's
+ISBN or DOI, so a part of a book (`@incollection`, `@inbook`, `@inproceedings` and their
+like) is compared by its title alone, and an ISBN is read only from a whole book, with its
+volume. Two cited entries with the same title of four words or more and no identifier in
+common are a warning (`reference-title-duplicate`): they may be one work, or a correction
+and the paper it corrects.
 
 ## A quotation in the prose is in its source
 
@@ -1498,6 +1533,23 @@ cluster-robust (`cluster`, or a HAC by group or panel) nor a mixed model or esti
 equations. The R emitter finds the data in the fit (`glm`) or where the call names it
 (`lm`), and leaves out the rows the fit dropped.
 
+**Two models compared are fitted on the same rows.** A crude and an adjusted estimate are
+set side by side to say what the adjustment did, and a covariate's missing values drop rows
+from the adjusted model only: the change between the two is then partly the rows'. Equal
+counts can hide different rows, so each card records a digest of the labels of the rows
+its fit used (`rows_sha256`: pandas' index, R's row names). G15 warns
+(`models-on-different-rows`) where two models of one outcome, one's terms a strict subset
+of the other's, were fitted on different rows. The same terms on different rows are a
+subgroup, by design, and are left alone.
+
+**A Poisson regression of a binary outcome has a robust variance.** Poisson regression of a
+binary outcome estimates a risk ratio, and its model-based variance overstates the error;
+a sandwich variance corrects it (Zou, Am J Epidemiol 2004;159:702-6). G15 warns
+(`poisson-binary-variance`) on a Poisson model of an outcome declared binary, or of a
+comparison written in the formula, whose card records model-based standard errors. A fit
+with an offset or an exposure is left alone: events over person-time estimate a rate ratio,
+and that model's own variance is the right one. Each emitter records the offset on the card.
+
 ## A step of the code and the text that points at it
 
 The ledger of G9 records that a person read the Methods against the analysis, file by file.
@@ -2211,6 +2263,18 @@ bypassed on the first afternoon it costs something. So G12 warns: when analysis 
 with no plan behind it, and when a plan's section is a heading with nothing under it. A
 "Deviations from the plan" heading followed by nothing is the common case, and naming it is
 most of the value.
+
+**The plan is frozen when the first results are written.** A plan rewritten after the
+results are known is the pattern of a hypothesis fitted to its results, and it can be told
+mechanically. The first time either emitter writes results, it keeps the plan as it stood:
+`design/plan.frozen.yaml` holds its text, its digest, the day and the script, and nothing
+writes it again; the write hook refuses an edit of it. In a file of its own, beside the plan,
+because the results folder is cleared and written again on every run, and a copy kept there
+would be frozen again on the changed plan. Written as JSON, which is YAML too, so that R needs
+no package to write it. G12 warns (`plan-changed-after-results`) when the plan's words differ
+from the copy's and its Deviations section says what it said then: changed with nothing said.
+A plan re-wrapped without a word changed is unchanged. Results with no copy, written before
+the emitters kept one, are a note.
 
 ## Stages: not every gate binds on day one
 
@@ -5026,6 +5090,14 @@ Added by the adversarial review, verified and **not** fixed:
   digest can be recomputed. It is a separate command because it executes the project's own
   code, which a gate must never do. It cannot make a non-deterministic analysis agree with
   itself; it reports the disagreement and says to set a seed.
+- **Two models' rows are compared by their labels, within one language.** pandas numbers
+  rows from 0 and R from 1, so a model fitted in Python and one fitted in R on the same
+  data are always taken for different rows; and two data frames whose labels were reset
+  between the fits are too. A count with a person-time denominator modelled with no offset
+  is not yet read: it needs the rate the analysis declares, which nothing records. An R
+  `lm` or `glm` records "model-based" standard errors whatever is done after the fit, so a
+  modified Poisson regression whose sandwich variance is computed beside the fit
+  (`sandwich::vcovHC`) is still warned.
 - **Numbers written as words escape the tokeniser.** "four thousand and twenty-one" is not
   read. Vulgar fractions and enclosed digits now are. Number words are left alone on
   purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and
@@ -5116,6 +5188,16 @@ Added by the adversarial review, verified and **not** fixed:
   are counted under it together, as two whose patterns begin alike are. Before the review
   of #153 the second one's matches replaced the first's, under either kind of shared name,
   and a number the first was written for failed as unbound.
+- **A figure file is read for its pixels only where it is a PNG, JPEG or TIFF.** The text
+  size and line width of a vector figure, SVG, PDF or EPS, and the fonts a PDF embeds, are
+  not read yet, nor is a raster inside an EPS or PDF. `min_line_pt` is in the profile and
+  checked against nothing. A figure the build places is the first of its files in the
+  build's order, PNG first, and every file of it is held to the rules, so a figure kept as
+  PNG and TIFF is held to the journal's limits twice. A JPEG whose JFIF header records no
+  resolution, or a PNG with no `pHYs` chunk, is not said to shrink: how large it was drawn
+  is unknown. A legend is the paragraph straight after the figure that opens with "Figure"
+  and its number; a legend written above it, or in the figure, is not counted. A megabyte
+  is 1,048,576 bytes, the larger of the two a journal may mean.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
@@ -5741,6 +5823,13 @@ Closed since, and why each mattered:
   first three digits are no ISBN prefix. An ISBN-10 that opens with 978 or 979, followed in
   the same field by another ISBN and parted from it by a space only, is read as the start
   of an ISBN-13 and reported.
+- **Two keys for one work are found by an identifier or a title, and only among what is
+  cited.** Two entries of one work with no identifier in common and titles that differ, a
+  preprint and its article, or a translation, are not found. A title of fewer than four
+  words is not compared. A chapter or a conference paper cited twice is found only by its
+  title, a warning, and a book cited twice with a volume in one entry only is not found. A
+  DOI is compared as the file writes it, so `\_` is not read as `_` nor `%28` as `(`, and a
+  title's TeX accents and commands are read as letters: `Caf\'e` is two words.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
   citation, no reporting guideline, no analysis code, no fitted model or no revision round
   has nothing for G3, G10, G7, G8r, G9, G15 or G13 to read, and each passes with its count
@@ -7268,6 +7357,11 @@ Closed since, and why each mattered:
   term under a definition. Inside a list item's lines pandoc folds the digits in some
   positions and not others, and there an indented "1." under `\newpage` is still taken for
   numbering.
+- **`import` compares a returned document with an offline build in the default citation
+  style.** A document built with `--csl` comes back with every paragraph that cites refused,
+  its citations read as changed. A Zotero field is read by the words it shows and never by
+  its code, so a field a co-author refreshed into another style refuses its paragraph, and
+  one that shows the default style's words passes whatever item it names.
 - **Every indented line under a list is the list's for headings.** Pandoc ends a list at a
   line indented less than the item's text that starts no item, at a definition under it,
   and at a rule at the margin. The walk ends the items there, so a count opening a later
@@ -7402,6 +7496,12 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A frozen plan holds the plan of the first run, whenever that was.** A plan written after
+  results already existed is frozen as it stood on the next run, and cannot be told from one
+  written first; nor can a plan changed between writing the analysis and running it. Any
+  change to the Deviations section, a word or a date, satisfies the check, whatever it says.
+  The copy is in version control like the plan, and a person can delete it; the next run then
+  freezes the plan as it is. A plan that is not UTF-8 text is not frozen until it is.
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.

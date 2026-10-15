@@ -894,10 +894,32 @@ def _not_compared(
     return said
 
 
+#: How much of a comment is printed: enough to find it in Word.
+COMMENT_SHOWN = 200
+
+
+def quoted(text: str, limit: int = COMMENT_SHOWN) -> str:
+    """Text somebody else wrote, framed as a quotation: each line behind `> `, cut at
+    `limit` characters, and every control character, an escape sequence's included, shown
+    as `?`. Printed this way a co-author's words cannot pass for the tool's own, to a person
+    or to an agent reading the output, and cannot move the cursor or recolour the terminal."""
+    shown = text if len(text) <= limit else text[:limit] + " [...]"
+    return "\n".join(f"    > {line}" for line in printable(shown).split("\n"))
+
+
+def printable(text: str) -> str:
+    """`text` with every character a terminal would act on, rather than show, as `?`. A
+    line break is kept."""
+    return "".join(c if c.isprintable() or c == "\n" else "?" for c in text)
+
+
 def _report_comments(comments) -> None:
-    """Each co-author comment, and where to record them so G11 can see they were answered."""
+    """Each co-author comment, and where to record them so G11 can see they were answered.
+    The comment is the co-author's text, quoted, never the tool's words."""
     for comment in comments:
-        print(f"\ncomment from {comment.author} ({comment.date}): {comment.text[:200]}")
+        author = printable(f"{comment.author} ({comment.date})").replace("\n", " ")
+        print(f"\ncomment from {author}, quoted:")
+        print(quoted(comment.text))
     if comments:
         print(
             f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "

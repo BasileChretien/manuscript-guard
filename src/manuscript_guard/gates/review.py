@@ -846,6 +846,48 @@ def round_summaries(project: Project) -> list[RoundSummary]:
     return summaries
 
 
+def overrides(project: Project) -> list[dict]:
+    """Every review finding a person chose to leave as it is, round by round: the decisions
+    made in place of the gate, which the submission manifest lists with the reason and who
+    made each. Only readings the gate counts, as in `round_summaries`. A panel or a record
+    that cannot be read is listed as such: G11 reports it, and a pack assembled with
+    `--skip-checks` despite it is still assembled."""
+    found: list[dict] = []
+    for number, path in panels(project):
+        try:
+            document = read_structured(path)
+        except ContractError:
+            found.append({"round": number, "unreadable": path.name})
+            continue
+        if not validate(document, "panel", path, gate=GATE).ok or not isinstance(document, dict):
+            continue
+        for reviewer in document["reviewers"]:
+            try:
+                filed, _problems, _incomplete = _readings(project, number, reviewer, WARN)
+            except ContractError:
+                found.append(
+                    {"round": number, "reviewer": reviewer["id"], "unreadable": "a record"}
+                )
+                continue
+            for reading in filed:
+                for finding in reading.document.get("findings", []):
+                    reason = " ".join(str(finding.get("overridden", "")).split())
+                    if not reason:
+                        continue
+                    by = " ".join(str(finding.get("overridden_by", "")).split())
+                    found.append(
+                        {
+                            "round": number,
+                            "reviewer": reading.who(reviewer["id"]),
+                            "finding": finding["id"],
+                            "severity": finding["severity"],
+                            "reason": reason,
+                            "decided_by": by or "not recorded",
+                        }
+                    )
+    return found
+
+
 def _check_blinding(project: Project, found: list[tuple[int, Path]], severity: str) -> Report:
     """A later panel that read the earlier findings is not an independent look."""
     report = Report()

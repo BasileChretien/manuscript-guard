@@ -126,6 +126,11 @@
           "overridden": {
             "type": "string",
             "description": "Why this finding is being left unaddressed. A reason, recorded, is a legitimate answer to a reviewer; silence is not."
+          },
+          "overridden_by": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Who decided to leave it: a person, by name. The submission manifest lists each override with it, or with \"not recorded\" where it is missing."
           }
         }
       }

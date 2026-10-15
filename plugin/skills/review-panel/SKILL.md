@@ -162,7 +162,9 @@ and an SMQ changes the numerator substantially" is.
 A major finding needs a `resolution` saying what was done, or an `overridden` saying why it
 was not. **An override is a legitimate answer to a reviewer; silence is not.** Recording the
 reason is what makes it a decision rather than an oversight, and it is the thing you will
-want when a real reviewer asks the same question.
+want when a real reviewer asks the same question. Put the name of the person who decided in
+`overridden_by`: the submission pack's manifest lists every override with it. An agent
+drafts the reason; the author decides, and the name is the author's.
 
 With several readers, every major finding from any of them has to be answered, in the
 record that raised it. One reader's clean reading does not answer another's finding, and

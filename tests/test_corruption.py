@@ -15,6 +15,7 @@ may not be a literal at all.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -1418,6 +1419,102 @@ def _unit_said(root: Path) -> list[tuple[str, str]]:
     return [(f.code, f.severity) for f in said if f.code == "unit-rows-independent"]
 
 
+def _models_said(root: Path, code: str) -> list[str]:
+    project, _ = load_project(root)
+    _namespace, results, _literature, report = load_namespace(project)
+    assert "adjusted" in results.models, report.render()
+    return [f.message for f in check_models(project, results).findings if f.code == code]
+
+
+def _given(card: dict, fields: dict) -> dict:
+    """The card with these fields, a field given None taken out."""
+    return {key: value for key, value in {**card, **fields}.items() if value is not None}
+
+
+def _crude_beside_adjusted(root: Path, crude: dict, adjusted: dict) -> None:
+    """The example's adjusted model, and a crude one of the same outcome with only the
+    exposure, each card given the fields passed."""
+    for fragment in (root / "results").glob("*.json"):
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        card = document["models"]["adjusted"]
+        document["models"]["crude"] = _given(card, {
+            "name": "Crude model", "formula": "hepatic ~ exposed",
+            "terms": [t for t in card["terms"] if t["term"] == "exposed"], "parameters": 1,
+            **crude,
+        })  # fmt: skip
+        document["models"]["adjusted"] = _given(card, adjusted)
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+
+
+def _adjusted_has(root: Path, **fields) -> None:
+    _crude_beside_adjusted(root, {}, fields)
+    for fragment in (root / "results").glob("*.json"):
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        del document["models"]["crude"]
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+
+
+_ROWS = {name: hashlib.sha256(name.encode("utf-8")).hexdigest() for name in ("all", "some")}
+
+
+@pytest.mark.parametrize(
+    ("crude", "adjusted", "said"),
+    [
+        ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["some"], "n_used": 3800}, 1),
+        # Equal counts and different rows: the digest tells them apart.
+        ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["some"]}, 1),
+        ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["all"]}, 0),
+        # A card that does not say which rows it used is not compared.
+        ({"rows_sha256": None}, {"rows_sha256": _ROWS["some"]}, 0),
+        # The same terms on other rows are a subgroup, by design.
+        ({"rows_sha256": _ROWS["all"], "terms": "adjusted's"}, {"rows_sha256": _ROWS["some"]}, 0),
+    ],
+    ids=["fewer rows", "as many rows", "the same rows", "rows unknown", "a subgroup"],
+)
+def test_a_crude_and_an_adjusted_model_on_different_rows_are_a_warning(
+    project: Path, crude: dict, adjusted: dict, said: int
+) -> None:
+    """Item 36: a covariate's missing values drop rows from the adjusted model only, and
+    the crude and adjusted estimates were compared as if one adjustment parted them."""
+    if crude.get("terms") == "adjusted's":
+        crude = {**crude, "terms": json.loads(next((project / "results").glob("*.json"))
+                 .read_text(encoding="utf-8"))["models"]["adjusted"]["terms"]}  # fmt: skip
+    _crude_beside_adjusted(project, crude, adjusted)
+    found = _models_said(project, "models-on-different-rows")
+    assert len(found) == said, found
+    assert all(message.startswith("model 'adjusted': its terms include all of 'crude'")
+               for message in found)  # fmt: skip
+
+
+_POISSON = {"language": "Python", "package": "statsmodels", "class": "GLM",
+            "family": "Poisson", "link": "Log"}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("fields", "said"),
+    [
+        ({"engine": _POISSON, "covariance": "nonrobust"}, 1),
+        ({"engine": _POISSON, "covariance": "model-based"}, 1),
+        ({"engine": _POISSON, "covariance": "HC0"}, 0),
+        ({"engine": _POISSON, "covariance": None}, 0),
+        # Round 1 of #289: with a person-time offset the model estimates a rate ratio, and
+        # its own variance is the right one.
+        ({"engine": _POISSON, "covariance": "nonrobust", "offset": True}, 0),
+        ({"covariance": "nonrobust"}, 0),
+    ],
+    ids=["nonrobust", "model-based", "robust", "not said", "rate", "logistic"],
+)
+def test_a_poisson_model_of_a_binary_outcome_wants_a_robust_variance(
+    project: Path, fields: dict, said: int
+) -> None:
+    """Item 36: a risk ratio from Poisson regression of a binary outcome, with the model's
+    own standard errors, passed; they overstate its error."""
+    _adjusted_has(project, **fields)
+    assert len(_models_said(project, "poisson-binary-variance")) == said
+
+
 def test_rows_of_one_unit_taken_as_independent_are_a_warning(project: Path) -> None:
     """Item 14: a model fitted on several rows a patient, with ordinary standard errors,
     passed."""
@@ -2125,6 +2222,120 @@ def test_an_entry_complete_in_either_format_needs_no_other_field(fields: dict) -
     assert problems("k", fields) == []
 
 
+# One work cited under two keys: the reference list prints it twice.
+
+
+def _both_have(
+    root: Path, first: dict[str, str], second: dict[str, str], types: tuple[str, str] = ("", "")
+) -> None:
+    """Give each of the example's two references the fields named, and the entry type. Their
+    volumes go, so that a volume is only the one a test gives."""
+    bib = root / "literature" / "references.bib"
+    text = bib.read_text(encoding="utf-8")
+    text = text.replace("  volume  = {12},\n", "").replace("  volume  = {7},\n", "")
+    keys = ("fictionalHepaticCohort2021", "fictionalClassSignal2019")
+    for key, fields, kind in zip(keys, (first, second), types, strict=True):
+        opening = f"@article{{{key},\n"
+        added = "".join(f"  {name} = {{{value}}},\n" for name, value in fields.items())
+        text = text.replace(opening, "@" + (kind or "article") + opening[8:] + added, 1)
+    bib.write_text(text, encoding="utf-8")
+
+
+def _duplicate_findings(root: Path) -> list[tuple[str, str, str]]:
+    return [
+        (f.code, f.severity, f.message)
+        for f in _g7(root).findings
+        if f.code in ("reference-duplicate", "reference-title-duplicate")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "named"),
+    [
+        ({"doi": "10.5555/x.1"}, {"doi": "https://doi.org/10.5555/X.1."}, "DOI"),
+        ({"pmid": "31000001"}, {"pmid": "031000001"}, "PMID"),
+        ({"pmcid": "PMC1234"}, {"pmcid": "pmc1234"}, "PMCID"),
+        ({"isbn": "0-306-40615-2"}, {"isbn": "978-0-306-40615-7"}, "ISBN"),
+    ],
+)
+def test_one_work_cited_under_two_keys_fails(
+    project: Path, first: dict, second: dict, named: str
+) -> None:
+    _both_have(project, first, second, ("book", "collection") if named == "ISBN" else ("", ""))
+    said = _duplicate_findings(project)
+    assert [(code, severity) for code, severity, _ in said] == [("reference-duplicate", "fail")]
+    assert f"by the same {named}" in said[0][2]
+
+
+def test_one_work_under_two_keys_fails_from_internal_review(project: Path) -> None:
+    from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
+
+    _both_have(project, {"doi": "10.5555/x.1"}, {"doi": "10.5555/x.1"})
+    report = _g7(project)
+    drafting, _ = apply_stage(report, DRAFTING)
+    assert "reference-duplicate" not in {f.code for f in drafting.failures}
+    reviewed, _ = apply_stage(report, INTERNAL_REVIEW)
+    assert "reference-duplicate" in {f.code for f in reviewed.failures}
+
+
+def test_two_entries_with_one_title_are_a_warning(project: Path) -> None:
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8").replace(
+            "A disproportionality signal for a fictional drug class",
+            "HEPATIC INJURY IN A FICTIONAL NATIONAL COHORT, 2010--2019",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    said = _duplicate_findings(project)
+    assert [(code, severity) for code, severity, _ in said] == [
+        ("reference-title-duplicate", "warn")
+    ]  # fmt: skip
+
+
+_ISBN = "978-0-306-40615-7"
+
+
+@pytest.mark.parametrize(
+    ("types", "first", "second"),
+    [
+        # Two chapters of one book carry its ISBN, or its DOI.
+        (("incollection", "incollection"), {"isbn": _ISBN}, {"isbn": "0-306-40615-2"}),
+        (("inbook", "inbook"), {"doi": "10.5555/book.1"}, {"doi": "10.5555/book.1"}),
+        # Two papers of one proceedings volume.
+        (("inproceedings", "inproceedings"), {"isbn": _ISBN}, {"isbn": _ISBN}),
+        # A book cited beside one of its chapters.
+        (
+            ("book", "incollection"),
+            {"isbn": _ISBN, "doi": "10.5555/book.1"},
+            {"isbn": _ISBN, "doi": "10.5555/book.1"},
+        ),
+        # Two volumes of one set, under the set's ISBN.
+        (("book", "book"), {"isbn": _ISBN, "volume": "1"}, {"isbn": _ISBN, "volume": "2"}),
+        # An ISBN on an article or a misc entry names no book that is cited.
+        (("article", "misc"), {"isbn": _ISBN}, {"isbn": _ISBN}),
+    ],
+)
+def test_parts_of_one_book_are_two_works(
+    project: Path, types: tuple[str, str], first: dict, second: dict
+) -> None:
+    _both_have(project, first, second, types)
+    assert _duplicate_findings(project) == []
+
+
+def test_different_works_and_an_uncited_duplicate_say_nothing(project: Path) -> None:
+    _both_have(project, {"doi": "10.5555/x.1"}, {"doi": "10.5555/x.2"})
+    assert _duplicate_findings(project) == []
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8")
+        + "\n@article{uncitedCopy2021,\n  doi = {10.5555/x.1},\n  title = {T},\n}\n",
+        encoding="utf-8",
+    )
+    assert _duplicate_findings(project) == []
+
+
 def _zotero(monkeypatch, items: list[dict]) -> None:
     from test_zotero import FakeBBT
 
@@ -2334,6 +2545,108 @@ def _journal(root: Path):
 
     project, _ = load_project(root)
     return check_journal(project)
+
+
+#: What G4 says of the figure files.
+_ARTWORK_CODES = ("figure-format", "figure-resolution", "figure-height", "figure-file-size",
+                  "figure-shrinks", "legend-words")  # fmt: skip
+
+
+def _artwork_said(root: Path, side: dict | None = None, **rules) -> list[tuple[str, str]]:
+    """G4 with the example's journal given these artwork rules, and the example's figure
+    this sidecar: forest.png is 1950 by 660 pixels, drawn at 300 dpi, 165 mm wide."""
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-15", "confirmed": True, **rules}  # fmt: skip
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    if side:
+        sidecar = root / "figures" / "forest.guard.yaml"
+        guard = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+        sidecar.write_text(yaml.safe_dump({**guard, **side}, sort_keys=False), encoding="utf-8")
+    report = _journal(root)
+    assert report.ok or not [f for f in report.failures if f.code == "schema"], report.render()
+    return [(f.code, f.severity) for f in report.findings if f.code in _ARTWORK_CODES]
+
+
+@pytest.mark.parametrize(
+    ("rules", "side", "said"),
+    [
+        # 1950 pixels over 89 mm is 556 dpi.
+        ({"min_dpi": {"halftone": 600}, "widths_mm": [89, 183]}, None,
+         [("figure-resolution", "warn")]),
+        ({"min_dpi": {"halftone": 500}, "widths_mm": [89, 183]}, None, []),
+        # Printed 60 mm wide, it is 825 dpi.
+        ({"min_dpi": {"halftone": 600}, "widths_mm": [89]}, {"print_width_mm": 60}, []),
+        ({"min_dpi": {"halftone": 300, "line_art": 1000}, "widths_mm": [89]},
+         {"kind": "line_art"}, [("figure-resolution", "warn")]),
+        ({"formats": ["tiff", "eps"]}, None, [("figure-format", "warn")]),
+        ({"formats": ["tiff", "png"]}, None, []),
+        # Round 1 of #291: a journal writes "jpg" or "tif" as often as "jpeg" or "tiff".
+        ({"formats": ["tif", "jpg"]}, None, [("figure-format", "warn")]),
+        ({"max_file_mb": 0.005}, None, [("figure-file-size", "warn")] * 2),
+        # 89 mm wide, 660 / 1950 of that high: 30 mm.
+        ({"max_height_mm": 20, "widths_mm": [89]}, None, [("figure-height", "warn")]),
+        # Drawn 165 mm wide and printed 89: 10 pt prints at 5.4.
+        ({"min_text_pt": 6, "widths_mm": [89]}, None, [("figure-shrinks", "warn")]),
+        ({"min_text_pt": 5, "widths_mm": [89]}, None, []),
+        ({"min_dpi": {"halftone": 600}, "widths_mm": [89], "applies_from": "acceptance"},
+         None, [("figure-resolution", "info")]),
+    ],
+)
+def test_a_figure_file_the_journal_would_refuse_is_a_warning(
+    project: Path, rules: dict, side: dict | None, said: list
+) -> None:
+    """Item 17: resolution, format, size and height were free text in a profile's notes,
+    and the first anyone heard of them was the portal refusing the upload."""
+    assert _artwork_said(project, side, **rules) == said
+
+
+@pytest.mark.parametrize("written", ["tif", "TIF", "tiff"])
+def test_a_tiff_is_taken_however_the_journal_writes_it(project: Path, written: str) -> None:
+    """Round 1 of #291: "tif" in a profile matched no file, and the message said the TIFF
+    was a format the journal does not take."""
+    shutil.copy(project / "figures" / "forest.png", project / "figures" / "forest.tif")
+    assert _artwork_said(project, formats=[written.lower(), "eps"]) == []
+
+
+@pytest.mark.parametrize(
+    ("width_mm", "rules", "shown"),
+    [
+        # Round 1 of #291: 299.7 dpi was printed "300 dpi", beside a minimum of 300.
+        (165.27, {"min_dpi": {"halftone": 300}}, "at 299.6 dpi"),
+        # Round 2: 299.97 was printed "300.0", and 300.03 beside a maximum of 300 too.
+        (165.11, {"min_dpi": {"halftone": 300}}, "at 299.9 dpi"),
+        (165.09, {"max_dpi": 300}, "at 300.1 dpi"),
+    ],
+)
+def test_a_resolution_at_its_limit_is_printed_on_the_side_it_fails(
+    project: Path, width_mm: float, rules: dict, shown: str
+) -> None:
+    _artwork_said(project, {"print_width_mm": width_mm}, **rules)
+    found = [f for f in _journal(project).findings if f.code == "figure-resolution"]
+    assert len(found) == 1 and shown in found[0].message, found
+
+
+def test_a_supplementary_figure_is_held_to_the_supplement_s_rules(project: Path) -> None:
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8").replace("{{figure.forest}}\n", ""),
+                    encoding="utf-8")  # fmt: skip
+    supplement = project / "manuscript" / "supplementary" / "S1.md"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_text("# Supplementary figure\n\n{{figure.forest}}\n", encoding="utf-8")
+    said = _artwork_said(project, widths_mm=[89], min_dpi={"halftone": 300},
+                         supplementary={"max_dpi": 300})  # fmt: skip
+    assert said == [("figure-resolution", "warn")]
+
+
+def test_a_legend_longer_than_the_journal_takes_is_a_warning(project: Path) -> None:
+    main = main_md(project)
+    legend = "**Figure 1.** " + " ".join(["The reporting odds ratio and its interval."] * 4)
+    main.write_text(main.read_text(encoding="utf-8").replace(
+        "{{figure.forest}}\n", "{{figure.forest}}\n\n" + legend + "\n"), encoding="utf-8")
+    assert _artwork_said(project, legend_words=20) == [("legend-words", "warn")]
+    assert _artwork_said(project, legend_words=40) == []
 
 
 def test_a_second_files_front_matter_is_not_a_required_section(project: Path) -> None:

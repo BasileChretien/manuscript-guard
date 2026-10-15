@@ -122,10 +122,28 @@ references:
 
 reporting_guidelines: [STROBE]
 
+figures:                        # from the journal's artwork guide, not its general page
+  source_url: "https://www.journal-of-examples.org/artwork"
+  read_on: 2026-08-03
+  confirmed: true               # false while any value below is still to be found on it
+  formats: [tiff, eps, pdf]
+  min_dpi: {halftone: 300, combination: 500, line_art: 1000}
+  widths_mm: [89, 183]          # one column, two
+  max_file_mb: 10
+  min_text_pt: 5
+  legend_words: 250
+  # applies_from: acceptance    # where the rules are waived until the paper is accepted
+  # supplementary: {max_dpi: 300, max_file_mb: 10}
+
 notes:
   - "Cover letter must name three suggested reviewers."
-  - "Figures at 300 dpi minimum, TIFF or EPS."
 ```
+
+`figures` comes from the journal's artwork guide, which is often a page of its own. Write
+only what it states, with the kind of figure each resolution is for. Where the guide gives
+one resolution for every figure, give it for each kind. A figure's own width and kind go in
+its `figures/<name>.guard.yaml` (`print_width_mm: 89`, `kind: line_art`); without them G4
+assumes the narrowest width and a halftone.
 
 Where the journal's data policy says what the statement must hold, fill `data_availability`
 from that page, with its address and the day you read it: the phrasings it does not accept

@@ -20,6 +20,7 @@ from manuscript_guard.contracts._schema import ContractError, read_structured, r
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.data_statement import check_data_statement
+from manuscript_guard.gates.figure_files import check_figure_files
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SHIPPED_JOURNALS
 from manuscript_guard.text.masking import without_front_matter
@@ -116,6 +117,7 @@ def check_journal(project: Project) -> Report:
     report = report.merge(_check_statements(document, text, path))
     report = report.merge(check_data_statement(document, text, path, project))
     report = report.merge(_check_variant(document, project))
+    report = report.merge(check_figure_files(project, document, path))
 
     return report.with_counts(
         abstract_words=counts.abstract_words,

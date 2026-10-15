@@ -228,6 +228,35 @@ references:
 reporting_guidelines:
   - STROBE
 
+# ── Figures ──────────────────────────────────────────────────────────────────────────────
+#
+# The journal's artwork rules, from its own artwork guide, which is often a page of its own.
+# Each figure the manuscript places is held to them, as warnings. Delete the block, or any
+# line in it, that the guide does not state.
+#
+# figures:
+#   source_url: "https://www.example-journal.org/artwork"
+#   read_on: 2026-01-15
+#   # false while any value below was taken from somewhere other than that page.
+#   confirmed: true
+#   # Where the journal waives the rules until the paper is accepted; G4 then only notes.
+#   # applies_from: acceptance
+#   formats: [tiff, eps, pdf]
+#   # The least resolution at the width the figure prints, by kind. A figure's kind is in
+#   # figures/<name>.guard.yaml (kind: halftone | combination | line_art), halftone if not.
+#   min_dpi: {halftone: 300, combination: 500, line_art: 1000}
+#   # The widths the journal prints at. A figure's own is in its guard file
+#   # (print_width_mm); without it, the narrowest is assumed.
+#   widths_mm: [89, 183]
+#   max_height_mm: 247
+#   max_file_mb: 10
+#   # The smallest text and the thinnest line at the printed size, in points.
+#   min_text_pt: 5
+#   min_line_pt: 0.25
+#   legend_words: 250
+#   # Rules of their own for supplementary figures, in place of the ones above.
+#   # supplementary: {max_dpi: 300, max_file_mb: 10}
+
 # ── Notes ────────────────────────────────────────────────────────────────────────────────
 #
 # Everything the journal requires that no gate can check. This is not a leftovers bin: it is
@@ -235,11 +264,9 @@ reporting_guidelines:
 # submission. Write it as instructions to yourself, not as a summary of the page.
 #
 # Worth capturing: covering-letter contents; suggested and opposed reviewers; title-page
-# rules that differ from the manuscript; how to anonymise; figure resolution and file
-# formats; supplementary-file naming; word counts the journal defines differently; portal
+# rules that differ from the manuscript; how to anonymise; supplementary-file naming; word counts the journal defines differently; portal
 # quirks; anything the page says about AI use in preparing the manuscript.
 
 notes:
   - "Covering letter: state the study's contribution and confirm the work is unpublished."
-  - "Figures: 300 dpi minimum; TIFF or EPS preferred over PNG."
   - "Title page uploaded separately from the manuscript file."

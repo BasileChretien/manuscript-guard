@@ -109,6 +109,9 @@ cannot be reconstructed. The authors must answer it before they submit.
    - minor: should be fixed, and invalidates nothing.
    - comment: anything else worth recording, including what is done well and should survive \
 a revision.
+   Where a finding asks the authors for something, say what with "ask": "disclosure" to \
+report what they already have, "computation" for a new number, "new-data" for data they do \
+not have. A computation ask says why the numbers and tables already reported cannot answer it.
 5. Give one verdict on the paper as seen from your remit: pass, minor-revision, \
 major-revision or reject.
 6. Judge only what you are shown. Do not assume content you were not given, and do not \
@@ -137,12 +140,12 @@ remit reaches",
   ],
   "findings": [
     {{"severity": "major" | "minor" | "comment", "where": "the section or sentence", \
-"finding": "what is wrong and why it matters"}}
+"ask": "disclosure" | "computation" | "new-data", "finding": "what is wrong and why it matters"}}
   ]
 }}
 
-"where" may be left out of a finding. "findings" is an empty list if you found nothing. Add \
-no other keys. An answer that is not exactly this object is discarded unread.
+"where" and "ask" may be left out of a finding. "findings" is an empty list if you found \
+nothing. Add no other keys. An answer that is not exactly this object is discarded unread.
 """
 
 

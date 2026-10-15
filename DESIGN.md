@@ -672,6 +672,26 @@ verified. The schemas of both files now refuse a blank or all-space field (`sour
 in `attested.yaml`), and a value that reaches the gates without a source all the
 same is `literature-source-missing` and counted as failed.
 
+**A reference's identifiers are read offline.** Nothing read `references.bib` but for its
+keys, so a DOI typed "1016/j.…" without its "10.", a PMID written "PMID: 12345678", an
+ISBN with a check digit that does not add up, or an article with no journal reached the
+reference list as they were. G7 now reads every entry of the committed file, cited or not,
+through the same small reader the co-author items use (`literature/bibfile.py`): a DOI is
+"10.", a registrant code, a slash and a suffix, once a `doi:` or a resolver in front of it
+and a stop after it are taken off, so a legacy SICI DOI passes; a PMID is digits, a PMCID
+"PMC" and digits; an ISBN-10 or -13 has the right check digit, however the field parts
+its groups and holds several (`978 0 306 40615 7`, `ISBN-13: ...`, two parted by a space);
+an arXiv identifier one of its two forms; and an entry has the fields its type needs in
+both formats a `.bib` file is written in: what BibTeX's standard styles require (btxdoc)
+and BibLaTeX also requires (its manual, section 2.1.1), under either's name
+(`journaltitle`, `date`). `sync-bib` writes BibLaTeX, which asks no publisher of a book
+and no note of an unpublished work, so neither is required. Each fails from
+internal-review (`identifier-malformed`, `reference-field-missing`), when the reference
+list is first printed for others to read; while drafting, an entry can still be a
+placeholder, and it is reported and deferred. Whether a DOI is registered, names the work
+the entry describes, or was retracted is for a lookup that records what it found, and none
+is made here.
+
 ## Only a person can sign an attestation
 
 `attested.yaml` exists to record that **a named human read something the toolkit could not
@@ -2037,7 +2057,15 @@ author whose `competing_interests` field is empty is listed as having made **no
 declaration** — an empty field is not a declaration of none, and journals ask per author.
 
 The manifest records every file with its sha256, because six months later "which version
-did the journal actually get" has no reliable answer otherwise.
+did the journal actually get" has no reliable answer otherwise. It also says what made the
+pack: the version of manuscript-guard that checked it (`checked_with`), so that a later fix
+can say which packs to check again; the project's commit, and whether anything in the
+project's folder outside `build/` differed from it (`tree`); the day the journal's profile
+and each reporting checklist were read from their sources; and every review finding a
+person chose to leave as it was, with the reason and who decided (`overrides`, from
+`overridden` and `overridden_by` in the review records). Where a record names nobody,
+the manifest says "not recorded". `git` is given 30 seconds, with its file system monitor
+off, and a project outside git says so.
 
 The abstract goes in as `abstract.txt` as well, for the box every submission system has for
 it: the section headed "Abstract" with every binding filled in by the value the build
@@ -4190,11 +4218,12 @@ the campaigns are in the suite, on Hypothesis:
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
   them, the settings typed into a project, a co-author's sessions in Word, texts that
   quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds nine more, each
+  beside what an edit made of it. `tests/test_properties.py` holds ten more, each
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
-  paper, and rewordings.
+  paper, rewordings, and ISBNs written in a field every way one holds them, and with one
+  digit changed.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its
@@ -4251,12 +4280,14 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty-five rules are broken in place, one at a time, and the property that is
+the generators. So fifty-seven rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops; fourteen ways `reworded` can misread an edit, from
+sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10 and an ISBN's
+groups read as ISBNs;
+fourteen ways `reworded` can misread an edit, from
 a number's sign taken for no part of it, and a sign of comparison taken for none, read as
 it is typed, read only hard against its number, an arrow's head or an equals sign taken
 for one, to what a comment holds held to its place; five
@@ -5508,12 +5539,24 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
+- **A reference's identifiers are checked for their form, not for what they name.** A DOI
+  with the shape of one passes whether it is registered or not, and one registered to
+  another work passes too, as does a PMID that is digits. Only the types BibTeX's standard
+  styles define are held to their fields: BibLaTeX's `@online`, `@report` or `@thesis`, and
+  `@misc`, need none. An ISBN-13 whose check digit adds up is read as one even where its
+  first three digits are no ISBN prefix. An ISBN-10 that opens with 978 or 979, followed in
+  the same field by another ISBN and parted from it by a space only, is read as the start
+  of an ISBN-13 and reported.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
   citation, no reporting guideline, no analysis code, no fitted model or no revision round
   has nothing for G3, G10, G7, G8r, G9, G15 or G13 to read, and each passes with its count
   at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
   input is missing by mistake rather than by design is caught only where another finding
   depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
+- **The manifest lists the review overrides, and no other decision a person made.** A
+  reporting checklist item marked not applicable, a parameter accepted in `methods.lock`, or
+  an exemption in `paper.yaml` is a decision too, and the pack does not list it. Who
+  overrode a finding is what the record says, typed by whoever wrote it.
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.
@@ -8992,7 +9035,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 58 broken rules, and the comparison on twelve
+  - The properties were seen to fail on 60 broken rules, and the comparison on twelve
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

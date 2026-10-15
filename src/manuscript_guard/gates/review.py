@@ -156,7 +156,10 @@ def reading_digest(document: dict) -> str:
         "summary": document.get("summary"),
         "rejection_tests": document.get("rejection_tests"),
         "findings": [
+            # What a finding asks is the reader's too, and sealed where it is said: only
+            # there, so that every record sealed before findings could ask keeps its seal.
             {field: finding.get(field) for field in READER_FINDING_FIELDS}
+            | ({"ask": finding["ask"]} if "ask" in finding else {})
             for finding in document.get("findings") or []
         ],
     }
@@ -251,6 +254,8 @@ class Open:
     reviewer: str
     finding_id: str
     text: str
+    #: What the finding asks the authors to do, where the reader said.
+    ask: str | None = None
 
 
 @dataclass(frozen=True)
@@ -631,7 +636,9 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
                 gate=GATE,
                 code="open-major-finding",
                 severity=severity,
-                message=f"{item.reviewer} {item.finding_id}: {item.text[:120]}",
+                message=f"{item.reviewer} {item.finding_id}"
+                + (f" (asks for {_ASKS[item.ask]})" if item.ask in _ASKS else "")
+                + f": {item.text[:120]}",
                 hint="record what was done in `resolution`, or why it was not in `overridden`",
             )
         )
@@ -642,6 +649,12 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
         review_open_major=len(open_major),
         review_readings=readings,
     )
+
+
+#: What a finding asks, as the open finding names it.
+_ASKS = {"disclosure": "a disclosure", "computation": "a computation", "new-data": "new data"}
+#: A remit that covers the figures, which a model is never sent.
+_FIGURES = re.compile(r"\b(?:figures?|plots?|graphs?|charts?|graphics?)\b", re.IGNORECASE)
 
 
 def _check_round(
@@ -656,6 +669,8 @@ def _check_round(
     covered: set[str] = set()
     read_everything = False
     records = 0
+    # Who made each reading: a model's provider from its provenance, or None for a person.
+    providers: list[str | None] = []
 
     for reviewer in panel["reviewers"]:
         name = reviewer["id"]
@@ -700,13 +715,16 @@ def _check_round(
                 )
 
             report = report.merge(_check_seal(reading.path, document, number, who, severity))
+            report = report.merge(_unseen(reading.path, document, reviewer, number, who))
+            sent = document.get("provenance")
+            providers.append(sent.get("provider") if isinstance(sent, dict) else None)
 
             # Every reading's major findings bind, whoever else read the remit: another
             # reader's clean reading does not answer them.
             for finding in document.get("findings", []):
                 if finding["severity"] == "major" and not _answered(finding):
                     unresolved.append(
-                        Open(reviewer=who, finding_id=finding["id"], text=finding["finding"])
+                        Open(who, finding["id"], finding["finding"], finding.get("ask"))
                     )
 
     # What makes per-file scoping honest. A record listing the files it read is judged on
@@ -729,7 +747,45 @@ def _check_round(
                 )
             )
 
+    if providers and None not in providers and len(set(providers)) == 1:
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="round-one-provider",
+                # A warning at every stage, as a new rule starts: it says what the panel is,
+                # not that the paper is wrong.
+                severity=WARN,
+                message=f"round {number}: every reading came from one provider, "
+                f"{providers[0]}, whose models share their blind spots",
+                path=directory,
+                hint="have the round read by a model of another provider as well "
+                "(review.models in paper.yaml), or by a person",
+            )
+        )
     return _Round(number, report, unfinished, behind, tuple(unresolved), records)
+
+
+def _unseen(path: Path, document: dict, reviewer: dict, number: int, who: str) -> Report:
+    """A warning where a model passed a remit that covers the figures, which no model is
+    sent: the reading passed what its reader never saw."""
+    if "provenance" not in document or document.get("verdict") != "pass":
+        return Report()
+    if not _FIGURES.search(str(reviewer.get("remit") or "")):
+        return Report()
+    return Report(
+        (
+            Finding(
+                gate=GATE,
+                code="figures-not-seen",
+                severity=WARN,
+                message=f"round {number}: {who} passed a remit that covers the figures, and "
+                "the figures are not sent to a model",
+                path=path,
+                hint="have a person read the figures for that remit, as the figure review "
+                "(G10) does, before the pass is counted on for them",
+            ),
+        )
+    )
 
 
 def _check_seal(path: Path, document: dict, number: int, who: str, severity: str) -> Report:

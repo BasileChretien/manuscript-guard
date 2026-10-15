@@ -404,6 +404,20 @@
         "converged": {
           "type": "boolean"
         },
+        "covariance": {
+          "type": "string",
+          "description": "How the fit's standard errors were computed, as its library names it: statsmodels' cov_type (\"nonrobust\", \"cluster\", \"HC1\"), or \"model-based\" for an R lm or glm."
+        },
+        "unit": {
+          "type": "object",
+          "required": ["column", "units"],
+          "additionalProperties": false,
+          "description": "The column of the data whose values the rows belong to, a patient or a site, and how many distinct units the rows used hold. G15 warns where there are more rows than units and the fit is neither cluster-robust nor mixed.",
+          "properties": {
+            "column": { "type": "string", "minLength": 1 },
+            "units": { "type": "integer", "minimum": 0 }
+          }
+        },
         "events": {
           "type": "integer",
           "minimum": 0,

@@ -421,10 +421,8 @@ def test_what_stops_a_reading_being_made_is_told_apart() -> None:
 #: that changes it, with `tests/readings.py` brought up to date in the same pull request.
 _ANOTHER_ARGUMENT = (
     "gates/language.py",
-    "def _file(order: int, path: Path, text: str, chain: list[Section], supplementary: bool)"
-    " -> _File:\n",
-    "def _file(order: int, path: Path, text: str, chain: list[Section], supplementary: bool,"
-    " kind: str) -> _File:\n",
+    "    abstract_title: str | None = None,\n) -> _File:\n",
+    "    abstract_title: str | None = None,\n    *,\n    kind: str,\n) -> _File:\n",
 )
 
 

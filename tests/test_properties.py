@@ -56,9 +56,11 @@ from generated import (
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.database import InMemoryExampleDatabase
-from readings import MAIN, PAPER, READINGS, Unavailable, answer
+from readings import MAIN, PAPER, PEOPLE, READINGS, Unavailable, answer
 
 from manuscript_guard import reworded as reworded_module
+from manuscript_guard.build import blinding
+from manuscript_guard.build.blinding import names_in, sought
 from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
@@ -606,7 +608,10 @@ _TYPED = (
     ("matched |1:1", _NO_PARAMETER, False),
 )
 
-_METHODS_HEADINGS = ("# Methods", "# Materials and methods", "# Methods\n\n## Statistical analysis")
+_METHODS_HEADINGS = (
+    "# Methods", "# Materials and methods", "# Methods\n\n## Statistical analysis",
+    "# 2. Methods", "# Patients and methods",
+)  # fmt: skip
 _OTHER_HEADINGS = ("# Results", "# Discussion", "# Results\n\n## Sensitivity analyses")
 
 
@@ -664,6 +669,93 @@ def test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not(
         elif numbers_gate.typed_threshold(atom.text, verdict, chosen):
             found.add((atom.line, atom.col, _NO_PARAMETER))
     assert found == expected, text
+
+
+# ------------------------------------------------------------ a section found by its heading
+
+#: What a paper calls its Methods, as G4 has always read a heading for them: with "methods"
+#: in it, numbered, marked or not. And headings that are no Methods.
+_THE_METHODS = (
+    "Methods", "2. Methods", "2.1 Methods", "II. Methods", "(3) Methods", "2.Methods",
+    "**2. Methods**", "Patients and methods", "Materials and methods", "Materials & methods",
+    "Methods and analysis", "Statistical methods",
+)  # fmt: skip
+_NO_METHODS = ("Approach", "Study population", "Analyses", "A method for signal detection",
+               "Methodology")  # fmt: skip
+#: What a paper calls its abstract, and what a journal's profile may call it.
+_THE_ABSTRACT = ("Abstract", "1. Abstract", "Structured abstract", "Summary", "Overview")
+_ABSTRACT_TITLES = (None, "Summary", "Overview")
+#: A paper's title written as a heading over the whole paper, holding the word.
+_TITLE = "# Statistical methods for signal detection\n\n"
+
+
+def _under_a_title(text: str) -> str:
+    """The paper with its title as a heading over it, every other heading one level down."""
+    lowered = re.sub(r"(?m)^(#+) ", lambda found: "#" + found.group(1) + " ", text)
+    return _TITLE + lowered
+
+
+@st.composite
+def _papers_by_heading(draw: st.DrawFn) -> list[tuple[str, str, str, str | None, bool]]:
+    """A paper for every heading above, with the Methods, the abstract and the title the
+    profile gives the abstract each named every way, each with and without the paper's title
+    as a heading over it, among what is drawn each time: an abstract structured with a
+    Methods of its own or not, a subsection under the Methods or not, and words between.
+    Every name and both layouts are in every example: a rule broken for one of them is seen
+    whatever the seed."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    papers = []
+    filler = words()
+    for methods in (*_THE_METHODS, *_NO_METHODS):
+        for abstract in _THE_ABSTRACT:
+            # Drawn once for the pair, and read under each title a profile may give the
+            # abstract and in both layouts: so many papers are too large an example drawn
+            # one by one.
+            own, sub = draw(st.booleans()), draw(st.booleans())
+            opening = "\n\n## Methods\n\nBasil " if own else "\n\nBasil "
+            under = "\n\n## Statistical analysis\n\n" if sub else " "
+            text = (
+                f"# {abstract}{opening}{filler}.\n\n# Introduction\n\n{filler}.\n\n"
+                f"# {methods}\n\nCoriander {filler}.{under}{filler}.\n\n"
+                f"# Results\n\n{filler}.\n"
+            )
+            for named in _ABSTRACT_TITLES:
+                papers.append((text, methods, abstract, named, own))
+                papers.append((_under_a_title(text), methods, abstract, named, own))
+    return papers
+
+
+@holds(30, _papers_by_heading())
+def test_a_section_g4_counts_present_is_a_section_the_gates_read(
+    papers: list[tuple[str, str, str, str | None, bool]],
+) -> None:
+    """G4 counts a required section present by its heading, and G9 reads the Methods and
+    the word count the abstract by theirs. Where they disagreed, G4 passed "2. Methods" and
+    G9 compared a wrong parameter with no text, saying nothing. A Methods G4 counts is the
+    Methods G9 reads: never the abstract's own, nor the paper's title over it all. An
+    abstract G4 counts is the one whose words are counted as the abstract's. An abstract
+    nothing names as one ("Overview" with no profile to say so) is a section like any other,
+    and its Methods may be the first."""
+    from manuscript_guard.classify import rules_out_methods
+    from manuscript_guard.gates.journal import _present
+    from manuscript_guard.text.sections import measure, split_sections
+
+    for text, methods, abstract, named, own in papers:
+        sections = split_sections(text)
+        present = _present("Methods", sections, named)
+        read = methods_gate.methods_in(text, named)
+        is_one = abstract in _THE_ABSTRACT[:3] or abstract == named
+        unnamed = own and not is_one and not rules_out_methods(abstract)
+        assert present == (methods in _THE_METHODS or unnamed), (text, named)
+        assert present == (read is not None), (text, named)
+        if read is not None and not unnamed:
+            assert "Coriander" in read and "Basil" not in read, (text, read)
+        counted = measure(text, named).abstract_words
+        assert _present("Abstract", sections, named) == is_one, (text, named)
+        assert (counted > 0) == is_one, (text, named, counted)
 
 
 # --------------------------------------------------------------------------- models named
@@ -1187,6 +1279,76 @@ def test_the_sentence_of_a_conflict_is_worded_by_the_order_of_the_entries() -> N
     ]
 
 
+# ------------------------------------------------------------- an author in a blind document
+
+#: Each way of writing what names an author of `PEOPLE`, with what the build says it names,
+#: and what names nobody. A bar stands where the finding begins, inside a link to the iD.
+_PEOPLE_WRITTEN = (
+    ("Ada Example", "Ada Example"),
+    ("Ada\nExample", "Ada Example"),
+    ("Ada\N{NO-BREAK SPACE}Example", "Ada Example"),
+    ("A. Example", "Ada Example"),
+    ("A.Example", "Ada Example"),
+    ("Example, A.", "Ada Example"),
+    ("Example, A", "Ada Example"),
+    ("Example,\nAB", "Ada Example"),
+    ("Sean O'Brien", "Sean O'Brien"),
+    ("Sean O\N{RIGHT SINGLE QUOTATION MARK}Brien", "Sean O'Brien"),
+    ("S. O\N{RIGHT SINGLE QUOTATION MARK}Brien", "Sean O'Brien"),
+    ("Mary Ann van der Berg", "Mary Ann van der Berg"),
+    ("Mary\nAnn van der\tBerg", "Mary Ann van der Berg"),
+    ("M. van der Berg", "Mary Ann van der Berg"),
+    ("van der Berg, M.", "Mary Ann van der Berg"),
+    ("https://orcid.org/|0000-0002-1825-0097", "the ORCID iD 0000-0002-1825-0097"),
+    ("ADA.EXAMPLE@INVALID.EXAMPLE", "the e-mail address ada.example@invalid.example"),
+    ("department of clinical\npharmacology", "Department of Clinical Pharmacology"),
+    ("DEPARTMENT OF CLINICAL PHARMACOLOGY", "Department of Clinical Pharmacology"),
+    ("Ada Examples", None),
+    ("A Example", None),
+    ("Example A", None),
+    ("Example AB", None),
+    ("O\N{RIGHT SINGLE QUOTATION MARK}Brien", None),
+    ("Ada Exampel", None),
+    ("ada example", None),
+    ("Example", None),
+    ("Ada", None),
+    ("van der Berg", None),
+    ("Example University", None),
+    ("Springfield", None),
+    ("Japan", None),
+    ("0000-0002-1825-0098", None),
+)
+
+
+@st.composite
+def _planted_people(draw: st.DrawFn) -> tuple[str, list[tuple[str, int]]]:
+    """Every way of writing an author above, and every way that names nobody, in an order
+    and among words drawn each time, with what the build should find and where."""
+    parts: list[str] = []
+    found: list[tuple[str, int]] = []
+    for written, what in draw(st.permutations(_PEOPLE_WRITTEN)):
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4))
+        parts.append(" ".join(words) + draw(st.sampled_from((" ", "\n", "; "))))
+        before, _bar, name = written.rpartition("|")
+        parts.append(before)
+        if what is not None:
+            found.append((what, len("".join(parts))))
+        parts.append(name + draw(st.sampled_from((" ", ". ", "\n", ", "))))
+    return "".join(parts), sorted(found, key=lambda item: (item[1], item[0]))
+
+
+@holds(150, _planted_people())
+def test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else(
+    planted: tuple[str, list[tuple[str, int]]],
+) -> None:
+    """A name with any space between its words, a line break or a no-break space among
+    them; an initial before the family name or after it; an ORCID iD inside its link; an
+    e-mail address and an institution in any case. Not a family name or a given name alone,
+    a city, a country, two words of an institution, nor a name a letter away."""
+    text, expected = planted
+    assert names_in(text, sought(PEOPLE)) == expected, text
+
+
 # --------------------------------------------------------------------------------- spelling
 
 #: Words American usage writes and British does not, which a British paper is told of.
@@ -1603,6 +1765,43 @@ def _held_to_its_edit(drawn: tuple[str, str, str, list[str], int]) -> None:
         assert by_code["fact-new"].line == line, (before, after, said)
 
 
+# ------------------------------------------------------------ the words beside a quoted value
+
+#: A value a ledger records, as its display is written, one of each kind: a decimal, a whole
+#: number, a value with words inside it, and one with letters.
+_LEDGER_VALUES = ("2.6", "14", "1 in 4", "IgG4")
+#: What stands in a quote and is no word, and words that hold a digit, which are.
+_NO_WORDS = ("95%", "2.1-3.2", "(", ")", "3.84", "-", "\N{EN DASH}", "12/40", "100 000")
+_DIGIT_WORDS = ("COVID-19", "CYP3A4", "HbA1c", "person-years.")
+_QUOTE_GAPS = (" ", "  ", "\n", ", ", "; ", " (", ") ", "\N{NO-BREAK SPACE}")
+
+
+@st.composite
+def _quotes_beside(draw: st.DrawFn) -> list[tuple[str, str, int]]:
+    """A quote for each kind of value, of filler words, words with a digit and pieces with
+    no letter, in an order drawn each time, with the value among them, and how many words
+    stand beside it."""
+    quotes = []
+    for value in _LEDGER_VALUES:
+        words = draw(st.lists(st.sampled_from(FILLER), max_size=6))
+        pieces = draw(st.permutations([*words, *_DIGIT_WORDS, *_NO_WORDS, value]))
+        gaps = [draw(st.sampled_from(_QUOTE_GAPS)) for _ in pieces]
+        quote = "".join(gap + piece for gap, piece in zip(gaps, pieces, strict=True))
+        quotes.append((quote, value, len(words) + len(_DIGIT_WORDS)))
+    return quotes
+
+
+@holds(150, _quotes_beside())
+def test_the_words_beside_a_quoted_value_are_its_words_and_no_more(
+    quotes: list[tuple[str, str, int]],
+) -> None:
+    """A word is a run between spaces that holds a letter, a digit in it or not; the value is
+    taken out first, so "1 in 4" counts no "in"; and a percentage, an interval, a bracket or
+    a number alone is no word."""
+    for quote, value, count in quotes:
+        assert len(literature_sources.words_beside(quote, value)) == count, (quote, value)
+
+
 # -------------------------------------------------------------------------------- quotations
 
 
@@ -1959,6 +2158,61 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
 
+def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    old = re.compile(r"^\s*(?:materials and )?methods\b", re.IGNORECASE)
+    patch.setattr(section_names, "names_methods", lambda title: bool(old.match(title)))
+
+
+def _methods_found_without_the_paper_s_structure(patch: pytest.MonkeyPatch, keep: str) -> None:
+    """`methods_sections` with one of its two tests of place left out: `keep` says which
+    stays, "above" (nothing over it names another part) or "below" (nothing under it does)."""
+    from manuscript_guard.classify import rules_out_methods
+    from manuscript_guard.gates import journal
+    from manuscript_guard.text import section_names
+
+    def found(sections, abstract_title=None):
+        out, chain = [], []
+        for index, section in enumerate(sections):
+            while chain and chain[-1].level >= section.level:
+                chain.pop()
+            above = list(chain)
+            chain.append(section)
+            if not section_names.names_methods(section.title):
+                continue
+            if keep == "above" and any(
+                s.names_abstract(abstract_title) or rules_out_methods(s.title) for s in above
+            ):
+                continue
+            below = []
+            for later in sections[index + 1 :]:
+                if later.level <= section.level:
+                    break
+                below.append(later)
+            if keep == "below" and any(rules_out_methods(s.title) for s in below):
+                continue
+            out.append(section)
+        return out
+
+    patch.setattr(methods_gate, "methods_sections", found)
+    patch.setattr(journal, "methods_sections", found)
+
+
+def _a_title_over_the_paper_is_its_methods(patch: pytest.MonkeyPatch) -> None:
+    _methods_found_without_the_paper_s_structure(patch, "above")
+
+
+def _the_abstract_s_methods_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
+    _methods_found_without_the_paper_s_structure(patch, "below")
+
+
+def _a_profile_s_abstract_title_is_not_counted(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    patch.setattr(sections.Section, "names_abstract", lambda self, named: self.is_abstract)
+
+
 def _a_sign_is_no_part_of_its_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reworded_module, "_sign", lambda text, at: NO)
 
@@ -1990,6 +2244,42 @@ def _the_order_is_not_looked_at(patch: pytest.MonkeyPatch) -> None:
 
 def _a_comment_holds_facts(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reworded_module, "blank_comments", lambda text: text)
+
+
+def _a_name_is_one_space_apart(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(blinding, "_SPACE", " ")
+
+
+def _an_institution_is_in_its_own_case(patch: pytest.MonkeyPatch) -> None:
+    real = blinding._words
+    patch.setattr(blinding, "_words", lambda piece, flags=0: real(piece))
+
+
+def _an_initial_needs_no_stop(patch: pytest.MonkeyPatch) -> None:
+    def name(given: str, family: str) -> re.Pattern[str]:
+        initial, surname = re.escape(given[0]), blinding._spaced(family)
+        return re.compile(
+            rf"(?<!\w)(?:{blinding._spaced(given)}\s+{surname}|{initial}(?:\.\s*|\s+)"
+            rf"{surname}|{surname},?\s+{initial}[A-Z]?\.?)(?!\w)"
+        )
+
+    patch.setattr(blinding, "_name", name)
+
+
+def _an_apostrophe_is_matched_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(
+        blinding, "_spaced", lambda words: r"\s+".join(re.escape(w) for w in words.split())
+    )
+
+
+def _a_name_is_not_read_family_name_first(patch: pytest.MonkeyPatch) -> None:
+    def name(given: str, family: str) -> re.Pattern[str]:
+        initial, surname = re.escape(given[0]), blinding._spaced(family)
+        return re.compile(
+            rf"(?<!\w)(?:{blinding._spaced(given)}\s+{surname}|{initial}\.\s*{surname})(?!\w)"
+        )
+
+    patch.setattr(blinding, "_name", name)
 
 
 def _every_dash_before_a_figure_is_its_sign(patch: pytest.MonkeyPatch) -> None:
@@ -2115,6 +2405,20 @@ def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
 
 
+def _a_word_with_a_digit_is_no_word(patch: pytest.MonkeyPatch) -> None:
+    real = literature_sources.words_beside
+    patch.setattr(
+        literature_sources,
+        "words_beside",
+        lambda quote, display: [w for w in real(quote, display) if not any(c.isdigit() for c in w)],
+    )
+
+
+def _the_value_is_left_in_the_quote(patch: pytest.MonkeyPatch) -> None:
+    real = literature_sources.words_beside
+    patch.setattr(literature_sources, "words_beside", lambda quote, display: real(quote, ""))
+
+
 def _an_anchor_in_a_comment_is_an_anchor(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(placeholders, "_without_comments", lambda text: text)
 
@@ -2180,6 +2484,14 @@ BROKEN = {
     "a claim keeps its line breaks": (
         _a_claim_keeps_its_line_breaks,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a word with a digit in it is no word": (
+        _a_word_with_a_digit_is_no_word,
+        test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
+    ),
+    "the value is left in the quote": (
+        _the_value_is_left_in_the_quote,
+        test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
     ),
     "an anchor in a comment is an anchor": (
         _an_anchor_in_a_comment_is_an_anchor,
@@ -2309,6 +2621,22 @@ BROKEN = {
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
     ),
+    "the Methods are read by the name G9 had for them": (
+        _the_methods_are_read_by_their_old_name,
+        test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
+    "the abstract a profile names is not counted as one": (
+        _a_profile_s_abstract_title_is_not_counted,
+        test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
+    "a paper's title over it all is its Methods": (
+        _a_title_over_the_paper_is_its_methods,
+        test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
+    "the abstract's own Methods are the paper's": (
+        _the_abstract_s_methods_are_the_paper_s,
+        test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
     "a number's sign is no part of it": (
         _a_sign_is_no_part_of_its_number,
         test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
@@ -2336,6 +2664,26 @@ BROKEN = {
     "the order of the facts is not looked at": (
         _the_order_is_not_looked_at,
         test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    "a name's words are one space apart": (
+        _a_name_is_one_space_apart,
+        test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
+    ),
+    "an institution is found in its own case only": (
+        _an_institution_is_in_its_own_case,
+        test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
+    ),
+    "an initial needs no stop": (
+        _an_initial_needs_no_stop,
+        test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
+    ),
+    "an apostrophe is matched as it is typed": (
+        _an_apostrophe_is_matched_as_typed,
+        test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
+    ),
+    "a name is not read with the family name first": (
+        _a_name_is_not_read_family_name_first,
+        test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
     ),
     "every dash before a figure is its sign": (
         _every_dash_before_a_figure_is_its_sign,

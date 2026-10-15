@@ -1178,6 +1178,50 @@ def test_a_fragment_written_before_the_environment_was_recorded_says_nothing(
     assert _environment_said(project) == []
 
 
+# ------------------------------------------------- the unit of analysis
+
+
+def _model_card_has(root: Path, **fields) -> None:
+    """Give the example's model card these fields, and sign the fragment again."""
+    for fragment in (root / "results").glob("*.json"):
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        for card in (document.get("models") or {}).values():
+            card.update(fields)
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+
+
+def _unit_said(root: Path) -> list[tuple[str, str]]:
+    project, _ = load_project(root)
+    _namespace, results, _literature, _report = load_namespace(project)
+    assert results.models, "the example fits a model"
+    said = check_models(project, results).findings
+    return [(f.code, f.severity) for f in said if f.code == "unit-rows-independent"]
+
+
+def test_rows_of_one_unit_taken_as_independent_are_a_warning(project: Path) -> None:
+    """Item 14: a model fitted on several rows a patient, with ordinary standard errors,
+    passed."""
+    _model_card_has(project, unit={"column": "patient", "units": 3}, covariance="nonrobust")
+    assert _unit_said(project) == [("unit-rows-independent", "warn")]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"unit": {"column": "patient", "units": 3}, "covariance": "cluster"},
+        {"unit": {"column": "patient", "units": 3}, "covariance": "Cluster"},
+        {"unit": {"column": "patient", "units": 3},
+         "engine": {"language": "Python", "package": "statsmodels", "class": "MixedLM"}},
+        {"unit": {"column": "patient", "units": 100000}, "covariance": "nonrobust"},
+        {"covariance": "nonrobust"},
+    ],
+)  # fmt: skip
+def test_rows_of_one_unit_accounted_for_say_nothing(project: Path, fields: dict) -> None:
+    _model_card_has(project, **fields)
+    assert _unit_said(project) == []
+
+
 # ------------------------------------------------- an interval is a declared thing
 
 
@@ -2034,6 +2078,33 @@ def test_every_literature_value_ends_in_one_verdict(
         assert code in codes(report), report.render(project)
 
 
+@pytest.mark.parametrize(
+    ("quote", "short"),
+    [
+        ("A signal was detected for the class as a whole (ROR 2.6, 95% CI 2.1-3.2).", False),
+        ("the class as a whole (ROR 2.6", False),
+        ("whole (ROR 2.6", True),
+        ("ROR 2.6", True),
+        ("2.6", True),
+    ],
+)
+def test_a_quote_that_holds_little_more_than_its_value_is_said(
+    project: Path, quote: str, short: bool
+) -> None:
+    """G7 holds the quote to the source and the value to the quote, so "2.6" quoted alone
+    passed both: it proves only that those digits are somewhere in the source. A quote with
+    fewer than four words beside its value is said; the value is still verified."""
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    entry = next(e for e in document["entries"] if e.get("display") == "2.6")
+    entry["quote"] = quote
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = _literature_report(project)
+    said = [f for f in report.findings if f.code == "quote-too-short"]
+    assert [f.severity for f in said] == (["warn"] if short else []), report.render(project)
+    assert report.counts["literature_verified"] == 2
+
+
 # --------------------------------------------------------------------- the journal gate
 # A journal's limits, sections and statements are about the document the editor receives,
 # and the build strips every file's front matter before printing it.
@@ -2066,6 +2137,203 @@ def test_a_second_files_front_matter_is_not_a_required_section(project: Path) ->
     after = _journal(project)
     assert "missing-required-section" in codes(after)
     assert after.counts["main_text_words"] == before.counts["main_text_words"] + 3
+
+
+# A section found by its heading. G4 counted "2. Methods" and "Patients and methods" as the
+# required Methods, and G9 read neither: with a wrong parameter in `methods.lock`, it warned
+# under "# Methods" and said nothing under the other two. The abstract was found only as
+# "Abstract", so The Lancet's "Summary" was main text and the abstract's limit read nothing.
+
+
+def _methods_retitled(root: Path, heading: str) -> None:
+    main = main_md(root)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("# Methods\n", f"# {heading}\n", 1),
+        encoding="utf-8",
+    )
+
+
+def _wrong_alpha_in_the_lock(root: Path) -> None:
+    from manuscript_guard.gates import reconcile
+
+    reconcile(load_project(root)[0], parameters={"alpha": "0.07"})
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "Methods",
+        "2. Methods",
+        "2.1 Methods",
+        "II. Methods",
+        "Patients and methods",
+        # each a heading main's G4 took for the Methods, which round 2 of #246 found refused
+        "Materials & methods",
+        "**2. Methods**",
+        "[Methods]{.smallcaps}",
+        "2.Methods",
+        "Section 2: Methods",
+        "Laboratory methods",
+        "Study design, setting, participants and methods",
+    ],
+)
+def test_a_wrong_parameter_is_found_under_any_heading_g4_counts_as_the_methods(
+    project: Path, heading: str
+) -> None:
+    from manuscript_guard.gates import check_methods
+
+    _methods_retitled(project, heading)
+    _wrong_alpha_in_the_lock(project)
+    report = check_methods(load_project(project)[0])
+    assert any(
+        f.code == "methods-parameter-absent" and "alpha = 0.07" in f.message
+        for f in report.warnings
+    ), report.render(project)
+    assert "methods-not-found" not in {f.code for f in report.findings}
+    assert "missing-required-section" not in codes(_journal(project))
+
+
+def test_a_methods_and_results_section_is_no_methods_for_g2(project: Path) -> None:
+    """A research letter's combined section. Taken for the Methods, it let every threshold
+    convention through under its results: a reported p value passed as the alpha."""
+    from manuscript_guard.classify import is_methods
+
+    assert not is_methods(("Methods and results",))
+    assert not is_methods(("2. Results and methods",))
+    _methods_retitled(project, "Methods and results")
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "# Methods and results\n", "# Methods and results\n\nThe difference was "
+            "significant (p < 0.001).\n", 1
+        ),
+        encoding="utf-8",
+    )
+    assert any(
+        f.code == "unclassified-number" and "0.001" in f.message
+        for f in gate_report(project).failures
+    )
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "A method for signal detection",
+        # round 2 of #246: a title the word heads is over the Results, and is no Methods
+        "Statistical methods for signal detection",
+        "Methods for detecting adverse drug reactions",
+    ],
+)
+def test_a_paper_s_title_written_as_a_heading_is_not_its_methods(
+    project: Path, title: str
+) -> None:
+    """With the title an H1 over `##` sections, a heading holding the word was the first
+    that named the Methods, and G9 read the whole paper as them: a wrong parameter stated in
+    the Results passed."""
+    from manuscript_guard.gates import check_methods
+    from manuscript_guard.gates.methods import methods_in
+
+    text = (
+        f"# {title}\n\n## Background\n\nWords.\n\n"
+        "## Limitations of existing methods\n\nWords.\n\n## Methods\n\nNo alpha here."
+        "\n\n## Results\n\nAn alpha of 0.07 was used.\n"
+    )
+    assert methods_in(text) == "\n\nNo alpha here.\n\n"
+    main = main_md(project)
+    body = main.read_text(encoding="utf-8").split("---\n", 2)
+    demoted = body[2].replace("\n# ", "\n## ")
+    main.write_text(f"---{body[1]}---\n\n# {title}\n{demoted}", encoding="utf-8")
+    _wrong_alpha_in_the_lock(project)
+    main.write_text(
+        main.read_text(encoding="utf-8") + "\nAn alpha of 0.07 was used.\n", encoding="utf-8"
+    )
+    report = check_methods(load_project(project)[0])
+    assert any(
+        f.code == "methods-parameter-absent" and "alpha = 0.07" in f.message
+        for f in report.warnings
+    ), report.render(project)
+
+
+def test_no_heading_that_names_the_methods_is_said(project: Path) -> None:
+    from manuscript_guard.gates import check_methods
+
+    _methods_retitled(project, "Approach")
+    _wrong_alpha_in_the_lock(project)
+    report = check_methods(load_project(project)[0])
+    assert [f.code for f in report.warnings if f.code.startswith("methods-")] == [
+        "methods-not-found"
+    ], report.render(project)
+    assert "missing-required-section" in codes(_journal(project))
+
+
+def test_a_structured_abstract_s_results_are_not_the_paper_s(project: Path) -> None:
+    """Every required section, not only the Methods: the abstract's "Results" answered the
+    journal's required Results in a paper whose body called them something else."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("\n# Results\n", "\n# Findings\n", 1)
+    main.write_text(
+        text.replace("# Abstract\n\n", "# Abstract\n\n## Results\n\nA ratio.\n\n", 1),
+        encoding="utf-8",
+    )
+    assert any(
+        f.code == "missing-required-section" and "Results" in f.message
+        for f in _journal(project).failures
+    )
+
+
+def test_a_structured_abstract_s_methods_are_not_the_paper_s(project: Path) -> None:
+    """The required sections were looked for among every heading, the abstract's own
+    among them, so a paper with no Methods section passed on its abstract's subheading."""
+    _methods_retitled(project, "Approach")
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("# Abstract\n\n", "# Abstract\n\n## Methods\n\nA cohort.\n\n", 1),
+        encoding="utf-8",
+    )
+    assert any(
+        f.code == "missing-required-section" and "Methods" in f.message
+        for f in _journal(project).failures
+    )
+
+
+def _abstract_retitled(root: Path, heading: str, words: int = 0) -> None:
+    main = main_md(root)
+    text = main.read_text(encoding="utf-8")
+    padding = " ".join(["more"] * words)
+    main.write_text(
+        text.replace("# Abstract\n\n", f"# {heading}\n\n{padding}\n\n", 1), encoding="utf-8"
+    )
+
+
+def _profile_says(root: Path, **structure: str) -> None:
+    path = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["structure"].update(structure)
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def test_an_abstract_the_profile_calls_summary_is_held_to_the_abstract_s_limit(
+    project: Path,
+) -> None:
+    _abstract_retitled(project, "Summary", words=400)
+    _profile_says(project, abstract_title="Summary")
+    report = _journal(project)
+    assert any(
+        f.code == "over-journal-limit" and f.message.startswith("abstract:")
+        for f in report.findings
+    ), report.render(project)
+    assert "abstract-not-found" not in {f.code for f in report.findings}
+
+
+def test_an_abstract_no_heading_names_is_said(project: Path) -> None:
+    """"Summary" with no `abstract_title`: the abstract's limit read nothing, and its words
+    counted as main text."""
+    _abstract_retitled(project, "Summary", words=400)
+    report = _journal(project)
+    found = [f for f in report.warnings if f.code == "abstract-not-found"]
+    assert len(found) == 1 and "300 words" in found[0].message, report.render(project)
+    assert report.counts["abstract_words"] == 0
 
 
 def test_a_comment_in_the_front_matter_is_not_a_required_statement(project: Path) -> None:
@@ -3255,6 +3523,202 @@ def test_a_refused_build_into_the_build_directory_itself_does_not_crash(
     (project / "build").mkdir(exist_ok=True)
     out = project / "build"
     assert main(["build", str(project), "--offline", "--skip-checks", "-o", str(out)]) == 1
+
+
+# ------------------------------------------------- a document reviewed blind names no author
+
+_W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+
+def _blind(root: Path, kind: str = "double") -> None:
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["blinding"] = kind
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _word(path: Path, body: str = "", **parts: str) -> Path:
+    """A document holding `body` as its paragraphs, and any other part as it is given."""
+    document = f"<w:document {_W_NS}><w:body>{body}</w:body></w:document>"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", document)
+        for name, xml in parts.items():
+            archive.writestr(name.replace("__", "/").replace("_xml", ".xml"), xml)
+    return path
+
+
+def _named(root: Path, document: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.build.blinding import check_blinded
+
+    project, _ = load_project(root)
+    found = check_blinded(project, document).findings
+    assert all(f.code == "blind-document-names-author" and f.severity == "fail" for f in found)
+    return sorted(
+        (re.match(r"(['\"])(.*?)\1 is in ", f.message)[2],
+         re.search(r" is in (.*) of ", f.message)[1])
+        for f in found
+    )
+
+
+_CORE_NS = (
+    'xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
+    'xmlns:dc="http://purl.org/dc/elements/1.1/"'
+)
+
+
+@pytest.mark.parametrize(
+    ("body", "parts", "said"),
+    [
+        pytest.param(
+            "<w:p><w:r><w:t>As Ada</w:t></w:r><w:r><w:br/><w:t>Example showed</w:t></w:r></w:p>",
+            {}, [("Ada Example", "the text")], id="a name split across a run and a break",
+        ),
+        pytest.param(
+            "<w:p><w:del w:author='Someone'><w:r><w:delText>Example, A.</w:delText></w:r>"
+            "</w:del></w:p>",
+            {}, [("Ada Example", "the text")], id="a name a tracked change deleted",
+        ),
+        pytest.param(
+            "", {"word__footnotes_xml": f"<w:footnotes {_W_NS}><w:footnote><w:p><w:r><w:t>"
+                 "B. Sample, unpublished.</w:t></w:r></w:p></w:footnote></w:footnotes>"},
+            [("Blaise Sample", "the text")], id="a name in a footnote",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:t>See https://orcid.org/0000-0002-1825-0097 or write to "
+            "ADA.EXAMPLE@INVALID.EXAMPLE.</w:t></w:r></w:p>",
+            {}, [("the ORCID iD 0000-0002-1825-0097", "the text"),
+                 ("the e-mail address ada.example@invalid.example", "the text")],
+            id="an ORCID iD and an e-mail address",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:t>Done at the department of clinical\u00a0 pharmacology.</w:t></w:r>"
+            "</w:p>",
+            {}, [("Department of Clinical Pharmacology", "the text")],
+            id="an institution in another case and spacing",
+        ),
+        pytest.param(
+            "", {"docProps__core_xml": f"<cp:coreProperties {_CORE_NS}><dc:creator>Ada Example"
+                 "</dc:creator><cp:lastModifiedBy>Blaise Sample</cp:lastModifiedBy>"
+                 "</cp:coreProperties>"},
+            [("Ada Example", "the document's author (dc:creator)"),
+             ("Blaise Sample", "the document's last editor (cp:lastModifiedBy)")],
+            id="Word's author fields",
+        ),
+        pytest.param(
+            "<w:p><w:ins w:author='Ada Example'><w:r><w:t>new</w:t></w:r></w:ins></w:p>",
+            {}, [("Ada Example", "the author of a tracked change or a comment")],
+            id="the author of a tracked change",
+        ),
+        pytest.param(
+            "", {"word__people_xml": "<w15:people xmlns:w15='urn:w15'><w15:person "
+                 "w15:author='Blaise Sample'/></w15:people>"},
+            [("Blaise Sample", "the people who edited it")], id="the people who edited it",
+        ),
+        pytest.param(
+            "", {"word__media__image1.svg": "<svg xmlns='http://www.w3.org/2000/svg'><text>"
+                 "Example University Graduate School of Medicine</text></svg>"},
+            [("Example University Graduate School of Medicine", "a figure (image1.svg)")],
+            id="the text of a figure the document holds",
+        ),
+        # Round 1 of #273: matplotlib writes a DOCTYPE into every SVG, and the parser's
+        # refusal of it stopped the whole check. One with entities is read for nothing, and
+        # the rest of the document still is.
+        pytest.param(
+            "<w:p><w:r><w:t>Ada Example.</w:t></w:r></w:p>",
+            {"word__media__a.svg": '<?xml version="1.0"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG '
+             '1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg xmlns='
+             '"http://www.w3.org/2000/svg"><text>B. Sample</text></svg>',
+             "word__media__b.svg": '<!DOCTYPE svg [<!ENTITY e "x">]><svg><text>&e;</text></svg>'},
+            [("Ada Example", "the text"), ("Blaise Sample", "a figure (a.svg)")],
+            id="a figure with a DOCTYPE",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:t>As B. O\N{RIGHT SINGLE QUOTATION MARK}Sample said.</w:t></w:r></w:p>",
+            {}, [("Blaise O'Sample", "the text")], id="an apostrophe printed curly",
+        ),
+    ],
+)  # fmt: skip
+def test_a_document_reviewed_blind_names_no_author_anywhere_word_keeps_one(
+    project: Path, tmp_path: Path, body: str, parts: dict, said: list
+) -> None:
+    """Where the journal's review is double-blind, an author's name, ORCID iD,
+    e-mail address or institution is found in the text, a figure, and every field Word
+    keeps an author in, which a co-author's copy comes back with."""
+    _blind(project)
+    authors = project / "authors.yaml"
+    if "O'Sample" in str(said):
+        authors.write_text(authors.read_text(encoding="utf-8").replace(
+            "family: Sample", "family: \"O'Sample\""), encoding="utf-8")  # fmt: skip
+    document = _word(tmp_path / "manuscript.docx", body, **parts)
+    assert _named(project, document) == sorted(said)
+
+
+def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
+    project: Path, tmp_path: Path
+) -> None:
+    """A self-citation prints the authors' names in the reference list, which the journals
+    ask for in the third person rather than taken out, and a localised Word may give the
+    list's style another identifier. A family name alone, a name with a letter more, a city
+    and a country name nobody, nor does an article before the family name or a letter after
+    it (round 1 of #273: "A Cross-sectional study" named Anna Cross); and a review that is
+    not blind is not read."""
+    _blind(project)
+    body = (
+        "<w:p><w:pPr><w:pStyle w:val='Bibliography'/></w:pPr><w:r><w:t>Example A, Sample B. "
+        "A study. 2019.</w:t></w:r></w:p>"
+        "<w:p><w:pPr><w:pStyle w:val='ab'/></w:pPr><w:r><w:t>Example, A. A study.</w:t></w:r>"
+        "</w:p>"
+        "<w:p><w:r><w:t>Example data from Springfield, Japan, as Ada Examples said. A Example "
+        "study, on Example A and Example B.</w:t></w:r></w:p>"
+    )
+    styles = (
+        f"<w:styles {_W_NS}><w:style w:type='paragraph' w:styleId='ab'>"
+        "<w:name w:val='Bibliography'/></w:style></w:styles>"
+    )
+    assert _named(project, _word(tmp_path / "a.docx", body, word__styles_xml=styles)) == []
+    named = "<w:p><w:r><w:t>As Ada Example showed.</w:t></w:r></w:p>"
+    assert _named(project, _word(tmp_path / "b.docx", named)) == [("Ada Example", "the text")]
+    _blind(project, "single")
+    assert _named(project, _word(tmp_path / "c.docx", named)) == []
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_document_reviewed_blind_is_built_and_packed_only_without_its_authors(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The example names no author and builds. An author named in the Discussion is said
+    and the build exits 1; a copy edited in Word, whose author field names one, is not
+    packed. A self-citation the build prints is not a name to take out: the reference list
+    is not read, and an author-date citation prints the family name alone."""
+    from manuscript_guard.cli import main
+
+    _blind(project)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    authors = project / "authors.yaml"
+    text = authors.read_text(encoding="utf-8")
+    authors.write_text(text.replace("given: Ada\n    family: Example", "given: Anne\n    "
+                                    "family: Fictional"), encoding="utf-8")  # fmt: skip
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    built = project / "build" / "manuscript.docx"
+    edited = project / "final" / "manuscript.docx"
+    edited.parent.mkdir()
+    with zipfile.ZipFile(built) as source, zipfile.ZipFile(edited, "w") as copy:
+        for item in source.infolist():
+            data = source.read(item.filename)
+            if item.filename == "docProps/core.xml":
+                data = data.replace(b"<dc:creator></dc:creator>",
+                                    b"<dc:creator>Anne Fictional</dc:creator>")  # fmt: skip
+            copy.writestr(item, data)
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", str(edited), "--skip-checks"]) == 1
+    assert "'Anne Fictional' is in the document's author (dc:creator)" in capsys.readouterr().out
+    assert not (project / "build" / "submission" / "manuscript.docx").exists()
+    source = main_md(project)
+    source.write_text(source.read_text(encoding="utf-8").replace(
+        "# Discussion\n\n", "# Discussion\n\nAs Anne Fictional showed before, ", 1),
+        encoding="utf-8")  # fmt: skip
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "'Anne Fictional' is in the text of manuscript.docx" in capsys.readouterr().out
 
 
 @pytest.mark.skipif(
@@ -8667,6 +9131,111 @@ def test_a_model_s_reading_with_its_seal_taken_out_is_said(project: Path, monkey
     _edit(path, unseal_and_soften)
     report = check_review(load_project(project)[0], submission=True)
     assert [f.path for f in report.warnings if f.code == "reading-unsealed"] == [path]
+
+
+def _read_by_models(
+    root: Path, monkeypatch, *models: str, verdict: str = "major-revision", findings=None,
+    remit: str | None = None,
+) -> list[Path]:  # fmt: skip
+    """A round read by `models` through `review --run`, each answering `verdict` with
+    `findings`, of a panel whose one reviewer has `remit` where it is given."""
+    from test_review_run import Providers, answer, configure, reply_text
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    transport = Providers()
+    said = _A_MODEL_SAID if findings is None else findings
+    transport.default = lambda request: answer(reply_text(verdict, said))
+    monkeypatch.setattr(client, "default_transport", transport)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-0123456789SECRETA")
+    monkeypatch.setenv("MISTRAL_API_KEY", "sk-test-mistral-0123456789SECRETB")
+    shutil.rmtree(root / "review")
+    if remit is not None:
+        (root / "review").mkdir()
+        panel = {"schema": "manuscript-guard/panel/1", "round": 1, "opened_on": "2026-10-15",
+                 "rationale": "One reader, for the test.",
+                 "reviewers": [{"id": "reader", "role": "Reader", "remit": remit,
+                                "why": "The test needs one."}]}  # fmt: skip
+        (root / "review" / "panel-1.yaml").write_text(yaml.safe_dump(panel), encoding="utf-8")
+    configure(root, *models)
+    assert main(["review", str(root), "--run", "--yes"]) == 0
+    return sorted((root / "review" / "round-1").glob("*.*.yaml"))
+
+
+def _review_warnings(root: Path) -> list[str]:
+    from manuscript_guard.gates import check_review
+
+    return [f.code for f in check_review(load_project(root)[0]).warnings]
+
+
+def test_a_round_every_reading_of_which_came_from_one_provider_is_said(
+    project: Path, monkeypatch
+) -> None:
+    """The models of one provider share their blind spots. A round read by one provider's
+    model is said, at every stage; one read by two providers, or by people, is not."""
+    from manuscript_guard.gates import check_review
+
+    assert "round-one-provider" not in _review_warnings(project)  # the example's people
+    _read_by_models(project, monkeypatch, "openai/model-a")
+    assert _review_warnings(project).count("round-one-provider") == 1
+    report = check_review(load_project(project)[0], submission=True)
+    assert "round-one-provider" in [f.code for f in report.warnings]
+    _read_by_models(project, monkeypatch, "openai/model-a", "mistral/model-b")
+    assert "round-one-provider" not in _review_warnings(project)
+
+
+def test_a_model_that_passed_a_remit_covering_the_figures_is_said(
+    project: Path, monkeypatch
+) -> None:
+    """Figures are not sent to a model, so a model's pass of a remit that covers them passed
+    what it never saw. Another verdict, and another remit, are not said."""
+    figures = "Whether the figures show what the text says, and are labelled."
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit=figures)  # fmt: skip
+    assert "figures-not-seen" in _review_warnings(project)
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="minor-revision",
+                    remit=figures)  # fmt: skip
+    assert "figures-not-seen" not in _review_warnings(project)
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit="Whether the estimator is stated fully.")  # fmt: skip
+    assert "figures-not-seen" not in _review_warnings(project)
+
+
+def test_what_a_finding_asks_is_filed_said_and_sealed(project: Path, monkeypatch) -> None:
+    """A finding may say it asks for a computation, which is a new result to emit and a new
+    reconciliation of the Methods with the code. It is filed with the finding, named in the
+    open finding, and sealed: made a disclosure after filing, the reading is altered. An ask
+    the schema does not know is refused with the reply."""
+    from manuscript_guard.gates import check_review
+
+    asked = [{"severity": "major", "ask": "computation", "where": "Results",
+              "finding": "Give the estimate adjusted for age."}]  # fmt: skip
+    path = _read_by_models(project, monkeypatch, "openai/model-a", findings=asked)[0]
+    filed = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert filed["findings"][0]["ask"] == "computation"
+    report = check_review(load_project(project)[0], submission=True)
+    opened = [f.message for f in report.failures if f.code == "open-major-finding"]
+    assert opened and all("(asks for a computation)" in message for message in opened)
+    assert "reading-altered" not in [f.code for f in report.failures]
+    _edit(path, lambda d: d["findings"][0].update(ask="disclosure"))
+    assert "reading-altered" in _review_failures(project)
+
+    from manuscript_guard.panel.reply import parse_reply
+
+    # Round 1 of #276: the prompt shows `ask`, and a model that leaves it out writes null.
+    left_out = json.loads(_reply_with([{"severity": "comment", "ask": None, "finding": "x"}]))
+    found = parse_reply(json.dumps(left_out))["findings"]
+    assert found == [{"severity": "comment", "finding": "x"}]
+    with pytest.raises(Exception, match="ask"):
+        parse_reply(json.dumps({**json.loads(_reply_with(asked)), "findings": [
+            {**asked[0], "ask": "everything"}]}))  # fmt: skip
+
+
+def _reply_with(findings: list) -> str:
+    from test_review_run import reply_text
+
+    return reply_text("major-revision", findings)
 
 
 def test_the_example_s_hand_filed_readings_are_sealed_too(project: Path) -> None:

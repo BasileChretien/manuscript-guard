@@ -24,6 +24,10 @@
       "enum": ["en-GB", "en-US", "either"],
       "description": "Overrides the project's choice when the journal insists."
     },
+    "blinding": {
+      "enum": ["single", "double", "triple", "open"],
+      "description": "How the journal's peer review is blinded, as its own page says. Double or triple: the reviewers are not to know the authors, and the build fails a document that names one of them, an institution of theirs, or their ORCID iD or e-mail address."
+    },
     "limits": {
       "type": "object",
       "additionalProperties": false,
@@ -55,7 +59,12 @@
           "description": "Matched case-insensitively against top-level headings."
         },
         "abstract_structured": { "type": "boolean" },
-        "abstract_headings": { "type": "array", "items": { "type": "string" } }
+        "abstract_headings": { "type": "array", "items": { "type": "string" } },
+        "abstract_title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The heading the journal gives the abstract where it is not Abstract: The Lancet's is Summary. G4, G14 and the word count read the section under it as the abstract."
+        }
       }
     },
     "required_statements": {

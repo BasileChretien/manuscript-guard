@@ -51,6 +51,12 @@ article_type: "Original research"
 # the line and let the project decide.
 english_variant: either
 
+# How the journal's peer review is blinded, as its own page says: single, double, triple or
+# open. Double or triple: the build then fails a document that names an author, an
+# institution of theirs, or their ORCID iD or e-mail address, in its text, a figure, or the
+# author fields Word keeps. Delete the line where the page does not say.
+# blinding: double
+
 # ── Limits ───────────────────────────────────────────────────────────────────────────────
 #
 # Numbers only, and only the ones the journal states. Delete every line you cannot point at a
@@ -106,6 +112,11 @@ structure:
     - Methods
     - Results
     - Discussion
+
+  # The heading the journal gives the abstract, where it is not "Abstract": The Lancet's
+  # is "Summary". The section under it is then read as the abstract, for its limit and its
+  # headings. Leave it out where the journal says "Abstract".
+  # abstract_title: Summary
 
   # true when the abstract must carry headings, false when it must be a single paragraph.
   # Delete the line when the journal does not say.
@@ -200,7 +211,7 @@ reporting_guidelines:
 # submission. Write it as instructions to yourself, not as a summary of the page.
 #
 # Worth capturing: covering-letter contents; suggested and opposed reviewers; title-page
-# rules that differ from the manuscript; blinding requirements; figure resolution and file
+# rules that differ from the manuscript; how to anonymise; figure resolution and file
 # formats; supplementary-file naming; word counts the journal defines differently; portal
 # quirks; anything the page says about AI use in preparing the manuscript.
 

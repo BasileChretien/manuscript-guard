@@ -1487,6 +1487,18 @@ each card for that reading: the author's name and description beside the kind an
 generated sentence, and the table of variables. Once a co-author page can carry items, the
 card is the item, and its digest covers both descriptions.
 
+**The unit of analysis is declared, and counted from the fit.** A model fitted on several
+rows per patient, a visit each, with ordinary standard errors is one of the commonest
+statistical errors in clinical papers: every interval is too narrow, and nothing in the
+numbers shows it. `em.model(..., unit="patient_id")` names the column of the data whose
+values the rows belong to, in both emitters, and the card records how many units the rows
+used hold, beside the fit's covariance type: statsmodels' `cov_type`, and "model-based" for
+an R `lm` or `glm`, whose fit keeps no sandwich estimate. G15 warns
+(`unit-rows-independent`) where there are more rows than units and the fit is neither
+cluster-robust (`cluster`, or a HAC by group or panel) nor a mixed model or estimating
+equations. The R emitter finds the data in the fit (`glm`) or where the call names it
+(`lm`), and leaves out the rows the fit dropped.
+
 ## A step of the code and the text that points at it
 
 The ledger of G9 records that a person read the Methods against the analysis, file by file.
@@ -1882,6 +1894,23 @@ was a single ratio; all three were fixed, and the manuscript is better for it. R
 blinded and differently composed, found the remaining soft spots. Two findings are recorded
 as deliberate overrides rather than fixed, because the honest answer was that the synthetic
 data do not support what the reviewer wanted.
+
+## What a panel did not see, and what it asks for
+
+Three things about a reading were known to the tool and said by nothing. A round read only
+by one provider's models has one family's blind spots, which `panel/__init__.py` names as the
+reason for several providers: G11 warns (`round-one-provider`) where every reading of a round
+came from one provider, and says nothing where a person read any of it. A model is never sent
+the figures, so a model that passed a remit covering them passed what it did not see: G11
+warns (`figures-not-seen`) where a model's reading passed a remit whose words name figures,
+plots, graphs or charts. Both are warnings at every stage, as a new rule starts.
+
+And a finding may say what it asks of the authors (`ask`): a disclosure of what they have, a
+computation of a new number, or new data. A computation is a new emitted result and a new
+reconciliation of the Methods with the code, so the prompt asks a reader to say why the
+numbers and tables already reported cannot answer it, and an open major finding that asks
+for one says so. The ask is the reader's, and sealed with the reading where it is given:
+only there, so that every record sealed before findings could ask keeps its seal.
 
 ## A panel read by several providers
 
@@ -7353,6 +7382,11 @@ Closed since, and why each mattered:
   says something; it has no way to know the plan predates the analysis, which is the whole
   point of a plan. Only a timestamped external record — a registry, a signed commit — could,
   and that is out of scope.
+- **A remit covers the figures by its words.** One that names figures, plots, graphs or
+  charts is taken to cover them, and one that says "visual" or "the display items" is not.
+  Only a pass is said: a model that asked for a minor revision of a remit covering the
+  figures says nothing of them either. A round read by one provider's models under several
+  providers' names, a local server passing the request on, counts as several.
 - **The submission pack does not convert figures to a journal's required format.** It
   copies what was rendered. A journal wanting 300 dpi TIFF gets whatever the figure script
   produced.
@@ -7475,7 +7509,16 @@ Closed since, and why each mattered:
 - **G15 reads two kinds of fit.** The statsmodels formula API in Python and `lm`/`glm` in R.
   Anything else (a Cox model, a mixed model, scikit-learn) cannot be recorded with
   `em.model` yet. A fit `data/models.yaml` has no entry for is a warning, and its outcome is
-  not checked. Whether a variance was made robust, or an assumption holds, is not read.
+  not checked. Whether an assumption holds is not read. A unit is checked only where the
+  analysis declares one with `unit=`; a model fitted on repeated rows with no unit declared
+  says nothing. In R a sandwich estimate computed beside an `lm` or a `glm`, with
+  `sandwich::vcovCL` for instance, is not part of the fit and is not seen: such a model is
+  reported, and the warning says to cluster. A unit missing in a row the fit used is
+  refused at the emitter. Where the unit is in the model itself, as a fixed effect
+  (`C(site)` with `unit="site"`) or as the strata of a conditional model, the rows are still
+  reported as independent. In R the data of an `lm` is found again where its formula was
+  written, so a fit made inside a function on a local data frame of the same name as one
+  outside it can be counted on the wrong one.
   In R whatever inherits from `lm` is read, so `MASS::glm.nb` is: it is recorded with the
   package `stats` and the family `Negative Binomial(<theta>)`, which no entry matches, and
   is such a warning. So is a statsmodels fit made with one of the deprecated lower-case

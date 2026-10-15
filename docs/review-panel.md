@@ -52,6 +52,12 @@ Not `authors.yaml`, the results files, the figures, or any earlier round: a seco
 blinded because the first round's records are never part of a request. Names written into
 the manuscript itself, in the acknowledgements or the funding statement, go with it.
 
+Two warnings follow from that. G11 says when every reading of a round came from one provider
+(`round-one-provider`), since one provider's models share their blind spots, and when a model
+passed a remit that covers the figures it was never sent (`figures-not-seen`). A finding may
+say what it asks of the authors (`ask`: `disclosure`, `computation` or `new-data`); an open
+major finding that asks for a computation says so, since it is a new result to emit.
+
 By default every model reads every reviewer's remit; `--one-each` deals one model to each
 reviewer in turn. With no `review/panel-N.yaml`, the first two rounds use a starter panel
 that assumes no field, which you can then edit. Each reply has to be one object of a fixed

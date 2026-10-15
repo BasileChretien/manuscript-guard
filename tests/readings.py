@@ -238,6 +238,29 @@ def _numbers() -> Reading:
     return numbers
 
 
+#: The coding dictionaries a generated text may type the release of.
+DICTIONARIES = {"meddra": "26.1", "whodrug": "Global B3 March 2025", "icd_10": "2019"}
+
+
+@reading("typed releases")
+def _typed_releases() -> Reading:
+    """Each place G2 finds a declared dictionary's release typed where it should be bound:
+    where it stands and whose release it is."""
+    from manuscript_guard.contracts.values import Value
+    from manuscript_guard.gates.numbers import typed_releases
+
+    declared = [
+        Value(key=f"dictionary.{name}", value=release, display=release, origin="results",
+              label=True, role="dictionary")
+        for name, release in DICTIONARIES.items()
+    ]  # fmt: skip
+
+    def releases(text: str) -> list[list[Any]]:
+        return [[start, end, value.key] for start, end, value in typed_releases(text, declared)]
+
+    return releases
+
+
 #: The intervals whose bounds a generated text quotes: the estimate, the level where the
 #: estimate has a second interval, and the keys of the lower and of the upper bound.
 INTERVALS = (

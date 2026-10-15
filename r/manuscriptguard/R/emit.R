@@ -613,6 +613,22 @@ mg_read_fit <- function(fit) {
   card
 }
 
+# The MedDRA version `meddra_release.asc` states: the first `$`-separated field of its
+# first line that is not blank, mirroring the Python `_meddra_release`. A file that does
+# not open with a version is refused rather than read as one.
+mg_meddra_release <- function(path) {
+  lines <- readLines(path, warn = FALSE, encoding = "UTF-8")
+  lines <- sub("^\ufeff", "", lines)
+  line <- lines[nzchar(trimws(lines))][1]
+  if (is.na(line)) line <- ""
+  version <- trimws(strsplit(line, "$", fixed = TRUE)[[1]][1])
+  if (is.na(version) || !grepl("^[0-9]+(\\.[0-9]+)?$", version)) {
+    stop(basename(path), ": its first line, ", substr(line, 1, 40),
+         ", does not open with a MedDRA version", call. = FALSE)
+  }
+  version
+}
+
 #' Create a results emitter
 #'
 #' The only supported way for an R analysis to publish a number.
@@ -753,6 +769,45 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     }
     state$values[[key]] <- list(value = version, display = version, label = TRUE,
                                 role = "software")
+    invisible(version)
+  }
+
+  # A coding dictionary the analysis coded with, and its release, mirroring the Python
+  # `dictionary()`. A file named is digested as an input; MedDRA's `meddra_release.asc`
+  # states its version as the first `$`-separated field of its first line, and is read.
+  dictionary <- function(name, release = NULL, release_file = NULL) {
+    if (!grepl("[A-Za-z]", name)) {
+      stop("dictionary ", name, ": a dictionary is named by its name", call. = FALSE)
+    }
+    read <- NULL
+    if (!is.null(release_file)) {
+      full <- if (file.exists(release_file)) release_file else file.path(project_root, release_file)
+      if (!file.exists(full) || dir.exists(full)) {
+        stop("dictionary ", name, ": no file ", release_file, call. = FALSE)
+      }
+      if (identical(tolower(basename(full)), "meddra_release.asc")) {
+        read <- mg_meddra_release(full)
+      }
+      add_input(release_file)
+    }
+    given <- NULL
+    if (!is.null(release)) {
+      given <- trimws(gsub("[[:space:]]+", " ", as.character(release)))
+    }
+    if (!is.null(given) && !is.null(read) && !identical(given, read)) {
+      stop("dictionary ", name, ": release ", given, " was given, and ", basename(full),
+           " says ", read, call. = FALSE)
+    }
+    version <- if (!is.null(read)) read else given
+    if (is.null(version) || !nzchar(version)) {
+      stop("dictionary ", name, ": give its release, or the file that states it", call. = FALSE)
+    }
+    key <- paste0("dictionary.", gsub("[^a-z0-9_]", "_", tolower(name)))
+    if (!is.null(state$values[[key]])) {
+      stop(key, " emitted twice by ", script_path, call. = FALSE)
+    }
+    state$values[[key]] <- list(value = version, display = version, label = TRUE,
+                                role = "dictionary")
     invisible(version)
   }
 
@@ -1110,6 +1165,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     value = value,
     parameter = parameter,
     software = software,
+    dictionary = dictionary,
     variable = variable,
     model = model,
     step = step,

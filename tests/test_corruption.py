@@ -10500,6 +10500,44 @@ def test_a_typed_software_version_fails(project: Path) -> None:
     assert "typed-software-version" in codes(gate_report(project))
 
 
+def _coded_with(root: Path, **releases: str) -> None:
+    """Coding dictionaries in the example's results, as `em.dictionary` declares them."""
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for name, release in releases.items():
+        document["values"][f"dictionary.{name}"] = {
+            "value": release, "display": release, "label": True, "role": "dictionary",
+        }  # fmt: skip
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "typed"),
+    [
+        ("Events were coded with MedDRA version 26.1.", ["'26.1'"]),
+        ("Drugs were coded with WHODrug Global B3 March 2025.", ["'Global B3 March 2025'"]),
+        ("Diagnoses were coded with ICD-10 2019 codes.", ["'2019'"]),
+        ("Events were coded with MedDRA version {{results.dictionary.meddra}}.", []),
+        ("Diagnoses were coded with ICD-10 {{results.dictionary.icd_10}} codes.", []),
+        # The release alone is not the dictionary's: the name has to stand before it.
+        ("Reports received in 2019 were read again.", []),
+        # Not as part of a longer word: "matched" holds "atc".
+        ("Reports were matched by hand in 2025 to each other.", []),
+    ],
+)
+def test_a_typed_dictionary_release_fails_and_only_beside_its_name(
+    project: Path, sentence: str, typed: list[str]
+) -> None:
+    _coded_with(project, meddra="26.1", whodrug="Global B3 March 2025", icd_10="2019",
+                atc="2025")  # fmt: skip
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\n" + sentence + "\n", encoding="utf-8")
+    found = [f for f in gate_report(project).failures if f.code == "typed-dictionary-release"]
+    assert [f.message.split(" is ")[0] for f in found] == typed
+    assert all("{{results.dictionary." in f.hint for f in found)
+
+
 def test_a_parameter_declared_and_never_read_fails(project: Path) -> None:
     """The example's signal criterion before this check: stated, declared, bound, and
     applied nowhere. Binding the threshold printed the right number for a step that was not

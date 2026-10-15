@@ -824,6 +824,81 @@ def test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_do
     assert found == expected, text
 
 
+# ---------------------------------------------------------------- a dictionary's release typed
+
+#: Coding dictionaries as the analysis declares them, each with the ways a sentence names
+#: it before its release.
+_DICTIONARIES = {
+    "meddra": ("26.1", ("MedDRA version ", "MedDRA ", "the medDRA, release ")),
+    "whodrug": ("Global B3 March 2025", ("WHODrug ", "the WHODrug dictionary, ")),
+    "icd_10": ("2019", ("ICD-10 ", "ICD 10 version ")),
+    "atc": ("2025", ("the ATC index of ", "ATC/DDD ")),
+}
+
+
+@st.composite
+def _typed_releases(draw: st.DrawFn) -> tuple[str, list[tuple[Value, ...]], list[tuple[int, str]]]:
+    """Each dictionary's release typed with its name before it, every way it is named,
+    and typed with no name before it, with the name inside a longer word ("matched" holds
+    "atc"), and with the name too far before it; a sentence to a line, in an order drawn
+    each time, with where each is found."""
+    declared = [
+        Value(key=f"dictionary.{name}", value=release, display=release, origin="results",
+              label=True, role="dictionary")
+        for name, (release, _named) in _DICTIONARIES.items()
+    ]  # fmt: skip
+
+    def words(low: int = 1, high: int = 4) -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=low, max_size=high)))
+
+    plans = []
+    for name, (release, named) in _DICTIONARIES.items():
+        plans += [(name, release, way, True) for way in named]
+        plans += [
+            (name, release, "", False),
+            (name, release, "m" + name + "ed ", False),
+            (name, release, named[0] + words(25, 25) + " ", False),
+        ]
+    parts: list[str] = []
+    expected: list[tuple[int, str]] = []
+    for name, release, before, found in draw(st.permutations(plans)):
+        parts.append(words().capitalize() + " " + before)
+        if found:
+            expected.append((len("".join(parts)), name))
+        parts.append(f"{release} {words()}.{chr(10)}")
+    return "".join(parts), declared, expected
+
+
+@holds(150, _typed_releases())
+def test_a_dictionary_release_is_found_typed_where_its_name_stands_before_it(
+    planted: tuple[str, list[Value], list[tuple[int, str]]],
+) -> None:
+    """A declared dictionary's release is found typed where the dictionary is named within
+    a few words before it on its line, every way it is named. Not where nothing names it,
+    where its name is only part of a longer word, or where the name is far before it."""
+    text, declared, expected = planted
+    found = [
+        (start, value.key.removeprefix("dictionary."))
+        for start, _end, value in numbers_gate.typed_releases(text, declared)
+    ]
+    assert found == expected, text
+
+
+def _a_release_is_typed_wherever_it_stands(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(numbers_gate, "_named_in", lambda words, name: True)
+
+
+def _a_dictionary_is_named_inside_a_longer_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(
+        numbers_gate, "_named_in",
+        lambda words, name: name in re.sub(r"[^a-z0-9]+", "_", words.lower()),
+    )  # fmt: skip
+
+
+def _a_dictionary_is_named_anywhere_before_on_its_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(numbers_gate, "NAMED_WITHIN", 10**6)
+
+
 # --------------------------------------------------------------------------- Methods claims
 
 #: Every kind of paragraph the claims of `{{method.x}}` are read in. Each example holds one of
@@ -2468,6 +2543,18 @@ BROKEN = {
     "a full stop or a new paragraph is a space before a model's name": (
         _a_new_paragraph_is_a_space_before_a_models_name,
         test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a dictionary's release is typed wherever it stands, named or not": (
+        _a_release_is_typed_wherever_it_stands,
+        test_a_dictionary_release_is_found_typed_where_its_name_stands_before_it,
+    ),
+    "a dictionary is named by a longer word that holds its name": (
+        _a_dictionary_is_named_inside_a_longer_word,
+        test_a_dictionary_release_is_found_typed_where_its_name_stands_before_it,
+    ),
+    "a dictionary is named anywhere before its release on the line": (
+        _a_dictionary_is_named_anywhere_before_on_its_line,
+        test_a_dictionary_release_is_found_typed_where_its_name_stands_before_it,
     ),
     "a parameter is matched by any convention": (
         _any_convention_is_a_threshold,

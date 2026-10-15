@@ -143,6 +143,22 @@ again. That second check is the one that matters most: a parameter declared and 
 applied nowhere, prints the right number for a step the code does not take. What it cannot
 tell is whether a value that is read changes a result; that is still your reading.
 
+A coding dictionary is declared the same way, with its release: MedDRA from the
+`meddra_release.asc` of the release the analysis coded with, any other as the script states
+it. The file named is digested as an input, so a new release shows as a change.
+
+```python
+em.dictionary("MedDRA", release_file="data/MedAscii/meddra_release.asc")
+em.dictionary("WHODrug", "Global B3 March 2025")
+```
+
+```markdown
+Events were coded with MedDRA version {{results.dictionary.meddra}} and drugs with WHODrug
+{{results.dictionary.whodrug}}.
+```
+
+G2 fails a declared release typed beside the dictionary's name (`typed-dictionary-release`).
+
 ## Describing a model
 
 Record the model from its fit and declare every variable it reads, in the analysis:

@@ -635,10 +635,18 @@ def test_r_software_is_the_version_the_session_loaded(tmp_path: Path) -> None:
     [
         ('em$software("splines")', "has not loaded it"),
         ('em$parameter("Alpha", 0.05)', "lowercase letters"),
+        ('em$dictionary("WHODrug")', "give its release"),
+        ('em$dictionary("MedDRA", "27.0", release_file = "meddra_release.asc")',
+         "was given, and meddra_release.asc says 26.1"),
+        ('em$dictionary("MedDRA", release_file = "bad/meddra_release.asc")',
+         "does not open with a MedDRA version"),
     ],
 )
 def test_r_refuses_what_python_refuses(tmp_path: Path, call: str, refusal: str) -> None:
     root = _parameter_project(tmp_path)
+    (root / "meddra_release.asc").write_text("26.1$English$$$$\n", encoding="utf-8")
+    (root / "bad").mkdir()
+    (root / "bad" / "meddra_release.asc").write_text("English$26.1$\n", encoding="utf-8")
     script = root / "analysis" / "refused.R"
     script.write_text(
         f'source("{EMIT_R.as_posix()}")\nem <- mg_emitter("{script.as_posix()}")\n{call}\n',
@@ -646,6 +654,63 @@ def test_r_refuses_what_python_refuses(tmp_path: Path, call: str, refusal: str) 
     )
     out = _run_r(script, root)
     assert out.returncode != 0 and refusal in out.stderr, out.stderr
+
+
+DICTIONARIES = {
+    "R": """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$dictionary("MedDRA", release_file = "data/MedAscii/meddra_release.asc")
+em$dictionary("WHODrug", "Global  B3 March 2025")
+em$dictionary("ICD-10", "2019")
+em$write()
+""",
+    "py": """
+from manuscript_guard.emit import Emitter
+em = Emitter(__file__)
+em.dictionary("MedDRA", release_file="data/MedAscii/meddra_release.asc")
+em.dictionary("WHODrug", "Global  B3 March 2025")
+em.dictionary("ICD-10", "2019")
+em.write()
+""",
+}
+
+
+def test_r_and_python_declare_a_dictionary_alike(tmp_path: Path) -> None:
+    """The same calls give the same keys and releases, and the release file as an input."""
+    import runpy
+
+    root = _parameter_project(tmp_path)
+    folder = root / "data" / "MedAscii"
+    folder.mkdir(parents=True)
+    (folder / "meddra_release.asc").write_bytes(b"\xef\xbb\xbf26.1$English$$$$\r\n")
+    r_script = root / "analysis" / "dict_r.R"
+    r_script.write_text(
+        DICTIONARIES["R"] % {"emit": EMIT_R.as_posix(), "script": r_script.as_posix()},
+        encoding="utf-8",
+    )
+    out = _run_r(r_script, root)
+    assert out.returncode == 0, out.stderr
+    py_script = root / "analysis" / "dict_py.py"
+    py_script.write_text(DICTIONARIES["py"], encoding="utf-8")
+    runpy.run_path(str(py_script), run_name="__main__")
+
+    def read(name: str) -> tuple[dict, list]:
+        document = json.loads((root / "results" / name).read_text(encoding="utf-8"))
+        return document["values"], [i["path"] for i in document["provenance"]["inputs"]]
+
+    r_values, r_inputs = read("dict_r.json")
+    py_values, py_inputs = read("dict_py.json")
+    assert r_values == py_values
+    assert {key: value["display"] for key, value in py_values.items()} == {
+        "dictionary.meddra": "26.1",
+        "dictionary.whodrug": "Global B3 March 2025",
+        "dictionary.icd_10": "2019",
+    }
+    assert r_inputs == py_inputs == ["data/MedAscii/meddra_release.asc"]
 
 
 MODEL_R = """

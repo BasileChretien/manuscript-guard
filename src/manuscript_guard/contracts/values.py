@@ -53,7 +53,8 @@ class Value:
     # one is correct rather than a contradiction.
     level: str | None = None
     # "parameter" for a choice the analysis made (`em.parameter`), "software" for the
-    # version of what it ran on (`em.software`). Either is a thing the text states and
+    # version of what it ran on (`em.software`), "dictionary" for the release of a coding
+    # dictionary it coded with (`em.dictionary`). Each is a thing the text states and
     # would otherwise type, and G2 fails it typed where it should be bound.
     role: str | None = None
     # For a parameter, whether the script reads the value handed back; None when the

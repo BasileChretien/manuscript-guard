@@ -127,7 +127,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | Gate | Checks |
 |---|---|
 | G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since |
-| G2 | every number is classified, and every declared value is quoted |
+| G2 | every number is classified, in the manuscript and in the replies to the reviewers, and every declared value is quoted |
 | G3 | numbers in a figure's output *and in its source* trace back to results |
 | G4 | word counts, required sections and required statements match the target journal |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason |
@@ -138,7 +138,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G10 | every figure has a current review by someone who looked at it |
 | G11 | a recorded panel has reviewed the manuscript, its major findings are answered, and no reading was changed after it was sealed |
 | G12 | there was an analysis plan, and its sections say something |
-| G13 | every reviewer point is answered, and every claimed revision really happened |
+| G13 | every reviewer point is answered, every claimed revision really happened, a quoted revision is new, and nothing in a reply should not reach the journal |
 | G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, it is spelt in one English, and a P value, an interval and a percentage are each written one way (warnings only) |
 | G15 | each model is the model its variables call for: the outcome is one its kind of model is for, each variable entered as the kind it was declared, with its declared reference and levels, the fit converged with events at every level, and the Methods name the model that was fitted |
 

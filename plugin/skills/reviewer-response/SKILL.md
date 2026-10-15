@@ -1,6 +1,6 @@
 ---
 name: reviewer-response
-description: Answer a journal's reviewers point by point, with every claimed revision checked against the manuscript as it was sent. Use when a decision letter with reviewer comments arrives, before revising anything, when check reports point-unanswered, response-claims-nothing, claimed-change-did-not-happen, claimed-change-missed-the-point or anchor-unrecorded, or before resubmitting.
+description: Answer a journal's reviewers point by point, with every claimed revision checked against the manuscript as it was sent. Use when a decision letter with reviewer comments arrives, before revising anything, when check reports point-unanswered, response-claims-nothing, claimed-change-did-not-happen, claimed-change-missed-the-point, anchor-unrecorded, quoted-text-absent, quoted-text-not-new, quoted-text-elsewhere, response-placeholder, response-artefact or response-leak, or before resubmitting.
 ---
 
 # Answering the reviewers
@@ -76,8 +76,8 @@ Three traps, each silent until it is expensive:
 
 - **Quote numeric ids.** `id: 1.2` is a number, the round fails the schema, and a round that
   fails the schema has none of its points checked and fails `check` at every stage.
-- **Delete the placeholder text.** "Quote the reviewer here, in their words." is not flagged
-  by anything and is printed in the letter.
+- **Replace the placeholder text.** "Quote the reviewer here, in their words." left in a
+  `comment` is `response-placeholder`, and is printed in the letter until it is replaced.
 - **Keep the file name** `revision/round-<N>.yaml`. A `.yml` file is ignored without a word.
 
 ## 3. Answer each point
@@ -106,6 +106,24 @@ Every point needs a `response`, and then either what changed or why nothing did:
           shrinkage to address; the Discussion now says so.
 ```
 
+A response that says the text "now reads" something names it as a `text` entry, with the
+sentence as the paper prints it and, where the response says where, the section:
+
+```yaml
+        changed:
+          - kind: text
+            quote: The reporting odds ratio was {{results.ror.point}}.
+            section: Abstract                # as its heading names it
+```
+
+**Numbers in a reply are held to the results.** `response` and `rebutted` are printed in the
+letter word for word, so G2 reads them as it reads the paper: bind a result with
+`{{results.<key>}}` or `{{lit.<key>}}`, which the letter fills in, and do not type it.
+
+**Where the author still has to write something, put `[AUTHOR: what is needed]`** and
+nothing else in its place: "[AUTHOR: the new sample size]". G13 reports each one, so none
+reaches the journal. Do not invent the answer.
+
 What each kind of `changed` entry actually proves:
 
 | `kind` | `name` | Checked |
@@ -114,8 +132,9 @@ What each kind of `changed` entry actually proves:
 | `results` | `case.n_cases`, `two_by_two` | the key is emitted, not that its value changed |
 | `figure` | `forest.svg` | the file exists in `figures/`, not that it changed |
 | `analysis` | `01_model.py` | the file exists in `analysis/`, not that it changed |
+| `text` | none; `quote`, and `section` | the quote is in the manuscript as it renders now, not in the copy `respond --open` kept of what the journal received, and in the section named |
 
-So for three of the four kinds the check is weaker than the letter sounds. Make sure the
+So for three of the five kinds the check is weaker than the letter sounds. Make sure the
 change really happened, and say what it was in `note`, which is the one field written for
 the editor.
 
@@ -140,8 +159,16 @@ manuscript-guard respond --submission    # the same findings, as failures
 | `claimed-change-did-not-happen` | the named file is byte-identical to the baseline, or the key or path does not exist |
 | `claimed-change-missed-the-point` | the paragraph the reviewer commented on is unchanged, though the response says the manuscript was revised. It is found by its text, so moving it or adding paragraphs above it does not count as revising it |
 | `anchor-unrecorded` | the point names a paragraph (`where`) the round's baseline does not hold, which only a round written by hand or by an older version has. Check the paragraph yourself, then delete `where` |
+| `quoted-text-absent` | a `text` entry quotes what the manuscript does not now read |
+| `quoted-text-not-new` | the manuscript the journal received already read the quote, so nothing changed |
+| `quoted-text-elsewhere` | the quote is in the manuscript, and not in the section named |
+| `response-placeholder` | an `[AUTHOR: ...]` marker, or the template's text in a `comment` |
+| `response-artefact` | a model's markup or a placeholder (`TODO`, `[insert ...]`) in a reply |
+| `response-leak` | the tool's name, a gate with its finding code, or a place in the source files (`main.md:120`), none of which the journal should read |
 
-All five warn during the revision and fail at submission. `respond` ignores `stage:` in
+All of these warn during the revision and fail at submission. A round opened before the copy
+was kept says `quoted-text-unchecked`, a note, where a quote cannot be checked for being
+new. `respond` ignores `stage:` in
 `paper.yaml`, so pass `--submission` yourself. For `claimed-change-missed-the-point`, if
 revising somewhere else in the file really was the right answer, say so in `rebutted`.
 

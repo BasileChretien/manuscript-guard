@@ -1113,6 +1113,186 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
     assert "unemitted-table-number" in codes
 
 
+# ------------------------------------------------- the response to the reviewers
+
+
+def _round_with(root: Path, points: list[dict]) -> Path:
+    """Round 1, opened as `respond --open` opens it, with these points."""
+    from manuscript_guard.cli import main
+
+    assert main(["respond", str(root), "--open"]) == 0
+    path = root / "revision" / "round-1.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["reviewers"] = [{"id": "reviewer-1", "points": points}]
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True), "utf-8")
+    return path
+
+
+def _point(**fields) -> dict:
+    return {"id": "1.1", "comment": "Report the adjusted ratio.", **fields}
+
+
+def _g13(root: Path, *, submission: bool = True):
+    from manuscript_guard.gates import check_revision
+
+    project, _ = load_project(root)
+    return check_revision(project, submission=submission)
+
+
+def _said(report, *codes: str) -> list[tuple[str, str]]:
+    return [(f.code, f.severity) for f in report.findings if f.code in codes]
+
+
+def _in_the_discussion(root: Path, sentence: str) -> None:
+    path = main_md(root)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("# Data availability", f"{sentence}\n\n# Data availability", 1),
+                    encoding="utf-8")  # fmt: skip
+
+
+def _reply_numbers(root: Path) -> list[str]:
+    return [
+        f.message
+        for f in gate_report(root).findings
+        if f.code == "unclassified-number" and f.path and f.path.name == "round-1.yaml"
+    ]
+
+
+def test_a_result_typed_into_a_reply_fails(project: Path) -> None:
+    """Item 11: the letter prints a reply word for word, and G2 read only the manuscript."""
+    _round_with(project, [_point(
+        response="The adjusted ROR is now 2.31 (95% CI 1.40 to 3.80).",
+        rebutted="We kept 412 reports.",
+    )])  # fmt: skip
+    said = _reply_numbers(project)
+    assert any("2.31" in m and "`response`" in m for m in said), said
+    assert any("412" in m and "`rebutted`" in m for m in said), said
+    assert not any("95" in m for m in said), "a convention is not a result"
+
+
+def test_a_result_bound_in_a_reply_passes_and_is_printed(project: Path) -> None:
+    from manuscript_guard.build.submission import response_letter
+    from manuscript_guard.contracts import load_namespace
+
+    _round_with(project, [_point(
+        response="The ROR is now {{results.ror.point}} (95% CI {{results.ror.ci_low}} to "
+        "{{results.ror.ci_high}}).",
+        changed=[{"kind": "results", "name": "ror.point"}],
+    )])  # fmt: skip
+    assert _reply_numbers(project) == []
+    projekt, _ = load_project(project)
+    point = load_namespace(projekt)[0]["results.ror.point"].display
+    letter = response_letter(projekt)
+    assert f"The ROR is now {point}" in letter and "{{" not in letter
+
+
+def test_a_binding_in_a_reply_that_names_nothing_fails(project: Path) -> None:
+    _round_with(project, [_point(response="Now {{results.no_such_key}}.", rebutted="x")])
+    said = [f for f in gate_report(project).findings if f.code == "unresolved-binding"]
+    assert any("round 1" in f.message for f in said), said
+
+
+def test_a_quoted_revision_that_is_in_the_paper_and_new_passes(project: Path) -> None:
+    _round_with(project, [_point(
+        response="We now say so.",
+        changed=[{"kind": "text", "quote": "The adjusted ratio was {{results.ror.point}}.",
+                  "section": "Discussion"}],
+    )])  # fmt: skip
+    _in_the_discussion(project, "The *adjusted* ratio was\n{{results.ror.point}}.")
+    assert _said(_g13(project), "quoted-text-absent", "quoted-text-not-new",
+                 "quoted-text-elsewhere", "quoted-text-unchecked") == []  # fmt: skip
+
+
+def test_a_quoted_revision_the_paper_does_not_hold_fails(project: Path) -> None:
+    _round_with(project, [_point(
+        response="We now say so.",
+        changed=[{"kind": "text", "quote": "The adjusted ratio was reported."}],
+    )])  # fmt: skip
+    assert _said(_g13(project), "quoted-text-absent") == [("quoted-text-absent", "fail")]
+    assert _said(_g13(project, submission=False), "quoted-text-absent") == [
+        ("quoted-text-absent", "warn")
+    ]
+
+
+def test_a_quoted_revision_the_journal_already_read_fails(project: Path) -> None:
+    _in_the_discussion(project, "A sentence the journal has read.")
+    _round_with(project, [_point(
+        response="We now say so.",
+        changed=[{"kind": "text", "quote": "A sentence the journal has read."}],
+    )])  # fmt: skip
+    assert _said(_g13(project), "quoted-text-not-new") == [("quoted-text-not-new", "fail")]
+
+
+def test_a_quoted_revision_in_another_section_fails(project: Path) -> None:
+    _round_with(project, [_point(
+        response="We now say so in the Abstract.",
+        changed=[{"kind": "text", "quote": "A new sentence.", "section": "Abstract"}],
+    )])  # fmt: skip
+    _in_the_discussion(project, "A new sentence.")
+    assert _said(_g13(project), "quoted-text-elsewhere") == [("quoted-text-elsewhere", "fail")]
+
+
+def test_a_quoted_revision_in_a_round_without_a_copy_is_a_note(project: Path) -> None:
+    import shutil
+
+    _round_with(project, [_point(
+        response="We now say so.", changed=[{"kind": "text", "quote": "A new sentence."}]
+    )])  # fmt: skip
+    shutil.rmtree(project / "revision" / "round-1")
+    _in_the_discussion(project, "A new sentence.")
+    assert _said(_g13(project), "quoted-text-unchecked") == [("quoted-text-unchecked", "info")]
+
+
+@pytest.mark.parametrize(
+    ("reply", "code"),
+    [
+        ("As manuscript-guard reported, the count changed.", "response-leak"),
+        ("G13: point-unanswered was resolved.", "response-leak"),
+        ("See main.md:120 for the new text.", "response-leak"),
+        ("We add the count [AUTHOR: give the new count].", "response-placeholder"),
+        ("TODO: answer this.", "response-artefact"),
+        ("We revised it oaicite here.", "response-artefact"),
+    ],
+)
+def test_what_must_not_reach_a_journal_in_a_reply_fails(
+    project: Path, reply: str, code: str
+) -> None:
+    _round_with(project, [_point(response=reply, rebutted="No change was needed.")])
+    assert _said(_g13(project), code) == [(code, "fail")]
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Certainly, we have revised the Methods.",
+        "Cells arrested in G2/M were excluded, as the reviewer asked.",
+        "The changes are on line 120 of the revised manuscript.",
+    ],
+)
+def test_what_a_reply_may_say_passes(project: Path, reply: str) -> None:
+    _round_with(project, [_point(response=reply, rebutted="No change was needed.")])
+    report = _g13(project)
+    assert _said(report, "response-leak", "response-placeholder", "response-artefact") == []
+
+
+def test_the_templates_words_left_for_the_reviewers_fail(project: Path) -> None:
+    from manuscript_guard.gates.revision import TEMPLATE_COMMENT
+
+    _round_with(project, [{"id": "1.1", "comment": TEMPLATE_COMMENT,
+                           "response": "Done.", "rebutted": "Nothing to change."}])  # fmt: skip
+    assert _said(_g13(project), "response-placeholder") == [("response-placeholder", "fail")]
+
+
+def test_opening_a_round_keeps_the_manuscript_as_it_renders(project: Path) -> None:
+    from manuscript_guard.contracts import load_namespace
+
+    _round_with(project, [_point(response="x", rebutted="y")])
+    kept = (project / "revision" / "round-1" / "submitted" / "main.md").read_text("utf-8")
+    projekt, _ = load_project(project)
+    point = load_namespace(projekt)[0]["results.ror.point"].display
+    assert point in kept and "{{results.ror.point}}" not in kept
+
+
 # ------------------------------------------------- an interval is a declared thing
 
 

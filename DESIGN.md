@@ -3519,6 +3519,31 @@ response document prints it in the author's own words rather than inventing agre
 Severity follows the internal panel: an author part-way through a revision must still be
 able to build something to read, so ordinary work warns and a resubmission fails.
 
+**The letter is checked like the manuscript.** It goes to the journal with the paper, and
+`response` and `rebutted` were printed in it word for word: "the adjusted OR is now 2.31
+(95% CI 1.40 to 3.80)" typed into a reply went out unchecked, the core rule with a hole in a
+document we send. G2 now reads the authors' own words in each round as it reads prose, and
+a reply binds its results with `{{results.<key>}}` and `{{lit.<key>}}`, which the letter
+fills in. The reviewer's `comment` is the reviewer's, and is not read.
+
+A reply that says the text "now reads" something names it as a `text` entry in `changed`,
+with the `quote` and, where the reply says where, the `section`. Parsing "now reads" out of
+the prose was the alternative, and it would have missed every other wording. The quote is
+looked for in the manuscript as it renders now; in the section named, found by its heading;
+and not in the copy of the manuscript as the journal received it, which `respond --open`
+writes beside the round, rendered, in `revision/round-<N>/submitted/`. Digests could not
+say whether a sentence was already there. A copy, not the commit: CI clones one commit
+deep, and a round may be opened from a tree with changes not yet committed. A quote is
+compared as a sentence, not as Markdown: comments, the marks of emphasis and code, and the
+wrapping of lines are left out on both sides, and a binding in the quote is filled in.
+
+What else must not reach a journal in a reply: G6's artefacts (all but the assistant's
+register, since "Certainly, we have revised the Methods" opens many a reply); the tool's
+name; a gate with one of its finding codes; a place in the source files, `main.md:120`,
+which the journal never sees; the marker `[AUTHOR: ...]` that the `reviewer-response` skill
+writes where the author still has to supply something; and the template's own text in a
+`comment`. Each warns during the revision and fails at submission, as the rest of G13.
+
 ## Round five, and what it says about the last two days
 
 Four reviewers, all able to run their reproductions this time. The revision cycle and the
@@ -4202,19 +4227,21 @@ the campaigns are in the suite, on Hypothesis:
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
   them, the settings typed into a project, a co-author's sessions in Word, texts that
   quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds ten more, each
+  beside what an edit made of it. `tests/test_properties.py` holds twelve more, each
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
-  paper, rewordings, and ISBNs written in a field every way one holds them, and with one
-  digit changed.
+  paper, rewordings, ISBNs written in a field every way one holds them and with one digit
+  changed, bindings in a reply to a reviewer, and a sentence quoted from its hard-wrapped
+  text.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its
   sentence, the quotation check, `check --json` on a new project, and the round trip: a
   paper typed into a new project, built, edited in Word and imported. And three more: the
   order an interval's bounds are quoted in, what `reworded` makes of an edit, and the
-  sentences a co-author's items are cut into. Eighteen in all.
+  sentences a co-author's items are cut into. And two for the replies to the reviewers: what
+  G2 says of one, and the text a quote is compared in. Twenty in all.
 - `tests/test_properties.py` holds what a reading owes its input, and
   `tests/test_generated_sessions.py` what an import owes the source.
 - `tests/test_differential.py` puts each input through the base branch's source and
@@ -4264,13 +4291,14 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty-seven rules are broken in place, one at a time, and the property that is
+the generators. So fifty-nine rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10 and an ISBN's
-groups read as ISBNs;
+sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10, an ISBN's
+groups read as ISBNs, a binding in a reply read as a number and a quote looked for with its
+line breaks;
 fourteen ways `reworded` can misread an edit, from
 a number's sign taken for no part of it, and a sign of comparison taken for none, read as
 it is typed, read only hard against its number, an arrow's head or an equals sign taken
@@ -7161,6 +7189,16 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A reply is checked for what it holds, not for what it claims in prose.** A reply that
+  says the Abstract "now reads" a sentence without a `text` entry is not checked. A quote
+  is compared without Markdown's marks of emphasis and code and without its line breaks,
+  but with its punctuation and quotation marks as typed. A section is found by the words of
+  its heading, so "Discussion" is a section named "Discussion and conclusions" too, and a
+  quote in a subsection counts as in the section above it. A round opened before the copy
+  was kept says that a quote cannot be checked for being new. A place in the source files
+  is caught only as a file name with a line, `main.md:120` or `main.md line 120`; "line
+  120" alone may be the revised manuscript's, which journals ask for. A gate is caught
+  only with a finding code after it, since "G2/M" is a phase of the cell cycle.
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.
@@ -9019,7 +9057,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 60 broken rules, and the comparison on twelve
+  - The properties were seen to fail on 62 broken rules, and the comparison on twelve
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

@@ -24,7 +24,7 @@ from manuscript_guard.classify import (
     Verdict,
     declarable,
 )
-from manuscript_guard.contracts._schema import read_text
+from manuscript_guard.contracts._schema import ContractError, read_structured, read_text
 from manuscript_guard.contracts.literature import Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
@@ -294,6 +294,7 @@ def check_numbers(
         report = report.merge(_fenced_code(path, text, classifier, headings))
 
     report = report.merge(_paper_yaml_prose(project, classifier))
+    report = report.merge(_replies(project, classifier, namespace))
     report = report.merge(_emitted_tables(results, classifier))
     report = report.merge(_declared_intervals(namespace))
     report = report.merge(_unread_parameters(namespace))
@@ -448,6 +449,89 @@ def _paper_yaml_prose(project: Project, classifier: Classifier) -> Report:
                         "document's front matter, where pandoc renders it",
                     )
                 )
+    return report
+
+
+def _replies(project: Project, classifier: Classifier, namespace: dict[str, Value]) -> Report:
+    """Numbers the authors typed into their replies to the reviewers.
+
+    The point-by-point response prints each point's `response` and `rebutted` word for word,
+    and it goes to the journal with the paper. "The adjusted OR is now 2.31 (95% CI 1.40 to
+    3.80)" typed there went out unchecked, the core rule with a hole in a document we send.
+    So the authors' own words in each round are read as prose is, and bound the same way:
+    `{{results.<key>}}` and `{{lit.<key>}}` are filled in when the letter is written. The
+    reviewer's `comment` is the reviewer's, and is not read.
+    """
+    from manuscript_guard.gates.revision import rounds
+
+    report = Report()
+    for number, path in rounds(project):
+        try:
+            document = read_structured(path)
+        except ContractError:
+            continue  # G13 reports a round it cannot read, in a sentence of its own
+        for where, text in replies(document, number):
+            report = report.merge(reply_numbers(text, path, where, classifier, namespace))
+    return report
+
+
+def replies(document: object, number: int) -> list[tuple[str, str]]:
+    """Each piece of a round the authors wrote, with where it stands, read as written."""
+    found = []
+    reviewers = document.get("reviewers") if isinstance(document, dict) else None
+    for reviewer in reviewers if isinstance(reviewers, list) else []:
+        points = reviewer.get("points") if isinstance(reviewer, dict) else None
+        for point in points if isinstance(points, list) else []:
+            if not isinstance(point, dict):
+                continue
+            for field in ("response", "rebutted"):
+                text = point.get(field)
+                if isinstance(text, str) and text.strip():
+                    where = f"round {number}, {reviewer.get('id')} point {point.get('id')}"
+                    found.append((f"{where}, `{field}`", text))
+    return found
+
+
+def reply_numbers(
+    text: str, path: Path, where: str, classifier: Classifier, namespace: dict[str, Value]
+) -> Report:
+    """One reply's numbers and bindings, as a paragraph's are read."""
+    report = Report()
+    placeholders, malformed = parse(text)
+    for raw, _offset, _line in malformed:
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="malformed-placeholder",
+                message=f"{where}: {raw} is not a valid binding and will be printed literally",
+                path=path,
+                hint="the form is {{results.key}} or {{lit.key}}",
+            )
+        )
+    for placeholder in placeholders:
+        if placeholder.is_value and placeholder.ref not in namespace:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="unresolved-binding",
+                    message=f"{where}: {placeholder.raw} refers to a key that does not exist",
+                    path=path,
+                    hint=_nearest_hint(placeholder.ref, namespace),
+                )
+            )
+    for atom in find_atoms(text, mask(text)):
+        if classifier.classify(atom).kind != UNCLASSIFIED:
+            continue
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="unclassified-number",
+                message=f"{where}: {atom.text!r} is not bound to any source",
+                path=path,
+                context=atom.line_text.strip()[:160],
+                hint=_hint_for(atom) + " The letter fills a binding in as the paper does.",
+            )
+        )
     return report
 
 

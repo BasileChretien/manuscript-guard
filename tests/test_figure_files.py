@@ -79,8 +79,10 @@ def test_a_raster_is_read_from_its_header(tmp_path: Path, data: bytes, expected:
 
 @pytest.mark.parametrize(
     "data",
-    [b"", b"<svg/>", b"%PDF-1.7", b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"II*\x00\x08"],
-    ids=["empty", "svg", "pdf", "png cut short", "jpeg cut short", "tiff cut short"],
+    [b"", b"<svg/>", b"%PDF-1.7", b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"II*\x00\x08",
+     png(0, 600, 300), tiff(3000, 0, 600, 2)],  # fmt: skip
+    ids=["empty", "svg", "pdf", "png cut short", "jpeg cut short", "tiff cut short",
+         "png of no width", "tiff of no height"],  # fmt: skip
 )
 def test_what_is_not_a_whole_raster_header_is_none(tmp_path: Path, data: bytes) -> None:
     path = tmp_path / "figure"

@@ -2142,6 +2142,8 @@ def _artwork_said(root: Path, side: dict | None = None, **rules) -> list[tuple[s
          {"kind": "line_art"}, [("figure-resolution", "warn")]),
         ({"formats": ["tiff", "eps"]}, None, [("figure-format", "warn")]),
         ({"formats": ["tiff", "png"]}, None, []),
+        # Round 1 of #291: a journal writes "jpg" or "tif" as often as "jpeg" or "tiff".
+        ({"formats": ["tif", "jpg"]}, None, [("figure-format", "warn")]),
         ({"max_file_mb": 0.005}, None, [("figure-file-size", "warn")] * 2),
         # 89 mm wide, 660 / 1950 of that high: 30 mm.
         ({"max_height_mm": 20, "widths_mm": [89]}, None, [("figure-height", "warn")]),
@@ -2158,6 +2160,21 @@ def test_a_figure_file_the_journal_would_refuse_is_a_warning(
     """Item 17: resolution, format, size and height were free text in a profile's notes,
     and the first anyone heard of them was the portal refusing the upload."""
     assert _artwork_said(project, side, **rules) == said
+
+
+@pytest.mark.parametrize("written", ["tif", "TIF", "tiff"])
+def test_a_tiff_is_taken_however_the_journal_writes_it(project: Path, written: str) -> None:
+    """Round 1 of #291: "tif" in a profile matched no file, and the message said the TIFF
+    was a format the journal does not take."""
+    shutil.copy(project / "figures" / "forest.png", project / "figures" / "forest.tif")
+    assert _artwork_said(project, formats=[written.lower(), "eps"]) == []
+
+
+def test_a_resolution_just_under_its_minimum_is_printed_as_it_is(project: Path) -> None:
+    """Round 1 of #291: 299.7 dpi was printed "300 dpi", beside a minimum of 300."""
+    _artwork_said(project, {"print_width_mm": 165.27}, min_dpi={"halftone": 300})
+    found = [f for f in _journal(project).findings if f.code == "figure-resolution"]
+    assert len(found) == 1 and "at 299.7 dpi" in found[0].message, found
 
 
 def test_a_supplementary_figure_is_held_to_the_supplement_s_rules(project: Path) -> None:

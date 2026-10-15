@@ -57,6 +57,8 @@ FORMATS = {
     ".eps": "eps", ".pdf": "pdf", ".svg": "svg",
 }  # fmt: skip
 _RASTERS = {"png", "jpeg", "tiff"}
+#: How a journal may write a format, against the name it is known by here.
+_SPELLED = {"tif": "tiff", "jpg": "jpeg"}
 #: A legend: the paragraph after a figure that opens with its label, bold or not.
 _LEGEND = re.compile(r"^\s*(?:\*\*|__)?\s*(?:Figure|Fig\.)\s*S?\d+", re.IGNORECASE)
 
@@ -78,14 +80,20 @@ def raster_of(path: Path) -> Raster | None:
         return None
     try:
         if data.startswith(b"\x89PNG\r\n\x1a\n"):
-            return _png(data)
-        if data.startswith(b"\xff\xd8"):
-            return _jpeg(data)
-        if data[:4] in (b"II*\x00", b"MM\x00*"):
-            return _tiff(data)
+            found = _png(data)
+        elif data.startswith(b"\xff\xd8"):
+            found = _jpeg(data)
+        elif data[:4] in (b"II*\x00", b"MM\x00*"):
+            found = _tiff(data)
+        else:
+            return None
     except (struct.error, IndexError, ValueError, ZeroDivisionError):
         return None
-    return None
+    # A header that records no pixels is a damaged file, not a figure of no size (round 1
+    # of #291: its height divided by its width stopped `check`).
+    if found is None or found.width <= 0 or found.height <= 0:
+        return None
+    return found
 
 
 def _png(data: bytes) -> Raster:
@@ -207,17 +215,18 @@ def _finding(code: str, message: str, path: Path, hint: str) -> Finding:
 
 
 def _format(name: str, files: list[Path], rules: dict, profile_path: Path) -> list[Finding]:
-    accepted = [str(f).lower().lstrip(".") for f in rules.get("formats") or ()]
-    if not accepted:
+    written = [str(f).lower().lstrip(".") for f in rules.get("formats") or ()]
+    if not written:
         return []
+    accepted = {_SPELLED.get(f, f) for f in written}
     formats = {FORMATS[path.suffix.lower()] for path in files}
-    if formats & {"jpg" if f == "jpeg" else f for f in accepted} | formats & set(accepted):
+    if formats & accepted:
         return []
     return [
         _finding(
             "figure-format",
             f"figure {name!r} is in {', '.join(sorted(formats))}, and the journal takes "
-            f"{', '.join(accepted)}",
+            f"{', '.join(written)}",
             files[0],
             f"save it from its script in one of these as well; the journal's rules are in "
             f"{profile_path.name}",
@@ -257,7 +266,7 @@ def _file(path: Path, rules: dict, side: dict, supplementary: bool, profile_path
         findings.append(
             _finding(
                 "figure-resolution",
-                f"{path.name} prints {where} at {dpi:.0f} dpi, and a {kind.replace('_', ' ')} "
+                f"{path.name} prints {where} at {dpi:.1f} dpi, and a {kind.replace('_', ' ')} "
                 f"figure needs {needed:g}",
                 path,
                 f"render it with more pixels ({needed:g} dpi at the width it prints), or give "
@@ -269,7 +278,7 @@ def _file(path: Path, rules: dict, side: dict, supplementary: bool, profile_path
         findings.append(
             _finding(
                 "figure-resolution",
-                f"{path.name} prints {where} at {dpi:.0f} dpi, and the journal takes no more "
+                f"{path.name} prints {where} at {dpi:.1f} dpi, and the journal takes no more "
                 f"than {most:g}{' for a supplementary figure' if supplementary else ''}",
                 path,
                 f"render it at {most:g} dpi at the width it prints",

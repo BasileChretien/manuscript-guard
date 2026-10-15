@@ -352,6 +352,7 @@ everywhere.
 | [Auditing a paper you already wrote](docs/audit.md) | one command for a manuscript with no bindings, and how little a match means |
 | [DESIGN.md](DESIGN.md) | the architecture, the reasons for its decisions, and the known gaps |
 | [ATTRIBUTION.md](ATTRIBUTION.md) | the reporting guidelines' licences, and the one data file derived from another work |
+| [SECURITY.md](SECURITY.md) | reporting a vulnerability, and what is in scope |
 
 ## Status
 

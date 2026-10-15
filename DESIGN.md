@@ -2041,9 +2041,12 @@ did the journal actually get" has no reliable answer otherwise.
 
 The abstract goes in as `abstract.txt` as well, for the box every submission system has for
 it: the section headed "Abstract" with every binding filled in by the value the build
-prints, as pandoc writes plain text, a citation formatted from `references.bib` and no list
-of references. Pasted from the .docx, it carried whatever Word and the clipboard made of
-its emphasis and its line breaks; this is the checked numbers and nothing else.
+prints, as pandoc writes plain text, up to its keywords. Pasted from the .docx, it carried
+whatever Word and the clipboard made of its emphasis and its line breaks; this is the
+checked numbers and nothing else. An abstract that cites, or holds a footnote, a table or
+a figure, gets no `abstract.txt`, and `submit` says so: the build formats a citation in the
+journal's style, or as a live Zotero field, and plain text written another way would not be
+what the document says.
 
 The pack refuses to assemble while `check --submission` fails. That is what the check is
 for.

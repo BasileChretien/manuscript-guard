@@ -201,7 +201,7 @@ def test_a_structured_abstract_keeps_its_headings_as_lines(project: Path) -> Non
         text.replace("**Background.** Drug-induced", "## Background\n\nDrug-induced", 1),
         encoding="utf-8",
     )
-    plain = abstract_text(load_project(project)[0])
+    plain, _why = abstract_text(load_project(project)[0])
     assert plain.startswith("Background\n\nDrug-induced hepatic injury"), plain
 
 
@@ -213,7 +213,48 @@ def test_a_paper_with_no_abstract_section_gets_no_abstract_file(project: Path) -
         main.read_text(encoding="utf-8").replace("# Abstract\n", "# Overview\n", 1),
         encoding="utf-8",
     )
-    assert abstract_text(load_project(project)[0]) is None
+    assert abstract_text(load_project(project)[0]) == (None, None)
+
+
+@pytest.mark.parametrize(
+    "added",
+    ["as reported [@fictionalHepaticCohort2021].", "as @fictionalHepaticCohort2021 found.",
+     "as noted.[^a]\n\n[^a]: A note.", "as {{table.baseline}} shows."],
+)  # fmt: skip
+def test_an_abstract_the_build_formats_and_plain_text_cannot_is_left_out(
+    project: Path, added: str
+) -> None:
+    """Round 1 of #259: a citation came out as the bare key, or in another style than the
+    document's, and a footnote as its marker. Left out, and said."""
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "cannot establish risk.", f"cannot establish risk, {added}", 1
+        ),
+        encoding="utf-8",
+    )
+    plain, why = abstract_text(load_project(project)[0])
+    assert plain is None and "abstract.txt is not written" in why
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "keywords", ["## Keywords\n\nhepatotoxicity", "**Keywords:** hepatotoxicity"]
+)
+def test_the_abstract_s_keywords_are_not_its_text(project: Path, keywords: str) -> None:
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "cannot establish risk.\n", f"cannot establish risk.\n\n{keywords}\n", 1
+        ),
+        encoding="utf-8",
+    )
+    plain, _why = abstract_text(load_project(project)[0])
+    assert "hepatotoxicity" not in plain and plain.rstrip().endswith("cannot establish risk.")
 
 
 def test_the_pack_offers_a_checklist_a_journal_can_read(project: Path) -> None:

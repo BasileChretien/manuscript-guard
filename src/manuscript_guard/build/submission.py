@@ -20,6 +20,7 @@ the check.
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 from dataclasses import dataclass
 from datetime import date
@@ -57,6 +58,8 @@ class Pack:
     directory: Path
     files: tuple[Path, ...]
     manifest: Path
+    #: What the pack left out, and why: said by `submit` with the list of files.
+    notes: tuple[str, ...] = ()
 
 
 def _initials(author: dict) -> str:
@@ -412,10 +415,23 @@ def abstract_source(project: Project) -> str | None:
     return section.enclosed if section is not None and section.enclosed.strip() else None
 
 
-def abstract_text(project: Project) -> str | None:
-    """The abstract for a submission portal's box: every binding filled in with the value
-    the build prints, and no Markdown, as pandoc writes plain text. A citation is
-    formatted from `references.bib` where there is one, with no list of references."""
+#: What the build makes of an abstract and plain text cannot: a citation, in the journal's
+#: style or as a live Zotero field; a footnote; a table or a figure.
+_NOT_PLAIN = re.compile(
+    r"\[[^\]\n]*@[\w:.#$%&+?<>~/-]|(?<![\w@])@\w|\[\^|\{\{\s*(?:table|figure)\."
+)
+#: Where an abstract's keywords begin: a heading or a paragraph that opens with the word.
+_KEYWORDS = re.compile(
+    r"^[^\S\n]*(?:#+[^\S\n]*)?(?:\*\*|__)?key[^\S\n]?words\b", re.IGNORECASE | re.MULTILINE
+)
+
+
+def abstract_text(project: Project) -> tuple[str | None, str | None]:
+    """The abstract for a submission portal's box, and why there is none where there is
+    none: every binding filled in with the value the build prints, and no Markdown, as
+    pandoc writes plain text, its keywords left out. An abstract that cites, or holds a
+    footnote or a table or figure, is left out rather than written differently from the
+    document: its citations are the build's to format, in the journal's style."""
     import subprocess
 
     from manuscript_guard.build.document import BuildError, pandoc
@@ -423,15 +439,21 @@ def abstract_text(project: Project) -> str | None:
     from manuscript_guard.text.placeholders import substitute
 
     source = abstract_source(project)
-    if source is None or shutil.which("pandoc") is None:
-        # Without pandoc there is no document to submit either; `submit` builds it first.
-        return None
+    if source is None:
+        return None, None
+    keywords = _KEYWORDS.search(source)
+    source = source[: keywords.start()] if keywords else source
+    if _NOT_PLAIN.search(source):
+        return None, (
+            "abstract.txt is not written: the abstract cites, or holds a footnote, a table "
+            "or a figure, which the build formats and plain text cannot; copy it from the "
+            "document"
+        )
+    if shutil.which("pandoc") is None:
+        return None, "abstract.txt is not written: pandoc is not on PATH"
     namespace = load_namespace(project)[0]
     filled = substitute(source, {ref: value.display for ref, value in namespace.items()})
     command = [pandoc(), "-f", "markdown", "-t", "plain", "--wrap=none"]
-    bib = project.path("literature") / "references.bib"
-    if bib.is_file():
-        command += ["--citeproc", "--bibliography", str(bib), "-M", "suppress-bibliography=true"]
     try:
         finished = subprocess.run(
             command, input=filled, capture_output=True, text=True, encoding="utf-8",
@@ -441,7 +463,7 @@ def abstract_text(project: Project) -> str | None:
         raise BuildError(f"pandoc gave no plain abstract within {PANDOC_SECONDS} s") from None
     if finished.returncode != 0:
         raise BuildError(f"pandoc could not write the abstract as text:\n{finished.stderr}")
-    return finished.stdout.strip() + "\n"
+    return finished.stdout.strip() + "\n", None
 
 
 def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> Pack:
@@ -455,6 +477,8 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
     """
     from manuscript_guard.gates.numbers import is_supplementary, source_files
 
+    # Before the old pack is taken away: a pandoc that fails here leaves it as it was.
+    abstract, left_out = abstract_text(project)
     directory = project.path("build") / "submission"
     # The pack is made afresh, and a document inside it, a co-author's edited copy passed as
     # `--document build/submission/manuscript.docx`, was deleted before it was copied.
@@ -484,7 +508,7 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
         ("response-to-reviewers.md", response_letter(project)),
         # For the portal's abstract box: pasted from the .docx it carries whatever Word
         # and the clipboard make of it; this is the checked numbers and nothing else.
-        ("abstract.txt", abstract_text(project)),
+        ("abstract.txt", abstract),
     ]
     for name, text in generated:
         if text is None:
@@ -537,7 +561,8 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
                 files.append(target)
 
     manifest = _write_manifest(project, directory, files, checked=checked)
-    return Pack(directory=directory, files=tuple(files), manifest=manifest)
+    notes = (left_out,) if left_out else ()
+    return Pack(directory=directory, files=tuple(files), manifest=manifest, notes=notes)
 
 
 def _write_manifest(

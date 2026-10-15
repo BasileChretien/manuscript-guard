@@ -410,9 +410,12 @@ PANDOC_SECONDS = 60
 #: a table, a link with words of its own, is formatted by the build, and plain text written
 #: another way would not be what the document prints.
 _PLAIN_INLINES = frozenset({
-    "Str", "Space", "SoftBreak", "LineBreak", "Emph", "Strong", "Underline", "Strikeout",
+    "Str", "Space", "SoftBreak", "LineBreak", "Emph", "Strong", "Underline",
     "Superscript", "Subscript", "SmallCaps", "Span", "Quoted",
 })  # fmt: skip
+#: What a sub- or superscript may hold for the plain writer to print it as one in Unicode;
+#: anything else it writes as `_(max)`, and it is written as its letters instead ("Cmax").
+_SCRIPTABLE = re.compile(r"[0-9+\-=() ]*")
 _PLAIN_BLOCKS = frozenset({"Para", "Plain", "Header"})
 #: A table or a figure placed by its binding, which `substitute` leaves as it is written.
 _DISPLAY = re.compile(r"\{\{\s*(?:table|figure)\.")
@@ -480,6 +483,26 @@ def _plain(node: object) -> bool:
     return False
 
 
+def _unscripted(node: object) -> object:
+    """The tree with each sub- or superscript the plain writer cannot print as one written
+    as its own words: `C~max~` as "Cmax", `2^nd^` as "2nd"."""
+    if isinstance(node, dict):
+        return {key: _unscripted(value) for key, value in node.items()}
+    if not isinstance(node, list):
+        return node
+    out: list = []
+    for item in node:
+        if (
+            isinstance(item, dict)
+            and item.get("t") in ("Subscript", "Superscript")
+            and not _SCRIPTABLE.fullmatch(_text(item["c"]))
+        ):
+            out.extend(_unscripted(item["c"]))
+        else:
+            out.append(_unscripted(item))
+    return out
+
+
 def _abstract_blocks(blocks: list) -> list | None:
     """The blocks under the main text's heading "Abstract", up to the next heading of its
     level or above, or None where no heading names it."""
@@ -525,16 +548,20 @@ def abstract_text(project: Project) -> tuple[str | None, str | None]:
     from manuscript_guard.contracts import load_namespace
     from manuscript_guard.gates.journal import main_text
     from manuscript_guard.text.placeholders import substitute
+    from manuscript_guard.text.sections import split_sections
 
+    text = main_text(project)
+    if not any(section.is_abstract for section in split_sections(text)):
+        return None, None
     if shutil.which("pandoc") is None:
         return None, _LEFT_OUT + "pandoc is not on PATH"
     namespace = load_namespace(project)[0]
-    filled = substitute(main_text(project), {ref: v.display for ref, v in namespace.items()})
+    filled = substitute(text, {ref: v.display for ref, v in namespace.items()})
     document = json.loads(_pandoc("-f", "markdown", "-t", "json", given=filled))
     blocks = _abstract_blocks(document["blocks"])
     if not blocks:
         return None, None
-    blocks = _until_keywords(blocks)
+    blocks = _unscripted(_until_keywords(blocks))
     said = _text(blocks)
     if not _plain(blocks) or _DISPLAY.search(said):
         return None, _LEFT_OUT + (
@@ -549,7 +576,7 @@ def abstract_text(project: Project) -> tuple[str | None, str | None]:
         )
     document["blocks"] = blocks
     plain = _pandoc("-f", "json", "-t", "plain", "--wrap=none", given=json.dumps(document))
-    return plain.strip() + "\n", None
+    return (plain.strip() + "\n", None) if plain.strip() else (None, None)
 
 
 def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> Pack:

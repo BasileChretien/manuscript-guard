@@ -224,7 +224,9 @@ def test_a_paper_with_no_abstract_section_gets_no_abstract_file(project: Path) -
      # round 2 of #259: a braced key, an inline note, an image
      "as reported [@{10.1000/xyz}].", "as noted.^[A note.]", "\n\n![Flow](figures/flow.png)",
      # round 3: a link with words of its own, a block that is no paragraph
-     "as [the trial](https://example.org) says.", "\n\n::: {.keywords}\nKeywords: x\n:::"],
+     "as [the trial](https://example.org) says.", "\n\n::: {.keywords}\nKeywords: x\n:::",
+     # round 4: words struck out
+     "as ~~not~~ shown."],
 )  # fmt: skip
 def test_an_abstract_the_build_formats_and_plain_text_cannot_is_left_out(
     project: Path, added: str
@@ -242,6 +244,23 @@ def test_an_abstract_the_build_formats_and_plain_text_cannot_is_left_out(
     )
     plain, why = abstract_text(load_project(project)[0])
     assert plain is None and "abstract.txt is not written" in why
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_sub_or_superscript_is_written_as_the_plain_writer_can(project: Path) -> None:
+    """Round 4 of #259: `C~max~` came out as `C_(max)`. Digits keep their Unicode form;
+    letters are written as they are."""
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "cannot establish risk.", "cannot establish risk. C~max~ in the 2^nd^ H~2~O.", 1
+        ),
+        encoding="utf-8",
+    )
+    plain, why = abstract_text(load_project(project)[0])
+    assert why is None and "Cmax in the 2nd H\N{SUBSCRIPT TWO}O." in plain, plain
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

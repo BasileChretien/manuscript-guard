@@ -650,6 +650,12 @@ whole chain from manuscript to published sentence without anyone re-reading the 
    offered as evidence for is not evidence for it. In practice this catches quoting the
    sentence next to the one wanted.
 
+Both pass a quote that is the value and nothing else: "2.6" is in the source and in itself,
+and proves only that those digits are somewhere in the paper. So G7 warns
+(`quote-too-short`) where a verified quote holds fewer than four words once the value is taken
+out of it, a word being a run between spaces with a letter in it ("COVID-19" is one, "95%"
+and "2.1-3.2" are not). The value stays verified.
+
 Comparison folds the differences that are not differences: curly quotes, dash widths,
 ligatures, non-breaking spaces and line wrapping all differ between a quote copied from a
 rendered page and the same sentence extracted from a PDF, and none of them change what was
@@ -7258,6 +7264,9 @@ Closed since, and why each mattered:
   the Methods as the printed "Results" does. In a file
   with CRLF line endings the gates now see setext headings, which the scan before the walk
   did not, and with them the list-heading gaps above.
+- **A quote is long enough by its count of words, not by what they say.** "the value was
+  2.6 in this study" holds six words and says nothing of what was measured; "ROR 2.6"
+  holds one and names the measure. Four is a rule of thumb, not a measurement.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no

@@ -1693,6 +1693,43 @@ def _held_to_its_edit(drawn: tuple[str, str, str, list[str], int]) -> None:
         assert by_code["fact-new"].line == line, (before, after, said)
 
 
+# ------------------------------------------------------------ the words beside a quoted value
+
+#: A value a ledger records, as its display is written, one of each kind: a decimal, a whole
+#: number, a value with words inside it, and one with letters.
+_LEDGER_VALUES = ("2.6", "14", "1 in 4", "IgG4")
+#: What stands in a quote and is no word, and words that hold a digit, which are.
+_NO_WORDS = ("95%", "2.1-3.2", "(", ")", "3.84", "-", "\N{EN DASH}", "12/40", "100 000")
+_DIGIT_WORDS = ("COVID-19", "CYP3A4", "HbA1c", "person-years.")
+_QUOTE_GAPS = (" ", "  ", "\n", ", ", "; ", " (", ") ", "\N{NO-BREAK SPACE}")
+
+
+@st.composite
+def _quotes_beside(draw: st.DrawFn) -> list[tuple[str, str, int]]:
+    """A quote for each kind of value, of filler words, words with a digit and pieces with
+    no letter, in an order drawn each time, with the value among them, and how many words
+    stand beside it."""
+    quotes = []
+    for value in _LEDGER_VALUES:
+        words = draw(st.lists(st.sampled_from(FILLER), max_size=6))
+        pieces = draw(st.permutations([*words, *_DIGIT_WORDS, *_NO_WORDS, value]))
+        gaps = [draw(st.sampled_from(_QUOTE_GAPS)) for _ in pieces]
+        quote = "".join(gap + piece for gap, piece in zip(gaps, pieces, strict=True))
+        quotes.append((quote, value, len(words) + len(_DIGIT_WORDS)))
+    return quotes
+
+
+@holds(150, _quotes_beside())
+def test_the_words_beside_a_quoted_value_are_its_words_and_no_more(
+    quotes: list[tuple[str, str, int]],
+) -> None:
+    """A word is a run between spaces that holds a letter, a digit in it or not; the value is
+    taken out first, so "1 in 4" counts no "in"; and a percentage, an interval, a bracket or
+    a number alone is no word."""
+    for quote, value, count in quotes:
+        assert len(literature_sources.words_beside(quote, value)) == count, (quote, value)
+
+
 # -------------------------------------------------------------------------------- quotations
 
 
@@ -2260,6 +2297,20 @@ def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
 
 
+def _a_word_with_a_digit_is_no_word(patch: pytest.MonkeyPatch) -> None:
+    real = literature_sources.words_beside
+    patch.setattr(
+        literature_sources,
+        "words_beside",
+        lambda quote, display: [w for w in real(quote, display) if not any(c.isdigit() for c in w)],
+    )
+
+
+def _the_value_is_left_in_the_quote(patch: pytest.MonkeyPatch) -> None:
+    real = literature_sources.words_beside
+    patch.setattr(literature_sources, "words_beside", lambda quote, display: real(quote, ""))
+
+
 def _an_anchor_in_a_comment_is_an_anchor(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(placeholders, "_without_comments", lambda text: text)
 
@@ -2325,6 +2376,14 @@ BROKEN = {
     "a claim keeps its line breaks": (
         _a_claim_keeps_its_line_breaks,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a word with a digit in it is no word": (
+        _a_word_with_a_digit_is_no_word,
+        test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
+    ),
+    "the value is left in the quote": (
+        _the_value_is_left_in_the_quote,
+        test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
     ),
     "an anchor in a comment is an anchor": (
         _an_anchor_in_a_comment_is_an_anchor,

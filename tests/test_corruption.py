@@ -1969,6 +1969,33 @@ def test_every_literature_value_ends_in_one_verdict(
         assert code in codes(report), report.render(project)
 
 
+@pytest.mark.parametrize(
+    ("quote", "short"),
+    [
+        ("A signal was detected for the class as a whole (ROR 2.6, 95% CI 2.1-3.2).", False),
+        ("the class as a whole (ROR 2.6", False),
+        ("whole (ROR 2.6", True),
+        ("ROR 2.6", True),
+        ("2.6", True),
+    ],
+)
+def test_a_quote_that_holds_little_more_than_its_value_is_said(
+    project: Path, quote: str, short: bool
+) -> None:
+    """G7 holds the quote to the source and the value to the quote, so "2.6" quoted alone
+    passed both: it proves only that those digits are somewhere in the source. A quote with
+    fewer than four words beside its value is said; the value is still verified."""
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    entry = next(e for e in document["entries"] if e.get("display") == "2.6")
+    entry["quote"] = quote
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = _literature_report(project)
+    said = [f for f in report.findings if f.code == "quote-too-short"]
+    assert [f.severity for f in said] == (["warn"] if short else []), report.render(project)
+    assert report.counts["literature_verified"] == 2
+
+
 # --------------------------------------------------------------------- the journal gate
 # A journal's limits, sections and statements are about the document the editor receives,
 # and the build strips every file's front matter before printing it.

@@ -1675,7 +1675,7 @@ def test_a_value_is_stated_whole_or_not_at_all(drawn: tuple[str, str]) -> None:
 #: its first and last code points among them.
 _FOREIGN = {
     "Han": ("\N{CJK UNIFIED IDEOGRAPH-7ED3}", "\N{CJK UNIFIED IDEOGRAPH-3400}",
-            "\N{CJK UNIFIED IDEOGRAPH-9FFF}", "\N{CJK COMPATIBILITY IDEOGRAPH-F900}"),
+            chr(0x9FFF), "\N{CJK COMPATIBILITY IDEOGRAPH-F900}"),
     "Hiragana": ("\N{HIRAGANA LETTER A}", "\N{HIRAGANA LETTER SMALL A}",
                  "\N{HIRAGANA DIGRAPH YORI}"),
     "Katakana": ("\N{KATAKANA LETTER A}", "\N{KATAKANA LETTER SMALL KU}",

@@ -1929,6 +1929,118 @@ def _g7(root: Path):
     return check_citations(project, literature)
 
 
+# The identifiers of `references.bib` and the fields each entry needs, read offline: nothing
+# read them, so a mistyped DOI or an article with no journal reached the reference list.
+
+
+def _bib_field(root: Path, field: str, value: str | None) -> None:
+    """Set, or with None take out, one field of the example's first reference."""
+    bib = root / "literature" / "references.bib"
+    text = bib.read_text(encoding="utf-8")
+    head, rest = text.split("@article{fictionalHepaticCohort2021,\n", 1)
+    entry, tail = rest.split("\n}\n", 1)
+    lines = [line for line in entry.split("\n") if not line.strip().startswith(f"{field} ")]
+    if value is not None:
+        lines.insert(0, f"  {field} = {{{value}}},")
+    bib.write_text(
+        head + "@article{fictionalHepaticCohort2021,\n" + "\n".join(lines) + "\n}\n" + tail,
+        encoding="utf-8",
+    )
+
+
+def _bib_findings(root: Path) -> list[tuple[str, str]]:
+    return [
+        (f.code, f.message)
+        for f in _g7(root).findings
+        if f.code in ("identifier-malformed", "reference-field-missing")
+    ]
+
+
+def test_the_example_s_references_are_well_formed(project: Path) -> None:
+    assert _bib_findings(project) == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "said"),
+    [
+        ("doi", "10.1000", "the DOI '10.1000'"),
+        ("doi", "1016/j.example.2021.01.001", "the DOI '1016/j.example.2021.01.001'"),
+        ("doi", "10.1016/j example", "the DOI '10.1016/j example'"),
+        ("pmid", "PMID: 12345678", "the PMID 'PMID: 12345678'"),
+        ("pmcid", "1234567", "the PMCID '1234567'"),
+        ("isbn", "978-0-306-40615-8", "the ISBN '978-0-306-40615-8'"),
+        ("isbn", "0-306-40615-3", "the ISBN '0-306-40615-3'"),
+        ("journal", None, "an @article entry needs its journal or journaltitle"),
+        ("year", None, "an @article entry needs its year or date"),
+    ],
+)
+def test_a_malformed_identifier_or_a_missing_field_is_said(
+    project: Path, field: str, value: str | None, said: str
+) -> None:
+    _bib_field(project, field, value)
+    found = _bib_findings(project)
+    assert len(found) == 1 and said in found[0][1], found
+
+
+def test_a_malformed_identifier_fails_from_internal_review(project: Path) -> None:
+    """Deferred while drafting, when an entry may be a placeholder, and a failure once the
+    reference list is printed for others to read."""
+    from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
+
+    _bib_field(project, "doi", "1016/j.example.2021.01.001")
+    _bib_field(project, "journal", None)
+    report = _g7(project)
+    codes = {"identifier-malformed", "reference-field-missing"}
+    drafting, deferred = apply_stage(report, DRAFTING)
+    assert not [f for f in drafting.failures if f.code in codes]
+    assert deferred.get(INTERNAL_REVIEW, 0) >= 2
+    reviewed, _ = apply_stage(report, INTERNAL_REVIEW)
+    assert {f.code for f in reviewed.failures} >= codes
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("doi", "10.1016/j.example.2021.01.001"),
+        ("doi", "https://doi.org/10.1016/j.example.2021.01.001"),
+        ("doi", "doi:10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E"),
+        ("pmid", "12345678"),
+        ("pmcid", "PMC1234567"),
+        ("isbn", "978-0-306-40615-7"),
+        ("isbn", "0-8044-2957-X"),
+        # round 1 of #249: groups parted by spaces, a label, two in one field
+        ("isbn", "978 0 306 40615 7"),
+        ("isbn", "ISBN 978-0-306-40615-7"),
+        ("isbn", "0306406152 9780306406157"),
+        ("year", None),  # a `date` in its place, as BibLaTeX writes it
+    ],
+)
+def test_a_well_formed_identifier_or_a_field_s_other_name_passes(
+    project: Path, field: str, value: str | None
+) -> None:
+    _bib_field(project, field, value)
+    if field == "year":
+        _bib_field(project, "date", "2021-03-01")
+    assert _bib_findings(project) == []
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        # round 1 of #249: complete in BibLaTeX, which `sync-bib` writes, and short of a
+        # field only BibTeX's styles ask for
+        {"type": "unpublished", "author": "A", "title": "T", "date": "2024"},
+        {"type": "book", "author": "A", "title": "T", "year": "2020"},
+        {"type": "incollection", "author": "A", "title": "T", "booktitle": "B", "date": "2020"},
+        {"type": "inbook", "author": "A", "title": "T", "booktitle": "B", "year": "2020"},
+    ],
+)
+def test_an_entry_complete_in_either_format_needs_no_other_field(fields: dict) -> None:
+    from manuscript_guard.gates.identifiers import problems
+
+    assert problems("k", fields) == []
+
+
 def _zotero(monkeypatch, items: list[dict]) -> None:
     from test_zotero import FakeBBT
 

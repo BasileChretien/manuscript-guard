@@ -1916,7 +1916,9 @@ _QUOTE_WORDS = (
 #: What a quote's word was retyped as.
 _RETYPED = ("kidney", "cardiac", "monthly", "severe")
 #: Each way a source holds a quote nearly.
-_NEARLY = ("numbers", "words", "split", "symbol", "retyped", "first retyped", "too far")
+_NEARLY = (
+    "numbers", "words", "header", "split", "symbol", "retyped", "first retyped", "too far",
+)  # fmt: skip
 
 
 @st.composite
@@ -1952,6 +1954,13 @@ def _nearly_quoted(draw: st.DrawFn) -> list[tuple[str, str, str, tuple[Any, ...]
             between = " ".join(filler(*((1, 4) if kind == "words" else (GAP + 1, GAP + 3))))
             joins[at] = draw(st.sampled_from((" ", "\n"))) + between + " "
             expected = (between, words[at], words[at + 1])
+        elif kind == "header":
+            # A header that holds the quote's next word, which is not its last: one
+            # interruption, and the word in it is not the quote's (round 1 of #301).
+            at = which = min(at, n - 3)
+            between = " ".join([*filler(1, 3), words[at + 1], *filler(1, 3)])
+            joins[at] = draw(st.sampled_from((" ", "\n"))) + between + " "
+            expected = (between, words[at], words[at + 1])
         elif kind == "split":
             which = draw(st.sampled_from([i for i, w in enumerate(words) if len(w) >= 4]))
             cut = draw(st.integers(2, len(words[which]) - 2))
@@ -1977,9 +1986,9 @@ def _nearly_quoted(draw: st.DrawFn) -> list[tuple[str, str, str, tuple[Any, ...]
         offset = len(before) + sum(
             len(w) + len(j) for w, j in zip(held[:which], joins[:which], strict=True)
         )
-        if kind in ("numbers", "words", "too far", "symbol"):
+        if kind in ("numbers", "words", "header", "too far", "symbol"):
             offset += len(held[at])
-        if kind in ("numbers", "words", "too far"):
+        if kind in ("numbers", "words", "header", "too far"):
             offset += len(joins[at]) - len(joins[at].lstrip())
         cases.append((source, quote, kind, (*expected, source.count("\n", 0, offset) + 1)))
     return cases
@@ -2002,7 +2011,7 @@ def test_a_quote_its_source_nearly_holds_is_said_to_and_where(
         assert placement is not None, (kind, source, quote)
         told = said(placement)
         line = expected[-1]
-        if kind in ("numbers", "words"):
+        if kind in ("numbers", "words", "header"):
             between, before, after = expected[:3]
             shown = f"the source has '{between}' between '{before}' and '{after}' (line {line})"
             assert shown in told, (kind, told, source)
@@ -2055,6 +2064,31 @@ def _a_source_s_lines_are_counted_from_0(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.literature import placement
 
     patch.setattr(placement, "_line", lambda source, at: source.count("\n", 0, at))
+
+
+def _each_word_is_found_where_it_first_is(patch: pytest.MonkeyPatch) -> None:
+    """The reading as it was before round 1 of #301: each word at its first occurrence."""
+    from manuscript_guard.literature import placement
+
+    def first_found(source, tokens, words, first, at):
+        found, splits = [at], []
+        k = at + 1
+        if tokens[at].word != words[first]:
+            splits.append(at)
+            k = at + 2
+        for word in words[first + 1 :]:
+            for m in range(k, min(k + placement.GAP + 1, len(tokens))):
+                if tokens[m].word == word or placement._split_at(source, tokens, m, word):
+                    split = tokens[m].word != word
+                    found.append(m)
+                    splits += [m] if split else []
+                    k = m + 1 + split
+                    break
+            else:
+                break
+        return found, splits
+
+    patch.setattr(placement, "_walk", first_found)
 
 
 def _what_differs_is_looked_for_at_the_ends_only(patch: pytest.MonkeyPatch) -> None:
@@ -2820,6 +2854,10 @@ BROKEN = {
     ),
     "a source's lines are counted from 0": (
         _a_source_s_lines_are_counted_from_0,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "each word of a quote is found where it first is": (
+        _each_word_is_found_where_it_first_is,
         test_a_quote_its_source_nearly_holds_is_said_to_and_where,
     ),
     "what differs is looked for only before and after a quote": (

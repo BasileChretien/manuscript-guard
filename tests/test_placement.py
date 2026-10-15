@@ -117,3 +117,17 @@ def test_the_lines_of_a_page_are_its_own_and_a_pdf_s_are_not_given(tmp_path: Pat
 def test_a_source_that_cannot_be_read_again_places_nothing(tmp_path: Path) -> None:
     assert why_not_found(tmp_path / "gone.txt", QUOTE) is None
     assert why_not_found(tmp_path / "source.docx", QUOTE) is None
+
+
+def test_an_interruption_holding_one_of_the_quote_s_words_is_one_interruption() -> None:
+    """Round 1 of #301: a running header with "The" in it was read as the quote's "the", and
+    the break named between the wrong words. Of the readings that find as many words, the
+    one with the fewest interruptions is taken."""
+    source = "the risk of\n12\nThe New England Journal of Medicine\nthe disease was low\n"
+    placement = place(source, "the risk of the disease was low")
+    assert placement is not None
+    assert said(placement) == (
+        "its words are all there in order; the source has '12 The New England Journal of "
+        "Medicine' between 'of' and 'the' (line 2): words the quote leaves out, or a column, "
+        "a footnote or a running header"
+    )

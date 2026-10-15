@@ -159,26 +159,46 @@ def _walk(
     source: str, tokens: list[_Token], words: list[str], first: int, at: int
 ) -> tuple[list[int], list[int]]:
     """The source tokens the quote's words from `first` on are found at, starting at `at`,
-    each at most `GAP` words after the one before; and which of them are split words."""
-    found, splits = [at], []
-    k = at + 1
-    if tokens[at].word != words[first]:
-        splits.append(at)
-        k = at + 2
+    each at most `GAP` words after the one before; and which of them are split words.
+
+    Of the readings that find as many words, the one with the fewest interruptions, then
+    the fewest words in them, then the one that finds each word latest. A running header
+    with "The" in it is one interruption, not the quote's "the" between two (round 1 of
+    #301); the first occurrence of each word was taken, and named the wrong words.
+    """
+    joined = tokens[at].word != words[first]
+    # Each reading so far, by the token it ends at: (interruptions, words in them), the
+    # tokens found, the split words among them.
+    layer: dict[int, tuple[tuple[int, int], tuple[int, ...], tuple[int, ...]]] = {
+        at + joined: ((0, 0), (at,), (at,) if joined else ())
+    }
     for word in words[first + 1 :]:
-        for m in range(k, min(k + GAP + 1, len(tokens))):
-            if tokens[m].word == word:
-                found.append(m)
-                k = m + 1
-                break
-            if _split_at(source, tokens, m, word):
-                found.append(m)
-                splits.append(m)
-                k = m + 2
-                break
-        else:
+        further: dict[int, tuple[tuple[int, int], tuple[int, ...], tuple[int, ...]]] = {}
+        for end, (cost, found, splits) in layer.items():
+            for m in range(end + 1, min(end + GAP + 2, len(tokens))):
+                split = tokens[m].word != word
+                if split and not _split_at(source, tokens, m, word):
+                    continue
+                skipped = m - end - 1
+                reading = (
+                    (cost[0] + (skipped > 0), cost[1] + skipped),
+                    (*found, m),
+                    (*splits, m) if split else splits,
+                )
+                kept = further.get(m + split)
+                if kept is None or _rank(reading) < _rank(kept):
+                    further[m + split] = reading
+        if not further:
             break
-    return found, splits
+        layer = further
+    _cost, found, splits = min(layer.values(), key=_rank)
+    return list(found), list(splits)
+
+
+def _rank(reading: tuple[tuple[int, int], tuple[int, ...], tuple[int, ...]]) -> tuple:
+    """How a reading is preferred: its interruptions, the words in them, then the latest."""
+    cost, found, _splits = reading
+    return (cost, tuple(-k for k in found))
 
 
 def place(source: str, quote: str) -> Placement | None:
@@ -199,9 +219,10 @@ def place(source: str, quote: str) -> Placement | None:
     for first in range(min(STARTS, len(words))):
         for at in where.get(words[first], ()):
             found, splits = _walk(source, tokens, words, first, at)
-            end = found[-1] + (1 if found[-1] in splits else 0)
-            spread = end - found[0] + 1 - len(found) - len(splits)
-            score = (len(found), -first, -spread)
+            ends = [k + (k in splits) for k in found]
+            breaks = sum(there > end + 1 for end, there in zip(ends, found[1:], strict=False))
+            spread = ends[-1] - found[0] + 1 - len(found) - len(splits)
+            score = (len(found), -first, -breaks, -spread)
             if best is None or score > best[0]:
                 best = (score, first, found, splits)
         if best is not None and best[0][0] == len(words) - first:

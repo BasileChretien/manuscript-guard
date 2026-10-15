@@ -348,9 +348,9 @@ def _no_methods(project: Project) -> Report:
                 message="no heading in the main text names the Methods, so the parameters "
                 "in methods.lock were compared with no text",
                 path=project.path("manuscript"),
-                hint='a heading that "methods", "method" or "methodology" heads, numbered or '
-                'not, is the Methods: "2. Methods", "Patients and methods", "Statistical '
-                'methods"',
+                hint='a heading of the main text whose title holds "methods" is the Methods, '
+                'outside the abstract and under no Introduction, Results or Discussion: '
+                '"Methods", "2. Methods", "Patients and methods", "Statistical methods"',
             ),
         )
     )

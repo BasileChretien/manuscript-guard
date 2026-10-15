@@ -2102,6 +2102,22 @@ person chose to leave as it was, with the reason and who decided (`overrides`, f
 the manifest says "not recorded". `git` is given 30 seconds, with its file system monitor
 off, and a project outside git says so.
 
+The abstract goes in as `abstract.txt` as well, for the box every submission system has for
+it: the section headed "Abstract" with every binding filled in by the value the build
+prints, as pandoc writes plain text, up to its keywords. Pasted from the .docx, it carried
+whatever Word and the clipboard made of its emphasis and its line breaks; this is the
+checked numbers and nothing else. An abstract that pandoc reads as holding a citation, a
+footnote, an image, a table or a figure gets no `abstract.txt`, and `submit` says so: the
+build formats a citation in the journal's style, or as a live Zotero field, and plain text
+written another way would not be what the document says. The main text is read whole
+through pandoc's own tree, so that a footnote defined at its end is a footnote, and the
+abstract is written only where everything in it is words, their emphasis, sub- and
+superscripts, quotation marks and a link that shows its own address; anything else, and a
+keywords label inside a paragraph, leaves it out with the reason. Two drafts that read the
+source by pattern each missed a form of citation or footnote, or cut a sentence that
+mentioned keywords, and a draft that read the abstract alone missed a footnote defined
+below it.
+
 The pack refuses to assemble while `check --submission` fails. That is what the check is
 for.
 

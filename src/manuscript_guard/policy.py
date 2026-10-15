@@ -137,6 +137,10 @@ BINDS_AT = {
     # stops being normal once the draft is something other people read.
     "document-stale": INTERNAL_REVIEW,
     "document-unstamped": INTERNAL_REVIEW,
+    # A reference list is printed for others to read from the finished draft on. While
+    # drafting, an entry can be a placeholder still to be filled in from Zotero.
+    "identifier-malformed": INTERNAL_REVIEW,
+    "reference-field-missing": INTERNAL_REVIEW,
     # -- submission -------------------------------------------------------------
     # The panel's verdict is the last thing to bind, because a panel reviews a draft
     # that is otherwise finished.

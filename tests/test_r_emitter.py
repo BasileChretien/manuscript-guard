@@ -711,6 +711,12 @@ def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> 
     # Round 1 of #268: the units of the rows a subset leaves, counted alike.
     assert em.document()["models"]["subset"]["unit"] == document["models"]["subset"]["unit"]
     assert document["models"]["subset"]["unit"] == {"column": "pid", "units": 40}
+    # Item 36: the rows each fit used, by their labels: R numbers rows from 1 and pandas from
+    # 0, and the eighth row, with no x, is in neither.
+    from manuscript_guard.emit import rows_digest
+
+    assert from_r["rows_sha256"] == rows_digest(str(i) for i in range(1, 301) if i != 8)
+    assert from_python["rows_sha256"] == rows_digest(str(i) for i in range(300) if i != 7)
 
     def facts(card: dict) -> dict:
         entered = sorted(

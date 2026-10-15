@@ -1486,6 +1486,21 @@ cluster-robust (`cluster`, or a HAC by group or panel) nor a mixed model or esti
 equations. The R emitter finds the data in the fit (`glm`) or where the call names it
 (`lm`), and leaves out the rows the fit dropped.
 
+**Two models compared are fitted on the same rows.** A crude and an adjusted estimate are
+set side by side to say what the adjustment did, and a covariate's missing values drop rows
+from the adjusted model only: the change between the two is then partly the rows'. Equal
+counts can hide different rows, so each card records a digest of the labels of the rows
+its fit used (`rows_sha256`: pandas' index, R's row names). G15 warns
+(`models-on-different-rows`) where two models of one outcome, one's terms a strict subset
+of the other's, were fitted on different rows. The same terms on different rows are a
+subgroup, by design, and are left alone.
+
+**A Poisson regression of a binary outcome has a robust variance.** Poisson regression of a
+binary outcome estimates a risk ratio, and its model-based variance overstates the error;
+a sandwich variance corrects it (Zou, Am J Epidemiol 2004;159:702-6). G15 warns
+(`poisson-binary-variance`) on a Poisson model of an outcome declared binary, or of a
+comparison written in the formula, whose card records model-based standard errors.
+
 ## A step of the code and the text that points at it
 
 The ledger of G9 records that a person read the Methods against the analysis, file by file.
@@ -5002,6 +5017,14 @@ Added by the adversarial review, verified and **not** fixed:
   digest can be recomputed. It is a separate command because it executes the project's own
   code, which a gate must never do. It cannot make a non-deterministic analysis agree with
   itself; it reports the disagreement and says to set a seed.
+- **Two models' rows are compared by their labels, within one language.** pandas numbers
+  rows from 0 and R from 1, so a model fitted in Python and one fitted in R on the same
+  data are always taken for different rows; and two data frames whose labels were reset
+  between the fits are too. A count with a person-time denominator modelled with no offset
+  is not yet read: it needs the rate the analysis declares, which nothing records. An R
+  `lm` or `glm` records "model-based" standard errors whatever is done after the fit, so a
+  modified Poisson regression whose sandwich variance is computed beside the fit
+  (`sandwich::vcovHC`) is still warned.
 - **Numbers written as words escape the tokeniser.** "four thousand and twenty-one" is not
   read. Vulgar fractions and enclosed digits now are. Number words are left alone on
   purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and

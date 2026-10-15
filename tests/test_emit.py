@@ -1039,3 +1039,21 @@ def test_a_unit_missing_in_a_row_the_model_used_is_refused(scratch: Path) -> Non
     fit = smf.ols("y ~ x", data).fit()
     with pytest.raises(ValueError, match="missing in 1 of the rows"):
         emitter(scratch).model("m", fit, name="M", unit="pid")
+
+
+def test_a_card_records_the_rows_its_fit_used(scratch: Path) -> None:
+    """Item 36: a covariate's missing value drops a row from the adjusted fit only, and the
+    two cards said nothing of which rows each used."""
+    pd = pytest.importorskip("pandas")
+    smf = pytest.importorskip("statsmodels.formula.api")
+    from manuscript_guard.emit import rows_digest
+
+    data = pd.DataFrame({"y": [1.0, 2.0, 3.0, 4.0, 5.0, 7.0], "x": [1.0, 2.0, 3.0, 4.0, 6.0, 5.0],
+                         "z": [0.0, 1.0, float("nan"), 1.0, 0.0, 1.0]},
+                        index=[10, 11, 12, 13, 14, 15])  # fmt: skip
+    em = emitter(scratch)
+    em.model("crude", smf.ols("y ~ x", data).fit(), name="Crude")
+    em.model("adjusted", smf.ols("y ~ x + z", data).fit(), name="Adjusted")
+    models = em.document()["models"]
+    assert models["crude"]["rows_sha256"] == rows_digest(["10", "11", "12", "13", "14", "15"])
+    assert models["adjusted"]["rows_sha256"] == rows_digest(["10", "11", "13", "14", "15"])

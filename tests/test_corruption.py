@@ -15,6 +15,7 @@ may not be a literal at all.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -1254,6 +1255,102 @@ def _unit_said(root: Path) -> list[tuple[str, str]]:
     assert results.models, "the example fits a model"
     said = check_models(project, results).findings
     return [(f.code, f.severity) for f in said if f.code == "unit-rows-independent"]
+
+
+def _models_said(root: Path, code: str) -> list[str]:
+    project, _ = load_project(root)
+    _namespace, results, _literature, report = load_namespace(project)
+    assert "adjusted" in results.models, report.render()
+    return [f.message for f in check_models(project, results).findings if f.code == code]
+
+
+def _given(card: dict, fields: dict) -> dict:
+    """The card with these fields, a field given None taken out."""
+    return {key: value for key, value in {**card, **fields}.items() if value is not None}
+
+
+def _crude_beside_adjusted(root: Path, crude: dict, adjusted: dict) -> None:
+    """The example's adjusted model, and a crude one of the same outcome with only the
+    exposure, each card given the fields passed."""
+    for fragment in (root / "results").glob("*.json"):
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        card = document["models"]["adjusted"]
+        document["models"]["crude"] = _given(card, {
+            "name": "Crude model", "formula": "hepatic ~ exposed",
+            "terms": [t for t in card["terms"] if t["term"] == "exposed"], "parameters": 1,
+            **crude,
+        })  # fmt: skip
+        document["models"]["adjusted"] = _given(card, adjusted)
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+
+
+def _adjusted_has(root: Path, **fields) -> None:
+    _crude_beside_adjusted(root, {}, fields)
+    for fragment in (root / "results").glob("*.json"):
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        del document["models"]["crude"]
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+
+
+_ROWS = {name: hashlib.sha256(name.encode("utf-8")).hexdigest() for name in ("all", "some")}
+
+
+@pytest.mark.parametrize(
+    ("crude", "adjusted", "said"),
+    [
+        ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["some"], "n_used": 3800}, 1),
+        # Equal counts and different rows: the digest tells them apart.
+        ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["some"]}, 1),
+        ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["all"]}, 0),
+        # A card that does not say which rows it used is not compared.
+        ({"rows_sha256": None}, {"rows_sha256": _ROWS["some"]}, 0),
+        # The same terms on other rows are a subgroup, by design.
+        ({"rows_sha256": _ROWS["all"], "terms": "adjusted's"}, {"rows_sha256": _ROWS["some"]}, 0),
+    ],
+    ids=["fewer rows", "as many rows", "the same rows", "rows unknown", "a subgroup"],
+)
+def test_a_crude_and_an_adjusted_model_on_different_rows_are_a_warning(
+    project: Path, crude: dict, adjusted: dict, said: int
+) -> None:
+    """Item 36: a covariate's missing values drop rows from the adjusted model only, and
+    the crude and adjusted estimates were compared as if one adjustment parted them."""
+    if crude.get("terms") == "adjusted's":
+        crude = {**crude, "terms": json.loads(next((project / "results").glob("*.json"))
+                 .read_text(encoding="utf-8"))["models"]["adjusted"]["terms"]}  # fmt: skip
+    _crude_beside_adjusted(project, crude, adjusted)
+    found = _models_said(project, "models-on-different-rows")
+    assert len(found) == said, found
+    assert all(message.startswith("model 'adjusted': its terms include all of 'crude'")
+               for message in found)  # fmt: skip
+
+
+_POISSON = {"language": "Python", "package": "statsmodels", "class": "GLM",
+            "family": "Poisson", "link": "Log"}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("fields", "said"),
+    [
+        ({"engine": _POISSON, "covariance": "nonrobust"}, 1),
+        ({"engine": _POISSON, "covariance": "model-based"}, 1),
+        ({"engine": _POISSON, "covariance": "HC0"}, 0),
+        ({"engine": _POISSON, "covariance": None}, 0),
+        # Round 1 of #289: with a person-time offset the model estimates a rate ratio, and
+        # its own variance is the right one.
+        ({"engine": _POISSON, "covariance": "nonrobust", "offset": True}, 0),
+        ({"covariance": "nonrobust"}, 0),
+    ],
+    ids=["nonrobust", "model-based", "robust", "not said", "rate", "logistic"],
+)
+def test_a_poisson_model_of_a_binary_outcome_wants_a_robust_variance(
+    project: Path, fields: dict, said: int
+) -> None:
+    """Item 36: a risk ratio from Poisson regression of a binary outcome, with the model's
+    own standard errors, passed; they overstate its error."""
+    _adjusted_has(project, **fields)
+    assert len(_models_said(project, "poisson-binary-variance")) == said
 
 
 def test_rows_of_one_unit_taken_as_independent_are_a_warning(project: Path) -> None:

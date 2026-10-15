@@ -103,6 +103,13 @@ class Model:
     # card does not say.
     covariance: str | None = None
     unit: dict | None = None
+    # A digest of the labels of the rows the fit used, so that two models can be told to
+    # have used the same rows or not where their counts agree. None where the card does not
+    # say.
+    rows_sha256: str | None = None
+    # Whether the fit has an offset or an exposure: a Poisson model of events over
+    # person-time estimates a rate ratio, and its own variance is the right one.
+    offset: bool = False
 
     @property
     def kind(self) -> str | None:
@@ -157,6 +164,8 @@ def read_models(document: dict, path: Path) -> dict[str, Model]:
             events_by_level=dict(spec.get("events_by_level") or {}),
             covariance=spec.get("covariance"),
             unit=spec.get("unit"),
+            rows_sha256=spec.get("rows_sha256"),
+            offset=bool(spec.get("offset")),
         )
         for key, spec in (document.get("models") or {}).items()
     }

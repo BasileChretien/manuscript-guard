@@ -1027,6 +1027,11 @@ def test_a_count_below_the_custodians_minimum_is_not_printed(project: Path) -> N
         if "{{results.case.n_serious}}" in text
     )
     assert _small(project) == [("results.case.n_serious", line)]
+    # Round 2 of #275: a display with a word after it, a decimal or a sign prints the count.
+    for display in ("3 patients", "3.0", "+3"):
+        _emitted(project, "case.n_serious", value=3, display=display)
+        assert _small(project) == [("results.case.n_serious", line)], display
+    _emitted(project, "case.n_serious", value=3, display="3")
     _custodian(project, 3)
     assert _small(project) == []
     _custodian(project, 5)

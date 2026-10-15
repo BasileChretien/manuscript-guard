@@ -21,21 +21,19 @@ is a copy of it outside them.
 
 from __future__ import annotations
 
-import re
 import subprocess
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
+from manuscript_guard.contracts.values import number_in
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.text.placeholders import parse
 
 #: How long `git ls-files` may take before the check says it could not ask.
 GIT_SECONDS = 10
-#: A display that prints a whole number and nothing else, its thousands grouped or not.
-_WHOLE = re.compile(r"\d{1,3}(?:[,\s]\d{3})*|\d+")
 
 
 def minimum_cell_count(project: Project) -> int | None:
@@ -90,11 +88,11 @@ def check_small_cells(project: Project, results: Results) -> Report:
     return report
 
 
-def _printed(display: str) -> int:
-    """The whole number a display prints, or 0 where it prints something else: "<5" holds a
-    count back, and is how the emitter lets an analysis do so (round 1 of #275)."""
-    found = _WHOLE.fullmatch(display.strip())
-    return int(re.sub(r"[,\s]", "", found.group(0))) if found else 0
+def _printed(display: str) -> float:
+    """The number a display prints, read as the emitter reads a display, or 0 where it holds
+    the count back behind a comparator ("<5", round 1 of #275). "3 patients", "3.0" and "+3"
+    print 3 (round 2)."""
+    return number_in(display) or 0
 
 
 def check_restricted_inputs(project: Project, results: Results) -> Report:

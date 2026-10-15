@@ -1936,6 +1936,7 @@ def _limits_quoted(draw: st.DrawFn) -> list[tuple[str, int, bool]]:
     among words drawn each time."""
     value = draw(st.integers(1, 99_999))
     small = draw(st.integers(1, 9))
+    group = draw(st.integers(100, 999))
 
     def among(written: str) -> str:
         before = draw(st.lists(st.sampled_from(FILLER), max_size=3))
@@ -1955,11 +1956,15 @@ def _limits_quoted(draw: st.DrawFn) -> list[tuple[str, int, bool]]:
         (among(f"{value},000"), value, False),
         (among(f"{_NUMBER_WORDS[small]}fold"), small, False),
         (among(f"{small + 10}"), small, False),
-        # The last group of a number written with spaces between its thousands.
-        (among(f"{value + 1} {value}"), value, False),
+        # The last group of a number written with spaces between its thousands, and a group of
+        # three after a number that cannot be one, as a limits table saved as text has it.
+        (among(f"{small} {group}"), group, False),
+        (among(f"{value + 1000} {group}"), group, True),
         (among("single"), 1, True),
-        (among("not"), 0, True),
-        (among(f"not {_NUMBER_WORDS[small]}"), 0, False),
+        (among(f"single {small + 1}"), 1, False),
+        (among("may not include figures"), 0, True),
+        (among("no limit on the number of figures"), 0, False),
+        (among(f"not {_NUMBER_WORDS[small]} figures"), 0, False),
     ]
     return draw(st.permutations(cases))
 
@@ -1971,7 +1976,7 @@ def test_a_limit_is_stated_by_its_number_and_by_no_longer_one(
     """A journal's limit is in its quote as digits, with or without a separator of
     thousands, or as a word up to twenty; not inside a longer number or a longer word."""
     for quote, value, stated in cases:
-        assert journal_quotes_gate._states(quote, value) is stated, (quote, value)
+        assert journal_quotes_gate._states(quote, value, "figures?") is stated, (quote, value)
 
 
 # ---------------------------------------------------------------------- an ISBN's check digit
@@ -2541,7 +2546,7 @@ def _a_limit_s_word_is_read_inside_a_longer_word(patch: pytest.MonkeyPatch) -> N
 
 
 def _a_limit_is_read_after_a_space_between_thousands(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(journal_quotes_gate, "_DIGITS", r"(?<![0-9.,]){}(?![.,]?[0-9])")
+    patch.setattr(journal_quotes_gate, "_GROUP_BEFORE", re.compile(r"(?!)"))
 
 
 def _none_is_not_read_from_a_negation(patch: pytest.MonkeyPatch) -> None:

@@ -415,10 +415,16 @@ def test_the_page_may_be_stored_where_the_profile_says(project: Path) -> None:
         # Round 1 of #297.
         ("should not exceed 3 500 words", 500, False),
         ("Letters may not include figures or tables.", 0, True),
-        ("Letters include no tables.", 0, True),
+        ("Letters include no figures.", 0, True),
         ("figures need not exceed four", 0, False),
         ("figures need not exceed 4", 0, False),
-        ("a single table", 1, True),
+        ("a single figure", 1, True),
+        # Round 2.
+        ("There is no limit on the number of figures", 0, False),
+        ("Figures do not count towards the word limit", 0, False),
+        ("Original research 3500 250 5 40", 250, True),
+        ("Original research 3500 250 5 40", 40, True),
+        ("single-spaced, with up to 3 figures", 1, False),
     ],
 )
 def test_a_limit_is_stated_as_digits_or_a_small_number_word(
@@ -426,7 +432,7 @@ def test_a_limit_is_stated_as_digits_or_a_small_number_word(
 ) -> None:
     from manuscript_guard.gates.journal_quotes import _states
 
-    assert _states(quote, value) is states
+    assert _states(quote, value, "figures?") is states
 
 
 # ---------------------------------------------------------------- the reporting gate

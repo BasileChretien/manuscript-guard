@@ -41,6 +41,7 @@ from manuscript_guard.contracts import (
 )
 from manuscript_guard.findings import Report, merge_all
 from manuscript_guard.gates import (
+    check_bound_units,
     check_citations,
     check_consistency,
     check_design,
@@ -127,6 +128,7 @@ def _run_gates(
         ("G11", lambda: check_review(project, submission=at_submission)),
         ("G1", lambda: check_freshness(project, results)),
         ("G2", lambda: check_numbers(project, namespace, results, literature)),
+        ("G2", lambda: check_bound_units(project, results)),
         ("G3", lambda: check_figures(project, results)),
         ("G10", lambda: check_figure_reviews(project, content_digest)),
         ("G7", lambda: check_citations(project, literature)),
@@ -1831,6 +1833,16 @@ def cmd_build(args: argparse.Namespace) -> int:
         return 1
     if supplement is not None:
         print(f"built {supplement} (supplementary material, its own document)")
+    # Built, and said, but not to be sent: the journal's review is blind and the document
+    # names an author. The supplement's findings were printed as it was built.
+    from manuscript_guard.build.blinding import CODE, check_blinded
+
+    named = any(f.code == CODE for f in result.report.failures)
+    if supplement is not None:
+        named = named or not check_blinded(project, supplement).ok
+    if named:
+        print("The document names an author, and the journal's review is blind: do not send it.")
+        return 1
     return 0
 
 
@@ -1928,6 +1940,18 @@ def cmd_submit(args: argparse.Namespace) -> int:
         if not needed.is_file():
             print(f"manuscript-guard: {needed} does not exist; build it first", file=sys.stderr)
             return 2
+    # The document packed may be a copy a co-author edited in Word, which is where the
+    # author fields come from; the build checked only the one it made.
+    from manuscript_guard.build.blinding import check_blinded
+
+    packed = [document] if args.document is not None else []
+    packed += [supplement] if wants_supplement else []
+    blind = merge_all([check_blinded(project, path) for path in packed])
+    if not blind.ok:
+        print(blind.render(project.root))
+        print("\nThe document names an author, and the journal's review is blind. The pack is "
+              "not assembled.")  # fmt: skip
+        return 1
 
     try:
         pack = assemble_pack(project, document, checked=report.ok)

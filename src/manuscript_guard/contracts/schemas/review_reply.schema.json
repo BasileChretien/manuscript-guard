@@ -51,6 +51,10 @@
             "type": ["string", "null"],
             "description": "The section or sentence. It may be left out, and null is read as left out."
           },
+          "ask": {
+            "enum": ["disclosure", "computation", "new-data", null],
+            "description": "Null is read as left out. What the finding asks the authors to do, where it asks something: report what they already have (disclosure), compute a new number (computation), or collect new data (new-data). A computation is a new emitted result and a new reconciliation of the Methods with the code, so it is said."
+          },
           "finding": { "type": "string", "pattern": "\\S" }
         }
       }

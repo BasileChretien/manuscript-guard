@@ -981,6 +981,78 @@ def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
     assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
 
 
+# ------------------------------------------------------------- what a change makes stale
+
+
+def _impact(root: Path, *files: str, since: str | None = None) -> list[dict]:
+    import io
+    from contextlib import redirect_stdout
+
+    from manuscript_guard.cli import main
+
+    out = io.StringIO()
+    args = ["impact", *(str(root / name) for name in files), "--json"]
+    if since is not None:
+        args += ["--since", since]
+    with redirect_stdout(out):
+        assert main(args) == 0
+    return json.loads(out.getvalue())
+
+
+def test_impact_lists_what_an_analysis_script_makes_stale(project: Path) -> None:
+    """From the analysis script, the chain the gates record: the results it writes,
+    the keys, the sentences binding them, the figure drawn from them and its review, the
+    steps and the Methods paragraphs pointing at them, and the panel readings of the files
+    that bind them. A file no record names has nothing."""
+    (found,) = _impact(project, "analysis/01_disproportionality.py")
+    assert found["role"] == "an analysis script that writes results"
+    assert found["results"] == ["results/01_disproportionality.json"]
+    assert "results.ror.point" in found["keys"]
+    bound = {(place["path"], place["names"]) for place in found["bound"]}
+    assert ("manuscript/main.md", "results.ror.point") in bound
+    assert ("manuscript/main.md", "table.two_by_two") in bound
+    assert ("manuscript/main.md", "figure.forest") in bound
+    assert "figures/forest.svg" in found["figures"]
+    assert found["figure_reviews"] == ["figures/forest.review.yaml"]
+    assert {"ror", "ci", "signal", "adjusted"} <= set(found["steps"])
+    assert any("method.ror" in place["names"] for place in found["methods"])
+    assert "review/round-6/biostatistician.yaml" in found["readings"]
+
+    (data,) = _impact(project, "data/reports.csv")
+    assert data["role"] == "an input the analysis declares"
+    assert data["keys"] == found["keys"]
+    (text,) = _impact(project, "manuscript/main.md")
+    assert text["role"] == "a manuscript file" and text["readings"]
+    (ledger,) = _impact(project, "literature/ledger.yaml")
+    assert any(key.startswith("lit.") for key in ledger["keys"]) and ledger["bound"]
+    (nothing,) = _impact(project, "paper.yaml")
+    assert nothing["role"] == "no record names it" and not nothing["keys"]
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_impact_with_no_file_lists_what_changed_since_the_last_commit(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no file, `impact` takes the files changed since the last commit, as `reworded`
+    reads the working tree against it, and what depends on each."""
+    import subprocess
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-c", "core.fsmonitor=false", *args], cwd=project, check=True,
+                       capture_output=True, timeout=60)  # fmt: skip
+
+    monkeypatch.chdir(project)
+    git("init", "-q")
+    git("add", ".")
+    git("-c", "user.name=t", "-c", "user.email=t@example.org", "commit", "-q", "-m", "x")
+    assert _impact(project) == []
+    script = project / "analysis" / "01_disproportionality.py"
+    script.write_text(script.read_text(encoding="utf-8") + "\n# a comment\n", encoding="utf-8")
+    (found,) = _impact(project)
+    assert found["file"] == "analysis/01_disproportionality.py"
+    assert found["results"] == ["results/01_disproportionality.json"]
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 

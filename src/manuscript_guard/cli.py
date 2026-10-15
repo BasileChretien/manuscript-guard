@@ -1506,6 +1506,40 @@ def cmd_stages(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_impact(args: argparse.Namespace) -> int:
+    """Everything that depends on each file named, or on each file changed since a commit.
+
+    Read-only, and derived: it follows the records the gates read and keeps none of its own.
+    """
+    from manuscript_guard.impact import NoChanges, as_json, as_text, changed_files, impact_of
+
+    start = args.files[0].parent if args.files else Path.cwd()
+    project, _ = load_project(start)
+    _namespace, results, literature, _ = load_namespace(project)
+    files = list(args.files)
+    if not files:
+        try:
+            files = changed_files(project, args.since)
+        except NoChanges as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        if not files:
+            if args.json:
+                print("[]")
+            else:
+                print(f"nothing has changed since {args.since}")
+            return 0
+    impacts = [impact_of(project, results, literature, path) for path in files]
+    if args.json:
+        print(as_json(impacts))
+        return 0
+    for index, impact in enumerate(impacts):
+        if index:
+            print()
+        print("\n".join(as_text(impact)))
+    return 0
+
+
 def cmd_explain(args: argparse.Namespace) -> int:
     """Show how every numeric atom in a file was classified.
 
@@ -2740,6 +2774,19 @@ def build_parser() -> argparse.ArgumentParser:
     explain = sub.add_parser("explain", help="show how each number in a file was classified")
     explain.add_argument("file", type=Path)
     explain.set_defaults(func=cmd_explain)
+
+    impact = sub.add_parser(
+        "impact",
+        help="list what depends on a file: results, sentences, figures, Methods, readings "
+        "and answers that go stale when it changes",
+    )
+    impact.add_argument(
+        "files", nargs="*", type=Path,
+        help="files of the project; with none, the files changed since --since",
+    )  # fmt: skip
+    impact.add_argument("--since", default="HEAD", help="the commit to compare with (HEAD)")
+    impact.add_argument("--json", action="store_true", help="print JSON")
+    impact.set_defaults(func=cmd_impact)
 
     models = sub.add_parser(
         "models", help="print each fitted model as its card, with what G15 says of it"

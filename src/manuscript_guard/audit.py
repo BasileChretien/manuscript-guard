@@ -34,6 +34,14 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.stats.intervals import (
+    ASYMMETRY,
+    asymmetry,
+    described_against,
+    described_asymmetry,
+    p_against,
+    reported_intervals,
+)
 from manuscript_guard.stats.reported import described, judge, reported_tests
 from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, section_breaks
 from manuscript_guard.text.comments import unclear_comment_lines
@@ -94,7 +102,8 @@ class Candidate:
 
 @dataclass
 class Disagreement:
-    """A test statistic whose P, as the paper prints it, does not follow from it."""
+    """A test statistic whose P, as the paper prints it, does not follow from it, or an
+    estimate whose interval, or the P beside it, does not fit it."""
 
     source: Path
     line: int
@@ -790,7 +799,8 @@ def audit(
 
 
 def _disagreements(path: Path, text: str) -> list[Disagreement]:
-    """The tests in a paper whose P does not follow from the statistic beside it."""
+    """The tests in a paper whose P does not follow from the statistic beside it, and the
+    estimates whose interval or P does not fit them."""
     found = []
     hidden = mask(text)
     for test in reported_tests(hidden):
@@ -802,7 +812,17 @@ def _disagreements(path: Path, text: str) -> list[Disagreement]:
             Disagreement(path, hidden.count("\n", 0, test.start) + 1,
                          described(test, verdict), context)  # fmt: skip
         )
-    return found
+    # And each estimate whose interval, or whose P, does not fit it (`stats/intervals.py`).
+    for interval in reported_intervals(hidden):
+        context = " ".join(hidden[interval.start : interval.end].replace("\x00", " ").split())
+        line = hidden.count("\n", 0, interval.start) + 1
+        share = asymmetry(interval)
+        if share is not None and share > ASYMMETRY:
+            found.append(Disagreement(path, line, described_asymmetry(interval, share), context))
+        verdict = p_against(interval)
+        if verdict is not None:
+            found.append(Disagreement(path, line, described_against(interval, verdict), context))
+    return sorted(found, key=lambda d: d.line)
 
 
 def _ranges(numbers: list[int]) -> str:
@@ -922,8 +942,9 @@ def render(report: AuditReport, discrimination: Discrimination, root: Path | Non
     if report.disagreements:
         lines.append("")
         lines.append(
-            "P VALUES THAT DO NOT FOLLOW FROM THE STATISTIC BESIDE THEM, t and z read as "
-            "two-sided (not counted by --strict):"
+            "NUMBERS THAT DO NOT FIT THE ONES BESIDE THEM: a P and its statistic, t and z "
+            "read as two-sided; a ratio and its interval; an interval and its P (not "
+            "counted by --strict):"
         )
         by_paper: dict[Path, list[Disagreement]] = {}
         for item in report.disagreements:

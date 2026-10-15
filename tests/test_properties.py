@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -882,6 +883,280 @@ def _a_power_of_ten_is_read_as_its_mantissa(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(
         reported, "_p_range", lambda test: p_range(replace(test, p=cut.split(test.p)[0]))
     )
+
+
+# ------------------------------------------------------ an estimate, its interval and its P
+
+#: Each way an estimate and its interval are written, the name first: its kind, and the
+#: level it states.
+_INTERVAL_FORMS = (
+    ("ratio", "OR {e} (95% CI {l} to {u})", "95"),
+    ("ratio", "odds ratio was {e} (95% CI, {l}-{u})", "95"),
+    ("ratio", "HR = {e}; 95% CI {l}\N{EN DASH}{u}", "95"),
+    ("ratio", "RR {e} [95% CI {l}, {u}]", "95"),
+    ("ratio", "hazard ratio was\n{e} (95% confidence interval {l} to {u})", "95"),
+    ("ratio", "aOR {e} (CI 95% {l}\N{EM DASH}{u})", "95"),
+    ("ratio", "risk ratio of {e}, 90% CI {l} to {u}", "90"),
+    ("difference", "MD {e} (95% CI {l} to {u})", "95"),
+    ("difference", "mean difference was {e} (95% CI {l}, {u})", "95"),
+    ("difference", "RD = {e}, 99% CI {l} to {u}", "99"),
+)
+#: The half-width of a Wald interval at each level, in standard errors.
+_Z = {"90": 1.6448536269514722, "95": 1.959963984540054, "99": 2.5758293035489004}
+#: How a P is written after its interval.
+_P_AFTER = (", P {sign} {p}", "; p {sign} {p}", ", *P* {sign} {p}", " (P {sign} {p})")
+#: A P far on the other side of the level: beside an interval that excludes its null, and
+#: beside one that includes it.
+_AGAINST = {
+    True: (("=", "0.40"), ("=", ".62"), (">", "0.20")),
+    False: (("<", "0.001"), ("=", "0.003")),
+}
+#: What a sentence says of an interval that is not the plain one, and of a P.
+_NOT_PLAIN_INTERVAL = (
+    "by profile likelihood, ", "with an exact interval, ", "by bootstrap, ",
+    "in a Bayesian model, ",
+)  # fmt: skip
+_NOT_PLAIN_P = (
+    "after Bonferroni adjustment, ", "one-sided, ", "with P values adjusted for multiple testing, ",
+)  # fmt: skip
+
+
+@st.composite
+def _planted_intervals(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
+    """Every way of writing an estimate and its interval: at the middle of its interval
+    and away from it, with a P that agrees and one that does not, in a sentence that says
+    the interval or the P is not the plain one, and adjusted. A P after a second interval,
+    a P for interaction, and one in the next sentence; bounds joined by hyphens after a
+    negative one, and bounds the wrong way round. Each with the place it is found at and
+    what is said of it."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    def thousandths(low: int, high: int) -> float:
+        return draw(st.integers(low, high)) / 1000
+
+    def shown(x: float) -> str:
+        return f"{x:.2f}".replace("-", draw(st.sampled_from(("-", "\N{MINUS SIGN}"))))
+
+    def p_of(z: float) -> tuple[str, str]:
+        p = math.erfc(abs(z) / math.sqrt(2))
+        if p < 0.001:
+            return "<", "0.001"
+        printed = f"{p:.3f}"
+        return "=", draw(st.sampled_from((printed, printed.removeprefix("0"))))
+
+    def sign() -> int:
+        return draw(st.sampled_from((-1, 1)))
+
+    def ratio(plan: str, level: str) -> tuple[float, float, float, tuple[str, str] | None]:
+        """An estimate, its bounds and its P: a Wald interval on the log scale, one bound
+        moved toward the estimate, or one whose P is far on the other side."""
+        if plan == "level":
+            # At 90%, a P between 0.05 and 0.10 beside an interval that excludes 1.
+            h = thousandths(600, 1000)
+            log_e = sign() * thousandths(1700, 1900) * h / _Z[level]
+        elif plan in ("against", "adjusted", "quiet p"):
+            h = thousandths(300, 1000)
+            excludes = draw(st.booleans())
+            far = h + thousandths(100, 600) if excludes else thousandths(0, int(h * 1000) - 100)
+            log_e = sign() * far
+            low, high = math.exp(log_e - h), math.exp(log_e + h)
+            return math.exp(log_e), low, high, draw(st.sampled_from(_AGAINST[excludes]))
+        else:
+            h = thousandths(300, 1000)
+            log_e = thousandths(-700, 1600)
+        low, high = log_e - h, log_e + h
+        if plan in ("lopsided", "quiet interval"):
+            moved = thousandths(100, 300) * h
+            low, high = draw(st.sampled_from(((log_e - moved, high), (low, log_e + moved))))
+            return math.exp(log_e), math.exp(low), math.exp(high), None
+        return math.exp(log_e), math.exp(low), math.exp(high), p_of(log_e / (h / _Z[level]))
+
+    def difference(plan: str, level: str) -> tuple[float, float, float, tuple[str, str]]:
+        """An estimate, its bounds and its P. At the middle, an interval that excludes 0
+        and includes 1, so that a difference read against 1 is found."""
+        if plan == "symmetric":
+            e = thousandths(600, 900)
+            h = thousandths(int((1 - e) * 1000) + 50, int(e * 1000) - 50)
+            return e, e - h, e + h, p_of(e / (h / _Z[level]))
+        h = thousandths(200, 2000)
+        excludes = draw(st.booleans())
+        far = h + thousandths(100, 1000) if excludes else thousandths(0, int(h * 1000) - 100)
+        e = sign() * far
+        return e, e - h, e + h, draw(st.sampled_from(_AGAINST[excludes]))
+
+    plans: list[tuple[int, str]] = []
+    for index, (kind, _form, level) in enumerate(_INTERVAL_FORMS):
+        if kind == "difference":
+            plans += [(index, plan) for plan in ("symmetric", "against", "quiet p")]
+        else:
+            first = "level" if level == "90" else "symmetric"
+            plans += [
+                (index, plan)
+                for plan in (first, "lopsided", "against", "quiet interval", "quiet p", "adjusted")
+            ]
+    plans += [(0, plan) for plan in ("next interval", "interaction", "next sentence")]
+    plans += [(7, "hyphens"), (0, "reversed")]
+    sentences: list[tuple[str, tuple[Any, ...] | None]] = []
+    for index, plan in draw(st.permutations(plans)):
+        kind, form, level = _INTERVAL_FORMS[index]
+        if kind == "ratio":
+            e, low, high, p = ratio(plan if plan != "next interval" else "symmetric", level)
+        else:
+            e, low, high, p = difference(plan if plan != "hyphens" else "against", level)
+        e_, low_, high_ = shown(e), shown(low), shown(high)
+        if plan == "hyphens":
+            magnitude = abs(high) + 0.1
+            low_, high_ = shown(-magnitude - abs(e)), f"{magnitude:.2f}"
+            sentences.append((f"MD {shown(-abs(e))} (95% CI {low_}--{high_})", None))
+            continue
+        if plan == "reversed":
+            sentences.append((form.format(e=e_, l=high_, u=low_), None))
+            continue
+        text = form.format(e=e_, l=low_, u=high_)
+        lead = {
+            "quiet interval": draw(st.sampled_from(_NOT_PLAIN_INTERVAL)),
+            "quiet p": draw(st.sampled_from(_NOT_PLAIN_P)),
+            "adjusted": "after adjustment for age and sex, ",
+        }.get(plan, "")
+        said = p
+        if plan == "next interval":
+            text += f" in men and {shown(e * 0.8)} (95% CI 0.80 to 1.50) in women, P = 0.40"
+            said = None
+        elif plan == "interaction":
+            text += ", P = 0.40 for interaction"
+            said = None
+        elif plan == "next sentence":
+            text += f". {words().capitalize()} P = 0.40"
+            said = None
+        elif p is not None:
+            text += draw(st.sampled_from(_P_AFTER)).format(sign=p[0], p=p[1])
+        shape = {"lopsided": "far", "quiet interval": None}.get(plan, "zero")
+        against = plan in ("against", "adjusted")
+        sentences.append(
+            (lead + text, (len(lead), kind, e_, low_, high_, level, said,
+                           shape if kind == "ratio" else None, against))
+        )  # fmt: skip
+
+    parts: list[str] = []
+    expected: list[tuple[Any, ...]] = []
+    for text, planted in sentences:
+        opening = words().capitalize() + " "
+        if planted is not None:
+            at = len("".join(parts)) + len(opening) + planted[0]
+            expected.append((at, *planted[1:]))
+        parts.append(f"{opening}{text} {words()}.{draw(st.sampled_from((' ', chr(10))))}")
+    return "".join(parts), expected
+
+
+@holds(100, _planted_intervals())
+def test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged(
+    planted: tuple[str, list[tuple[Any, ...]]],
+) -> None:
+    """Each estimate with its interval is found where it stands, its numbers, level and P
+    as they are printed, and nothing else is: not bounds whose signs or order cannot be
+    read, and not a P that is another one's. A ratio printed from a Wald interval stands at
+    the middle of its interval within its rounding, and one with a bound moved toward it
+    does not. A P that agrees with its interval about the null is not found, one far on the
+    other side of the level is, and neither is judged where the sentence says the interval
+    or the P is not the plain one; "adjusted" alone says neither."""
+    from manuscript_guard.stats.intervals import (
+        ASYMMETRY,
+        asymmetry,
+        p_against,
+        reported_intervals,
+    )
+
+    text, expected = planted
+    found = reported_intervals(text)
+    assert [(r.start, r.kind, r.estimate, r.low, r.high, r.level, r.p) for r in found] == [
+        planted[:7] for planted in expected
+    ], text
+    for interval, (*_read, shape, against) in zip(found, expected, strict=True):
+        share = asymmetry(interval)
+        if shape is None:
+            assert share is None, (interval, share)
+        elif shape == "zero":
+            assert share == 0.0, (interval, share)
+        else:
+            assert share is not None and share > ASYMMETRY, (interval, share)
+        assert (p_against(interval) is not None) is against, (interval, text)
+
+
+def _a_bound_is_read_at_its_printed_value(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    def printed(number: str) -> tuple[float, float] | None:
+        value = intervals._value(number)
+        return None if value is None else (float(value), float(value))
+
+    patch.setattr(intervals, "_box", printed)
+
+
+def _a_difference_is_held_to_1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    patch.setattr(intervals, "NULL", {"ratio": 1, "difference": 1})
+
+
+def _every_interval_is_taken_as_95(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    patch.setattr(intervals, "alpha_of", lambda level: 0.05)
+
+
+def _never(patch: pytest.MonkeyPatch, *names: str) -> None:
+    from manuscript_guard.stats import intervals
+
+    for name in names:
+        patch.setattr(intervals, name, re.compile(r"(?!)"))
+
+
+def _a_p_is_looked_for_past_the_next_interval(patch: pytest.MonkeyPatch) -> None:
+    _never(patch, "_CI_WORD")
+
+
+def _a_p_for_interaction_is_the_estimate_s(patch: pytest.MonkeyPatch) -> None:
+    _never(patch, "_OTHER_P")
+
+
+def _an_interval_s_p_is_looked_for_past_its_sentence(patch: pytest.MonkeyPatch) -> None:
+    _never(patch, "_SENTENCE_END")
+
+
+def _an_interval_that_is_not_the_plain_one_is_judged(patch: pytest.MonkeyPatch) -> None:
+    _never(patch, "_INTERVAL_QUIET")
+
+
+def _a_p_that_is_not_the_plain_one_is_judged_against_its_interval(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    _never(patch, "_P_QUIET")
+
+
+def _adjusted_alone_quiets_an_interval(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    for name in ("_INTERVAL_QUIET", "_P_QUIET"):
+        pattern = getattr(intervals, name)
+        patch.setattr(intervals, name, re.compile(pattern.pattern + r"|adjust\w*", pattern.flags))
+
+
+def _bounds_that_cannot_be_read_for_sure_are_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    patch.setattr(intervals, "_unsure", lambda match: False)
+
+
+def _an_interval_over_two_lines_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    """The line break a space may be is taken out of every place it may stand."""
+    from manuscript_guard.stats import intervals
+
+    wrap = "|" + chr(92) + "n(?![ " + chr(92) + "t]*" + chr(92) + "n)"
+    assert wrap in intervals._INTERVAL.pattern
+    pattern = intervals._INTERVAL.pattern.replace(wrap, "")
+    patch.setattr(intervals, "_INTERVAL", re.compile(pattern))
 
 
 # ------------------------------------------------------------ a section found by its heading
@@ -2779,6 +3054,50 @@ BROKEN = {
     "a P written as a power of ten is read as its mantissa": (
         _a_power_of_ten_is_read_as_its_mantissa,
         test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "an interval's bounds are read at their printed values, not over their last digit": (
+        _a_bound_is_read_at_its_printed_value,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "a difference's interval is held to 1": (
+        _a_difference_is_held_to_1,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "every interval is taken as a 95% one": (
+        _every_interval_is_taken_as_95,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "an estimate's P is looked for past the next interval": (
+        _a_p_is_looked_for_past_the_next_interval,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "a P for interaction is taken as the estimate's own": (
+        _a_p_for_interaction_is_the_estimate_s,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "an estimate's P is looked for past the end of its sentence": (
+        _an_interval_s_p_is_looked_for_past_its_sentence,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "a profile, exact or bootstrap interval is judged as a Wald one": (
+        _an_interval_that_is_not_the_plain_one_is_judged,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "a P adjusted for multiplicity or one-sided is judged against its interval": (
+        _a_p_that_is_not_the_plain_one_is_judged_against_its_interval,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "an adjusted estimate is not judged": (
+        _adjusted_alone_quiets_an_interval,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "bounds joined by hyphens after a negative one, or the wrong way round, are read": (
+        _bounds_that_cannot_be_read_for_sure_are_read,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "an interval wrapped onto a second line is not read": (
+        _an_interval_over_two_lines_is_not_read,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
     ),
     "a claim runs back to the start of its paragraph, past the anchor before it": (
         _a_claim_runs_back_to_its_paragraph,

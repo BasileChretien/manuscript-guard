@@ -609,6 +609,19 @@ REPORTED = (
     "Welch's", "after Bonferroni adjustment", "{{results.t}}", "p = {{results.p}}", "t(",
 )  # fmt: skip
 
+#: An estimate and its interval in each of the ways a results sentence writes them, right
+#: and wrong, with a P and without, and what a sentence says of an interval or a P that is
+#: not the plain one: what the reading of reported intervals finds and judges.
+ESTIMATES = (
+    "OR 2.6 (95% CI 2.1 to 3.2)", "OR 2.6 (95% CI 1.2-3.2)", "HR 0.80; 95% CI: 0.70, 0.91",
+    "the odds ratio was 1.9 (95% CI 1.2\N{EN DASH}3.0), P = 0.40", "aOR = 1.5 [CI 95% 1.1, 2.0]",
+    "MD \N{MINUS SIGN}0.4 (95% CI \N{MINUS SIGN}0.9 to 0.1), P = 0.01",
+    "mean difference 0.4 (95% CI -0.9--0.1)", "RR 1.50 (90% CI 1.05 to 2.14), P = 0.07",
+    "(95% profile-likelihood CI", "Bonferroni-adjusted P = 0.40", "P = 0.40 for interaction",
+    "and 1.1 (95% CI 0.8 to 1.5)", "hazard ratio\n2.1 (95% CI", "{{results.or}}",
+    "(95% CI {{results.lo}} to {{results.hi}})", "P = {{results.p}}", "CI 3.2 to 2.1",
+)  # fmt: skip
+
 
 # ---------------------------------------------------------------------- what an edit holds
 
@@ -753,6 +766,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "notation": texts(NOTATED),
     "reported tests": texts(REPORTED),
+    "reported intervals": texts(ESTIMATES),
     "units after": texts(BOUND_UNITS),
     "abbreviations": st.fixed_dictionaries(
         {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}

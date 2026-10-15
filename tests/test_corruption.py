@@ -2173,10 +2173,100 @@ def test_an_audited_paper_s_p_that_does_not_follow_is_listed_apart(tmp_path: Pat
         (1, "t = 2.45, df = 23, p = .40")
     ]
     shown = render(report, measure_discrimination(report.backing_values))
-    assert "P VALUES THAT DO NOT FOLLOW" in shown
+    assert "DO NOT FIT THE ONES BESIDE THEM" in shown
     assert "on the other side of 0.05" in shown
     # Every number is in the outputs, and --strict counts only those.
     assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == 0
+
+
+# ------------------------------------------------- an estimate, its interval and its P
+# A ratio's interval is symmetric on the log scale, and excludes its null exactly when the P
+# beside it is below one less its level. Numbers typed, quoted, or bound from two keys can
+# break either, and G2 sees each number pass.
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        ("The odds ratio was 2.6 (95% CI 2.1 to 3.2), P = 0.001.", []),
+        ("The odds ratio was 2.6 (95% CI 1.2 to 3.2).", ["ratio-interval-asymmetric"]),
+        ("The odds ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40.", ["p-against-interval"]),
+        ("The mean difference was 0.4 (95% CI -0.2 to 1.0), P = 0.001.",
+         ["p-against-interval"]),
+        ("The adjusted odds ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40.",
+         ["p-against-interval"]),
+        ("The odds ratio was 2.6 (95% profile-likelihood CI 1.2 to 3.2).", []),
+        ("The odds ratio was 1.9 (95% CI 1.2 to 3.0), Bonferroni-adjusted P = 0.40.", []),
+        ("The odds ratio was 1.9 (95% CI 1.2 to 3.0) in men and 1.1 (95% CI 0.8 to 1.5) in "
+         "women, P = 0.40 for interaction.", []),
+        ("The risk ratio was 1.50 (90% CI 1.05 to 2.14), P = 0.07.", []),
+        ("<!-- The odds ratio was 2.6 (95% CI 1.2 to 3.2). -->", []),
+    ],
+)  # fmt: skip
+def test_an_interval_that_does_not_fit_its_estimate_or_its_p_is_found(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    assert _recomputed_codes(project, sentence) == found
+
+
+def test_an_estimate_bound_from_one_analysis_and_its_interval_from_another_is_found(
+    project: Path,
+) -> None:
+    """The crude estimate beside the adjusted interval, and the crude P beside the adjusted
+    estimate: each number bound, each passed by G2, and no gate saw that they disagree."""
+    _emitted(
+        project, crude__or="2.80", crude__p="0.080", adjusted__or="2.23",
+        adjusted__low="1.60", adjusted__high="3.10",
+    )  # fmt: skip
+    interval = "(95% CI {{results.adjusted.low}} to {{results.adjusted.high}})"
+    crude = "The odds ratio was {{results.crude.or}} " + interval + "."
+    assert _recomputed_codes(project, crude) == ["ratio-interval-asymmetric"]
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("{{results.crude.or}}", "{{results.adjusted.or}}"), "utf-8")
+    adjusted = "The adjusted odds ratio was {{results.adjusted.or}} " + interval
+    sentence = adjusted + ", P = {{results.crude.p}}."
+    assert _recomputed_codes(project, sentence) == ["p-against-interval"]
+    assert _recomputed(project).counts["printed_intervals_read"] == 5
+
+
+def test_a_quote_whose_interval_does_not_fit_its_p_is_found(project: Path) -> None:
+    """The source's own numbers disagree, so the value taken from them may be the wrong
+    one."""
+    said = (
+        "The crude incidence of drug-induced hepatic injury was 14 per 100 000 "
+        "person-years (rate ratio 1.9, 95% CI 1.2-3.0, P = 0.40)."
+    )
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text(source.read_text(encoding="utf-8") + "\n" + said + "\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["quote"] = said
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = _literature_report(project)
+    assert [f.code for f in report.findings if f.code.startswith("quote-")] == [
+        "quote-p-against-interval"
+    ]
+    assert report.counts["literature_verified"] == 2
+
+
+def test_an_audited_paper_s_interval_that_does_not_fit_is_listed_apart(tmp_path: Path) -> None:
+    """`audit` reads a paper that was never bound, and needs no outputs for this."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "The odds ratio was 2.6 (95% CI 1.2 to 3.2).\n\n"
+        "The hazard ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [])
+    assert [(d.line, d.context) for d in report.disagreements] == [
+        (1, "odds ratio was 2.6 (95% CI 1.2 to 3.2"),
+        (3, "hazard ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40"),
+    ]
+    assert "arms differ" in report.disagreements[0].message
+    assert "excludes 1, and P = 0.40 is above 0.05" in report.disagreements[1].message
 
 
 @pytest.mark.parametrize(

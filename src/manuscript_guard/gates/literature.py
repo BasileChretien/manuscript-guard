@@ -33,6 +33,14 @@ from manuscript_guard.literature.sources import (
     states_value,
     words_beside,
 )
+from manuscript_guard.stats.intervals import (
+    ASYMMETRY,
+    asymmetry,
+    described_against,
+    described_asymmetry,
+    p_against,
+    reported_intervals,
+)
 from manuscript_guard.stats.reported import described, judge, reported_tests
 
 GATE = "G7"
@@ -191,6 +199,27 @@ def _tests_in_quote(key: str, value, quote: str) -> Report:
                 "this sentence supports",
             )
         )
+    for interval in reported_intervals(quote):
+        share = asymmetry(interval)
+        verdict = p_against(interval)
+        said = []
+        if share is not None and share > ASYMMETRY:
+            said.append(("quote-interval-asymmetric", described_asymmetry(interval, share)))
+        if verdict is not None:
+            said.append(("quote-p-against-interval", described_against(interval, verdict)))
+        findings += [
+            Finding(
+                gate=GATE,
+                code=code,
+                severity=WARN,
+                message=f"{key}: in the source, {message}",
+                path=value.source,
+                context=quote[:140],
+                hint="the source may carry a misprint; read its tables before citing a value "
+                "this sentence supports",
+            )
+            for code, message in said
+        ]
     return Report(tuple(findings))
 
 

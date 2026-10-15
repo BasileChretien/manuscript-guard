@@ -38,4 +38,6 @@ expected:
   - reading: check
     why: >-
       G8 works out the P each t, F, chi-squared or z statistic in the manuscript gives, and
-      counts them, `p_values_recomputed`
+      counts them, `p_values_recomputed`; and it reads each named estimate printed with a
+      confidence interval, held to its interval and its P, and counts them,
+      `printed_intervals_read`

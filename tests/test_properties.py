@@ -606,7 +606,10 @@ _TYPED = (
     ("matched |1:1", _NO_PARAMETER, False),
 )
 
-_METHODS_HEADINGS = ("# Methods", "# Materials and methods", "# Methods\n\n## Statistical analysis")
+_METHODS_HEADINGS = (
+    "# Methods", "# Materials and methods", "# Methods\n\n## Statistical analysis",
+    "# 2. Methods", "# Patients and methods",
+)  # fmt: skip
 _OTHER_HEADINGS = ("# Results", "# Discussion", "# Results\n\n## Sensitivity analyses")
 
 
@@ -664,6 +667,93 @@ def test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not(
         elif numbers_gate.typed_threshold(atom.text, verdict, chosen):
             found.add((atom.line, atom.col, _NO_PARAMETER))
     assert found == expected, text
+
+
+# ------------------------------------------------------------ a section found by its heading
+
+#: What a paper calls its Methods, as G4 has always read a heading for them: with "methods"
+#: in it, numbered, marked or not. And headings that are no Methods.
+_THE_METHODS = (
+    "Methods", "2. Methods", "2.1 Methods", "II. Methods", "(3) Methods", "2.Methods",
+    "**2. Methods**", "Patients and methods", "Materials and methods", "Materials & methods",
+    "Methods and analysis", "Statistical methods",
+)  # fmt: skip
+_NO_METHODS = ("Approach", "Study population", "Analyses", "A method for signal detection",
+               "Methodology")  # fmt: skip
+#: What a paper calls its abstract, and what a journal's profile may call it.
+_THE_ABSTRACT = ("Abstract", "1. Abstract", "Structured abstract", "Summary", "Overview")
+_ABSTRACT_TITLES = (None, "Summary", "Overview")
+#: A paper's title written as a heading over the whole paper, holding the word.
+_TITLE = "# Statistical methods for signal detection\n\n"
+
+
+def _under_a_title(text: str) -> str:
+    """The paper with its title as a heading over it, every other heading one level down."""
+    lowered = re.sub(r"(?m)^(#+) ", lambda found: "#" + found.group(1) + " ", text)
+    return _TITLE + lowered
+
+
+@st.composite
+def _papers_by_heading(draw: st.DrawFn) -> list[tuple[str, str, str, str | None, bool]]:
+    """A paper for every heading above, with the Methods, the abstract and the title the
+    profile gives the abstract each named every way, each with and without the paper's title
+    as a heading over it, among what is drawn each time: an abstract structured with a
+    Methods of its own or not, a subsection under the Methods or not, and words between.
+    Every name and both layouts are in every example: a rule broken for one of them is seen
+    whatever the seed."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    papers = []
+    filler = words()
+    for methods in (*_THE_METHODS, *_NO_METHODS):
+        for abstract in _THE_ABSTRACT:
+            # Drawn once for the pair, and read under each title a profile may give the
+            # abstract and in both layouts: so many papers are too large an example drawn
+            # one by one.
+            own, sub = draw(st.booleans()), draw(st.booleans())
+            opening = "\n\n## Methods\n\nBasil " if own else "\n\nBasil "
+            under = "\n\n## Statistical analysis\n\n" if sub else " "
+            text = (
+                f"# {abstract}{opening}{filler}.\n\n# Introduction\n\n{filler}.\n\n"
+                f"# {methods}\n\nCoriander {filler}.{under}{filler}.\n\n"
+                f"# Results\n\n{filler}.\n"
+            )
+            for named in _ABSTRACT_TITLES:
+                papers.append((text, methods, abstract, named, own))
+                papers.append((_under_a_title(text), methods, abstract, named, own))
+    return papers
+
+
+@holds(30, _papers_by_heading())
+def test_a_section_g4_counts_present_is_a_section_the_gates_read(
+    papers: list[tuple[str, str, str, str | None, bool]],
+) -> None:
+    """G4 counts a required section present by its heading, and G9 reads the Methods and
+    the word count the abstract by theirs. Where they disagreed, G4 passed "2. Methods" and
+    G9 compared a wrong parameter with no text, saying nothing. A Methods G4 counts is the
+    Methods G9 reads: never the abstract's own, nor the paper's title over it all. An
+    abstract G4 counts is the one whose words are counted as the abstract's. An abstract
+    nothing names as one ("Overview" with no profile to say so) is a section like any other,
+    and its Methods may be the first."""
+    from manuscript_guard.classify import rules_out_methods
+    from manuscript_guard.gates.journal import _present
+    from manuscript_guard.text.sections import measure, split_sections
+
+    for text, methods, abstract, named, own in papers:
+        sections = split_sections(text)
+        present = _present("Methods", sections, named)
+        read = methods_gate.methods_in(text, named)
+        is_one = abstract in _THE_ABSTRACT[:3] or abstract == named
+        unnamed = own and not is_one and not rules_out_methods(abstract)
+        assert present == (methods in _THE_METHODS or unnamed), (text, named)
+        assert present == (read is not None), (text, named)
+        if read is not None and not unnamed:
+            assert "Coriander" in read and "Basil" not in read, (text, read)
+        counted = measure(text, named).abstract_words
+        assert _present("Abstract", sections, named) == is_one, (text, named)
+        assert (counted > 0) == is_one, (text, named, counted)
 
 
 # --------------------------------------------------------------------------- models named
@@ -2088,6 +2178,61 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
 
+def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    old = re.compile(r"^\s*(?:materials and )?methods\b", re.IGNORECASE)
+    patch.setattr(section_names, "names_methods", lambda title: bool(old.match(title)))
+
+
+def _methods_found_without_the_paper_s_structure(patch: pytest.MonkeyPatch, keep: str) -> None:
+    """`methods_sections` with one of its two tests of place left out: `keep` says which
+    stays, "above" (nothing over it names another part) or "below" (nothing under it does)."""
+    from manuscript_guard.classify import rules_out_methods
+    from manuscript_guard.gates import journal
+    from manuscript_guard.text import section_names
+
+    def found(sections, abstract_title=None):
+        out, chain = [], []
+        for index, section in enumerate(sections):
+            while chain and chain[-1].level >= section.level:
+                chain.pop()
+            above = list(chain)
+            chain.append(section)
+            if not section_names.names_methods(section.title):
+                continue
+            if keep == "above" and any(
+                s.names_abstract(abstract_title) or rules_out_methods(s.title) for s in above
+            ):
+                continue
+            below = []
+            for later in sections[index + 1 :]:
+                if later.level <= section.level:
+                    break
+                below.append(later)
+            if keep == "below" and any(rules_out_methods(s.title) for s in below):
+                continue
+            out.append(section)
+        return out
+
+    patch.setattr(methods_gate, "methods_sections", found)
+    patch.setattr(journal, "methods_sections", found)
+
+
+def _a_title_over_the_paper_is_its_methods(patch: pytest.MonkeyPatch) -> None:
+    _methods_found_without_the_paper_s_structure(patch, "above")
+
+
+def _the_abstract_s_methods_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
+    _methods_found_without_the_paper_s_structure(patch, "below")
+
+
+def _a_profile_s_abstract_title_is_not_counted(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    patch.setattr(sections.Section, "names_abstract", lambda self, named: self.is_abstract)
+
+
 def _a_sign_is_no_part_of_its_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reworded_module, "_sign", lambda text, at: NO)
 
@@ -2457,6 +2602,22 @@ BROKEN = {
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
+    ),
+    "the Methods are read by the name G9 had for them": (
+        _the_methods_are_read_by_their_old_name,
+        test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
+    "the abstract a profile names is not counted as one": (
+        _a_profile_s_abstract_title_is_not_counted,
+        test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
+    "a paper's title over it all is its Methods": (
+        _a_title_over_the_paper_is_its_methods,
+        test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
+    "the abstract's own Methods are the paper's": (
+        _the_abstract_s_methods_are_the_paper_s,
+        test_a_section_g4_counts_present_is_a_section_the_gates_read,
     ),
     "a number's sign is no part of it": (
         _a_sign_is_no_part_of_its_number,

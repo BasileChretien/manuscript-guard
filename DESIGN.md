@@ -7249,7 +7249,7 @@ Closed since, and why each mattered:
   written first; nor can a plan changed between writing the analysis and running it. Any
   change to the Deviations section, a word or a date, satisfies the check, whatever it says.
   The copy is in version control like the plan, and a person can delete it; the next run then
-  freezes the plan as it is.
+  freezes the plan as it is. A plan that is not UTF-8 text is not frozen until it is.
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.

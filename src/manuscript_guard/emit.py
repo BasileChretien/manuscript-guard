@@ -354,16 +354,27 @@ def freeze_plan(root: Path, script: Path | str) -> Path | None:
     and a copy kept there would be frozen again on the changed plan. Written as JSON, which is
     YAML too, so that the R emitter writes the same file. Never overwritten: a second run
     finds it and leaves it.
+
+    A plan that is not UTF-8 text, or that holds a NUL as one saved in UTF-16 does, is not
+    kept: G12 says it is not UTF-8 (`plan-not-utf8`), and the first run after it is put
+    right keeps it. R cannot hold a NUL in a string, and stopped there with the results
+    already written (round 1 of #271).
     """
     plan, frozen = root / PLAN, root / FROZEN_PLAN
     if not plan.is_file() or frozen.exists():
+        return None
+    try:
+        text = plan.read_bytes().decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    if "\x00" in text:
         return None
     record = {
         "schema": "manuscript-guard/plan-frozen/1",
         "frozen_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "by": str(Path(script).relative_to(root)).replace("\\", "/"),
         "sha256": source_digest(plan),
-        "plan": plan.read_bytes().decode("utf-8", errors="replace"),
+        "plan": text,
     }
     frozen.write_text(
         json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"

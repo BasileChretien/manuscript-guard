@@ -622,8 +622,13 @@ mg_freeze_plan <- function(project_root, script) {
   if (!file.exists(plan) || file.exists(frozen)) return(invisible(NULL))
   stamp <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z", tz = "UTC")
   stamp <- sub("([+-]\\d{2})(\\d{2})$", "\\1:\\2", stamp)
-  text <- rawToChar(readBin(plan, "raw", file.info(plan)$size))
+  # A plan that is not UTF-8 text, or holds a NUL as a UTF-16 one does, is not kept, as in
+  # Python: rawToChar() stops on a NUL, after the results were written (round 1 of #271).
+  bytes <- readBin(plan, "raw", file.info(plan)$size)
+  if (any(bytes == as.raw(0))) return(invisible(NULL))
+  text <- rawToChar(bytes)
   Encoding(text) <- "UTF-8"
+  if (!validUTF8(text)) return(invisible(NULL))
   record <- list(
     schema = "manuscript-guard/plan-frozen/1",
     frozen_at = stamp,

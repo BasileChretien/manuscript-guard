@@ -10381,6 +10381,27 @@ def test_a_section_the_design_needs_says_where_it_comes_from(project: Path) -> N
     assert "ICH E9(R1)" in hints["the plan says nothing about estimand"]
 
 
+@pytest.mark.parametrize(
+    ("design", "renamed", "still_asked"),
+    [
+        # Round 1 of #292: "Case-control" holds "case" and "control" as words of their own.
+        ("case-control", "## Case-control design", ["cases", "controls"]),
+        ("disproportionality", "## Background\n\nWhy this.\n\n## Disproportionality analysis",
+         ["comparator", "measure"]),
+        ("disproportionality", "## Outcome measures", ["comparator", "measure"]),
+    ],
+)
+def test_a_heading_every_plan_has_is_not_a_design_s_section(
+    project: Path, design: str, renamed: str, still_asked: list[str]
+) -> None:
+    _declare(project, study_type=design)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8").replace("## Design", renamed, 1),
+                    encoding="utf-8")  # fmt: skip
+    asked = _plan_asked(project)
+    assert all(name in asked for name in still_asked), asked
+
+
 def test_a_design_s_section_written_is_found(project: Path) -> None:
     _declare(project, study_type="disproportionality")
     plan = project / "design" / "plan.md"

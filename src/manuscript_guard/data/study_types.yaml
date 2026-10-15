@@ -100,13 +100,14 @@ types:
     guidelines: [STROBE, RECORD]
     sections:
       - id: cases
-        heading: '(?i)\bcases?\b|\bcase definition|\bascertain'
+        # Not "case" in "Case-control", which names the design.
+        heading: '(?i)\bcases?\b(?!-)|\bascertain'
         says: the case definition, and the sources and methods of case ascertainment
         source: STROBE, item 6a (case-control)
         url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
         read_on: 2026-10-15
       - id: controls
-        heading: '(?i)\bcontrols?\b'
+        heading: '(?i)(?<!case-)\bcontrols?\b'
         says: the sources and methods of control selection, and why these cases and controls
         source: STROBE, item 6a (case-control)
         url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
@@ -190,13 +191,15 @@ types:
         url: https://doi.org/10.1007/s40264-024-01421-9
         read_on: 2026-10-15
       - id: comparator
-        heading: '(?i)\bcomparator|\breference group|\bbackground'
+        heading: '(?i)\bcomparator|\breference group|\bcomparison group'
         says: the reference group the reports are compared with, and why it is that one
         source: READUS-PV, item 3, and its explanation of items 7a, 7b and 8b
         url: https://doi.org/10.1007/s40264-024-01421-9
         read_on: 2026-10-15
       - id: measure
-        heading: '(?i)\bmeasure|\bdisproportionality|\bsignal'
+        # The measure the paper estimates, not an "Outcome measures" or a "Disproportionality
+        # analysis" every such plan has.
+        heading: '(?i)^\W*(?:disproportionality )?measures?\b|\bmeasures? of disproportionality|\bsignal (?:threshold|detection|criteri)'
         says: the measure of disproportionality and any threshold, with the reasons
         source: READUS-PV, item 7b
         url: https://doi.org/10.1007/s40264-024-01421-9

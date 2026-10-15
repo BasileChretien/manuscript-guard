@@ -788,6 +788,35 @@ em$write()
 """
 
 
+OFFSET_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+d <- data.frame(event = c(0, 1, 0, 1, 0, 0, 1, 0), x = 1:8,
+                time = c(2, 3, 1.5, 4, 2.5, 3.5, 1, 2))
+em$variable("event", "binary", label = "event", levels = c(0, 1))
+em$variable("x", "continuous", label = "x")
+em$model("rate", glm(event ~ x + offset(log(time)), family = poisson, data = d), name = "Rate")
+em$model("risk", glm(event ~ x, family = poisson, data = d), name = "Risk")
+em$write()
+"""
+
+
+def test_r_records_an_offset(tmp_path: Path) -> None:
+    """Round 1 of #289: a Poisson model of events over person-time is a rate model."""
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "offset.R"
+    script.write_text(OFFSET_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    models = json.loads((root / "results" / "offset.json").read_text(encoding="utf-8"))["models"]
+    assert models["rate"]["offset"] is True
+    assert "offset" not in models["risk"]
+
+
 def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> None:
     """One card in two languages: how each variable entered, the counts, the events by level
     and the kind of model agree; only the formula's spelling is each language's own."""
@@ -833,6 +862,13 @@ def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> 
     # Round 1 of #268: the units of the rows a subset leaves, counted alike.
     assert em.document()["models"]["subset"]["unit"] == document["models"]["subset"]["unit"]
     assert document["models"]["subset"]["unit"] == {"column": "pid", "units": 40}
+    # Item 36: the rows each fit used, by their labels: R numbers rows from 1 and pandas from
+    # 0, and the eighth row, with no x, is in neither.
+    from manuscript_guard.emit import rows_digest
+
+    assert from_r["rows_sha256"] == rows_digest(str(i) for i in range(1, 301) if i != 8)
+    assert "offset" not in from_r
+    assert from_python["rows_sha256"] == rows_digest(str(i) for i in range(300) if i != 7)
 
     def facts(card: dict) -> dict:
         entered = sorted(

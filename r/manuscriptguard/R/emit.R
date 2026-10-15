@@ -631,8 +631,12 @@ mg_read_fit <- function(fit, unit = NULL) {
     converged = if (inherits(fit, "glm")) isTRUE(fit$converged) else TRUE,
     # An lm or a glm keeps the standard errors its own model gives; sandwich estimators are
     # computed beside the fit, and nothing in it says so.
-    covariance = "model-based"
+    covariance = "model-based",
+    # The rows the fit used, by their labels, mirroring the Python `rows_digest`.
+    rows_sha256 = digest::digest(paste(rownames(stats::model.frame(fit)), collapse = "\n"),
+                                 algo = "sha256", serialize = FALSE)
   )
+  if (!is.null(stats::model.offset(stats::model.frame(fit)))) card$offset <- TRUE
   if (!is.null(unit)) card$unit <- mg_fit_units(fit, unit)
   if (!is.null(counted)) {
     card$events <- as.integer(sum(counted$rows))

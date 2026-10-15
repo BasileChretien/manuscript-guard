@@ -435,6 +435,15 @@
           "type": "string",
           "description": "How the fit's standard errors were computed, as its library names it: statsmodels' cov_type (\"nonrobust\", \"cluster\", \"HC1\"), or \"model-based\" for an R lm or glm."
         },
+        "offset": {
+          "const": true,
+          "description": "Present where the fit has an offset or an exposure, as a rate model of events over person-time has. G15 leaves the variance of such a Poisson model alone."
+        },
+        "rows_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "The SHA-256 of the labels of the rows the fit used, each as text, one to a line. G15 compares two models of one outcome by it, where equal counts can hide different rows."
+        },
         "unit": {
           "type": "object",
           "required": ["column", "units"],

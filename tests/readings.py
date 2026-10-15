@@ -41,6 +41,21 @@ READINGS: dict[str, Callable[[], Reading]] = {}
 MAIN = Path("manuscript") / "main.md"
 PAPER = Path("paper.yaml")
 
+#: The authors a blind review is not to see, as `authors.yaml` holds them: a given name of
+#: two words, a family name of three and one with an apostrophe, an ORCID iD, an e-mail
+#: address and an institution.
+PEOPLE = {
+    "authors": [
+        {"given": "Ada", "family": "Example", "orcid": "0000-0002-1825-0097",
+         "email": "ada.example@invalid.example"},
+        {"given": "Mary Ann", "family": "van der Berg"},
+        {"given": "Sean", "family": "O'Brien"},
+    ],
+    "affiliations": [
+        {"text": "Department of Clinical Pharmacology, Example University, Springfield, Japan"}
+    ],
+}  # fmt: skip
+
 
 def reading(name: str) -> Callable[[Callable[[], Reading]], Callable[[], Reading]]:
     def register(find: Callable[[], Reading]) -> Callable[[], Reading]:
@@ -348,6 +363,20 @@ def _checker_sentences() -> Reading:
         return [[line, sentence] for line, sentence in _sentences_of(text)]
 
     return checker_sentences
+
+
+@reading("blind names")
+def _blind_names() -> Reading:
+    """What names an author of `generated.PEOPLE` in a text, and where: what the build reads
+    a document reviewed blind for."""
+    from manuscript_guard.build.blinding import names_in, sought
+
+    wanted = sought(PEOPLE)
+
+    def blind_names(text: str) -> list[list[Any]]:
+        return [[what, start] for what, start in names_in(text, wanted)]
+
+    return blind_names
 
 
 # ------------------------------------------------------------------- titles and quotes

@@ -1005,7 +1005,7 @@ def test_an_approval_is_bound_to_the_manuscript_the_author_read(project: Path) -
     assert main(["approve", str(project), "--as", "0000-0002-1825-0097"]) == 0
     assert main(["approve", str(project), "--as", "blaise sample", "--note", "as read"]) == 0
     assert _approvals_said(project) == []
-    record = yaml.safe_load((project / "approvals" / "blaise-sample.yaml").read_text("utf-8"))
+    record = yaml.safe_load((project / "approvals" / "0000-0001-5109-3700.yaml").read_text("utf-8"))
     assert record["author"] == "Blaise Sample" and record["note"] == "as read"
     assert main(["approve", str(project), "--as", "Nobody"]) == 2
 
@@ -1016,6 +1016,24 @@ def test_an_approval_is_bound_to_the_manuscript_the_author_read(project: Path) -
     ]
     assert main(["approve", str(project), "--as", "Example"]) == 0
     assert _approvals_said(project) == [("approval-stale", "Blaise Sample")]
+
+
+def test_two_authors_named_alike_are_approved_apart(project: Path) -> None:
+    """Round 1 of #284: an approval was filed by the author's name folded to plain letters,
+    so two authors with one name shared a file, and the one who never approved was not
+    said. A file kept by the ORCID iD is each author's own, and a record names its author."""
+    from manuscript_guard.cli import main
+
+    authors = project / "authors.yaml"
+    text = authors.read_text(encoding="utf-8")
+    alike = "given: Wei\n    family: Zhang"
+    for given, family in (("Ada", "Example"), ("Blaise", "Sample")):
+        text = text.replace(f"given: {given}\n    family: {family}", alike)
+    authors.write_text(text, encoding="utf-8")
+    assert main(["approve", str(project), "--as", "0000-0002-1825-0097"]) == 0
+    assert _approvals_said(project) == [("approval-missing", "Wei Zhang")]
+    assert main(["approve", str(project), "--as", "0000-0001-5109-3700"]) == 0
+    assert _approvals_said(project) == []
 
 
 # ------------------------------------- the table rule, applied to the file rather than the API

@@ -43,9 +43,24 @@ def name_of(author: dict) -> str:
 
 
 def slug_of(author: dict) -> str:
-    """The file an author's approval is kept in: their name, folded to plain letters."""
-    plain = unicodedata.normalize("NFKD", name_of(author)).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-") or "author"
+    """The file an author's approval is kept in: by the ORCID iD where there is one, then the
+    e-mail address, then the name with its own letters kept. Two authors named alike, or two
+    names an ASCII fold empties, shared one file before (round 1 of #284)."""
+    for field in ("orcid", "email"):
+        value = str(author.get(field) or "").strip()
+        if value:
+            return re.sub(r"[^\w.@-]+", "-", value.lower()).strip("-")
+    named = unicodedata.normalize("NFKC", name_of(author)).casefold()
+    return re.sub(r"[^\w]+", "-", named).strip("-") or "author"
+
+
+def _names(document: dict, author: dict) -> bool:
+    """Whether an approval record is this author's: by name, and by ORCID iD where both
+    give one."""
+    if str(document.get("author") or "").strip() != name_of(author):
+        return False
+    orcid, recorded = str(author.get("orcid") or ""), str(document.get("orcid") or "")
+    return not (orcid and recorded and orcid != recorded)
 
 
 def find_author(project: Project, said: str) -> dict:
@@ -114,6 +129,13 @@ def check_approvals(project: Project) -> Report:
         checked = validate(document, "approval", path)
         if not checked.ok:
             report = report.merge(checked)
+            continue
+        if not _names(document, author):
+            report = report.with_findings(
+                _finding("approval-missing", f"{name_of(author)} has not approved the "
+                         f"manuscript: {path.name} is {document['author']}'s", path,
+                         "they run `manuscript-guard approve` as themselves")  # fmt: skip
+            )
             continue
         if document["document_sha256"] != current:
             report = report.with_findings(

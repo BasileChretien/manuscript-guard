@@ -482,6 +482,18 @@ turned a quarter it is twice it. A line is widened by the square root of the tra
 determinant. The printed size is that, times the printed width over the `viewBox`'s; where
 no width is given, at the figure's own width, a width with no unit read as pixels.
 
+A PDF figure is held the same way, read with the standard library (`gates/figure_pdf.py`):
+its objects where they stand and inside object streams, its streams where they are
+Flate-compressed, which is how plotting libraries write them. A text's size is the size
+`Tf` sets, through the text matrix (`Tm`, `Td`), every `cm` around it and a form's
+`/Matrix`, as the height that takes on the page; a line's width is the `w` it is stroked
+at, through the same, and a path only filled is no line. The printed size is that times the
+printed width over the page's. And each font the page uses is said where it is Type 3
+(`figure-font-type3`), which matplotlib writes unless `pdf.fonttype` is 42 (its
+`rcParamsDefault` says 3, read on 3.9.0), or where its file is not in the PDF
+(`figure-font-not-embedded`), as R's `pdf()` leaves Helvetica: a printer then sets the text
+in a font of its own.
+
 A figure's print width and kind are in its `<name>.guard.yaml` (`print_width_mm`, `kind`).
 Without them the narrowest width the journal prints at is taken, so that a resolution found
 too low is too low at any width, and the kind is halftone. A figure placed only in the
@@ -5190,15 +5202,21 @@ Added by the adversarial review, verified and **not** fixed:
   are counted under it together, as two whose patterns begin alike are. Before the review
   of #153 the second one's matches replaced the first's, under either kind of shared name,
   and a number the first was written for failed as unbound.
-- **A figure file is read for its pixels only where it is a PNG, JPEG or TIFF.** The text
-  size and line width of a PDF or EPS figure, and the fonts a PDF embeds, are not read yet,
-  nor is a raster inside an EPS, a PDF or an SVG's `<image>`. A figure the build places is the first of its files in the
+- **A figure file is read for its pixels only where it is a PNG, JPEG or TIFF.** An EPS
+  figure's text, lines and fonts are not read, nor is a raster inside an EPS, a PDF or an
+  SVG's `<image>`. A figure the build places is the first of its files in the
   build's order, PNG first, and every file of it is held to the rules, so a figure kept as
   PNG and TIFF is held to the journal's limits twice. A JPEG whose JFIF header records no
   resolution, or a PNG with no `pHYs` chunk, is not said to shrink: how large it was drawn
   is unknown. A legend is the paragraph straight after the figure that opens with "Figure"
   and its number; a legend written above it, or in the figure, is not counted. A megabyte
   is 1,048,576 bytes, the larger of the two a journal may mean.
+- **A PDF figure is read for its first page, and as far as its operators say.** A stream
+  under a filter other than Flate is not read, nor is an encrypted PDF. A Type 3 font's
+  `/FontMatrix` is not applied, so one drawn in other than a thousand units to the em is
+  read at the size `Tf` gives; a text's rise and horizontal scaling are not read, nor are
+  the lines a Type 3 glyph draws. A font is said where the page's or a form's resources name
+  it, whether any text uses it or not.
 - **An SVG's text and lines are read from its elements, not drawn.** A size or a width a
   stylesheet sets through a class or a selector is not read: the element's own, or SVG's
   16 and 1, is. A text is cut off only where its anchor is outside the `viewBox`; one that

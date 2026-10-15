@@ -445,6 +445,26 @@ def _quotation() -> Reading:
     return quotation
 
 
+@reading("pdf figure")
+def _pdf_figure() -> Reading:
+    """The fonts, texts and lines of a PDF figure as G4 reads them: each text's height and
+    each line's width in points, through every transform and form, and the page's width."""
+    from manuscript_guard.gates.figure_pdf import parse_pdf
+
+    def marks(document: str) -> dict[str, Any] | None:
+        figure = parse_pdf(document.encode("latin-1"))
+        if figure is None:
+            return None
+        return {
+            "width": figure.width_pt,
+            "fonts": [[f.name, f.subtype, f.embedded] for f in figure.fonts],
+            "texts": [[text, f"{size:.9g}"] for text, size in figure.texts],
+            "lines": [f"{width:.9g}" for width in figure.lines],
+        }
+
+    return marks
+
+
 @reading("vector figure")
 def _vector_figure() -> Reading:
     """The texts and lines of an SVG figure as G4 reads them: each text's height and each

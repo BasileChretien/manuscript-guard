@@ -8,22 +8,26 @@ it. Say what someone could do, with what access, and how to make it happen.
 
 ## What there is to protect
 
-- **Model providers' API keys.** `review --run` reads each provider's key from its
-  environment variable when it sends a request, and from nowhere else. A key is never
-  written to disk: not to `paper.yaml`, a review record, a log, or what `--dry-run` prints.
-  It travels in one header, to the provider it belongs to and to no other host: redirects
-  are not followed, and a message built from a provider's answer has the key taken out.
+- **Model providers' API keys.** `review --run` reads each provider's key from the
+  environment variable its provider names, once at the start of a run, and from nowhere
+  else. A key is never written to disk: not to `paper.yaml`, a review record, a log, or
+  what `--dry-run` prints. It travels in one header, to the host `paper.yaml` names for
+  that provider and to no other: redirects are not followed, and a message built from a
+  provider's answer has the key taken out. Which host that is follows from `paper.yaml`,
+  so a provider added there, or a preset whose variable another preset shares, can send a
+  key to a host it was not issued for; the prompt before sending names each host.
 - **The manuscript.** `review --run` sends it to the models listed in `paper.yaml`
-  (`review.models`), once it is confirmed: typed at the prompt, or `--yes` in a script the
-  author wrote. `--dry-run` shows what would be sent and sends nothing.
+  (`review.models`) once `yes` is typed at the prompt. `--yes` skips the prompt for
+  whoever passes it, a script or an agent; the skills tell an agent to ask the author
+  first, and nothing enforces it. `--dry-run` shows what would be sent and sends nothing.
 - **The author's machine.** The plugin's hooks run on every file edit and every shell
   command an agent makes, and `install-skills` writes files into the user's folders.
 
 ## In scope
 
 - **The hooks** (`plugin/hooks/hooks.json`, `src/manuscript_guard/hooks.py`). They run
-  `manuscript-guard-hook` before every edit and every shell command, after every edit, and
-  when a session starts, on the author's machine. A hook that can be made to run something,
+  `manuscript-guard-hook` before every file edit and every shell command, after a `Write`
+  or `Edit`, and when a session starts, on the author's machine. A hook that can be made to run something,
   write anywhere, or reach the network by what a project's files hold is in scope.
 - **`install-skills`**, which copies the skills onto the user's machine. A write outside
   the folder it is given, or over a folder it did not write, is in scope.
@@ -42,6 +46,6 @@ it. Say what someone could do, with what access, and how to make it happen.
   provider.
 - The programs the toolkit calls and does not ship: pandoc, R, Zotero and Better BibTeX,
   Word, git.
-- A gate that passes what it should have caught. That is a bug, and an issue is the place
-  for it; [CONTRIBUTING.md](CONTRIBUTING.md) says how.
+- A gate that passes what it should have caught. That is a bug: open an issue, and
+  [CONTRIBUTING.md](CONTRIBUTING.md) says how to turn the case into a failing test.
 - An agent that disregards the skills, and a user who turns the hooks off.

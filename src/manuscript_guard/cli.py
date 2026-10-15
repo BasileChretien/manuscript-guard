@@ -14,6 +14,7 @@ import contextlib
 import hashlib
 import re
 import sys
+import unicodedata
 from collections.abc import Collection
 from datetime import date
 from pathlib import Path
@@ -894,10 +895,41 @@ def _not_compared(
     return said
 
 
+#: How much of a comment is printed: enough to find it in Word.
+COMMENT_SHOWN = 200
+
+
+def quoted(text: str, limit: int = COMMENT_SHOWN) -> str:
+    """Text somebody else wrote, framed as a quotation: each line behind `> `, cut at
+    `limit` characters, and every control character, an escape sequence's included, shown
+    as `?`. Printed this way a co-author's words cannot pass for the tool's own, to a person
+    or to an agent reading the output, and cannot move the cursor or recolour the terminal."""
+    shown = text if len(text) <= limit else text[:limit] + " [...]"
+    return "\n".join(f"    > {line}" for line in printable(shown).split("\n"))
+
+
+#: The bidirectional controls, which reorder what follows them on screen.
+_BIDI = frozenset(map(chr, (0x061C, 0x200E, 0x200F, *range(0x202A, 0x202F),
+                            *range(0x2066, 0x206A))))  # fmt: skip
+
+
+def printable(text: str) -> str:
+    """`text` with every character a terminal would act on, rather than show, as `?`: a
+    control character (an escape, a carriage return) and a bidirectional control. A line
+    break is kept, and so is a no-break space, which Word puts in "5 mg" and before a
+    French colon."""
+    return "".join(
+        "?" if c in _BIDI or (unicodedata.category(c) == "Cc" and c != "\n") else c for c in text
+    )
+
+
 def _report_comments(comments) -> None:
-    """Each co-author comment, and where to record them so G11 can see they were answered."""
+    """Each co-author comment, and where to record them so G11 can see they were answered.
+    The comment is the co-author's text, quoted, never the tool's words."""
     for comment in comments:
-        print(f"\ncomment from {comment.author} ({comment.date}): {comment.text[:200]}")
+        author = printable(f"{comment.author} ({comment.date})").replace("\n", " ")
+        print(f"\ncomment from {author}, quoted:")
+        print(quoted(comment.text))
     if comments:
         print(
             f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "
@@ -1904,6 +1936,8 @@ def cmd_submit(args: argparse.Namespace) -> int:
     for path in pack.files:
         print(f"  {path.relative_to(pack.directory)}")
     print(f"  {pack.manifest.name}")
+    for note in pack.notes:
+        print(f"  {note}")
     print("\nStill to write by hand: the covering letter. No file in the project holds it.")
     return 0
 
@@ -2334,6 +2368,11 @@ def cmd_install_skills(args: argparse.Namespace) -> int:
     else:
         folder = skillcopy.user_folder()
 
+    if args.dry_run and not args.remove:
+        print("manuscript-guard: --dry-run goes with --remove", file=sys.stderr)
+        return 2
+    if args.verify or args.remove:
+        return _skills_kept(skillcopy, folder, args)
     try:
         done = skillcopy.install(folder)
     except (skillcopy.SkillsMissing, skillcopy.StampUnreadable, OSError) as exc:
@@ -2360,6 +2399,53 @@ def cmd_install_skills(args: argparse.Namespace) -> int:
             f"{skillcopy.way_forward(why, shared=shared)}",
             file=sys.stderr,
         )
+    return 1 if done.left else 0
+
+
+def _skills_kept(skillcopy, folder: Path, args: argparse.Namespace) -> int:
+    """`install-skills --verify` and `--remove`: what a folder holds of the copied skills,
+    and taking them away. Exit 1 where something is not as it was copied, or not there."""
+    try:
+        if args.verify:
+            checked = skillcopy.verify(folder)
+        else:
+            done = skillcopy.remove(folder, dry_run=args.dry_run)
+    except (skillcopy.StampUnreadable, OSError) as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    if args.verify:
+        if checked.version is None:
+            print(f"no skills of manuscript-guard in {folder}: it has no stamp")
+            return 1
+        print(
+            f"{len(checked.matching)} skill(s) of manuscript-guard {checked.version} in "
+            f"{folder} are as they were copied"
+        )
+        for name, why in checked.edited:
+            print(f"{folder / name} {why}")
+        for name in checked.missing:
+            print(f"{folder / name} {skillcopy.GONE}")
+        return 1 if checked.edited or checked.missing else 0
+    if done is None:
+        print(f"nothing to remove: {folder} has no stamp, so nothing in it is manuscript-guard's")
+        return 0
+    verb = "would remove" if args.dry_run else "removed"
+    for name in done.removed:
+        print(f"{verb} {folder / name}")
+    for name in done.missing:
+        print(f"{folder / name} {skillcopy.GONE}, so there was nothing to remove")
+    for name, why in done.left:
+        print(
+            f"manuscript-guard: {folder / name} {why}, so it was left as it is; delete it "
+            "yourself if it should go",
+            file=sys.stderr,
+        )
+    if done.stamp_removed:
+        print(f"{verb} {folder / skillcopy.STAMP}")
+    elif not args.dry_run:
+        print(f"kept {folder / skillcopy.STAMP}, which now records only what was left")
+    if args.dry_run:
+        print("nothing was changed")
     return 1 if done.left else 0
 
 
@@ -2807,6 +2893,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="into .agents/skills of the project you are in, not of your home",
     )
     where.add_argument("--dir", type=Path, default=None, help="into this folder")
+    kept = skills.add_mutually_exclusive_group()
+    kept.add_argument(
+        "--verify",
+        action="store_true",
+        help="say which copied skills are as they were copied, and change nothing",
+    )
+    kept.add_argument(
+        "--remove",
+        action="store_true",
+        help="take away the copied skills that are as they were copied, then the stamp",
+    )
+    skills.add_argument("--dry-run", action="store_true", help="with --remove: change nothing")
     skills.set_defaults(func=cmd_install_skills)
 
     return parser

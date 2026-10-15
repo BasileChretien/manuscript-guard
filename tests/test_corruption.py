@@ -1221,6 +1221,60 @@ def test_a_pointer_to_the_supplement_is_no_citation_of_the_main_text(
     assert not [s for s in _all_pointer_findings(project) if s[0] == "cited-out-of-order"]
 
 
+def test_a_pointer_that_ends_a_wrapped_line_is_a_citation(project: Path) -> None:
+    """Round 2 of #256: "shown in\nTable 1." was taken for a caption, and Table 1 for a
+    table cited nowhere."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("are shown in Table 1.", "are shown in\nTable 1.", 1),
+        encoding="utf-8",
+    )
+    assert _pointer_findings(project) == []
+
+
+def _declare(root: Path, line: str) -> None:
+    paper = root / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + f"\n{line}\n", encoding="utf-8")
+
+
+def test_a_figure_sent_as_a_file_is_declared_and_counted(project: Path) -> None:
+    """Round 2 of #256, Basile's choice of 2026-10-15: one figure bound, a flow chart sent to
+    the journal as a file of its own. Undeclared, "Figure 2" points at nothing; declared in
+    paper.yaml, it is counted, and must be cited like any other."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("can reconstruct it.", "can reconstruct it. The flow is in Figure 2.", 1),
+        encoding="utf-8",
+    )
+    assert [code for code, _ in _pointer_findings(project)] == ["pointer-to-nothing"]
+    _declare(project, "displays: {figures_as_files: 1}")
+    assert _pointer_findings(project) == []
+    main.write_text(text, encoding="utf-8")
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["display-not-cited"], said
+    assert said[0][1].startswith("Figure 2 ")
+
+
+def test_figures_all_sent_as_files_are_checked_once_declared(project: Path) -> None:
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("{{figure.forest}}", "", 1), encoding="utf-8"
+    )
+    _declare(project, "displays: {figures_as_files: 1}")
+    assert _pointer_findings(project) == []
+    _add_to_results(project, "As Figure 3 shows.")
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["pointer-to-nothing"], said
+    assert "and 1 sent as files" in said[0][1]
+
+
+def test_a_count_of_displays_sent_as_files_is_a_whole_number(project: Path) -> None:
+    _declare(project, "displays: {figures_as_files: -1}")
+    assert "schema-violation" in codes(gate_report(project))
+
+
 def test_a_caption_typed_above_a_table_is_no_citation_of_it(project: Path) -> None:
     main = main_md(project)
     text = main.read_text(encoding="utf-8").replace("in Table 2, so", "below, so", 1)

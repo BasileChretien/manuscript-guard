@@ -65,9 +65,8 @@ _POINTER = re.compile(
 )
 _REST = re.compile(r"(?P<join>" + _JOIN + r")(?P<s>S)?(?P<n>\d+)[A-Za-z]?\b", re.IGNORECASE)
 _PLURAL = re.compile(r"(?:tables|figures|figs\.?)$", re.IGNORECASE)
-#: A pointer that opens its line and is followed by a stop or a colon is a caption a writer
-#: typed above the table, not a citation of it.
-_CAPTION = re.compile(r"^[^\S\n]*(?:\*\*|__)?$")
+#: What may stand before a caption's pointer on its line: nothing, or the marks of bold.
+_CAPTION = re.compile(r"[^\S\n]*(?:\*\*|__)?")
 _PLACED = re.compile(r"\{\{\s*(?P<kind>table|figure)\.[A-Za-z0-9_.]+\s*\}\}")
 #: What says a document places a table by hand, in any of the forms pandoc reads: a pipe
 #: table's rule, a grid table's border, a simple table's dashes, a multiline table's rule, a
@@ -126,8 +125,7 @@ def pointers_in(text: str, path: Path) -> list[Pointer]:
     found = []
     for match in _POINTER.finditer(shown):
         line = shown.count("\n", 0, match.start()) + 1
-        before = shown[shown.rfind("\n", 0, match.start()) + 1 : match.start()]
-        caption = bool(_CAPTION.match(before)) and shown[match.end() : match.end() + 1] in ".:"
+        caption = _is_caption(shown, match)
         elsewhere = bool(match["supp"] or match["e"] or match["after"])
         for s, number in _numbers(match):
             found.append(
@@ -142,6 +140,21 @@ def pointers_in(text: str, path: Path) -> list[Pointer]:
                 )
             )
     return found
+
+
+def _is_caption(shown: str, match: re.Match) -> bool:
+    """A pointer that opens its paragraph and is followed by a stop or a colon is a caption a
+    writer typed above the table, not a citation of it. One that opens a line in the middle
+    of a wrapped paragraph ends a sentence ("shown in\nTable 1.")."""
+    if shown[match.end() : match.end() + 1] not in (".", ":"):
+        return False
+    start = shown.rfind("\n", 0, match.start()) + 1
+    if not _CAPTION.fullmatch(shown[start : match.start()]):
+        return False
+    if start == 0:
+        return True
+    above = shown.rfind("\n", 0, start - 1) + 1
+    return not shown[above : start - 1].strip()
 
 
 def without_front_matter_kept(text: str) -> str:
@@ -167,8 +180,19 @@ def placed_in(text: str) -> Placed:
     )
 
 
+#: The paper.yaml keys that declare the displays sent as files, by document and kind.
+AS_FILES = {
+    (False, FIGURE): "figures_as_files",
+    (False, TABLE): "tables_as_files",
+    (True, FIGURE): "supplementary_figures_as_files",
+    (True, TABLE): "supplementary_tables_as_files",
+}
+
+
 def check_pointers(project: Project) -> Report:
     root = project.path("manuscript")
+    declared = project.setting("displays") or {}
+    as_files = {key: int(declared.get(name) or 0) for key, name in AS_FILES.items()}
     sources = source_files(root)
     main = [path for path in sources if not is_supplementary(root, path)]
     supplement = [path for path in sources if is_supplementary(root, path)]
@@ -188,32 +212,39 @@ def check_pointers(project: Project) -> Report:
             by_hand |= {(supplementary, kind) for kind in placed.by_hand}
             pointers += pointers_in(text, path)
 
+    # What each document carries of each kind: what it places by binding, and what paper.yaml
+    # says goes to the journal as files of their own.
+    total = {key: bound.get(key, 0) + as_files[key] for key in AS_FILES}
+
     def counted(key: tuple[bool, str]) -> bool:
-        return bound.get(key, 0) > 0 and key not in by_hand
+        return total[key] > 0 and key not in by_hand
 
     report = Report()
     for pointer in pointers:
         key = (pointer.supplementary, pointer.kind)
-        count = bound.get(key, 0)
+        count = total[key]
         if not counted(key) or 1 <= pointer.number <= count:
             continue
         where = "the supplement" if pointer.supplementary else "the main text"
-        plural = "" if count == 1 else "s"
+        plural = "" if bound.get(key, 0) == 1 else "s"
+        files = f" and {as_files[key]} sent as files" if as_files[key] else ""
         report = report.with_findings(
             Finding(
                 gate=GATE,
                 code="pointer-to-nothing",
                 message=f"{pointer.shown!r} points at {pointer.kind} "
                 f"{'S' if pointer.supplementary else ''}{pointer.number}, and {where} "
-                f"places {count} {pointer.kind}{plural}",
+                f"places {bound.get(key, 0)} {pointer.kind}{plural}{files}",
                 path=pointer.path,
                 line=pointer.line,
                 hint="number tables and figures as the document places them; a table or figure "
-                "moved to the supplement is Table S1 or Figure S1 there",
+                "moved to the supplement is Table S1 or Figure S1 there; one sent to the journal "
+                f"as a file of its own is declared in paper.yaml, `displays: "
+                f"{{{AS_FILES[key]}: 1}}`",
             )
         )
-    report = report.merge(_unchecked(pointers, bound, by_hand, root))
-    report = report.merge(_in_order(pointers, bound, by_hand, root))
+    report = report.merge(_unchecked(pointers, total, by_hand, root))
+    report = report.merge(_in_order(pointers, total, by_hand, root))
     return report.with_counts(
         pointers=len(pointers),
         pointers_checked=sum(counted((p.supplementary, p.kind)) for p in pointers),
@@ -224,7 +255,7 @@ def check_pointers(project: Project) -> Report:
 
 def _unchecked(
     pointers: list[Pointer],
-    bound: dict[tuple[bool, str], int],
+    total: dict[tuple[bool, str], int],
     by_hand: set[tuple[bool, str]],
     root: Path,
 ) -> Report:
@@ -234,13 +265,13 @@ def _unchecked(
         for kind in (TABLE, FIGURE):
             key = (supplementary, kind)
             mine = [p for p in pointers if (p.supplementary, p.kind) == key]
-            if not mine or (bound.get(key, 0) and key not in by_hand):
+            if not mine or (total[key] and key not in by_hand):
                 continue
             where = "the supplement" if supplementary else "the main text"
             why = (
                 f"{where} places one or more by hand"
                 if key in by_hand
-                else f"{where} places none by {{{{{kind}.<key>}}}}"
+                else f"{where} places none by {{{{{kind}.<key>}}}} and declares none sent as files"
             )
             report = report.with_findings(
                 Finding(
@@ -250,8 +281,9 @@ def _unchecked(
                     message=f"{len(mine)} pointer(s) to {where}'s {kind}s were not checked: "
                     f"{why}, so its {kind}s cannot be counted",
                     path=root,
-                    hint=f"place every {kind} by {{{{{kind}.<key>}}}} to have its pointers "
-                    "checked; a figure sent as a file of its own is not placed in the text",
+                    hint=f"place every {kind} by {{{{{kind}.<key>}}}}, and declare those sent "
+                    f"as files of their own in paper.yaml (`displays: "
+                    f"{{{AS_FILES[key]}: <how many>}}`), to have its pointers checked",
                 )
             )
     return report
@@ -259,14 +291,15 @@ def _unchecked(
 
 def _in_order(
     pointers: list[Pointer],
-    bound: dict[tuple[bool, str], int],
+    total: dict[tuple[bool, str], int],
     by_hand: set[tuple[bool, str]],
     root: Path,
 ) -> Report:
-    """Each of the main text's tables and figures cited, and first cited in order."""
+    """Each of the main text's tables and figures cited, and first cited in order: those
+    sent as files are numbered with the others, so the numbers run from 1 to all of them."""
     report = Report()
     for kind in (TABLE, FIGURE):
-        count = bound.get((False, kind), 0)
+        count = total[(False, kind)]
         if not count or (False, kind) in by_hand:
             continue
         cited = [
@@ -300,8 +333,8 @@ def _in_order(
                     Finding(
                         gate=GATE,
                         code="display-not-cited",
-                        message=f"{kind.capitalize()} {number} is placed in the main text and "
-                        "cited nowhere",
+                        message=f"{kind.capitalize()} {number} is placed in the main text, or "
+                        "sent with it as a file, and cited nowhere",
                         path=root,
                         hint=f"ICMJE: each {kind} is cited in the text",
                     )

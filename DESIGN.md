@@ -364,7 +364,14 @@ hand (a pipe, grid, simple or multiline table, a caption line, an image, raw HTM
 by its binding, as a paper whose figures go to the journal as files of their own does, its
 pointers to that kind are not checked, and one note says so (`pointers-unchecked`). The
 first version counted tables and images written by hand as well; its review found correct
-papers failed by every form of either it did not count, and by figures sent as files. The main text's tables and figures are held to
+papers failed by every form of either it did not count, and by figures sent as files.
+Those a paper sends to the journal as files of their own, cited in the text and placed
+nowhere in it (a flow chart drawn by hand beside a forest plot that is bound), are declared
+in `paper.yaml`, `displays: {figures_as_files: 1}` and its three siblings for tables and the
+supplement, Basile's choice on 2026-10-15: they are counted with the bound ones, numbered
+with them, and have to be cited in order like them. A pointer that opens its paragraph and
+ends in a stop or a colon ("**Table 2.** Counts") is a caption typed above a table and no
+citation of it; one that opens a line inside a paragraph ends a sentence. The main text's tables and figures are held to
 what ICMJE asks for: each cited (`display-not-cited`), and first cited in the order they
 are numbered (`cited-out-of-order`). "Number tables consecutively in the order of their
 first citation in the text" and "Be sure that each table is cited in the text", from
@@ -5534,8 +5541,10 @@ Closed since, and why each mattered:
 - **A pointer is held to the number of a placement, not to its key, and only where every
   placement is a binding.** "Table 2" passes wherever the main text places two tables,
   whichever two they are: the check sees the numbering, not which table a sentence means.
-  A paper that writes any of its tables or places any of its figures by hand, or sends its
-  figures as separate files, has no pointer of that kind checked, only a note. A pointer
+  A paper that writes any of its tables or places any of its figures by hand has no
+  pointer of that kind checked, only a note; one that sends some as files of their own and
+  does not declare them in `paper.yaml` (`displays`) has a pointer past the bound ones
+  failed as pointing at nothing. A pointer
   in a heading, or in a caption typed above its table ("**Table 2.**"), is checked for a
   target and not counted as the citation that numbers a table. "Table 3 of Smith et al."
   is read as a pointer to the paper's own Table 3. "Box", "Section" and "Equation" point at

@@ -625,6 +625,33 @@ def test_a_citation_inserted_in_a_paragraph_not_compared_stops_nothing(
 
 
 @needs_pandoc
+def test_a_citation_inserted_in_a_paragraph_whose_identifier_moved_on_is_named(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    """Round 2 of #298: a paragraph added above since the build moves each identifier below
+    it on, and the import follows them; read under its name twice over, a citation inserted
+    in a followed paragraph was not named, and the rewording merged its words as prose."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    capsys.readouterr()
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    heading = text.index("\n# ") + 1
+    added = text[:heading] + "A paragraph added since the build.\n\n" + text[heading:]
+    main_md.write_text(added, encoding="utf-8")
+    inserted = _field_runs(_csl_code(UNKNOWN_ITEM), " (Other 2020)")
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx",
+        _inserted_after_prose(inserted),
+    )  # fmt: skip
+    code = main(["import", str(returned), str(project), "--force", "--apply"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "(Other 2020)" not in main_md.read_text(encoding="utf-8"), out
+    assert code == 1 and 'Other 2020, "A study that is not in the library"' in out, out
+
+
+@needs_pandoc
 def test_a_new_citation_in_a_live_document_is_named_not_merged(
     project: Path, tmp_path: Path, monkeypatch, capsys
 ) -> None:

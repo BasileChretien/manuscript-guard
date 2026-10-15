@@ -933,15 +933,14 @@ def cmd_import(args: argparse.Namespace) -> int:
         printed=printed,
     )
     if inserted:
-        # Only the paragraphs compared: one that is not is said to be so below, and named in
-        # a refusal it had no file to be named in.
-        compared_now = {now_named(name) for name in known}
+        # Only the paragraphs compared, `known`, which goes by the names they have now: one
+        # that is not is said to be so below, and named in a refusal it had no file.
         plan = _refused_inserted(
             plan,
             {
                 now_named(name): works
                 for name, works in inserted.items()
-                if now_named(name) in compared_now
+                if now_named(name) in known
             },
             renamed,
             project,

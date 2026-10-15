@@ -702,7 +702,9 @@ responsibility, so the gate rejects an `attested_by` naming a model — claude, 
 This is not decoration. Without it, the one file whose entire purpose is human
 accountability is the easiest file in the project for an agent to fill in on the author's
 behalf, and the guarantee evaporates silently. The skill instructs the model to draft the
-entry, leave `attested_by` empty, and ask.
+entry, leave `attested_by` empty, and ask. And the write hook puts an edit that names an
+attester to the person before it is made (see "The plugin: skills for judgement, hooks for
+the moment of the mistake").
 
 A statement shorter than eight words also warns: "Read it." records nothing a reader in two
 years could act on.
@@ -2217,6 +2219,20 @@ markers took the PowerShell and Windows spellings of the verbs they already had 
 time: `Compress-Archive`, `Send-MailMessage`, `Invoke-WebRequest` and its alias `iwr`,
 `Invoke-RestMethod`, `Start-BitsTransfer`, `robocopy` and `xcopy`. `Copy-Item` and
 `Move-Item` were held before, since `copy` and `move` stand in them as whole words.
+
+**Two decisions are put to the author.** A hook that denies can stop an agent; it cannot make
+the author decide. Sending the manuscript to model providers without being asked
+(`review --run --yes`) and naming who attested a value (`attested_by`) are the author's
+statements, and nothing in the files tells an agent's from theirs: G7 refuses a model's name
+as an attester, not a person's name typed by an agent. So for these two the hooks answer
+"ask", and Claude Code shows the person the call with the reason, which names the models in
+`review.models` or the attester the edit adds. An edit that leaves the attesters as they
+were is not asked about, so changing a value beside a name costs no prompt. Codex reads "ask"
+and does not support it yet, failing the hook and letting the call through (its hooks page,
+read 2026-10-15), so where the event is not known to be Claude Code's the hook refuses the
+call with the same reason and the author makes it. Claude Code is known by
+`CLAUDE_PROJECT_DIR`, which it exports to a hook, and by an event with no `turn_id`, which
+Codex sends with every tool call.
 
 **The command is held to the project at the agent's folder, and to each one it names.**
 Recognising `cd example && manuscript-guard submit` is half of catching it. The check runs
@@ -5757,10 +5773,19 @@ Closed since, and why each mattered:
   run counts the calls and gives the bytes of the largest request at four characters a
   token. Tokenisers differ by model and prices change, so neither is built in; a model that
   reasons before answering is billed for output the reply never shows.
-- **`--yes` is whoever typed it.** The tool cannot tell an author's `--yes` from an
-  agent's. Sending the manuscript is the author's decision, and under an agent that rests
-  on the agent asking: the `review-panel` skill tells it to show the dry run and wait for
-  the author's word, and nothing in the command can hold it to that.
+- **`--yes` is whoever typed it, where no hook reads the command.** The tool cannot tell an
+  author's `--yes` from an agent's. Under Claude Code the hook puts a `review --run --yes`
+  it reads to the person, and under Codex refuses it, but it reads the command as typed: a
+  script that runs it, a variable that holds `--yes`, or a shell the hooks are not
+  registered for is not held. Nor is an `attested_by` written by a shell command, a
+  script, or under a tool with no hooks. The `review-panel` skill still tells the agent to
+  show the dry run and wait for the author's word. The command is read as typed, quotes
+  included, so a command that only prints the words, `echo "manuscript-guard review --run
+  --yes"`, is asked about too, and refused under Codex.
+- **An attester is asked about by name, not by the value it attests.** An edit that changes
+  a value beside an existing `attested_by` costs no prompt, and the name then stands for a
+  value its owner never read; so does one that moves a name from one entry to another. The
+  names in the file are compared before and after, not entry by entry.
 - **A call that has been made cannot be recalled.** Ctrl+C stops further calls; the ones
   in flight, one for each provider at most, have left the machine, and the command waits
   for them, up to the ten minutes a call may take. A call a provider had asked to be

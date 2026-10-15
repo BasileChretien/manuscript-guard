@@ -414,11 +414,13 @@ _PLAIN_INLINES = frozenset({
     "Superscript", "Subscript", "SmallCaps", "Span", "Quoted",
 })  # fmt: skip
 #: What a sub- or superscript may hold for the plain writer to print it as one in Unicode.
-_SCRIPTABLE = re.compile(r"[0-9+\-=() ]*")
-#: A sub- or superscript of letters alone, a label ("C~max~", "2^nd^"), is written as its
-#: letters. Any other the plain writer cannot print as one (`10^−3^`, `kg^−1^`, `e^−kt^`)
-#: leaves the abstract out: written flat it would be another number.
+_SCRIPTABLE = re.compile(r"[0-9+\-\N{MINUS SIGN}=() ]*")
+#: What is written as its letters: a subscript of letters alone, a label ("C~max~"), and an
+#: ordinal's superscript ("2^nd^"). Any other script the plain writer cannot print as one
+#: (`2^k^`, `e^x^`, `10^0.5^`) leaves the abstract out: written flat it would be another
+#: number.
 _LETTERS = re.compile(r"[A-Za-z]+")
+_ORDINAL = re.compile(r"st|nd|rd|th")
 
 
 def _script(item: dict) -> str:
@@ -430,7 +432,8 @@ def _script(item: dict) -> str:
     said = _text(words)
     if _SCRIPTABLE.fullmatch(said):
         return "kept"
-    return "flat" if _LETTERS.fullmatch(said) else "refused"
+    label = _LETTERS if item["t"] == "Subscript" else _ORDINAL
+    return "flat" if label.fullmatch(said) else "refused"
 
 
 def _refused_script(node: object) -> bool:
@@ -509,8 +512,8 @@ def _plain(node: object) -> bool:
 
 
 def _unscripted(node: object) -> object:
-    """The tree with each sub- or superscript the plain writer cannot print as one written
-    as its own words: `C~max~` as "Cmax", `2^nd^` as "2nd"."""
+    """The tree with each label in a subscript and each ordinal's superscript written as its
+    own letters: `C~max~` as "Cmax", `2^nd^` as "2nd"."""
     if isinstance(node, dict):
         return {key: _unscripted(value) for key, value in node.items()}
     if not isinstance(node, list):

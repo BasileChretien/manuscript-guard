@@ -228,8 +228,9 @@ def test_a_paper_with_no_abstract_section_gets_no_abstract_file(project: Path) -
      # round 4: words struck out
      "as ~~not~~ shown.",
      # round 5: a power or a unit, which written flat is another number
-     "A dose of 2.1 \N{MULTIPLICATION SIGN} 10^\N{MINUS SIGN}3^ mg.", "In mg kg^−1^ daily.",
-     "At 10^0.5^ times.", "As x^*2*^."],
+     "At 10^0.5^ times.", "As x^*2*^.",
+     # round 6: a superscript of letters is a power, not a label
+     "A 2^k^ factorial design.", "As e^x^ grows."],
 )  # fmt: skip
 def test_an_abstract_the_build_formats_and_plain_text_cannot_is_left_out(
     project: Path, added: str
@@ -258,12 +259,17 @@ def test_a_sub_or_superscript_is_written_as_the_plain_writer_can(project: Path) 
     main = project / "manuscript" / "main.md"
     main.write_text(
         main.read_text(encoding="utf-8").replace(
-            "cannot establish risk.", "cannot establish risk. C~max~ in the 2^nd^ H~2~O.", 1
+            "cannot establish risk.",
+            "cannot establish risk. C~max~ in the 2^nd^ H~2~O at 10^\N{MINUS SIGN}3^ mg.",
+            1,
         ),
         encoding="utf-8",
     )
     plain, why = abstract_text(load_project(project)[0])
-    assert why is None and "Cmax in the 2nd H\N{SUBSCRIPT TWO}O." in plain, plain
+    assert why is None and (
+        "Cmax in the 2nd H\N{SUBSCRIPT TWO}O at "
+        "10\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT THREE} mg." in plain
+    ), plain
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

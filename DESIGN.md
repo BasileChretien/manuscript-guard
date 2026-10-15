@@ -7173,6 +7173,11 @@ Closed since, and why each mattered:
   term under a definition. Inside a list item's lines pandoc folds the digits in some
   positions and not others, and there an indented "1." under `\newpage` is still taken for
   numbering.
+- **`import` compares a returned document with an offline build in the default citation
+  style.** A document built with `--csl` comes back with every paragraph that cites refused,
+  its citations read as changed. A Zotero field is read by the words it shows and never by
+  its code, so a field a co-author refreshed into another style refuses its paragraph, and
+  one that shows the default style's words passes whatever item it names.
 - **Every indented line under a list is the list's for headings.** Pandoc ends a list at a
   line indented less than the item's text that starts no item, at a definition under it,
   and at a rule at the margin. The walk ends the items there, so a count opening a later

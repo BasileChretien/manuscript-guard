@@ -7308,8 +7308,12 @@ Closed since, and why each mattered:
   analysis declares one with `unit=`; a model fitted on repeated rows with no unit declared
   says nothing. In R a sandwich estimate computed beside an `lm` or a `glm`, with
   `sandwich::vcovCL` for instance, is not part of the fit and is not seen: such a model is
-  reported, and the warning says to cluster. A fit made with `subset=` counts its units over
-  the whole data less the rows dropped for missing values.
+  reported, and the warning says to cluster. A unit missing in a row the fit used is
+  refused at the emitter. Where the unit is in the model itself, as a fixed effect
+  (`C(site)` with `unit="site"`) or as the strata of a conditional model, the rows are still
+  reported as independent. In R the data of an `lm` is found again where its formula was
+  written, so a fit made inside a function on a local data frame of the same name as one
+  outside it can be counted on the wrong one.
   In R whatever inherits from `lm` is read, so `MASS::glm.nb` is: it is recorded with the
   package `stats` and the family `Negative Binomial(<theta>)`, which no entry matches, and
   is such a warning. So is a statsmodels fit made with one of the deprecated lower-case

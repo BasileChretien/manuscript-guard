@@ -615,14 +615,27 @@ def _converged(fit: object) -> bool:
 
 
 def _units(frame, data, unit: str) -> int:
-    """How many distinct values of `unit` the rows the model used hold."""
+    """How many distinct values of `unit` the rows the model used hold.
+
+    The frame is the data the fit read, `subset=` applied, and the rows it dropped for
+    missing values are left out. A row with no unit is refused: how many units such rows
+    hold cannot be counted, and counted one way here and another in R, the two emitters
+    disagreed (round 1 of #268).
+    """
     if unit not in {str(column) for column in frame.columns}:
         raise ValueError(
             f"model: unit {unit!r} is not a column of the data the model was fitted on"
         )
     dropped = set(getattr(data, "missing_row_idx", None) or [])
-    column = frame[unit]
-    return len({column.iloc[at] for at in range(len(frame)) if at not in dropped})
+    used = [at for at in range(len(frame)) if at not in dropped]
+    column, missing = frame[unit], frame[unit].isna()
+    absent = sum(1 for at in used if missing.iloc[at])
+    if absent:
+        raise ValueError(
+            f"model: unit {unit!r} is missing in {absent} of the rows the model used, so how "
+            f"many units they hold cannot be counted"
+        )
+    return len({column.iloc[at] for at in used})
 
 
 def read_statsmodels(fit: object, unit: str | None = None) -> dict:

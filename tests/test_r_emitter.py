@@ -660,6 +660,8 @@ em$variable("g", "categorical", label = "group", levels = c("a", "b", "c"), refe
 fit <- glm(y ~ x + g, data = data, family = binomial())
 em$model("adjusted", fit, name = "Adjusted model", description = "The primary analysis.",
          unit = "pid")
+em$model("subset", glm(y ~ x, data = data, family = binomial(), subset = pid < 40),
+         name = "On a subset", unit = "pid")
 em$write()
 """
 
@@ -703,7 +705,12 @@ def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> 
     fit = smf.glm("y ~ x + C(g, Treatment('a'))", data, family=sm.families.Binomial()).fit()
     em.model("adjusted", fit, name="Adjusted model", description="The primary analysis.",
              unit="pid")  # fmt: skip
+    on_subset = smf.glm("y ~ x", data, subset=data["pid"] < 40, family=sm.families.Binomial())
+    em.model("subset", on_subset.fit(), name="On a subset", unit="pid")
     from_python = em.document()["models"]["adjusted"]
+    # Round 1 of #268: the units of the rows a subset leaves, counted alike.
+    assert em.document()["models"]["subset"]["unit"] == document["models"]["subset"]["unit"]
+    assert document["models"]["subset"]["unit"] == {"column": "pid", "units": 40}
 
     def facts(card: dict) -> dict:
         entered = sorted(

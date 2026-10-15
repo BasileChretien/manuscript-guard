@@ -139,7 +139,8 @@ def _unit(model: Model) -> list[Finding]:
     """
     if not model.unit or model.unit.get("units", 0) >= model.n_used:
         return []
-    if model.covariance in CLUSTERED or model.engine.get("class") in GROUPED_FITS:
+    clustered = (model.covariance or "").lower() in CLUSTERED
+    if clustered or model.engine.get("class") in GROUPED_FITS:
         return []
     column, units = model.unit["column"], model.unit["units"]
     how = f"({model.covariance})" if model.covariance else "(no covariance type recorded)"

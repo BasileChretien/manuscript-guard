@@ -534,13 +534,10 @@ mg_successes <- function(fit, frame) {
   list(rows = round(y * weights), trials = sum(round(weights)))
 }
 
-# The model card of an lm or glm fit, read from the fit, mirroring the Python emitter's
-# `read_statsmodels`. Facts only; the name a model goes by is derived when results are read.
-# Whatever inherits from lm is read, so a fit built on glm (`MASS::glm.nb`) is too, with the
-# family it gives itself, which the list of models may have no entry for.
 # How many distinct values of `unit` the rows the model used hold, mirroring the Python
 # emitter's `_units`. A glm keeps its data; an lm does not, and its data is found where the
-# call names it. The rows the fit dropped for missing values are left out.
+# call names it. The rows used are the model frame's, `subset=` and the rows dropped for
+# missing values both left out; a row with no unit is refused, as in Python.
 mg_fit_units <- function(fit, unit) {
   data <- fit$data
   if (!is.data.frame(data)) {
@@ -553,12 +550,19 @@ mg_fit_units <- function(fit, unit) {
     stop("model: unit ", unit, " is not a column of the data the model was fitted on",
          call. = FALSE)
   }
-  values <- data[[unit]]
-  dropped <- fit$na.action
-  if (length(dropped) > 0) values <- values[-as.integer(dropped)]
+  data <- as.data.frame(data)
+  values <- data[rownames(stats::model.frame(fit)), unit, drop = TRUE]
+  if (anyNA(values)) {
+    stop("model: unit ", unit, " is missing in ", sum(is.na(values)), " of the rows the ",
+         "model used, so how many units they hold cannot be counted", call. = FALSE)
+  }
   list(column = unit, units = length(unique(values)))
 }
 
+# The model card of an lm or glm fit, read from the fit, mirroring the Python emitter's
+# `read_statsmodels`. Facts only; the name a model goes by is derived when results are read.
+# Whatever inherits from lm is read, so a fit built on glm (`MASS::glm.nb`) is too, with the
+# family it gives itself, which the list of models may have no entry for.
 mg_read_fit <- function(fit, unit = NULL) {
   if (!inherits(fit, "lm")) {
     stop("model: only lm and glm fits, and fits that inherit from them, are read, so the ",

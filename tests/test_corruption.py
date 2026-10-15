@@ -1145,6 +1145,7 @@ def test_rows_of_one_unit_taken_as_independent_are_a_warning(project: Path) -> N
     "fields",
     [
         {"unit": {"column": "patient", "units": 3}, "covariance": "cluster"},
+        {"unit": {"column": "patient", "units": 3}, "covariance": "Cluster"},
         {"unit": {"column": "patient", "units": 3},
          "engine": {"language": "Python", "package": "statsmodels", "class": "MixedLM"}},
         {"unit": {"column": "patient", "units": 100000}, "covariance": "nonrobust"},

@@ -414,6 +414,20 @@ The presentation list is deliberately narrow. `x`, `y`, `n` and `digits` are **n
 because allowing bare coordinates would allow `data.frame(x = c(1, 2, 3))` — data typed
 into a figure script, which gets its own error message.
 
+**The marks the script computes.** Labels drawn from the results say nothing about the marks.
+`sns.barplot` draws a bootstrap 95% interval of the mean unless told not to, with no seed;
+`stat_summary` draws a mean and its standard error, `geom_smooth` a fitted line and its
+band, `geom_jitter` a jitter from a seed drawn at random. None of these passes through the
+results file: the interval drawn can differ from the one the text quotes, it ignores the
+clustering the analysis accounted for, and where it is random it changes at every render,
+so the figure's review goes stale each time. The script itself does the same when it takes
+a spread with numpy's `std`, which divides by n where pandas and R divide by n - 1, samples
+rows, draws at random with no seed, or drops the rows with a missing value. Each such call
+in `data/figure_estimates.yaml`, with what it does as its library's own reference page says,
+is a warning (`figure-estimates`) unless an argument turns it off (`errorbar=None`), its
+seed or divisor is given (`seed=`, `ddof=`), a seed set in the script settles a random one,
+or the figure's `<name>.guard.yaml` gives a reason under `allow_estimates`.
+
 **A human or model reading the picture (G10).** Gate G10 requires a current review record
 per figure. See below.
 
@@ -5075,6 +5089,17 @@ Added by the adversarial review, verified and **not** fixed:
   carry another outcome's number. Set membership is the backstop for the figure nobody
   scripted, and should be read as "no number here is a stranger", not as "every number here
   is the right one".
+- **A figure that estimates is found by the names of the calls it makes.** Only the calls in
+  `data/figure_estimates.yaml` are read, by the last part of their name: a function of the
+  script's own that wraps one, a call through an alias (`bar = sns.barplot`), seaborn's
+  `catplot` and `relplot`, which estimate only under some `kind`, and a density estimate
+  (`kdeplot`) are not. A method of the same name on another object is taken for one: any
+  `.sample(` or `.std(`. Any seed call in the script (`np.random.seed`, `default_rng(7)`,
+  `random.seed`, `set.seed`) is taken to settle every random call in it, though
+  `np.random.seed` does not seed Python's `random` module. A seaborn bootstrap is settled
+  only by its own `seed=`. `geom_smooth`, `stat_summary` and `dropna` have no argument that
+  quiets them: each needs a reason under `allow_estimates`, or the computation moved into
+  the analysis.
 - **The source-of-truth invariant does not survive a co-author round in Word, and a real
   paper is the proof.** This toolkit rests on "Markdown is the permanent source of truth and
   the .docx is a disposable build artifact". Run against a submitted pharmacology paper, the

@@ -198,9 +198,9 @@ types:
         url: https://doi.org/10.1007/s40264-024-01421-9
         read_on: 2026-10-15
       - id: measure
-        # The measure the paper estimates, numbered or not, and not an "Outcome measures"
-        # or a "Disproportionality analysis" every such plan has.
-        heading: '(?i)(?<!outcome\W)(?<!outcomes\W)(?<!exposure\W)\bmeasures?\b(?! of (?:outcome|exposure))|\bsignal (?:threshold|detection|criteri)'
+        # The measure the paper estimates, numbered or not, and not the "Outcome measures",
+        # "Data quality measures" or "Disproportionality analysis" such a plan has.
+        heading: '(?i)^[\W\d]*(?:(?:primary|main|choice of|the|disproportionality|statistical)\s+)*measures?\b(?!\s+of\s+(?:\w+\s+)?(?:outcomes?|exposures?)\b)|\bmeasures? of disproportionality|\bdisproportionality measures?\b|\bsignal (?:threshold|detection|criteri)'
         says: the measure of disproportionality and any threshold, with the reasons
         source: READUS-PV, item 7b
         url: https://doi.org/10.1007/s40264-024-01421-9

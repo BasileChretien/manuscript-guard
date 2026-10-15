@@ -10393,6 +10393,10 @@ def test_a_section_the_design_needs_says_where_it_comes_from(project: Path) -> N
         ("disproportionality", "## Background\n\nWhy this.\n\n## Disproportionality analysis",
          ["comparator", "measure"]),
         ("disproportionality", "## Outcome measures", ["comparator", "measure"]),
+        # A further round: any "measures" heading the plan has for something else.
+        ("disproportionality", "## Data quality measures\n\nDuplicates removed.",
+         ["comparator", "measure"]),
+        ("disproportionality", "## 4. Bias mitigation measures", ["comparator", "measure"]),
     ],
 )
 def test_a_heading_every_plan_has_is_not_a_design_s_section(

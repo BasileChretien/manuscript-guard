@@ -43,10 +43,11 @@ TABLE = "table"
 FIGURE = "figure"
 
 _GAP = r"[^\S\n]*(?:\n[^\S\n]*)?"
-#: What joins the numbers of one pointer: "Tables 1 and 2", "Tables 1, 3", "Figures 2-4".
+#: What joins the numbers of one pointer: "Tables 1 and 2", "Tables 1, 3", "Figures 2-4",
+#: and the serial comma, "Tables 1, 2, and 3".
 #: A word or a comma joins only after a plural: "Table 2 and 3 patients" is one pointer.
 _DASHES = "-\N{EN DASH}\N{EM DASH}"
-_JOIN = r"[^\S\n]*(?:,|and|&|to|[" + _DASHES + r"])[^\S\n]*"
+_JOIN = r"[^\S\n]*(?:,[^\S\n]*(?:and|&)|,|and|&|to|[" + _DASHES + r"])[^\S\n]*"
 #: The words that put a table or a figure in the supplement, whatever a journal calls it:
 #: "Supplementary", "Supplemental", "Extended Data", "Appendix", "Online", and JAMA's
 #: "eTable" and "eFigure".
@@ -108,7 +109,7 @@ def _numbers(found: re.Match) -> list[tuple[bool, int]]:
     plural = bool(_PLURAL.match(found["kind"]))
     ended = False
     for part in _REST.finditer(found["rest"]):
-        number, joined = int(part["n"]), part["join"].strip().lower()
+        number, joined = int(part["n"]), part["join"].strip().lower().lstrip(", ") or ","
         ranged = joined in ("to", *_DASHES)
         # After "and" the list has ended: "In Tables 1 and 2, 30 patients" counts 30.
         if (not plural and joined != "-" and joined not in _DASHES) or (ended and joined == ","):

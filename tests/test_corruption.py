@@ -1338,6 +1338,17 @@ def test_a_count_after_a_list_of_tables_is_a_count(project: Path) -> None:
     assert _pointer_findings(project) == []
 
 
+def test_a_serial_comma_ends_no_list_of_tables(project: Path) -> None:
+    """Round 3 of #256: "Tables 1, 2, and 3" stopped the pointer at 2, and the 3 was taken
+    for a cross-reference no gate held to a table, in a paper that places two."""
+    from manuscript_guard.gates.pointers import pointers_in
+
+    said = pointers_in("In Tables 1, 2, and 3, 30 patients were excluded.", Path("x"))
+    assert [p.number for p in said] == [1, 2, 3]
+    _add_to_results(project, "Tables 1, 2, and 3 show the reports.")
+    assert [code for code, _ in _pointer_findings(project)] == ["pointer-to-nothing"]
+
+
 def test_a_list_of_tables_is_one_pointer(project: Path) -> None:
     """"Tables 1 and 2 show" left its 2 bound to nothing."""
     _add_to_results(project, "Tables 1 and 2 show the reports.")

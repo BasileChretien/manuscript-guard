@@ -188,6 +188,7 @@ structural:
       - {text: "The figures\n\n2 and 3 reports came later.", atom: "3"}
       # After the list's "and", a comma ends it: the 30 is a count.
       - {text: "In Tables 1 and 2, 30 patients were excluded.", atom: "30"}
+      - {text: "In Tables 1, 2, and 3, 30 patients were excluded.", atom: "30"}
 
   numbered-part:
     accepts:

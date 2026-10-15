@@ -34,8 +34,8 @@ structural:
     # show" was a 2 bound to nothing. Only after a plural, where the list cannot be a count
     # in the sentence, and every number of it is held to what the document carries by
     # `gates/pointers.py`. A join stands between any two gaps, so no run of spaces is shared.
-    # A comma joins only before the list's "and": "In Tables 1 and 2, 30 patients" leaves 30.
-    pattern: '(?i)\b(?:tables|figures|figs\.?)[^\S\n]*(?:\n[^\S\n]*)?S?\d+[A-Za-z]?(?=[^\S\n]*(?:,|and|&|to|[-–]))(?:[^\S\n]*(?:,|to|[-–])[^\S\n]*S?\d+[A-Za-z]?)*(?:[^\S\n]*,?[^\S\n]*(?:and|&)[^\S\n]*S?\d+[A-Za-z]?(?:[^\S\n]*(?:to|[-–])[^\S\n]*S?\d+[A-Za-z]?)?)?\b'
+    # After the list's "and", a comma ends it: "In Tables 1 and 2, 30 patients" leaves 30.
+    pattern: '(?i)\b(?:tables|figures|figs\.?)[^\S\n]*(?:\n[^\S\n]*)?S?\d+[A-Za-z]?(?=[^\S\n]*(?:,|and|&|to|[-–]))(?:[^\S\n]*(?:,|to|[-–])[^\S\n]*S?\d+[A-Za-z]?)*(?:[^\S\n]*(?:,[^\S\n]*)?(?:and|&)[^\S\n]*S?\d+[A-Za-z]?(?:[^\S\n]*(?:to|[-–])[^\S\n]*S?\d+[A-Za-z]?)?)?\b'
 
   - id: numbered-part
     why: The number of a step, a panel, a box or an item, which nothing else can check.

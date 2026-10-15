@@ -9,10 +9,10 @@ items whose sentences they judged. Nothing showed the whole chain, so "I changed
 definition: what now has to be run again, read again or signed again?" had no answer in one
 place.
 
-`impact` walks it from a file, transitively, and stores nothing: everything it says is
-derived from the records the gates read, so it cannot go stale itself. It is a list of what
-depends on the file, not a verdict: whether the dependants have changed is the gates' to say
-once the analysis has run again.
+`impact` walks it from a file, through results that feed other results, and stores nothing:
+everything it says is derived from the records the gates read, so it cannot go stale itself.
+It is a list of what depends on the file, not a verdict: whether the dependants have changed
+is the gates' to say once the analysis has run again.
 """
 
 from __future__ import annotations
@@ -61,7 +61,12 @@ class Impact:
 
     @property
     def empty(self) -> bool:
-        return not (self.results or self.keys or self.bound or self.figures or self.readings)
+        """Whether nothing at all depends on the file: every list is empty (round 1 of #280:
+        a file with only co-author answers was said to have no dependant)."""
+        return not any(
+            (self.results, self.keys, self.bound, self.figures, self.figure_reviews,
+             self.steps, self.methods, self.readings, self.answers)
+        )  # fmt: skip
 
 
 def impact_of(project: Project, results: Results, literature, target: Path) -> Impact:
@@ -72,13 +77,7 @@ def impact_of(project: Project, results: Results, literature, target: Path) -> I
     manuscript = project.path("manuscript").resolve()
     figures_dir = project.path("figures").resolve()
 
-    fragments = [
-        f
-        for f in results.fragments
-        if f.generated_by == rel
-        or any(isinstance(i, dict) and i.get("path") == rel for i in f.inputs)
-        or Path(f.path).resolve() == path
-    ]
+    fragments = _fragments(results, root, path, rel)
     sources = {Path(f.path).resolve() for f in fragments}
     keys = sorted(
         f"results.{key}"
@@ -125,13 +124,43 @@ def impact_of(project: Project, results: Results, literature, target: Path) -> I
     files = {place.path for place in impact.bound} | {place.path for place in impact.methods}
     if path.is_relative_to(manuscript):
         files.add(rel)
-    read = {_relative(root / name, manuscript) for name in files if (root / name).is_file()}
+    # A file deleted from the manuscript is matched too: G11 says a reading of it is stale
+    # (round 1 of #280).
+    read = {
+        _relative(root / name, manuscript)
+        for name in files
+        if (root / name).resolve().is_relative_to(manuscript)
+    }
     impact.readings = _readings(project, root, read)
     impact.answers = _answers(project, {Path(name).name for name in files})
     return impact
 
 
 _SCRIPTS = frozenset({".r", ".rmd", ".qmd", ".py", ".jl"})
+
+
+def _fragments(results: Results, root: Path, path: Path, rel: str) -> list:
+    """The results files the file writes, feeds or is, and every results file that declares
+    one of those as an input, and so on (round 1 of #280: one hop missed an analysis whose
+    input is another's results)."""
+    reached = [
+        f
+        for f in results.fragments
+        if f.generated_by == rel
+        or any(isinstance(i, dict) and i.get("path") == rel for i in f.inputs)
+        or Path(f.path).resolve() == path
+    ]
+    while True:
+        written = {_relative(Path(f.path), root) for f in reached}
+        more = [
+            f
+            for f in results.fragments
+            if f not in reached
+            and any(isinstance(i, dict) and i.get("path") in written for i in f.inputs)
+        ]
+        if not more:
+            return reached
+        reached += more
 
 
 def _relative(path: Path, root: Path) -> str:
@@ -280,18 +309,20 @@ def changed_files(project: Project, since: str = "HEAD") -> list[Path]:
     def git(*args: str) -> list[str]:
         command = ["git", "-c", "core.fsmonitor=false", "-c", "core.quotepath=false", *args]
         try:
+            # Read as UTF-8, which git writes with quotepath off, not in the locale's code page
+            # (round 1 of #280: a file name in Japanese crashed on cp932), and parted by NUL.
             done = subprocess.run(
-                command, cwd=root, capture_output=True, text=True, timeout=GIT_SECONDS,
-                check=False,
+                command, cwd=root, capture_output=True, encoding="utf-8", errors="replace",
+                timeout=GIT_SECONDS, check=False,
             )  # fmt: skip
         except (OSError, subprocess.TimeoutExpired) as error:
             raise NoChanges(f"git could not be asked: {error}") from error
         if done.returncode != 0:
             raise NoChanges(done.stderr.strip() or f"git {' '.join(args)} failed")
-        return [line for line in done.stdout.splitlines() if line.strip()]
+        return [name for name in done.stdout.split("\0") if name.strip()]
 
-    names = git("diff", "--name-only", "--relative", since, "--", ".")
-    names += git("ls-files", "--others", "--exclude-standard", "--", ".")
+    names = git("diff", "-z", "--no-renames", "--name-only", "--relative", since, "--", ".")
+    names += git("ls-files", "-z", "--others", "--exclude-standard", "--", ".")
     return [root / name for name in sorted(set(names))]
 
 

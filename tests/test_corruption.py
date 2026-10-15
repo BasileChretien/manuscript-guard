@@ -1029,6 +1029,42 @@ def test_impact_lists_what_an_analysis_script_makes_stale(project: Path) -> None
     assert nothing["role"] == "no record names it" and not nothing["keys"]
 
 
+def test_impact_follows_results_into_results_and_a_deleted_file_to_its_readings(
+    project: Path,
+) -> None:
+    """Round 1 of #280: an analysis whose input is another's results was a hop too far, and a
+    manuscript file deleted lost the readings G11 calls stale. And a file with only answers on
+    it was said to have nothing depend on it."""
+    from manuscript_guard.impact import Impact, as_text
+
+    first = project / "results" / "01_disproportionality.json"
+    document = json.loads(first.read_text(encoding="utf-8"))
+    document["provenance"]["generated_by"] = "analysis/02_second.py"
+    document["provenance"]["inputs"] = [
+        {"path": "results/01_disproportionality.json", "sha256": "0" * 64}
+    ]
+    document["values"] = {"second.n": dict(document["values"]["case.n_cases"])}
+    for key in ("tables", "steps", "variables", "models", "code_lists"):
+        document.pop(key, None)
+    second = project / "results" / "02_second.json"
+    second.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(second)
+    (found,) = _impact(project, "analysis/01_disproportionality.py")
+    assert "results/02_second.json" in found["results"]
+    assert "results.second.n" in found["keys"]
+
+    listed = project / "review" / "round-3" / "biostatistician.yaml"
+    assert "supplementary/S1_code_lists.md" in yaml.safe_load(
+        listed.read_text(encoding="utf-8")
+    )["file_sha256"]
+    (project / "manuscript" / "supplementary" / "S1_code_lists.md").unlink()
+    (gone,) = _impact(project, "manuscript/supplementary/S1_code_lists.md")
+    assert "review/round-3/biostatistician.yaml" in gone["readings"]
+
+    only = Impact(file="manuscript/main.md", role="a manuscript file", answers=["A on x"])
+    assert not only.empty and "    A on x" in as_text(only)
+
+
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 def test_impact_with_no_file_lists_what_changed_since_the_last_commit(
     project: Path, monkeypatch: pytest.MonkeyPatch
@@ -1051,6 +1087,10 @@ def test_impact_with_no_file_lists_what_changed_since_the_last_commit(
     (found,) = _impact(project)
     assert found["file"] == "analysis/01_disproportionality.py"
     assert found["results"] == ["results/01_disproportionality.json"]
+    # Round 1 of #280: git's names are read as UTF-8, not in the locale's code page.
+    named = project / "manuscript" / ("r" + chr(0xE9) + "sum" + chr(0x8003) + ".md")
+    named.write_text("New.\n", encoding="utf-8")
+    assert named.name in {Path(one["file"]).name for one in _impact(project)}
 
 
 # ------------------------------------- the table rule, applied to the file rather than the API

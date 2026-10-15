@@ -1153,6 +1153,10 @@ def _with_paragraph(root: Path, paragraph: str) -> None:
         "Discussion prompt: what else?",
         "dated 2025-XX-XX",
         "INSERT_SOURCE_URL_30",
+        # Round 1 of #262: an instruction cut by a hard wrap, and one before a colon.
+        "approved by [insert the name of the\nethics committee]",
+        "[insert number]: 2024",
+        "[CITATION NEEDED]",
     ],
 )
 def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None:
@@ -1172,6 +1176,12 @@ def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None
         "As the review put it [Add-on therapy in epilepsy] (in Spanish).",
         "Drugs that replace later lines of therapy were counted.",
         "TK inhibitors were the reference group.",
+        # Round 1 of #262: an abbreviation nested in parentheses is in brackets and capitals,
+        # a hard wrap is no end of a phrase, and a paper on teaching has discussion prompts.
+        "Cases of SJS or TEN [SJS/TEN] were counted.",
+        "Terms were coded (system organ class/preferred term [SOC/PT]).",
+        "Drugs that replace later\nlines of therapy were counted.",
+        "Each case ended with discussion prompts.",
     ],
 )
 def test_what_looks_like_a_placeholder_and_is_prose_passes(project: Path, prose: str) -> None:
@@ -1226,6 +1236,9 @@ def test_a_placeholder_in_a_cited_reference_fails_on_its_line(project: Path) -> 
         # Capitals only outside the manuscript: "Todo" opens many a Spanish title.
         "title = {Todo sobre la farmacovigilancia}",
         "title = {Drug response in women with a 47,XXX karyotype}",
+        # Round 1 of #262: titles PubMed translated into English, in brackets.
+        "title = {[Your diagnosis?]}",
+        "title = {[TREATMENT OF EPILEPSY WITH PHENYTOIN]}",
         # Fields no reference list prints.
         "abstract = {TODO}",
         "file = {TBD.pdf}",
@@ -1236,6 +1249,17 @@ def test_what_a_cited_reference_holds_and_is_no_placeholder_passes(
 ) -> None:
     _cited_entry_has(project, field)
     assert _placeholders(_g6(project)) == []
+
+
+def test_a_placeholder_on_an_entrys_first_line_is_found_on_it(project: Path) -> None:
+    """Round 1 of #262: a field written on the entry's line was put on the next entry's."""
+    bib = project / "literature" / "references.bib"
+    opening = "@article{fictionalHepaticCohort2021,\n"
+    text = bib.read_text(encoding="utf-8")
+    bib.write_text(text.replace(opening, opening[:-1] + " number = {TBD},\n", 1), encoding="utf-8")
+    said = [f for f in _g6(project).findings if f.code == "model-artefact"]
+    lines = bib.read_text(encoding="utf-8").splitlines()
+    assert len(said) == 1 and lines[said[0].line - 1].startswith("@article{fictionalHepatic")
 
 
 def test_a_placeholder_in_an_uncited_reference_says_nothing(project: Path) -> None:

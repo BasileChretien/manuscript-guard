@@ -2020,7 +2020,8 @@ def _a_word_in_lower_case_is_a_placeholder_anywhere(patch: pytest.MonkeyPatch) -
 
 
 def _a_links_text_is_a_slot(patch: pytest.MonkeyPatch) -> None:
-    _placeholder_rule(patch, "placeholder-slot", lambda p: p.replace("(?![(\\[{:])", ""))
+    # The lookahead that ends the rule, which keeps a link's text and its definition out.
+    _placeholder_rule(patch, "placeholder-slot", lambda p: p[: p.rindex("(?!")])
 
 
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:

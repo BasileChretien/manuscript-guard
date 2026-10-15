@@ -896,9 +896,12 @@ is a reference rather than a rewrite.
 
 **A placeholder is a kind of slot, looked for wherever the document's text comes from.** The
 rules name kinds, not spellings:
-- an instruction to the writer in brackets, "[describe the cohort]";
+- an instruction to the writer in brackets, "[describe the cohort]", even where a hard wrap
+  cuts it;
 - a thing to be supplied, "[Repository]", "[DOI/accession]", "[citation needed]";
-- words in capitals in brackets, "[TO BE COMPLETED]";
+- capitals in brackets that say something is still to come, "[TO BE COMPLETED]", "[CLAIM
+  NEEDS EVIDENCE]". Capitals alone say nothing of the kind: an abbreviation nested in
+  parentheses, "[SJS/TEN]", is in brackets and capitals;
 - filler, and instructions left for the writer: "lorem ipsum", "fill in later.", "this
   section is a template";
 - the words that mark a gap: TODO, TBD, FIXME, a doubled TKTK, a run of three X or more, a
@@ -906,8 +909,9 @@ rules name kinds, not spellings:
 
 "XXX" was matched only whole, so "n = XXXX patients" passed, and G2 does not see it, since
 it holds no digit. What is no slot: a link's text, a bracketed span, a title translated into
-English in brackets as PubMed gives it ("[Add-on therapy in epilepsy]"), a karyotype
-("47,XXX"), "XXX syndrome", and a single "TK", which in medicine is a kinase. The same rules
+English in brackets as PubMed gives it ("[Add-on therapy in epilepsy]"; in a cited entry a
+field wholly in brackets is read without them), a karyotype ("47,XXX"), "XXX syndrome", and
+a single "TK", which in medicine is a kinase. What two rules find in one place is said once. The same rules
 read the text of each figure G3 reads, the caption of each table in the results, and the
 printed fields of each cited entry of `references.bib`: a "TBD" drawn in a figure, or a
 "TODO" in a reference's note, reaches the document as surely as one in the prose. There the
@@ -7199,8 +7203,12 @@ Closed since, and why each mattered:
   hospital]", is not found, nor a lone "XX" or a single "TK". Outside the manuscript the
   gate reads the text of an SVG or a PDF figure (not a raster one, which G3 reports), a
   table's caption and not its cells, and the fields of a cited entry that a reference list
-  can print; an abstract, a file or keywords are not read, nor an entry nothing cites. The
-  essay as read on 2026-10-15 gives none of "holds great promise", "the future looks
+  can print; an abstract, a file or keywords are not read, nor an entry nothing cites, so
+  under `nocite: '@*'`, which prints every entry, the uncited ones are not read. Every
+  figure file and every table in the results is read, whether the manuscript places it or
+  not, so a "TODO" in the caption of a table nothing prints fails. A run of X in a cited
+  title that is a karyotype written otherwise than "47,XXX", as in "XXY and XXX girls", is
+  read as a placeholder. The essay as read on 2026-10-15 gives none of "holds great promise", "the future looks
   bright" or "may possibly"; the hedge rule takes "may possibly" as a form of the essay's
   "could potentially", and the other two are not read.
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen

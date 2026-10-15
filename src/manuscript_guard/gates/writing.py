@@ -142,13 +142,18 @@ def artefacts_in(
 ) -> Iterator[tuple[dict, re.Match[str]]]:
     """Each artefact in `text`, with the rule that found it. In the manuscript every rule,
     and a word marked `any_case_in_manuscript` in any case; elsewhere only the rules marked
-    `elsewhere`, as they are written."""
+    `elsewhere`, as they are written. What two rules find in one place is one artefact,
+    "[CITATION NEEDED]" a slot and capitals both, and is said once."""
+    taken: list[tuple[int, int]] = []
     for rule in rules.artefacts:
         if not manuscript and not rule.get("elsewhere"):
             continue
         any_case = manuscript and rule.get("any_case_in_manuscript")
         flags = re.MULTILINE | (re.IGNORECASE if any_case else 0)
         for match in re.finditer(rule["pattern"], text, flags):
+            if any(start < match.end() and match.start() < end for start, end in taken):
+                continue
+            taken.append(match.span())
             yield rule, match
 
 
@@ -209,15 +214,26 @@ def _cited_fields(project: Project, sources: list[str]) -> list[Elsewhere]:
         if key not in cited:
             continue
         opens = re.search(r"^@\w+\s*\{\s*" + re.escape(key) + r"\s*,", written, re.MULTILINE)
+        at = opens.start() if opens else 0
         for name, value in fields.items():
             if name in UNPRINTED or not value:
                 continue
-            at = opens.end() if opens else 0
-            field = re.compile(r"^\s*" + re.escape(name) + r"\s*=", re.MULTILINE | re.IGNORECASE)
+            # The field where it is written: on a line of its own, or after the key or another
+            # field on the entry's line.
+            field = re.compile(r"(?:^|[{,])[ \t]*" + re.escape(name) + r"[ \t]*=", re.M | re.I)
             seen = field.search(written, at)
-            line = written.count("\n", 0, seen.start() if seen else at) + 1
-            found.append(Elsewhere(path, value, f"the {name} of @{key}", line))
+            line = written.count("\n", 0, seen.end() if seen else at) + 1
+            found.append(Elsewhere(path, _untranslated(value), f"the {name} of @{key}", line))
     return found
+
+
+def _untranslated(value: str) -> str:
+    """A field without the brackets PubMed puts round a title it translated into English,
+    "[Your diagnosis?]", "[TREATMENT OF EPILEPSY]": a title, and no slot."""
+    stripped = value.strip()
+    if stripped.startswith("[") and stripped.rstrip(".").endswith("]"):
+        return stripped.rstrip(".")[1:-1]
+    return value
 
 
 def _artefacts_elsewhere(rules: Rules, where: Elsewhere, totals: dict) -> Report:

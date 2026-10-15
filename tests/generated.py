@@ -586,11 +586,13 @@ PLACEHOLDERS = (
     ("[Repository]", "[Repository]"), ("[describe the cohort]", "[describe the cohort]"),
     ("lorem ipsum", "lorem ipsum"), ("fill in later.", "fill in later"), ("TODO", "TODO"),
     ("2025-XX-XX", "2025-XX"), ("INSERT_SOURCE_URL", "INSERT_SOURCE_URL"),
+    ("[insert the\nname]", "[insert the\nname]"),
 )  # fmt: skip
 LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
 LOOKALIKES = (
     "47,XXX", "XXX syndrome", "[repository](https://example.org)",
-    "[Add-on therapy in epilepsy]", "replace later lines", "TK inhibitors",
+    "[Add-on therapy in epilepsy]", "replace later lines", "replace later\nlines",
+    "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]",
 )  # fmt: skip
 
 

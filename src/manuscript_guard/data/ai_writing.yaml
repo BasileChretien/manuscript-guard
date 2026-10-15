@@ -43,27 +43,32 @@ artefacts:
   # since a slot left there reaches the document as surely as one in the manuscript.
   #
   # A slot in brackets: an instruction to the writer, "[insert the date]", "[describe the
-  # cohort]"; a thing to be supplied, "[Repository]", "[DOI/accession]", "[citation needed]";
-  # or words in capitals, "[TO BE COMPLETED]", "[CLAIM NEEDS EVIDENCE]". Not a link's text,
-  # "[repository](https://...)", nor a bracketed span, "[NB]{.smallcaps}". The verb is
-  # followed by a space or the bracket, so a title translated into English in brackets,
-  # "[Add-on therapy in epilepsy]", is no slot.
+  # cohort]", which a hard wrap may cut across one line end; a thing to be supplied,
+  # "[Repository]", "[DOI/accession]", "[citation needed]"; or capitals that say something is
+  # still to come, "[TO BE COMPLETED]", "[CLAIM NEEDS EVIDENCE]". Not capitals that say
+  # nothing of the kind: an abbreviation nested in parentheses, "[SJS/TEN]", or a title in
+  # capitals. Not a link's text, "[repository](https://...)", its definition, "[repository]:
+  # https://...", nor a bracketed span, "[NB]{.smallcaps}". The verb is followed by a space
+  # or the bracket, so a title translated into English in brackets, "[Add-on therapy in
+  # epilepsy]", is no slot.
   - id: placeholder
-    pattern: '(?i)\[(?:insert|add|your|describe|replace|fill|enter|specify)(?:\s[^\]\n]{0,60})?\](?![(\[{:])'
+    pattern: '(?i)\[(?:insert|add|your|describe|replace|fill|enter|specify)(?:\s(?:[^\]\n]|\n(?![ \t]*\n)){0,60})?\](?![(\[{]|:[ \t]*<?[a-z][a-z0-9+.-]*://)'
     why: Unfilled placeholder text
     elsewhere: true
   - id: placeholder-slot
-    pattern: '(?i)\[(?:placeholder|accession(?:\s+(?:number|code|id))?|repository|doi(?:\s*/\s*accession)?|citation(?:\s+needed)?|reference|url|link)\](?![(\[{:])'
+    pattern: '(?i)\[(?:placeholder|accession(?:\s+(?:number|code|id))?|repository|doi(?:\s*/\s*accession)?|citation(?:\s+needed)?|reference|url|link)\](?![(\[{]|:[ \t]*<?[a-z][a-z0-9+.-]*://)'
     why: Unfilled placeholder text
     elsewhere: true
   - id: placeholder-capitals
-    pattern: '\[[A-Z]{2,}(?:(?:[ \t]*[-–/][ \t]*|[ \t]+)[A-Z]{2,})+\](?![(\[{:])'
+    pattern: '\[(?=[A-Z \t/–-]*\b(?:TO[ \t]+(?:BE[ \t]+)?(?:COMPLETED?|ADDED|CONFIRMED|DETERMINED|DECIDED|FILLED|UPDATED|WRITTEN|CHECKED|VERIFIED|SUPPLIED|PROVIDED)|NEEDED|NEEDS|PLACEHOLDER|INSERT|TBD|TBC|TODO|VERIFY|PENDING|MISSING|FILL)\b)[A-Z][A-Z \t/–-]*\](?![(\[{]|:[ \t]*<?[a-z][a-z0-9+.-]*://)'
     why: Unfilled placeholder text
     elsewhere: true
   # Text left to stand in for text, and instructions left for the writer. "Replace later" only
-  # where the phrase ends, so "drugs that replace later lines of therapy" is prose.
+  # where the phrase ends, at a stop or the end of a paragraph, so "drugs that replace later
+  # lines of therapy" is prose, hard-wrapped after "later" or not. "Discussion prompt" only as
+  # a label, since a paper on teaching ends its cases with discussion prompts.
   - id: placeholder-filler
-    pattern: '(?i)\blorem\s+ipsum\b|\b(?:fill|replace)\s+(?:this\s+|it\s+)?(?:in\s+)?later\s*(?=[.)\]:;,]|$)|\bthis\s+section\s+is\s+a\s+template\b|\bdiscussion\s+prompts?\b|\bdelete\s+this\s+(?:section|paragraph)\b|\badd\s+your\s+[^.\n]{1,40}?\s+here\b'
+    pattern: '(?i)\blorem\s+ipsum\b|\b(?:fill|replace)\s+(?:this\s+|it\s+)?(?:in\s+)?later(?=[ \t]*(?:[.)\]:;,]|\n[ \t]*\n|\Z))|\bthis\s+section\s+is\s+a\s+template\b|\bdiscussion\s+prompts?[ \t]*:|\bdelete\s+this\s+(?:section|paragraph)\b|\badd\s+your\s+[^.\n]{1,40}?\s+here\b'
     why: Unfilled placeholder text, or an instruction left for the writer
     elsewhere: true
   # The words that mark a gap: TODO, TBD, FIXME, a doubled TKTK (a single "TK" is a kinase in
@@ -72,7 +77,7 @@ artefacts:
   # no gap. In the manuscript in any case, as they always were. Elsewhere in capitals only:
   # "Todo" opens many a Spanish title.
   - id: placeholder-word
-    pattern: '\b(?:TODO|TBD|FIXME|TKTK)\b|(?<!\d,)\bX{3,}\b(?!\s+syndrome)|\b\d{4}-XX\b|\b(?:INSERT|PASTE)_[A-Z0-9_]+\b'
+    pattern: '\b(?:TODO|TBD|FIXME|TKTK)\b|(?<!\d,)(?<!\d, )\bX{3,}\b(?!\s+syndrome)|\b\d{4}-XX\b|\b(?:INSERT|PASTE)_[A-Z0-9_]+\b'
     why: Unfilled placeholder text
     elsewhere: true
     any_case_in_manuscript: true

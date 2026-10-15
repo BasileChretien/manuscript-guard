@@ -191,6 +191,9 @@ structural:
       - {text: "In step 2 we pooled the arms.", atom: "2"}
       - {text: "Item 13 of the checklist is addressed in the Methods.", atom: "13"}
       - {text: "Panel 3 shows the subgroups.", atom: "3"}
+      # round 1 of #256: numbered within another, as cross-reference took them before
+      - {text: "In step 2.1 duplicates were removed.", atom: "2.1"}
+      - {text: "Box 1.2 lists the codes.", atom: "1.2"}
     rejects:
       # A step, a panel or a box runs to twenty, an item to two digits: past that it is a count.
       - {text: "In step 1204 reports were excluded.", atom: "1204"}

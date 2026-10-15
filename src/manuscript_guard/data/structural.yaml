@@ -41,8 +41,9 @@ structural:
     # These words took any digits after them as a cross-reference, so "In step 1204 reports
     # were excluded" filed a count as a pointer. There is no step 1204, and no panel or box
     # past twenty: they take what `categorical-label` takes, 0 to 20. An item takes two
-    # digits, since checklists run to 27 items and questionnaires further.
-    pattern: '(?i)\b(?:(?:step|panel|box)s?[^\S\n]*(?:\n[^\S\n]*)?(?:\d|1\d|20)|items?[^\S\n]*(?:\n[^\S\n]*)?\d{1,2})[A-Za-z]?\b'
+    # digits, since checklists run to 27 items and questionnaires further. Each may be
+    # numbered within another, "Step 2.1", "Box 1.2", as a section is.
+    pattern: '(?i)\b(?:(?:step|panel|box)s?[^\S\n]*(?:\n[^\S\n]*)?(?:\d|1\d|20)|items?[^\S\n]*(?:\n[^\S\n]*)?\d{1,2})(?:\.\d+)*[A-Za-z]?\b'
 
   - id: supplement-tag
     why: Supplement identifiers of the form S1, S2.

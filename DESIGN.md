@@ -351,13 +351,20 @@ nobody defined; G2 now does the same for a pointer typed as text. Each finding f
 the internal-review stage, Basile's choice on 2026-10-14: while the draft is written its
 tables move and are numbered again.
 
-What the document carries is counted where the build prints it, in the order the files
-print: each table placed by `{{table.<key>}}` or written by hand as a pipe table, and each
-figure placed by `{{figure.<key>}}` or as an image, the main text and the supplement apart.
-"Table 3" names the main text's third table; "Table S1" and "Supplementary Table 1" the
-supplement's first. A pointer to one there is not is `pointer-to-nothing`, a list read
-whole ("Tables 1 and 2", "Figures 2–4"), and a list joined by a word only after a plural:
-"Table 2 and 3 patients" is one pointer. The main text's tables and figures are held to
+What the document carries is counted only where the count is known, Basile's choice on
+2026-10-15. A kind, tables or figures, of one document, the main text or the supplement, is
+checked where every one of them is placed by its binding, `{{table.<key>}}` or
+`{{figure.<key>}}`, counted in the order the files print. "Table 3" names the main text's
+third table; "Table S1", "Supplementary Table 1", "Supplemental Table 1", "eTable 1",
+"Extended Data Table 1", "Appendix Table 1" and "Table 1 in the Supplement" the supplement's
+first. A pointer to one there is not is `pointer-to-nothing`, a list read whole ("Tables 1
+and 2", "Figures 2–4", "Tables S1–3" being S1 to S3), and a list joined by a word only after
+a plural: "Table 2 and 3 patients" is one pointer. Where a document places one of a kind by
+hand (a pipe, grid, simple or multiline table, a caption line, an image, raw HTML) or none
+by its binding, as a paper whose figures go to the journal as files of their own does, its
+pointers to that kind are not checked, and one note says so (`pointers-unchecked`). The
+first version counted tables and images written by hand as well; its review found correct
+papers failed by every form of either it did not count, and by figures sent as files. The main text's tables and figures are held to
 what ICMJE asks for: each cited (`display-not-cited`), and first cited in the order they
 are numbered (`cited-out-of-order`). "Number tables consecutively in the order of their
 first citation in the text" and "Be sure that each table is cited in the text", from
@@ -4272,7 +4279,7 @@ the line break with it, every finding on line 1, a ligature not folded, a value 
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
 sentence, a comment read for its stops; three ways a pointer to a table can be misread,
-from a list read as its first number to a table written by hand left uncounted; fourteen ways `reworded` can misread an edit, from
+from a list read as its first number to a figure placed by hand counted anyway; fourteen ways `reworded` can misread an edit, from
 a number's sign taken for no part of it, and a sign of comparison taken for none, read as
 it is typed, read only hard against its number, an arrow's head or an equals sign taken
 for one, to what a comment holds held to its place; five
@@ -5524,13 +5531,15 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
-- **A pointer is held to the number of a placement, not to its key.** "Table 2" passes
-  wherever the main text places two tables, whichever two they are: the check sees the
-  numbering, not which table a sentence means. A table placed some other way, a grid
-  table, raw HTML or one the build is handed in a file of its own, is not counted, and nor
-  is an image inside a paragraph, which pandoc prints as no figure. A pointer in a heading
-  is checked for a target and not counted as the citation that numbers a table.
-  "Appendix", "Box", "Section" and "Equation" point at nothing the check counts.
+- **A pointer is held to the number of a placement, not to its key, and only where every
+  placement is a binding.** "Table 2" passes wherever the main text places two tables,
+  whichever two they are: the check sees the numbering, not which table a sentence means.
+  A paper that writes any of its tables or places any of its figures by hand, or sends its
+  figures as separate files, has no pointer of that kind checked, only a note. A pointer
+  in a heading, or in a caption typed above its table ("**Table 2.**"), is checked for a
+  target and not counted as the citation that numbers a table. "Table 3 of Smith et al."
+  is read as a pointer to the paper's own Table 3. "Box", "Section" and "Equation" point at
+  nothing the check counts.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
   citation, no reporting guideline, no analysis code, no fitted model or no revision round
   has nothing for G3, G10, G7, G8r, G9, G15 or G13 to read, and each passes with its count

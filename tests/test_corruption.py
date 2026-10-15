@@ -1147,7 +1147,8 @@ def test_the_example_points_at_what_it_carries(project: Path) -> None:
         ("As Table 4000 shows.", "table 4000"),
         ("As Figure 9 shows.", "figure 9"),
         ("As Table S5 shows.", "table S5"),
-        ("As Supplementary Figure 1 shows.", "figure S1"),
+        ("As Supplemental Table 3 shows.", "table S3"),
+        ("As eTable 4 shows.", "table S4"),
         ("As Tables 1 and 3 show.", "table 3"),
         ("As Figures 1\N{EN DASH}2 show.", "figure 2"),
     ],
@@ -1159,6 +1160,76 @@ def test_a_pointer_to_what_the_document_does_not_carry_is_said(
     said = _pointer_findings(project)
     assert [code for code, _ in said] == ["pointer-to-nothing"], said
     assert f"points at {names}," in said[0][1], said
+
+
+def _all_pointer_findings(root: Path) -> list[tuple[str, str, str]]:
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.pointers import check_pointers
+
+    report = check_pointers(load_project(root)[0])
+    return [(f.code, f.severity, f.message) for f in report.findings]
+
+
+@pytest.mark.parametrize(
+    ("change", "sentence", "unchecked"),
+    [
+        # round 1 of #256: figures sent to the journal as files of their own
+        (("{{figure.forest}}", ""), "As Figure 1 shows.", "the main text's figures"),
+        # a table written by hand, in a form the first version did not count
+        (("{{table.baseline}}", "| A | B |\n|:--|--:|\n| x | y |"), "As Table 3 shows.",
+         "the main text's tables"),
+        # an image placed by hand
+        (("{{figure.forest}}", "![The forest plot](forest.png)"), "As Figure 2 shows.",
+         "the main text's figures"),
+        # the supplement places no figure by its binding
+        (None, "As Supplementary Figure 1 shows.", "the supplement's figures"),
+    ],
+)  # fmt: skip
+def test_a_kind_placed_some_other_way_is_not_checked_and_says_so(
+    project: Path, change: tuple[str, str] | None, sentence: str, unchecked: str
+) -> None:
+    """Exact counts only, Basile's choice on 2026-10-15: what is not placed by its binding
+    cannot be counted, so its pointers are not held to a count, and a note says so."""
+    if change:
+        main = main_md(project)
+        main.write_text(main.read_text(encoding="utf-8").replace(*change, 1), encoding="utf-8")
+    _add_to_results(project, sentence)
+    said = _all_pointer_findings(project)
+    assert not [s for s in said if s[0] != "pointers-unchecked"], said
+    assert any(code == "pointers-unchecked" and severity == "info" and unchecked in message
+               for code, severity, message in said), said  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "As Supplemental Table 1 shows.",
+        "As Extended Data Fig. 1 shows.",
+        "As Table 1 in the Supplement shows.",
+        "As Tables S1\N{EN DASH}2 show.",
+        "As eFigure 1 shows.",
+    ],
+)
+def test_a_pointer_to_the_supplement_is_no_citation_of_the_main_text(
+    project: Path, sentence: str
+) -> None:
+    """Round 1 of #256: read as the main text's, "Supplemental Table 1" before Table 1's
+    first citation made the main text's tables cited out of order."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("# Results\n", f"# Results\n\n{sentence}\n", 1), "utf-8")
+    assert not [s for s in _all_pointer_findings(project) if s[0] == "cited-out-of-order"]
+
+
+def test_a_caption_typed_above_a_table_is_no_citation_of_it(project: Path) -> None:
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("in Table 2, so", "below, so", 1)
+    main.write_text(
+        text.replace("{{table.two_by_two}}", "**Table 2.** Counts\n\n{{table.two_by_two}}", 1),
+        encoding="utf-8",
+    )
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["display-not-cited"], said
 
 
 def test_a_pointer_to_nothing_fails_from_the_internal_review(project: Path) -> None:

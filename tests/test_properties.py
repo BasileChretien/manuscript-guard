@@ -962,11 +962,13 @@ _POINTED = re.compile(r"points at (?P<kind>table|figure) (?P<s>S)?(?P<n>\d+),")
 
 @st.composite
 def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, int]]]:
-    """A main text and a supplement, each placing tables and figures, both ways, and citing
-    each of the main text's in order; and pointers planted at what neither carries, one of
-    each kind in every example: past the main text's tables and its figures, in a list,
-    past the supplement's tables, and in the supplement's own words. What they point at is
-    the third part."""
+    """A main text and a supplement placing tables and figures, and citing each of the main
+    text's in order; and pointers planted at what neither carries, one of each kind in
+    every example: past the main text's tables, in a list, past the supplement's tables in
+    the supplement's own words, and past the figures. The main text's tables and the
+    supplement's are placed by binding only, so they are counted; the main text's figures
+    include one placed by hand, so they are not, and a pointer past them is not said. What
+    the counted pointers point at is the third part."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
@@ -980,9 +982,10 @@ def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, i
     parts: dict[bool, list[str]] = {False: ["# Results\n"], True: ["# Supplementary\n"]}
     for (supplementary, kind), count in counts.items():
         for number in range(1, count + 1):
-            # The first table of each document is written by hand, the rest bound, so that
-            # both ways are counted in every example.
-            placed = _PLACE[kind][number == 1 and kind == "table"] % number
+            # The main text's first figure is placed by hand, so its figures are not
+            # counted; every other display is placed by its binding.
+            by_hand = number == 1 and kind == "figure" and not supplementary
+            placed = _PLACE[kind][by_hand] % number
             if supplementary:
                 cite = draw(st.sampled_from(_SUPPLEMENTARY)) % (_WORD[kind][0], number)
             else:
@@ -992,7 +995,8 @@ def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, i
     for kind in ("table", "figure"):
         past = counts[False, kind] + draw(st.integers(1, 40))
         parts[False].append(f"{words().capitalize()} {_WORD[kind][0]} {past}.\n")
-        planted.add((kind, False, past))
+        if kind == "table":
+            planted.add((kind, False, past))
     listed = counts[False, "table"] + draw(st.integers(1, 3))
     join = draw(st.sampled_from((" and ", ", ", " & ")))
     plural = draw(st.sampled_from(_WORDS["table"]))
@@ -1027,7 +1031,8 @@ def test_a_pointer_names_what_the_document_carries_or_is_said(
         (manuscript / "supplementary" / "S1.md").write_text(supplement, encoding="utf-8")
         report = check_pointers(load_project(root)[0])
     said = {f.code for f in report.findings}
-    assert said <= {"pointer-to-nothing"}, (main, supplement, report.findings)
+    assert said <= {"pointer-to-nothing", "pointers-unchecked"}, (main, supplement, said)
+    assert "pointers-unchecked" in said, (main, supplement, report.findings)
     named = (_POINTED.search(f.message) for f in report.findings)
     found = {
         (at["kind"], bool(at["s"]), int(at["n"])) for at in named if at is not None
@@ -1986,10 +1991,10 @@ def _the_supplement_s_tables_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _a_table_written_by_hand_is_not_counted(patch: pytest.MonkeyPatch) -> None:
+def _a_figure_placed_by_hand_is_counted_anyway(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import pointers
 
-    patch.setattr(pointers, "_TABLE_RULE", re.compile(r"(?!)"))
+    patch.setattr(pointers, "_BY_HAND", {**pointers._BY_HAND, "figure": re.compile(r"(?!)")})
 
 
 def _a_sign_is_no_part_of_its_number(patch: pytest.MonkeyPatch) -> None:
@@ -2342,8 +2347,8 @@ BROKEN = {
         _the_supplement_s_tables_are_the_paper_s,
         test_a_pointer_names_what_the_document_carries_or_is_said,
     ),
-    "a table written by hand is not counted": (
-        _a_table_written_by_hand_is_not_counted,
+    "a figure placed by hand is counted anyway": (
+        _a_figure_placed_by_hand_is_counted_anyway,
         test_a_pointer_names_what_the_document_carries_or_is_said,
     ),
     "a number's sign is no part of it": (

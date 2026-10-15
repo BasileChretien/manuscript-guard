@@ -37,8 +37,9 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G2 holds a pointer to a table or a figure to what the document places, and counts what
-      it read: `pointers`, `tables_placed` and `figures_placed`
+      G2 holds a pointer to a table or a figure to what the document places by its binding,
+      notes the kinds it cannot count, and counts what it read: `pointers`,
+      `pointers_checked`, `tables_placed` and `figures_placed`
   - reading: numbers
     why: >-
       a step, a panel or a box takes a number up to 20 and an item up to 99, so a count

@@ -5689,7 +5689,9 @@ Closed since, and why each mattered:
   them. A rule read from the right words in the wrong way (a limit for letters given to an
   original article) passes. A limit's number is found as digits, with or without a separator
   of thousands, or as a word up to twenty: "three hundred words" fails its limit's check
-  until the quote holds the digits.
+  until the quote holds the digits. A limit of none or one is not held to its quote's number
+  at all, only its quote to the page: "may not include figures", "Figures: none" and "a
+  single table" were each read wrong by a rule that tried, one way or the other.
 - **A rule left out of a journal profile entirely is not seen.** Nothing yet reads the stored
   page for rules that are neither a field nor under `manual:`, `submit` does not yet turn
   `manual:` into a checklist a named person signs, and re-reading a page a year on does not

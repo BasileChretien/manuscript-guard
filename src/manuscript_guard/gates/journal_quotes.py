@@ -110,11 +110,15 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
 
     for key, quote in quotes.items():
         value = rules.get(key)
-        limit = str(key).removeprefix("limits.")
+        # A limit of none or of one is not held to its quote's number: a page writes it in
+        # too many ways ("may not include figures", "Figures: none", "a single table") for
+        # its words to say it, and each reading of them tried let a wrong limit through or
+        # failed a right one. Its quote is still held to the page.
         if (
             str(key).startswith("limits.")
             and isinstance(value, int)
-            and not _states(quote, value, _COUNTED.get(limit, ""))
+            and value > 1
+            and not _states(quote, value)
         ):
             findings.append(
                 _finding(
@@ -208,18 +212,10 @@ def _on_page(page: str, quote: str) -> bool:
 
 #: A number's digits, not inside a longer number: 13500, 3500.5 and 3,5000 do not state 3500.
 _DIGITS = r"(?<![0-9.,]){}(?![.,]?[0-9])"
-#: A group of one to three digits and a space, before a group of three: "3 500" is 3500, and
-#: does not state 500. "3500 250", a limits table saved as text, states 250.
-_GROUP_BEFORE = re.compile(r"(?:\A|[^0-9.,])[0-9]{1,3} \Z")
-#: What each limit counts, as a page names it: what a limit of none must say is not allowed.
-_COUNTED = {
-    "figures": r"figures?",
-    "tables": r"tables?",
-    "display_items": r"(?:figures?|tables?|display items?)",
-    "references": r"references?",
-    "keywords": r"key ?words?",
-    "authors": r"authors?",
-}
+#: A group of one or two digits and a space, before a group of three: "3 500" and "12 500"
+#: are thousands, and do not state 500. "3500 250" and "900 150", a limits table saved as
+#: text, state 250 and 150: no journal's limit runs to 100,000.
+_GROUP_BEFORE = re.compile(r"(?:\A|[^0-9.,])[0-9]{1,2} \Z")
 #: A number's word, not inside a longer word: "fourteen" and "fourfold" do not state 4.
 _WORD = r"\b{}\b"
 
@@ -229,18 +225,9 @@ def _forms(value: int) -> set[str]:
     return {str(value), f"{value:,}", f"{value:,}".replace(",", " ")}
 
 
-#: Besides its word, how a page says none or one, in a quote that names no other number:
-#: a negation of what the limit counts, within two words of it ("may not include figures",
-#: not "no limit on the number of figures"), and "a single table".
-_NONE = ("no", "not", "nor", "without")
-_ONE = ("single",)
-
-
-def _states(quote: str, value: int, counted: str = "") -> bool:
+def _states(quote: str, value: int) -> bool:
     """Whether a quote states a whole number: as digits, with or without a separator of
-    thousands ("3500", "3,500", "3 500"), or as a word up to twenty; none as a negation of
-    what the limit counts (`counted`, a pattern), and one as "single", each in a quote that
-    names no other number."""
+    thousands ("3500", "3,500", "3 500"), or as a word up to twenty."""
     text = normalise(quote).lower()
     for form in _forms(value):
         for found in re.finditer(_DIGITS.format(re.escape(form)), text):
@@ -249,19 +236,7 @@ def _states(quote: str, value: int, counted: str = "") -> bool:
                 return True
     if not 0 <= value < len(_WORDS):
         return False
-    if re.search(_WORD.format(_WORDS[value]), text):
-        return True
-    if value > 1:
-        return False
-    others = [word for number, word in enumerate(_WORDS) if number != value]
-    if re.search(r"[0-9]", text) or any(re.search(_WORD.format(w), text) for w in others):
-        return False
-    if value == 1:
-        return any(re.search(_WORD.format(word), text) for word in _ONE)
-    if not counted or not _NONE:
-        return False
-    negation = "|".join(_NONE)
-    return re.search(rf"\b(?:{negation})\s+(?:\w+\s+){{0,2}}{counted}\b", text) is not None
+    return re.search(_WORD.format(_WORDS[value]), text) is not None
 
 
 def _finding(code: str, severity: str, message: str, path: Path, hint: str) -> Finding:

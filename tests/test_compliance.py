@@ -412,19 +412,12 @@ def test_the_page_may_be_stored_where_the_profile_says(project: Path) -> None:
         ("should not exceed 13500 words", 3500, False),
         ("should not exceed 3500.5 words", 3500, False),
         ("three hundred words", 300, False),
-        # Round 1 of #297.
+        # Round 1 of #297, and after.
         ("should not exceed 3 500 words", 500, False),
-        ("Letters may not include figures or tables.", 0, True),
-        ("Letters include no figures.", 0, True),
-        ("figures need not exceed four", 0, False),
-        ("figures need not exceed 4", 0, False),
-        ("a single figure", 1, True),
-        # Round 2.
-        ("There is no limit on the number of figures", 0, False),
-        ("Figures do not count towards the word limit", 0, False),
+        ("should not exceed 12 500 words", 500, False),
         ("Original research 3500 250 5 40", 250, True),
         ("Original research 3500 250 5 40", 40, True),
-        ("single-spaced, with up to 3 figures", 1, False),
+        ("Brief report 900 150 10 2", 150, True),
     ],
 )
 def test_a_limit_is_stated_as_digits_or_a_small_number_word(
@@ -432,7 +425,33 @@ def test_a_limit_is_stated_as_digits_or_a_small_number_word(
 ) -> None:
     from manuscript_guard.gates.journal_quotes import _states
 
-    assert _states(quote, value, "figures?") is states
+    assert _states(quote, value) is states
+
+
+@pytest.mark.parametrize(
+    ("limit", "value", "quote"),
+    [
+        ("figures", 0, "Letters may not include figures or tables."),
+        ("figures", 0, "There is no limit on the number of figures"),
+        ("tables", 1, "a single table"),
+    ],
+)
+def test_a_limit_of_none_or_one_is_held_to_the_page_and_not_to_its_number(
+    project: Path, limit: str, value: int, quote: str
+) -> None:
+    """After the budget of #297: a page says none and one in too many ways to read either
+    from its words, and each reading tried passed a wrong limit or failed a right one. Such a
+    limit's quote is held to the page, and its number to nothing (Known gaps)."""
+    page = project / PAGE
+    page.write_text(page.read_text(encoding="utf-8") + f"\n{quote}\n", encoding="utf-8")
+
+    def none_or_one(document: dict) -> None:
+        document["limits"][limit] = value
+        document["quotes"][f"limits.{limit}"] = quote
+
+    edit_yaml(project / JOURNAL, none_or_one)
+    found = {f.code for f in journal_report(project).findings}
+    assert not found & {"journal-limit-not-in-quote", "journal-quote-not-on-page"}, found
 
 
 # ---------------------------------------------------------------- the reporting gate

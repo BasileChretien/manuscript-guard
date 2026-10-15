@@ -1632,6 +1632,46 @@ def test_a_legacy_digest_does_not_excuse_an_edited_script(project: Path) -> None
     assert "script-newer" in codes(gate_report(project))
 
 
+# A manuscript folder with nothing in it the gates read. The run failed only through what that
+# left behind, 21 results quoted nowhere, and at the design and analysis stages it passed.
+
+
+def _as_quarto(root: Path) -> str:
+    for path in (root / "manuscript").rglob("*.md"):
+        path.rename(path.with_suffix(".qmd"))
+    return ".qmd"
+
+
+def _set_aside(root: Path) -> str:
+    folder = root / "manuscript"
+    drafts = folder / "_drafts"
+    drafts.mkdir()
+    for path in sorted(folder.glob("*.md")):
+        path.rename(drafts / path.name)
+    shutil.rmtree(folder / "supplementary")
+    return "set aside by"
+
+
+def _mistyped(root: Path) -> str:
+    paper = root / "paper.yaml"
+    paper.write_text(
+        paper.read_text(encoding="utf-8") + "\npaths:\n  manuscript: manuscritp\n",
+        encoding="utf-8",
+    )
+    return "manuscritp/ does not exist"
+
+
+@pytest.mark.parametrize("empty", [_as_quarto, _set_aside, _mistyped], ids=lambda f: f.__name__)
+def test_a_manuscript_folder_the_gates_cannot_read_is_named(project: Path, empty) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    said = empty(project)
+    report, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    found = [f for f in report.failures if f.code == "manuscript-empty"]
+    assert len(found) == 1 and said in found[0].message, report.render(project)
+    assert "unquoted-result" not in codes(report), "the one finding, not one per result"
+
+
 # -------------------------------------------------------------------------------------- G7
 # Citation integrity against a running Zotero, simulated: the fake answers as Better BibTeX
 # 9.0.64 does (see tests/test_zotero.py), so these run anywhere.

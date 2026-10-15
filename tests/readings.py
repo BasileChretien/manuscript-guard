@@ -302,6 +302,13 @@ def whole_namespace() -> dict[str, Any]:
     )
 
 
+@reading("deviations")
+def _deviations() -> Reading:
+    from manuscript_guard.gates.design import deviations_said
+
+    return deviations_said
+
+
 @reading("interval order")
 def _interval_order() -> Reading:
     from manuscript_guard.contracts.values import RESULTS, Value

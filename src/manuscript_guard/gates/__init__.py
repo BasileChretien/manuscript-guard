@@ -5,6 +5,7 @@ exits, or reads configuration of its own, which is what lets the same code back 
 git hook and a CI job without any of the three disagreeing about the verdict.
 """
 
+from manuscript_guard.gates.bound_units import check_bound_units
 from manuscript_guard.gates.citations import check_citations, sync_bib
 from manuscript_guard.gates.consistency import check_consistency
 from manuscript_guard.gates.design import check_design
@@ -59,6 +60,7 @@ __all__ = [
     "check_revision",
     "rounds",
     "GATES",
+    "check_bound_units",
     "check_citations",
     "check_consistency",
     "check_design",

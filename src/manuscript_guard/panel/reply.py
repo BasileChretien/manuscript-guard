@@ -7,9 +7,10 @@ truncated object is not closed, a verdict outside the vocabulary is not mapped t
 one, and a missing field is not filled in. Each of those would be this tool writing part of
 the review, and a review nobody wrote must not be filed.
 
-One thing is read as what it plainly says. A finding's `where` may be left out, and a model
-that leaves a key out often writes `null` for it. Null says what absence says, so the key is
-taken as absent. No other key may be null.
+One thing is read as what it plainly says. A finding's `where` and `ask` may be left out, and
+a model that leaves a key out often writes `null` for it. Null says what absence says, so the
+key is taken as absent (round 1 of #276: the prompt showing `ask` drew a null, and the whole
+reply was refused). No other key may be null.
 """
 
 from __future__ import annotations
@@ -81,10 +82,18 @@ def _checked(document: dict) -> dict:
             "pair), so it cannot be written to a record"
         )
     document["findings"] = [
-        {key: value for key, value in finding.items() if not (key == "where" and value is None)}
+        {key: value for key, value in finding.items() if not _left_out(key, value)}
         for finding in document["findings"]
     ]
     return document
+
+
+#: The keys of a finding a reply may write as null, meaning left out.
+_MAY_BE_NULL = ("where", "ask")
+
+
+def _left_out(key: str, value: object) -> bool:
+    return key in _MAY_BE_NULL and value is None
 
 
 def parse_reply(text: str) -> dict:

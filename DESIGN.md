@@ -1505,6 +1505,18 @@ each card for that reading: the author's name and description beside the kind an
 generated sentence, and the table of variables. Once a co-author page can carry items, the
 card is the item, and its digest covers both descriptions.
 
+**The unit of analysis is declared, and counted from the fit.** A model fitted on several
+rows per patient, a visit each, with ordinary standard errors is one of the commonest
+statistical errors in clinical papers: every interval is too narrow, and nothing in the
+numbers shows it. `em.model(..., unit="patient_id")` names the column of the data whose
+values the rows belong to, in both emitters, and the card records how many units the rows
+used hold, beside the fit's covariance type: statsmodels' `cov_type`, and "model-based" for
+an R `lm` or `glm`, whose fit keeps no sandwich estimate. G15 warns
+(`unit-rows-independent`) where there are more rows than units and the fit is neither
+cluster-robust (`cluster`, or a HAC by group or panel) nor a mixed model or estimating
+equations. The R emitter finds the data in the fit (`glm`) or where the call names it
+(`lm`), and leaves out the rows the fit dropped.
+
 ## A step of the code and the text that points at it
 
 The ledger of G9 records that a person read the Methods against the analysis, file by file.
@@ -1901,6 +1913,23 @@ blinded and differently composed, found the remaining soft spots. Two findings a
 as deliberate overrides rather than fixed, because the honest answer was that the synthetic
 data do not support what the reviewer wanted.
 
+## What a panel did not see, and what it asks for
+
+Three things about a reading were known to the tool and said by nothing. A round read only
+by one provider's models has one family's blind spots, which `panel/__init__.py` names as the
+reason for several providers: G11 warns (`round-one-provider`) where every reading of a round
+came from one provider, and says nothing where a person read any of it. A model is never sent
+the figures, so a model that passed a remit covering them passed what it did not see: G11
+warns (`figures-not-seen`) where a model's reading passed a remit whose words name figures,
+plots, graphs or charts. Both are warnings at every stage, as a new rule starts.
+
+And a finding may say what it asks of the authors (`ask`): a disclosure of what they have, a
+computation of a new number, or new data. A computation is a new emitted result and a new
+reconciliation of the Methods with the code, so the prompt asks a reader to say why the
+numbers and tables already reported cannot answer it, and an open major finding that asks
+for one says so. The ask is the reader's, and sealed with the reading where it is given:
+only there, so that every record sealed before findings could ask keeps its seal.
+
 ## A panel read by several providers
 
 The panel existed only as a skill for one agent. A scientist without that agent could not
@@ -2116,6 +2145,30 @@ have had if it had come first, so it is never a wrong one; a panel that names th
 reviewer lets the call go on to the lock.
 The record itself is written by exclusive create, so two calls for one reader cannot both
 succeed.
+
+## A document reviewed blind names none of its authors
+
+A journal whose review is double-blind asks for a manuscript that does not say who wrote it,
+and the profile said so only in its free-text notes. The profile now says it (`blinding:
+double`, or `triple`), and the build looks for the authors in the document it made: their
+names, ORCID iDs and e-mail addresses from `authors.yaml`, and the institutions of their
+affiliations. It reads the text, the notes, the comments, the headers and the footers, the
+text a tracked change deleted, the text of the figures, Word's author fields, the author of
+each tracked change and comment, and the list of people Word keeps. A name found is a
+`BUILD` failure (`blind-document-names-author`): `build` writes the document, says so and
+exits 1, and `submit` does not assemble the pack. `submit --document` reads the copy it is
+given, which is the one that comes back from a co-author with Word's fields filled in.
+
+A name is looked for as one is written: the given and the family name, the initial with its
+stop before the family name ("A. Example"), and after it behind a comma ("Example, A."), any
+space between the words and either apostrophe, since pandoc prints a typed one curly. A bare
+initial is not read: "A Cross-sectional study" does not name Anna Cross, nor "Ward A" Alice
+Ward. The family name alone is not, because many are ordinary words; an institution is the
+part of an affiliation between its commas that has three words or more, in any case, because
+a city or a country names many other things. The reference list, a paragraph whose style is
+named "Bibliography", is not read: the journals that review blind mostly ask for the
+authors' own work to be cited in the third person, not taken out, and a self-citation
+prints their names there.
 
 ## The submission pack writes nothing twice
 
@@ -2659,6 +2712,18 @@ missed:
 And `verify` had three of its own, of which one was serious enough to invalidate the
 command: see its module docstring for what it now does and does not prove, and the Known
 gaps below for what remains.
+
+## A unit after a binding is the unit emitted
+
+The analysis records a value's unit, and only G8 read it, to keep a count of 56 apart from a
+share of 56.0%. "{{results.dose}} mg" printed "250 mg" of a dose emitted in micrograms, and
+nothing said so. G2 now reads the symbol written right after each binding, from the list of
+symbols G14 knows a number is not to run into, and `%` and `‰`, with a power after it or a
+slash and what it divides by, and warns (`unit-differs-from-emitted`) where it is not the unit
+emitted. Spellings of one unit are one: µg, μg and mcg; mL and ml; °C and ℃. A value emitted
+with no unit, or with one that is no symbol ("years"), has nothing to compare it with. The
+gap between the binding and its unit may be any space or one line break, which pandoc prints
+as a space; a blank line, or a word between, ends the unit's claim to the binding.
 
 ## A rule names values, not shapes
 
@@ -4324,6 +4389,21 @@ through. The second missed "Add the missing reference to the paper."; widened, i
 the author to add the reference to the paper" for the agent adding it. A sentence that
 gives such an instruction is a reviewer's to catch.
 
+**A skill stays a size an agent reads whole.** The Agent Skills specification recommends a
+`SKILL.md` body under 5000 tokens and under 500 lines (agentskills.io, Specification,
+"Progressive disclosure", read 2026-10-15), since the whole body is loaded when the skill is.
+`tests/test_plugin.py` holds every skill to both, counting a token as four characters; a
+skill over them is named in `OVER` with the reason until it is brought under, and the list
+may only shrink. `word-roundtrip` was 6869 tokens. What it needs only sometimes, the
+refusals of `import` and the handling of comments and several co-authors, went to two pages
+under its `references/` folder, which the skill points to where it needs them; it is now
+4071. The plugin may hold such pages, one level down, and nothing else besides the skills,
+its manifest and its hooks. Every link in a skill or a reference page resolves inside the
+plugin, and every path a skill names (a code span or a link holding a folder) is found: in
+the skill's folder, in the example, in what `init` makes, or in the package. The paths that
+name what the tool writes, an example of a name, or no path at all are listed by name with
+the reason, and a listed path no longer named fails the test too.
+
 ## Generated inputs belong to the suite
 
 Between 24 September and 6 October 2026, 192 of the 516 independent-review verdicts posted
@@ -4826,6 +4906,15 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   bytes can belong to ordinary characters, so an edit that swaps one such character for
   another (U+4E0D for U+4E0A) can leave the digest unchanged and pass G1. Exports that write
   UTF-16 carry a BOM; a file without one is taken for 8-bit text.
+- **A blind document is read for the names `authors.yaml` gives, as they are written
+  there.** A name written another way is not found: a nickname, a given name of several
+  words reduced to its first, a family name alone, a name in a language's other script, or a
+  user name in Word's author fields. An institution named by its abbreviation or its city is
+  not found, nor is the funder or the ethics committee that would identify the authors as
+  surely. A figure is read where it has a text layer; a raster figure, which the document
+  most often holds, is read through the SVG or PDF the manuscript places beside it, when
+  there is one. A journal that wants self-citations anonymised has its reference list
+  unread.
 - **Checking a declared input reads the whole file into memory.** Before input digests
   normalised line endings they were streamed; a 300 MB CSV now peaks at about 1.2 GB while G1
   checks it. The R emitter peaks at about twenty times the file (600 MB for a 28 MB CSV), since
@@ -7160,6 +7249,11 @@ Closed since, and why each mattered:
   strictly, so `# **Methods**` is not Methods. In a .docx a heading style is what makes a
   heading, so a styled paragraph typed as `References {-}` starts a list, although Word
   prints the braces.
+- **A unit after a binding is read from a list of symbols.** "mg" is read and "milligrams"
+  is not, so a unit written out in words is compared with nothing; one-letter symbols other
+  than g and h (m, L, s) are left out as G14 leaves them, so "{{results.length}} m" is not
+  read. Units that mean the same and are spelt apart ("mg/kg" against "mg kg-1") are taken
+  for two.
 - **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
   `- Results` over an underline as a list item holding a heading titled "Results". The
   gates keep the marker in the title, so it ends the section above; "- Results" is read as
@@ -7324,6 +7418,11 @@ Closed since, and why each mattered:
   says something; it has no way to know the plan predates the analysis, which is the whole
   point of a plan. Only a timestamped external record — a registry, a signed commit — could,
   and that is out of scope.
+- **A remit covers the figures by its words.** One that names figures, plots, graphs or
+  charts is taken to cover them, and one that says "visual" or "the display items" is not.
+  Only a pass is said: a model that asked for a minor revision of a remit covering the
+  figures says nothing of them either. A round read by one provider's models under several
+  providers' names, a local server passing the request on, counts as several.
 - **The submission pack does not convert figures to a journal's required format.** It
   copies what was rendered. A journal wanting 300 dpi TIFF gets whatever the figure script
   produced.
@@ -7446,7 +7545,16 @@ Closed since, and why each mattered:
 - **G15 reads two kinds of fit.** The statsmodels formula API in Python and `lm`/`glm` in R.
   Anything else (a Cox model, a mixed model, scikit-learn) cannot be recorded with
   `em.model` yet. A fit `data/models.yaml` has no entry for is a warning, and its outcome is
-  not checked. Whether a variance was made robust, or an assumption holds, is not read.
+  not checked. Whether an assumption holds is not read. A unit is checked only where the
+  analysis declares one with `unit=`; a model fitted on repeated rows with no unit declared
+  says nothing. In R a sandwich estimate computed beside an `lm` or a `glm`, with
+  `sandwich::vcovCL` for instance, is not part of the fit and is not seen: such a model is
+  reported, and the warning says to cluster. A unit missing in a row the fit used is
+  refused at the emitter. Where the unit is in the model itself, as a fixed effect
+  (`C(site)` with `unit="site"`) or as the strata of a conditional model, the rows are still
+  reported as independent. In R the data of an `lm` is found again where its formula was
+  written, so a fit made inside a function on a local data frame of the same name as one
+  outside it can be counted on the wrong one.
   In R whatever inherits from `lm` is read, so `MASS::glm.nb` is: it is recorded with the
   package `stats` and the family `Negative Binomial(<theta>)`, which no entry matches, and
   is such a warning. So is a statsmodels fit made with one of the deprecated lower-case

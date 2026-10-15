@@ -1250,6 +1250,73 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
     assert "unemitted-table-number" in codes
 
 
+# ------------------------------------------------- the plan when the results were first known
+
+
+def _plan_said(root: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates import check_design
+
+    project, _ = load_project(root)
+    return [
+        (f.code, f.severity)
+        for f in check_design(project).findings
+        if f.code.startswith("plan-") and f.code not in ("plan-complete",)
+    ]
+
+
+def _plan_edited(root: Path, old: str, new: str) -> None:
+    plan = root / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert old in text, old
+    plan.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def test_the_plan_is_kept_as_it_stood_when_the_first_results_were_written(
+    project: Path,
+) -> None:
+    """Item 26: nothing recorded whether the plan was rewritten after the results."""
+    frozen = project / "design" / "plan.frozen.yaml"
+    record = yaml.safe_load(frozen.read_text(encoding="utf-8"))
+    assert record["plan"] == (project / "design" / "plan.md").read_text(encoding="utf-8")
+    assert _plan_said(project) == []
+
+
+def test_a_plan_changed_after_the_results_with_nothing_said_is_a_warning(project: Path) -> None:
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome, chosen later.\n")
+    assert _plan_said(project) == [("plan-changed-after-results", "warn")]
+
+
+def test_a_plan_changed_with_its_deviation_said_passes(project: Path) -> None:
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome, chosen later.\n")
+    _plan_edited(project, "## Deviations from the plan",
+                 "## Deviations from the plan\n\n2026-10-15: a second outcome was added, "
+                 "decided by the authors, before its results were known.\n")  # fmt: skip
+    assert _plan_said(project) == []
+
+
+def test_a_plan_rewrapped_says_what_it_said(project: Path) -> None:
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    plan.write_text(text.replace("\n\n", "\n\n\n").replace(". ", ".\n"), encoding="utf-8")
+    assert _plan_said(project) == []
+
+
+def test_the_kept_plan_is_never_written_again(project: Path) -> None:
+    from conftest import run_analysis
+
+    frozen = project / "design" / "plan.frozen.yaml"
+    kept = frozen.read_bytes()
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome, chosen later.\n")
+    run_analysis(project)
+    assert frozen.read_bytes() == kept
+    assert _plan_said(project) == [("plan-changed-after-results", "warn")]
+
+
+def test_results_with_no_kept_plan_are_a_note(project: Path) -> None:
+    (project / "design" / "plan.frozen.yaml").unlink()
+    assert _plan_said(project) == [("plan-not-frozen", "info")]
+
+
 # ------------------------------------------------- the unit of analysis
 
 

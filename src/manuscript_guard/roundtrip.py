@@ -671,12 +671,13 @@ def narrative_names(document: Path) -> dict[str, str]:
                 code, lead = [], before
             elif "separate" in marks and code is not None:
                 cited = citation_of("".join(code))
-                # Only a field that leaves the author out has the name printed before it.
+                # Only a field whose first item leaves the author out has the name printed
+                # before it: `@a [p. 3; see also @b]` is one citation, `a` narrative and `b` not.
                 if (
                     cited is not None
                     and lead
                     and cited.formatted.startswith("@")
-                    and all(item.get("suppress-author") for item in json.loads(cited.identity))
+                    and json.loads(cited.identity)[0].get("suppress-author")
                 ):
                     found.setdefault(cited.formatted, set()).add(lead)
                 code = None

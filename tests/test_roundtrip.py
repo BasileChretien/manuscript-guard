@@ -436,8 +436,11 @@ NARRATIVE_SHOWN = "&lt;Do Zotero Refresh: @fictionalClassSignal2019&gt;"
         ({"reported previously by": "reported earlier by"}, True,
          "reported earlier by @fictionalClassSignal2019"),
         ({"Fictional and Fictional </w:t>": "Fictional et al. </w:t>"}, False, NARRATIVE),
+        # Round 3: one citation, narrative for its first work and not for its second.
+        ({}, True, NARRATIVE + " [p. 3; see also @fictionalHepaticCohort2021]"),
     ],
-    ids=["refreshed only", "the prose before it reworded", "the printed name edited"],
+    ids=["refreshed only", "the prose before it reworded", "the printed name edited",
+         "a second work in brackets"],
 )  # fmt: skip
 def test_a_live_narrative_citation_is_read_with_the_name_before_it(
     project: Path, tmp_path: Path, monkeypatch, capsys, edited: dict, merged: bool, written: str
@@ -451,8 +454,9 @@ def test_a_live_narrative_citation_is_read_with_the_name_before_it(
 
     main_md = project / "manuscript" / "main.md"
     text = main_md.read_text(encoding="utf-8")
+    narrative = written if written.startswith(NARRATIVE) and written != NARRATIVE else NARRATIVE
     main_md.write_text(
-        text.replace("reported previously [@fictionalClassSignal2019]", NARRATIVE, 1),
+        text.replace("reported previously [@fictionalClassSignal2019]", narrative, 1),
         encoding="utf-8",
     )
     built = _built_live(project, tmp_path, monkeypatch, capsys)
@@ -465,7 +469,7 @@ def test_a_live_narrative_citation_is_read_with_the_name_before_it(
     after = main_md.read_text(encoding="utf-8")
     assert "Fictional and Fictional @" not in after
     assert written in " ".join(after.split())
-    if written == NARRATIVE:
+    if written.startswith(NARRATIVE):
         assert after == before
 
 

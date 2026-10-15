@@ -1090,7 +1090,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   # `overlapping` names the steps whose reasons overlap, `3` for the step from stage 3 to
   # stage 4, or is TRUE for every step: their reasons may then sum to more than the step
   # removed, and the stages must still agree.
-  flow <- function(key, stages, exclusions, arms = NULL, overlapping = FALSE) {
+  flow <- function(key, stages, exclusions, arms = NULL, overlapping = FALSE,
+                   quoted = TRUE) {
     if (!is.character(key) || length(key) != 1L || !grepl("^[a-z][a-z0-9_]*$", key)) {
       stop("flow '", key, "': a key is lowercase letters, digits and underscores",
            call. = FALSE)
@@ -1136,7 +1137,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     record <- list(stages = list(), exclusions = list(), overlapping = overlapping)
     for (n in seq_along(stages)) {
       name <- sprintf("flow.%s.stage.%d", key, n)
-      value(name, as.integer(stages[[n]]))
+      value(name, as.integer(stages[[n]]), quoted = quoted)
       record$stages[[n]] <- list(label = names(stages)[[n]], key = name)
     }
     for (n in seq_along(exclusions)) {
@@ -1144,7 +1145,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
       reasons <- list()
       for (m in seq_along(step)) {
         name <- sprintf("flow.%s.excluded.%d.%d", key, n, m)
-        value(name, as.integer(step[[m]]))
+        value(name, as.integer(step[[m]]), quoted = quoted)
         reasons[[m]] <- list(reason = names(step)[[m]], key = name)
       }
       record$exclusions[[n]] <- reasons
@@ -1153,7 +1154,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
       record$arms <- list()
       for (n in seq_along(arms)) {
         name <- sprintf("flow.%s.arm.%d", key, n)
-        value(name, as.integer(arms[[n]]))
+        value(name, as.integer(arms[[n]]), quoted = quoted)
         record$arms[[n]] <- list(label = names(arms)[[n]], key = name)
       }
     }

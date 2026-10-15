@@ -1505,6 +1505,7 @@ class Emitter:
         *,
         arms: dict[str, int] | None = None,
         overlapping: bool | list[int] = False,
+        quoted: bool = True,
     ) -> None:
         """Record a flow of participants or records, every count a result of its own.
 
@@ -1518,7 +1519,8 @@ class Emitter:
         last stage. Where one record can be excluded for several reasons, `overlapping`
         names the steps where that happens, `[3]` for the step from stage 3 to stage 4, or
         is True for every step: their reasons may then sum to more than the step removed,
-        and the stages must still agree. The counts are written as
+        and the stages must still agree. `quoted=False` writes every count as an
+        intermediate, drawn by a figure and not quoted, as `value` does. The counts are written as
         `flow.<key>.stage.<n>`, `flow.<key>.excluded.<n>.<m>` and `flow.<key>.arm.<n>`, to be
         bound in the text and drawn by a figure script from the results; a count that breaks
         the arithmetic is refused here, as G8 refuses it on disk.
@@ -1544,18 +1546,18 @@ class Emitter:
             raise ValueError(f"flow {key!r}: {problem}")
         record: dict = {"stages": [], "exclusions": [], "overlapping": overlapping}
         for n, (label, count) in enumerate(stages.items(), 1):
-            self.value(f"flow.{key}.stage.{n}", count)
+            self.value(f"flow.{key}.stage.{n}", count, quoted=quoted)
             record["stages"].append({"label": label, "key": f"flow.{key}.stage.{n}"})
         for n, step in enumerate(exclusions, 1):
             reasons = []
             for m, (reason, count) in enumerate(step.items(), 1):
-                self.value(f"flow.{key}.excluded.{n}.{m}", count)
+                self.value(f"flow.{key}.excluded.{n}.{m}", count, quoted=quoted)
                 reasons.append({"reason": reason, "key": f"flow.{key}.excluded.{n}.{m}"})
             record["exclusions"].append(reasons)
         if arms:
             record["arms"] = []
             for n, (label, count) in enumerate(arms.items(), 1):
-                self.value(f"flow.{key}.arm.{n}", count)
+                self.value(f"flow.{key}.arm.{n}", count, quoted=quoted)
                 record["arms"].append({"label": label, "key": f"flow.{key}.arm.{n}"})
         self._flows[key] = record
 

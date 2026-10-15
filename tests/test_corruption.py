@@ -404,7 +404,8 @@ def test_a_cell_that_no_longer_sums_to_its_margin_is_caught(project: Path) -> No
     _declare_relations(project, MARGINS)
     clean = gate_report(project)
     assert not {f.code for f in clean.findings} & {"relation-broken", "relation-unresolved"}
-    assert clean.counts["relations_checked"] == 3
+    # The three relations declared here, and the flow the example itself records.
+    assert clean.counts["relations_checked"] == 3 + 1
     _edit_value(project, "table2x2.d", 3381)
     assert "relation-broken" in codes(gate_report(project))
 

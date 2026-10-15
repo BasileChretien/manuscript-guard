@@ -661,7 +661,7 @@ em$flow("consort",
 em$flow("prisma",
         stages = c("Records" = 120, "Screened" = 100, "Included" = 12),
         exclusions = list(c("Duplicates" = 20), c("Not relevant" = 70, "No outcome" = 30)),
-        overlapping = 2)
+        overlapping = 2, quoted = FALSE)
 em$value("cohort.n", 300L)
 # sapply names what it returns: a named `of` is still an array of keys.
 em$relation("sum", "cohort.n", sapply(1:2, function(n) paste0("flow.consort.arm.", n)))
@@ -680,7 +680,7 @@ em.flow("consort",
 em.flow("prisma",
         stages={"Records": 120, "Screened": 100, "Included": 12},
         exclusions=[{"Duplicates": 20}, {"Not relevant": 70, "No outcome": 30}],
-        overlapping=[2])
+        overlapping=[2], quoted=False)
 em.value("cohort.n", 300)
 em.relation("sum", "cohort.n", ["flow.consort.arm.1", "flow.consort.arm.2"])
 em.relation("ratio", "cohort.n", ["flow.consort.stage.2", "flow.consort.stage.1"], scale=412)
@@ -729,6 +729,9 @@ def test_r_and_python_write_the_same_flows_and_relations(tmp_path: Path) -> None
     counts = {k: v for k, v in from_python["values"].items() if k.startswith("flow.")}
     assert {k: v for k, v in from_r["values"].items() if k.startswith("flow.")} == counts
     assert counts["flow.consort.excluded.1.2"] == {"value": 25, "display": "25"}
+    # A flow drawn and not quoted writes every count as an intermediate (round 2's CI of
+    # #293: the example's flow repeats counts it already quotes).
+    assert counts["flow.prisma.stage.1"] == {"value": 120, "display": "120", "quoted": False}
 
 
 @pytest.mark.parametrize(

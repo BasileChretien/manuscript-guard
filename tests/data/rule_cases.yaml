@@ -181,10 +181,13 @@ structural:
       - {text: "Tables 1 and 2 show the counts.", atom: "2"}
       - {text: "The estimates are in Figures 2 and 4.", atom: "4"}
       - {text: "See Tables 1, 2 and 3.", atom: "3"}
+      - {text: "See Tables 1, 2, and 3.", atom: "3"}
     rejects:
       # Only a plural opens a list, and nothing may stand between the word and its numbers.
       - {text: "Across the tables, 47 and 52 patients were excluded.", atom: "52"}
       - {text: "The figures\n\n2 and 3 reports came later.", atom: "3"}
+      # After the list's "and", a comma ends it: the 30 is a count.
+      - {text: "In Tables 1 and 2, 30 patients were excluded.", atom: "30"}
 
   numbered-part:
     accepts:

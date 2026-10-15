@@ -1330,6 +1330,14 @@ def test_a_count_after_a_word_with_nothing_to_check_it_against_is_a_count(
     assert "unclassified-number" in codes(gate_report(project))
 
 
+def test_a_count_after_a_list_of_tables_is_a_count(project: Path) -> None:
+    """Round 2 of #256: after "and" a comma ends the list, so "In Tables 1 and 2, 30
+    patients" is two pointers and a count, not a pointer to Table 30 and a 30 let through."""
+    _add_to_results(project, "In Tables 1 and 2, 30 patients were excluded.")
+    assert "unclassified-number" in codes(gate_report(project))
+    assert _pointer_findings(project) == []
+
+
 def test_a_list_of_tables_is_one_pointer(project: Path) -> None:
     """"Tables 1 and 2 show" left its 2 bound to nothing."""
     _add_to_results(project, "Tables 1 and 2 show the reports.")

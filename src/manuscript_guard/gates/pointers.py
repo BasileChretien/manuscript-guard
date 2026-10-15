@@ -106,11 +106,14 @@ def _numbers(found: re.Match) -> list[tuple[bool, int]]:
     the first number of a range holds for the rest: "Tables S1-3" is S1, S2 and S3."""
     out = [(bool(found["s0"]), int(found["n0"]))]
     plural = bool(_PLURAL.match(found["kind"]))
+    ended = False
     for part in _REST.finditer(found["rest"]):
         number, joined = int(part["n"]), part["join"].strip().lower()
         ranged = joined in ("to", *_DASHES)
-        if not plural and joined != "-" and joined not in _DASHES:
+        # After "and" the list has ended: "In Tables 1 and 2, 30 patients" counts 30.
+        if (not plural and joined != "-" and joined not in _DASHES) or (ended and joined == ","):
             break
+        ended = ended or joined in ("and", "&")
         start, s = out[-1][1], bool(part["s"]) or (ranged and out[-1][0])
         if ranged and start < number <= start + 50:
             out.extend((s, between) for between in range(start + 1, number))

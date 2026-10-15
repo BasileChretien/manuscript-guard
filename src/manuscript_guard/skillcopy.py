@@ -190,8 +190,10 @@ def _why_left(target: Path, recorded: object) -> str | None:
     return None if _digests(target) == recorded else CHANGED
 
 
-def _write_stamp(folder: Path, skills: dict[str, dict[str, str]]) -> None:
-    document = {"schema": SCHEMA, "version": __version__, "skills": skills}
+def _write_stamp(
+    folder: Path, skills: dict[str, dict[str, str]], version: str | None = None
+) -> None:
+    document = {"schema": SCHEMA, "version": version or __version__, "skills": skills}
     text = json.dumps(document, indent=2, sort_keys=True) + "\n"
     partial = folder / (STAMP + ".partial")
     partial.write_text(text, encoding="utf-8", newline="\n")
@@ -333,6 +335,8 @@ class Removed:
     folder: Path
     removed: tuple[str, ...]
     left: tuple[tuple[str, str], ...]
+    #: Skills the stamp recorded that were no longer there.
+    missing: tuple[str, ...]
     #: Whether the stamp went too: only once nothing it records is left.
     stamp_removed: bool
 
@@ -352,10 +356,15 @@ def remove(folder: Path, *, dry_run: bool = False) -> Removed | None:
             _swap(folder / name, None)
         kept = {name: stamp["skills"][name] for name, _why in checked.edited}
         if kept:
-            _write_stamp(folder, kept)
+            # Under the release that copied them: rewritten as this one, the stamp of a
+            # skill kept after an upgrade would have `check` advise copying the skills
+            # again, the ones just removed included.
+            _write_stamp(folder, kept, checked.version)
         else:
             (folder / STAMP).unlink()
-    return Removed(folder, checked.matching, checked.edited, not checked.edited)
+    return Removed(
+        folder, checked.matching, checked.edited, checked.missing, not checked.edited
+    )
 
 
 def _numbers(version: str) -> tuple[int, ...] | None:

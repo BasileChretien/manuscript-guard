@@ -2334,6 +2334,9 @@ def cmd_install_skills(args: argparse.Namespace) -> int:
     else:
         folder = skillcopy.user_folder()
 
+    if args.dry_run and not args.remove:
+        print("manuscript-guard: --dry-run goes with --remove", file=sys.stderr)
+        return 2
     if args.verify or args.remove:
         return _skills_kept(skillcopy, folder, args)
     if args.dry_run:
@@ -2398,6 +2401,8 @@ def _skills_kept(skillcopy, folder: Path, args: argparse.Namespace) -> int:
     verb = "would remove" if args.dry_run else "removed"
     for name in done.removed:
         print(f"{verb} {folder / name}")
+    for name in done.missing:
+        print(f"{folder / name} {skillcopy.GONE}, so there was nothing to remove")
     for name, why in done.left:
         print(
             f"manuscript-guard: {folder / name} {why}, so it was left as it is; delete it "

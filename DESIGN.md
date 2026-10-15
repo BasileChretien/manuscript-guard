@@ -1260,16 +1260,22 @@ methods" answered a required Methods section. G9 found the Methods by a pattern 
 "Methods" or "Materials and methods" at the start of a heading, and under either of the
 others it compared the lock's parameters with no text: a wrong `alpha: 0.07` was reported
 under "# Methods" and passed under "# 2. Methods", with nothing said. Since 2026-10-14 one
-test says which heading is the Methods, `text/section_names.py`: a title that "methods",
-"method" or "methodology" heads, numbered or not, after up to four words and "and"
-("Patients and methods") or a word that qualifies it ("Statistical methods"). A title that
-only holds the word is not the Methods: "# A method for signal detection", a paper's title
-written as a heading over `##` sections, was the first heading holding it, and G9 read the
-whole paper as the Methods, a wrong parameter in the Results among them. G4 uses the test
-for a required section named "Methods", G9 reads the first such section of the main text,
-and a project with analysis code and no such heading is told so (`methods-not-found`, a
-warning). G2 and G15 read the Methods as places, where a heading names the method without
-the word ("Statistical analysis", "Study design"); they take numbered headings and
+test says which heading is the Methods, `text/section_names.py`. Its words are G4's own, a
+title holding "methods", so "2. Methods", "**2. Methods**", "Materials & methods" and
+"Patients and methods" are the Methods to G9 as they always were to G4. Two earlier drafts
+said it by the words of a title, and each failed review: one left out headings G4 had always
+counted, the other took a paper's title for its Methods. What decides between titles holding
+the word is where they stand. A heading inside the abstract is the abstract's, and one under
+a heading that names another part of the paper ("Limitations of existing methods" under the
+Introduction) belongs to that part. One over another part is no Methods either:
+"# Statistical methods for signal detection", a paper's title written as a heading over
+`##` sections, is over its Results, and G9 read that whole paper as the Methods, a wrong
+parameter in the Results among them. Of the headings left, one G2 reads as the Methods by
+its name comes first. G4 uses the test for a required section named "Methods", G9 reads the
+first such section of the main text, and a project with analysis code and no such heading is
+told so (`methods-not-found`, a warning). G2 and G15 read the Methods as places, where a
+heading names the method without the word ("Statistical analysis", "Study design"); they
+take numbered headings and
 "<anything> and methods" too now, and never a heading that also names the results:
 "Methods and results", a research letter's combined section, let every threshold convention
 through under its results. They read fewer headings than G4 counts, and a Methods they miss
@@ -5509,11 +5515,14 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
-- **The Methods are found by the word that heads a title, and two gates read fewer
-  headings than G4 counts.** G4 and G9 take a title that "methods", "method" or
-  "methodology" heads for the Methods, so "Methods used by others" ahead of the real Methods
-  would be what G9 reads, and "Overview of methods" is no Methods to either: G4 asked for
-  the Methods where its substring test of before found them in it. G2 and G15 read
+- **The Methods are a heading that holds the word, and two gates read fewer headings than
+  G4 counts.** G4 and G9 take for the Methods a heading whose title holds "methods" where
+  the paper's structure allows it. In a paper with no heading G2 reads as the Methods, the
+  first such heading is read as them, "Overview of methods" or "Limitations of existing
+  methods" at the top level among them, as G4 has always counted either present. A title
+  with only "method" or "methodology" is no Methods to either gate, as it was none to G4.
+  A Methods with a subsection titled only "Results", "Limitations" or "Background" is taken
+  for a heading over another part of the paper and is not read. G2 and G15 read
   "Methods", numbered or not, "<anything> and methods", "Methods and <anything>" and the
   names of the method's own subsections, and not "Methods: data sources" or "Methods of
   the study": there G2 reports a number written in the Methods where it could have let it

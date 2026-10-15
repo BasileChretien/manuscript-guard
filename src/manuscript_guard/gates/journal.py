@@ -22,7 +22,7 @@ from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SHIPPED_JOURNALS
 from manuscript_guard.text.masking import without_front_matter
-from manuscript_guard.text.section_names import bare, names_abstract, names_methods
+from manuscript_guard.text.section_names import bare, methods_sections, names_abstract
 from manuscript_guard.text.sections import measure, scannable, split_sections
 
 GATE = "G4"
@@ -242,19 +242,15 @@ def _check_limits(document: dict, counts, path: Path) -> Report:
     return report
 
 
-#: A required section that is the Methods by name, and no more than that. "Materials and
-#: methods" is held to its own words, as every other required section is.
-_THE_METHODS = ("methods", "method", "methodology")
-
-
-def _present(required: str, titles: list[str], named: str | None) -> bool:
-    """Whether a heading answers a section the journal requires: its name in the heading,
-    as G4 has always read one. Where the section is the Methods or the abstract, by the test
-    the gates that read the section use (`text.section_names`), so that what G4 counts
-    present is what G9, G2 and G15 read as the Methods, and G14 as the abstract."""
-    wanted = bare(required).casefold()
-    if wanted in _THE_METHODS:
-        return any(names_methods(title) for title in titles)
+def _present(required: str, sections, named: str | None) -> bool:
+    """Whether a heading answers a section the journal requires: its name in one of the
+    paper's headings, as G4 has always read one. The Methods by the test G9 reads them by
+    (`text.section_names.methods_sections`), so that what G4 counts present is what G9
+    reads; the abstract by the title G14 and the word count read it by. "Materials and
+    methods" is held to its own words, as every other required section is."""
+    if bare(required).casefold() == "methods":
+        return bool(methods_sections(sections, named))
+    titles = paper_titles(sections, named)
     if names_abstract(required, named):
         return any(names_abstract(title, named) for title in titles)
     return any(required.lower() in title for title in titles)
@@ -284,7 +280,7 @@ def _check_structure(document: dict, text: str, path: Path) -> Report:
     titles = paper_titles(sections, named)
 
     for required in structure.get("required_sections", []):
-        if not _present(required, titles, named):
+        if not _present(required, sections, named):
             report = report.with_findings(
                 Finding(
                     gate=GATE,

@@ -1872,7 +1872,22 @@ def _wrong_alpha_in_the_lock(root: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "heading", ["Methods", "2. Methods", "2.1 Methods", "II. Methods", "Patients and methods"]
+    "heading",
+    [
+        "Methods",
+        "2. Methods",
+        "2.1 Methods",
+        "II. Methods",
+        "Patients and methods",
+        # each a heading main's G4 took for the Methods, which round 2 of #246 found refused
+        "Materials & methods",
+        "**2. Methods**",
+        "[Methods]{.smallcaps}",
+        "2.Methods",
+        "Section 2: Methods",
+        "Laboratory methods",
+        "Study design, setting, participants and methods",
+    ],
 )
 def test_a_wrong_parameter_is_found_under_any_heading_g4_counts_as_the_methods(
     project: Path, heading: str
@@ -1912,7 +1927,18 @@ def test_a_methods_and_results_section_is_no_methods_for_g2(project: Path) -> No
     )
 
 
-def test_a_paper_s_title_written_as_a_heading_is_not_its_methods(project: Path) -> None:
+@pytest.mark.parametrize(
+    "title",
+    [
+        "A method for signal detection",
+        # round 2 of #246: a title the word heads is over the Results, and is no Methods
+        "Statistical methods for signal detection",
+        "Methods for detecting adverse drug reactions",
+    ],
+)
+def test_a_paper_s_title_written_as_a_heading_is_not_its_methods(
+    project: Path, title: str
+) -> None:
     """With the title an H1 over `##` sections, a heading holding the word was the first
     that named the Methods, and G9 read the whole paper as them: a wrong parameter stated in
     the Results passed."""
@@ -1920,7 +1946,7 @@ def test_a_paper_s_title_written_as_a_heading_is_not_its_methods(project: Path) 
     from manuscript_guard.gates.methods import methods_in
 
     text = (
-        "# A method for signal detection\n\n## Background\n\nWords.\n\n"
+        f"# {title}\n\n## Background\n\nWords.\n\n"
         "## Limitations of existing methods\n\nWords.\n\n## Methods\n\nNo alpha here."
         "\n\n## Results\n\nAn alpha of 0.07 was used.\n"
     )
@@ -1928,9 +1954,7 @@ def test_a_paper_s_title_written_as_a_heading_is_not_its_methods(project: Path) 
     main = main_md(project)
     body = main.read_text(encoding="utf-8").split("---\n", 2)
     demoted = body[2].replace("\n# ", "\n## ")
-    main.write_text(
-        f"---{body[1]}---\n\n# A method for signal detection\n{demoted}", encoding="utf-8"
-    )
+    main.write_text(f"---{body[1]}---\n\n# {title}\n{demoted}", encoding="utf-8")
     _wrong_alpha_in_the_lock(project)
     main.write_text(
         main.read_text(encoding="utf-8") + "\nAn alpha of 0.07 was used.\n", encoding="utf-8"
@@ -1952,6 +1976,21 @@ def test_no_heading_that_names_the_methods_is_said(project: Path) -> None:
         "methods-not-found"
     ], report.render(project)
     assert "missing-required-section" in codes(_journal(project))
+
+
+def test_a_structured_abstract_s_results_are_not_the_paper_s(project: Path) -> None:
+    """Every required section, not only the Methods: the abstract's "Results" answered the
+    journal's required Results in a paper whose body called them something else."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("\n# Results\n", "\n# Findings\n", 1)
+    main.write_text(
+        text.replace("# Abstract\n\n", "# Abstract\n\n## Results\n\nA ratio.\n\n", 1),
+        encoding="utf-8",
+    )
+    assert any(
+        f.code == "missing-required-section" and "Results" in f.message
+        for f in _journal(project).failures
+    )
 
 
 def test_a_structured_abstract_s_methods_are_not_the_paper_s(project: Path) -> None:

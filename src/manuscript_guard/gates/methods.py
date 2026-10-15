@@ -51,9 +51,8 @@ from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SOURCE_SUFFIXES
 from manuscript_guard.text.masking import blank_comments
 from manuscript_guard.text.placeholders import parse, substitute
-from manuscript_guard.text.section_names import names_methods
+from manuscript_guard.text.section_names import methods_sections
 from manuscript_guard.text.sections import (
-    Section,
     chains_at,
     footnote_index,
     heading_index,
@@ -311,10 +310,10 @@ def compare(current: dict[str, str], recorded: dict[str, str]) -> Drift:
 
 
 def methods_text(project: Project) -> str | None:
-    """The Methods as G9 reads them: everything under the first heading that names them, by
-    the test G4 counts a required Methods section present with (`names_methods`), and not
-    the Methods of a structured abstract. In the main text, as G4 reads it: "Supplementary
-    methods" is not the paper's Methods. None where no heading names them.
+    """The Methods as G9 reads them: everything under the heading that is the paper's
+    Methods (`section_names.methods_sections`), the test G4 counts a required Methods
+    section present by. In the main text, as G4 reads it: "Supplementary methods" is not the
+    paper's Methods. None where no heading is.
 
     The pattern this had of its own read "Methods" and "Materials and methods" and nothing
     else, so under "2. Methods" or "Patients and methods" a wrong parameter in the lock was
@@ -332,15 +331,8 @@ def methods_text(project: Project) -> str | None:
 def methods_in(text: str, abstract_title: str | None = None) -> str | None:
     """The Methods of one file, as `methods_text` reads them, or None. `abstract_title` is
     what the journal's profile calls the abstract, as G4 has it."""
-    chain: list[Section] = []
-    for section in split_sections(text):
-        while chain and chain[-1].level >= section.level:
-            chain.pop()
-        inside = any(s.names_abstract(abstract_title) for s in chain)
-        if names_methods(section.title) and not inside:
-            return section.enclosed
-        chain.append(section)
-    return None
+    found = methods_sections(split_sections(text), abstract_title)
+    return found[0].enclosed if found else None
 
 
 def _no_methods(project: Project) -> Report:

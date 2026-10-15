@@ -6,30 +6,25 @@ section they find by its heading. Each had its own pattern, and they disagreed: 
 parameter in `methods.lock` was compared with nothing and nothing said so. A section that
 counts as present is now a section that is read.
 
-Nothing here imports the rest of the package, so `classify` and `text.sections` can both
-use it.
+Two attempts to say it by the words of a title failed review: each left out headings G4 had
+always taken ("Materials & methods", "**2. Methods**") or took a paper's title written as a
+heading over the whole paper for its Methods. So the words are G4's own, a title holding
+"methods", and what decides between such titles is where they stand, not what else they say.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from manuscript_guard.text.sections import Section
 
 #: A heading's number, which is no part of its name: "2", "2.", "2.1", "2.1.3.", "II.",
 #: "A.", "2)", "(2)".
 _NUMBER = re.compile(
     r"^\s*(?:\(\d+\)|\d+(?:\.\d+)*[.)]?|[IVXLC]+[.)]|[A-Z][.)])\s+", re.IGNORECASE
-)
-#: The Methods: a title the word heads, after a heading's number and its marks. "Methods",
-#: "2. Methods", "Methods and analysis", "Methods: data sources", "Materials and methods",
-#: "Patients and methods", "Statistical methods", "Method", "Methodology". A title that only
-#: holds the word is not: "A method for signal detection", a paper's title written as a
-#: heading, made G9 read the whole paper as its Methods, and "Limitations of existing
-#: methods" an Introduction's subsection.
-_METHODS = re.compile(
-    r"(?:(?:[^\W\d_][\w',-]*\s+){1,4}?and\s+"
-    r"|(?:statistical|study|research|experimental|analytical)\s+)?"
-    r"(?:methods?|methodology)\b",
-    re.IGNORECASE,
 )
 _ABSTRACT = re.compile(r"(?:structured\s+)?abstract\b", re.IGNORECASE)
 
@@ -40,8 +35,11 @@ def bare(title: str) -> str:
 
 
 def names_methods(title: str) -> bool:
-    """Whether a heading names the Methods."""
-    return bool(_METHODS.match(bare(title).lstrip("*_")))
+    """Whether a heading can be the Methods: its title holds "methods", the test G4 has
+    counted a required Methods section present by since it was written. "2. Methods",
+    "**2. Methods**", "Materials & methods", "Patients and methods", "Statistical methods".
+    Which of several such headings is the paper's Methods is `methods_sections`'s to say."""
+    return "methods" in title.lower()
 
 
 def names_abstract(title: str, named: str | None = None) -> bool:
@@ -54,4 +52,41 @@ def names_abstract(title: str, named: str | None = None) -> bool:
     return bool(named) and title.rstrip(" .:").casefold() == str(named).strip().casefold()
 
 
-__all__ = ["bare", "names_abstract", "names_methods"]
+def methods_sections(
+    sections: Sequence[Section], abstract_title: str | None = None
+) -> list[Section]:
+    """The sections of one file that are the paper's Methods, the likeliest first.
+
+    A heading that holds "methods" (`names_methods`) and stands where the Methods stand:
+    not inside the abstract, whose own "Methods" are the abstract's; not under a heading
+    that names another part of the paper, the Introduction, the Results, the Discussion
+    (`classify.rules_out_methods`), as "Limitations of existing methods" under the
+    Introduction; and not over one, as a paper's title written as a heading over the whole
+    paper, "# Statistical methods for signal detection", is over its Results. Of those, a
+    heading G2 reads as the Methods by its name ("Methods", "2. Methods", "Materials and
+    methods") comes before one that only holds the word."""
+    from manuscript_guard.classify import METHODS_SECTIONS, rules_out_methods
+
+    found: list[Section] = []
+    chain: list[Section] = []
+    for index, section in enumerate(sections):
+        while chain and chain[-1].level >= section.level:
+            chain.pop()
+        above = list(chain)
+        chain.append(section)
+        if not names_methods(section.title):
+            continue
+        if any(s.names_abstract(abstract_title) or rules_out_methods(s.title) for s in above):
+            continue
+        below = []
+        for later in sections[index + 1 :]:
+            if later.level <= section.level:
+                break
+            below.append(later)
+        if any(rules_out_methods(s.title) for s in below):
+            continue
+        found.append(section)
+    return sorted(found, key=lambda section: METHODS_SECTIONS.match(section.title) is None)
+
+
+__all__ = ["bare", "methods_sections", "names_abstract", "names_methods"]

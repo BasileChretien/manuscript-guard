@@ -9068,6 +9068,111 @@ def test_a_model_s_reading_with_its_seal_taken_out_is_said(project: Path, monkey
     assert [f.path for f in report.warnings if f.code == "reading-unsealed"] == [path]
 
 
+def _read_by_models(
+    root: Path, monkeypatch, *models: str, verdict: str = "major-revision", findings=None,
+    remit: str | None = None,
+) -> list[Path]:  # fmt: skip
+    """A round read by `models` through `review --run`, each answering `verdict` with
+    `findings`, of a panel whose one reviewer has `remit` where it is given."""
+    from test_review_run import Providers, answer, configure, reply_text
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    transport = Providers()
+    said = _A_MODEL_SAID if findings is None else findings
+    transport.default = lambda request: answer(reply_text(verdict, said))
+    monkeypatch.setattr(client, "default_transport", transport)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-0123456789SECRETA")
+    monkeypatch.setenv("MISTRAL_API_KEY", "sk-test-mistral-0123456789SECRETB")
+    shutil.rmtree(root / "review")
+    if remit is not None:
+        (root / "review").mkdir()
+        panel = {"schema": "manuscript-guard/panel/1", "round": 1, "opened_on": "2026-10-15",
+                 "rationale": "One reader, for the test.",
+                 "reviewers": [{"id": "reader", "role": "Reader", "remit": remit,
+                                "why": "The test needs one."}]}  # fmt: skip
+        (root / "review" / "panel-1.yaml").write_text(yaml.safe_dump(panel), encoding="utf-8")
+    configure(root, *models)
+    assert main(["review", str(root), "--run", "--yes"]) == 0
+    return sorted((root / "review" / "round-1").glob("*.*.yaml"))
+
+
+def _review_warnings(root: Path) -> list[str]:
+    from manuscript_guard.gates import check_review
+
+    return [f.code for f in check_review(load_project(root)[0]).warnings]
+
+
+def test_a_round_every_reading_of_which_came_from_one_provider_is_said(
+    project: Path, monkeypatch
+) -> None:
+    """The models of one provider share their blind spots. A round read by one provider's
+    model is said, at every stage; one read by two providers, or by people, is not."""
+    from manuscript_guard.gates import check_review
+
+    assert "round-one-provider" not in _review_warnings(project)  # the example's people
+    _read_by_models(project, monkeypatch, "openai/model-a")
+    assert _review_warnings(project).count("round-one-provider") == 1
+    report = check_review(load_project(project)[0], submission=True)
+    assert "round-one-provider" in [f.code for f in report.warnings]
+    _read_by_models(project, monkeypatch, "openai/model-a", "mistral/model-b")
+    assert "round-one-provider" not in _review_warnings(project)
+
+
+def test_a_model_that_passed_a_remit_covering_the_figures_is_said(
+    project: Path, monkeypatch
+) -> None:
+    """Figures are not sent to a model, so a model's pass of a remit that covers them passed
+    what it never saw. Another verdict, and another remit, are not said."""
+    figures = "Whether the figures show what the text says, and are labelled."
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit=figures)  # fmt: skip
+    assert "figures-not-seen" in _review_warnings(project)
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="minor-revision",
+                    remit=figures)  # fmt: skip
+    assert "figures-not-seen" not in _review_warnings(project)
+    _read_by_models(project, monkeypatch, "openai/model-a", verdict="pass", findings=[],
+                    remit="Whether the estimator is stated fully.")  # fmt: skip
+    assert "figures-not-seen" not in _review_warnings(project)
+
+
+def test_what_a_finding_asks_is_filed_said_and_sealed(project: Path, monkeypatch) -> None:
+    """A finding may say it asks for a computation, which is a new result to emit and a new
+    reconciliation of the Methods with the code. It is filed with the finding, named in the
+    open finding, and sealed: made a disclosure after filing, the reading is altered. An ask
+    the schema does not know is refused with the reply."""
+    from manuscript_guard.gates import check_review
+
+    asked = [{"severity": "major", "ask": "computation", "where": "Results",
+              "finding": "Give the estimate adjusted for age."}]  # fmt: skip
+    path = _read_by_models(project, monkeypatch, "openai/model-a", findings=asked)[0]
+    filed = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert filed["findings"][0]["ask"] == "computation"
+    report = check_review(load_project(project)[0], submission=True)
+    opened = [f.message for f in report.failures if f.code == "open-major-finding"]
+    assert opened and all("(asks for a computation)" in message for message in opened)
+    assert "reading-altered" not in [f.code for f in report.failures]
+    _edit(path, lambda d: d["findings"][0].update(ask="disclosure"))
+    assert "reading-altered" in _review_failures(project)
+
+    from manuscript_guard.panel.reply import parse_reply
+
+    # Round 1 of #276: the prompt shows `ask`, and a model that leaves it out writes null.
+    left_out = json.loads(_reply_with([{"severity": "comment", "ask": None, "finding": "x"}]))
+    found = parse_reply(json.dumps(left_out))["findings"]
+    assert found == [{"severity": "comment", "finding": "x"}]
+    with pytest.raises(Exception, match="ask"):
+        parse_reply(json.dumps({**json.loads(_reply_with(asked)), "findings": [
+            {**asked[0], "ask": "everything"}]}))  # fmt: skip
+
+
+def _reply_with(findings: list) -> str:
+    from test_review_run import reply_text
+
+    return reply_text("major-revision", findings)
+
+
 def test_the_example_s_hand_filed_readings_are_sealed_too(project: Path) -> None:
     """`review --seal` sealed them, and the same edits fail."""
     path = project / "review" / "round-1" / "biostatistician.yaml"

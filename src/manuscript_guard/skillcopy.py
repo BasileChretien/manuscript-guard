@@ -190,8 +190,18 @@ def _why_left(target: Path, recorded: object) -> str | None:
     return None if _digests(target) == recorded else CHANGED
 
 
-def _write_stamp(folder: Path, skills: dict[str, dict[str, str]]) -> None:
+#: In a stamp that `install-skills --remove` left for the skills it could not remove. The
+#: notice that a copy is stale says nothing of such a stamp: copying "the current ones"
+#: would bring back the skills just removed.
+REMOVED = "left_by_remove"
+
+
+def _write_stamp(
+    folder: Path, skills: dict[str, dict[str, str]], *, removed: bool = False
+) -> None:
     document = {"schema": SCHEMA, "version": __version__, "skills": skills}
+    if removed:
+        document[REMOVED] = True
     text = json.dumps(document, indent=2, sort_keys=True) + "\n"
     partial = folder / (STAMP + ".partial")
     partial.write_text(text, encoding="utf-8", newline="\n")
@@ -288,6 +298,80 @@ def install(folder: Path) -> Copied:
     return Copied(folder, tuple(written), tuple(unchanged), tuple(removed), tuple(left))
 
 
+@dataclass(frozen=True)
+class Checked:
+    """What a folder holds of the skills its stamp records."""
+
+    folder: Path
+    #: The release the stamp names; None where the folder has no stamp.
+    version: str | None
+    matching: tuple[str, ...]
+    #: Each skill whose folder is not as it was copied, with why.
+    edited: tuple[tuple[str, str], ...]
+    missing: tuple[str, ...]
+
+
+GONE = "is no longer there"
+
+
+def verify(folder: Path) -> Checked:
+    """Each skill the stamp records, against what its folder holds now. Changes nothing."""
+    folder = Path(folder)
+    stamp = read_stamp(folder)
+    if stamp is None:
+        return Checked(folder, None, (), (), ())
+    matching: list[str] = []
+    edited: list[tuple[str, str]] = []
+    missing: list[str] = []
+    for name, recorded in sorted(stamp["skills"].items()):
+        target = folder / name
+        if not target.exists() and not _is_link(target):
+            missing.append(name)
+            continue
+        why = _why_left(target, recorded)
+        if why:
+            edited.append((name, why))
+        else:
+            matching.append(name)
+    return Checked(folder, stamp["version"], tuple(matching), tuple(edited), tuple(missing))
+
+
+@dataclass(frozen=True)
+class Removed:
+    """What a removal did, or with `dry_run` would do."""
+
+    folder: Path
+    removed: tuple[str, ...]
+    left: tuple[tuple[str, str], ...]
+    #: Skills the stamp recorded that were no longer there.
+    missing: tuple[str, ...]
+    #: Whether the stamp went too: only once nothing it records is left.
+    stamp_removed: bool
+
+
+def remove(folder: Path, *, dry_run: bool = False) -> Removed | None:
+    """Take away every skill the stamp records whose folder is still as it was copied, then
+    the stamp. A skill edited since, or something else under its name, is left and named, and
+    the stamp then keeps it alone, so that a later copy still knows it was this tool's. None
+    where the folder has no stamp: nothing in it is this tool's to remove."""
+    checked = verify(folder)
+    if checked.version is None:
+        return None
+    folder = Path(folder)
+    stamp = read_stamp(folder) or {"skills": {}}
+    if not dry_run:
+        for name in checked.matching:
+            _swap(folder / name, None)
+        kept = {name: stamp["skills"][name] for name, _why in checked.edited}
+        if kept:
+            _write_stamp(folder, kept, removed=True)
+        else:
+            (folder / STAMP).unlink()
+    return Removed(
+        folder, checked.matching, checked.edited, checked.missing, not checked.edited
+    )
+
+
 def _numbers(version: str) -> tuple[int, ...] | None:
     """`0.2.400` as (0, 2, 400); None for anything that is not plain dotted digits."""
     if not re.fullmatch(r"\d{1,9}(?:\.\d{1,9})*", version.strip()):
@@ -317,7 +401,7 @@ def stale_notice(root: Path | None) -> str | None:
             # Said by `install-skills`, which is where it can be acted on. Here it must not
             # cost the other folder its line.
             continue
-        if stamp is None:
+        if stamp is None or stamp.get(REMOVED) is True:
             continue
         copy = _numbers(stamp["version"])
         if copy is None or here is None or copy == here:

@@ -23,7 +23,8 @@ from manuscript_guard.cli import build_parser, main
 REPO = Path(__file__).resolve().parent.parent
 README = REPO / "README.md"
 DOCS = REPO / "docs"
-PAGES = [README, *sorted(DOCS.glob("*.md"))]
+#: The security policy is read on GitHub beside the README, and its links are held the same way.
+PAGES = [README, REPO / "SECURITY.md", *sorted(DOCS.glob("*.md"))]
 
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 SOURCE = re.compile(r'\b(?:src|srcset)="([^"]+)"')

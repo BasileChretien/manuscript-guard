@@ -265,7 +265,7 @@ number in the file and the rule that classified it.
 | `respond` | open a revision round, or write the point-by-point response |
 | `submit` | assemble the submission pack |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |
-| `install-skills` | copy the skills to a folder an agent tool reads |
+| `install-skills` | copy the skills to a folder an agent tool reads; `--verify` checks the copy, `--remove` takes it away |
 
 Each takes `--help`. `verify` is a separate command because it executes your analysis, which
 a gate never does, and because it takes as long as the analysis does.
@@ -353,6 +353,7 @@ everywhere.
 | [Auditing a paper you already wrote](docs/audit.md) | one command for a manuscript with no bindings, and how little a match means |
 | [DESIGN.md](DESIGN.md) | the architecture, the reasons for its decisions, and the known gaps |
 | [ATTRIBUTION.md](ATTRIBUTION.md) | the reporting guidelines' licences, and the one data file derived from another work |
+| [SECURITY.md](SECURITY.md) | reporting a vulnerability, and what is in scope |
 
 ## Status
 

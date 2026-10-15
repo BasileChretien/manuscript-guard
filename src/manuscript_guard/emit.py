@@ -339,6 +339,49 @@ def source_digest_matches(path: Path, recorded: str) -> bool:
     return _matches(path, recorded, _SOURCE_SUFFIXES)
 
 
+#: The analysis plan, and the copy of it frozen when the first results are written.
+PLAN = Path("design") / "plan.md"
+FROZEN_PLAN = Path("design") / "plan.frozen.yaml"
+
+
+def freeze_plan(root: Path, script: Path | str) -> Path | None:
+    """Keep the plan as it stands, the first time the analysis writes results, and never again.
+
+    A plan rewritten after the results are known is how a hypothesis comes to fit its
+    results, and nothing recorded whether it had been. So the first write of any results
+    keeps the plan's text, its digest, the day and the script that wrote them, in a file of
+    its own beside the plan: the results folder is cleared and written again on every run,
+    and a copy kept there would be frozen again on the changed plan. Written as JSON, which is
+    YAML too, so that the R emitter writes the same file. Never overwritten: a second run
+    finds it and leaves it.
+
+    A plan that is not UTF-8 text, or that holds a NUL as one saved in UTF-16 does, is not
+    kept: G12 says it is not UTF-8 (`plan-not-utf8`), and the first run after it is put
+    right keeps it. R cannot hold a NUL in a string, and stopped there with the results
+    already written (round 1 of #271).
+    """
+    plan, frozen = root / PLAN, root / FROZEN_PLAN
+    if not plan.is_file() or frozen.exists():
+        return None
+    try:
+        text = plan.read_bytes().decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    if "\x00" in text:
+        return None
+    record = {
+        "schema": "manuscript-guard/plan-frozen/1",
+        "frozen_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "by": str(Path(script).relative_to(root)).replace("\\", "/"),
+        "sha256": source_digest(plan),
+        "plan": text,
+    }
+    frozen.write_text(
+        json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
+    )
+    return frozen
+
+
 DIGEST_SUFFIX = ".sha256"
 
 
@@ -1636,4 +1679,5 @@ class Emitter:
         payload = json.dumps(self.document(), indent=2, ensure_ascii=False, sort_keys=False)
         path.write_text(payload + "\n", encoding="utf-8", newline="\n")
         write_digest(path)
+        freeze_plan(root, self.script)
         return path

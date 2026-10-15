@@ -549,6 +549,74 @@ def test_r_and_python_declare_and_read_parameters_alike(tmp_path: Path) -> None:
     ]
 
 
+FROZEN_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$value("n", 412L)
+em$write()
+"""
+
+
+def test_r_and_python_keep_the_plan_alike(tmp_path: Path) -> None:
+    """The plan as it stood when the first results were written, the same record from
+    either language, and never written again."""
+    from manuscript_guard.emit import freeze_plan
+
+    root = _parameter_project(tmp_path)
+    (root / "design").mkdir()
+    plan = root / "design" / "plan.md"
+    written = "# Analysis plan\r\n\r\n## Outcome\r\n\r\nHepatic injury, \u00e9tude.\r\n"
+    plan.write_bytes(written.encode())
+    script = root / "analysis" / "frozen.R"
+    script.write_text(FROZEN_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    frozen = root / "design" / "plan.frozen.yaml"
+    from_r = json.loads(frozen.read_text(encoding="utf-8"))
+    out = _run_r(script, root)
+    assert json.loads(frozen.read_text(encoding="utf-8")) == from_r, "written once"
+
+    frozen.unlink()
+    freeze_plan(root, script)
+    from_python = json.loads(frozen.read_text(encoding="utf-8"))
+    keep = ("schema", "by", "sha256", "plan")
+    assert {k: from_r[k] for k in keep} == {k: from_python[k] for k in keep}
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        pytest.param("# Analysis plan\n".encode("utf-16"), id="UTF-16"),
+        pytest.param("# Analysis plan\n".encode("utf-16-le"), id="UTF-16 with no mark"),
+        pytest.param("# \u00e9tude\n".encode("cp1252"), id="Windows-1252"),
+    ],
+)
+def test_a_plan_that_is_not_utf8_is_kept_by_neither_language(
+    tmp_path: Path, written: bytes
+) -> None:
+    """Round 1 of #271: R stopped on a plan saved in UTF-16, with its results written and
+    the rest of the script not run. Neither emitter keeps a plan that is not UTF-8 text,
+    and both finish; G12 says the plan is not UTF-8."""
+    from manuscript_guard.emit import freeze_plan
+
+    root = _parameter_project(tmp_path)
+    (root / "design").mkdir()
+    (root / "design" / "plan.md").write_bytes(written)
+    script = root / "analysis" / "frozen.R"
+    script.write_text(FROZEN_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    frozen = root / "design" / "plan.frozen.yaml"
+    assert not frozen.exists()
+    assert freeze_plan(root, script) is None
+    assert not frozen.exists()
+
+
 UNFOLLOWED_R = """
 if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
   cat("MISSING_DEPS\\n"); quit(status = 3)

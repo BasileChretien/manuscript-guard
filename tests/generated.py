@@ -736,6 +736,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "interval order": intervals(),
+    "deviations": texts(),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
     "quote words": st.fixed_dictionaries(
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}

@@ -57,6 +57,185 @@
       "enum": ["single", "double", "triple", "open"],
       "description": "How the journal's peer review is blinded, as its own page says. Double or triple: the reviewers are not to know the authors, and the build fails a document that names one of them, an institution of theirs, or their ORCID iD or e-mail address."
     },
+    "figures": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_url",
+          "read_on",
+          "confirmed"
+        ],
+        "description": "The journal's artwork rules, read from its own artwork guide. G4 holds each figure the manuscript places to them, as warnings.",
+        "properties": {
+          "source_url": {
+            "type": "string",
+            "description": "The artwork guide these were read from."
+          },
+          "read_on": {
+            "type": "string",
+            "format": "date"
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Whether every value here was read on that page, or some were taken from elsewhere and are still to be confirmed."
+          },
+          "applies_from": {
+            "enum": [
+              "submission",
+              "acceptance"
+            ],
+            "description": "When the journal applies these rules. From acceptance, G4 says what does not meet them as notes."
+          },
+          "formats": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "tiff",
+                "tif",
+                "eps",
+                "pdf",
+                "png",
+                "jpeg",
+                "jpg",
+                "svg"
+              ]
+            },
+            "description": "The file formats the journal takes for a figure."
+          },
+          "min_dpi": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "halftone": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "combination": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "line_art": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "description": "The least resolution at the printed width, by kind of figure."
+          },
+          "max_dpi": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "The most resolution the journal takes."
+          },
+          "widths_mm": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "description": "The widths the journal prints figures at: one column, two columns."
+          },
+          "max_height_mm": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "The tallest a figure may print."
+          },
+          "max_file_mb": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "The largest file the journal takes, in MB."
+          },
+          "min_text_pt": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "The smallest text at the printed size, in points."
+          },
+          "min_line_pt": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "The thinnest line at the printed size, in points."
+          },
+          "legend_words": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The most words in a figure's legend."
+          },
+          "supplementary": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Rules of their own for supplementary figures, in place of the ones above.",
+            "properties": {
+              "formats": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "tiff",
+                    "tif",
+                    "eps",
+                    "pdf",
+                    "png",
+                    "jpeg",
+                    "jpg",
+                    "svg"
+                  ]
+                },
+                "description": "The file formats the journal takes for a figure."
+              },
+              "min_dpi": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "halftone": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "combination": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "line_art": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "description": "The least resolution at the printed width, by kind of figure."
+              },
+              "max_dpi": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "The most resolution the journal takes."
+              },
+              "widths_mm": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "description": "The widths the journal prints figures at: one column, two columns."
+              },
+              "max_height_mm": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "The tallest a figure may print."
+              },
+              "max_file_mb": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "The largest file the journal takes, in MB."
+              },
+              "min_text_pt": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "The smallest text at the printed size, in points."
+              },
+              "min_line_pt": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "The thinnest line at the printed size, in points."
+              }
+            }
+          }
+        }
+      },
     "limits": {
       "type": "object",
       "additionalProperties": false,

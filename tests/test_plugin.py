@@ -552,6 +552,7 @@ NAMED_NOWHERE = {
     "build/manuscript.docx": "written by `build`",
     "build/supplementary.docx": "written by `build`",
     "build/records/": "written by `build`",
+    "design/plan.frozen.yaml": "written by the emitter, the first time it writes results",
     "profiles/reporting/STROBE.yaml": "written by `transcribe`, and kept out of git",
     "profiles/reporting/sources/": "where `fetch` puts the guidelines, kept out of git",
 }

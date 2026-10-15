@@ -575,6 +575,42 @@ def _seen_and_judged(text: str) -> None:
             assert with_scan.kind in (TERM, STRUCTURAL, CONVENTION, UNCLASSIFIED)
 
 
+# ------------------------------------------------------------- what the plan's deviations say
+
+
+@st.composite
+def _deviations_twice(draw: st.DrawFn) -> tuple[str, str, str]:
+    """A plan whose Deviations section is drawn words, the same plan with them wrapped another
+    way, and the same with a word more. The section comes before drawn text: after it, an
+    empty footnote or an open fence the draw left would take its heading, as pandoc reads."""
+    words = draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=20))
+    wrap = [draw(st.sampled_from((" ", "\n", "  ", " \n"))) for _ in words[1:]]
+    # A line break and a doubled space in every example, wherever else the draw put them.
+    wrap[0], wrap[-1] = "\n", "  "
+    rewrapped = words[0] + "".join(gap + word for gap, word in zip(wrap, words[1:], strict=True))
+    after = draw(texts())
+
+    def plan(deviations: str) -> str:
+        return f"# Analysis plan\n\n## Deviations from the plan\n\n{deviations}\n\n" \
+            f"## Outcome\n\n{after}\n"  # fmt: skip
+
+    said = " ".join(words)
+    return plan(said), plan(rewrapped), plan(said + " " + draw(st.sampled_from(FILLER)))
+
+
+@holds(100, _deviations_twice())
+def test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not(
+    drawn: tuple[str, str, str],
+) -> None:
+    """Whatever the plan above it, the Deviations section says the same however its lines
+    are wrapped, and something else with a word added."""
+    from manuscript_guard.gates.design import deviations_said
+
+    plan, rewrapped, longer = drawn
+    assert deviations_said(plan) == deviations_said(rewrapped), rewrapped
+    assert deviations_said(plan) != deviations_said(longer), longer
+
+
 # ------------------------------------------------------------------------------ parameters
 
 #: What an analysis declares in the property below: a threshold, a count, a version, and a
@@ -2035,6 +2071,54 @@ def test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not(
         assert [code for code, _said in found] == ["identifier-malformed"], (field, found)
 
 
+# ------------------------------------------------------------- one work under two keys
+
+
+@st.composite
+def _one_work_two_ways(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, str]]:
+    """Two entries naming one work, each identifier written another way in the second:
+    a DOI dressed and in other case, a PMID with leading noughts, a PMCID in lower case,
+    and an ISBN-10 beside the ISBN-13 it is. Every kind in every example."""
+    ends = st.text("abcdefghij0123456789", min_size=1, max_size=4)
+    suffix = draw(ends) + draw(st.text("abcdefghij0123456789.-/", max_size=8)) + draw(ends)
+    doi = f"10.{draw(st.integers(1000, 99999))}/{suffix}"
+    ten = draw(
+        st.lists(st.integers(0, 9), min_size=9, max_size=9).filter(
+            lambda digits: digits[:3] not in ([9, 7, 8], [9, 7, 9])
+        )
+    )
+    check = (11 - sum((10 - at) * d for at, d in enumerate(ten)) % 11) % 11
+    isbn10 = "".join(map(str, ten)) + ("X" if check == 10 else str(check))
+    # Worked out here, not by the code under test: 978, the first nine, a new check digit.
+    body = [9, 7, 8, *ten]
+    isbn13 = "".join(map(str, body)) + str(
+        (10 - sum(d * (1 if at % 2 == 0 else 3) for at, d in enumerate(body)) % 10) % 10
+    )
+    pmid = draw(st.integers(1, 10**6))  # nine digits at most, its noughts included
+    pmcid = draw(st.integers(1, 10**8))
+    first = {"doi": doi, "pmid": str(pmid), "pmcid": f"PMC{pmcid}", "isbn": isbn13}
+    second = {
+        "doi": draw(st.sampled_from(("https://doi.org/", "doi:", ""))) + doi.upper() + ".",
+        "pmid": "0" * draw(st.integers(1, 2)) + str(pmid),
+        "pmcid": f"pmc{pmcid}",
+        "isbn": "-".join([isbn10[:1], isbn10[1:4], isbn10[4:9], isbn10[9:]]),
+    }
+    return first, second
+
+
+@holds(200, _one_work_two_ways())
+def test_one_work_is_one_work_however_its_identifiers_are_written(
+    drawn: tuple[dict[str, str], dict[str, str]],
+) -> None:
+    from manuscript_guard.gates.duplicates import identifiers_of
+
+    first, second = drawn
+    for kind in ("doi", "pmid", "pmcid", "isbn"):
+        a = identifiers_of({"type": "book", kind: first[kind]})
+        b = identifiers_of({"type": "book", kind: second[kind]})
+        assert a and a == b, (kind, first[kind], second[kind], a, b)
+
+
 # --------------------------------------------------------------------------------------- TeX
 
 
@@ -2239,6 +2323,12 @@ def _a_nought_is_trimmed_off_a_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(tokens, "_TRAIL", tokens._TRAIL + "0")
 
 
+def _an_isbn_10_is_not_read_as_its_isbn_13(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import duplicates
+
+    patch.setattr(duplicates, "isbn_13", lambda written: re.sub(r"[\s-]", "", written).upper())
+
+
 def _an_isbn_s_groups_are_read_as_isbns(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import identifiers
 
@@ -2260,6 +2350,22 @@ def _an_isbn_13_is_weighed_as_an_isbn_10(patch: pytest.MonkeyPatch) -> None:
         return total % 11 == 0
 
     patch.setattr(identifiers, "isbn_valid", valid)
+
+
+def _a_deviation_is_read_with_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    def as_typed(text: str) -> str:
+        pattern = dict((name, rule) for name, rule, _ in design.REQUIRED)["deviations"]
+        sections = design._plan_sections(text)
+        return "".join(
+            part.body
+            for index, section in enumerate(sections)
+            if re.search(pattern, section.title)
+            for part in design.subsections(sections, index)
+        )
+
+    patch.setattr(design, "deviations_said", as_typed)
 
 
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
@@ -2790,9 +2896,17 @@ BROKEN = {
         _an_isbn_13_is_weighed_as_an_isbn_10,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
     ),
+    "an ISBN-10 is not read as its ISBN-13": (
+        _an_isbn_10_is_not_read_as_its_isbn_13,
+        test_one_work_is_one_work_however_its_identifiers_are_written,
+    ),
     "an ISBN's groups are read as ISBNs": (
         _an_isbn_s_groups_are_read_as_isbns,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "a deviation is read with its line breaks": (
+        _a_deviation_is_read_with_its_line_breaks,
+        test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not,
     ),
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,

@@ -144,6 +144,8 @@ BINDS_AT = {
     # drafting, an entry can be a placeholder still to be filled in from Zotero.
     "identifier-malformed": INTERNAL_REVIEW,
     "reference-field-missing": INTERNAL_REVIEW,
+    # One work cited under two keys is printed twice in the reference list.
+    "reference-duplicate": INTERNAL_REVIEW,
     # -- submission -------------------------------------------------------------
     # The panel's verdict is the last thing to bind, because a panel reviews a draft
     # that is otherwise finished.

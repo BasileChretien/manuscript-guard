@@ -2099,6 +2099,30 @@ reviewer lets the call go on to the lock.
 The record itself is written by exclusive create, so two calls for one reader cannot both
 succeed.
 
+## A document reviewed blind names none of its authors
+
+A journal whose review is double-blind asks for a manuscript that does not say who wrote it,
+and the profile said so only in its free-text notes. The profile now says it (`blinding:
+double`, or `triple`), and the build looks for the authors in the document it made: their
+names, ORCID iDs and e-mail addresses from `authors.yaml`, and the institutions of their
+affiliations. It reads the text, the notes, the comments, the headers and the footers, the
+text a tracked change deleted, the text of the figures, Word's author fields, the author of
+each tracked change and comment, and the list of people Word keeps. A name found is a
+`BUILD` failure (`blind-document-names-author`): `build` writes the document, says so and
+exits 1, and `submit` does not assemble the pack. `submit --document` reads the copy it is
+given, which is the one that comes back from a co-author with Word's fields filled in.
+
+A name is looked for as one is written: the given and the family name, the initial with its
+stop before the family name ("A. Example"), and after it behind a comma ("Example, A."), any
+space between the words and either apostrophe, since pandoc prints a typed one curly. A bare
+initial is not read: "A Cross-sectional study" does not name Anna Cross, nor "Ward A" Alice
+Ward. The family name alone is not, because many are ordinary words; an institution is the
+part of an affiliation between its commas that has three words or more, in any case, because
+a city or a country names many other things. The reference list, a paragraph whose style is
+named "Bibliography", is not read: the journals that review blind mostly ask for the
+authors' own work to be cited in the third person, not taken out, and a self-citation
+prints their names there.
+
 ## The submission pack writes nothing twice
 
 Everything a journal asks for except the covering letter is already recorded in the project.
@@ -4306,6 +4330,21 @@ through. The second missed "Add the missing reference to the paper."; widened, i
 the author to add the reference to the paper" for the agent adding it. A sentence that
 gives such an instruction is a reviewer's to catch.
 
+**A skill stays a size an agent reads whole.** The Agent Skills specification recommends a
+`SKILL.md` body under 5000 tokens and under 500 lines (agentskills.io, Specification,
+"Progressive disclosure", read 2026-10-15), since the whole body is loaded when the skill is.
+`tests/test_plugin.py` holds every skill to both, counting a token as four characters; a
+skill over them is named in `OVER` with the reason until it is brought under, and the list
+may only shrink. `word-roundtrip` was 6869 tokens. What it needs only sometimes, the
+refusals of `import` and the handling of comments and several co-authors, went to two pages
+under its `references/` folder, which the skill points to where it needs them; it is now
+4071. The plugin may hold such pages, one level down, and nothing else besides the skills,
+its manifest and its hooks. Every link in a skill or a reference page resolves inside the
+plugin, and every path a skill names (a code span or a link holding a folder) is found: in
+the skill's folder, in the example, in what `init` makes, or in the package. The paths that
+name what the tool writes, an example of a name, or no path at all are listed by name with
+the reason, and a listed path no longer named fails the test too.
+
 ## Generated inputs belong to the suite
 
 Between 24 September and 6 October 2026, 192 of the 516 independent-review verdicts posted
@@ -4808,6 +4847,15 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   bytes can belong to ordinary characters, so an edit that swaps one such character for
   another (U+4E0D for U+4E0A) can leave the digest unchanged and pass G1. Exports that write
   UTF-16 carry a BOM; a file without one is taken for 8-bit text.
+- **A blind document is read for the names `authors.yaml` gives, as they are written
+  there.** A name written another way is not found: a nickname, a given name of several
+  words reduced to its first, a family name alone, a name in a language's other script, or a
+  user name in Word's author fields. An institution named by its abbreviation or its city is
+  not found, nor is the funder or the ethics committee that would identify the authors as
+  surely. A figure is read where it has a text layer; a raster figure, which the document
+  most often holds, is read through the SVG or PDF the manuscript places beside it, when
+  there is one. A journal that wants self-citations anonymised has its reference list
+  unread.
 - **Checking a declared input reads the whole file into memory.** Before input digests
   normalised line endings they were streamed; a 300 MB CSV now peaks at about 1.2 GB while G1
   checks it. The R emitter peaks at about twenty times the file (600 MB for a 28 MB CSV), since

@@ -982,6 +982,61 @@ def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
     assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
 
 
+# ------------------------------------------------------------- the authors' approvals
+
+
+def _approvals_said(root: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.approvals import check_approvals
+
+    project, _ = load_project(root)
+    found = check_approvals(project).findings
+    assert all(f.severity == "warn" for f in found)
+    return sorted((f.code, f.message.split(" approved")[0].split(" has not")[0]) for f in found)
+
+
+def test_an_approval_is_bound_to_the_manuscript_the_author_read(project: Path) -> None:
+    """`approve --as` records an author's approval with the digest of the prose and
+    the results; `submit` says which authors have none, and which approved a manuscript that
+    has changed since. An author is found by ORCID iD, e-mail, full name or family name."""
+    from manuscript_guard.cli import main
+
+    assert _approvals_said(project) == [
+        ("approval-missing", "Ada Example"), ("approval-missing", "Blaise Sample")
+    ]
+    assert main(["approve", str(project), "--as", "0000-0002-1825-0097"]) == 0
+    assert main(["approve", str(project), "--as", "blaise sample", "--note", "as read"]) == 0
+    assert _approvals_said(project) == []
+    record = yaml.safe_load((project / "approvals" / "0000-0001-5109-3700.yaml").read_text("utf-8"))
+    assert record["author"] == "Blaise Sample" and record["note"] == "as read"
+    assert main(["approve", str(project), "--as", "Nobody"]) == 2
+
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\nOne sentence more.\n", "utf-8")
+    assert _approvals_said(project) == [
+        ("approval-stale", "Ada Example"), ("approval-stale", "Blaise Sample")
+    ]
+    assert main(["approve", str(project), "--as", "Example"]) == 0
+    assert _approvals_said(project) == [("approval-stale", "Blaise Sample")]
+
+
+def test_two_authors_named_alike_are_approved_apart(project: Path) -> None:
+    """Round 1 of #284: an approval was filed by the author's name folded to plain letters,
+    so two authors with one name shared a file, and the one who never approved was not
+    said. A file kept by the ORCID iD is each author's own, and a record names its author."""
+    from manuscript_guard.cli import main
+
+    authors = project / "authors.yaml"
+    text = authors.read_text(encoding="utf-8")
+    alike = "given: Wei\n    family: Zhang"
+    for given, family in (("Ada", "Example"), ("Blaise", "Sample")):
+        text = text.replace(f"given: {given}\n    family: {family}", alike)
+    authors.write_text(text, encoding="utf-8")
+    assert main(["approve", str(project), "--as", "0000-0002-1825-0097"]) == 0
+    assert _approvals_said(project) == [("approval-missing", "Wei Zhang")]
+    assert main(["approve", str(project), "--as", "0000-0001-5109-3700"]) == 0
+    assert _approvals_said(project) == []
+
+
 # ------------------------------------------------ the unit written after a binding
 
 

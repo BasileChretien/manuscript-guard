@@ -44,13 +44,14 @@ nothing, but for the submission guard where a command names a project (below).
 | Hook | What it does |
 |---|---|
 | session start | One line: the stage, and how many findings fail and warn. Where a file of the project cannot be used, which file and why, in place of that line. And once, when the installed tool is older than the plugin, a notice with the upgrade command |
-| before a write | Refuses edits to `results/`, `build/` and generated checklist profiles. These are written by something else, and editing one desynchronises it. Puts to you an edit of `literature/attested.yaml` that names an attester, or changes one |
+| before a write | Refuses edits to `results/`, `build/` and generated checklist profiles. These are written by something else, and editing one desynchronises it. Puts to you an edit of `literature/attested.yaml` that names an attester, or changes one, and an edit of an author's approval under `approvals/` |
 | after a write | For a manuscript file, classifies the numbers just saved and names any bound to nothing, while you are still in the paragraph. For an analysis file, says the results are now stale and the Methods may no longer describe the code |
-| before a submission-shaped shell command | Runs the submission check and blocks if it fails, or if a file of the project cannot be used and the check cannot run. Puts to you a `review --run --yes`, which would send the manuscript without asking |
+| before a submission-shaped shell command | Runs the submission check and blocks if it fails, or if a file of the project cannot be used and the check cannot run. Puts to you a `review --run --yes`, which would send the manuscript without asking, and an `approve`, which only the author approving can run |
 
-**Two decisions are put to you, not taken by the agent.** Sending the manuscript to model
-providers without being asked, `review --run --yes`, and naming who attested a value read in
-a source, `attested_by`, are statements only the author can make. Before either runs, the
+**Three decisions are put to you, not taken by the agent.** Sending the manuscript to model
+providers without being asked, `review --run --yes`, naming who attested a value read in a
+source, `attested_by`, and an author's approval of the manuscript, `approve`, are statements
+only the author can make. Before either runs, the
 hook answers "ask": Claude Code shows you the call and the reason, auto mode included, and
 it goes ahead only if you approve it. The reason names the models in `review.models`, or the
 attester the edit adds. An edit that leaves the attesters as they were, a value or a date

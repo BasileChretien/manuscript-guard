@@ -1964,7 +1964,30 @@ def cmd_submit(args: argparse.Namespace) -> int:
     print(f"  {pack.manifest.name}")
     for note in pack.notes:
         print(f"  {note}")
+    # Said, and not refused: whether to send without an approval is the corresponding
+    # author's call, and an approval given by e-mail is still one.
+    from manuscript_guard.approvals import check_approvals
+
+    approvals = check_approvals(project)
+    if approvals.findings:
+        print()
+        print(approvals.render(project.root))
     print("\nStill to write by hand: the covering letter. No file in the project holds it.")
+    return 0
+
+
+def cmd_approve(args: argparse.Namespace) -> int:
+    """Record an author's approval of the manuscript as it stands. The author's own act."""
+    from manuscript_guard.approvals import NoSuchAuthor, approve, find_author, name_of
+
+    project, _ = load_project(args.path)
+    try:
+        author = find_author(project, args.as_)
+    except NoSuchAuthor as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    path = approve(project, author, args.note)
+    print(f"{name_of(author)} approved the manuscript as it stands: {path}")
     return 0
 
 
@@ -2762,6 +2785,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="seed even from an out-of-date document"
     )
     respond.set_defaults(func=cmd_respond)
+
+    approve_ = sub.add_parser(
+        "approve",
+        help="record an author's approval of the manuscript as it stands; the author's own act",
+    )
+    approve_.add_argument("path", nargs="?", type=Path, default=Path("."))
+    approve_.add_argument(
+        "--as", dest="as_", required=True,
+        help="the author: ORCID iD, e-mail address, full name or family name",
+    )  # fmt: skip
+    approve_.add_argument("--note", help="anything the author says with the approval")
+    approve_.set_defaults(func=cmd_approve)
 
     explain = sub.add_parser("explain", help="show how each number in a file was classified")
     explain.add_argument("file", type=Path)

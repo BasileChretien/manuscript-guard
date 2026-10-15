@@ -2299,6 +2299,21 @@ The effect is that `manuscript-guard init` followed by a first analysis script n
 zero failures at `design` and `analysis`, with the outstanding work listed as not yet due,
 and the same items fail from `drafting` onwards.
 
+## An approval is bound to what the author read
+
+"All authors approved the final manuscript" was a sentence of the covering letter, typed.
+`manuscript-guard approve --as <author>` now records an author's approval in
+`approvals/<author>.yaml`, one file per author, with the digest of what decides the built
+document, the prose and the results, as `check` reads it to say a build is current. The
+author is found by ORCID iD, e-mail address, full name or family name in `authors.yaml`.
+`submit` warns where an author has no approval (`approval-missing`) or approved a manuscript
+that has changed since (`approval-stale`). It warns and does not refuse: whether to send
+without one is the corresponding author's decision, and an approval given by e-mail is still
+one. An approval is a person's statement, so the hooks put to the person an agent's `approve`
+and an agent's edit of a file under `approvals/`, and refuse both where the tool cannot ask.
+A data custodian's sign-off is recorded the same way once the custodian has a place among the
+people the project names.
+
 ## The plugin: skills for judgement, hooks for the moment of the mistake
 
 The original brief asked for skills **and hooks**. The skills came first and the hooks were
@@ -7307,6 +7322,9 @@ Closed since, and why each mattered:
   further into an item: an indented one, one under a later item's own underline, or
   `- # Results` on the item's own line. The same goes for a definition list. The old scan
   saw none of these either.
+- **An approval says who ran the command, not who read the manuscript.** A co-author who
+  runs `approve` for a colleague, or an agent the person lets through, writes an approval
+  nobody gave. The digest says what was current when it was given, not that it was read.
 - **List numbering is read where pandoc starts a list item, and only in Markdown.**
   `ordered-list-marker` took any line opening with "412. " for numbering, so a count a hard
   wrap put there passed G2; a list cannot interrupt a paragraph, and the rule now holds

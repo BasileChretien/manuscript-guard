@@ -31,6 +31,7 @@ library; a vector figure's text and lines are another check.
 
 from __future__ import annotations
 
+import math
 import re
 import struct
 from dataclasses import dataclass
@@ -266,8 +267,9 @@ def _file(path: Path, rules: dict, side: dict, supplementary: bool, profile_path
         findings.append(
             _finding(
                 "figure-resolution",
-                f"{path.name} prints {where} at {dpi:.1f} dpi, and a {kind.replace('_', ' ')} "
-                f"figure needs {needed:g}",
+                # Rounded toward the side it fails, so that it is never printed at its limit.
+                f"{path.name} prints {where} at {math.floor(dpi * 10) / 10:.1f} dpi, and a "
+                f"{kind.replace('_', ' ')} figure needs {needed:g}",
                 path,
                 f"render it with more pixels ({needed:g} dpi at the width it prints), or give "
                 f"its print width and kind in {path.stem}.guard.yaml (print_width_mm, kind)",
@@ -278,8 +280,9 @@ def _file(path: Path, rules: dict, side: dict, supplementary: bool, profile_path
         findings.append(
             _finding(
                 "figure-resolution",
-                f"{path.name} prints {where} at {dpi:.1f} dpi, and the journal takes no more "
-                f"than {most:g}{' for a supplementary figure' if supplementary else ''}",
+                f"{path.name} prints {where} at {math.ceil(dpi * 10) / 10:.1f} dpi, and the "
+                f"journal takes no more than {most:g}"
+                f"{' for a supplementary figure' if supplementary else ''}",
                 path,
                 f"render it at {most:g} dpi at the width it prints",
             )

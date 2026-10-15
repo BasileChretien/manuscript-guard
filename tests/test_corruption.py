@@ -2170,11 +2170,22 @@ def test_a_tiff_is_taken_however_the_journal_writes_it(project: Path, written: s
     assert _artwork_said(project, formats=[written.lower(), "eps"]) == []
 
 
-def test_a_resolution_just_under_its_minimum_is_printed_as_it_is(project: Path) -> None:
-    """Round 1 of #291: 299.7 dpi was printed "300 dpi", beside a minimum of 300."""
-    _artwork_said(project, {"print_width_mm": 165.27}, min_dpi={"halftone": 300})
+@pytest.mark.parametrize(
+    ("width_mm", "rules", "shown"),
+    [
+        # Round 1 of #291: 299.7 dpi was printed "300 dpi", beside a minimum of 300.
+        (165.27, {"min_dpi": {"halftone": 300}}, "at 299.6 dpi"),
+        # Round 2: 299.97 was printed "300.0", and 300.03 beside a maximum of 300 too.
+        (165.11, {"min_dpi": {"halftone": 300}}, "at 299.9 dpi"),
+        (165.09, {"max_dpi": 300}, "at 300.1 dpi"),
+    ],
+)
+def test_a_resolution_at_its_limit_is_printed_on_the_side_it_fails(
+    project: Path, width_mm: float, rules: dict, shown: str
+) -> None:
+    _artwork_said(project, {"print_width_mm": width_mm}, **rules)
     found = [f for f in _journal(project).findings if f.code == "figure-resolution"]
-    assert len(found) == 1 and "at 299.7 dpi" in found[0].message, found
+    assert len(found) == 1 and shown in found[0].message, found
 
 
 def test_a_supplementary_figure_is_held_to_the_supplement_s_rules(project: Path) -> None:

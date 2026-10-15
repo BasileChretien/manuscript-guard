@@ -97,6 +97,12 @@ class Model:
     # rows and `trials` its trials. None for a card of one observation a row.
     trials: int | None = None
     events_by_level: dict = field(default_factory=dict)
+    # How the fit's standard errors were computed, as its library names it ("nonrobust",
+    # "cluster", "HC1" in statsmodels; "model-based" for an R lm or glm), and the column
+    # whose values the rows belong to with how many units the rows used hold. None where the
+    # card does not say.
+    covariance: str | None = None
+    unit: dict | None = None
 
     @property
     def kind(self) -> str | None:
@@ -149,6 +155,8 @@ def read_models(document: dict, path: Path) -> dict[str, Model]:
             events=spec.get("events"),
             trials=spec.get("trials"),
             events_by_level=dict(spec.get("events_by_level") or {}),
+            covariance=spec.get("covariance"),
+            unit=spec.get("unit"),
         )
         for key, spec in (document.get("models") or {}).items()
     }

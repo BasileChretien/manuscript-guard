@@ -175,6 +175,24 @@ def states_value(quote: str, display: str) -> bool:
     return edged.search(text) is not None
 
 
+#: The fewest words a quote holds beside its value for it to show what the value is of.
+WORDS_BESIDE = 4
+
+
+def words_beside(quote: str, display: str) -> list[str]:
+    """The words of a quote once the value is taken out of it, as `states_value` finds it: a
+    word is a run between spaces that holds a letter. "2.6" quoted alone proves only that
+    those digits are somewhere in the source; "ROR 2.6" says little more."""
+    text = normalise(quote)
+    value = normalise(display)
+    if value:
+        edges = (r"(?<![0-9.,])", r"(?![0-9])") if any(c.isdigit() for c in value) else ("", "")
+        found = re.search(edges[0] + re.escape(value) + edges[1], text, re.IGNORECASE)
+        if found:
+            text = text[: found.start()] + " " + text[found.end() :]
+    return [word for word in text.split() if any(ch.isalpha() for ch in word)]
+
+
 def filed_name(citekey: str, suffix: str) -> str:
     """The name a stored source should have: keyed to the citation, not to the download."""
     safe = re.sub(r"[^A-Za-z0-9_.-]", "_", citekey)

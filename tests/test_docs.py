@@ -23,8 +23,9 @@ from manuscript_guard.cli import build_parser, main
 REPO = Path(__file__).resolve().parent.parent
 README = REPO / "README.md"
 DOCS = REPO / "docs"
-#: The security policy is read on GitHub beside the README, and its links are held the same way.
-PAGES = [README, REPO / "SECURITY.md", *sorted(DOCS.glob("*.md"))]
+#: The security policy is read on GitHub beside the README, and its links are held the same way;
+#: so is the file an agent tool other than Claude Code reads first.
+PAGES = [README, REPO / "SECURITY.md", REPO / "AGENTS.md", *sorted(DOCS.glob("*.md"))]
 
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 SOURCE = re.compile(r'\b(?:src|srcset)="([^"]+)"')
@@ -200,6 +201,15 @@ def test_the_readme_quotes_what_check_says_of_an_edited_results_file(
 
 
 # ------------------------------------------------------------------------------ citation
+
+
+def test_the_agents_file_points_to_the_rules_and_keeps_no_copy() -> None:
+    """Codex and other agent tools read AGENTS.md and never see CLAUDE.md, where the rules
+    are, the one about the version line among them. AGENTS.md points there; a second copy of
+    the rules would go stale beside the first."""
+    agents = text_of(REPO / "AGENTS.md")
+    assert "](CLAUDE.md)" in agents
+    assert len(agents.splitlines()) <= 12, "AGENTS.md points to CLAUDE.md; it holds no rules"
 
 
 def test_the_citation_file_reads_and_names_no_version() -> None:

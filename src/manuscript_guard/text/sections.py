@@ -36,6 +36,7 @@ from manuscript_guard.text.blocks import (
 )
 from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import mask, without_front_matter
+from manuscript_guard.text.section_names import names_abstract
 
 # `scannable` moved to `text.blocks` with the heading walk, and `strip_attributes` to
 # `text.attributes` so the walk can title headings with it; both are re-exported for the
@@ -62,7 +63,6 @@ __all__ = [
 # no sections at all as far as G2, G4 and the reporting gate were concerned: no
 # required-section check, no abstract, and every `methods_only` rule silently inapplicable.
 
-_ABSTRACT = re.compile(r"^\s*(?:structured\s+)?abstract\b", re.IGNORECASE)
 _REFERENCES = re.compile(r"^\s*(?:references|bibliography|works cited)\b", re.IGNORECASE)
 
 _TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
@@ -92,7 +92,11 @@ class Section:
 
     @property
     def is_abstract(self) -> bool:
-        return bool(_ABSTRACT.match(self.title))
+        return names_abstract(self.title)
+
+    def names_abstract(self, named: str | None) -> bool:
+        """Whether this is the abstract, where a journal profile may give it another title."""
+        return names_abstract(self.title, named)
 
     @property
     def is_references(self) -> bool:
@@ -588,8 +592,9 @@ class Counts:
     figures: int
 
 
-def measure(text: str) -> Counts:
-    """Counts over manuscript source, before bindings are substituted.
+def measure(text: str, abstract_title: str | None = None) -> Counts:
+    """Counts over manuscript source, before bindings are substituted. `abstract_title` is
+    what a journal profile calls the abstract where it is not "Abstract".
 
     Counting the source rather than the built document means a binding counts as one word
     whatever it resolves to. That is close enough for a limit, and it means the count does
@@ -613,9 +618,9 @@ def measure(text: str) -> Counts:
         if any(s.is_references for s in chain):
             continue
         words = count_words(section.body)
-        if section.is_abstract:
+        if section.names_abstract(abstract_title):
             abstract += words
-        elif any(s.is_abstract for s in chain):
+        elif any(s.names_abstract(abstract_title) for s in chain):
             abstract += words + count_words(section.title)
         else:
             main += words + count_words(section.title)

@@ -1936,6 +1936,8 @@ def cmd_submit(args: argparse.Namespace) -> int:
     for path in pack.files:
         print(f"  {path.relative_to(pack.directory)}")
     print(f"  {pack.manifest.name}")
+    for note in pack.notes:
+        print(f"  {note}")
     print("\nStill to write by hand: the covering letter. No file in the project holds it.")
     return 0
 

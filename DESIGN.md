@@ -2869,6 +2869,25 @@ decide whether the document a co-author opens is current, and there must be exac
 document. This one is named so it cannot be mailed to a journal by accident, for the same
 reason `manuscript.UNCHECKED.docx` is.
 
+## What a data custodian forbids is declared
+
+Many custodians of health data, pharmacovigilance and claims databases among them, forbid
+publishing a count below a minimum, since a cell of two patients in a rare category can name
+them, and forbid the data leaving their hands. Neither was written anywhere a gate could
+read. `paper.yaml` now says the custodian's minimum (`custodian: {minimum_cell_count: 5}`),
+and G2 fails each count the manuscript or the supplement binds that is at least one and
+below it (`count-below-minimum`), naming the key, from the `internal-review` stage: a team
+reads its own small counts while it drafts, and a panel sent to a model provider is already
+outside it. A count is a whole number the analysis emitted with no unit, that is neither a
+parameter, a software version nor a label; "3 years" is emitted with its unit and is no
+count of people, and nought is no small cell.
+
+An input is declared restricted where the analysis declares it, in either emitter
+(`em.add_input(path, restricted=True)`, `em$add_input(path, restricted = TRUE)`), and the
+results record it. G1 fails while git tracks such a file (`restricted-input-tracked`), from
+the first stage: a pushed repository is a copy outside the custodian's hands. Git is asked
+with a time limit; where it cannot be asked, the finding is a warning.
+
 ## Getting a number out of the red
 
 `check` says a number is unbound and the annotated copy colours it red. Neither says what to
@@ -7277,6 +7296,13 @@ Closed since, and why each mattered:
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.
+- **A small count is found where it is bound, by its value.** A count printed in an emitted
+  table, a percentage that gives a small count away with its denominator, and a count typed
+  rather than bound are not read; G2 fails a typed count for being typed. A whole number
+  with no unit that is no count of people (a number of sites, of years written without the
+  unit) fails as one: emit it with its unit. A restricted input that git ignores but that a
+  person copies elsewhere is not seen, and one that was committed and then removed stays in
+  the history, which only a rewrite takes out.
 - **G9 cannot tell a refactor from a change of meaning.** Every edit to an analysis file
   prompts a re-read, including one that only moved a function. That is the safe direction,
   but it is friction. A step's digest leaves comments and layout out, but a variable renamed

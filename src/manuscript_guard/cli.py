@@ -65,6 +65,7 @@ from manuscript_guard.gates import (
     source_files,
     sync_bib,
 )
+from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
 from manuscript_guard.policy import (
     DESCRIPTIONS,
@@ -136,6 +137,8 @@ def _run_gates(
         ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project)),
         ("G8", lambda: check_consistency(results)),
+        ("G2", lambda: check_small_cells(project, results)),
+        ("G1", lambda: check_restricted_inputs(project, results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
         ("G14", lambda: check_language(project)),
         ("G15", lambda: check_models(project, results)),

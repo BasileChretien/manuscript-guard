@@ -231,16 +231,17 @@ def zotero_field(shown: str) -> str:
 
 @needs_pandoc
 @pytest.mark.parametrize(
-    ("shown", "refused"),
+    ("shown", "changed"),
     [("(Fictional and Fictional 2021)", False), ("[1]", True)],
     ids=["the default style's words", "another style's words"],
 )
-def test_a_live_zotero_field_is_read_by_the_words_it_shows(
-    project: Path, tmp_path: Path, shown: str, refused: bool, capsys
+def test_a_zotero_field_in_a_document_built_offline_is_named(
+    project: Path, tmp_path: Path, shown: str, changed: bool, capsys
 ) -> None:
-    """Today a Zotero field is read by the words it shows, never by its code: one that shows
-    what the offline build prints passes, and one a style switch or a refresh made show
-    something else is a changed citation, its paragraph refused."""
+    """A document built offline has no field of its own, so a Zotero field in it is a
+    citation a co-author inserted (item 30): its paragraph is refused and the work named,
+    whatever the words it shows. Pinned by #281 before that, the field was read by its words,
+    and one that showed what the offline build prints passed unread."""
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
@@ -248,11 +249,11 @@ def test_a_live_zotero_field_is_read_by_the_words_it_shows(
     returned = edit_docx(
         project / "build" / "manuscript.docx", tmp_path / "back.docx", {CITED: zotero_field(shown)}
     )
-    assert main(["import", str(returned), str(project)]) == (1 if refused else 0)
-    out = capsys.readouterr().out
+    assert main(["import", str(returned), str(project)]) == 1
+    out = " ".join(capsys.readouterr().out.split())
+    assert '"Hepatic injury" was cited in Word with a reference manager' in out, out
     named = "'(Fictional and Fictional 2021)' is the citation [@fictionalHepaticCohort2021]"
-    assert (named in out) is refused, out
-    assert ("NOT merged" in out) is refused, out
+    assert (named in out) is changed, out
 
 
 #: A citation style of the fewest lines, numeric, written here: no style of the official

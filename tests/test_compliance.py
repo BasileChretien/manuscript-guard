@@ -347,6 +347,52 @@ def test_a_page_not_stored_or_changed_since_is_warned_of(project: Path) -> None:
     assert _quoted(journal_report(project)) == [("journal-page-not-stored", "warn")]
 
 
+@pytest.mark.parametrize(
+    ("page_was", "quote"),
+    [
+        ("exceed 300 words", "300 words."),
+        # "no more than four" alone is on the page all the same: "no more than four tables".
+        ("Include no more than four figures", "Include no more than four"),
+    ],
+)
+def test_a_quote_inside_longer_words_on_the_page_is_not_on_it(
+    project: Path, page_was: str, quote: str
+) -> None:
+    """Round 1 of #297: "300 words." is in "1300 words." as characters, and a limit with a
+    digit dropped passed both checks."""
+    page = project / PAGE
+    text = page.read_text(encoding="utf-8")
+    longer = page_was.replace("300", "1300").replace("four figures", "fourteen figures")
+    page.write_text(text.replace(page_was, longer), encoding="utf-8")
+    key = "limits.abstract_words" if "300" in quote else "limits.figures"
+    edit_yaml(project / JOURNAL, lambda d: d["quotes"].update({key: quote}))
+    assert "journal-quote-not-on-page" in codes(journal_report(project))
+
+
+def test_a_page_outside_the_project_is_named_whole(project: Path, tmp_path: Path) -> None:
+    """Round 1 of #297: a `page_file` outside the project could not be said from its root,
+    and G4 raised where it was not there or had changed."""
+    outside = tmp_path / "elsewhere" / "page.txt"
+    edit_yaml(project / JOURNAL, lambda d: d.update(page_file=outside.as_posix()))
+    said = journal_report(project)
+    assert [f.message for f in said.findings if f.code == "journal-page-not-stored"] == [
+        f"the journal's page is not stored at {outside.as_posix()}, so no quote of the "
+        "profile can be held to it"
+    ]
+    outside.parent.mkdir()
+    outside.write_text("Something else.", encoding="utf-8")
+    assert "journal-page-changed" in {f.code for f in journal_report(project).findings}
+
+
+def test_a_quote_filed_under_a_key_that_is_not_text_is_refused_by_the_schema(
+    project: Path,
+) -> None:
+    """Round 1 of #297: YAML reads `2026:` as a number, and G4 raised on it."""
+    edit_yaml(project / JOURNAL, lambda d: d["quotes"].update({2026: "Cite"}))
+    report = journal_report(project)
+    assert not report.ok and not {f.code for f in report.findings} & QUOTED
+
+
 def test_the_page_may_be_stored_where_the_profile_says(project: Path) -> None:
     moved = project / "guidelines" / "demo.txt"
     moved.parent.mkdir()
@@ -366,6 +412,13 @@ def test_the_page_may_be_stored_where_the_profile_says(project: Path) -> None:
         ("should not exceed 13500 words", 3500, False),
         ("should not exceed 3500.5 words", 3500, False),
         ("three hundred words", 300, False),
+        # Round 1 of #297.
+        ("should not exceed 3 500 words", 500, False),
+        ("Letters may not include figures or tables.", 0, True),
+        ("Letters include no tables.", 0, True),
+        ("figures need not exceed four", 0, False),
+        ("figures need not exceed 4", 0, False),
+        ("a single table", 1, True),
     ],
 )
 def test_a_limit_is_stated_as_digits_or_a_small_number_word(

@@ -1955,6 +1955,11 @@ def _limits_quoted(draw: st.DrawFn) -> list[tuple[str, int, bool]]:
         (among(f"{value},000"), value, False),
         (among(f"{_NUMBER_WORDS[small]}fold"), small, False),
         (among(f"{small + 10}"), small, False),
+        # The last group of a number written with spaces between its thousands.
+        (among(f"{value + 1} {value}"), value, False),
+        (among("single"), 1, True),
+        (among("not"), 0, True),
+        (among(f"not {_NUMBER_WORDS[small]}"), 0, False),
     ]
     return draw(st.permutations(cases))
 
@@ -2535,6 +2540,14 @@ def _a_limit_s_word_is_read_inside_a_longer_word(patch: pytest.MonkeyPatch) -> N
     patch.setattr(journal_quotes_gate, "_WORD", "{}")
 
 
+def _a_limit_is_read_after_a_space_between_thousands(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_DIGITS", r"(?<![0-9.,]){}(?![.,]?[0-9])")
+
+
+def _none_is_not_read_from_a_negation(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_NONE", ())
+
+
 def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
 
@@ -2641,6 +2654,14 @@ BROKEN = {
     ),
     "a limit's word is read inside a longer word": (
         _a_limit_s_word_is_read_inside_a_longer_word,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a limit is read after a space between thousands": (
+        _a_limit_is_read_after_a_space_between_thousands,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "none is not read from a negation": (
+        _none_is_not_read_from_a_negation,
         test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
     ),
     "a claim keeps its line breaks": (

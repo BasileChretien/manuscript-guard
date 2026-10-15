@@ -29,7 +29,7 @@
     "quotes": {
       "type": "object",
       "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, reporting_guidelines. G4 holds each to the stored page, and a limit's number to its quote.",
-      "propertyNames": { "minLength": 1 },
+      "propertyNames": { "type": "string", "minLength": 1 },
       "additionalProperties": { "type": "string", "minLength": 1 }
     },
     "manual": {

@@ -26,7 +26,7 @@ from pathlib import Path
 
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
-from manuscript_guard.literature.sources import contains, normalise
+from manuscript_guard.literature.sources import normalise
 
 GATE = "G4"
 #: Where the page is stored where the profile does not say: beside the project's profiles.
@@ -110,7 +110,7 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
 
     for key, quote in quotes.items():
         value = rules.get(key)
-        if key.startswith("limits.") and isinstance(value, int) and not _states(quote, value):
+        if str(key).startswith("limits.") and isinstance(value, int) and not _states(quote, value):
             findings.append(
                 _finding(
                     "journal-limit-not-in-quote",
@@ -131,8 +131,8 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
                 _finding(
                     "journal-page-not-stored",
                     WARN,
-                    f"the journal's page is not stored at {page.relative_to(project.root)}, "
-                    "so no quote of the profile can be held to it",
+                    f"the journal's page is not stored at {_where(page, project)}, so no "
+                    "quote of the profile can be held to it",
                     path,
                     f"save {document.get('source_url', 'the instructions page')} there as "
                     "text, as read on the date the profile records",
@@ -151,7 +151,7 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
             _finding(
                 "journal-page-changed",
                 WARN,
-                f"{page.relative_to(project.root)} {said}",
+                f"{_where(page, project)} {said}",
                 path,
                 f"once the profile is read against this text, record page_sha256: "
                 f"{page_digest(text)}",
@@ -160,7 +160,7 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
     said = [(key, quote) for key, quote in quotes.items()]
     said += [(f"manual: {entry['rule']}", entry["quote"]) for entry in manual]
     for key, quote in said:
-        if not contains(text, quote):
+        if not _on_page(text, quote):
             findings.append(
                 _finding(
                     "journal-quote-not-on-page",
@@ -174,8 +174,36 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
     return Report(tuple(findings))
 
 
-#: A number's digits, not inside a longer number: 13500, 3500.5 and 3,5000 do not state 3500.
-_DIGITS = r"(?<![0-9.,]){}(?![.,]?[0-9])"
+def _where(page: Path, project: Project) -> str:
+    """The page's path as said: from the project's root where it is in the project."""
+    try:
+        return page.relative_to(project.root).as_posix()
+    except ValueError:
+        return page.as_posix()
+
+
+def _on_page(page: str, quote: str) -> bool:
+    """Whether a quote is on the page as the words it is, folded as G7 folds a quote
+    (`contains`): not the end of a longer number or word, nor the start of one. "50 words" is
+    in "250 words" as characters, and is not what the page says."""
+    haystack, needle = normalise(page).lower(), normalise(quote).lower()
+    if not needle:
+        return False
+    at = haystack.find(needle)
+    while at >= 0:
+        before = haystack[at - 1] if at else ""
+        after = haystack[at + len(needle) : at + len(needle) + 1]
+        if not (needle[0].isalnum() and before.isalnum()) and not (
+            needle[-1].isalnum() and after.isalnum()
+        ):
+            return True
+        at = haystack.find(needle, at + 1)
+    return False
+
+
+#: A number's digits, not inside a longer number: 13500, 3500.5, 3,5000 and "3 500" do not
+#: state 3500, nor 500.
+_DIGITS = r"(?<![0-9.,])(?<![0-9] ){}(?![.,]?[0-9])"
 #: A number's word, not inside a longer word: "fourteen" and "fourfold" do not state 4.
 _WORD = r"\b{}\b"
 
@@ -185,15 +213,31 @@ def _forms(value: int) -> set[str]:
     return {str(value), f"{value:,}", f"{value:,}".replace(",", " ")}
 
 
+#: Besides its word, how a page says none or one: "may not include figures", "a single
+#: table". None only where the quote names no other number.
+_NONE = ("no", "not", "none", "without", "nil")
+_ONE = ("single",)
+
+
 def _states(quote: str, value: int) -> bool:
     """Whether a quote states a whole number: as digits, with or without a separator of
-    thousands ("3500", "3,500", "3 500"), or as a word up to twenty."""
+    thousands ("3500", "3,500", "3 500"), or as a word up to twenty; none as a negation in a
+    quote with no other number, and one as "single"."""
     text = normalise(quote).lower()
     if any(re.search(_DIGITS.format(re.escape(form)), text) for form in _forms(value)):
         return True
     if not 0 <= value < len(_WORDS):
         return False
-    return re.search(_WORD.format(_WORDS[value]), text) is not None
+    if re.search(_WORD.format(_WORDS[value]), text):
+        return True
+    if value == 1:
+        return any(re.search(_WORD.format(word), text) for word in _ONE)
+    if value == 0:
+        numbered = re.search(r"[0-9]", text) or any(
+            re.search(_WORD.format(word), text) for word in _WORDS[1:]
+        )
+        return not numbered and any(re.search(_WORD.format(word), text) for word in _NONE)
+    return False
 
 
 def _finding(code: str, severity: str, message: str, path: Path, hint: str) -> Finding:

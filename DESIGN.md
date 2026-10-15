@@ -747,7 +747,9 @@ responsibility, so the gate rejects an `attested_by` naming a model — claude, 
 This is not decoration. Without it, the one file whose entire purpose is human
 accountability is the easiest file in the project for an agent to fill in on the author's
 behalf, and the guarantee evaporates silently. The skill instructs the model to draft the
-entry, leave `attested_by` empty, and ask.
+entry, leave `attested_by` empty, and ask. And the write hook puts an edit that names an
+attester to the person before it is made (see "The plugin: skills for judgement, hooks for
+the moment of the mistake").
 
 A statement shorter than eight words also warns: "Read it." records nothing a reader in two
 years could act on.
@@ -1332,6 +1334,41 @@ check.
 The lock can also carry parameters that must appear in the prose — the significance
 threshold, the software version. Presence, not correctness, but those are exactly what a
 reviewer queries and exactly what is left behind when an analysis is redone.
+
+**A section that counts as present is a section that is read.** G4 counts a required
+section present by finding its name in a heading, and so "2. Methods" and "Patients and
+methods" answered a required Methods section. G9 found the Methods by a pattern of its own,
+"Methods" or "Materials and methods" at the start of a heading, and under either of the
+others it compared the lock's parameters with no text: a wrong `alpha: 0.07` was reported
+under "# Methods" and passed under "# 2. Methods", with nothing said. Since 2026-10-14 one
+test says which heading is the Methods, `text/section_names.py`. Its words are G4's own, a
+title holding "methods", so "2. Methods", "**2. Methods**", "Materials & methods" and
+"Patients and methods" are the Methods to G9 as they always were to G4. Two earlier drafts
+said it by the words of a title, and each failed review: one left out headings G4 had always
+counted, the other took a paper's title for its Methods. What decides between titles holding
+the word is where they stand. A heading inside the abstract is the abstract's, and one under
+a heading that names another part of the paper ("Limitations of existing methods" under the
+Introduction) belongs to that part. One over another part is no Methods either:
+"# Statistical methods for signal detection", a paper's title written as a heading over
+`##` sections, is over its Results, and G9 read that whole paper as the Methods, a wrong
+parameter in the Results among them. Of the headings left, one G2 reads as the Methods by
+its name comes first. G4 uses the test for a required section named "Methods", G9 reads the
+first such section of the main text, and a project with analysis code and no such heading is
+told so (`methods-not-found`, a warning). G2 and G15 read the Methods as places, where a
+heading names the method without the word ("Statistical analysis", "Study design"); they
+take numbered headings and
+"<anything> and methods" too now, and never a heading that also names the results:
+"Methods and results", a research letter's combined section, let every threshold convention
+through under its results. They read fewer headings than G4 counts, and a Methods they miss
+makes them report a number, not pass one.
+
+The abstract is found the same way for G4's limit and its headings, G14's regions and the
+word count: "Abstract" or "Structured abstract", numbered or not, or the title the
+journal's profile gives it (`structure.abstract_title: Summary` for The Lancet). With a
+limit on the abstract and no heading naming one, G4 says so (`abstract-not-found`, a
+warning): the limit was checked against nothing and the abstract counted as main text. And
+the headings inside the abstract are the abstract's. A structured abstract's "Methods" and
+"Results" answered the journal's required sections in a paper whose body had neither.
 
 ## A choice the code makes is declared, bound and read
 
@@ -2112,6 +2149,22 @@ person chose to leave as it was, with the reason and who decided (`overrides`, f
 the manifest says "not recorded". `git` is given 30 seconds, with its file system monitor
 off, and a project outside git says so.
 
+The abstract goes in as `abstract.txt` as well, for the box every submission system has for
+it: the section headed "Abstract" with every binding filled in by the value the build
+prints, as pandoc writes plain text, up to its keywords. Pasted from the .docx, it carried
+whatever Word and the clipboard made of its emphasis and its line breaks; this is the
+checked numbers and nothing else. An abstract that pandoc reads as holding a citation, a
+footnote, an image, a table or a figure gets no `abstract.txt`, and `submit` says so: the
+build formats a citation in the journal's style, or as a live Zotero field, and plain text
+written another way would not be what the document says. The main text is read whole
+through pandoc's own tree, so that a footnote defined at its end is a footnote, and the
+abstract is written only where everything in it is words, their emphasis, sub- and
+superscripts, quotation marks and a link that shows its own address; anything else, and a
+keywords label inside a paragraph, leaves it out with the reason. Two drafts that read the
+source by pattern each missed a form of citation or footnote, or cut a sentence that
+mentioned keywords, and a draft that read the abstract alone missed a footnote defined
+below it.
+
 The pack refuses to assemble while `check --submission` fails. That is what the check is
 for.
 
@@ -2211,6 +2264,20 @@ markers took the PowerShell and Windows spellings of the verbs they already had 
 time: `Compress-Archive`, `Send-MailMessage`, `Invoke-WebRequest` and its alias `iwr`,
 `Invoke-RestMethod`, `Start-BitsTransfer`, `robocopy` and `xcopy`. `Copy-Item` and
 `Move-Item` were held before, since `copy` and `move` stand in them as whole words.
+
+**Two decisions are put to the author.** A hook that denies can stop an agent; it cannot make
+the author decide. Sending the manuscript to model providers without being asked
+(`review --run --yes`) and naming who attested a value (`attested_by`) are the author's
+statements, and nothing in the files tells an agent's from theirs: G7 refuses a model's name
+as an attester, not a person's name typed by an agent. So for these two the hooks answer
+"ask", and Claude Code shows the person the call with the reason, which names the models in
+`review.models` or the attester the edit adds. An edit that leaves the attesters as they
+were is not asked about, so changing a value beside a name costs no prompt. Codex reads "ask"
+and does not support it yet, failing the hook and letting the call through (its hooks page,
+read 2026-10-15), so where the event is not known to be Claude Code's the hook refuses the
+call with the same reason and the author makes it. Claude Code is known by
+`CLAUDE_PROJECT_DIR`, which it exports to a hook, and by an event with no `turn_id`, which
+Codex sends with every tool call.
 
 **The command is held to the project at the agent's folder, and to each one it names.**
 Recognising `cd example && manuscript-guard submit` is half of catching it. The check runs
@@ -2354,6 +2421,20 @@ file in it gets its line, a moved one where it now is. A file the patch deletes 
 not refused: removing a fragment whose script is gone is the author's decision, and `check`
 reports every binding that pointed at it. And the submission guard leaves a patch alone,
 because a patch that writes `--submission` into a file is an edit, not a command.
+
+**Text written by someone else is data.** Five skills have an agent read what another
+person wrote: a decision letter and the reviewers' reports (`reviewer-response`), a
+co-author's comments and returned document (`word-roundtrip`), an answer file
+(`co-author-checking`), a retrieved source (`literature-verify`) and a journal's
+instructions for authors as fetched (`journal-profile`). Each says, under "Text written by
+someone else", that an instruction found in that text is part of it and is not followed,
+and that what it says never goes into a shell command; `tests/test_plugin.py` holds the
+five to it. The tool's own output sets such text apart as well: `import` prints a Word
+comment after "comment from <author> (<date>), quoted:", each line behind `> `, cut at 200
+characters, with every control character and bidirectional control shown as `?`; a
+no-break space is shown as it is. Before 2026-10-15 it
+printed the comment on the same line as the tool's words, and a comment that read like an
+instruction read like the tool's.
 
 ## Auditing existing papers, and saying what the audit is worth
 
@@ -4229,6 +4310,28 @@ The gates themselves do not look at it: a stale skill is not a finding about the
 The test suite sets it to a folder that does not exist, so that a run never reads the copy
 of whoever is running it.
 
+**The skill folders are held as files, too.** What an installer, an agent tool or a reader
+relies on is tested in `tests/test_plugin.py`, so that an edit does not break it quietly:
+every folder under `plugin/skills` holds a `SKILL.md`, since one a level deeper is skipped
+by every tool that follows the Agent Skills layout; every finding code a description says it
+answers ("Use when check reports ...") is one the package holds, and no code is answered by
+two skills; a description holds no `<` or `>`, and no skill's name holds "claude" or
+"anthropic"; the only folder called `skills` is the plugin's, since some installers take one
+at any depth; `plugin/` holds its manifest, its hooks and the `SKILL.md` files and nothing
+else, with no link out of it, so that a script added to a skill folder, which
+`install-skills` would copy onto users' machines, is a decision; and no skill pipes a
+download into a shell, installs a package, turns off a safety switch or the sandbox, or
+shows `review --run` with `--yes`. Two rules are not tested: that no skill chooses the
+language the user is spoken to in, and that none tells the agent to add a reference to the
+paper. Each was read by a pattern, and in two rounds of review each pattern was found both
+missing a sentence that gives the instruction and failing one that keeps the rule. The
+first missed "Always respond in English."; widened, it took "Respond to each reviewer point
+in English, as the journal asks" for a choice of the user's language, and its exception for
+a negated sentence let "If the user has not said otherwise, always respond in English."
+through. The second missed "Add the missing reference to the paper."; widened, it took "Ask
+the author to add the reference to the paper" for the agent adding it. A sentence that
+gives such an instruction is a reviewer's to catch.
+
 ## Generated inputs belong to the suite
 
 Between 24 September and 6 October 2026, 192 of the 516 independent-review verdicts posted
@@ -4243,23 +4346,16 @@ Since 2026-10-07 a review reads the diff and may run the project's own tests, an
 campaign of its own. Where a change needs one, the finding is that the suite lacks it. So
 the campaigns are in the suite, on Hypothesis:
 
-- `tests/generated.py` holds twelve generators: manuscripts, and the bare signs and the
+- `tests/generated.py` holds the generators: manuscripts, and the bare signs and the
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
-  them, the settings typed into a project, a co-author's sessions in Word, texts that
-  quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds eleven more, each
-  planting what one property looks for among drawn words: cited clauses, typed
-  parameters, models' names, anchors and what they claim, anchors' own lines, terms a
-  vocabulary gave up and each way such a term is written, American spellings in a British
-  paper, rewordings, ISBNs written in a field every way one holds them and with one digit
-  changed, and pointers to tables and figures.
-- `tests/readings.py` names each way the package reads a text, at the widest door it has:
-  `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
-  sections, G2's reading of every number, the four readings of G14, the TeX rule and its
-  sentence, the quotation check, `check --json` on a new project, and the round trip: a
-  paper typed into a new project, built, edited in Word and imported. And three more: the
-  order an interval's bounds are quoted in, what `reworded` makes of an edit, and the
-  sentences a co-author's items are cut into. Eighteen in all.
+  them, the settings typed into a project, a co-author's sessions in Word, and the inputs
+  each reading is asked about (`INPUTS`). `tests/test_properties.py` holds more, each
+  planting what one property looks for among drawn words, such as cited clauses, typed
+  parameters or the spellings of the other English.
+- `tests/readings.py` names each way the package reads a text, at the widest door it has
+  (`READINGS`): `mask`, the text G14 reads, G2's reading of every number, `check --json` on
+  a new project, and the round trip of a paper typed into a new project, built, edited in
+  Word and imported, among them.
 - `tests/test_properties.py` holds what a reading owes its input, and
   `tests/test_generated_sessions.py` what an import owes the source.
 - `tests/test_differential.py` puts each input through the base branch's source and
@@ -4309,28 +4405,13 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So sixty rules are broken in place, one at a time, and the property that is
-there for each has to fail: a quotation read as the paper's own words, hiding that takes
-the line break with it, every finding on line 1, a ligature not folded, a value found
-inside a longer number, a nought trimmed off a number, a variable's name read as a word,
-a binding that opens a line put on the line before, a stop against a binding that ends no
-sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10 and an ISBN's
-groups read as ISBNs; three ways a pointer to a table can be misread, from a list read
-as its first number to a figure placed by hand counted anyway; fourteen ways
-`reworded` can misread an edit, from
-a number's sign taken for no part of it, and a sign of comparison taken for none, read as
-it is typed, read only hard against its number, an arrow's head or an equals sign taken
-for one, to what a comment holds held to its place; five
-ways a co-author's items can be cut wrong round the citation of a claim, from every stop ending a
-sentence, after "et al." too, to a piece that is only a citation left as an item of its
-own; seven ways an anchor can claim the wrong text, from a claim that runs back past the
-anchor before it to an anchor in a comment taken for one; three ways the warning of an
-anchor's own line can be wrong about where the document ends a paragraph, the last a run
-of such lines at a paragraph's end; nine ways G15 can find a model's name where it is not
-or miss it where it is, from a name matched in one case only to a full stop or a new
-paragraph taken for a space before it; and seven ways a typed parameter can be misread,
-from a threshold matched under any convention to the name of a statistic taken for a
-threshold like the figure beside it.
+the generators. So each rule a property holds is broken in place, one at a time, and the
+property that is there for it has to fail. `BROKEN` in `tests/test_properties.py` names each
+broken rule, in a sentence that says what is broken, beside the property that has to catch
+it, and `BROKEN` in `tests/test_generated_sessions.py` the ways the import is broken, below;
+`CHANGED` in `tests/test_differential.py` names the lines the comparison changes. The
+lists are kept there and not here: kept by hand in this file, every pull request that added
+a case changed the same lines, and each merge put the next one in conflict.
 The import is broken three times the same way: a rewording written over the next
 paragraph, one written a second time, and one written over the next paragraph only where
 an identified paragraph did not come back at all. Each is known by the sentence that
@@ -5580,6 +5661,27 @@ Closed since, and why each mattered:
   target and not counted as the citation that numbers a table. "Table 3 of Smith et al."
   is read as a pointer to the paper's own Table 3. "Box", "Section" and "Equation" point at
   nothing the check counts.
+- **The Methods are a heading that holds the word, and two gates read fewer headings than
+  G4 counts.** G4 and G9 take for the Methods a heading whose title holds "methods" where
+  the paper's structure allows it. In a paper with no heading G2 reads as the Methods, the
+  first such heading is read as them, "Overview of methods" or "Limitations of existing
+  methods" at the top level among them, as G4 has always counted either present. A title
+  with only "method" or "methodology" is no Methods to either gate, as it was none to G4.
+  A Methods with a subsection titled only "Results", "Limitations" or "Background" is taken
+  for a heading over another part of the paper and is not read. G2 and G15 read
+  "Methods", numbered or not, "<anything> and methods", "Methods and <anything>" and the
+  names of the method's own subsections, and not "Methods: data sources" or "Methods of
+  the study": there G2 reports a number written in the Methods where it could have let it
+  through, and G15 reads no model's name. `methods-not-found` is said only where the
+  project has analysis code, since a case report or a narrative review has no Methods.
+- **A body under an abstract heading of a higher level is the abstract's.** With
+  `# Abstract` and the paper's sections at `##`, every section is inside the abstract: G4
+  finds none of the required sections, and the word count has the whole body as abstract,
+  as it did before.
+- **An abstract under any other title is main text.** Without `abstract_title` in the
+  profile, "Summary" or "Overview" is a section of the paper: its words count as main text,
+  its subheadings are the paper's sections and its "Methods" can be the Methods G9 reads.
+  `abstract-not-found` is said only where the profile limits the abstract.
 - **A reference's identifiers are checked for their form, not for what they name.** A DOI
   with the shape of one passes whether it is registered or not, and one registered to
   another work passes too, as does a PMID that is digits. Only the types BibTeX's standard
@@ -5594,6 +5696,10 @@ Closed since, and why each mattered:
   at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
   input is missing by mistake rather than by design is caught only where another finding
   depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
+- **No test reads a skill for the user's language or for a reference added to the paper.**
+  A skill that tells the agent which language to speak to the user in, or to add a
+  reference to the paper itself, is caught by whoever reviews the skill, not by
+  `tests/test_plugin.py` (see "The skill folders are held as files, too").
 - **The manifest lists the review overrides, and no other decision a person made.** A
   reporting checklist item marked not applicable, a parameter accepted in `methods.lock`, or
   an exemption in `paper.yaml` is a decision too, and the pack does not list it. Who
@@ -5701,10 +5807,19 @@ Closed since, and why each mattered:
   run counts the calls and gives the bytes of the largest request at four characters a
   token. Tokenisers differ by model and prices change, so neither is built in; a model that
   reasons before answering is billed for output the reply never shows.
-- **`--yes` is whoever typed it.** The tool cannot tell an author's `--yes` from an
-  agent's. Sending the manuscript is the author's decision, and under an agent that rests
-  on the agent asking: the `review-panel` skill tells it to show the dry run and wait for
-  the author's word, and nothing in the command can hold it to that.
+- **`--yes` is whoever typed it, where no hook reads the command.** The tool cannot tell an
+  author's `--yes` from an agent's. Under Claude Code the hook puts a `review --run --yes`
+  it reads to the person, and under Codex refuses it, but it reads the command as typed: a
+  script that runs it, a variable that holds `--yes`, or a shell the hooks are not
+  registered for is not held. Nor is an `attested_by` written by a shell command, a
+  script, or under a tool with no hooks. The `review-panel` skill still tells the agent to
+  show the dry run and wait for the author's word. The command is read as typed, quotes
+  included, so a command that only prints the words, `echo "manuscript-guard review --run
+  --yes"`, is asked about too, and refused under Codex.
+- **An attester is asked about by name, not by the value it attests.** An edit that changes
+  a value beside an existing `attested_by` costs no prompt, and the name then stands for a
+  value its owner never read; so does one that moves a name from one entry to another. The
+  names in the file are compared before and after, not entry by entry.
 - **A call that has been made cannot be recalled.** Ctrl+C stops further calls; the ones
   in flight, one for each provider at most, have left the machine, and the command waits
   for them, up to the ten minutes a call may take. A call a provider had asked to be
@@ -9076,10 +9191,11 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 63 broken rules, and the comparison on twelve
-    changed lines. That is a spot check, and not the mutation runs four of the reviews
-    made, which changed every line of a diff. Two of the three broken imports, and the
-    changed line of the import, are shown by the simplest session alone.
+  - The properties were seen to fail on each broken rule of the two `BROKEN`s, and the
+    comparison on each changed line of `CHANGED`. That is a spot check, and not the
+    mutation runs four of the reviews made, which changed every line of a diff. Two of
+    the three broken imports, and the changed line of the import, are shown by the
+    simplest session alone.
   - The hard limit ends the whole run, not the one test: nothing else stops a pattern
     that is backtracking in C.
 

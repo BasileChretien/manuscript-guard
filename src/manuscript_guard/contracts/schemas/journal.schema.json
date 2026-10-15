@@ -55,7 +55,12 @@
           "description": "Matched case-insensitively against top-level headings."
         },
         "abstract_structured": { "type": "boolean" },
-        "abstract_headings": { "type": "array", "items": { "type": "string" } }
+        "abstract_headings": { "type": "array", "items": { "type": "string" } },
+        "abstract_title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The heading the journal gives the abstract where it is not Abstract: The Lancet's is Summary. G4, G14 and the word count read the section under it as the abstract."
+        }
       }
     },
     "required_statements": {

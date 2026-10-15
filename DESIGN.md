@@ -2037,7 +2037,15 @@ author whose `competing_interests` field is empty is listed as having made **no
 declaration** — an empty field is not a declaration of none, and journals ask per author.
 
 The manifest records every file with its sha256, because six months later "which version
-did the journal actually get" has no reliable answer otherwise.
+did the journal actually get" has no reliable answer otherwise. It also says what made the
+pack: the version of manuscript-guard that checked it (`checked_with`), so that a later fix
+can say which packs to check again; the project's commit, and whether anything in the
+project's folder outside `build/` differed from it (`tree`); the day the journal's profile
+and each reporting checklist were read from their sources; and every review finding a
+person chose to leave as it was, with the reason and who decided (`overrides`, from
+`overridden` and `overridden_by` in the review records). Where a record names nobody,
+the manifest says "not recorded". `git` is given 30 seconds, with its file system monitor
+off, and a project outside git says so.
 
 The pack refuses to assemble while `check --submission` fails. That is what the check is
 for.
@@ -5498,6 +5506,10 @@ Closed since, and why each mattered:
   at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
   input is missing by mistake rather than by design is caught only where another finding
   depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
+- **The manifest lists the review overrides, and no other decision a person made.** A
+  reporting checklist item marked not applicable, a parameter accepted in `methods.lock`, or
+  an exemption in `paper.yaml` is a decision too, and the pack does not list it. Who
+  overrode a finding is what the record says, typed by whoever wrote it.
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.

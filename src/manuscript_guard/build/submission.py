@@ -21,12 +21,15 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import subprocess
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 import yaml
 
+from manuscript_guard import __version__
+from manuscript_guard.contracts._schema import ContractError, read_structured
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.text.sections import measure
 
@@ -490,10 +493,76 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
     return Pack(directory=directory, files=tuple(files), manifest=manifest)
 
 
+#: The longest `git` is waited for. A repository on a network drive, or one with a file
+#: system monitor that hangs, would otherwise hold the pack up for good.
+GIT_SECONDS = 30
+
+
+def _git(root: Path, *args: str) -> str | None:
+    """`git` in the project, or None where it is not a repository or git did not answer.
+    The file system monitor is turned off for the call: started by it, it can outlive it."""
+    try:
+        done = subprocess.run(
+            ["git", "-c", "core.fsmonitor=false", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            timeout=GIT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def _commit(project: Project) -> dict[str, str]:
+    """The commit the project was at, and whether anything in its folder differs from that
+    commit: a changed file, or one git has not been told to ignore and has not been given.
+    The build folder is left out, since the pack being written is in it."""
+    root = project.root
+    head = _git(root, "rev-parse", "HEAD")
+    if head is None:
+        return {"commit": "none: not a git repository, or git could not be run", "tree": "unknown"}
+    build = project.path("build")
+    outside = [] if not build.is_relative_to(root) else [
+        f":(exclude){build.relative_to(root).as_posix()}"
+    ]
+    status = _git(root, "status", "--porcelain", "--", ".", *outside)
+    if status is None:
+        return {"commit": head.strip(), "tree": "unknown: git could not say"}
+    changed = len([line for line in status.splitlines() if line.strip()])
+    tree = "clean" if not changed else f"{changed} file(s) changed or not committed"
+    return {"commit": head.strip(), "tree": tree}
+
+
+def _journal_profile(project: Project) -> Path | None:
+    from manuscript_guard.gates.journal import profile_path
+
+    slug = project.target_journal
+    return profile_path(project, slug) if slug else None
+
+
+def _checklist_profile(project: Project, name: str) -> Path | None:
+    from manuscript_guard.gates.reporting import checklist_path
+
+    return checklist_path(project, name)
+
+
+def _retrieved_on(path: Path | None) -> str:
+    """When the guidelines in a profile were read from their source, as the profile says."""
+    if path is None:
+        return "no profile"
+    try:
+        document = read_structured(path)
+    except ContractError:
+        return "unreadable"
+    found = document.get("retrieved_on") if isinstance(document, dict) else None
+    return str(found) if found else "not stated"
+
+
 def _write_manifest(
     project: Project, directory: Path, files: list[Path], *, checked: bool = True
 ) -> Path:
-    from manuscript_guard.gates.review import manuscript_digest
+    from manuscript_guard.gates.review import manuscript_digest, overrides
 
     entries = []
     for path in files:
@@ -527,6 +596,16 @@ def _write_manifest(
             "was failing. Do not send this without re-running `manuscript-guard "
             "check --submission`."
         ),
+        # What made it, so that a fix to the tool can say which packs to check again, and
+        # a pack can be traced to the commit, the guidelines and the decisions behind it.
+        "checked_with": f"manuscript-guard {__version__}",
+        **_commit(project),
+        "journal_profile_retrieved_on": _retrieved_on(_journal_profile(project)),
+        "checklists": [
+            {"guideline": name, "retrieved_on": _retrieved_on(_checklist_profile(project, name))}
+            for name in project.reporting_guidelines
+        ],
+        "overrides": overrides(project),
         "manuscript_sha256": manuscript_digest(project),
         "files": entries,
     }

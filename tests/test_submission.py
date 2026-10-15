@@ -171,6 +171,72 @@ def test_the_manifest_records_what_was_sent(project: Path) -> None:
     assert len(manifest["manuscript_sha256"]) == 64
 
 
+def _pack_manifest(root: Path) -> dict:
+    projekt, _ = load_project(root)
+    document = root / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+    return yaml.safe_load(assemble_pack(projekt, document).manifest.read_text(encoding="utf-8"))
+
+
+def test_the_manifest_says_what_made_it(project: Path) -> None:
+    """The version that passed it, the dates of the guidelines it was held to, and the
+    review findings a person left as they were, with why and who decided."""
+    from manuscript_guard import __version__
+
+    manifest = _pack_manifest(project)
+    assert manifest["checked_with"] == f"manuscript-guard {__version__}"
+    profile = yaml.safe_load(
+        (project / "profiles" / "journals" / "demo-journal.yaml").read_text(encoding="utf-8")
+    )
+    assert manifest["journal_profile_retrieved_on"] == str(profile["retrieved_on"])
+    assert [c["guideline"] for c in manifest["checklists"]] == ["DEMO-OBS"]
+    dates = [c["retrieved_on"] for c in manifest["checklists"]]
+    assert not {"no profile", "not stated"} & set(dates), dates
+    overrides = manifest["overrides"]
+    assert {(o["round"], o["finding"]) for o in overrides} == {
+        (1, "r1-pe-03"), (1, "r1-bs-02"), (2, "r2-de-01")
+    }  # fmt: skip
+    assert all(o["reason"] and o["decided_by"] == "not recorded" for o in overrides)
+
+
+def test_the_manifest_names_who_left_a_finding_as_it_was(project: Path) -> None:
+    record = project / "review" / "round-2" / "desk-editor.yaml"
+    edit_yaml(record, lambda d: d["findings"][0].update(overridden_by="Anne Fictional"))
+    overrides = {o["finding"]: o for o in _pack_manifest(project)["overrides"]}
+    assert overrides["r2-de-01"]["decided_by"] == "Anne Fictional"
+
+
+def test_a_pack_outside_git_says_so(project: Path) -> None:
+    manifest = _pack_manifest(project)
+    if manifest["commit"].startswith("none"):
+        assert manifest["tree"] == "unknown"
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_the_manifest_records_the_commit_and_whether_the_tree_differs(project: Path) -> None:
+    import subprocess
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-c", "core.fsmonitor=false", "-c", "user.name=T", "-c",
+             "user.email=t@example.org", "-c", "commit.gpgsign=false", "-C", str(project),
+             *args],
+            capture_output=True, text=True, check=True, timeout=60,
+        ).stdout.strip()  # fmt: skip
+
+    git("init", "-q")
+    git("add", "-A")
+    git("commit", "-q", "-m", "a paper")
+    head = git("rev-parse", "HEAD")
+    manifest = _pack_manifest(project)
+    assert (manifest["commit"], manifest["tree"]) == (head, "clean")
+    main = project / "manuscript" / "main.md"
+    main.write_text(main.read_text(encoding="utf-8") + "\nOne more line.\n", encoding="utf-8")
+    manifest = _pack_manifest(project)
+    assert (manifest["commit"], manifest["tree"]) == (head, "1 file(s) changed or not committed")
+
+
 def test_the_pack_offers_a_checklist_a_journal_can_read(project: Path) -> None:
     """What the pack sent in answer to "attach your completed STROBE checklist" was YAML.
 

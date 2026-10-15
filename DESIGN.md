@@ -7198,9 +7198,10 @@ Closed since, and why each mattered:
   a handle or an ARK, a Zenodo record, an OSF project, or a page archived by the Internet
   Archive or Perma.cc; another archive's accession is found only where the profile lists it.
   An identifier anywhere in the statement satisfies the rule, whatever it names, and so does
-  the DOI of a reference the statement cites by its key. A forbidden phrasing is matched as
-  the profile writes it, without regard to case, and its `unless` anywhere in the statement
-  accepts it. The statement is the section under its heading, its subsections included, the
+  the DOI of a dataset the statement cites by its key: an entry of type `dataset` only, so a
+  `@misc` that holds a dataset and says nothing of it is not read as one. A forbidden
+  phrasing is matched as the profile writes it, without regard to case, and its `unless`
+  anywhere in the statement accepts it. The statement is the section under its heading, its subsections included, the
   outermost where several headings match; a statement written as a paragraph with no heading
   of its own is not read. A link to a repository with any path after its name, a branch's as
   much as a release's, is taken for a fixed version, and a bare repository is warned of even

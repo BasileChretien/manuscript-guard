@@ -1193,12 +1193,20 @@ def test_a_data_statement_the_journal_accepts_passes(project: Path, statement: s
 
 def test_a_dataset_cited_by_its_key_is_named_by_its_doi(project: Path) -> None:
     """Round 1 of #269: a data citation made as the journal asks, by its key, counted as no
-    identifier, though the reference list prints its DOI."""
+    identifier, though the reference list prints its DOI. Round 2: an article cited in the
+    statement, a cohort profile, named data it does not hold."""
     bib = project / "literature" / "references.bib"
-    opening = "@article{fictionalHepaticCohort2021,\n"
-    bib.write_text(bib.read_text(encoding="utf-8").replace(
-        opening, opening + "  doi = {10.5281/zenodo.1234567},\n", 1), encoding="utf-8")  # fmt: skip
+    text = bib.read_text(encoding="utf-8")
+    article = "@article{fictionalClassSignal2019,\n"
+    text = text.replace(article, article + "  doi = {10.1016/x.2019.1},\n", 1)
+    dataset = "@dataset{fictionalHepaticCohort2021,\n  doi = {10.5281/zenodo.1234567},\n"
+    bib.write_text(
+        text.replace("@article{fictionalHepaticCohort2021,\n", dataset, 1), encoding="utf-8"
+    )
     assert _data_statement(project, "Data are in Zenodo [@fictionalHepaticCohort2021].") == []
+    assert _data_statement(
+        project, "The data are held by the study team [@fictionalClassSignal2019]."
+    ) == [("data-identifier-missing", "fail")]
 
 
 @pytest.mark.parametrize(

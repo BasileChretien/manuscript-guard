@@ -170,9 +170,11 @@ def cited_dois(project: Project) -> set[str]:
 
 
 def cited_in(statement: str, project: Project) -> str:
-    """The DOIs of the references the statement cites by key, as the reference list prints
-    them: a dataset cited as `[@doe2024]`, which is how a data citation is meant to be made,
-    is named by its DOI (round 1 of #269)."""
+    """The DOIs of the datasets the statement cites by key, as the reference list prints them:
+    a dataset cited as `[@doe2024]`, which is how a data citation is meant to be made, is named
+    by its DOI (round 1 of #269). Only an entry of type `dataset` is one: a cohort profile or a
+    methods paper cited in the statement names no data (round 2). The reader keeps a `type`
+    field in place of the entry's kind, so `@misc` with `type = {dataset}` is one too."""
     from manuscript_guard.gates.identifiers import normal_doi
     from manuscript_guard.literature.bibfile import read_entries
     from manuscript_guard.zotero import find_citations
@@ -183,7 +185,9 @@ def cited_in(statement: str, project: Project) -> str:
         return ""
     entries = read_entries(path)
     return " ".join(
-        normal_doi(entries[key]["doi"]) for key in sorted(keys) if entries.get(key, {}).get("doi")
+        normal_doi(fields["doi"])
+        for fields in (entries.get(key, {}) for key in sorted(keys))
+        if fields.get("doi") and fields.get("type", "").lower() == "dataset"
     )
 
 

@@ -453,6 +453,28 @@ manuscript said Figure 1 showed the estimate "against the comparators" and the f
 one row. Every other gate passed it, because every number in the figure was correct. The
 sentence was what was wrong.
 
+## A figure file meets the journal's artwork guide
+
+A journal states the formats it takes, the resolution each kind of figure needs at the width
+it prints, the largest file and the longest legend. These were free text in a profile's
+`notes`, and the first anyone heard of them was the portal refusing the upload. A profile
+now carries them under `figures:`, read from the journal's own artwork guide, with the date
+it was read and whether every value was found on it (`confirmed`). G4 holds each figure the
+manuscript places to them: its formats (`figure-format`), a raster's resolution at the width
+it prints for its kind (`figure-resolution`), its printed height (`figure-height`), the size
+of each file (`figure-file-size`), and the paragraph that labels it (`legend-words`). A
+raster drawn much larger than it prints is said too (`figure-shrinks`): a figure drawn 165 mm
+wide and printed at 89 mm prints the 10 pt text a plotting library draws at 5.4 pt, though
+its resolution passes. The size of a raster is read from its own header, PNG, JPEG or TIFF,
+with the standard library.
+
+A figure's print width and kind are in its `<name>.guard.yaml` (`print_width_mm`, `kind`).
+Without them the narrowest width the journal prints at is taken, so that a resolution found
+too low is too low at any width, and the kind is halftone. A figure placed only in the
+supplement is held to the profile's `supplementary:` rules where it has them. All of it is a
+warning, and a note where the journal applies the rules only once the paper is accepted
+(`applies_from: acceptance`).
+
 ## The build
 
 The .docx is regenerated from Markdown every time and never edited or patched. That is what
@@ -5092,6 +5114,16 @@ Added by the adversarial review, verified and **not** fixed:
   are counted under it together, as two whose patterns begin alike are. Before the review
   of #153 the second one's matches replaced the first's, under either kind of shared name,
   and a number the first was written for failed as unbound.
+- **A figure file is read for its pixels only where it is a PNG, JPEG or TIFF.** The text
+  size and line width of a vector figure, SVG, PDF or EPS, and the fonts a PDF embeds, are
+  not read yet, nor is a raster inside an EPS or PDF. `min_line_pt` is in the profile and
+  checked against nothing. A figure the build places is the first of its files in the
+  build's order, PNG first, and every file of it is held to the rules, so a figure kept as
+  PNG and TIFF is held to the journal's limits twice. A JPEG whose JFIF header records no
+  resolution, or a PNG with no `pHYs` chunk, is not said to shrink: how large it was drawn
+  is unknown. A legend is the paragraph straight after the figure that opens with "Figure"
+  and its number; a legend written above it, or in the figure, is not counted. A megabyte
+  is 1,048,576 bytes, the larger of the two a journal may mean.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.

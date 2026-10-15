@@ -2052,6 +2052,80 @@ def _journal(root: Path):
     return check_journal(project)
 
 
+#: What G4 says of the figure files.
+_ARTWORK_CODES = ("figure-format", "figure-resolution", "figure-height", "figure-file-size",
+                  "figure-shrinks", "legend-words")  # fmt: skip
+
+
+def _artwork_said(root: Path, side: dict | None = None, **rules) -> list[tuple[str, str]]:
+    """G4 with the example's journal given these artwork rules, and the example's figure
+    this sidecar: forest.png is 1950 by 660 pixels, drawn at 300 dpi, 165 mm wide."""
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-15", "confirmed": True, **rules}  # fmt: skip
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    if side:
+        sidecar = root / "figures" / "forest.guard.yaml"
+        guard = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+        sidecar.write_text(yaml.safe_dump({**guard, **side}, sort_keys=False), encoding="utf-8")
+    report = _journal(root)
+    assert report.ok or not [f for f in report.failures if f.code == "schema"], report.render()
+    return [(f.code, f.severity) for f in report.findings if f.code in _ARTWORK_CODES]
+
+
+@pytest.mark.parametrize(
+    ("rules", "side", "said"),
+    [
+        # 1950 pixels over 89 mm is 556 dpi.
+        ({"min_dpi": {"halftone": 600}, "widths_mm": [89, 183]}, None,
+         [("figure-resolution", "warn")]),
+        ({"min_dpi": {"halftone": 500}, "widths_mm": [89, 183]}, None, []),
+        # Printed 60 mm wide, it is 825 dpi.
+        ({"min_dpi": {"halftone": 600}, "widths_mm": [89]}, {"print_width_mm": 60}, []),
+        ({"min_dpi": {"halftone": 300, "line_art": 1000}, "widths_mm": [89]},
+         {"kind": "line_art"}, [("figure-resolution", "warn")]),
+        ({"formats": ["tiff", "eps"]}, None, [("figure-format", "warn")]),
+        ({"formats": ["tiff", "png"]}, None, []),
+        ({"max_file_mb": 0.005}, None, [("figure-file-size", "warn")] * 2),
+        # 89 mm wide, 660 / 1950 of that high: 30 mm.
+        ({"max_height_mm": 20, "widths_mm": [89]}, None, [("figure-height", "warn")]),
+        # Drawn 165 mm wide and printed 89: 10 pt prints at 5.4.
+        ({"min_text_pt": 6, "widths_mm": [89]}, None, [("figure-shrinks", "warn")]),
+        ({"min_text_pt": 5, "widths_mm": [89]}, None, []),
+        ({"min_dpi": {"halftone": 600}, "widths_mm": [89], "applies_from": "acceptance"},
+         None, [("figure-resolution", "info")]),
+    ],
+)
+def test_a_figure_file_the_journal_would_refuse_is_a_warning(
+    project: Path, rules: dict, side: dict | None, said: list
+) -> None:
+    """Item 17: resolution, format, size and height were free text in a profile's notes,
+    and the first anyone heard of them was the portal refusing the upload."""
+    assert _artwork_said(project, side, **rules) == said
+
+
+def test_a_supplementary_figure_is_held_to_the_supplement_s_rules(project: Path) -> None:
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8").replace("{{figure.forest}}\n", ""),
+                    encoding="utf-8")  # fmt: skip
+    supplement = project / "manuscript" / "supplementary" / "S1.md"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_text("# Supplementary figure\n\n{{figure.forest}}\n", encoding="utf-8")
+    said = _artwork_said(project, widths_mm=[89], min_dpi={"halftone": 300},
+                         supplementary={"max_dpi": 300})  # fmt: skip
+    assert said == [("figure-resolution", "warn")]
+
+
+def test_a_legend_longer_than_the_journal_takes_is_a_warning(project: Path) -> None:
+    main = main_md(project)
+    legend = "**Figure 1.** " + " ".join(["The reporting odds ratio and its interval."] * 4)
+    main.write_text(main.read_text(encoding="utf-8").replace(
+        "{{figure.forest}}\n", "{{figure.forest}}\n\n" + legend + "\n"), encoding="utf-8")
+    assert _artwork_said(project, legend_words=20) == [("legend-words", "warn")]
+    assert _artwork_said(project, legend_words=40) == []
+
+
 def test_a_second_files_front_matter_is_not_a_required_section(project: Path) -> None:
     """The gate reads the main text as one string joined from every file, and only the first
     file's front matter is at the top of it. A later file's block was read as prose: its

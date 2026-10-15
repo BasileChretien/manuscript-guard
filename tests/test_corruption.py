@@ -1780,6 +1780,372 @@ def test_a_well_formed_identifier_or_a_field_s_other_name_passes(
     assert _bib_findings(project) == []
 
 
+# What the registries said of a cited reference, read from its lookup record by G7, offline.
+# Each record here is written as `lookup` writes one, with its digests, by `_looked_up`.
+
+_LOOKED_DOI = "10.5555/fictional.2021.001"
+_LOOKED_KEY = "fictionalHepaticCohort2021"
+#: The example's first reference, as Crossref would have it.
+_CROSSREF = {
+    "status": "found",
+    "doi": _LOOKED_DOI,
+    "type": "journal-article",
+    "title": "Hepatic injury in a fictional national cohort, 2010-2019",
+    "container": "Journal of Imaginary Pharmacoepidemiology",
+    "years": {"print": 2021, "online": 2021, "issued": 2021},
+    "volume": "12",
+    "page": "101-109",
+}
+
+
+def _looked_up(root: Path, *, on: str = "2026-10-01", pmid: str | None = None, **sources):
+    """Give the example's first reference a DOI (and a PMID), and write its lookup record
+    with what each registry said: Crossref and OpenAlex found it unless told otherwise."""
+    from manuscript_guard.literature.bibfile import read_entries
+    from manuscript_guard.literature.lookups import (
+        SCHEMA,
+        answers_digest,
+        entry_digest,
+        write_record,
+    )
+
+    _bib_field(root, "doi", _LOOKED_DOI)
+    if pmid:
+        _bib_field(root, "pmid", pmid)
+    fields = read_entries(root / "literature" / "references.bib")[_LOOKED_KEY]
+    answers = {
+        "crossref": _CROSSREF,
+        "openalex": {"status": "found", "is_retracted": False},
+        **sources,
+    }
+    record = {
+        "schema": SCHEMA,
+        "citekey": _LOOKED_KEY,
+        "looked_up_on": on,
+        "entry_sha256": entry_digest(fields),
+        "identifiers": {"doi": _LOOKED_DOI, **({"pmid": pmid} if pmid else {})},
+        "sources": {k: v for k, v in answers.items() if v is not None},
+    }
+    record["answers_sha256"] = answers_digest(record)
+    write_record(load_project(root)[0], record)
+
+
+def _g7_codes(root: Path) -> dict[str, str]:
+    return {f.code: f.severity for f in _g7(root).findings}
+
+
+def _retraction(kind: str = "retraction") -> dict:
+    notice = {"type": kind, "doi": "10.5555/notice.1", "date": "2023-02-06",
+              "source": "retraction-watch"}  # fmt: skip
+    return {**_CROSSREF, "updated_by": [notice]}
+
+
+def test_a_reference_looked_up_and_found_as_cited_passes(project: Path) -> None:
+    _looked_up(project)
+    found = _g7_codes(project)
+    assert not {c for c, s in found.items() if s != "info"}, found
+    assert _g7(project).counts["references_looked_up"] == 1
+
+
+@pytest.mark.parametrize(
+    "sources",
+    [
+        {"crossref": _retraction()},
+        {"crossref": _retraction("removal")},
+        {"openalex": {"status": "found", "is_retracted": True}},
+        {"pubmed": {"status": "found", "doi": _LOOKED_DOI,
+                    "pubtypes": ["Journal Article", "Retracted Publication"]}},
+    ],
+)  # fmt: skip
+def test_a_retracted_reference_fails_from_drafting(project: Path, sources: dict) -> None:
+    from manuscript_guard.policy import DRAFTING, apply_stage
+
+    _looked_up(project, pmid="31000001" if "pubmed" in sources else None, **sources)
+    report = _g7(project)
+    assert "reference-retracted" in {f.code for f in report.failures}
+    drafting, _ = apply_stage(report, DRAFTING)
+    assert "reference-retracted" in {f.code for f in drafting.failures}
+
+
+def test_a_retracted_reference_cited_with_a_reason_is_noted(project: Path) -> None:
+    paper = project / "paper.yaml"
+    paper.write_text(
+        paper.read_text(encoding="utf-8") + f"\nlookup:\n  cited_as_retracted:\n"
+        f"    {_LOOKED_KEY}: the Discussion is about why it was retracted\n",
+        encoding="utf-8",
+    )
+    _looked_up(project, crossref=_retraction())
+    found = _g7_codes(project)
+    assert "reference-retracted" not in found
+    assert found["reference-retracted-cited"] == "info"
+
+
+def test_an_expression_of_concern_or_a_correction_is_not_a_retraction(project: Path) -> None:
+    concern = {**_CROSSREF, "updated_by": [{"type": "expression_of_concern"},
+                                            {"type": "correction"}]}  # fmt: skip
+    _looked_up(project, crossref=concern)
+    found = _g7_codes(project)
+    assert "reference-retracted" not in found
+    assert found["reference-under-concern"] == "warn"
+
+
+@pytest.mark.parametrize(
+    ("sources", "fails"),
+    [
+        ({"crossref": {"status": "absent"}, "datacite": {"status": "absent"},
+          "doi_org": {"status": "absent"}}, True),
+        # Not proof: one of the three did not answer.
+        ({"crossref": {"status": "absent"}, "datacite": {"status": "absent"},
+          "doi_org": {"status": "unresolvable", "why": "HTTP 500"}}, False),
+        # Registered by another agency: doi.org knows it, and nothing more is known.
+        ({"crossref": {"status": "absent"}, "datacite": {"status": "absent"},
+          "doi_org": {"status": "found"}}, False),
+    ],
+)  # fmt: skip
+def test_a_doi_registered_nowhere_fails_and_only_when_every_registry_said_so(
+    project: Path, sources: dict, fails: bool
+) -> None:
+    _looked_up(project, **sources)
+    found = _g7_codes(project)
+    assert ("doi-unregistered" in found) is fails, found
+
+
+def test_a_dataset_s_doi_crossref_does_not_know_passes(project: Path) -> None:
+    dataset = {"status": "found", "title": _CROSSREF["title"], "type": "Dataset", "year": 2021}
+    _looked_up(project, crossref={"status": "absent"}, datacite=dataset)
+    found = _g7_codes(project)
+    assert not {c for c, s in found.items() if s != "info"}, found
+
+
+@pytest.mark.parametrize(
+    ("registered", "fails"),
+    [
+        ("Renal injury in a fictional national cohort, 2010-2019", False),  # 7 of 8 held
+        ("Renal failure in a fictional national registry, 2010-2019", True),
+        ("A disproportionality signal for a fictional drug class", True),
+        # a subtitle the entry left out, and a flag the registry put in front
+        ("RETRACTED: Hepatic injury in a fictional national cohort, 2010-2019: a study",
+         False),
+        ("Hepatic injury in a fictional national cohort, 2010\N{EN DASH}2019", False),
+    ],
+)  # fmt: skip
+def test_an_identifier_that_names_another_title_fails(
+    project: Path, registered: str, fails: bool
+) -> None:
+    _looked_up(project, crossref={**_CROSSREF, "title": registered})
+    found = _g7_codes(project)
+    assert ("reference-title-mismatch" in found) is fails, found
+
+
+def test_a_title_in_british_spelling_matches_its_american_registration(project: Path) -> None:
+    _bib_field(project, "title", "Haemorrhage and tumour behaviour in a randomised cohort")
+    _looked_up(
+        project,
+        crossref={**_CROSSREF, "title": "Hemorrhage and tumor behavior in a randomized cohort"},
+    )
+    assert "reference-title-mismatch" not in _g7_codes(project)
+
+
+def test_a_title_in_another_script_is_not_compared(project: Path) -> None:
+    _looked_up(project, crossref={**_CROSSREF, "title": "架空のコホートにおける肝障害"})
+    assert "reference-title-mismatch" not in _g7_codes(project)
+
+
+@pytest.mark.parametrize(
+    ("crossref", "pubtypes"),
+    [
+        ({**_CROSSREF, "update_to": [{"type": "retraction", "doi": "10.5555/other"}]}, None),
+        ({**_CROSSREF, "update_to": [{"type": "erratum", "doi": "10.5555/other"}]}, None),
+        ({**_CROSSREF, "type": "journal"}, None),
+        ({**_CROSSREF, "type": "journal-issue"}, None),
+        ({**_CROSSREF, "type": "component"}, None),
+        (_CROSSREF, ["Published Erratum"]),
+    ],
+)  # fmt: skip
+def test_an_identifier_that_names_a_notice_or_a_container_fails(
+    project: Path, crossref: dict, pubtypes: list | None
+) -> None:
+    pubmed = {"status": "found", "doi": _LOOKED_DOI, "pubtypes": pubtypes} if pubtypes else None
+    _looked_up(project, pmid="31000001" if pubmed else None, crossref=crossref, pubmed=pubmed)
+    found = _g7_codes(project)
+    assert "reference-not-the-work" in found, found
+
+
+def test_a_volume_cited_as_proceedings_may_resolve_to_one(project: Path) -> None:
+    _looked_up(project, crossref={**_CROSSREF, "type": "proceedings"})
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8").replace(
+            f"@article{{{_LOOKED_KEY},", f"@proceedings{{{_LOOKED_KEY},", 1
+        ),
+        encoding="utf-8",
+    )
+    assert "reference-not-the-work" not in _g7_codes(project)
+
+
+@pytest.mark.parametrize(("years", "fails"), [
+    ({"print": 2022, "online": 2021, "issued": 2021}, False),
+    ({"print": 2022}, False),
+    ({"print": 2019, "issued": 2019}, True),
+    ({"issued": 2024, "online": 2023}, True),
+])  # fmt: skip
+def test_a_year_more_than_one_off_every_registered_year_fails(
+    project: Path, years: dict, fails: bool
+) -> None:
+    _looked_up(project, crossref={**_CROSSREF, "years": years})
+    found = _g7_codes(project)
+    assert ("reference-year-mismatch" in found) is fails, found
+
+
+def test_a_pmid_that_names_another_work_than_the_doi_fails(project: Path) -> None:
+    pubmed = {"status": "found", "doi": "10.5555/another.work", "pubtypes": ["Journal Article"]}
+    _looked_up(project, pmid="31000001", pubmed=pubmed)
+    assert "pmid-names-another-work" in _g7_codes(project)
+
+
+def test_the_identity_failures_wait_for_internal_review(project: Path) -> None:
+    from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
+
+    _looked_up(project, crossref={**_CROSSREF, "title": "Another paper", "type": "journal"})
+    report = _g7(project)
+    identity = {"reference-title-mismatch", "reference-not-the-work"}
+    assert identity <= {f.code for f in report.failures}
+    drafting, _ = apply_stage(report, DRAFTING)
+    assert not identity & {f.code for f in drafting.failures}
+    reviewed, _ = apply_stage(report, INTERNAL_REVIEW)
+    assert identity <= {f.code for f in reviewed.failures}
+
+
+def test_a_preprint_published_since_is_said(project: Path) -> None:
+    preprint = {**_CROSSREF, "type": "posted-content", "subtype": "preprint",
+                "preprint_of": ["10.5555/published.version"]}  # fmt: skip
+    _looked_up(project, crossref=preprint)
+    found = _g7_codes(project)
+    assert found["preprint-published"] == "warn"
+
+
+def test_a_withdrawn_preprint_is_said_and_not_failed_as_retracted(project: Path) -> None:
+    preprint = {**_retraction("withdrawal"), "type": "posted-content", "subtype": "preprint"}
+    _looked_up(project, crossref=preprint)
+    found = _g7_codes(project)
+    assert found["preprint-withdrawn"] == "warn" and "reference-retracted" not in found
+
+
+def test_an_edited_record_fails(project: Path) -> None:
+    """A retraction taken out of a record by hand, the digest left as `lookup` wrote it."""
+    from manuscript_guard.literature.lookups import record_path
+
+    _looked_up(project, crossref=_retraction())
+    path = record_path(load_project(project)[0], _LOOKED_KEY)
+    record = yaml.safe_load(path.read_text(encoding="utf-8"))
+    del record["sources"]["crossref"]["updated_by"]
+    path.write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    found = _g7_codes(project)
+    assert "lookup-record-edited" in found and "reference-retracted" not in found
+
+
+def test_a_record_dated_in_the_future_fails(project: Path) -> None:
+    _looked_up(project, on="2999-01-01")
+    assert "lookup-date-future" in _g7_codes(project)
+
+
+def test_an_old_or_missing_record_or_a_changed_entry_is_said(project: Path) -> None:
+    _looked_up(project, on="2020-01-01")
+    _bib_field(project, "volume", "13")
+    _bib_field(project, "doi", "10.5555/second")  # the other reference: no record
+    found = _g7_codes(project)
+    assert found["lookup-stale"] == "warn"
+    assert found["lookup-entry-changed"] == "warn"
+
+
+def test_a_reference_with_an_identifier_and_no_record_is_said_once(project: Path) -> None:
+    _bib_field(project, "doi", _LOOKED_DOI)
+    findings = [f for f in _g7(project).findings if f.code == "lookup-missing"]
+    assert len(findings) == 1 and findings[0].severity == "warn"
+    assert f"@{_LOOKED_KEY}" in findings[0].message
+
+
+def test_an_answer_that_did_not_come_fails_nothing(project: Path) -> None:
+    _looked_up(project, crossref={"status": "unresolvable", "why": "HTTP 429"})
+    found = _g7_codes(project)
+    assert found.pop("lookup-unresolvable") == "info"
+    assert not {c for c, s in found.items() if s != "info"}, found
+
+
+def test_a_lookup_that_got_no_answer_at_all_is_a_warning(project: Path) -> None:
+    """Round 1 of #253: nothing is known of the reference, retracted or not."""
+    _looked_up(project, crossref={"status": "unresolvable", "why": "HTTP 429"},
+               openalex={"status": "unresolvable", "why": "HTTP 429"})  # fmt: skip
+    found = _g7_codes(project)
+    assert found.pop("lookup-unresolvable") == "warn"
+    assert not {c for c, s in found.items() if s == "fail"}, found
+
+
+@pytest.mark.parametrize(
+    ("cited", "registered"),
+    [
+        # round 1 of #253: markup on either side is part of a word, not a space in it
+        ("Ambient PM\N{REVERSE SOLIDUS}textsubscript2.5 and hepatic injury in a cohort",
+         "Ambient PM<sub>2.5</sub> and hepatic injury in a cohort"),
+        ("Ambient PM2.5 and hepatic injury in a cohort",
+         "Ambient PM<sub>2.5</sub> and hepatic injury in a cohort"),
+        ("$^18$F-FDG uptake in hepatic injury",
+         "<sup>18</sup>F-FDG uptake in hepatic injury"),
+        ("Une fran\N{REVERSE SOLIDUS}c caise cohort of hepatic injury",
+         "Une fran\N{LATIN SMALL LETTER C WITH CEDILLA}aise cohort of hepatic injury"),
+        ("Une fran\N{REVERSE SOLIDUS}ccaise cohort of hepatic injury",
+         "Une fran\N{LATIN SMALL LETTER C WITH CEDILLA}aise cohort of hepatic injury"),
+        # round 2 of #253: a Greek letter is no accent and the letters after it
+        ("$\N{REVERSE SOLIDUS}beta$-Lactam allergy in children",
+         "\N{GREEK SMALL LETTER BETA}-Lactam allergy in children"),
+        ("$\N{REVERSE SOLIDUS}kappa$ and $\N{REVERSE SOLIDUS}tau$ in hepatic injury",
+         "\N{GREEK SMALL LETTER KAPPA} and \N{GREEK SMALL LETTER TAU} in hepatic injury"),
+    ],
+)  # fmt: skip
+def test_a_title_marked_up_on_either_side_is_the_same_title(
+    project: Path, cited: str, registered: str
+) -> None:
+    _bib_field(project, "title", cited)
+    _looked_up(project, crossref={**_CROSSREF, "title": registered})
+    assert "reference-title-mismatch" not in _g7_codes(project)
+
+
+@pytest.mark.parametrize("kind", ["new_version", "new_edition"])
+def test_a_new_version_of_a_work_is_the_work(project: Path, kind: str) -> None:
+    """Round 1 of #253: a Cochrane review's current version updates the one before it,
+    and is no notice."""
+    _looked_up(project, crossref={**_CROSSREF, "update_to": [{"type": kind, "doi": "10.5/x"}]})
+    assert "reference-not-the-work" not in _g7_codes(project)
+
+
+def test_a_pmid_pubmed_does_not_know_fails(project: Path) -> None:
+    _looked_up(project, pmid="31000001", pubmed={"status": "absent"})
+    found = _g7_codes(project)
+    assert found["pmid-unknown"] == "fail"
+
+
+@pytest.mark.parametrize("pages", ["e000", "in press", "xxx-xxx", "??", "0--0"])
+def test_placeholder_pages_are_said(project: Path, pages: str) -> None:
+    _bib_field(project, "pages", pages)
+    assert _g7_codes(project).get("pages-placeholder") == "warn"
+
+
+@pytest.mark.parametrize(
+    ("crossref", "said"),
+    [
+        ({**_CROSSREF, "volume": "21"}, "volume 12, registered 21"),
+        ({**_CROSSREF, "page": "110-118"}, "first page or number 101"),
+        ({**_CROSSREF, "page": None, "article_number": "101880T"}, "registered 101880t"),
+    ],
+)
+def test_a_volume_or_first_page_that_differs_is_a_warning(
+    project: Path, crossref: dict, said: str
+) -> None:
+    _looked_up(project, crossref={k: v for k, v in crossref.items() if v is not None})
+    findings = [f for f in _g7(project).findings if f.code == "reference-details-differ"]
+    assert len(findings) == 1 and findings[0].severity == "warn" and said in findings[0].message
+
+
 @pytest.mark.parametrize(
     "fields",
     [

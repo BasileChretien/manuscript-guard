@@ -692,6 +692,104 @@ placeholder, and it is reported and deferred. Whether a DOI is registered, names
 the entry describes, or was retracted is for a lookup that records what it found, and none
 is made here.
 
+## A reference is looked up once, and the answer is kept
+
+Whether a cited work exists, is the work the entry describes, and still stands is a question
+for the registries, and `check` must give the same answer offline in CI. So the question is
+asked by a command of its own, `manuscript-guard lookup`, and the answer is written down:
+one file per cited reference, `literature/lookups/<citekey>.yaml`, committed with the
+paper. It holds the identifiers looked up, the digest of the `references.bib` entry they
+came from, what each registry said, and the day it was asked. The pattern is the journal
+profile's: retrieved, dated, and read as data. The gates read the record and never ask
+anyone; `lookup` asks again only for a reference with no record, an entry changed since,
+or an answer that did not come, and `--again` asks for all of them. `--dry-run` says what
+would be asked and sends nothing.
+
+A DOI is asked of Crossref, for the work's title, type, years (print, online, issued,
+posted), container, volume, pages and article number, the notices that update it
+(`updated-by`: retractions, corrections, expressions of concern, from the publisher and from
+the Retraction Watch data Crossref carries), the notice it is (`update-to`), and the
+published version a preprint became (`is-preprint-of`). It is asked of OpenAlex for its
+`is_retracted`. Where Crossref does not know it, DataCite is asked, since a dataset's DOI is
+registered there and not at Crossref; where neither knows it, the handle API of doi.org,
+which every agency's DOIs pass through and which says only whether the DOI is registered. A
+Crossref 404 alone proves nothing: JaLC, mEDRA and KISTI register DOIs Crossref never sees.
+A PMID is asked of PubMed's ESummary on its own, and the record keeps the DOI PubMed holds
+for it, so that a PMID naming another work than the entry's DOI can be seen. The DOI is
+looked up as G7 reads it, undressed and in lower case.
+
+Each answer ends `found`, `absent` or `unresolvable`. Only an answer in the shape the
+service documents is either of the first two; a 429, a 500, a timeout, a redirect, or a 200
+whose body is an error (`{"error": ...}` from the E-utilities, `"status": "failed"` from
+Crossref) is unresolvable, with the reason, and never read as "not retracted". A 429's
+`Retry-After` is obeyed once when it is 30 seconds or less. Requests to one host are at
+least 0.2 s apart, and to NCBI 0.34 s, its limit without a key.
+
+The shapes were checked on 2026-10-15 against each service's documentation and against live
+answers: Crossref `/works/{doi}` (`status`, `message-type: work`, a 404 with a plain-text
+body for an unknown DOI, `updated-by` and `update-to` entries holding `DOI`, `type`,
+`source`, `updated`, a preprint's `relation.is-preprint-of`; a single record may be asked
+5 times a second, 10 with a contact address, the limits Crossref's notice of 2026-07-21
+kept from its change of 2025-12-01); OpenAlex
+`/works/doi:{doi}` (`id`, `is_retracted`, `publication_year`, a 404 for an unknown DOI; a
+key raises its daily allowance and is optional); DataCite `/dois/{doi}`
+(`data.attributes.titles[].title`, `types.resourceTypeGeneral`, `publicationYear` as a
+number, a 404); the doi.org handle API (`responseCode` 1 with HTTP 200, 100 with HTTP 404
+for a handle that does not exist, 200 for a handle with no values); and ESummary in JSON
+(`result.uids`, each PMID's `title`, `sortpubdate`, `pubtype`, `articleids`, and
+`{"error": "cannot get document summary"}` under a PMID it does not know, with HTTP 200).
+Crossref updates of the Retraction Watch kind write `expression-of-concern`, Crossmark's
+own write `expression_of_concern`; the record reads both as one kind. Zotero flags retracted
+items itself, from the same data, but Better BibTeX's JSON-RPC does not return the flag:
+`item.search` gives CSL-JSON with no field for it (Better BibTeX 9.0.71, Zotero 9.0.6,
+2026-10-15), so the lookup asks the registries and not Zotero.
+
+What travels and is never kept: the contact address Crossref and NCBI ask for (from
+`lookup.contact` in `paper.yaml`, or `MANUSCRIPT_GUARD_CONTACT`), NCBI's key
+(`NCBI_API_KEY`) and OpenAlex's (`OPENALEX_API_KEY`), all in the query string, where the
+services ask for them. The record holds no URL, and a record that would hold one of those
+values is refused before it is written. Redirects are not followed, so a key goes to the
+host it was meant for or nowhere, and nothing is sent unencrypted off this machine.
+
+**G7 reads the records, and asks nobody.** For each cited reference with a DOI or a PMID
+(`gates/lookups.py`):
+
+- *Retracted* fails from drafting (`reference-retracted`): a retraction, withdrawal or
+  removal among the notices Crossref holds for the DOI, OpenAlex's `is_retracted`, or
+  PubMed's "Retracted Publication". A paper that discusses the retracted work, or cites
+  its notice, says why under `lookup.cited_as_retracted` in `paper.yaml`, and G7 then
+  notes it. An expression of concern or a partial retraction is a warning; a correction
+  is kept in the record and not reported.
+- *Not the work cited* fails from internal-review, since a draft may not have its records
+  yet. A DOI that no registry has: Crossref, DataCite and doi.org all said so, and one
+  that did not answer proves nothing (`doi-unregistered`), and a PMID PubMed does not know
+  (`pmid-unknown`). A DOI that is a notice (Crossref's `update-to` of a retraction,
+  correction, erratum or the like; a new version or a new edition of a work is the work), a
+  journal, a series, a component, or a whole issue or volume for an entry that does not
+  cite one, and a PMID PubMed types as a notice (`reference-not-the-work`). A registered title that holds less than 85% of the cited
+  title's words (`reference-title-mismatch`): the cited title is held to the registered
+  one with its subtitle and to its original-language title, so a subtitle the entry left
+  out costs nothing; markup, TeX, case, accents and punctuation are folded (a tag or a
+  command is part of the word it marks, `PM<sub>2.5</sub>` and `PM\textsubscript{2.5}`
+  being "PM2.5", and an accent command keeps its letter), British
+  spellings are read as American through G14's list, and no word is dropped for being
+  short, since "CT" and "MRI" are the difference between two papers. A title mostly in
+  another script than Latin is not compared. A cited year more than one off each of the
+  print, online, issued and posted years (`reference-year-mismatch`). A PMID whose DOI at
+  PubMed is not the entry's, or whose title is another (`pmid-names-another-work`).
+  Authors are not compared: initials against full names defeat a comparison of words.
+- *Warnings*: a preprint published since or withdrawn, a volume or first page or article
+  number that differs from Crossref's (`reference-details-differ`), pages that are a
+  placeholder ("e000", "in press"), an entry changed since its lookup, the references with
+  an identifier that were never looked up (one finding for all of them), and those looked
+  up longer ago than `lookup.max_age_days` (365 by default). An answer that did not come is
+  a note, and a lookup in which none came is a warning: nothing is known of that
+  reference, retracted or not.
+- *The record itself*: one whose `answers_sha256` no longer matches what it says fails from
+  drafting (`lookup-record-edited`), since an edit by hand can take a retraction out; one
+  dated in the future, one that is not a record, or one filed under another citekey fails
+  from internal-review.
+
 ## Only a person can sign an attestation
 
 `attested.yaml` exists to record that **a named human read something the toolkit could not
@@ -4194,19 +4292,21 @@ the campaigns are in the suite, on Hypothesis:
   bindings they are drawn among, vocabularies, one-line titles, sources and quotations of
   them, the settings typed into a project, a co-author's sessions in Word, texts that
   quote the bounds of intervals, the same with comments typed into them, and a manuscript
-  beside what an edit made of it. `tests/test_properties.py` holds ten more, each
+  beside what an edit made of it. `tests/test_properties.py` holds eleven more, each
   planting what one property looks for among drawn words: cited clauses, typed
   parameters, models' names, anchors and what they claim, anchors' own lines, terms a
   vocabulary gave up and each way such a term is written, American spellings in a British
-  paper, rewordings, and ISBNs written in a field every way one holds them, and with one
-  digit changed.
+  paper, rewordings, ISBNs written in a field every way one holds them and with one
+  digit changed, and a cited title beside each form a registry gives it and beside
+  another work's.
 - `tests/readings.py` names each way the package reads a text, at the widest door it has:
   `mask`, the text G14 reads, the paper's own words, the spans the scanners find, the
   sections, G2's reading of every number, the four readings of G14, the TeX rule and its
   sentence, the quotation check, `check --json` on a new project, and the round trip: a
   paper typed into a new project, built, edited in Word and imported. And three more: the
   order an interval's bounds are quoted in, what `reworded` makes of an edit, and the
-  sentences a co-author's items are cut into. Eighteen in all.
+  sentences a co-author's items are cut into, and how much of a cited title a registered
+  one holds. Nineteen in all.
 - `tests/test_properties.py` holds what a reading owes its input, and
   `tests/test_generated_sessions.py` what an import owes the source.
 - `tests/test_differential.py` puts each input through the base branch's source and
@@ -4256,13 +4356,15 @@ The reviews checked the same few things of every change, by hand. They are tests
   property, and what used to land is the comparison's to say, below.
 
 A property that passes on a broken rule holds nothing, and whether it does is decided by
-the generators. So fifty-seven rules are broken in place, one at a time, and the property that is
+the generators. So sixty-two rules are broken in place, one at a time, and the property that is
 there for each has to fail: a quotation read as the paper's own words, hiding that takes
 the line break with it, every finding on line 1, a ligature not folded, a value found
 inside a longer number, a nought trimmed off a number, a variable's name read as a word,
 a binding that opens a line put on the line before, a stop against a binding that ends no
 sentence, a comment read for its stops, an ISBN-13 weighed as an ISBN-10 and an ISBN's
-groups read as ISBNs;
+groups read as ISBNs, a cited title read without its short words, read in British as
+written, with a registry's tag read as a space or a TeX command taking the letters after
+it, or compared both ways;
 fourteen ways `reworded` can misread an edit, from
 a number's sign taken for no part of it, and a sign of comparison taken for none, read as
 it is typed, read only hard against its number, an arrow's head or an equals sign taken
@@ -5529,6 +5631,20 @@ Closed since, and why each mattered:
   at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
   input is missing by mistake rather than by design is caught only where another finding
   depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
+- **A lookup record is kept beside what it describes, so it catches an edit, not a
+  forger.** `answers_sha256` is in the record it digests: an answer edited by hand is
+  reported, and one edited by someone who computes the digest again is not. A reference
+  with no DOI and no PMID is not looked up and not checked, and `lookup` says so of each.
+  The registries can be wrong, and late: a retraction Crossref and OpenAlex do not yet
+  carry is not in the record, and the record is as old as the day it was asked. Requests
+  are paced at fixed intervals rather than by the limits each answer states in its
+  headers.
+- **The title comparison is one-sided and by words.** A registered title that holds every
+  cited word and many more passes, and so does one whose words are the same in another
+  order. A notice a publisher deposited as a journal article, with no `update-to`, is read
+  as the work, and a DOI only doi.org knows has no title to compare. Volumes, pages and
+  article numbers are compared with Crossref's only. A title in another script than Latin,
+  and the authors of every reference, are not compared.
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.
@@ -9007,7 +9123,7 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on 60 broken rules, and the comparison on twelve
+  - The properties were seen to fail on 65 broken rules, and the comparison on twelve
     changed lines. That is a spot check, and not the mutation runs four of the reviews
     made, which changed every line of a diff. Two of the three broken imports, and the
     changed line of the import, are shown by the simplest session alone.

@@ -307,6 +307,17 @@ def _spelling() -> Reading:
     return spelling
 
 
+@reading("title held")
+def _title_held() -> Reading:
+    from manuscript_guard.gates.lookups import title_held
+
+    def held(given: dict[str, str]) -> float | None:
+        found = title_held(given["cited"], given["registered"])
+        return None if found is None else round(found, 6)
+
+    return held
+
+
 @reading("notation")
 def _notation() -> Reading:
     from manuscript_guard.gates.notation import judge_notation

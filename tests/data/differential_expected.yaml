@@ -37,5 +37,5 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G7 reads every entry of the committed references.bib for its identifiers and fields,
-      and counts them, `references_read`
+      G7 reads the lookup record of each cited reference that has a DOI or a PMID, offline,
+      and counts them, `references_looked_up`

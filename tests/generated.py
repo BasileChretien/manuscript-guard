@@ -724,6 +724,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "tex outside maths": lines(),
     "title": lines(),
+    "title held": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),
     "quotation": st.tuples(
         quotations(),
         st.sampled_from(("as it stands", "typed", "typed", "misquoted")),

@@ -502,8 +502,8 @@ def _unseeded(seeds: tuple[str, ...]) -> str:
         )
     return (
         "either the fragment was edited after it was written, or the analysis is not "
-        'deterministic, and it declares no seed: declare one with `em.parameter("seed", ...)`, '
-        "give it to every random draw, and try again"
+        "deterministic, and it declares no seed: declare one with the emitter's "
+        '`parameter("seed", ...)`, give it to every random draw, and try again'
     )
 
 

@@ -22,6 +22,7 @@ from manuscript_guard.contracts.results import HOW_TO_EMIT, Results
 from manuscript_guard.emit import (
     DIGEST_SUFFIX,
     input_digest_matches,
+    lockfile_digest_matches,
     read_digest,
     sha256_of,
     source_digest_matches,
@@ -171,7 +172,7 @@ def _check_environment(project: Project, fragment) -> Report:
             said = f"{name} pinned the packages these results were written with, and is gone"
         elif name not in recorded:
             said = f"{name} was not there when these results were written"
-        elif not input_digest_matches(now[name], recorded[name]):
+        elif not lockfile_digest_matches(now[name], recorded[name]):
             said = f"{name} changed since these results were written"
         else:
             continue

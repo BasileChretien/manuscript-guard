@@ -114,11 +114,11 @@ def _built_r_project(tmp_path: Path, at_root: dict[str, str] | None = None) -> P
 def test_both_emitters_record_the_lockfiles_alike(tmp_path: Path) -> None:
     """Item 18: the packages the analysis ran with, as the lockfiles pin them, in the same
     order and with the same digests whichever language wrote the fragment."""
-    from manuscript_guard.emit import input_digest
+    from manuscript_guard.emit import lockfile_digest
     from manuscript_guard.paths import lockfiles
 
     files = {
-        "renv.lock": '{"R": {"Version": "4.4.1"}}\n',
+        "renv.lock": '{"R": {"Version": "4.4.1"}}\r\n',
         "requirements.txt": "pandas==2.2.2\n",
         "requirements-dev.txt": "pytest\n",
     }
@@ -126,7 +126,7 @@ def test_both_emitters_record_the_lockfiles_alike(tmp_path: Path) -> None:
     fragment = next((root / "results").glob("*.json"))
     recorded = json.loads(fragment.read_text(encoding="utf-8"))["provenance"]["environment"]
     expected = [
-        {"path": path.name, "sha256": input_digest(path)} for path in lockfiles(root)
+        {"path": path.name, "sha256": lockfile_digest(path)} for path in lockfiles(root)
     ]
     assert [entry["path"] for entry in expected] == [
         "renv.lock", "requirements-dev.txt", "requirements.txt"

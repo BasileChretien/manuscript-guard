@@ -1143,6 +1143,18 @@ def test_a_lockfile_changed_since_the_results_is_said(project: Path) -> None:
     assert all("requirements.txt changed since these results" in m for _, m in said)
 
 
+@pytest.mark.parametrize("name", ["requirements.txt", "renv.lock", "uv.lock"])
+def test_a_lockfile_checked_out_with_other_line_endings_is_unchanged(
+    project: Path, name: str
+) -> None:
+    """Round 1 of #265: git checks a lockfile out with CRLF on Windows and LF elsewhere, and
+    a byte digest read that as a change."""
+    (project / name).write_bytes(b"pandas==2.2.2\r\nnumpy==2.0.0\r\n")
+    _rerun_with(project, {})
+    (project / name).write_bytes(b"pandas==2.2.2\nnumpy==2.0.0\n")
+    assert _environment_said(project) == []
+
+
 def test_a_lockfile_gone_or_new_since_the_results_is_said(project: Path) -> None:
     _rerun_with(project, {"requirements.txt": "pandas==2.2.2\n"})
     (project / "requirements.txt").unlink()

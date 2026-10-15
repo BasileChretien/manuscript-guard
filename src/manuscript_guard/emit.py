@@ -340,6 +340,22 @@ def source_digest_matches(path: Path, recorded: str) -> bool:
     return _matches(path, recorded, _SOURCE_SUFFIXES)
 
 
+def lockfile_digest(path: Path) -> str:
+    """The digest of a lockfile, ignoring line endings whatever its suffix.
+
+    `renv.lock` and `uv.lock` are JSON and TOML, a requirements file is lines of pins: none
+    can hold a line end inside a value, and git checks each out with CRLF on Windows and LF
+    elsewhere. The suffix lists above cannot say so, since `.lock` and `.txt` name other
+    things too.
+    """
+    return _digest_of(path, frozenset({path.suffix.lower()}))
+
+
+def lockfile_digest_matches(path: Path, recorded: str) -> bool:
+    """Whether `path` is the lockfile `recorded` was taken from, however its lines end."""
+    return _matches(path, recorded, frozenset({path.suffix.lower()}))
+
+
 DIGEST_SUFFIX = ".sha256"
 
 
@@ -1423,11 +1439,12 @@ class Emitter:
             "vcs": vcs,
             "inputs": inputs,
             # The packages the analysis ran with, as the project's lockfiles pin them. G1
-            # says when one changed after these results were written.
+            # says when one changed after these results were written, with its line endings
+            # left out (`lockfile_digest`).
             "environment": [
                 {
                     "path": str(path.relative_to(root)).replace("\\", "/"),
-                    "sha256": input_digest(path),
+                    "sha256": lockfile_digest(path),
                 }
                 for path in lockfiles(root)
             ],

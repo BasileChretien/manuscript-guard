@@ -238,6 +238,15 @@ mg_source_digest <- function(path) {
   mg_digest_in(path, MG_SOURCE_SUFFIXES)
 }
 
+#' The digest of a lockfile, ignoring line endings whatever its suffix
+#'
+#' Mirrors `lockfile_digest` in the Python emitter: renv.lock, uv.lock and a requirements file
+#' can hold no line end inside a value, and `.lock` and `.txt` name other things too.
+#' @noRd
+mg_lockfile_digest <- function(path) {
+  mg_digest_in(path, tolower(tools::file_ext(path)))
+}
+
 #' The digest of a file the analysis READ, ignoring line endings where they are formatting
 #'
 #' Mirrors `input_digest` in the Python emitter and must stay identical to it. Distinct from
@@ -1048,14 +1057,16 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     # The packages the analysis ran with, as the project's lockfiles pin them, mirroring the
     # Python emitter's `environment`, in the same order: by name, as bytes compare. G1 says
     # when one changed after the results were written.
+    # Listed, not globbed: a root whose path holds brackets, "Study [2024]", is no pattern.
     lock_paths <- unique(c(
       file.path(project_root, c("renv.lock", "uv.lock", "poetry.lock", "environment.yml")),
-      Sys.glob(file.path(project_root, "requirements*.txt"))
+      file.path(project_root, list.files(project_root, pattern = "^requirements.*\\.txt$"))
     ))
     lock_paths <- lock_paths[file.exists(lock_paths) & !dir.exists(lock_paths)]
     lock_paths <- lock_paths[order(basename(lock_paths), method = "radix")]
     environment <- lapply(lock_paths, function(path) {
-      list(path = relative(path), sha256 = mg_input_digest(path))
+      # Line endings left out, as Python's `lockfile_digest`: see the Python emitter.
+      list(path = relative(path), sha256 = mg_lockfile_digest(path))
     })
 
     # "+0900" is not RFC 3339; the offset needs its colon.

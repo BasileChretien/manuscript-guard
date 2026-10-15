@@ -4697,7 +4697,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   written: the numbers on disk are still the ones the analysis wrote, and a re-run may not
   give them. A lockfile in a subfolder, a package installed outside any lockfile, a system
   library, a compiler, and a lockfile that does not match what is installed are not seen.
-  A fragment written before the emitters recorded the environment says nothing. When a
+  A lockfile is digested with its line endings left out, as a script is. One that is a
+  link to a file elsewhere is recorded by R under the path it links to, and by Python under
+  its own name. A fragment written before the emitters recorded the environment says
+  nothing. When a
   re-run differs, `verify` says whether the analysis declares a seed: a parameter whose key
   holds "seed".
 - **The figure-caption style reads one convention and nothing else.** The paragraph after a

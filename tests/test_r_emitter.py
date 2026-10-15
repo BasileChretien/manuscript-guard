@@ -640,6 +640,8 @@ def test_r_software_is_the_version_the_session_loaded(tmp_path: Path) -> None:
          "was given, and meddra_release.asc says 26.1"),
         ('em$dictionary("MedDRA", release_file = "bad/meddra_release.asc")',
          "does not open with a MedDRA version"),
+        # Round 1 of #287: 27.0 was recorded as "27", the text printing "MedDRA version 27".
+        ('em$dictionary("MedDRA", 27.0)', "give the release as text"),
     ],
 )
 def test_r_refuses_what_python_refuses(tmp_path: Path, call: str, refusal: str) -> None:

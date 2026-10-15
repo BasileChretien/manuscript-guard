@@ -808,6 +808,11 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     if (!grepl("[A-Za-z]", name)) {
       stop("dictionary ", name, ": a dictionary is named by its name", call. = FALSE)
     }
+    if (!is.null(release) && !is.character(release)) {
+      # A number has no digits of its own: 27.0 is "27" here and "27.0" in Python.
+      stop("dictionary ", name, ": give the release as text, as the dictionary writes it ",
+           "(\"27.0\", not 27.0)", call. = FALSE)
+    }
     read <- NULL
     if (!is.null(release_file)) {
       full <- if (file.exists(release_file)) release_file else file.path(project_root, release_file)

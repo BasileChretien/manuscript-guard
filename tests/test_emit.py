@@ -1065,8 +1065,10 @@ def test_a_dictionary_is_its_release_as_the_analysis_has_it(scratch: Path) -> No
         (lambda em: em.dictionary("WHODrug"), "give its release"),
         (lambda em: em.dictionary("2019", "2019"), "named by its name"),
         (lambda em: em.dictionary("MedDRA", release_file="data/none.asc"), "no file"),
+        # Round 1 of #287: R printed 27.0 as "27", and a number has no digits of its own.
+        (lambda em: em.dictionary("MedDRA", 27.0), "give the release as text"),
     ],
-    ids=["disagrees with its file", "no release", "no name", "no file"],
+    ids=["disagrees with its file", "no release", "no name", "no file", "a number"],
 )
 def test_a_dictionary_whose_release_cannot_be_had_is_refused(scratch, call, says) -> None:
     _meddra(scratch, "26.1$English$$$$")

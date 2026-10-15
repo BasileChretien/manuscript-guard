@@ -1181,6 +1181,12 @@ class Emitter:
         """
         if not re.search(r"[A-Za-z]", name):
             raise ValueError(f"dictionary {name!r}: a dictionary is named by its name")
+        if release is not None and not isinstance(release, str):
+            # A number has no digits of its own: 27.0 is "27" in R and "27.0" here.
+            raise ValueError(
+                f"dictionary {name!r}: give the release as text, as the dictionary writes it "
+                f"(\"27.0\", not 27.0)"
+            )
         read = None
         if release_file is not None:
             path = Path(release_file)

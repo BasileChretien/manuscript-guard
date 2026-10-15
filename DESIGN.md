@@ -467,6 +467,28 @@ manuscript said Figure 1 showed the estimate "against the comparators" and the f
 one row. Every other gate passed it, because every number in the figure was correct. The
 sentence was what was wrong.
 
+## A figure file meets the journal's artwork guide
+
+A journal states the formats it takes, the resolution each kind of figure needs at the width
+it prints, the largest file and the longest legend. These were free text in a profile's
+`notes`, and the first anyone heard of them was the portal refusing the upload. A profile
+now carries them under `figures:`, read from the journal's own artwork guide, with the date
+it was read and whether every value was found on it (`confirmed`). G4 holds each figure the
+manuscript places to them: its formats (`figure-format`), a raster's resolution at the width
+it prints for its kind (`figure-resolution`), its printed height (`figure-height`), the size
+of each file (`figure-file-size`), and the paragraph that labels it (`legend-words`). A
+raster drawn much larger than it prints is said too (`figure-shrinks`): a figure drawn 165 mm
+wide and printed at 89 mm prints the 10 pt text a plotting library draws at 5.4 pt, though
+its resolution passes. The size of a raster is read from its own header, PNG, JPEG or TIFF,
+with the standard library.
+
+A figure's print width and kind are in its `<name>.guard.yaml` (`print_width_mm`, `kind`).
+Without them the narrowest width the journal prints at is taken, so that a resolution found
+too low is too low at any width, and the kind is halftone. A figure placed only in the
+supplement is held to the profile's `supplementary:` rules where it has them. All of it is a
+warning, and a note where the journal applies the rules only once the paper is accepted
+(`applies_from: acceptance`).
+
 ## The build
 
 The .docx is regenerated from Markdown every time and never edited or patched. That is what
@@ -711,6 +733,19 @@ list is first printed for others to read; while drafting, an entry can still be 
 placeholder, and it is reported and deferred. Whether a DOI is registered, names the work
 the entry describes, or was retracted is for a lookup that records what it found, and none
 is made here.
+
+**One work is cited under one key.** Two cited entries with the same DOI, PMID, PMCID or
+ISBN are one work, and the reference list prints it twice, numbered twice; G7 caught one key
+carried by two items in Zotero and not two keys for one work. Each identifier is compared as
+it names the work (`gates/duplicates.py`): a DOI undressed and in lower case, a PMID without
+leading noughts, a PMCID in capitals, an ISBN-10 as the ISBN-13 it is. Such a pair fails
+from internal-review (`reference-duplicate`), as the other findings about the reference
+list do. An ISBN names a book, and a chapter or a conference paper can carry its book's
+ISBN or DOI, so a part of a book (`@incollection`, `@inbook`, `@inproceedings` and their
+like) is compared by its title alone, and an ISBN is read only from a whole book, with its
+volume. Two cited entries with the same title of four words or more and no identifier in
+common are a warning (`reference-title-duplicate`): they may be one work, or a correction
+and the paper it corrects.
 
 ## Only a person can sign an attestation
 
@@ -1499,6 +1534,23 @@ an R `lm` or `glm`, whose fit keeps no sandwich estimate. G15 warns
 cluster-robust (`cluster`, or a HAC by group or panel) nor a mixed model or estimating
 equations. The R emitter finds the data in the fit (`glm`) or where the call names it
 (`lm`), and leaves out the rows the fit dropped.
+
+**Two models compared are fitted on the same rows.** A crude and an adjusted estimate are
+set side by side to say what the adjustment did, and a covariate's missing values drop rows
+from the adjusted model only: the change between the two is then partly the rows'. Equal
+counts can hide different rows, so each card records a digest of the labels of the rows
+its fit used (`rows_sha256`: pandas' index, R's row names). G15 warns
+(`models-on-different-rows`) where two models of one outcome, one's terms a strict subset
+of the other's, were fitted on different rows. The same terms on different rows are a
+subgroup, by design, and are left alone.
+
+**A Poisson regression of a binary outcome has a robust variance.** Poisson regression of a
+binary outcome estimates a risk ratio, and its model-based variance overstates the error;
+a sandwich variance corrects it (Zou, Am J Epidemiol 2004;159:702-6). G15 warns
+(`poisson-binary-variance`) on a Poisson model of an outcome declared binary, or of a
+comparison written in the formula, whose card records model-based standard errors. A fit
+with an offset or an exposure is left alone: events over person-time estimate a rate ratio,
+and that model's own variance is the right one. Each emitter records the offset on the card.
 
 ## A step of the code and the text that points at it
 
@@ -5040,6 +5092,14 @@ Added by the adversarial review, verified and **not** fixed:
   digest can be recomputed. It is a separate command because it executes the project's own
   code, which a gate must never do. It cannot make a non-deterministic analysis agree with
   itself; it reports the disagreement and says to set a seed.
+- **Two models' rows are compared by their labels, within one language.** pandas numbers
+  rows from 0 and R from 1, so a model fitted in Python and one fitted in R on the same
+  data are always taken for different rows; and two data frames whose labels were reset
+  between the fits are too. A count with a person-time denominator modelled with no offset
+  is not yet read: it needs the rate the analysis declares, which nothing records. An R
+  `lm` or `glm` records "model-based" standard errors whatever is done after the fit, so a
+  modified Poisson regression whose sandwich variance is computed beside the fit
+  (`sandwich::vcovHC`) is still warned.
 - **Numbers written as words escape the tokeniser.** "four thousand and twenty-one" is not
   read. Vulgar fractions and enclosed digits now are. Number words are left alone on
   purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and
@@ -5130,6 +5190,16 @@ Added by the adversarial review, verified and **not** fixed:
   are counted under it together, as two whose patterns begin alike are. Before the review
   of #153 the second one's matches replaced the first's, under either kind of shared name,
   and a number the first was written for failed as unbound.
+- **A figure file is read for its pixels only where it is a PNG, JPEG or TIFF.** The text
+  size and line width of a vector figure, SVG, PDF or EPS, and the fonts a PDF embeds, are
+  not read yet, nor is a raster inside an EPS or PDF. `min_line_pt` is in the profile and
+  checked against nothing. A figure the build places is the first of its files in the
+  build's order, PNG first, and every file of it is held to the rules, so a figure kept as
+  PNG and TIFF is held to the journal's limits twice. A JPEG whose JFIF header records no
+  resolution, or a PNG with no `pHYs` chunk, is not said to shrink: how large it was drawn
+  is unknown. A legend is the paragraph straight after the figure that opens with "Figure"
+  and its number; a legend written above it, or in the figure, is not counted. A megabyte
+  is 1,048,576 bytes, the larger of the two a journal may mean.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
@@ -5766,6 +5836,13 @@ Closed since, and why each mattered:
   first three digits are no ISBN prefix. An ISBN-10 that opens with 978 or 979, followed in
   the same field by another ISBN and parted from it by a space only, is read as the start
   of an ISBN-13 and reported.
+- **Two keys for one work are found by an identifier or a title, and only among what is
+  cited.** Two entries of one work with no identifier in common and titles that differ, a
+  preprint and its article, or a translation, are not found. A title of fewer than four
+  words is not compared. A chapter or a conference paper cited twice is found only by its
+  title, a warning, and a book cited twice with a volume in one entry only is not found. A
+  DOI is compared as the file writes it, so `\_` is not read as `_` nor `%28` as `(`, and a
+  title's TeX accents and commands are read as letters: `Caf\'e` is two words.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
   citation, no reporting guideline, no analysis code, no fitted model or no revision round
   has nothing for G3, G10, G7, G8r, G9, G15 or G13 to read, and each passes with its count

@@ -39,7 +39,7 @@ having done it, so write what you actually saw in each case.
 | `values-match-results` | Does every number shown match `results/`, to the digit? Do the marks sit where those values belong on the scale? |
 | `axes-labelled-and-scaled` | Do axes carry units? Is a log or truncated scale declared rather than left to be inferred? |
 | `caption-agrees` | Does the caption describe the figure that is actually drawn — the same panels, the same series, the same comparison? |
-| `legend-and-marks-explained` | Is every mark, colour, line style and series accounted for? Is anything drawn that nothing names? |
+| `legend-and-marks-explained` | Is every mark, colour, line style and series accounted for? Is anything drawn that nothing names? Does the legend state n, and whether it counts biological or technical replicates; what the error bars or ribbons are (SD, SE or a CI, and its level); any smoothing; what each significance marker means, and whether it was corrected for multiple comparisons? Where intervals are drawn at separate time points, does it say they are not an interval for the change between them? |
 | `no-unexplained-number` | Is anything visible that is neither a result nor part of the scale? |
 | `scale-not-misleading` | Does the visual encoding overstate the finding? Baseline not at zero, area used for a linear quantity, a ratio on a linear axis? |
 | `readable-and-accessible` | Legible at print size? Does any information depend on colour alone? Do the lines, markers and shading that carry meaning stand out from what is beside them, at a contrast of at least 3:1 (WCAG 2.2, success criteria 1.4.1 and 1.4.11)? |

@@ -65,7 +65,9 @@ said they would do":
 - Analysis: the estimator, the model, the covariates, what happens to missing data, any
   threshold, and how many comparisons are being made.
 - Sample size: what you expect to have and what it can detect, or why that cannot be
-  calculated in advance.
+  calculated in advance. A limit on the data or the money available is a justification
+  when it is said, with the smallest effect that number can detect (Lakens, *Collabra:
+  Psychology* 8:33267, 2022, sets out the ways a sample size is justified).
 - Sensitivity analyses: which ones, and which result would change your conclusion.
 
 Numbers in the plan are not checked. G2 reads only `manuscript/`, and the plan does not go

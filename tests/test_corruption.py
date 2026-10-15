@@ -8891,6 +8891,10 @@ def test_what_a_finding_asks_is_filed_said_and_sealed(project: Path, monkeypatch
 
     from manuscript_guard.panel.reply import parse_reply
 
+    # Round 1 of #276: the prompt shows `ask`, and a model that leaves it out writes null.
+    left_out = json.loads(_reply_with([{"severity": "comment", "ask": None, "finding": "x"}]))
+    found = parse_reply(json.dumps(left_out))["findings"]
+    assert found == [{"severity": "comment", "finding": "x"}]
     with pytest.raises(Exception, match="ask"):
         parse_reply(json.dumps({**json.loads(_reply_with(asked)), "findings": [
             {**asked[0], "ask": "everything"}]}))  # fmt: skip

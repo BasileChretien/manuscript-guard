@@ -4871,6 +4871,25 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and
   "%", "years" and "y"), is no longer reported as written two ways.
+- **G8 holds only the arithmetic an analysis declares.** `em.relation` and `em.flow` say
+  which results are a sum, a difference, a ratio or an order of which, and G8 checks those.
+  A subgroup total nobody declared is not checked, and nothing searches the prose for numbers
+  that might add up. That is the price of checking nothing by guesswork.
+- **A relation between values is exact, so a value emitted rounded fails it.** Whole numbers
+  are compared exactly and floats to their last bits (a relative 1e-9). A script that emits
+  `round(rate, 1)` instead of the rate breaks a ratio that holds, and is told to emit the
+  value unrounded and let the display round it.
+- **The printed arithmetic reads the first number of each display.** A display that is not a
+  rounding of its own value ("<0.001", a rate printed per 1,000 of a value held per person,
+  "1.2 × 10⁻³") is left out of it, and the relation is then held to the values alone. A
+  share held as a fraction and printed as a percentage is read as a percentage. The warning
+  is meant to fire routinely: percentages rounded one by one often miss 100, and the text
+  may say so rather than change a number.
+- **A flow's record is checked step by step, and nothing more.** "One study, several
+  reports" (PRISMA 2020) is not a subtraction, so a flow stops at the reports and the studies
+  are an `at_most` of them. One record excluded for several reasons is `overlapping=True`,
+  which waives the sum of that step's reasons but not its total. The flow diagram is not yet
+  drawn from the record: a figure script reads the counts from the results like any other.
 - **A UTF-16 input without a BOM is normalised as if it were 8-bit text.** Its 0x0D and 0x0A
   bytes can belong to ordinary characters, so an edit that swaps one such character for
   another (U+4E0D for U+4E0A) can leave the digest unchanged and pass G1. Exports that write

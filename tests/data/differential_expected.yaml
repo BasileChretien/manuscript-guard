@@ -37,5 +37,5 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G7 reads every entry of the committed references.bib for its identifiers and fields,
-      and counts them, `references_read`
+      G8 counts the relations and flows the analysis declared, `relations_checked`, which
+      is 0 in a project that declares none

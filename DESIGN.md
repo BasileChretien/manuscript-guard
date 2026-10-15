@@ -4293,6 +4293,21 @@ through. The second missed "Add the missing reference to the paper."; widened, i
 the author to add the reference to the paper" for the agent adding it. A sentence that
 gives such an instruction is a reviewer's to catch.
 
+**A skill stays a size an agent reads whole.** The Agent Skills specification recommends a
+`SKILL.md` body under 5000 tokens and under 500 lines (agentskills.io, Specification,
+"Progressive disclosure", read 2026-10-15), since the whole body is loaded when the skill is.
+`tests/test_plugin.py` holds every skill to both, counting a token as four characters; a
+skill over them is named in `OVER` with the reason until it is brought under, and the list
+may only shrink. `word-roundtrip` was 6869 tokens. What it needs only sometimes, the
+refusals of `import` and the handling of comments and several co-authors, went to two pages
+under its `references/` folder, which the skill points to where it needs them; it is now
+4071. The plugin may hold such pages, one level down, and nothing else besides the skills,
+its manifest and its hooks. Every link in a skill or a reference page resolves inside the
+plugin, and every path a skill names (a code span or a link holding a folder) is found: in
+the skill's folder, in the example, in what `init` makes, or in the package. The paths that
+name what the tool writes, an example of a name, or no path at all are listed by name with
+the reason, and a listed path no longer named fails the test too.
+
 ## Generated inputs belong to the suite
 
 Between 24 September and 6 October 2026, 192 of the 516 independent-review verdicts posted

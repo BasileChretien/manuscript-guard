@@ -146,7 +146,9 @@ def _run_gates(
     ):
         report = _guarded(name, gate, unreadable)
         if report is None:
-            stopped.append(name)
+            # A gate run as several checks stopped once, and is named once.
+            if name not in stopped:
+                stopped.append(name)
         else:
             gate_reports.append(report)
 

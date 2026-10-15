@@ -1027,3 +1027,15 @@ def test_software_installed_and_never_imported_is_refused(scratch: Path) -> None
 def test_software_that_is_not_installed_is_refused(scratch: Path) -> None:
     with pytest.raises(ValueError, match="no installed distribution"):
         emitter(scratch).software("no-such-distribution-anywhere")
+
+
+def test_a_unit_missing_in_a_row_the_model_used_is_refused(scratch: Path) -> None:
+    """Round 1 of #268: a missing unit was a unit of its own in Python and one in all in R."""
+    pd = pytest.importorskip("pandas")
+    smf = pytest.importorskip("statsmodels.formula.api")
+
+    data = pd.DataFrame({"y": [1.0, 2.0, 3.0, 4.0, 5.0], "x": [1.0, 2.0, 3.0, 4.0, 6.0],
+                         "pid": [1.0, 1.0, float("nan"), 2.0, 2.0]})  # fmt: skip
+    fit = smf.ols("y ~ x", data).fit()
+    with pytest.raises(ValueError, match="missing in 1 of the rows"):
+        emitter(scratch).model("m", fit, name="M", unit="pid")

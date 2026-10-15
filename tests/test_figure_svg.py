@@ -47,6 +47,21 @@ def _svg(tmp_path: Path, body: str, head: str = HEAD) -> Svg:
         ('<symbol id="s"><text font-size="10">a</text></symbol><use href="#s"/>', {"a": 10.0}),
         ('<text x="1" y="1" font-size="10" display="none">a</text>', {}),
         ('<g style="display: none"><text x="1" y="1">a</text></g>', {}),
+        # Round 1 of #302: matplotlib writes a bold text's weight before its size.
+        ("<text x=\"1\" y=\"1\" style=\"font: 700 4px 'DejaVu Sans'\">a</text>", {"a": 4.0}),
+        ("<text x=\"1\" y=\"1\" style=\"font: italic 700 5px/1.2 sans-serif\">a</text>",
+         {"a": 5.0}),
+        # And Illustrator sets a size through a class, over the attribute, under `style`.
+        ('<style>.st0{font-size:5px;}</style><text class="st0" font-size="9">a</text>',
+         {"a": 5.0}),
+        ('<style>.st0{font-size:5px}</style><text class="st0" style="font-size: 7px">a</text>',
+         {"a": 7.0}),
+        ('<style>text{font-size:9px} .s.t{font-size:4px}</style>'
+         '<text class="s t">a</text><text class="s">b</text>', {"a": 4.0, "b": 9.0}),
+        ('<style>.fig text{font-size:3px} .other text{font-size:30px}</style>'
+         '<g class="fig"><g><text>a</text></g></g>', {"a": 3.0}),
+        ('<style><![CDATA[ /* a note */ #t { font-size: 6pt } ]]></style><text id="t">a</text>',
+         {"a": 8.0}),
     ],
 )  # fmt: skip
 def test_a_text_s_size_is_carried_through_everything_around_it(
@@ -71,6 +86,13 @@ def test_a_text_s_size_is_carried_through_everything_around_it(
         ('<defs><path id="p" d="M0 0L0 3" stroke="black" stroke-width="0.4"/></defs>'
          '<use xlink:href="#p" x="5" y="5"/><use xlink:href="#p" transform="scale(0.5)"/>',
          [0.4, 0.2]),
+        # Round 1 of #302: svglite sets a black line's stroke once, in its stylesheet.
+        ('<style>.svglite line, .svglite path { fill: none; stroke: #000000; }</style>'
+         '<g class="svglite"><path d="M0 0L1 1" style="stroke-width: 0.2;"/>'
+         '<line x1="0" y1="0" x2="1" y2="1" style="stroke-width: 0.5; stroke: #EBEBEB;"/>'
+         '<rect width="1" height="1" style="stroke-width: 0.9;"/></g>', [0.2, 0.5]),
+        ('<style>.svglite g.glyphgroup path { stroke: none; } .svglite path { stroke: #000; }'
+         '</style><g class="svglite"><g class="glyphgroup"><path d="M0 0L1 1"/></g></g>', []),
     ],
 )  # fmt: skip
 def test_a_line_s_width_is_carried_through_everything_around_it(

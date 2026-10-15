@@ -472,9 +472,10 @@ An SVG figure is scaled to the width it prints at, and its text and lines with i
 smallest text and its thinnest line are held to the journal's least at that width
 (`figure-text-small`, `figure-line-thin`), and a text anchored outside what it shows, its
 `viewBox`, is said to be cut off (`figure-text-clipped`). Each text's size and each line's
-width is read from the SVG (`gates/figure_svg.py`): set on the element or inherited, in
-units whatever unit it is written in, SVG's 16 where none is set, an em or a percentage of
-the size around it. It is carried through every transform around the element, a `<use>`
+width is read from the SVG (`gates/figure_svg.py`): set on the element, by the figure's own
+stylesheet (svglite strokes every black line there, Illustrator sets sizes through
+classes) or inherited, in units whatever unit it is written in, SVG's 16 where none is
+set, an em or a percentage of the size around it. It is carried through every transform around the element, a `<use>`
 read where it is used and nothing in `<defs>` where it is defined, and a `<tspan>` is a text
 of its own, as a sub- or superscript is drawn. A text's size is its height through the
 transforms, the length its upright takes: under `scale(2, 0.5)` a text is half its size,
@@ -5217,9 +5218,10 @@ Added by the adversarial review, verified and **not** fixed:
   read at the size `Tf` gives; a text's rise and horizontal scaling are not read, nor are
   the lines a Type 3 glyph draws. A font is said where the page's or a form's resources name
   it, whether any text uses it or not.
-- **An SVG's text and lines are read from its elements, not drawn.** A size or a width a
-  stylesheet sets through a class or a selector is not read: the element's own, or SVG's
-  16 and 1, is. A text is cut off only where its anchor is outside the `viewBox`; one that
+- **An SVG's text and lines are read from its elements, not drawn.** A `<style>` rule is
+  read where its selector is made of types, classes and ids joined as descendants or
+  children; one with a pseudo-class, an attribute or a sibling is not, and `!important`
+  wins nothing. A text is cut off only where its anchor is outside the `viewBox`; one that
   starts inside and runs past the edge, or is hidden by a `clipPath`, is not said. A line
   with `vector-effect: non-scaling-stroke` is widened all the same, a `<marker>` is not read,
   a `stroke-width` in percent is taken of the font size and not of the figure, and a text's

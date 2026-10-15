@@ -2165,6 +2165,203 @@ def test_a_second_files_front_matter_is_not_a_required_section(project: Path) ->
     assert after.counts["main_text_words"] == before.counts["main_text_words"] + 3
 
 
+# A section found by its heading. G4 counted "2. Methods" and "Patients and methods" as the
+# required Methods, and G9 read neither: with a wrong parameter in `methods.lock`, it warned
+# under "# Methods" and said nothing under the other two. The abstract was found only as
+# "Abstract", so The Lancet's "Summary" was main text and the abstract's limit read nothing.
+
+
+def _methods_retitled(root: Path, heading: str) -> None:
+    main = main_md(root)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("# Methods\n", f"# {heading}\n", 1),
+        encoding="utf-8",
+    )
+
+
+def _wrong_alpha_in_the_lock(root: Path) -> None:
+    from manuscript_guard.gates import reconcile
+
+    reconcile(load_project(root)[0], parameters={"alpha": "0.07"})
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "Methods",
+        "2. Methods",
+        "2.1 Methods",
+        "II. Methods",
+        "Patients and methods",
+        # each a heading main's G4 took for the Methods, which round 2 of #246 found refused
+        "Materials & methods",
+        "**2. Methods**",
+        "[Methods]{.smallcaps}",
+        "2.Methods",
+        "Section 2: Methods",
+        "Laboratory methods",
+        "Study design, setting, participants and methods",
+    ],
+)
+def test_a_wrong_parameter_is_found_under_any_heading_g4_counts_as_the_methods(
+    project: Path, heading: str
+) -> None:
+    from manuscript_guard.gates import check_methods
+
+    _methods_retitled(project, heading)
+    _wrong_alpha_in_the_lock(project)
+    report = check_methods(load_project(project)[0])
+    assert any(
+        f.code == "methods-parameter-absent" and "alpha = 0.07" in f.message
+        for f in report.warnings
+    ), report.render(project)
+    assert "methods-not-found" not in {f.code for f in report.findings}
+    assert "missing-required-section" not in codes(_journal(project))
+
+
+def test_a_methods_and_results_section_is_no_methods_for_g2(project: Path) -> None:
+    """A research letter's combined section. Taken for the Methods, it let every threshold
+    convention through under its results: a reported p value passed as the alpha."""
+    from manuscript_guard.classify import is_methods
+
+    assert not is_methods(("Methods and results",))
+    assert not is_methods(("2. Results and methods",))
+    _methods_retitled(project, "Methods and results")
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "# Methods and results\n", "# Methods and results\n\nThe difference was "
+            "significant (p < 0.001).\n", 1
+        ),
+        encoding="utf-8",
+    )
+    assert any(
+        f.code == "unclassified-number" and "0.001" in f.message
+        for f in gate_report(project).failures
+    )
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "A method for signal detection",
+        # round 2 of #246: a title the word heads is over the Results, and is no Methods
+        "Statistical methods for signal detection",
+        "Methods for detecting adverse drug reactions",
+    ],
+)
+def test_a_paper_s_title_written_as_a_heading_is_not_its_methods(
+    project: Path, title: str
+) -> None:
+    """With the title an H1 over `##` sections, a heading holding the word was the first
+    that named the Methods, and G9 read the whole paper as them: a wrong parameter stated in
+    the Results passed."""
+    from manuscript_guard.gates import check_methods
+    from manuscript_guard.gates.methods import methods_in
+
+    text = (
+        f"# {title}\n\n## Background\n\nWords.\n\n"
+        "## Limitations of existing methods\n\nWords.\n\n## Methods\n\nNo alpha here."
+        "\n\n## Results\n\nAn alpha of 0.07 was used.\n"
+    )
+    assert methods_in(text) == "\n\nNo alpha here.\n\n"
+    main = main_md(project)
+    body = main.read_text(encoding="utf-8").split("---\n", 2)
+    demoted = body[2].replace("\n# ", "\n## ")
+    main.write_text(f"---{body[1]}---\n\n# {title}\n{demoted}", encoding="utf-8")
+    _wrong_alpha_in_the_lock(project)
+    main.write_text(
+        main.read_text(encoding="utf-8") + "\nAn alpha of 0.07 was used.\n", encoding="utf-8"
+    )
+    report = check_methods(load_project(project)[0])
+    assert any(
+        f.code == "methods-parameter-absent" and "alpha = 0.07" in f.message
+        for f in report.warnings
+    ), report.render(project)
+
+
+def test_no_heading_that_names_the_methods_is_said(project: Path) -> None:
+    from manuscript_guard.gates import check_methods
+
+    _methods_retitled(project, "Approach")
+    _wrong_alpha_in_the_lock(project)
+    report = check_methods(load_project(project)[0])
+    assert [f.code for f in report.warnings if f.code.startswith("methods-")] == [
+        "methods-not-found"
+    ], report.render(project)
+    assert "missing-required-section" in codes(_journal(project))
+
+
+def test_a_structured_abstract_s_results_are_not_the_paper_s(project: Path) -> None:
+    """Every required section, not only the Methods: the abstract's "Results" answered the
+    journal's required Results in a paper whose body called them something else."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("\n# Results\n", "\n# Findings\n", 1)
+    main.write_text(
+        text.replace("# Abstract\n\n", "# Abstract\n\n## Results\n\nA ratio.\n\n", 1),
+        encoding="utf-8",
+    )
+    assert any(
+        f.code == "missing-required-section" and "Results" in f.message
+        for f in _journal(project).failures
+    )
+
+
+def test_a_structured_abstract_s_methods_are_not_the_paper_s(project: Path) -> None:
+    """The required sections were looked for among every heading, the abstract's own
+    among them, so a paper with no Methods section passed on its abstract's subheading."""
+    _methods_retitled(project, "Approach")
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("# Abstract\n\n", "# Abstract\n\n## Methods\n\nA cohort.\n\n", 1),
+        encoding="utf-8",
+    )
+    assert any(
+        f.code == "missing-required-section" and "Methods" in f.message
+        for f in _journal(project).failures
+    )
+
+
+def _abstract_retitled(root: Path, heading: str, words: int = 0) -> None:
+    main = main_md(root)
+    text = main.read_text(encoding="utf-8")
+    padding = " ".join(["more"] * words)
+    main.write_text(
+        text.replace("# Abstract\n\n", f"# {heading}\n\n{padding}\n\n", 1), encoding="utf-8"
+    )
+
+
+def _profile_says(root: Path, **structure: str) -> None:
+    path = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["structure"].update(structure)
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def test_an_abstract_the_profile_calls_summary_is_held_to_the_abstract_s_limit(
+    project: Path,
+) -> None:
+    _abstract_retitled(project, "Summary", words=400)
+    _profile_says(project, abstract_title="Summary")
+    report = _journal(project)
+    assert any(
+        f.code == "over-journal-limit" and f.message.startswith("abstract:")
+        for f in report.findings
+    ), report.render(project)
+    assert "abstract-not-found" not in {f.code for f in report.findings}
+
+
+def test_an_abstract_no_heading_names_is_said(project: Path) -> None:
+    """"Summary" with no `abstract_title`: the abstract's limit read nothing, and its words
+    counted as main text."""
+    _abstract_retitled(project, "Summary", words=400)
+    report = _journal(project)
+    found = [f for f in report.warnings if f.code == "abstract-not-found"]
+    assert len(found) == 1 and "300 words" in found[0].message, report.render(project)
+    assert report.counts["abstract_words"] == 0
+
+
 def test_a_comment_in_the_front_matter_is_not_a_required_statement(project: Path) -> None:
     """`# Funding` is a heading in Markdown and a comment in YAML. Inside the front matter it
     satisfied the journal's funding statement, and the build, which strips the block,

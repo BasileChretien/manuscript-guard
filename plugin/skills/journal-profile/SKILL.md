@@ -107,6 +107,7 @@ structure:
   required_sections: [Introduction, Methods, Results, Discussion]
   abstract_structured: true
   abstract_headings: [Introduction, Objective, Methods, Results, Conclusions]
+  # abstract_title: Summary     # only where the journal does not call it "Abstract"
 
 required_statements:
   - id: data-availability

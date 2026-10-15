@@ -107,6 +107,11 @@ structure:
     - Results
     - Discussion
 
+  # The heading the journal gives the abstract, where it is not "Abstract": The Lancet's
+  # is "Summary". The section under it is then read as the abstract, for its limit and its
+  # headings. Leave it out where the journal says "Abstract".
+  # abstract_title: Summary
+
   # true when the abstract must carry headings, false when it must be a single paragraph.
   # Delete the line when the journal does not say.
   abstract_structured: true

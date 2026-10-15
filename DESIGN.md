@@ -4309,7 +4309,8 @@ A property that passes on a broken rule holds nothing, and whether it does is de
 the generators. So each rule a property holds is broken in place, one at a time, and the
 property that is there for it has to fail. `BROKEN` in `tests/test_properties.py` names each
 broken rule, in a sentence that says what is broken, beside the property that has to catch
-it; `CHANGED` in `tests/test_differential.py` names the lines the comparison changes. The
+it, and `BROKEN` in `tests/test_generated_sessions.py` the ways the import is broken, below;
+`CHANGED` in `tests/test_differential.py` names the lines the comparison changes. The
 lists are kept there and not here: kept by hand in this file, every pull request that added
 a case changed the same lines, and each merge put the next one in conflict.
 The import is broken three times the same way: a rewording written over the next
@@ -9067,10 +9068,11 @@ Closed since, and why each mattered:
     meant, in the same reading, is listed with the others and passes: the list is there
     to be read. So does a reading the base cannot make, once the pull request says it
     changed what the reading goes through: nothing of it is compared.
-  - The properties were seen to fail on each broken rule of `BROKEN`, and the comparison
-    on each changed line of `CHANGED`. That is a spot check, and not the mutation runs four of the reviews
-    made, which changed every line of a diff. Two of the three broken imports, and the
-    changed line of the import, are shown by the simplest session alone.
+  - The properties were seen to fail on each broken rule of the two `BROKEN`s, and the
+    comparison on each changed line of `CHANGED`. That is a spot check, and not the
+    mutation runs four of the reviews made, which changed every line of a diff. Two of
+    the three broken imports, and the changed line of the import, are shown by the
+    simplest session alone.
   - The hard limit ends the whole run, not the one test: nothing else stops a pattern
     that is backtracking in C.
 

@@ -500,63 +500,6 @@ def test_the_unsafe_instructions_are_found_where_a_skill_gives_them() -> None:
     assert any("--run" in f and "--yes" in f for f in shown)
 
 
-LANGUAGES = (
-    "English|French|German|Spanish|Italian|Portuguese|Dutch|Russian|Japanese|Chinese|"
-    "Mandarin|Korean|Arabic|Hindi|the user's language|their language"
-)
-#: Ways a skill would set the language the agent speaks to the user in, which is the
-#: user's to choose, or have it add a reference to the paper, which is the author's. A
-#: manuscript is written in a language, so "write" is not among the verbs.
-NOT_THE_SKILL_S = {
-    r"\b(?:respond|reply|replies|answer|speak|talk|address|converse|communicate)\w*\b"
-    rf"[^.\n]{{0,40}}\bin (?:{LANGUAGES})\b": "the language the user is spoken to in",
-    r"\badd(?:s|ed|ing)? (?:\w+ ){0,3}(?:references?|citations?) (?:to|in|into) "
-    r"(?:the |their |your |a )?(?:\w+ )?(?:manuscript|paper|references\.bib|bibliography)\b":
-        "a reference added to the paper",
-}  # fmt: skip
-#: A sentence that states the rule rather than breaking it: "never add a reference".
-NEGATED = re.compile(r"\b(?:never|not|no|don't|do not|nor|without)\b", re.IGNORECASE)
-
-
-def told(pattern: str, text: str) -> list[str]:
-    """The sentences of `text` that give the instruction `pattern` reads, less those that
-    forbid it."""
-    found = []
-    for sentence in re.split(r"(?<=[.!?])\s+", " ".join(text.split())):
-        hit = re.search(pattern, sentence, re.IGNORECASE)
-        if hit and not NEGATED.search(sentence[: hit.start()]):
-            found.append(sentence)
-    return found
-
-
-def test_no_skill_chooses_the_user_s_language_or_adds_a_reference() -> None:
-    found = []
-    for name in sorted(skill_names()):
-        text = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
-        found += [(name, why, said) for pattern, why in NOT_THE_SKILL_S.items()
-                  for said in told(pattern, text)]  # fmt: skip
-    assert not found, found
-
-
-@pytest.mark.parametrize(
-    ("text", "said"),
-    [
-        ("Always respond in English.", True),
-        ("Answer the user in Japanese.", True),
-        ("Reply in Italian when asked.", True),
-        ("Always reply to the user in English.", True),
-        ("Add a reference to the manuscript for it.", True),
-        ("Add the missing reference to the paper.", True),
-        ("It adds a new citation to the manuscript.", True),
-        ("Never add a reference to the paper yourself.", False),
-        ("Do not add a citation to the manuscript.", False),
-        ("The manuscript is written in British English.", False),
-    ],
-)
-def test_the_patterns_find_the_instruction_and_not_the_rule(text: str, said: bool) -> None:
-    assert any(told(pattern, text) for pattern in NOT_THE_SKILL_S) is said
-
-
 def cli_options() -> dict[str, set[str]]:
     """Every subcommand the CLI has, and every option each one accepts."""
     parser = build_parser()

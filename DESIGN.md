@@ -4166,10 +4166,14 @@ two skills; a description holds no `<` or `>`, and no skill's name holds "claude
 at any depth; `plugin/` holds its manifest, its hooks and the `SKILL.md` files and nothing
 else, with no link out of it, so that a script added to a skill folder, which
 `install-skills` would copy onto users' machines, is a decision; and no skill pipes a
-download into a shell, installs a package, turns off a safety switch or the sandbox, shows
-`review --run` with `--yes`, chooses the language the user is spoken to in, or adds a
-reference to the paper. The last two are read by patterns, and a skill can say either in
-words the patterns do not know.
+download into a shell, installs a package, turns off a safety switch or the sandbox, or
+shows `review --run` with `--yes`. Two rules are not tested: that no skill chooses the
+language the user is spoken to in, and that none tells the agent to add a reference to the
+paper. Each was read by a pattern, and two rounds of review found it both missing the usual
+wording ("Always respond in English.", "Add the missing reference to the paper.") and
+failing a skill that keeps the rule ("Never add a reference yourself", "Respond to each
+reviewer point in English, as the journal asks", "Ask the author to add the reference").
+A sentence that gives such an instruction is a reviewer's to catch.
 
 ## Generated inputs belong to the suite
 

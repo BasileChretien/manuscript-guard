@@ -93,6 +93,9 @@ COMMANDS = {
     "fetch": Zero("a reporting guideline's published checklist",
                   why="it downloads what it is named, and refuses a name it does not know"),
     "hook": Zero("an agent tool's event", why="a hook never stops the tool that called it"),
+    "impact": Zero("the records the gates read, for each file named or changed",
+                   why="it says so when nothing has changed, and when nothing the gates "
+                   "record depends on a file"),
     "import": Zero("a co-author's returned .docx",
                    why="a document it cannot read back is refused (exit 1)"),
     "init": Zero("nothing: it writes a project", why="it makes the files the others read"),

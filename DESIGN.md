@@ -5666,7 +5666,13 @@ Closed since, and why each mattered:
   script that runs it, a variable that holds `--yes`, or a shell the hooks are not
   registered for is not held. Nor is an `attested_by` written by a shell command, a
   script, or under a tool with no hooks. The `review-panel` skill still tells the agent to
-  show the dry run and wait for the author's word.
+  show the dry run and wait for the author's word. The command is read as typed, quotes
+  included, so a command that only prints the words, `echo "manuscript-guard review --run
+  --yes"`, is asked about too, and refused under Codex.
+- **An attester is asked about by name, not by the value it attests.** An edit that changes
+  a value beside an existing `attested_by` costs no prompt, and the name then stands for a
+  value its owner never read; so does one that moves a name from one entry to another. The
+  names in the file are compared before and after, not entry by entry.
 - **A call that has been made cannot be recalled.** Ctrl+C stops further calls; the ones
   in flight, one for each provider at most, have left the machine, and the command waits
   for them, up to the ten minutes a call may take. A call a provider had asked to be

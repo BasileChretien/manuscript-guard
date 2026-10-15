@@ -948,6 +948,10 @@ def test_naming_an_attester_is_put_to_the_author(in_claude_code: Path, capsys) -
         # A name added, or changed: the author's statement.
         ("    attested_on: 2026-08-03", "    attested_on: 2026-08-03\n    attested_by: Cy", True),
         ('attested_by: "Ada Example"', "attested_by: Ada Exemple", True),
+        # Round 1 of #264: the name alone, with no key in the stretch.
+        ('"Ada Example"', '"Bo Example"', True),
+        # A name YAML reads as none names nobody.
+        ("    attested_on: 2026-08-03", "    attested_on: 2026-08-03\n    attested_by: ~", False),
         # The names as they were: a value or a date changed beside them.
         ("    value: 41200\n", "    value: 41300\n", False),
         ('    attested_by: "Ada Example"\n    attested_on: 2026-08-03',

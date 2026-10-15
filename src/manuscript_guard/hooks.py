@@ -613,10 +613,17 @@ def _attesters(text: str) -> list[str]:
     """The names an attested.yaml text gives as attesters, each as often as it is given."""
     names = []
     for found in _ATTESTER.finditer(text):
-        name = found["name"].strip().strip("\"'").strip()
+        written = found["name"].strip()
+        if written in _NO_NAME:
+            continue
+        name = written.strip("\"'").strip()
         if name:
             names.append(name)
     return names
+
+
+#: What YAML reads as no value at all, written unquoted.
+_NO_NAME = frozenset({"null", "Null", "NULL", "~"})
 
 
 def _attests(path: Path, payload: dict) -> str | None:
@@ -660,22 +667,31 @@ def _attests(path: Path, payload: dict) -> str | None:
 
 
 def _texts_of(payload: dict, path: Path) -> tuple[list[str], list[str]]:
-    """The attesters a file named before an edit and after it, as far as the edit shows.
+    """The attesters a file named before an edit and after it.
 
-    A Write replaces the file, so before is the file on disk. An Edit replaces one stretch,
-    so before and after are that stretch. A patch removes and adds lines, and before and
-    after are those lines of this file's part of it.
+    A Write replaces the file, so before is the file on disk and after is what is written. An
+    Edit is applied to the file on disk, so that a name changed on its own, `"Ada"` to
+    `"Bo"`, with no `attested_by:` in the stretch, is read as the change it is (round 1 of
+    #264). Where an edit's text is not in the file, the tool will refuse it, and the two
+    stretches are compared. A patch removes and adds whole lines, and before and after are
+    those lines of this file's part of it.
     """
     tool_input = payload.get("tool_input", {})
+    on_disk = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
     if "content" in tool_input:
-        on_disk = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
         return _attesters(on_disk), _attesters(str(tool_input["content"]))
     edits = tool_input.get("edits") or [tool_input]
     if any("new_string" in edit for edit in edits):
-        return (
-            [name for edit in edits for name in _attesters(str(edit.get("old_string", "")))],
-            [name for edit in edits for name in _attesters(str(edit.get("new_string", "")))],
-        )
+        after = on_disk
+        for edit in edits:
+            old, new = str(edit.get("old_string", "")), str(edit.get("new_string", ""))
+            if not old or old not in after:
+                return (
+                    [name for one in edits for name in _attesters(str(one.get("old_string", "")))],
+                    [name for one in edits for name in _attesters(str(one.get("new_string", "")))],
+                )
+            after = after.replace(old, new, -1 if edit.get("replace_all") else 1)
+        return _attesters(on_disk), _attesters(after)
     command = tool_input.get("command")
     if payload.get("tool_name") == PATCH_TOOL and isinstance(command, str):
         removed, added = _patch_lines(command, path, Path(payload.get("cwd") or Path.cwd()))

@@ -19,6 +19,15 @@ Only `session-start` and the submission guard run the gates, and those fire rare
 **A hook blocks only what is unambiguous.** Writing to a machine-written results file is
 always wrong. Prose that trips the AI-writing lint is not, so that is reported as context,
 never denied.
+
+**A decision that is the author's is put to the author.** Sending the manuscript to model
+providers without being asked (`review --run --yes`), and naming who attested a value they
+read in a source (`attested_by`), are statements only the author can make, and nothing else
+can tell an agent's from theirs. There the hook answers "ask", and the agent tool shows the
+person the call and the reason before it runs. Claude Code honours "ask". Codex reads it and
+does not support it yet: it fails the hook and lets the call through. So where the tool is
+not known to ask, the hook refuses the call instead, with the same reason, and the author
+makes it themselves.
 """
 
 from __future__ import annotations
@@ -160,6 +169,42 @@ def _deny(event: str, reason: str) -> int:
             "hookSpecificOutput": {
                 "hookEventName": event,
                 "permissionDecision": "deny",
+                "permissionDecisionReason": reason,
+            }
+        }
+    )
+
+
+#: Said where the agent tool cannot put the call to the person: the call is refused, and the
+#: author makes it.
+_THEMSELVES = (
+    "This agent tool cannot put the question to the author, so the call is refused: the "
+    "author makes it themselves."
+)
+
+
+def _can_ask(payload: dict) -> bool:
+    """Whether the agent tool that sent this event shows the person an "ask".
+
+    Claude Code does, and is known by what it gives a hook: `CLAUDE_PROJECT_DIR` in the
+    environment, and an event with no `turn_id`. Codex sends `turn_id` with every tool call,
+    reads "ask" and does not support it yet, failing the hook and letting the call through
+    (both tools' hook documentation, read 2026-10-15). A tool known by neither sign is
+    refused, the direction in which the author is not bypassed.
+    """
+    return bool(os.environ.get("CLAUDE_PROJECT_DIR")) and "turn_id" not in payload
+
+
+def _ask(event: str, reason: str, payload: dict) -> int:
+    """Have the person approve the call where the agent tool can ask them, and refuse it,
+    with the same reason, where it cannot."""
+    if not _can_ask(payload):
+        return _deny(event, f"{reason} {_THEMSELVES}")
+    return _emit(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": event,
+                "permissionDecision": "ask",
                 "permissionDecisionReason": reason,
             }
         }
@@ -539,7 +584,8 @@ def _named_projects(command: str, cwd: Path) -> list[Path]:
 
 
 def guard_write(payload: dict) -> int:
-    """Refuse edits to files that something else generates.
+    """Refuse edits to files that something else generates, and put to the author an edit
+    that names who attested a value.
 
     A patch is applied whole, so one generated file in it refuses all of it, and the reason
     names each generated file and none of the others.
@@ -547,14 +593,136 @@ def guard_write(payload: dict) -> int:
     # A patch may write many files of one project, and where that project keeps `results/`
     # is asked of it once.
     projects: dict[Path, dict[str, str]] = {}
+    paths = _edited_paths(payload)
     refusals = [
         why
-        for path in _edited_paths(payload)
+        for path in paths
         if (why := _or_nothing(lambda file: _refusal(file, projects), path))
     ]
-    if not refusals:
+    if refusals:
+        return _deny("PreToolUse", "\n".join(refusals))
+    named = [
+        said for path in paths if (said := _or_nothing(lambda file: _attests(file, payload), path))
+    ]
+    if not named:
         return 0
-    return _deny("PreToolUse", "\n".join(refusals))
+    return _ask("PreToolUse", "\n".join(named), payload)
+
+
+#: An attester written in `attested.yaml`, in block or flow style, quoted or not.
+_ATTESTER = re.compile(
+    r"""\battested_by["']?[ \t]*:[ \t]*(?P<name>"[^"\n]*"|'[^'\n]*'|[^,}\n#]*)"""
+)
+
+
+def _attesters(text: str) -> list[str]:
+    """The names an attested.yaml text gives as attesters, each as often as it is given."""
+    names = []
+    for found in _ATTESTER.finditer(text):
+        written = found["name"].strip()
+        if written in _NO_NAME:
+            continue
+        name = written.strip("\"'").strip()
+        if name:
+            names.append(name)
+    return names
+
+
+#: What YAML reads as no value at all, written unquoted.
+_NO_NAME = frozenset({"null", "Null", "NULL", "~"})
+
+
+def _attests(path: Path, payload: dict) -> str | None:
+    """Why an edit of the project's attested.yaml is the author's to make, or None where it
+    names no attester it did not name before.
+
+    An attester is the author's statement that they read the value in its source. G7 refuses
+    a model's name there, and cannot tell a person's name typed by an agent from the
+    person's own. So an edit that adds a name, or changes one, is put to the author; one that
+    leaves the names as they were, a value or a comment changed beside them, is not.
+    """
+    if path.name != "attested.yaml":
+        return None
+    found = _relative_to_project(path)
+    if found is None:
+        return None
+    root, relative = found
+    from manuscript_guard.contracts import ContractError, load_project
+    from manuscript_guard.contracts.literature import ATTESTED_FILE
+
+    try:
+        project, _report = load_project(root)
+        attested = project.path("literature") / ATTESTED_FILE
+    except (ContractError, ValueError, OSError):
+        attested = root / "literature" / ATTESTED_FILE
+    if path.resolve() != attested.resolve():
+        return None
+    before, after = _texts_of(payload, path)
+    added = list(after)
+    for name in before:
+        if name in added:
+            added.remove(name)
+    if not added:
+        return None
+    names = ", ".join(dict.fromkeys(added))
+    return (
+        f"{relative}: this edit names who attested a value read in its source ({names}). "
+        f"That is the author's statement that they read it, and G7 cannot tell a name an "
+        f"agent typed from the author's own."
+    )
+
+
+def _texts_of(payload: dict, path: Path) -> tuple[list[str], list[str]]:
+    """The attesters a file named before an edit and after it.
+
+    A Write replaces the file, so before is the file on disk and after is what is written. An
+    Edit is applied to the file on disk, so that a name changed on its own, `"Ada"` to
+    `"Bo"`, with no `attested_by:` in the stretch, is read as the change it is (round 1 of
+    #264). Where an edit's text is not in the file, the tool will refuse it, and the two
+    stretches are compared. A patch removes and adds whole lines, and before and after are
+    those lines of this file's part of it.
+    """
+    tool_input = payload.get("tool_input", {})
+    on_disk = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    if "content" in tool_input:
+        return _attesters(on_disk), _attesters(str(tool_input["content"]))
+    edits = tool_input.get("edits") or [tool_input]
+    if any("new_string" in edit for edit in edits):
+        after = on_disk
+        for edit in edits:
+            old, new = str(edit.get("old_string", "")), str(edit.get("new_string", ""))
+            if not old or old not in after:
+                return (
+                    [name for one in edits for name in _attesters(str(one.get("old_string", "")))],
+                    [name for one in edits for name in _attesters(str(one.get("new_string", "")))],
+                )
+            after = after.replace(old, new, -1 if edit.get("replace_all") else 1)
+        return _attesters(on_disk), _attesters(after)
+    command = tool_input.get("command")
+    if payload.get("tool_name") == PATCH_TOOL and isinstance(command, str):
+        removed, added = _patch_lines(command, path, Path(payload.get("cwd") or Path.cwd()))
+        return _attesters("\n".join(removed)), _attesters("\n".join(added))
+    return [], []
+
+
+def _patch_lines(patch: str, path: Path, base: Path) -> tuple[list[str], list[str]]:
+    """The lines a patch removes from `path` and the lines it adds to it."""
+    removed: list[str] = []
+    added: list[str] = []
+    mine = False
+    for line in patch.replace("\r\n", "\n").split("\n"):
+        header = line.strip()
+        for marker in (_PATCH_ADD, _PATCH_UPDATE, _PATCH_DELETE, _PATCH_MOVE):
+            if header.startswith(marker):
+                named = (base / header[len(marker) :]).resolve()
+                mine = named == path.resolve() and marker != _PATCH_DELETE
+                break
+        else:
+            if mine and line.startswith("+"):
+                added.append(line[1:])
+            elif mine and line.startswith("-"):
+                removed.append(line[1:])
+    return removed, added
 
 
 def _refusal(path: Path, projects: dict[Path, dict[str, str]]) -> str | None:
@@ -644,7 +812,8 @@ def _analysis_note(path: Path) -> str | None:
 
 
 def guard_submission(payload: dict) -> int:
-    """Before anything that looks like a submission, hold the project to that standard.
+    """Before anything that looks like a submission, hold the project to that standard; and
+    put to the author a run of the review panel that sends the manuscript without asking.
 
     The project is the one at the folder the command was sent from, where there is one, and
     each other project the command names.
@@ -656,8 +825,9 @@ def guard_submission(payload: dict) -> int:
     # What a commit is told to say is no command and names no file: it is left out before
     # the markers are asked, and before the words are read for a project.
     command = _without_messages(str(payload.get("tool_input", {}).get("command", "")))
+    sends = _or_nothing(lambda _path: _sends_without_asking(command, payload), Path("."))
     if not SUBMISSION_MARKERS.search(command):
-        return 0
+        return _ask("PreToolUse", sends, payload) if sends else 0
 
     root = _project_root(payload)
     refusals = [_submission_refusal(root)] if root is not None else []
@@ -675,9 +845,55 @@ def guard_submission(payload: dict) -> int:
         for named in others
     ]
     refusals = [refusal for refusal in refusals if refusal]
-    if not refusals:
-        return 0
-    return _deny("PreToolUse", "\n\n".join(refusals))
+    if refusals:
+        return _deny("PreToolUse", "\n\n".join(refusals + ([sends] if sends else [])))
+    return _ask("PreToolUse", sends, payload) if sends else 0
+
+
+#: Where one invocation of the command ends: at the next `;`, `&`, `|` or line, or at the
+#: next invocation.
+_INVOCATION_END = re.compile(r"[;&|\n]|" + _TOOL + r"[A-Za-z]", re.IGNORECASE)
+_REVIEW = re.compile(_TOOL + r"review\b", re.IGNORECASE)
+
+
+def _sends_without_asking(command: str, payload: dict) -> str | None:
+    """What a `review --run --yes` in this command would send, and to whom, or None where
+    the command runs none.
+
+    `--run` sends the round's panel to the models in `review.models`, and asks the person at
+    the terminal first; `--yes` is the answer given in advance. It is for a script the author
+    wrote. An agent that types it answers for the author. `--dry-run` sends nothing.
+    """
+    joined = re.sub(r"[\\`]\r?\n", " ", command)  # a line continued in bash or PowerShell
+    for found in _REVIEW.finditer(joined):
+        rest = joined[found.end() :]
+        end = _INVOCATION_END.search(rest)
+        arguments = rest[: end.start() if end else len(rest)]
+        flags = set(re.findall(r"(?<![\w-])--(run|yes|dry-run)\b", arguments))
+        if {"run", "yes"} <= flags and "dry-run" not in flags:
+            return _what_is_sent(payload)
+    return None
+
+
+def _what_is_sent(payload: dict) -> str:
+    """The reason the author is asked: the manuscript goes to the models the project names."""
+    models: list[str] = []
+    root = _project_root(payload)
+    if root is not None:
+        from manuscript_guard.contracts import ContractError, load_project
+
+        try:
+            project, _report = load_project(root)
+            listed = (project.paper.get("review") or {}).get("models") or []
+            models = [str(model) for model in listed if isinstance(model, str)]
+        except (ContractError, ValueError, OSError):
+            models = []
+    to = ", ".join(models) if models else "the models in paper.yaml's review.models"
+    return (
+        f"`review --run --yes` sends the round's panel, with the manuscript's text, to {to}, "
+        f"without asking. Sending the manuscript away is the author's decision: `review --run "
+        f"--dry-run` shows which files would go to which host."
+    )
 
 
 def _check_from(cwd: Path, root: Path) -> str:

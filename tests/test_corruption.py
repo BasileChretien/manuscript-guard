@@ -2036,6 +2036,33 @@ def test_every_literature_value_ends_in_one_verdict(
         assert code in codes(report), report.render(project)
 
 
+@pytest.mark.parametrize(
+    ("quote", "short"),
+    [
+        ("A signal was detected for the class as a whole (ROR 2.6, 95% CI 2.1-3.2).", False),
+        ("the class as a whole (ROR 2.6", False),
+        ("whole (ROR 2.6", True),
+        ("ROR 2.6", True),
+        ("2.6", True),
+    ],
+)
+def test_a_quote_that_holds_little_more_than_its_value_is_said(
+    project: Path, quote: str, short: bool
+) -> None:
+    """G7 holds the quote to the source and the value to the quote, so "2.6" quoted alone
+    passed both: it proves only that those digits are somewhere in the source. A quote with
+    fewer than four words beside its value is said; the value is still verified."""
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    entry = next(e for e in document["entries"] if e.get("display") == "2.6")
+    entry["quote"] = quote
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = _literature_report(project)
+    said = [f for f in report.findings if f.code == "quote-too-short"]
+    assert [f.severity for f in said] == (["warn"] if short else []), report.render(project)
+    assert report.counts["literature_verified"] == 2
+
+
 # --------------------------------------------------------------------- the journal gate
 # A journal's limits, sections and statements are about the document the editor receives,
 # and the build strips every file's front matter before printing it.
@@ -3454,6 +3481,202 @@ def test_a_refused_build_into_the_build_directory_itself_does_not_crash(
     (project / "build").mkdir(exist_ok=True)
     out = project / "build"
     assert main(["build", str(project), "--offline", "--skip-checks", "-o", str(out)]) == 1
+
+
+# ------------------------------------------------- a document reviewed blind names no author
+
+_W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+
+def _blind(root: Path, kind: str = "double") -> None:
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["blinding"] = kind
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _word(path: Path, body: str = "", **parts: str) -> Path:
+    """A document holding `body` as its paragraphs, and any other part as it is given."""
+    document = f"<w:document {_W_NS}><w:body>{body}</w:body></w:document>"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", document)
+        for name, xml in parts.items():
+            archive.writestr(name.replace("__", "/").replace("_xml", ".xml"), xml)
+    return path
+
+
+def _named(root: Path, document: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.build.blinding import check_blinded
+
+    project, _ = load_project(root)
+    found = check_blinded(project, document).findings
+    assert all(f.code == "blind-document-names-author" and f.severity == "fail" for f in found)
+    return sorted(
+        (re.match(r"(['\"])(.*?)\1 is in ", f.message)[2],
+         re.search(r" is in (.*) of ", f.message)[1])
+        for f in found
+    )
+
+
+_CORE_NS = (
+    'xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
+    'xmlns:dc="http://purl.org/dc/elements/1.1/"'
+)
+
+
+@pytest.mark.parametrize(
+    ("body", "parts", "said"),
+    [
+        pytest.param(
+            "<w:p><w:r><w:t>As Ada</w:t></w:r><w:r><w:br/><w:t>Example showed</w:t></w:r></w:p>",
+            {}, [("Ada Example", "the text")], id="a name split across a run and a break",
+        ),
+        pytest.param(
+            "<w:p><w:del w:author='Someone'><w:r><w:delText>Example, A.</w:delText></w:r>"
+            "</w:del></w:p>",
+            {}, [("Ada Example", "the text")], id="a name a tracked change deleted",
+        ),
+        pytest.param(
+            "", {"word__footnotes_xml": f"<w:footnotes {_W_NS}><w:footnote><w:p><w:r><w:t>"
+                 "B. Sample, unpublished.</w:t></w:r></w:p></w:footnote></w:footnotes>"},
+            [("Blaise Sample", "the text")], id="a name in a footnote",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:t>See https://orcid.org/0000-0002-1825-0097 or write to "
+            "ADA.EXAMPLE@INVALID.EXAMPLE.</w:t></w:r></w:p>",
+            {}, [("the ORCID iD 0000-0002-1825-0097", "the text"),
+                 ("the e-mail address ada.example@invalid.example", "the text")],
+            id="an ORCID iD and an e-mail address",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:t>Done at the department of clinical\u00a0 pharmacology.</w:t></w:r>"
+            "</w:p>",
+            {}, [("Department of Clinical Pharmacology", "the text")],
+            id="an institution in another case and spacing",
+        ),
+        pytest.param(
+            "", {"docProps__core_xml": f"<cp:coreProperties {_CORE_NS}><dc:creator>Ada Example"
+                 "</dc:creator><cp:lastModifiedBy>Blaise Sample</cp:lastModifiedBy>"
+                 "</cp:coreProperties>"},
+            [("Ada Example", "the document's author (dc:creator)"),
+             ("Blaise Sample", "the document's last editor (cp:lastModifiedBy)")],
+            id="Word's author fields",
+        ),
+        pytest.param(
+            "<w:p><w:ins w:author='Ada Example'><w:r><w:t>new</w:t></w:r></w:ins></w:p>",
+            {}, [("Ada Example", "the author of a tracked change or a comment")],
+            id="the author of a tracked change",
+        ),
+        pytest.param(
+            "", {"word__people_xml": "<w15:people xmlns:w15='urn:w15'><w15:person "
+                 "w15:author='Blaise Sample'/></w15:people>"},
+            [("Blaise Sample", "the people who edited it")], id="the people who edited it",
+        ),
+        pytest.param(
+            "", {"word__media__image1.svg": "<svg xmlns='http://www.w3.org/2000/svg'><text>"
+                 "Example University Graduate School of Medicine</text></svg>"},
+            [("Example University Graduate School of Medicine", "a figure (image1.svg)")],
+            id="the text of a figure the document holds",
+        ),
+        # Round 1 of #273: matplotlib writes a DOCTYPE into every SVG, and the parser's
+        # refusal of it stopped the whole check. One with entities is read for nothing, and
+        # the rest of the document still is.
+        pytest.param(
+            "<w:p><w:r><w:t>Ada Example.</w:t></w:r></w:p>",
+            {"word__media__a.svg": '<?xml version="1.0"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG '
+             '1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg xmlns='
+             '"http://www.w3.org/2000/svg"><text>B. Sample</text></svg>',
+             "word__media__b.svg": '<!DOCTYPE svg [<!ENTITY e "x">]><svg><text>&e;</text></svg>'},
+            [("Ada Example", "the text"), ("Blaise Sample", "a figure (a.svg)")],
+            id="a figure with a DOCTYPE",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:t>As B. O\N{RIGHT SINGLE QUOTATION MARK}Sample said.</w:t></w:r></w:p>",
+            {}, [("Blaise O'Sample", "the text")], id="an apostrophe printed curly",
+        ),
+    ],
+)  # fmt: skip
+def test_a_document_reviewed_blind_names_no_author_anywhere_word_keeps_one(
+    project: Path, tmp_path: Path, body: str, parts: dict, said: list
+) -> None:
+    """Where the journal's review is double-blind, an author's name, ORCID iD,
+    e-mail address or institution is found in the text, a figure, and every field Word
+    keeps an author in, which a co-author's copy comes back with."""
+    _blind(project)
+    authors = project / "authors.yaml"
+    if "O'Sample" in str(said):
+        authors.write_text(authors.read_text(encoding="utf-8").replace(
+            "family: Sample", "family: \"O'Sample\""), encoding="utf-8")  # fmt: skip
+    document = _word(tmp_path / "manuscript.docx", body, **parts)
+    assert _named(project, document) == sorted(said)
+
+
+def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
+    project: Path, tmp_path: Path
+) -> None:
+    """A self-citation prints the authors' names in the reference list, which the journals
+    ask for in the third person rather than taken out, and a localised Word may give the
+    list's style another identifier. A family name alone, a name with a letter more, a city
+    and a country name nobody, nor does an article before the family name or a letter after
+    it (round 1 of #273: "A Cross-sectional study" named Anna Cross); and a review that is
+    not blind is not read."""
+    _blind(project)
+    body = (
+        "<w:p><w:pPr><w:pStyle w:val='Bibliography'/></w:pPr><w:r><w:t>Example A, Sample B. "
+        "A study. 2019.</w:t></w:r></w:p>"
+        "<w:p><w:pPr><w:pStyle w:val='ab'/></w:pPr><w:r><w:t>Example, A. A study.</w:t></w:r>"
+        "</w:p>"
+        "<w:p><w:r><w:t>Example data from Springfield, Japan, as Ada Examples said. A Example "
+        "study, on Example A and Example B.</w:t></w:r></w:p>"
+    )
+    styles = (
+        f"<w:styles {_W_NS}><w:style w:type='paragraph' w:styleId='ab'>"
+        "<w:name w:val='Bibliography'/></w:style></w:styles>"
+    )
+    assert _named(project, _word(tmp_path / "a.docx", body, word__styles_xml=styles)) == []
+    named = "<w:p><w:r><w:t>As Ada Example showed.</w:t></w:r></w:p>"
+    assert _named(project, _word(tmp_path / "b.docx", named)) == [("Ada Example", "the text")]
+    _blind(project, "single")
+    assert _named(project, _word(tmp_path / "c.docx", named)) == []
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_document_reviewed_blind_is_built_and_packed_only_without_its_authors(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The example names no author and builds. An author named in the Discussion is said
+    and the build exits 1; a copy edited in Word, whose author field names one, is not
+    packed. A self-citation the build prints is not a name to take out: the reference list
+    is not read, and an author-date citation prints the family name alone."""
+    from manuscript_guard.cli import main
+
+    _blind(project)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    authors = project / "authors.yaml"
+    text = authors.read_text(encoding="utf-8")
+    authors.write_text(text.replace("given: Ada\n    family: Example", "given: Anne\n    "
+                                    "family: Fictional"), encoding="utf-8")  # fmt: skip
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    built = project / "build" / "manuscript.docx"
+    edited = project / "final" / "manuscript.docx"
+    edited.parent.mkdir()
+    with zipfile.ZipFile(built) as source, zipfile.ZipFile(edited, "w") as copy:
+        for item in source.infolist():
+            data = source.read(item.filename)
+            if item.filename == "docProps/core.xml":
+                data = data.replace(b"<dc:creator></dc:creator>",
+                                    b"<dc:creator>Anne Fictional</dc:creator>")  # fmt: skip
+            copy.writestr(item, data)
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", str(edited), "--skip-checks"]) == 1
+    assert "'Anne Fictional' is in the document's author (dc:creator)" in capsys.readouterr().out
+    assert not (project / "build" / "submission" / "manuscript.docx").exists()
+    source = main_md(project)
+    source.write_text(source.read_text(encoding="utf-8").replace(
+        "# Discussion\n\n", "# Discussion\n\nAs Anne Fictional showed before, ", 1),
+        encoding="utf-8")  # fmt: skip
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "'Anne Fictional' is in the text of manuscript.docx" in capsys.readouterr().out
 
 
 @pytest.mark.skipif(

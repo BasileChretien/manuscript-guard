@@ -838,6 +838,158 @@ def test_a_passing_submission_is_not_blocked(project: Path, capsys) -> None:
     assert result is None
 
 
+# ---------------------------------------------------------------- the author's decisions
+#
+# Sending the manuscript to model providers without being asked, and naming who attested a
+# value, are the author's to do. Claude Code shows the person an "ask"; Codex reads it and
+# does not support it yet, failing the hook and letting the call through, so there the call
+# is refused with the same reason. Claude Code is known by `CLAUDE_PROJECT_DIR` and by an
+# event with no `turn_id`.
+
+
+@pytest.fixture
+def in_claude_code(monkeypatch, project: Path) -> Path:
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project))
+    return project
+
+
+@pytest.fixture
+def nowhere(monkeypatch) -> None:
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+
+
+def _shell(cwd: Path, command: str, **more) -> dict:
+    return {"cwd": str(cwd), "tool_name": "Bash", "tool_input": {"command": command}, **more}
+
+
+def _with_models(project: Path) -> None:
+    with (project / "paper.yaml").open("a", encoding="utf-8") as paper:
+        paper.write("\nreview:\n  models: [openai/gpt-test, mistral/large-test]\n")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard review --run --yes",
+        "cd . && mguard review --yes --one-each --run",
+        "manuscript-guard review --run \\\n  --yes",
+        "python -m manuscript_guard.cli review --run --yes",
+    ],
+)
+def test_a_panel_sent_without_asking_is_put_to_the_author(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    _with_models(in_claude_code)
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    said = reason(result)
+    assert "openai/gpt-test, mistral/large-test" in said and "author's decision" in said
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard review --run",
+        "manuscript-guard review --run --dry-run --yes",
+        "manuscript-guard review --run; manuscript-guard review --yes",
+        "manuscript-guard review --providers",
+        'git commit -m "manuscript-guard review --run --yes"',
+    ],
+)
+def test_a_panel_that_asks_or_sends_nothing_is_let_through(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+
+
+def test_where_the_tool_cannot_ask_the_panel_is_refused(in_claude_code: Path, capsys) -> None:
+    """Codex sends `turn_id`, reads "ask" and lets the call through: it is refused there."""
+    command = "manuscript-guard review --run --yes"
+    payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
+    result = run("guard-submission", payload, capsys)
+    assert decision(result) == "deny"
+    assert "makes it themselves" in reason(result)
+
+
+def test_a_tool_known_by_neither_sign_is_refused(project: Path, nowhere, capsys) -> None:
+    result = run("guard-submission", _shell(project, "manuscript-guard review --run --yes"), capsys)
+    assert decision(result) == "deny"
+
+
+def test_a_submission_refused_says_the_panel_too(in_claude_code: Path, capsys) -> None:
+    """Refused and asked at once is refused, with both reasons."""
+    import shutil
+
+    shutil.rmtree(in_claude_code / "review")
+    command = "manuscript-guard review --run --yes && manuscript-guard submit --offline"
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "deny"
+    assert "submission check" in reason(result) and "author's decision" in reason(result)
+
+
+def _attested(project: Path) -> Path:
+    return project / "literature" / "attested.yaml"
+
+
+def _writes(cwd: Path, tool: str = "Write", **tool_input: str) -> dict:
+    return {"cwd": str(cwd), "tool_name": tool, "tool_input": tool_input}
+
+
+def test_naming_an_attester_is_put_to_the_author(in_claude_code: Path, capsys) -> None:
+    path = _attested(in_claude_code)
+    content = path.read_text(encoding="utf-8").replace('"Ada Example"', '"Bo Example"')
+    payload = _writes(in_claude_code, file_path=str(path), content=content)
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == "ask"
+    assert "Bo Example" in reason(result) and "Ada Example" not in reason(result)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "asked"),
+    [
+        # A name added, or changed: the author's statement.
+        ("    attested_on: 2026-08-03", "    attested_on: 2026-08-03\n    attested_by: Cy", True),
+        ('attested_by: "Ada Example"', "attested_by: Ada Exemple", True),
+        # Round 1 of #264: the name alone, with no key in the stretch.
+        ('"Ada Example"', '"Bo Example"', True),
+        # A name YAML reads as none names nobody.
+        ("    attested_on: 2026-08-03", "    attested_on: 2026-08-03\n    attested_by: ~", False),
+        # The names as they were: a value or a date changed beside them.
+        ("    value: 41200\n", "    value: 41300\n", False),
+        ('    attested_by: "Ada Example"\n    attested_on: 2026-08-03',
+         '    attested_by: "Ada Example"\n    attested_on: 2026-08-04', False),
+        # An attester left empty names nobody.
+        ("    attested_on: 2026-08-03", '    attested_on: 2026-08-03\n    attested_by: ""', False),
+    ],
+)  # fmt: skip
+def test_an_edit_is_put_to_the_author_only_where_it_names_an_attester(
+    in_claude_code: Path, old: str, new: str, asked: bool, capsys
+) -> None:
+    path = str(_attested(in_claude_code))
+    payload = _writes(in_claude_code, "Edit", file_path=path, old_string=old, new_string=new)
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == ("ask" if asked else None)
+
+
+def test_an_attester_named_in_a_codex_patch_is_refused(project: Path, capsys) -> None:
+    patch = patch_of(
+        "*** Update File: literature/attested.yaml",
+        "@@",
+        '-    attested_by: "Ada Example"',
+        '+    attested_by: "Bo Example"',
+    )
+    result = run("guard-write", codex_edit(project, patch), capsys)
+    assert decision(result) == "deny"
+    assert "Bo Example" in reason(result) and "makes it themselves" in reason(result)
+
+
+def test_a_file_named_attested_elsewhere_is_no_attestation(in_claude_code: Path, capsys) -> None:
+    other = in_claude_code / "notes" / "attested.yaml"
+    other.parent.mkdir()
+    payload = _writes(in_claude_code, file_path=str(other), content="attested_by: Bo\n")
+    assert run("guard-write", payload, capsys) is None
+
+
 # ---------------------------------------------------------------- session start
 
 

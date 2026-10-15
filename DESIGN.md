@@ -2704,6 +2704,18 @@ And `verify` had three of its own, of which one was serious enough to invalidate
 command: see its module docstring for what it now does and does not prove, and the Known
 gaps below for what remains.
 
+## A unit after a binding is the unit emitted
+
+The analysis records a value's unit, and only G8 read it, to keep a count of 56 apart from a
+share of 56.0%. "{{results.dose}} mg" printed "250 mg" of a dose emitted in micrograms, and
+nothing said so. G2 now reads the symbol written right after each binding, from the list of
+symbols G14 knows a number is not to run into, and `%` and `‰`, with a power after it or a
+slash and what it divides by, and warns (`unit-differs-from-emitted`) where it is not the unit
+emitted. Spellings of one unit are one: µg, μg and mcg; mL and ml; °C and ℃. A value emitted
+with no unit, or with one that is no symbol ("years"), has nothing to compare it with. The
+gap between the binding and its unit may be any space or one line break, which pandoc prints
+as a space; a blank line, or a word between, ends the unit's claim to the binding.
+
 ## A rule names values, not shapes
 
 The classifier's allowlists are the one place where being generous is the same as being
@@ -7226,6 +7238,11 @@ Closed since, and why each mattered:
   strictly, so `# **Methods**` is not Methods. In a .docx a heading style is what makes a
   heading, so a styled paragraph typed as `References {-}` starts a list, although Word
   prints the braces.
+- **A unit after a binding is read from a list of symbols.** "mg" is read and "milligrams"
+  is not, so a unit written out in words is compared with nothing; one-letter symbols other
+  than g and h (m, L, s) are left out as G14 leaves them, so "{{results.length}} m" is not
+  read. Units that mean the same and are spelt apart ("mg/kg" against "mg kg-1") are taken
+  for two.
 - **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
   `- Results` over an underline as a list item holding a heading titled "Results". The
   gates keep the marker in the title, so it ends the section above; "- Results" is read as

@@ -599,6 +599,13 @@ HELD = (
 )  # fmt: skip
 
 
+#: What names them, written as a manuscript writes it, for `texts` to plant.
+NAMED = (
+    "Ada Example", "A. Example", "Example, A.", "Mary Ann van der Berg", "M. van der Berg",
+    "0000-0002-1825-0097", "ada.example@invalid.example", "Department of Clinical Pharmacology",
+)  # fmt: skip
+
+
 @st.composite
 def edits(draw: st.DrawFn) -> tuple[str, str]:
     """A manuscript and what an edit made of it: the same text, one of its paragraphs moved
@@ -711,6 +718,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "interval order": intervals(),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
+    "quote words": st.fixed_dictionaries(
+        {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
+    ),
     "spelling": st.fixed_dictionaries(
         {
             "text": texts(SPELT),
@@ -725,6 +735,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "tex outside maths": lines(),
     "title": lines(),
     "title held": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),
+    "blind names": texts(NAMED),
     "quotation": st.tuples(
         quotations(),
         st.sampled_from(("as it stands", "typed", "typed", "misquoted")),

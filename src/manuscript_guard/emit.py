@@ -614,11 +614,39 @@ def _converged(fit: object) -> bool:
     return True
 
 
-def read_statsmodels(fit: object) -> dict:
+def _units(frame, data, unit: str) -> int:
+    """How many distinct values of `unit` the rows the model used hold.
+
+    The frame is the data the fit read, `subset=` applied, and the rows it dropped for
+    missing values are left out. A row with no unit is refused: how many units such rows
+    hold cannot be counted, and counted one way here and another in R, the two emitters
+    disagreed (round 1 of #268).
+    """
+    if unit not in {str(column) for column in frame.columns}:
+        raise ValueError(
+            f"model: unit {unit!r} is not a column of the data the model was fitted on"
+        )
+    dropped = set(getattr(data, "missing_row_idx", None) or [])
+    used = [at for at in range(len(frame)) if at not in dropped]
+    column, missing = frame[unit], frame[unit].isna()
+    absent = sum(1 for at in used if missing.iloc[at])
+    if absent:
+        raise ValueError(
+            f"model: unit {unit!r} is missing in {absent} of the rows the model used, so how "
+            f"many units they hold cannot be counted"
+        )
+    return len({column.iloc[at] for at in used})
+
+
+def read_statsmodels(fit: object, unit: str | None = None) -> dict:
     """The model card of a statsmodels fit made through the formula API.
 
     Raises ValueError for anything else: a card is read from the fit or not written, since
     a model described by hand is the thing this exists to replace.
+
+    `unit` names the column of the data whose values the rows belong to, a patient or a
+    site: the card then counts the units among the rows used, beside the fit's covariance
+    type, so that G15 can say when several rows of one unit were taken as independent.
     """
     model = getattr(fit, "model", None)
     data = getattr(model, "data", None)
@@ -665,6 +693,11 @@ def read_statsmodels(fit: object) -> dict:
         "n_dropped": len(list(getattr(data, "missing_row_idx", None) or [])),
         "converged": _converged(fit),
     }
+    covariance = getattr(fit, "cov_type", None)
+    if isinstance(covariance, str):
+        card["covariance"] = covariance
+    if unit is not None:
+        card["unit"] = {"column": unit, "units": _units(frame, data, unit)}
     if successes is not None:
         card["events"] = int(sum(successes))
         if trials is not None:
@@ -1158,6 +1191,7 @@ class Emitter:
         *,
         name: str,
         description: str | None = None,
+        unit: str | None = None,
     ) -> None:
         """Record a fitted model as the fit itself describes it.
 
@@ -1176,6 +1210,11 @@ class Emitter:
 
         The statsmodels formula API is read. A fit it cannot read is refused rather than
         guessed at.
+
+        `unit` names the column of the data whose values the rows belong to, when a unit
+        can have more than one row: a patient seen at several visits, a site with many
+        patients. The card counts the units among the rows used, and G15 warns where there
+        are more rows than units and the fit is neither cluster-robust nor mixed.
         """
         if not _TABLE_SAFE_KEY.fullmatch(key):
             raise ValueError(
@@ -1184,7 +1223,7 @@ class Emitter:
             )
         if key in self._models:
             raise ValueError(f"model {key!r} recorded twice by {self.script}")
-        card = read_statsmodels(fit)
+        card = read_statsmodels(fit, unit)
         card["name"] = name
         if description is not None:
             card["description"] = description

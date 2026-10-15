@@ -34,6 +34,10 @@ the therapeutic area, a **reporting-guideline auditor**, an **adversarial review
 remit is to find the reason to reject, and a **desk editor** judging triage. Take from that
 what the paper needs and add what it needs that is not there.
 
+One remit is worth a reviewer of its own on most papers: **contradiction**. Where the Methods
+say something was done and the Limitations, the Discussion or the registration say otherwise,
+neither section's reader notices, because each reads its own part.
+
 Write it to `review/panel-<n>.yaml`, including *why* each reviewer is on it. Two reviewers
 with the same remit are one reviewer.
 
@@ -138,8 +142,13 @@ reader is not going to report, take it out of that reviewer's `readers` in the p
 What each model is sent is the paper's title, keywords, journal and guideline, the journal
 profile and reporting checklist where the project has them, every manuscript file with its
 numbers and tables as a reader sees them, and that reviewer's role and remit. Figures are
-not sent, so a model's reading says nothing about them. The authors, the results files and
-the earlier rounds are not sent either.
+not sent, so a model's reading says nothing about them: G11 warns (`figures-not-seen`) when a
+model passes a remit that covers figures. The authors, the results files and the earlier
+rounds are not sent either.
+
+The models of one provider share their blind spots. G11 warns (`round-one-provider`) when
+every reading of a round came from one provider; a model of another provider, or a person,
+is the answer.
 
 A model's record is filed with its findings numbered and none answered, and sealed. Do not
 answer them for the author, and do not edit what the model said: the record is what that
@@ -152,6 +161,11 @@ reader found, and an edit to it is `reading-altered`.
 - **minor** — should be fixed, does not invalidate anything.
 - **comment** — including things done *well*, which are worth recording so a later revision
   does not remove them.
+
+A finding may say what it asks of the authors (`ask`): a **disclosure** of what they have, a
+**computation** of a new number, or **new data**. A computation is a new emitted result and a
+new reconciliation of the Methods with the code, so a reader asking for one says why the
+numbers and tables already reported cannot answer it.
 
 Write findings a person could act on. "The Methods are unclear" is not a finding. "No case
 definition is given; in real reporting data the choice between a narrow preferred-term list

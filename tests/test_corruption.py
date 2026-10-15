@@ -1108,6 +1108,61 @@ def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
     assert _unreported(project) == []
 
 
+# ------------------------------------------------ the unit written after a binding
+
+
+def _unit_emitted(root: Path, key: str, unit: str | None) -> None:
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    entry = document["values"][key]
+    if unit is None:
+        entry.pop("unit", None)
+    else:
+        entry["unit"] = unit
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def _units_said(root: Path) -> list[tuple[str, int]]:
+    from manuscript_guard.gates import check_bound_units
+
+    project, _ = load_project(root)
+    _, results, _, _ = load_namespace(project)
+    found = check_bound_units(project, results).findings
+    assert all(f.code == "unit-differs-from-emitted" and f.severity == "warn" for f in found)
+    return [(f.message.split()[0], f.line) for f in found]
+
+
+@pytest.mark.parametrize(
+    ("emitted", "written", "said"),
+    [
+        ("\N{PER MILLE SIGN}", None, True),  # the example's "%" after a share emitted per mille
+        ("%", None, False),  # as the example has it
+        ("\N{MICRO SIGN}g", " mg", True),
+        ("\N{MICRO SIGN}g", " mcg", False),
+        ("\N{MICRO SIGN}g", " \N{GREEK SMALL LETTER MU}g", False),
+        ("mg/kg", " mg/kg", False),
+        ("years", " mg", False),  # no symbol emitted: nothing to compare
+        (None, " mg", False),  # no unit emitted
+    ],
+)
+def test_a_unit_written_after_a_binding_is_the_one_emitted(
+    project: Path, emitted: str | None, written: str | None, said: bool
+) -> None:
+    """"{{results.dose}} mg" printed "250 mg" of a value emitted in micrograms. A
+    unit written after a binding that is not the emitted one is said; spellings of one unit
+    are one unit, and a value emitted with no unit, or none of symbols, is not compared."""
+    _unit_emitted(project, "case.pct_serious", emitted)
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    if written is not None:
+        binding = "{{results.case.pct_serious}}"
+        text = text.replace(binding + "%", binding + written, 1)
+        path.write_text(text, encoding="utf-8")
+    line = next(n for n, row in enumerate(text.splitlines(), 1) if "case.pct_serious" in row)
+    assert _units_said(project) == ([("results.case.pct_serious", line)] if said else [])
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 

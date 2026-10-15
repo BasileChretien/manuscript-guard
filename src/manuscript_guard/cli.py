@@ -41,6 +41,7 @@ from manuscript_guard.contracts import (
 )
 from manuscript_guard.findings import Report, merge_all
 from manuscript_guard.gates import (
+    check_bound_units,
     check_citations,
     check_consistency,
     check_design,
@@ -127,6 +128,7 @@ def _run_gates(
         ("G11", lambda: check_review(project, submission=at_submission)),
         ("G1", lambda: check_freshness(project, results)),
         ("G2", lambda: check_numbers(project, namespace, results, literature)),
+        ("G2", lambda: check_bound_units(project, results)),
         ("G3", lambda: check_figures(project, results)),
         ("G10", lambda: check_figure_reviews(project, content_digest)),
         ("G7", lambda: check_citations(project, literature)),
@@ -145,7 +147,9 @@ def _run_gates(
     ):
         report = _guarded(name, gate, unreadable)
         if report is None:
-            stopped.append(name)
+            # A gate run as several checks stopped once, and is named once.
+            if name not in stopped:
+                stopped.append(name)
         else:
             gate_reports.append(report)
 

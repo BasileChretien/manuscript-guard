@@ -681,6 +681,11 @@ def _units(frame, data, unit: str) -> int:
     return len({column.iloc[at] for at in used})
 
 
+def rows_digest(labels) -> str:
+    """The digest of a fit's rows: the SHA-256 of their labels, one to a line."""
+    return hashlib.sha256("\n".join(labels).encode("utf-8")).hexdigest()
+
+
 def read_statsmodels(fit: object, unit: str | None = None) -> dict:
     """The model card of a statsmodels fit made through the formula API.
 
@@ -739,6 +744,11 @@ def read_statsmodels(fit: object, unit: str | None = None) -> dict:
     covariance = getattr(fit, "cov_type", None)
     if isinstance(covariance, str):
         card["covariance"] = covariance
+    labels = getattr(data, "row_labels", None)
+    if labels is not None:
+        card["rows_sha256"] = rows_digest(str(label) for label in labels)
+    if getattr(model, "offset", None) is not None or getattr(model, "exposure", None) is not None:
+        card["offset"] = True
     if unit is not None:
         card["unit"] = {"column": unit, "units": _units(frame, data, unit)}
     if successes is not None:

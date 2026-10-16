@@ -62,7 +62,9 @@ Write it from the project rather than from memory. Four short paragraphs:
    cannot be shared, a conflict that needs declaring. Say it here rather than let it be
    discovered.
 4. **The confirmations** the journal asks for: original work, not under consideration
-   elsewhere, all authors approved, ethics where applicable.
+   elsewhere, all authors approved, ethics where applicable. Each author records their own
+   approval with `manuscript-guard approve --as <author>`, and `submit` says who has not, or
+   who approved a manuscript that has changed since. Never run `approve` for an author.
 
 Do not summarise the abstract. The editor has it.
 

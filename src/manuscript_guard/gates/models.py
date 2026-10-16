@@ -73,6 +73,7 @@ def check_models(project: Project, results: Results) -> Report:
     referenced = _referenced(project)
     for model in models.values():
         report = report.merge(_model(model, variables, referenced))
+    report = report.merge(Report(tuple(_rows_compared(models))))
     report = report.merge(_names_in_methods(project, models))
     return report.with_counts(models=len(models), model_variables=len(variables))
 
@@ -158,6 +159,85 @@ def _unit(model: Model) -> list[Finding]:
     ]
 
 
+#: How a fit says its standard errors are the model's own, not made robust.
+MODEL_BASED = frozenset({"nonrobust", "model-based"})
+
+
+def _rows_compared(models: dict[str, Model]) -> list[Finding]:
+    """Two models of one outcome, one's terms among the other's, fitted on different rows.
+
+    A crude and an adjusted estimate are compared to say what the adjustment did. A
+    covariate's missing values drop rows from the adjusted model only, and the change
+    between the two is then partly the rows'. Equal counts can hide different rows, so the
+    cards are compared by a digest of the rows each fit used. Models with the same terms on
+    different rows are left alone: that is a subgroup, by design.
+    """
+    findings = []
+    ordered = sorted(models.values(), key=lambda model: model.key)
+    for larger in ordered:
+        for smaller in ordered:
+            if not (smaller.rows_sha256 and larger.rows_sha256):
+                continue
+            if smaller.rows_sha256 == larger.rows_sha256 or _modelled(smaller) != _modelled(larger):
+                continue
+            if not _terms(smaller) < _terms(larger):
+                continue
+            findings.append(
+                _finding(
+                    larger,
+                    "models-on-different-rows",
+                    f"its terms include all of {smaller.key!r}'s, for the same outcome, and the "
+                    f"two were fitted on different rows ({larger.n_used} and {smaller.n_used} "
+                    f"used): the change between their estimates is partly the rows'",
+                    "fit both on the rows the larger model uses (drop the rows missing a "
+                    "covariate before fitting either), or say in the Methods why they differ",
+                    warn=True,
+                )
+            )
+    return findings
+
+
+def _modelled(model: Model) -> tuple:
+    return tuple(model.outcome.get("variables", ())), model.outcome.get("comparison")
+
+
+def _terms(model: Model) -> frozenset[str]:
+    return frozenset(str(term.get("term")) for term in model.terms)
+
+
+def _poisson_of_binary(model: Model, engine, variables: dict[str, Variable]) -> list[Finding]:
+    """A Poisson regression of a binary outcome with the model's own standard errors.
+
+    Poisson regression of a binary outcome estimates a risk ratio, and its model-based
+    variance overstates the error; a robust (sandwich) variance corrects it (Zou, Am J
+    Epidemiol 2004;159:702-6). Read from the covariance the card records, so a variance made
+    robust after the fit, outside it, is not seen. A fit with an offset or an exposure is a
+    rate model of events over person-time, whose own variance is the right one (round 1 of
+    #289), and is left alone.
+    """
+    if engine.kind != "Poisson regression" or (model.covariance or "") not in MODEL_BASED:
+        return []
+    if model.offset:
+        return []
+    binary = model.outcome.get("comparison") or any(
+        name in variables and variables[name].kind == "binary"
+        for name in model.outcome.get("variables", ())
+    )
+    if not binary:
+        return []
+    return [
+        _finding(
+            model,
+            "poisson-binary-variance",
+            f"a Poisson regression of a binary outcome with {model.covariance} standard "
+            f"errors, which overstate the error of its risk ratio",
+            "fit it with a robust (sandwich) variance, in statsmodels .fit(cov_type='HC0'), "
+            "or a log-binomial model; Zou, Am J Epidemiol 2004;159:702-6",
+            warn=True,
+        )
+    ]
+
+
 def _model(model: Model, variables: dict[str, Variable], referenced: set[str]) -> Report:
     findings: list[Finding] = []
     engine = engine_of(model.engine)
@@ -188,6 +268,7 @@ def _model(model: Model, variables: dict[str, Variable], referenced: set[str]) -
 
     if engine is not None:
         findings.extend(_outcome(model, engine, variables))
+        findings.extend(_poisson_of_binary(model, engine, variables))
 
     for record in model.entered:
         if record.get("comparison"):

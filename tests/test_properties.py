@@ -37,6 +37,7 @@ from generated import (
     FILLER,
     HELD,
     INPUTS,
+    NOTATED,
     SOURCE_GAPS,
     SOURCE_WORDS,
     TERMS,
@@ -1302,6 +1303,71 @@ def test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document
     text, paragraphs, inside = planted
     assert _paragraphs_pandoc_reads(placeholders.substitute(text, {})) == paragraphs, text
     assert methods_gate.anchor_lines(text) == inside, text
+
+
+# ------------------------------------------------------------------- a reply to a reviewer
+
+#: Bindings whose keys hold digits, each of the two kinds a reply may use.
+_REPLY_BINDINGS = ("{{results.n_2019}}", "{{lit.who.2019.count}}", "{{results.ror_95.low}}")
+
+
+@st.composite
+def _planted_replies(draw: st.DrawFn) -> tuple[str, str]:
+    """A reply, and the same with a binding of every kind put in at places drawn, each a
+    paragraph of its own. Put inside a sentence, a binding changes what the numbers beside it
+    are, as it does in the paper: "95% {{results.n}} CI" is no convention."""
+    text = draw(texts(NOTATED))
+    pieces = text.split("\n\n")
+    for binding in _REPLY_BINDINGS:
+        # Never before the first piece, which may be the front matter.
+        pieces.insert(draw(st.integers(1, len(pieces))), binding)
+    return text, "\n\n".join(pieces)
+
+
+@holds(200, _planted_replies())
+def test_a_binding_in_a_reply_is_never_read_as_a_number(drawn: tuple[str, str]) -> None:
+    """Whatever a reply says, a binding put into it adds no unbound number: the letter
+    fills it in, as the paper does."""
+    from collections import Counter
+
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.numbers import reply_numbers
+
+    text, planted = drawn
+    classifier = Classifier.load([], [])
+
+    def loose(written: str) -> Counter[str]:
+        said = reply_numbers(written, Path("round-1.yaml"), "w", classifier, {})
+        return Counter(f.context for f in said.findings if f.code == "reply-unbound-number")
+
+    assert sum(loose(planted).values()) == sum(loose(text).values()), planted
+
+
+@st.composite
+def _wrapped_sentences(draw: st.DrawFn) -> tuple[str, str]:
+    """A sentence, and a text that holds it hard-wrapped, with a word in emphasis and in
+    code, before drawn words: after them it could stand in a comment they left open, where
+    the paper does not print it."""
+    words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12))
+    marked = list(words)
+    at = draw(st.integers(0, len(words) - 1))
+    marked[at] = draw(st.sampled_from(("*{}*", "**{}**", "`{}`"))).format(marked[at])
+    gaps = [draw(st.sampled_from((" ", " ", "\n", "  ", " \n"))) for _ in marked[1:]]
+    # A line break and a doubled space in every example, wherever else the draw put them.
+    gaps[0], gaps[-1] = "\n", "  "
+    wrapped = marked[0] + "".join(gap + word for gap, word in zip(gaps, marked[1:], strict=True))
+    around = draw(texts())
+    return " ".join(words) + ".", f"{wrapped}.\n\n{around}"
+
+
+@holds(200, _wrapped_sentences())
+def test_a_quote_is_found_however_its_lines_are_wrapped(drawn: tuple[str, str]) -> None:
+    """A response quotes the sentence, not its Markdown: a quote of a sentence the paper
+    prints is found in it, wrapped across lines and with a word marked, or not."""
+    from manuscript_guard.gates.revision import as_quoted
+
+    sentence, text = drawn
+    assert as_quoted(sentence) in as_quoted(text), (sentence, text)
 
 
 # ------------------------------------------------------------ pointers to tables and figures
@@ -2885,6 +2951,21 @@ def _a_name_is_a_threshold_like_the_figure_beside_it(patch: pytest.MonkeyPatch) 
     patch.setattr(numbers_gate, "typed_threshold", threshold)
 
 
+def _a_reply_is_read_unmasked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import numbers
+
+    patch.setattr(numbers, "mask", lambda text: text)
+
+
+def _a_quote_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import revision
+
+    def kept(text: str) -> str:
+        return revision._COMMENT.sub(" ", text).replace("*", "").replace("`", "")
+
+    patch.setattr(revision, "as_quoted", kept)
+
+
 def _a_nought_is_trimmed_off_a_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(tokens, "_TRAIL", tokens._TRAIL + "0")
 
@@ -3534,6 +3615,14 @@ BROKEN = {
     "the name of a statistic is a threshold like the figure beside it": (
         _a_name_is_a_threshold_like_the_figure_beside_it,
         test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
+    ),
+    "a binding in a reply is read as a number": (
+        _a_reply_is_read_unmasked,
+        test_a_binding_in_a_reply_is_never_read_as_a_number,
+    ),
+    "a quote is looked for with its line breaks": (
+        _a_quote_keeps_its_line_breaks,
+        test_a_quote_is_found_however_its_lines_are_wrapped,
     ),
     "a nought is trimmed off a number": (
         _a_nought_is_trimmed_off_a_number,

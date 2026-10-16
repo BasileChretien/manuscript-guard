@@ -3927,6 +3927,35 @@ response document prints it in the author's own words rather than inventing agre
 Severity follows the internal panel: an author part-way through a revision must still be
 able to build something to read, so ordinary work warns and a resubmission fails.
 
+**The letter is checked like the manuscript.** It goes to the journal with the paper, and
+`response` and `rebutted` were printed in it word for word: "the adjusted OR is now 2.31
+(95% CI 1.40 to 3.80)" typed into a reply went out unchecked, the core rule with a hole in a
+document we send. G2 now reads the authors' own words in each round as it reads prose, in a
+section of their own, so the Methods' conventions, an alpha among them, do not pass a
+reply's "p < 0.001". A reply binds its results with `{{results.<key>}}` and `{{lit.<key>}}`,
+which the letter fills in; a typed one is `reply-unbound-number`, which fails at submission,
+since the letter is written while the analysis is run again. A number after a word that names
+a place, "lines 120-125", "Reviewer 2", "comment 1.3", "page 4", is that place, and no binding
+could give it. The reviewer's `comment` is the reviewer's, and is not read.
+
+A reply that says the text "now reads" something names it as a `text` entry in `changed`,
+with the `quote` and, where the reply says where, the `section`. Parsing "now reads" out of
+the prose was the alternative, and it would have missed every other wording. The quote is
+looked for in the manuscript as it renders now; in the section named, found by its heading;
+and not in the copy of the manuscript as the journal received it, which `respond --open`
+writes beside the round, rendered, in `revision/round-<N>/submitted/`. Digests could not
+say whether a sentence was already there. A copy, not the commit: CI clones one commit
+deep, and a round may be opened from a tree with changes not yet committed. A quote is
+compared as a sentence, not as Markdown: comments, the marks of emphasis and code, and the
+wrapping of lines are left out on both sides, and a binding in the quote is filled in.
+
+What else must not reach a journal in a reply: G6's artefacts (all but the assistant's
+register, since "Certainly, we have revised the Methods" opens many a reply); the tool's
+name; a gate with one of its finding codes; a place in the source files, `main.md:120`,
+which the journal never sees; the marker `[AUTHOR: ...]` that the `reviewer-response` skill
+writes where the author still has to supply something; and the template's own text in a
+`comment`. Each warns during the revision and fails at submission, as the rest of G13.
+
 ## Round five, and what it says about the last two days
 
 Four reviewers, all able to run their reproductions this time. The revision cycle and the
@@ -7767,6 +7796,20 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A reply is checked for what it holds, not for what it claims in prose.** A reply that
+  says the Abstract "now reads" a sentence without a `text` entry is not checked. A quote
+  is compared without Markdown's marks of emphasis and code and without its line breaks,
+  but with its punctuation and quotation marks as typed. A section is found by the words of
+  its heading, so "Discussion" is a section named "Discussion and conclusions" too, and a
+  quote in a subsection counts as in the section above it. A round opened before the copy
+  was kept says that a quote cannot be checked for being new. A place in the source files
+  is caught only as a file name with a line, `main.md:120` or `main.md line 120`; "line
+  120" alone may be the revised manuscript's, which journals ask for. A gate is caught
+  only as `G13: point-unanswered`, with a colon and one of the codes that fail after it,
+  since "G2/M" is a phase of the cell cycle and "G1 (well-differentiated)" a tumour's
+  grade; a warning's code after a gate is not caught. A number after a word that names a
+  place is not read, so "line 3.2" or "Reviewer 2 found 41 cases" types its second number
+  past G2 only where a place word stands before it.
 - **A frozen plan holds the plan of the first run, whenever that was.** A plan written after
   results already existed is frozen as it stood on the next run, and cannot be told from one
   written first; nor can a plan changed between writing the analysis and running it. Any

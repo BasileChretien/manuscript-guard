@@ -833,6 +833,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "reply numbers": texts(NOTATED),
+    "quoted": texts(),
     "reported tests": texts(REPORTED),
     "units after": texts(BOUND_UNITS),
     "abbreviations": st.fixed_dictionaries(

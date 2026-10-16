@@ -1455,6 +1455,12 @@ def cmd_respond(args: argparse.Namespace) -> int:
             newline="\n",
         )
         print(f"opened {path.relative_to(project.root).as_posix()}")
+        copied = _keep_submitted(project, number)
+        print(
+            f"  {copied.relative_to(project.root).as_posix()}/ keeps the manuscript as it "
+            f"renders now, so a response that quotes the revised text is checked for saying "
+            f"something the journal has not read"
+        )
         if args.source:
             seeded = sum(len(r["points"]) for r in document["reviewers"])
             anchored = sum(
@@ -1497,6 +1503,24 @@ def cmd_respond(args: argparse.Namespace) -> int:
     report = check_revision(project, submission=args.submission)
     print(report.render(project.root))
     return 0 if report.ok else 1
+
+
+def _keep_submitted(project, number: int) -> Path:
+    """Write each manuscript file as it renders now, bindings filled in, beside round
+    `number`: the text the journal received, which a quoted revision must not be in."""
+    from manuscript_guard.contracts._schema import read_text
+    from manuscript_guard.gates.numbers import source_files
+    from manuscript_guard.gates.revision import REVISION_DIR, SUBMITTED_DIR, displays
+    from manuscript_guard.text.placeholders import substitute
+
+    folder = project.root / REVISION_DIR / f"round-{number}" / SUBMITTED_DIR
+    rendered = displays(project)
+    manuscript = project.path("manuscript")
+    for source in source_files(manuscript):
+        target = folder / source.relative_to(manuscript)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(substitute(read_text(source), rendered), encoding="utf-8", newline="\n")
+    return folder
 
 
 def cmd_check(args: argparse.Namespace) -> int:

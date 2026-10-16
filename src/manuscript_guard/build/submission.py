@@ -166,6 +166,15 @@ def response_letter(project: Project) -> str | None:
     if not found:
         return None
 
+    from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.text.placeholders import substitute
+
+    # The authors' words with every binding filled in, as the manuscript prints them.
+    rendered = {ref: value.display for ref, value in load_namespace(project)[0].items()}
+
+    def filled(text: str) -> str:
+        return substitute(text, rendered)
+
     lines = ["# Response to reviewers", ""]
     for number, path in found:
         document = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -181,13 +190,18 @@ def response_letter(project: Project) -> str | None:
             lines += [f"### {reviewer['id'].replace('-', ' ').title()}", ""]
             for point in reviewer.get("points", []):
                 lines += [f"**{point['id']}.** {point['comment'].strip()}", ""]
-                response = str(point.get("response", "")).strip()
+                response = filled(str(point.get("response", "")).strip())
                 lines += [response or "_No response recorded._", ""]
-                rebutted = str(point.get("rebutted", "")).strip()
+                rebutted = filled(str(point.get("rebutted", "")).strip())
                 if rebutted:
                     lines += [f"We have not made this change: {rebutted}", ""]
                 for entry in point.get("changed") or []:
                     note = f" — {entry['note']}" if entry.get("note") else ""
+                    if entry["kind"] == "text":
+                        place = f" ({entry['section']})" if entry.get("section") else ""
+                        quote = filled(str(entry["quote"]))
+                        lines += [f"- The text now reads{place}: “{quote}”{note}"]
+                        continue
                     lines += [f"- Changed: {entry['kind']} `{entry['name']}`{note}"]
                 if point.get("changed"):
                     lines.append("")

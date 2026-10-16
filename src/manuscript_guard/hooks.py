@@ -611,13 +611,18 @@ def guard_write(payload: dict) -> int:
 
 
 def _an_approval(path: Path) -> str | None:
-    """Why an edit of an author's approval is put to the person: the file is the author's
-    statement, written by `approve` when they run it."""
+    """Why an edit of an author's approval, or of a named person's sign-off, is put to the
+    person: the file is their statement, written by `approve` or `sign` when they run it."""
     if path.suffix.lower() not in {".yaml", ".yml"}:
         return None
     found = _relative_to_project(path)
     if found is None or found[1].split("/")[0] != "approvals":
         return None
+    if found[1].split("/")[1:2] == ["sign-offs"]:
+        return (
+            f"{path.name} records a named person's sign-off of a finding. Only that person "
+            "can give it, with `manuscript-guard sign --as <them> --finding <id>`."
+        )
     return (
         f"{path.name} records an author's approval of the manuscript. Only that author can "
         "give it, with `manuscript-guard approve --as <author>`."
@@ -871,12 +876,20 @@ def guard_submission(payload: dict) -> int:
 _INVOCATION_END = re.compile(r"[;&|\n]|" + _TOOL + r"[A-Za-z]", re.IGNORECASE)
 _REVIEW = re.compile(_TOOL + r"review\b", re.IGNORECASE)
 _APPROVE = re.compile(_TOOL + r"approve\b", re.IGNORECASE)
+_SIGN = re.compile(_TOOL + r"sign\b", re.IGNORECASE)
 
 
 def _approves(command: str) -> str | None:
-    """Why an `approve` in this command is put to the person: an approval is an author's
-    statement that they read the manuscript, and an agent that runs it makes it for them."""
+    """Why an `approve` or a `sign` in this command is put to the person: an approval is an
+    author's statement that they read the manuscript, a sign-off a named person's that a
+    finding is acceptable, and an agent that runs either makes it for them."""
     joined = re.sub(r"[\\`]\r?\n", " ", command)
+    if _SIGN.search(joined):
+        return (
+            "`manuscript-guard sign` records that the person authors.yaml names for a role "
+            "judged a finding acceptable. Only that person can say so: run it yourself, as "
+            "yourself."
+        )
     if not _APPROVE.search(joined):
         return None
     return (

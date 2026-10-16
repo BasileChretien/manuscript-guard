@@ -10,6 +10,9 @@ meta:
   version: "2015"
   applies_to: "Studies developing a prediction model"
   source_url: "https://www.tripod-statement.org/"
+  # The TRIPOD+AI statement paper (doi:10.1136/bmj-2023-078378) says its checklist
+  # replaces the TRIPOD 2015 checklists, which it asks no longer be used.
+  superseded_by: TRIPOD+AI
   retrieved_on: 2026-08-03
   retrieved_by: "downloaded by the author"
   licence: >-

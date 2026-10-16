@@ -52,6 +52,14 @@
       ],
       "description": "What kind of instrument this is, where it is not a reporting guideline. \"scale\" means an appraisal instrument whose items are what an editor or a reviewer scores, as SANRA's are: the submission pack then presents it as a scale rather than as a completed reporting checklist, which is a different claim. Absent or empty for every reporting guideline."
     },
+    "read_from": {
+      "type": "string",
+      "description": "Which document the items were read from, where it is not the checklist file: a table of the statement paper."
+    },
+    "superseded_by": {
+      "type": "string",
+      "description": "The guideline that replaced this one, as its authors say."
+    },
     "licence": {
       "type": "string"
     },

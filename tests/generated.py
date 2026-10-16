@@ -686,6 +686,59 @@ def vector_figures(draw: st.DrawFn) -> tuple[str, dict[str, float], list[float]]
     return document, texts, sorted(lines)
 
 
+# -------------------------------------------------------------- the results a plan promises
+
+_STEMS = ("ror", "case", "cohort", "hr", "events")
+_LEAVES = ("point", "ci_low", "n", "pct_serious", "n-dropped")
+#: Code in a list item that is not a key: no dot in it.
+_CODE = ("glm", "R", "lme4", "n_cases")
+_MARKERS = ("- ", "* ", "+ ", "1. ")
+
+
+@st.composite
+def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
+    """A plan whose Planned results section lists results in each way an item holds one,
+    with the keys it lists, in order, as (key, whether it is a group).
+
+    Each example holds one item of every kind, in an order drawn each time: a key; a key as
+    the manuscript binds it; a key with no dot, bound; a group of keys; words and no code;
+    code that is not a key; a key nested under an item that has none; and an item with no
+    key followed, past a blank line, by prose that holds one. Then a subsection with a key of
+    its own. The section
+    comes before the drawn text, which an open fence would otherwise swallow it into."""
+    words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=6).map(" ".join)
+    marker = st.sampled_from(_MARKERS)
+
+    def key() -> str:
+        return f"{draw(st.sampled_from(_STEMS))}.{draw(st.sampled_from(_LEAVES))}"
+
+    def wrapped() -> str:
+        return draw(st.sampled_from((" ", "\n  "))).join((draw(words), draw(words)))
+
+    kinds: list[tuple[str, list[tuple[str, bool]]]] = []
+    plain, bound, stem = key(), key(), draw(st.sampled_from(_STEMS))
+    kinds.append((f"{draw(marker)}`{plain}`: {wrapped()}\n", [(plain, False)]))
+    kinds.append((f"{draw(marker)}`results.{bound}` {wrapped()}\n", [(bound, False)]))
+    undotted = draw(st.sampled_from(_STEMS))
+    kinds.append((f"{draw(marker)}`results.{undotted}`: {draw(words)}\n", [(undotted, False)]))
+    kinds.append((f"{draw(marker)}`{stem}.*`: {wrapped()}\n", [(stem, True)]))
+    kinds.append((f"{draw(marker)}{wrapped()}\n", []))
+    kinds.append((f"{draw(marker)}`{draw(st.sampled_from(_CODE))}` {draw(words)}\n", []))
+    nested = key()
+    kinds.append((f"- {draw(words)}\n\n  - `{nested}`: {draw(words)}\n", [(nested, False)]))
+    kinds.append((f"- {draw(words)}\n\n{draw(words)} `{key()}` {draw(words)}.\n", []))
+    order = draw(st.permutations(range(len(kinds))))
+    items = "\n".join(kinds[index][0] for index in order)
+    listed = [found for index in order for found in kinds[index][1]]
+    secondary = key()
+    plan = (
+        f"# Analysis plan\n\n## Planned results\n\n{items}\n"
+        f"### Secondary\n\n{draw(marker)}`{secondary}`: {draw(words)}\n\n"
+        f"## Outcome\n\n{draw(texts())}\n"
+    )
+    return plan, [*listed, (secondary, False)]
+
+
 #: What can stand in a stored source between two words of a quote taken from it: line
 #: numbers, figures, a column's or a header's words, a hyphen at the end of a line, a symbol.
 INTERRUPTIONS = (
@@ -733,6 +786,18 @@ NOTATED = (
     "95% CI 1.2 to 3.4", "95% CI 1.2-3.4", "(95% CI {{results.low}} to {{results.high}})",
     "P = {{results.p}}", "5%", "5 %", "5mg", "5 mg", "{{results.dose}}mL",
     "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g", "(CI 95%-0.3 to 0.4)",
+)  # fmt: skip
+
+#: A test statistic and its P in each of the ways a results sentence writes them, right and
+#: wrong, and what a sentence says of a test that is not the textbook one: what the reading
+#: of reported tests finds and judges.
+REPORTED = (
+    "t(23) = 2.45, p = .022", "t(23) = 2.45, p = .41", "*t*(40) = \N{MINUS SIGN}2.1, *P* < 0.05",
+    "t = 2.45, df = 23, P = 0.022", "F(2, 45) = 3.21, p = .05", "_F_(1,234) = 5.6; P = .40",
+    "\N{GREEK SMALL LETTER CHI}2(1, N = 90) = 4.5, p < .05",
+    "\N{GREEK SMALL LETTER CHI}^2^(3) = 0.5, *P* \\< 0.001", "chi-square(2) = 9.1, p = .011",
+    "z = 4.10, P = 4.1e-5", "Z = 4.10, P = 4.1 x 10^-5^", "z = 1.2, p\n= .23", "one-sided",
+    "Welch's", "after Bonferroni adjustment", "{{results.t}}", "p = {{results.p}}", "t(",
 )  # fmt: skip
 
 
@@ -867,6 +932,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "interval order": intervals(),
     "deviations": texts(),
+    "planned results": planned_plans().map(lambda drawn: drawn[0]),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
     "vector figure": vector_figures().map(lambda drawn: drawn[0]),
     "quote words": st.fixed_dictionaries(
@@ -881,6 +947,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "reported tests": texts(REPORTED),
     "units after": texts(BOUND_UNITS),
     "abbreviations": st.fixed_dictionaries(
         {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}

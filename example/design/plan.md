@@ -44,6 +44,14 @@ p < 0.05 is stated for convention; the interval, not the threshold, carries the 
 
 Seriousness is reported as a proportion of the cases, descriptively.
 
+## Planned results
+
+The results the paper will report, each by the key the analysis emits it under:
+
+- `case.n_cases`: the cases, reports of hepatic injury with the drug
+- `ror.*`: the reporting odds ratio and its 95% interval
+- `case.pct_serious`: the proportion of the cases that were serious
+
 ## Sample size
 
 Fixed by the database. No power calculation: the analysis is descriptive of what was

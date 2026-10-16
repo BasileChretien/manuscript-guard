@@ -1794,6 +1794,103 @@ def test_results_with_no_kept_plan_are_a_note(project: Path) -> None:
     assert _plan_said(project) == [("plan-not-frozen", "info")]
 
 
+# ------------------------------------------------- the results the plan promised
+
+
+def _planned_said(root: Path, stage: str = "drafting", **unquoted: bool) -> list[tuple[str, str]]:
+    """G12's word on the plan's Planned results at a stage, with the values named emitted
+    with quoted=False: each finding's code and the line it points at."""
+    from manuscript_guard.gates import check_design
+
+    if unquoted:
+        fragment = next((root / "results").glob("*.json"))
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        for key in unquoted:
+            document["values"][key.replace("__", ".")]["quoted"] = False
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    project, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(project)
+    text = (root / "design" / "plan.md").read_text(encoding="utf-8").splitlines()
+    return [(f.code, text[f.line - 1].strip() if f.line else "")
+            for f in check_design(project, results, stage).findings
+            if f.code.startswith("planned-")]  # fmt: skip
+
+
+def test_a_result_the_plan_promised_and_the_analysis_never_emitted_is_a_warning(
+    project: Path,
+) -> None:
+    """Item 37: G2 said when the analysis emitted a value nothing quoted, and nothing said
+    when the plan promised a result the analysis never emitted."""
+    from manuscript_guard.gates import check_design
+
+    promised = "- `death.n_cases`: deaths among the cases"
+    _plan_edited(project, "- `case.pct_serious`", f"{promised}\n- `case.pct_serious`")
+    assert _planned_said(project) == [("planned-result-missing", promised)]
+    assert _planned_said(project, "design") == []
+    assert not [f for f in check_design(load_project(project)[0]).findings
+                if f.code.startswith("planned-")]  # fmt: skip
+
+
+def test_a_planned_result_emitted_unquoted_is_a_warning(project: Path) -> None:
+    assert _planned_said(project) == []
+    said = _planned_said(project, case__pct_serious=True)
+    assert said == [("planned-result-unquoted", "- `case.pct_serious`: the proportion of the "
+                     "cases that were serious")]  # fmt: skip
+
+
+def test_a_planned_group_counts_while_one_of_its_keys_is_quoted(project: Path) -> None:
+    assert _planned_said(project, ror__ci90_low=True, ror__ci90_high=True) == []
+    said = _planned_said(project, ror__point=True, ror__ci_low=True, ror__ci_high=True)
+    assert said == [("planned-result-unquoted", "- `ror.*`: the reporting odds ratio and its "
+                     "95% interval")]  # fmt: skip
+
+
+def test_a_planned_result_the_deviations_name_passes(project: Path) -> None:
+    _plan_edited(project, "- `case.pct_serious`",
+                 "- `death.n_cases`: deaths among the cases\n- `case.pct_serious`")  # fmt: skip
+    _plan_edited(project, "No analysis was added",
+                 "3. Deaths, `death.n_cases`, were not reported: the generator writes none.\n\n"
+                 "No analysis was added")  # fmt: skip
+    assert _planned_said(project) == []
+    _plan_edited(project, "Deaths, `death.n_cases`, were", "Deaths, `death.n_cases_all`, were")
+    assert [code for code, _line in _planned_said(project)] == ["planned-result-missing"]
+
+
+def test_a_planned_key_with_no_dot_is_read_in_its_bound_form(project: Path) -> None:
+    """Round 1 of #305: `results.dose` was read as the key `results.dose`, since `dose` has
+    no dot, and a promise kept was said to be broken."""
+    from manuscript_guard.gates import check_design
+
+    promised = "- `results.dose`: the dose"
+    _plan_edited(project, "- `case.pct_serious`", f"{promised}\n- `case.pct_serious`")
+    assert _planned_said(project) == [("planned-result-missing", promised)]
+    # Round 2 of #305: the word "dose" in the Deviations stood the key down.
+    _plan_edited(project, "No analysis was added", "The dose groups were analysed as planned.\n\n"
+                 "No analysis was added")  # fmt: skip
+    assert _planned_said(project) == [("planned-result-missing", promised)]
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(project_)
+    [said] = [f for f in check_design(project_, results, "drafting").findings
+              if f.code == "planned-result-missing"]  # fmt: skip
+    assert "lists results.dose among" in said.message and "naming results.dose" in said.hint
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["dose"] = {"value": 5, "display": "5"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _planned_said(project) == []
+
+
+def test_a_planned_results_section_that_names_no_key_is_a_warning(project: Path) -> None:
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    start, end = text.index("## Planned results\n"), text.index("## Sample size")
+    words = "## Planned results\n\nThe cases, the ratio and the share that were serious.\n\n"
+    plan.write_text(text[:start] + words + text[end:], encoding="utf-8")
+    assert _planned_said(project) == [("planned-results-unkeyed", "")]
+
+
 # ------------------------------------------------- the unit of analysis
 
 
@@ -3047,6 +3144,117 @@ def test_every_literature_value_ends_in_one_verdict(
     assert {name: counts[name] for name in expected} == expected, counts
     if code is not None:
         assert code in codes(report), report.render(project)
+
+
+# ------------------------------------------------------- a P worked out from its statistic
+# A statistic and a P that the analysis did not make agree: typed, quoted from a source, or
+# bound from two keys. G2 sees two numbers, each of which passed.
+
+
+def _recomputed(root: Path):
+    from manuscript_guard.gates import check_recomputed
+
+    project, _ = load_project(root)
+    namespace, results, _literature, _ = load_namespace(project)
+    return check_recomputed(project, namespace, results)
+
+
+def _recomputed_codes(root: Path, sentence: str) -> list[str]:
+    main = main_md(root)
+    main.write_text(main.read_text(encoding="utf-8") + "\n" + sentence + "\n", encoding="utf-8")
+    return [f.code for f in _recomputed(root).findings]
+
+
+def _emitted(root: Path, **displays: str) -> None:
+    """Values in the example's results, each with the display given, as an analysis would
+    emit them."""
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for key, display in displays.items():
+        digits = len(display.partition(".")[2])
+        value = {"value": float(display), "display": display, "digits": digits}
+        document["values"][key.replace("__", ".")] = value
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        ("Earlier work found t(23) = 2.45, p = .022 [@fictionalHepaticCohort2021].", []),
+        ("Earlier work found t(23) = 2.45, p = .041 [@fictionalHepaticCohort2021].",
+         ["p-inconsistent"]),
+        ("Earlier work found t(23) = 2.45, p = .40 [@fictionalHepaticCohort2021].",
+         ["p-decision-error"]),
+        ("The arms differed, *F*(2, 45) = 3.21, *P* = 0.30.", ["p-decision-error"]),
+        ("The arms differed, \N{GREEK SMALL LETTER CHI}^2^(1) = 0.5, *P* \\< 0.05.",
+         ["p-decision-error"]),
+        ("The arms differed, z = 3.30, P = 0.01.", ["p-inconsistent"]),
+        ("A one-sided t(23) = 2.45, p = .011, as planned.", []),
+        ("<!-- t(23) = 2.45, p = .40 -->", []),
+    ],
+)
+def test_a_p_that_does_not_follow_from_its_statistic_is_found(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    assert _recomputed_codes(project, sentence) == found
+
+
+def test_a_statistic_and_a_p_bound_from_two_analyses_are_found(project: Path) -> None:
+    """The crude t beside the adjusted P: each bound, each passed by G2, and no gate saw
+    that they disagree."""
+    _emitted(project, crude__t="2.45", adjusted__p="0.30")
+    sentence = "The groups differed, t(23) = {{results.crude.t}}, p = {{results.adjusted.p}}."
+    assert _recomputed_codes(project, sentence) == ["p-decision-error"]
+
+
+def test_a_p_is_judged_at_the_alpha_the_analysis_emits(project: Path) -> None:
+    """t(23) = 1.90 gives 0.070: below an alpha of 0.10, as the P of .03 printed beside it
+    is, so the two disagree and no decision does."""
+    sentence = "The groups differed, t(23) = 1.90, p = .03."
+    assert _recomputed_codes(project, sentence) == ["p-decision-error"]
+    _emitted(project, param__alpha="0.10")
+    assert [f.code for f in _recomputed(project).findings] == ["p-inconsistent"]
+
+
+def test_a_quote_whose_statistic_and_p_disagree_is_found(project: Path) -> None:
+    """The source's own numbers disagree, so the value taken from them may be the wrong
+    one of the two."""
+    said = (
+        "The crude incidence of drug-induced hepatic injury was 14 per 100 000 "
+        "person-years, t(23) = 2.45, p = .40."
+    )
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text(source.read_text(encoding="utf-8") + "\n" + said + "\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["quote"] = said
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = _literature_report(project)
+    assert [f.code for f in report.findings if f.code == "quote-p-inconsistent"] == [
+        "quote-p-inconsistent"
+    ]
+    assert report.counts["literature_verified"] == 2
+
+
+def test_an_audited_paper_s_p_that_does_not_follow_is_listed_apart(tmp_path: Path) -> None:
+    """`audit` reads a paper that was never bound, and needs no outputs for this."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("The groups differed, t = 2.45, df = 23, p = .40.\n", encoding="utf-8")
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("value\n23\n2.45\n0.40\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert [(d.line, d.context) for d in report.disagreements] == [
+        (1, "t = 2.45, df = 23, p = .40")
+    ]
+    shown = render(report, measure_discrimination(report.backing_values))
+    assert "P VALUES THAT DO NOT FOLLOW" in shown
+    assert "on the other side of 0.05" in shown
+    # Every number is in the outputs, and --strict counts only those.
+    assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == 0
 
 
 @pytest.mark.parametrize(

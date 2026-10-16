@@ -1500,6 +1500,37 @@ A threshold is not a measurement, so a float parameter is written as typed (fift
 significant digits, in both languages) unless `digits` or `display` says otherwise: 0.025
 rounded to two places is 0.03, a different test.
 
+## A P follows from its statistic
+
+A paper's own results are bound, and their arithmetic is the analysis's. Three kinds of
+number are not: a value quoted from another paper, a number typed into the prose, and two
+bound values that come from different keys. "t(23) = {{results.crude.t}}, p =
+{{results.adjusted.p}}" passes G2 once for each value, and says something no analysis
+computed.
+
+A t, F, chi-squared or z statistic with its degrees of freedom gives its P, and the P
+printed after it in the same sentence can be held to it. G8 does this in the manuscript as
+it prints, each binding replaced by its display; G7 does it in each ledger quote, where a
+disagreement means the source's own numbers disagree; `audit` does it in a paper that was
+never bound. The P is worked out over every value the statistic's printed digits allow:
+"2.45" stands for anything from 2.445 to 2.455, and "p = .041" for anything from 0.0405 to
+0.0415. The two disagree (`p-inconsistent`) when those ranges do not meet, and the
+disagreement is a decision error (`p-decision-error`) when they fall on either side of the
+significance level, the `param.alpha` the analysis emits or 0.05. "p < .05" stands for
+anything below 0.05.
+
+A sentence that calls its test one-sided, adjusted or corrected, Welch's,
+sphericity-corrected, exact, permutation or simulated is read and not judged: the P of
+such a test does not follow from the statistic by the textbook formula. All of it is a
+warning, and in `audit` it is listed apart and not counted by `--strict`, because a test
+can be one of those without its sentence saying so.
+
+The package depends on nothing numerical, and the four distributions need two functions
+beyond the standard library, the regularized incomplete beta and gamma functions. They are
+written from their definitions in the NIST Digital Library of Mathematical Functions,
+chapter 8, whose equations `stats/special.py` names, and they are tested against values
+SciPy computed once, outside the package. The two agree to a relative 1e-10.
+
 ## A model is read from its fit, and each variable says what it is
 
 A parameter is one number. A model is a set of decisions: which outcome, which kind of
@@ -5254,6 +5285,18 @@ Added by the adversarial review, verified and **not** fixed:
   read. Vulgar fractions and enclosed digits now are. Number words are left alone on
   purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and
   a rule that flags them is a rule that gets the gate switched off.
+- **A P is held to its statistic only in a sentence that writes both, for four kinds of
+  test.** t, F, chi-squared and z are read; r, U, H, W and the rest are not. A test in a
+  table, its statistic in one column and its P in another, is not read, and neither is a P
+  written before its statistic, "P = .03 (t(23) = 2.45)". A sentence ends at a stop before a
+  capital or a bracket, so "et al. (2019)" ends one, and a word before it that says the
+  test is not the textbook one is not seen. Such a word stands the test down wherever it is
+  in the sentence, about this test or not: "exact" or "corrected" said of anything. Degrees
+  of freedom with a thousands separator, "F(1, 1,234)", are not read. Decimal degrees of
+  freedom are read over their digits by the corners of that range, which is exact where the
+  P moves one way with each. A t or a z is read as two-sided unless its sentence says
+  otherwise, so a one-sided test the sentence does not call one is reported. A ledger quote
+  and an audited paper are judged at 0.05; only `check` reads `param.alpha`.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did

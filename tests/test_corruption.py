@@ -309,6 +309,88 @@ def test_figure_script_that_ignores_results_is_caught(project: Path) -> None:
     assert "figure-script-ignores-results" in codes(gate_report(project))
 
 
+def _estimates_said(project: Path) -> list[str]:
+    return [
+        f.message.split("(")[0]
+        for f in gate_report(project).findings
+        if f.code == "figure-estimates"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("added", "said"),
+    [
+        ('sns.barplot(data=frame, x="arm", y="reports")', ["sns.barplot"]),
+        ('sns.barplot(data=frame, x="arm", y="reports", errorbar=None)', []),
+        ('sns.barplot(data=frame, x="arm", y="reports", seed=2024)', []),
+        ('sns.regplot(data=frame, x="dose", y="reports", ci=None)', []),
+        ("spread = frame.groupby('arm').reports.std()", [".reports.std"]),
+        ("spread = frame.reports.std(ddof=1)", []),
+        ("subset = frame.sample(200)", ["frame.sample"]),
+        ("np.random.seed(7)\nsubset = frame.sample(200)", []),
+        ("kept = frame.dropna()", ["frame.dropna"]),
+        ("# sns.barplot(data=frame) in a comment", []),
+    ],
+)
+def test_a_figure_that_estimates_while_it_draws_is_warned(
+    project: Path, added: str, said: list[str]
+) -> None:
+    """A bootstrap interval, a spread whose divisor is unstated, rows sampled or dropped in
+    the figure script: none passes through the results, and the random ones change at every
+    render. Each is a warning, until the call is told not to or a seed settles it."""
+    script = project / "figures" / "forest.py"
+    script.write_text(script.read_text(encoding="utf-8") + "\n" + added + "\n", encoding="utf-8")
+    assert _estimates_said(project) == said
+
+
+def test_an_estimate_with_its_reason_beside_the_figure_is_not_warned(project: Path) -> None:
+    script = project / "figures" / "forest.py"
+    script.write_text(
+        script.read_text(encoding="utf-8")
+        + '\nsns.barplot(data=frame, x="arm", y="y")\nsubset = frame.sample(20)\n',
+        encoding="utf-8",
+    )
+    sidecar = project / "figures" / "forest.guard.yaml"
+    sidecar.write_text(
+        sidecar.read_text(encoding="utf-8")
+        + "\nallow_estimates:\n  - value: barplot\n    why: the bars show the raw means\n"
+        + "  - value: sample\n",  # no reason, so no exemption
+        encoding="utf-8",
+    )
+    assert _estimates_said(project) == ["frame.sample"]
+
+
+@pytest.mark.parametrize(
+    ("script", "said"),
+    [
+        ("ggplot(d, aes(arm, y)) + stat_summary()", ["stat_summary"]),
+        ('ggplot(d, aes(x, y)) + geom_smooth(method = "lm", se = FALSE)', ["geom_smooth"]),
+        ("ggplot(d, aes(arm, y)) + geom_jitter(width = 0.2)", ["geom_jitter"]),
+        ("ggplot(d, aes(arm, y)) + geom_jitter(seed = NA)", ["geom_jitter"]),
+        # Round 1 of #288: geom_jitter takes no seed, and ggplot2 ignores one given to it.
+        ("ggplot(d, aes(arm, y)) + geom_jitter(seed = 1)", ["geom_jitter"]),
+        ("ggplot(d, aes(arm, y)) + geom_jitter(position = position_jitter(seed = 1))", []),
+        ("ggplot(d, aes(arm, y)) + geom_point(position = position_jitter(width = 0.2))",
+         ["position_jitter"]),
+        ("set.seed(3)\nggplot(d, aes(arm, y)) + geom_jitter()", []),
+        ("d <- na.omit(d)", ["na.omit"]),
+        ("x <- rnorm(10)", ["rnorm"]),
+        ("set.seed(3)\nx <- rnorm(10)", []),
+    ],
+)
+def test_an_r_figure_that_estimates_while_it_draws_is_warned(
+    tmp_path: Path, script: str, said: list[str]
+) -> None:
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "funnel.R"
+    path.write_text("library(ggplot2)\n" + script + "\n", encoding="utf-8")
+    report = check_figure_source(path, Classifier.load())
+    found = [f.message.split("(")[0] for f in report.findings if f.code == "figure-estimates"]
+    assert found == said
+
+
 def test_same_quantity_under_two_keys_is_caught(project: Path) -> None:
     """One quantity, two keys, two roundings — 3.84 in one place and 3.8 in another.
 
@@ -982,6 +1064,118 @@ def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
     assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
 
 
+# ------------------------------------------------------------- what a change makes stale
+
+
+def _impact(root: Path, *files: str, since: str | None = None) -> list[dict]:
+    import io
+    from contextlib import redirect_stdout
+
+    from manuscript_guard.cli import main
+
+    out = io.StringIO()
+    args = ["impact", *(str(root / name) for name in files), "--json"]
+    if since is not None:
+        args += ["--since", since]
+    with redirect_stdout(out):
+        assert main(args) == 0
+    return json.loads(out.getvalue())
+
+
+def test_impact_lists_what_an_analysis_script_makes_stale(project: Path) -> None:
+    """From the analysis script, the chain the gates record: the results it writes,
+    the keys, the sentences binding them, the figure drawn from them and its review, the
+    steps and the Methods paragraphs pointing at them, and the panel readings of the files
+    that bind them. A file no record names has nothing."""
+    (found,) = _impact(project, "analysis/01_disproportionality.py")
+    assert found["role"] == "an analysis script that writes results"
+    assert found["results"] == ["results/01_disproportionality.json"]
+    assert "results.ror.point" in found["keys"]
+    bound = {(place["path"], place["names"]) for place in found["bound"]}
+    assert ("manuscript/main.md", "results.ror.point") in bound
+    assert ("manuscript/main.md", "table.two_by_two") in bound
+    assert ("manuscript/main.md", "figure.forest") in bound
+    assert "figures/forest.svg" in found["figures"]
+    assert found["figure_reviews"] == ["figures/forest.review.yaml"]
+    assert {"ror", "ci", "signal", "adjusted"} <= set(found["steps"])
+    assert any("method.ror" in place["names"] for place in found["methods"])
+    assert "review/round-6/biostatistician.yaml" in found["readings"]
+
+    (data,) = _impact(project, "data/reports.csv")
+    assert data["role"] == "an input the analysis declares"
+    assert data["keys"] == found["keys"]
+    (text,) = _impact(project, "manuscript/main.md")
+    assert text["role"] == "a manuscript file" and text["readings"]
+    (ledger,) = _impact(project, "literature/ledger.yaml")
+    assert any(key.startswith("lit.") for key in ledger["keys"]) and ledger["bound"]
+    (nothing,) = _impact(project, "paper.yaml")
+    assert nothing["role"] == "no record names it" and not nothing["keys"]
+
+
+def test_impact_follows_results_into_results_and_a_deleted_file_to_its_readings(
+    project: Path,
+) -> None:
+    """Round 1 of #280: an analysis whose input is another's results was a hop too far, and a
+    manuscript file deleted lost the readings G11 calls stale. And a file with only answers on
+    it was said to have nothing depend on it."""
+    from manuscript_guard.impact import Impact, as_text
+
+    first = project / "results" / "01_disproportionality.json"
+    document = json.loads(first.read_text(encoding="utf-8"))
+    document["provenance"]["generated_by"] = "analysis/02_second.py"
+    document["provenance"]["inputs"] = [
+        {"path": "results/01_disproportionality.json", "sha256": "0" * 64}
+    ]
+    document["values"] = {"second.n": dict(document["values"]["case.n_cases"])}
+    for key in ("tables", "steps", "variables", "models", "code_lists"):
+        document.pop(key, None)
+    second = project / "results" / "02_second.json"
+    second.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(second)
+    (found,) = _impact(project, "analysis/01_disproportionality.py")
+    assert "results/02_second.json" in found["results"]
+    assert "results.second.n" in found["keys"]
+
+    listed = project / "review" / "round-3" / "biostatistician.yaml"
+    assert "supplementary/S1_code_lists.md" in yaml.safe_load(
+        listed.read_text(encoding="utf-8")
+    )["file_sha256"]
+    (project / "manuscript" / "supplementary" / "S1_code_lists.md").unlink()
+    (gone,) = _impact(project, "manuscript/supplementary/S1_code_lists.md")
+    assert "review/round-3/biostatistician.yaml" in gone["readings"]
+
+    only = Impact(file="manuscript/main.md", role="a manuscript file", answers=["A on x"])
+    assert not only.empty and "    A on x" in as_text(only)
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_impact_with_no_file_lists_what_changed_since_the_last_commit(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no file, `impact` takes the files changed since the last commit, as `reworded`
+    reads the working tree against it, and what depends on each."""
+    import subprocess
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-c", "core.fsmonitor=false", *args], cwd=project, check=True,
+                       capture_output=True, timeout=60)  # fmt: skip
+
+    monkeypatch.chdir(project)
+    git("init", "-q")
+    git("add", ".")
+    git("-c", "user.name=t", "-c", "user.email=t@example.org", "commit", "-q", "-m", "x")
+    assert _impact(project) == []
+    script = project / "analysis" / "01_disproportionality.py"
+    script.write_text(script.read_text(encoding="utf-8") + "\n# a comment\n", encoding="utf-8")
+    (found,) = _impact(project)
+    assert found["file"] == "analysis/01_disproportionality.py"
+    assert found["results"] == ["results/01_disproportionality.json"]
+    # Round 1 of #280: git's names are read as UTF-8, not in the locale's code page.
+    named = project / "manuscript" / ("r" + chr(0xE9) + "sum" + chr(0x8003) + ".md")
+    named.write_text("New.\n", encoding="utf-8")
+    assert named.name in {Path(one["file"]).name for one in _impact(project)}
+
+
 # ------------------------------------------------------------- the authors' approvals
 
 
@@ -1446,6 +1640,71 @@ def test_opening_a_round_keeps_the_manuscript_as_it_renders(project: Path) -> No
     assert point in kept and "{{results.ror.point}}" not in kept
 
 
+# ------------------------------------------------- the environment the results were made in
+
+
+def _rerun_with(root: Path, files: dict[str, str]) -> None:
+    from conftest import run_analysis
+
+    for name, content in files.items():
+        (root / name).write_text(content, encoding="utf-8")
+    run_analysis(root)
+
+
+def _environment_said(root: Path) -> list[tuple[str, str]]:
+    return [
+        (f.severity, f.message)
+        for f in gate_report(root).findings
+        if f.code == "environment-changed"
+    ]
+
+
+def test_a_lockfile_changed_since_the_results_is_said(project: Path) -> None:
+    """Item 18: the emitter recorded no package environment, so a requirements file pinning
+    another version after the results were written went unsaid."""
+    _rerun_with(project, {"requirements.txt": "pandas==2.2.2\n"})
+    assert _environment_said(project) == []
+    (project / "requirements.txt").write_text("pandas==2.1.0\n", encoding="utf-8")
+    said = _environment_said(project)
+    assert said and all(severity == "warn" for severity, _ in said)
+    assert all("requirements.txt changed since these results" in m for _, m in said)
+
+
+@pytest.mark.parametrize("name", ["requirements.txt", "renv.lock", "uv.lock"])
+def test_a_lockfile_checked_out_with_other_line_endings_is_unchanged(
+    project: Path, name: str
+) -> None:
+    """Round 1 of #265: git checks a lockfile out with CRLF on Windows and LF elsewhere, and
+    a byte digest read that as a change."""
+    (project / name).write_bytes(b"pandas==2.2.2\r\nnumpy==2.0.0\r\n")
+    _rerun_with(project, {})
+    (project / name).write_bytes(b"pandas==2.2.2\nnumpy==2.0.0\n")
+    assert _environment_said(project) == []
+
+
+def test_a_lockfile_gone_or_new_since_the_results_is_said(project: Path) -> None:
+    _rerun_with(project, {"requirements.txt": "pandas==2.2.2\n"})
+    (project / "requirements.txt").unlink()
+    (project / "renv.lock").write_text("{}\n", encoding="utf-8")
+    said = " ".join(m for _, m in _environment_said(project))
+    assert "requirements.txt pinned the packages" in said and "is gone" in said
+    assert "renv.lock was not there when these results were written" in said
+
+
+def test_a_fragment_written_before_the_environment_was_recorded_says_nothing(
+    project: Path,
+) -> None:
+    from manuscript_guard.emit import write_digest
+
+    (project / "renv.lock").write_text("{}\n", encoding="utf-8")
+    for fragment in (project / "results").glob("*.json"):
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        document["provenance"].pop("environment", None)
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    assert _environment_said(project) == []
+
+
 # ------------------------------------------------- a pointer names what the document carries
 # "In step 1204 reports were excluded, as Table 4000 and Figure 9 show." passed G2 whole: each
 # number followed a pointer word. The example itself called its two tables "Table 2" and
@@ -1895,6 +2154,151 @@ def test_rows_of_one_unit_taken_as_independent_are_a_warning(project: Path) -> N
 def test_rows_of_one_unit_accounted_for_say_nothing(project: Path, fields: dict) -> None:
     _model_card_has(project, **fields)
     assert _unit_said(project) == []
+
+
+# ------------------------------------------------- a named person signs off a warning
+
+_UNIT_WARNING = "G15/unit-rows-independent/adjusted"
+
+
+def _signed_said(root: Path) -> list[tuple[str, str, str]]:
+    """G15's word on the rows of one unit: its severity, its message and its hint."""
+    project, _ = load_project(root)
+    _namespace, results, _literature, _report = load_namespace(project)
+    said = check_models(project, results).findings
+    return [
+        (f.severity, f.message, f.hint or "")
+        for f in said
+        if f.code in ("unit-rows-independent", "schema-violation")
+    ]
+
+
+def _roles(root: Path, roles: str) -> None:
+    authors = root / "authors.yaml"
+    text = re.sub(r"(?m)^roles:\n(?:  .*\n)*", "", authors.read_text(encoding="utf-8"))
+    authors.write_text(text + roles, encoding="utf-8")
+
+
+def test_a_warning_the_statistician_signed_is_said_with_their_name(project: Path) -> None:
+    """Item 48: a G15 warning left standing was the author's to dismiss. The statistician
+    authors.yaml names signs it off, bound to the model's card: it is then information that
+    names them, and a refitted model wants a new sign-off."""
+    from manuscript_guard.cli import main
+
+    _model_card_has(project, unit={"column": "patient", "units": 3}, covariance="nonrobust")
+    [(severity, _message, hint)] = _signed_said(project)
+    assert severity == "warn"
+    assert f'Blaise Sample, the statistician, signs it off with `manuscript-guard sign --as "Blaise Sample" --finding {_UNIT_WARNING}`' in hint  # noqa: E501
+    assert main(["sign", str(project), "--as", "Ada Example", "--finding", _UNIT_WARNING]) == 2
+    assert main(["sign", str(project), "--as", "Sample", "--finding", "G15/nothing/here"]) == 2
+    assert _signed_said(project)[0][0] == "warn"
+
+    note = "three visits a patient; the cluster fit agrees"
+    signed = ["sign", str(project), "--as", "0000-0001-5109-3700", "--finding", _UNIT_WARNING]
+    assert main([*signed, "--note", note]) == 0
+    [(severity, message, hint)] = _signed_said(project)
+    assert severity == "info"
+    assert message.endswith(f"signed off by Blaise Sample, the statistician, on {time.strftime('%Y-%m-%d')}")  # noqa: E501
+    assert hint == f"they said: {note}"
+
+    _model_card_has(project, unit={"column": "patient", "units": 4})
+    [(severity, _message, hint)] = _signed_said(project)
+    assert severity == "warn" and "and it has changed since" in hint
+
+
+def test_a_sign_off_counts_only_from_the_person_who_holds_the_role(project: Path) -> None:
+    """A sign-off by someone the roles no longer name, one copied to another finding, or
+    roles that name nobody or no author: the warning stands, and says what is wanted."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.sign_offs import DIRECTORY
+
+    _model_card_has(project, unit={"column": "patient", "units": 3}, covariance="nonrobust")
+    assert main(["sign", str(project), "--as", "Sample", "--finding", _UNIT_WARNING]) == 0
+    _roles(project, "roles:\n  statistician: Example\n")
+    [(severity, _message, hint)] = _signed_said(project)
+    assert severity == "warn" and "was signed by Blaise Sample, who is not the statistician" in hint
+
+    _roles(project, "roles:\n  statistician: Nobody\n")
+    [(severity, _message, hint)] = _signed_said(project)
+    assert severity == "warn" and "'Nobody' is not an author" in hint
+    assert main(["sign", str(project), "--as", "Sample", "--finding", _UNIT_WARNING]) == 2
+
+    _roles(project, "")
+    [(severity, _message, hint)] = _signed_said(project)
+    assert severity == "warn" and "name the statistician under `roles:`" in hint
+    assert main(["sign", str(project), "--as", "Sample", "--finding", _UNIT_WARNING]) == 2
+
+    _roles(project, "roles:\n  statistician: Sample\n")
+    [record] = (project / DIRECTORY).glob("*.yaml")
+    signed = yaml.safe_load(record.read_text(encoding="utf-8"))
+    elsewhere = {**signed, "finding": "G15/model-few-events/adjusted"}
+    record.write_text(yaml.safe_dump(elsewhere), encoding="utf-8")
+    [(severity, _message, hint)] = _signed_said(project)
+    assert severity == "warn" and "signs another finding" in hint
+    record.write_text(yaml.safe_dump({**signed, "signed_sha256": "not a digest"}), "utf-8")
+    said = _signed_said(project)
+    assert [s for s, _m, _h in said] == ["fail", "warn"], said
+    assert "is not a sign-off it can read" in said[1][2]
+    # Round 1 of #304: a record that is not YAML stopped G15, and its findings went with it.
+    record.write_text("said: [unclosed\n", encoding="utf-8")
+    said = _signed_said(project)
+    assert [s for s, _m, _h in said] == ["fail", "warn"], said
+    assert "cannot parse" in said[0][1] and "is not a sign-off it can read" in said[1][2]
+
+
+def test_a_sign_off_is_bound_to_every_model_the_warning_names(project: Path) -> None:
+    """Round 1 of #304: a warning that the adjusted model used other rows than the crude one
+    was bound to the adjusted model's card alone, and kept its sign-off when the crude model
+    was refitted on other rows of the same count. It keeps G15's place in the report, too."""
+    from manuscript_guard.cli import main
+
+    _crude_beside_adjusted(project, {"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["some"]})
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(project_)
+    raised = [f.code for f in check_models(project_, results).findings]
+    finding = "G15/models-on-different-rows/adjusted"
+    assert main(["sign", str(project), "--as", "Sample", "--finding", finding]) == 0
+    said = check_models(project_, results).findings
+    assert [f.code for f in said] == raised
+    assert [f.severity for f in said if f.code == "models-on-different-rows"] == ["info"]
+
+    other = hashlib.sha256(b"other").hexdigest()
+    _crude_beside_adjusted(project, {"rows_sha256": other}, {"rows_sha256": _ROWS["some"]})
+    _namespace, results, _literature, _report = load_namespace(project_)
+    said = [f for f in check_models(project_, results).findings
+            if f.code == "models-on-different-rows"]  # fmt: skip
+    assert [f.severity for f in said] == ["warn"] and "changed since" in said[0].hint
+
+
+def test_a_statistician_who_is_not_an_author_signs_by_name(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    _model_card_has(project, unit={"column": "patient", "units": 3}, covariance="nonrobust")
+    _roles(project, "roles:\n  statistician:\n    name: Chris Keeper\n"
+                    "    email: chris.keeper@invalid.example\n")  # fmt: skip
+    assert main(["sign", str(project), "--as", "Keeper", "--finding", _UNIT_WARNING]) == 2
+    assert main(["sign", str(project), "--as", "chris.keeper@invalid.example", "--finding",
+                 _UNIT_WARNING]) == 0  # fmt: skip
+    [(severity, message, _hint)] = _signed_said(project)
+    assert severity == "info" and "signed off by Chris Keeper, the statistician" in message
+
+
+@pytest.mark.parametrize(
+    "roles, valid",
+    [
+        ("roles:\n  ethics_lead:\n    author: Sample\n    approval: IRB-2026-014\n", True),
+        ("roles:\n  ethics_lead: Sample\n", False),
+        ("roles:\n  statistician:\n    author: Sample\n    name: Blaise Sample\n", False),
+        ("roles:\n  reviewer: Sample\n", False),
+    ],
+)
+def test_the_ethics_lead_is_named_with_the_approval(project: Path, roles: str, valid: bool) -> None:
+    """The person responsible for ethics approval comes with the approval's reference; a
+    holder is an author or a name, not both; and the roles are the ones the toolkit knows."""
+    _roles(project, roles)
+    _loaded, report = load_project(project)
+    said = [f for f in report.findings if f.code == "authors-incomplete"]
+    assert (not said) == valid, [f.message for f in said]
 
 
 # ------------------------------------------------- an interval is a declared thing
@@ -2865,6 +3269,43 @@ def test_every_literature_value_ends_in_one_verdict(
     assert {name: counts[name] for name in expected} == expected, counts
     if code is not None:
         assert code in codes(report), report.render(project)
+
+
+@pytest.mark.parametrize(
+    ("written", "said"),
+    [
+        ("drug-induced hepatic\n12\ninjury",
+         "the source has '12' between 'hepatic' and 'injury' (line 13): numbers"),
+        ("drug-induced hepa-\ntic injury", "'hepa' and 'tic' are one word, split by a hyphen"),
+        ("hepatic injury", "the source has 'drug-induced' between 'of' and 'hepatic' (line 12)"),
+        ("drug-induced liver injury",
+         "after 'induced' the quote has 'hepatic', where the source has 'liver injury was'"),
+        ("per 100\N{MIDDLE DOT}000",
+         "between '100' and '000' (line 12) the source has '\N{MIDDLE DOT}' where the quote "
+         "has ' '"),
+    ],
+)  # fmt: skip
+def test_a_quote_not_in_its_source_says_what_stands_in_the_way(
+    project: Path, written: str, said: str
+) -> None:
+    """Item 19: G7 fails a quote that is not in the source exactly, and used to say only
+    that. The quote's words in order, with line numbers, a hyphen or a symbol between, are
+    put right in a minute once that is named. The verdict is the same."""
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    text = source.read_text(encoding="utf-8")
+    plain = "drug-induced hepatic injury" if "induced" in written else "per 100 000"
+    if written == "hepatic injury":
+        # The quote leaves a word out, rather than the source putting one in.
+        path = project / "literature" / "ledger.yaml"
+        ledger = path.read_text(encoding="utf-8")
+        path.write_text(ledger.replace("of drug-induced hepatic", "of hepatic", 1), "utf-8")
+    else:
+        source.write_text(text.replace(plain, written, 1), encoding="utf-8")
+    report = _literature_report(project)
+    found = [f for f in report.findings if f.code == "quote-not-in-source"]
+    assert len(found) == 1 and found[0].severity == "fail", report.render(project)
+    assert said in found[0].message, found[0].message
+    assert report.counts["literature_failed"] == 1
 
 
 @pytest.mark.parametrize(

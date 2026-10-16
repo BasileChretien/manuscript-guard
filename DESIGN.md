@@ -2355,6 +2355,30 @@ The effect is that `manuscript-guard init` followed by a first analysis script n
 zero failures at `design` and `analysis`, with the outstanding work listed as not yet due,
 and the same items fail from `drafting` onwards.
 
+## `check` says what it rests on, dimension by dimension
+
+A run with no failure read as "the paper is right", and it says much less. So `check` ends
+with what was checked, grouped by what it is about (`assurance.py`): computational
+reproducibility (G1), numerical provenance (G2, G3, G7, G8), reporting completeness (G4, G5,
+G13), methodological validity (G9, G12, G15), the literature (G7), the review (G10, G11), and
+the language and writing (G6, G14), the last added so that every gate is under one. For each
+it prints three kinds of line, which are the three kinds of evidence the toolkit has:
+`checked`, the gates that ran and what they found, with any that did not run or read
+nothing; `recorded`, what somebody recorded, by whom and when (the last run of `verify`, the
+panel's last round and its readers, the figure reviews, the values attested by a person);
+and `not checked`, in words, what no gate decides, such as whether the design supports the
+conclusion. A dimension with nothing recorded where a record is expected says so: "no review
+of the design", "no run of `verify` in this checkout". There is no score and no percentage,
+since a single number would be read as the verdict this is not, and the exit code is the
+findings' at the project's stage, as before. It is printed text only: `check --json` is
+unchanged.
+
+`verify` now records its last full run in the build folder (`build/verify.json`): when, how
+many values it reproduced of how many, and a digest of the results fragments it re-ran.
+`check` says that run, and says the results have changed since where they have. A run of
+some scripts only (`--only`) is not recorded, since it did not re-run the analysis. The
+folder is not committed, so a fresh checkout says `verify` has not run in it, which is true.
+
 ## An approval is bound to what the author read
 
 "All authors approved the final manuscript" was a sentence of the covering letter, typed.
@@ -7395,6 +7419,11 @@ Closed since, and why each mattered:
   further into an item: an indented one, one under a later item's own underline, or
   `- # Results` on the item's own line. The same goes for a definition list. The old scan
   saw none of these either.
+- **What `check` says was recorded is what the records say.** A panel's reader is named as
+  the record names it, a model or a person, and a figure review the same; nothing checks who
+  they are. The design review is said not recorded until a panel can read the plan before
+  there are results. `verify`'s record is the build folder's, so it says what was run in this
+  checkout and nothing of anyone else's.
 - **An approval says who ran the command, not who read the manuscript.** A co-author who
   runs `approve` for a colleague, or an agent the person lets through, writes an approval
   nobody gave. The digest says what was current when it was given, not that it was read.

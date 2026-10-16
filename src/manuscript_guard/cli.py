@@ -20,6 +20,7 @@ from datetime import date
 from pathlib import Path
 
 from manuscript_guard import __version__
+from manuscript_guard.assurance import assurance, record_verified
 from manuscript_guard.build import (
     LIVE,
     OFFLINE,
@@ -1405,6 +1406,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(f"manuscript-guard {__version__} — {project.root}")
         print(f"stage: {stage} ({DESCRIPTIONS[stage]})")
         print(report.render(project.root))
+        print("\n" + "\n".join(assurance(report, project)))
         print(
             f"\n{len(report.failures)} failing, {len(report.warnings)} warning"
             f"{'' if len(report.warnings) == 1 else 's'}"
@@ -1561,6 +1563,11 @@ def cmd_verify(args: argparse.Namespace) -> int:
         # everything.
         print("\nNothing was re-run, so nothing was verified.", file=sys.stderr)
         return 2
+    if not args.only:
+        # What `check` says of reproducibility: a run of every script, and only that.
+        reproduced = sum(len(c.agreed) for c in result.comparisons)
+        total = reproduced + sum(len(c.differed) for c in result.comparisons)
+        record_verified(project, reproduced, total)
     return 0 if result.ok else 1
 
 

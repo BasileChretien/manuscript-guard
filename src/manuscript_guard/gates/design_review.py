@@ -30,7 +30,7 @@ from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured, validate
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.findings import FAIL, WARN, Finding, Report
+from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 from manuscript_guard.gates.review import _answered, _check_seal, review_root
 
 GATE = "G12"
@@ -95,7 +95,8 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
     severity = FAIL if submission else WARN
     current = plan_digest(project)
     report = Report()
-    open_major = current_rounds = 0
+    open_major = 0
+    rounds: list[tuple[int, Report, bool]] = []
     for number, path in found:
         try:
             panel = read_structured(path)
@@ -106,15 +107,29 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
         report = report.merge(checked)
         if not checked.ok or not isinstance(panel, dict):
             continue
-        fresh = True
+        said, fresh = Report(), True
         for reviewer in panel["reviewers"]:
-            said, read_current, opened = _reading(project, number, reviewer, current, severity)
-            report = report.merge(said)
+            read, read_current, opened = _reading(project, number, reviewer, current, severity)
+            said = said.merge(read)
             fresh = fresh and read_current
             open_major += opened
-        current_rounds += int(fresh)
+        rounds.append((number, said, fresh))
+    # The latest round that read the plan as it stands supersedes every earlier one that read
+    # another (round 1 of #308: the further round the stale reading's hint asks for left it
+    # stale for good). Their open majors still bind: a later reading does not answer them.
+    latest = max((number for number, _said, fresh in rounds if fresh), default=0)
+    for number, said, fresh in rounds:
+        if not fresh and number < latest:
+            said = Report(tuple(
+                replace(f, code="design-review-superseded", severity=INFO,
+                        message=f"{f.message} [superseded by design round {latest}]",
+                        hint=f"design round {latest} read the plan as it stands")
+                if f.code == "design-review-stale" else f
+                for f in said.findings
+            ))  # fmt: skip
+        report = report.merge(said)
     return report.with_counts(
-        design_rounds=len(found), design_rounds_current=current_rounds,
+        design_rounds=len(found), design_rounds_current=sum(fresh for *_r, fresh in rounds),
         design_open_major=open_major,
     )  # fmt: skip
 
@@ -163,7 +178,8 @@ def _reading(
     report = report.with_findings(*(
         replace(f, gate=GATE, code=f"design-{f.code}", message=f"design {f.message}",
                 hint=(f.hint or "").replace("review --seal <reviewer> --round <n>",
-                                            "review --seal <reviewer> --design --round <n>"))
+                                            "review --seal <reviewer> --design --round <n>")
+                .replace(", with `--reading <reader>` for a named reading", ""))
         for f in sealed.findings
     ))  # fmt: skip
     opened = 0

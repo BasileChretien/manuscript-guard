@@ -10820,9 +10820,28 @@ def test_a_design_round_reads_the_plan_and_its_majors_are_answered(project: Path
 
 
 def test_a_design_round_of_a_plan_changed_since_is_stale(project: Path) -> None:
+    from manuscript_guard.cli import main
+
     _design_recorded(project)
     _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
     assert _design_said(project) == [("design-review-stale", "warn")]
+    # Round 1 of #308: a later round that read the plan as it stands left the first stale
+    # for good. It supersedes it, as a manuscript round does.
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--round", "2", "--verdict", "pass"]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info")]
+
+
+def test_a_superseded_design_round_s_open_major_still_binds(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    _design_recorded(project, _DESIGN_MAJOR)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--round", "2", "--verdict", "pass"]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info"),
+                                     ("design-major-open", "warn")]  # fmt: skip
 
 
 def test_a_design_round_is_stale_when_the_data_are_counted_again(project: Path) -> None:

@@ -573,6 +573,59 @@ def quotations(draw: st.DrawFn) -> tuple[str, str]:
     return source, " ".join(words[first : last + 1])
 
 
+# -------------------------------------------------------------- the results a plan promises
+
+_STEMS = ("ror", "case", "cohort", "hr", "events")
+_LEAVES = ("point", "ci_low", "n", "pct_serious", "n-dropped")
+#: Code in a list item that is not a key: no dot in it.
+_CODE = ("glm", "R", "lme4", "n_cases")
+_MARKERS = ("- ", "* ", "+ ", "1. ")
+
+
+@st.composite
+def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
+    """A plan whose Planned results section lists results in each way an item holds one,
+    with the keys it lists, in order, as (key, whether it is a group).
+
+    Each example holds one item of every kind, in an order drawn each time: a key; a key as
+    the manuscript binds it; a key with no dot, bound; a group of keys; words and no code;
+    code that is not a key; a key nested under an item that has none; and an item with no
+    key followed, past a blank line, by prose that holds one. Then a subsection with a key of
+    its own. The section
+    comes before the drawn text, which an open fence would otherwise swallow it into."""
+    words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=6).map(" ".join)
+    marker = st.sampled_from(_MARKERS)
+
+    def key() -> str:
+        return f"{draw(st.sampled_from(_STEMS))}.{draw(st.sampled_from(_LEAVES))}"
+
+    def wrapped() -> str:
+        return draw(st.sampled_from((" ", "\n  "))).join((draw(words), draw(words)))
+
+    kinds: list[tuple[str, list[tuple[str, bool]]]] = []
+    plain, bound, stem = key(), key(), draw(st.sampled_from(_STEMS))
+    kinds.append((f"{draw(marker)}`{plain}`: {wrapped()}\n", [(plain, False)]))
+    kinds.append((f"{draw(marker)}`results.{bound}` {wrapped()}\n", [(bound, False)]))
+    undotted = draw(st.sampled_from(_STEMS))
+    kinds.append((f"{draw(marker)}`results.{undotted}`: {draw(words)}\n", [(undotted, False)]))
+    kinds.append((f"{draw(marker)}`{stem}.*`: {wrapped()}\n", [(stem, True)]))
+    kinds.append((f"{draw(marker)}{wrapped()}\n", []))
+    kinds.append((f"{draw(marker)}`{draw(st.sampled_from(_CODE))}` {draw(words)}\n", []))
+    nested = key()
+    kinds.append((f"- {draw(words)}\n\n  - `{nested}`: {draw(words)}\n", [(nested, False)]))
+    kinds.append((f"- {draw(words)}\n\n{draw(words)} `{key()}` {draw(words)}.\n", []))
+    order = draw(st.permutations(range(len(kinds))))
+    items = "\n".join(kinds[index][0] for index in order)
+    listed = [found for index in order for found in kinds[index][1]]
+    secondary = key()
+    plan = (
+        f"# Analysis plan\n\n## Planned results\n\n{items}\n"
+        f"### Secondary\n\n{draw(marker)}`{secondary}`: {draw(words)}\n\n"
+        f"## Outcome\n\n{draw(texts())}\n"
+    )
+    return plan, [*listed, (secondary, False)]
+
+
 #: What can stand in a stored source between two words of a quote taken from it: line
 #: numbers, figures, a column's or a header's words, a hyphen at the end of a line, a symbol.
 INTERRUPTIONS = (
@@ -766,6 +819,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "interval order": intervals(),
     "deviations": texts(),
+    "planned results": planned_plans().map(lambda drawn: drawn[0]),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
     "quote words": st.fixed_dictionaries(
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}

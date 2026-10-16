@@ -270,6 +270,19 @@ def _deviations() -> Reading:
     return deviations_said
 
 
+@reading("planned results")
+def _planned_results() -> Reading:
+    from manuscript_guard.gates.design import planned_results
+
+    def read(plan: str) -> Any:
+        """Each key the plan's Planned results section lists, whether it is a group, and its
+        line; None where the plan has no such section."""
+        found = planned_results(plan)
+        return None if found is None else [[p.key, p.group, p.line] for p in found]
+
+    return read
+
+
 @reading("interval order")
 def _interval_order() -> Reading:
     from manuscript_guard.contracts.values import RESULTS, Value

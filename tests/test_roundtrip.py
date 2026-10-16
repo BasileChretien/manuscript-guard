@@ -269,26 +269,240 @@ MINIMAL_CSL = """<?xml version="1.0" encoding="utf-8"?>
 """
 
 
+#: Prose of a paragraph that cites, as the example's offline build prints it.
+PROSE_CITED = "drug class as a whole"
+
+
+def _built_in(project: Path, style: Path, capsys) -> Path:
+    from manuscript_guard.cli import main
+
+    style.write_text(MINIMAL_CSL, encoding="utf-8", newline="\n")
+    assert main(["build", str(project), "--offline", "--csl", str(style)]) == 0
+    capsys.readouterr()
+    return project / "build" / "manuscript.docx"
+
+
 @needs_pandoc
-def test_a_document_built_in_a_journal_style_comes_back_with_its_cited_paragraphs_refused(
+def test_a_document_built_in_a_journal_style_comes_back_as_it_was_sent(
     project: Path, tmp_path: Path, capsys
 ) -> None:
-    """Today a document built with `--csl` and returned unchanged is compared with an offline
-    build in the default style: every paragraph that cites is refused, its citations read as
-    changed. The word-roundtrip skill says to send the offline build without `--csl`."""
+    """Item 27: the document carries its style's digest and the record where the style was,
+    and the comparison is built with it. Compared with the default style's build, every
+    paragraph that cites was refused, its citations read as changed."""
+    from manuscript_guard.cli import main
+
+    built = _built_in(project, tmp_path / "minimal.csl", capsys)
+    returned = edit_docx(built, tmp_path / "back.docx", {PROSE_CITED: "whole drug class"})
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "NOT merged" not in out and "is the citation" not in out, out
+    text = " ".join((project / "manuscript" / "main.md").read_text(encoding="utf-8").split())
+    merged = "the whole drug class (ROR {{lit.background.class_ror}}) [@fictionalClassSignal2019]"
+    assert merged in text, text
+
+
+@needs_pandoc
+def test_a_style_moved_since_the_build_is_asked_for(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    """Where the style is not where the build found it, the import says so and compares with
+    the default style, as before; `--csl` names it, and a style that is not the one the
+    document was built with is refused rather than used."""
     from manuscript_guard.cli import main
 
     style = tmp_path / "minimal.csl"
-    style.write_text(MINIMAL_CSL, encoding="utf-8")
-    assert main(["build", str(project), "--offline", "--csl", str(style)]) == 0
-    capsys.readouterr()
+    built = _built_in(project, style, capsys)
     returned = tmp_path / "back.docx"
-    returned.write_bytes((project / "build" / "manuscript.docx").read_bytes())
+    returned.write_bytes(built.read_bytes())
+    moved = tmp_path / "moved" / "minimal.csl"
+    moved.parent.mkdir()
+    style.replace(moved)
     assert main(["import", str(returned), str(project)]) == 1
     out = capsys.readouterr().out
+    assert "was built with a citation style" in out and "--csl FILE" in out, out
     assert "is the citation [@fictionalHepaticCohort2021]" in out
+    # Line endings changed by a checkout are not a change of style.
+    moved.write_bytes(moved.read_bytes().replace(b"\n", b"\r\n"))
+    assert main(["import", str(returned), str(project), "--csl", str(moved)]) == 0
+    assert "NOT merged" not in capsys.readouterr().out
+    other = tmp_path / "other.csl"
+    other.write_text(MINIMAL_CSL.replace("Minimal numeric", "Another"), encoding="utf-8")
+    assert main(["import", str(returned), str(project), "--csl", str(other)]) == 2
+    assert "is not the citation style" in capsys.readouterr().err
+
+
+#: Better BibTeX's zotero.lua as far as `import` reads what it writes: each citation a
+#: Zotero field whose code names each work by a URI and holds the citation as the source
+#: writes it, and shows "<Do Zotero Refresh: ...>" until Zotero formats it. A narrative
+#: citation is the author's name in a run of its own, then a field that leaves it out.
+FAKE_ZOTERO_LUA = """
+local function xml(text)
+  return (text:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'):gsub('"', '&quot;'))
+end
+
+function Cite(cite)
+  local content = pandoc.utils.stringify(cite.content)
+  local items = {}
+  local lead = ''
+  for _, citation in ipairs(cite.citations) do
+    local key = (citation.id:gsub('[^%w]', '')):upper():sub(-8)
+    local item = {id = 1, uris = {'http://zotero.org/users/1/items/' .. key}}
+    if citation.mode == 'AuthorInText' then
+      item['suppress-author'] = true
+      lead = '<w:r><w:t xml:space="preserve">Fictional and Fictional </w:t></w:r>'
+    end
+    table.insert(items, item)
+  end
+  local code = {
+    citationID = 'x', properties = {formattedCitation = content, noteIndex = 0},
+    citationItems = items,
+  }
+  return pandoc.RawInline('openxml', lead .. table.concat({
+    '<w:r><w:fldChar w:fldCharType="begin"/></w:r>',
+    '<w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION ',
+    xml(pandoc.json.encode(code)), ' </w:instrText></w:r>',
+    '<w:r><w:fldChar w:fldCharType="separate"/></w:r>',
+    '<w:r><w:t xml:space="preserve">', xml('<Do Zotero Refresh: ' .. content .. '>'),
+    '</w:t></w:r>',
+    '<w:r><w:fldChar w:fldCharType="end"/></w:r>',
+  }))
+end
+"""
+
+#: The field of `[@fictionalClassSignal2019]` as the live build writes it, and its words.
+CLASS_URI = "http://zotero.org/users/1/items/GNAL2019"
+CLASS_SHOWN = "&lt;Do Zotero Refresh: [@fictionalClassSignal2019]&gt;"
+CLASS_FORMATTED = "&quot;formattedCitation&quot;:&quot;[@fictionalClassSignal2019]&quot;"
+
+
+def _built_live(project: Path, tmp_path: Path, monkeypatch, capsys) -> Path:
+    """The example built live, its citations Zotero fields, with no Zotero: the filter
+    above in place of Better BibTeX's."""
+    from manuscript_guard.build import document
+    from manuscript_guard.cli import main
+
+    lua = tmp_path / "zotero.lua"
+    lua.write_text(FAKE_ZOTERO_LUA, encoding="utf-8")
+    monkeypatch.setattr(document, "ensure_zotero_lua", lambda _cache: lua)
+    monkeypatch.setattr(document, "_zotero_version", lambda: None)
+    assert main(["build", str(project)]) == 0
+    capsys.readouterr()
+    built = project / "build" / "manuscript.docx"
+    with zipfile.ZipFile(built) as archive:
+        xml = archive.read("word/document.xml").decode("utf-8")
+    assert CLASS_SHOWN in xml and CLASS_FORMATTED in xml, "the build wrote no live fields"
+    return built
+
+
+def _refreshed(xml_from: dict[str, str]) -> dict[str, str]:
+    """What Word's Zotero plugin does on Refresh: new words, in the field and in its code."""
+    return {
+        CLASS_SHOWN: "[2]",
+        CLASS_FORMATTED: "&quot;formattedCitation&quot;:&quot;[2]&quot;",
+        **xml_from,
+    }
+
+
+@needs_pandoc
+def test_a_live_document_refreshed_by_zotero_comes_back_as_it_was_sent(
+    project: Path, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Item 27: each field is read by what its code cites, as the build recorded it, and the
+    comparison is built with each citation as the source writes it. Read by its words, a
+    field Zotero had refreshed was a changed citation and its paragraph was refused."""
+    from manuscript_guard.cli import main
+
+    built = _built_live(project, tmp_path, monkeypatch, capsys)
+    replacements = _refreshed({PROSE_CITED: "whole drug class"})
+    returned = edit_docx(built, tmp_path / "back.docx", replacements)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "NOT merged" not in out and "is the citation" not in out, out
+    text = " ".join((project / "manuscript" / "main.md").read_text(encoding="utf-8").split())
+    merged = "the whole drug class (ROR {{lit.background.class_ror}}) [@fictionalClassSignal2019]"
+    assert merged in text, text
+
+
+#: A narrative citation of the example's, and its field's words once Zotero formats it.
+NARRATIVE = "reported previously by @fictionalClassSignal2019"
+NARRATIVE_SHOWN = "&lt;Do Zotero Refresh: @fictionalClassSignal2019&gt;"
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("edited", "merged", "written"),
+    [
+        ({}, True, NARRATIVE),
+        ({"reported previously by": "reported earlier by"}, True,
+         "reported earlier by @fictionalClassSignal2019"),
+        ({"Fictional and Fictional </w:t>": "Fictional et al. </w:t>"}, False, NARRATIVE),
+        # Round 3: one citation, narrative for its first work and not for its second.
+        ({}, True, NARRATIVE + " [p. 3; see also @fictionalHepaticCohort2021]"),
+    ],
+    ids=["refreshed only", "the prose before it reworded", "the printed name edited",
+         "a second work in brackets"],
+)  # fmt: skip
+def test_a_live_narrative_citation_is_read_with_the_name_before_it(
+    project: Path, tmp_path: Path, monkeypatch, capsys, edited: dict, merged: bool, written: str
+) -> None:
+    """Round 1 of #296: Better BibTeX prints a narrative citation's author as text before its
+    field, and the comparison, printing `@key`, had no name there. A document sent back
+    refreshed and nothing else read as reworded by "Fictional and Fictional ", and the name
+    was the import's to write into the source. The name is read as part of the citation on
+    both sides, and one edited in Word is a citation changed."""
+    from manuscript_guard.cli import main
+
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    narrative = written if written.startswith(NARRATIVE) and written != NARRATIVE else NARRATIVE
+    main_md.write_text(
+        text.replace("reported previously [@fictionalClassSignal2019]", narrative, 1),
+        encoding="utf-8",
+    )
+    built = _built_live(project, tmp_path, monkeypatch, capsys)
+    before = main_md.read_text(encoding="utf-8")
+    replacements = {NARRATIVE_SHOWN: "(2019)", **edited}
+    returned = edit_docx(built, tmp_path / "back.docx", replacements)
+    assert main(["import", str(returned), str(project), "--apply"]) == (0 if merged else 1)
+    out = capsys.readouterr().out
+    assert ("NOT merged" in out) is not merged, out
+    after = main_md.read_text(encoding="utf-8")
+    assert "Fictional and Fictional @" not in after
+    assert written in " ".join(after.split())
+    if written.startswith(NARRATIVE):
+        assert after == before
+
+
+@needs_pandoc
+def test_a_live_citation_changed_in_word_is_refused(
+    project: Path, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A field that now cites something else, an item added with Zotero's dialog, matches
+    nothing the build recorded: it is read by its words, and its paragraph is refused."""
+    from manuscript_guard.cli import main
+
+    built = _built_live(project, tmp_path, monkeypatch, capsys)
+    another = f"&quot;{CLASS_URI}&quot;,&quot;http://zotero.org/users/1/items/ZZZZ9999&quot;"
+    replacements = _refreshed({f"&quot;{CLASS_URI}&quot;": another})
+    returned = edit_docx(built, tmp_path / "back.docx", replacements)
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "is the citation [@fictionalClassSignal2019]" in out and "NOT merged" in out, out
+
+
+@needs_pandoc
+def test_a_live_document_without_its_record_says_so(
+    project: Path, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    from manuscript_guard.cli import main
+
+    built = _built_live(project, tmp_path, monkeypatch, capsys)
+    returned = edit_docx(built, tmp_path / "back.docx", _refreshed({}))
+    shutil.rmtree(project / "build" / "records")
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "the record of what each one cites is not here" in out, out
     assert "is the citation [@fictionalClassSignal2019]" in out
-    assert out.count("NOT merged") >= 3
 
 
 @needs_pandoc

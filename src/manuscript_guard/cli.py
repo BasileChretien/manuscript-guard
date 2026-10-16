@@ -138,7 +138,7 @@ def _run_gates(
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project)),
         ("G9", lambda: check_methods(project, namespace, results)),
-        ("G12", lambda: check_design(project)),
+        ("G12", lambda: check_design(project, results, chosen)),
         ("G8", lambda: check_consistency(results)),
         ("G8", lambda: check_reported(project, results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
@@ -1581,6 +1581,40 @@ def cmd_stages(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_impact(args: argparse.Namespace) -> int:
+    """Everything that depends on each file named, or on each file changed since a commit.
+
+    Read-only, and derived: it follows the records the gates read and keeps none of its own.
+    """
+    from manuscript_guard.impact import NoChanges, as_json, as_text, changed_files, impact_of
+
+    start = args.files[0].parent if args.files else Path.cwd()
+    project, _ = load_project(start)
+    _namespace, results, literature, _ = load_namespace(project)
+    files = list(args.files)
+    if not files:
+        try:
+            files = changed_files(project, args.since)
+        except NoChanges as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        if not files:
+            if args.json:
+                print("[]")
+            else:
+                print(f"nothing has changed since {args.since}")
+            return 0
+    impacts = [impact_of(project, results, literature, path) for path in files]
+    if args.json:
+        print(as_json(impacts))
+        return 0
+    for index, impact in enumerate(impacts):
+        if index:
+            print()
+        print("\n".join(as_text(impact)))
+    return 0
+
+
 def cmd_explain(args: argparse.Namespace) -> int:
     """Show how every numeric atom in a file was classified.
 
@@ -2062,6 +2096,49 @@ def cmd_approve(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sign(args: argparse.Namespace) -> int:
+    """Record a named person's sign-off of a finding only they may close. Their own act."""
+    from manuscript_guard.approvals import NoSuchAuthor
+    from manuscript_guard.gates.models import signables
+    from manuscript_guard.sign_offs import ROLES, holder, is_holder, sign
+
+    project, _ = load_project(args.path)
+    _namespace, results, _literature, _loaded = load_namespace(project)
+    standing = signables(project, results)
+    found = [signable for signable in standing if signable.id == args.finding]
+    if not found:
+        ids = ", ".join(signable.id for signable in standing) or "none"
+        print(
+            f"manuscript-guard: no finding {args.finding} stands to be signed off "
+            f"(those that do: {ids})",
+            file=sys.stderr,
+        )
+        return 2
+    signable = found[0]
+    role = ROLES[signable.role]
+    try:
+        person = holder(project, signable.role)
+    except NoSuchAuthor as exc:
+        print(f"manuscript-guard: roles: {signable.role} in authors.yaml: {exc}", file=sys.stderr)
+        return 2
+    if person is None:
+        print(
+            f"manuscript-guard: authors.yaml names no {signable.role} under `roles:`; "
+            f"only {role} signs off {signable.id}",
+            file=sys.stderr,
+        )
+        return 2
+    if not is_holder(project, person, args.as_):
+        print(
+            f"manuscript-guard: {args.as_!r} is not {role}; authors.yaml names {person.name}",
+            file=sys.stderr,
+        )
+        return 2
+    path = sign(project, signable, person, args.note)
+    print(f"{person.name}, {role}, signed off {signable.id} as it stands: {path}")
+    return 0
+
+
 def cmd_sync_bib(args: argparse.Namespace) -> int:
     """Rewrite literature/references.bib from what the manuscript cites."""
     from manuscript_guard.zotero import ZoteroUnavailable
@@ -2446,7 +2523,9 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 def cmd_transcribe(args: argparse.Namespace) -> int:
     """Generate checklist profiles from official documents, via recipes."""
     from manuscript_guard.paths import workspace as find_workspace
-    from manuscript_guard.reporting import RecipeError, build_profile
+    from manuscript_guard.reporting import RecipeError, build_profile, load_recipe
+    from manuscript_guard.reporting.build import rows_digest_of
+    from manuscript_guard.safexml import UnsafeDocument
 
     root = find_workspace(args.root)
     sources_dir = root / "profiles" / "reporting" / "sources"
@@ -2463,7 +2542,9 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
             path, count, unverified = build_profile(
                 recipe, sources_dir, out_dir, allow_changed=args.allow_changed
             )
-        except (RecipeError, FileNotFoundError) as exc:
+        except (RecipeError, FileNotFoundError, UnsafeDocument) as exc:
+            # UnsafeDocument: a document that is not well-formed, or that declares a DTD,
+            # which a truncated download or a page saved by hand can be.
             failed += 1
             print(f"  {recipe.name}: {exc}")
             continue
@@ -2472,6 +2553,10 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
             note = f"  [{len(unverified)} NOT VERBATIM: {', '.join(unverified[:6])}]"
             failed += 1
         print(f"  {path.name}: {count} items{note}")
+        if not load_recipe(recipe)[1].get("rows_sha256"):
+            digest = rows_digest_of(recipe, sources_dir)
+            if digest:
+                print(f"    rows_sha256: {digest}  (record it in the recipe's meta)")
     return 1 if failed else 0
 
 
@@ -2875,9 +2960,39 @@ def build_parser() -> argparse.ArgumentParser:
     approve_.add_argument("--note", help="anything the author says with the approval")
     approve_.set_defaults(func=cmd_approve)
 
+    sign_ = sub.add_parser(
+        "sign",
+        help="record a named person's sign-off of a finding only they may close, such as a "
+        "G15 warning for the statistician; that person's own act",
+    )
+    sign_.add_argument("path", nargs="?", type=Path, default=Path("."))
+    sign_.add_argument(
+        "--as", dest="as_", required=True,
+        help="the person authors.yaml names for the role: ORCID iD, e-mail address or name",
+    )  # fmt: skip
+    sign_.add_argument(
+        "--finding", required=True, help="the id the finding's hint names, such as "
+        "G15/model-few-events/adjusted",
+    )  # fmt: skip
+    sign_.add_argument("--note", help="anything the person says with the sign-off")
+    sign_.set_defaults(func=cmd_sign)
+
     explain = sub.add_parser("explain", help="show how each number in a file was classified")
     explain.add_argument("file", type=Path)
     explain.set_defaults(func=cmd_explain)
+
+    impact = sub.add_parser(
+        "impact",
+        help="list what depends on a file: results, sentences, figures, Methods, readings "
+        "and answers that go stale when it changes",
+    )
+    impact.add_argument(
+        "files", nargs="*", type=Path,
+        help="files of the project; with none, the files changed since --since",
+    )  # fmt: skip
+    impact.add_argument("--since", default="HEAD", help="the commit to compare with (HEAD)")
+    impact.add_argument("--json", action="store_true", help="print JSON")
+    impact.set_defaults(func=cmd_impact)
 
     models = sub.add_parser(
         "models", help="print each fitted model as its card, with what G15 says of it"

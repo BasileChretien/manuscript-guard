@@ -36,11 +36,17 @@ git commit -am "manuscript as sent to <co-author>"     # know what they received
 manuscript-guard build --offline
 ```
 
-- **Send the `--offline` build, without `--csl`.** The returned document is compared against
-  an offline build in the default citation style, so a document built with a journal style
-  comes back with every cited paragraph refused. A Zotero field is read by the words it shows,
-  not by its code: one that shows what the offline build prints passes, and one that a style
-  switch or a refresh in Word made show other words refuses its paragraph.
+- **Any build can be sent: offline, with `--csl`, or live.** The document records how its
+  citations were made, and `import` compares the returned one with a build made the same
+  way.
+  - **With `--csl`**, it builds in the style the document was built with, found by its digest
+    where the build found it. Where it has moved since, pass it: `import --csl FILE`.
+  - **Live**, each Zotero field is read by what its code cites, as the build recorded it
+    beside itself, so a co-author's Refresh, or a switch of style in Word, is no edit. A
+    citation changed in Word with Zotero's dialog is refused. So is every refreshed one where
+    that record is not there: import a live document on the machine that built it.
+  - A Zotero field a co-author inserts into a document built offline is read by the words it
+    shows.
 - Send `build/manuscript.docx`, and `build/supplementary.docx` if the supplement needs
   reading too. Each comes back as its own file and is imported on its own: `import` reads
   from the paragraph identifiers which of the two it is, and compares it with a fresh build

@@ -85,7 +85,10 @@ Then fill in, in this order:
    passes validation, so nothing will remind you to replace it. ORCID, CRediT roles, funding
    and competing interests are not enforced by the check. The submission pack reports a
    missing competing-interests statement per author, and CRediT and funding only when no
-   author has any; a missing ORCID is left out without comment.
+   author has any; a missing ORCID is left out without comment. Ask who the statistician
+   is, and write them under `roles:` (`statistician: <family name or ORCID iD>`): a G15
+   warning left standing is theirs to sign off, with `manuscript-guard sign --as <them>
+   --finding <id>` as its hint says. Never run `sign` for them.
 2. **`paper.yaml`**: the title, `english_variant` (`en-GB` or `en-US`; ask, do not
    assume: G14 holds the manuscript's spelling to it), and the reporting
    guideline under the key `reporting_guideline` (singular, a list). Any key the schema does
@@ -143,7 +146,7 @@ Each finding names a code. The code says where to go:
 
 | Codes | Skill |
 |---|---|
-| `no-analysis-plan`, `plan-section-*` | [analysis-plan](../analysis-plan/SKILL.md) |
+| `no-analysis-plan`, `plan-section-*`, `feasibility-not-run` | [analysis-plan](../analysis-plan/SKILL.md) |
 | `unclassified-number`, `unresolved-binding`, `unquoted-result`, `typed-parameter`, `parameter-unread`, `hand-authored-table`, G1 and G8 codes | [results-binding](../results-binding/SKILL.md) |
 | `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact`, `abbreviation-*`, `term-avoided`, `vocabulary-conflict`, `spelling-*`, `notation-*` | [manuscript-writing](../manuscript-writing/SKILL.md) |
 | `methods-drift`, `methods-never-reconciled`, `method-…`, G15 codes (`model-…`, `variable-…`, `typed-model-kind`; `model-binary-as-number`, `variable-not-binary` and `model-engine-unknown` are among them) | [methods-writer](../methods-writer/SKILL.md) |

@@ -604,9 +604,29 @@ def guard_write(payload: dict) -> int:
     named = [
         said for path in paths if (said := _or_nothing(lambda file: _attests(file, payload), path))
     ]
+    named += [said for path in paths if (said := _or_nothing(_an_approval, path))]
     if not named:
         return 0
     return _ask("PreToolUse", "\n".join(named), payload)
+
+
+def _an_approval(path: Path) -> str | None:
+    """Why an edit of an author's approval, or of a named person's sign-off, is put to the
+    person: the file is their statement, written by `approve` or `sign` when they run it."""
+    if path.suffix.lower() not in {".yaml", ".yml"}:
+        return None
+    found = _relative_to_project(path)
+    if found is None or found[1].split("/")[0] != "approvals":
+        return None
+    if found[1].split("/")[1:2] == ["sign-offs"]:
+        return (
+            f"{path.name} records a named person's sign-off of a finding. Only that person "
+            "can give it, with `manuscript-guard sign --as <them> --finding <id>`."
+        )
+    return (
+        f"{path.name} records an author's approval of the manuscript. Only that author can "
+        "give it, with `manuscript-guard approve --as <author>`."
+    )
 
 
 #: An attester written in `attested.yaml`, in block or flow style, quoted or not.
@@ -826,6 +846,7 @@ def guard_submission(payload: dict) -> int:
     # the markers are asked, and before the words are read for a project.
     command = _without_messages(str(payload.get("tool_input", {}).get("command", "")))
     sends = _or_nothing(lambda _path: _sends_without_asking(command, payload), Path("."))
+    sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))
     if not SUBMISSION_MARKERS.search(command):
         return _ask("PreToolUse", sends, payload) if sends else 0
 
@@ -854,6 +875,27 @@ def guard_submission(payload: dict) -> int:
 #: next invocation.
 _INVOCATION_END = re.compile(r"[;&|\n]|" + _TOOL + r"[A-Za-z]", re.IGNORECASE)
 _REVIEW = re.compile(_TOOL + r"review\b", re.IGNORECASE)
+_APPROVE = re.compile(_TOOL + r"approve\b", re.IGNORECASE)
+_SIGN = re.compile(_TOOL + r"sign\b", re.IGNORECASE)
+
+
+def _approves(command: str) -> str | None:
+    """Why an `approve` or a `sign` in this command is put to the person: an approval is an
+    author's statement that they read the manuscript, a sign-off a named person's that a
+    finding is acceptable, and an agent that runs either makes it for them."""
+    joined = re.sub(r"[\\`]\r?\n", " ", command)
+    if _SIGN.search(joined):
+        return (
+            "`manuscript-guard sign` records that the person authors.yaml names for a role "
+            "judged a finding acceptable. Only that person can say so: run it yourself, as "
+            "yourself."
+        )
+    if not _APPROVE.search(joined):
+        return None
+    return (
+        "`manuscript-guard approve` records that an author read the manuscript and approves "
+        "it. Only that author can say so: run it yourself, as yourself."
+    )
 
 
 def _sends_without_asking(command: str, payload: dict) -> str | None:

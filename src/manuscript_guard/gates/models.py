@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_right
+from dataclasses import asdict
 from pathlib import Path
 
 from manuscript_guard.classify import is_methods
@@ -30,6 +31,7 @@ from manuscript_guard.contracts.results import Results
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.language import _hidden
 from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.sign_offs import Signable, digest_of, settle
 from manuscript_guard.text.blocks import Unprinted
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -60,6 +62,48 @@ _REACH = 80
 
 
 def check_models(project: Project, results: Results) -> Report:
+    """What G15 says of the models, with the warnings the statistician signed off, as they
+    stand, reported as information that names them."""
+    report = _raised(project, results)
+    pending = signables(project, results, report)
+    if not pending:
+        return report
+    signed = {id(finding) for signable in pending for finding in signable.findings}
+    findings = tuple(finding for finding in report.findings if id(finding) not in signed)
+    for signable in pending:
+        findings += settle(project, signable)
+    return Report(findings, report.counts)
+
+
+def signables(project: Project, results: Results, report: Report | None = None) -> list[Signable]:
+    """The warnings about a model that the statistician may sign off. Those of one code on
+    one model are signed together, bound to what they say and to the model's card, so that a
+    refitted model, or a further variable entered the same way, wants a new sign-off."""
+    if report is None:
+        report = _raised(project, results)
+    found: dict[str, tuple[Model, list[Finding]]] = {}
+    for finding in report.warnings:
+        for model in results.models.values():
+            if finding.message.startswith(f"model {model.key!r}: "):
+                key = f"{GATE}/{finding.code}/{model.key}"
+                found.setdefault(key, (model, []))[1].append(finding)
+                break
+    return [
+        Signable(
+            "statistician", key, digest_of(key, sorted(f.message for f in said), _card(model)),
+            tuple(said),
+        )  # fmt: skip
+        for key, (model, said) in found.items()
+    ]
+
+
+def _card(model: Model) -> dict:
+    """The model's card as a sign-off is bound to it: the file it came from by name, so that
+    a sign-off holds on another machine."""
+    return {**asdict(model), "source": model.source.name}
+
+
+def _raised(project: Project, results: Results) -> Report:
     report = Report()
     variables, models = results.variables, results.models
     if not variables and not models:

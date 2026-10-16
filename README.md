@@ -249,6 +249,7 @@ number in the file and the rule that classified it.
 | `verify` | re-run the analysis and check it still produces the recorded results |
 | `build` | produce the .docx; `--annotated` colours every number by what backs it |
 | `approve` | record an author's approval of the manuscript as it stands, which `submit` holds to the manuscript sent; the author's own act |
+| `sign` | record a named person's sign-off of a finding only they may close, a G15 warning for the statistician `authors.yaml` names; that person's own act |
 | `render` | substitute the bindings and stop there |
 | `stages` | what each stage means and what binds at it |
 | `journal` | list journal profiles, or start one from the annotated template |

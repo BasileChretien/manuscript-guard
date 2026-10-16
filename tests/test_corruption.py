@@ -1431,6 +1431,122 @@ def test_rows_of_one_unit_accounted_for_say_nothing(project: Path, fields: dict)
     assert _unit_said(project) == []
 
 
+# ------------------------------------------------- a named person signs off a warning
+
+_UNIT_WARNING = "G15/unit-rows-independent/adjusted"
+
+
+def _signed_said(root: Path) -> list[tuple[str, str, str]]:
+    """G15's word on the rows of one unit: its severity, its message and its hint."""
+    project, _ = load_project(root)
+    _namespace, results, _literature, _report = load_namespace(project)
+    said = check_models(project, results).findings
+    return [
+        (f.severity, f.message, f.hint or "")
+        for f in said
+        if f.code in ("unit-rows-independent", "schema-violation")
+    ]
+
+
+def _roles(root: Path, roles: str) -> None:
+    authors = root / "authors.yaml"
+    text = re.sub(r"(?m)^roles:\n(?:  .*\n)*", "", authors.read_text(encoding="utf-8"))
+    authors.write_text(text + roles, encoding="utf-8")
+
+
+def test_a_warning_the_statistician_signed_is_said_with_their_name(project: Path) -> None:
+    """Item 48: a G15 warning left standing was the author's to dismiss. The statistician
+    authors.yaml names signs it off, bound to the model's card: it is then information that
+    names them, and a refitted model wants a new sign-off."""
+    from manuscript_guard.cli import main
+
+    _model_card_has(project, unit={"column": "patient", "units": 3}, covariance="nonrobust")
+    [(severity, _message, hint)] = _signed_said(project)
+    assert severity == "warn"
+    assert f'Blaise Sample, the statistician, signs it off with `manuscript-guard sign --as "Blaise Sample" --finding {_UNIT_WARNING}`' in hint  # noqa: E501
+    assert main(["sign", str(project), "--as", "Ada Example", "--finding", _UNIT_WARNING]) == 2
+    assert main(["sign", str(project), "--as", "Sample", "--finding", "G15/nothing/here"]) == 2
+    assert _signed_said(project)[0][0] == "warn"
+
+    note = "three visits a patient; the cluster fit agrees"
+    signed = ["sign", str(project), "--as", "0000-0001-5109-3700", "--finding", _UNIT_WARNING]
+    assert main([*signed, "--note", note]) == 0
+    [(severity, message, hint)] = _signed_said(project)
+    assert severity == "info"
+    assert message.endswith(f"signed off by Blaise Sample, the statistician, on {time.strftime('%Y-%m-%d')}")  # noqa: E501
+    assert hint == f"they said: {note}"
+
+    _model_card_has(project, unit={"column": "patient", "units": 4})
+    [(severity, _message, hint)] = _signed_said(project)
+    assert severity == "warn" and "and it has changed since" in hint
+
+
+def test_a_sign_off_counts_only_from_the_person_who_holds_the_role(project: Path) -> None:
+    """A sign-off by someone the roles no longer name, one copied to another finding, or
+    roles that name nobody or no author: the warning stands, and says what is wanted."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.sign_offs import DIRECTORY
+
+    _model_card_has(project, unit={"column": "patient", "units": 3}, covariance="nonrobust")
+    assert main(["sign", str(project), "--as", "Sample", "--finding", _UNIT_WARNING]) == 0
+    _roles(project, "roles:\n  statistician: Example\n")
+    [(severity, _message, hint)] = _signed_said(project)
+    assert severity == "warn" and "was signed by Blaise Sample, who is not the statistician" in hint
+
+    _roles(project, "roles:\n  statistician: Nobody\n")
+    [(severity, _message, hint)] = _signed_said(project)
+    assert severity == "warn" and "'Nobody' is not an author" in hint
+    assert main(["sign", str(project), "--as", "Sample", "--finding", _UNIT_WARNING]) == 2
+
+    _roles(project, "")
+    [(severity, _message, hint)] = _signed_said(project)
+    assert severity == "warn" and "name the statistician under `roles:`" in hint
+    assert main(["sign", str(project), "--as", "Sample", "--finding", _UNIT_WARNING]) == 2
+
+    _roles(project, "roles:\n  statistician: Sample\n")
+    [record] = (project / DIRECTORY).glob("*.yaml")
+    signed = yaml.safe_load(record.read_text(encoding="utf-8"))
+    elsewhere = {**signed, "finding": "G15/model-few-events/adjusted"}
+    record.write_text(yaml.safe_dump(elsewhere), encoding="utf-8")
+    [(severity, _message, hint)] = _signed_said(project)
+    assert severity == "warn" and "signs another finding" in hint
+    record.write_text(yaml.safe_dump({**signed, "signed_sha256": "not a digest"}), "utf-8")
+    said = _signed_said(project)
+    assert [s for s, _m, _h in said] == ["fail", "warn"], said
+    assert "is not a sign-off it can read" in said[1][2]
+
+
+def test_a_statistician_who_is_not_an_author_signs_by_name(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    _model_card_has(project, unit={"column": "patient", "units": 3}, covariance="nonrobust")
+    _roles(project, "roles:\n  statistician:\n    name: Chris Keeper\n"
+                    "    email: chris.keeper@invalid.example\n")  # fmt: skip
+    assert main(["sign", str(project), "--as", "Keeper", "--finding", _UNIT_WARNING]) == 2
+    assert main(["sign", str(project), "--as", "chris.keeper@invalid.example", "--finding",
+                 _UNIT_WARNING]) == 0  # fmt: skip
+    [(severity, message, _hint)] = _signed_said(project)
+    assert severity == "info" and "signed off by Chris Keeper, the statistician" in message
+
+
+@pytest.mark.parametrize(
+    "roles, valid",
+    [
+        ("roles:\n  ethics_lead:\n    author: Sample\n    approval: IRB-2026-014\n", True),
+        ("roles:\n  ethics_lead: Sample\n", False),
+        ("roles:\n  statistician:\n    author: Sample\n    name: Blaise Sample\n", False),
+        ("roles:\n  reviewer: Sample\n", False),
+    ],
+)
+def test_the_ethics_lead_is_named_with_the_approval(project: Path, roles: str, valid: bool) -> None:
+    """The person responsible for ethics approval comes with the approval's reference; a
+    holder is an author or a name, not both; and the roles are the ones the toolkit knows."""
+    _roles(project, roles)
+    _loaded, report = load_project(project)
+    said = [f for f in report.findings if f.code == "authors-incomplete"]
+    assert (not said) == valid, [f.message for f in said]
+
+
 # ------------------------------------------------- an interval is a declared thing
 
 

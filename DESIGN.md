@@ -7391,11 +7391,18 @@ Closed since, and why each mattered:
   term under a definition. Inside a list item's lines pandoc folds the digits in some
   positions and not others, and there an indented "1." under `\newpage` is still taken for
   numbering.
-- **`import` compares a returned document with an offline build in the default citation
-  style.** A document built with `--csl` comes back with every paragraph that cites refused,
-  its citations read as changed. A Zotero field is read by the words it shows and never by
-  its code, so a field a co-author refreshed into another style refuses its paragraph, and
-  one that shows the default style's words passes whatever item it names.
+- **A live document's citations are known by their codes, as the build recorded them.** The
+  record is a file beside the build: on another machine, or with `build/` cleaned, every
+  citation Zotero has refreshed reads as changed and its paragraph is refused. Two citations
+  written apart in the source with the same items and locators (`[@a]` and `[@a ]`) cannot
+  say which a field was, and both are read by their words. What Zotero formats is not
+  compared at all, the reference list included: an item whose data Zotero updated, or an
+  entry of the list a co-author edited, is not seen. A field a co-author inserts into a
+  document built offline is read by the words it shows.
+- **A document built with `--csl` is compared in the style its digest names.** Where that
+  style is not where the build found it, or has changed, `import` says so and compares in
+  the default style, refusing every paragraph that cites, until `--csl` names it. Line
+  endings changed by a checkout are not a change of style; any other edit is.
 - **Every indented line under a list is the list's for headings.** Pandoc ends a list at a
   line indented less than the item's text that starts no item, at a definition under it,
   and at a rule at the margin. The walk ends the items there, so a count opening a later

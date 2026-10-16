@@ -2308,6 +2308,20 @@ warning, as the rest of this gate is: an author may know the data from a registr
 report. Once the analysis runs, its results say what the data hold, and the question is not
 asked again.
 
+**The results the plan promised are reported.** G2 says when the analysis emits a value
+that nothing quotes (`unquoted-result`); nothing said when the plan promised a result the
+analysis never emitted. A plan may now hold a section headed "Planned results", not one of
+the seven, whose list items each open with the key of a result the paper will report, in
+backticks: `ror.point`, or `results.ror.point` as the manuscript binds it, or a group,
+`ror.*`. The first code span of each item is its key, read up to the next item or the
+item's first blank line, and a span with no dot is code, not a key. Once the stage is past
+`design`, G12 warns where a key listed there names no value, table or model the analysis
+emitted (`planned-result-missing`), or names only values emitted with `quoted=False`
+(`planned-result-unquoted`), unless the Deviations section names the key: dropping a
+promised result is a deviation, and saying so is the remedy. A section that names no key at
+all is a warning of its own (`planned-results-unkeyed`). A plan without the section says
+nothing to hold the results to and gets no finding.
+
 **The plan is frozen when the first results are written.** A plan rewritten after the
 results are known is the pattern of a hypothesis fitted to its results, and it can be told
 mechanically. The first time either emitter writes results, it keeps the plan as it stood:
@@ -5124,6 +5138,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
+- **A planned result is held to its key, not to what the paper says of it.** G12 checks
+  that a key listed under Planned results is emitted and quoted, not that the sentence
+  quoting it reports the result the plan described: a planned "adjusted ratio" listed as
+  `ror.point`, the crude one, passes. Keys are read from the list items' first code spans
+  only; a result the section describes in words is not checked, and a section with one key
+  and ten results in words says nothing of the ten. A Deviations section that names a key,
+  whatever it says of it, stands down that key's warning.
 - **The feasibility results are asked for by their names only.** Any one result under
   `feasibility.` quiets `feasibility-not-run`: nothing checks that the counts cover the
   plan's variables or its selection steps, or that the script read the data the analysis

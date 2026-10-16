@@ -1,6 +1,6 @@
 ---
 name: analysis-plan
-description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run or plan-changed-after-results, or when the analysis is about to do something the plan did not say.
+description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed or plan-changed-after-results, or when the analysis is about to do something the plan did not say.
 ---
 
 # Writing down what you meant to do, before you do it
@@ -91,6 +91,24 @@ nothing renders the plan, but the binding names the result, and G1 holds that re
 script and the data that made it. A count too small to publish is small in the plan too.
 At the `design` stage, G12 warns (`feasibility-not-run`) where the plan sets out an analysis
 and nothing is emitted under `feasibility.`.
+
+## What the paper will report
+
+Add a section headed "Planned results" that lists, one item each, the results the paper will
+report, each item opening with the key the analysis will emit it under, in backticks:
+
+```markdown
+## Planned results
+
+- `case.n_cases`: the cases
+- `ror.*`: the reporting odds ratio and its 95% interval
+```
+
+`ror.*` is every key under `ror.`. Agree the keys with whoever writes the analysis, since
+they are its names. Once the analysis is under way, G12 warns where a listed key was never
+emitted (`planned-result-missing`) or was emitted with `quoted=False`
+(`planned-result-unquoted`). If a planned result will not be reported, say so under
+Deviations, naming its key; that stands the warning down and is the record a reader needs.
 
 ## Dating it
 

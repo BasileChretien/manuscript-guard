@@ -982,6 +982,61 @@ def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
     assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
 
 
+# ------------------------------------------------------------- the authors' approvals
+
+
+def _approvals_said(root: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.approvals import check_approvals
+
+    project, _ = load_project(root)
+    found = check_approvals(project).findings
+    assert all(f.severity == "warn" for f in found)
+    return sorted((f.code, f.message.split(" approved")[0].split(" has not")[0]) for f in found)
+
+
+def test_an_approval_is_bound_to_the_manuscript_the_author_read(project: Path) -> None:
+    """`approve --as` records an author's approval with the digest of the prose and
+    the results; `submit` says which authors have none, and which approved a manuscript that
+    has changed since. An author is found by ORCID iD, e-mail, full name or family name."""
+    from manuscript_guard.cli import main
+
+    assert _approvals_said(project) == [
+        ("approval-missing", "Ada Example"), ("approval-missing", "Blaise Sample")
+    ]
+    assert main(["approve", str(project), "--as", "0000-0002-1825-0097"]) == 0
+    assert main(["approve", str(project), "--as", "blaise sample", "--note", "as read"]) == 0
+    assert _approvals_said(project) == []
+    record = yaml.safe_load((project / "approvals" / "0000-0001-5109-3700.yaml").read_text("utf-8"))
+    assert record["author"] == "Blaise Sample" and record["note"] == "as read"
+    assert main(["approve", str(project), "--as", "Nobody"]) == 2
+
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\nOne sentence more.\n", "utf-8")
+    assert _approvals_said(project) == [
+        ("approval-stale", "Ada Example"), ("approval-stale", "Blaise Sample")
+    ]
+    assert main(["approve", str(project), "--as", "Example"]) == 0
+    assert _approvals_said(project) == [("approval-stale", "Blaise Sample")]
+
+
+def test_two_authors_named_alike_are_approved_apart(project: Path) -> None:
+    """Round 1 of #284: an approval was filed by the author's name folded to plain letters,
+    so two authors with one name shared a file, and the one who never approved was not
+    said. A file kept by the ORCID iD is each author's own, and a record names its author."""
+    from manuscript_guard.cli import main
+
+    authors = project / "authors.yaml"
+    text = authors.read_text(encoding="utf-8")
+    alike = "given: Wei\n    family: Zhang"
+    for given, family in (("Ada", "Example"), ("Blaise", "Sample")):
+        text = text.replace(f"given: {given}\n    family: {family}", alike)
+    authors.write_text(text, encoding="utf-8")
+    assert main(["approve", str(project), "--as", "0000-0002-1825-0097"]) == 0
+    assert _approvals_said(project) == [("approval-missing", "Wei Zhang")]
+    assert main(["approve", str(project), "--as", "0000-0001-5109-3700"]) == 0
+    assert _approvals_said(project) == []
+
+
 # ------------------------------------------------ the unit written after a binding
 
 
@@ -1167,6 +1222,250 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
 
     codes = {f.code for f in gate_report(project).findings}
     assert "unemitted-table-number" in codes
+
+
+# ------------------------------------------------- a pointer names what the document carries
+# "In step 1204 reports were excluded, as Table 4000 and Figure 9 show." passed G2 whole: each
+# number followed a pointer word. The example itself called its two tables "Table 2" and
+# "Table 3", after its first had moved to the supplement.
+
+
+def _pointer_findings(root: Path) -> list[tuple[str, str]]:
+    return [
+        (f.code, f.message)
+        for f in gate_report(root).findings
+        if f.code in ("pointer-to-nothing", "cited-out-of-order", "display-not-cited")
+    ]
+
+
+def _add_to_results(root: Path, sentence: str) -> None:
+    main = main_md(root)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("Baseline characteristics are shown in Table 1.",
+                     f"Baseline characteristics are shown in Table 1. {sentence}", 1),
+        encoding="utf-8",
+    )  # fmt: skip
+
+
+def test_the_example_points_at_what_it_carries(project: Path) -> None:
+    assert _pointer_findings(project) == []
+
+
+@pytest.mark.parametrize(
+    ("sentence", "names"),
+    [
+        ("As Table 4000 shows.", "table 4000"),
+        ("As Figure 9 shows.", "figure 9"),
+        ("As Table S5 shows.", "table S5"),
+        ("As Supplemental Table 3 shows.", "table S3"),
+        ("As eTable 4 shows.", "table S4"),
+        ("As Tables 1 and 3 show.", "table 3"),
+        ("As Figures 1\N{EN DASH}2 show.", "figure 2"),
+    ],
+)
+def test_a_pointer_to_what_the_document_does_not_carry_is_said(
+    project: Path, sentence: str, names: str
+) -> None:
+    _add_to_results(project, sentence)
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["pointer-to-nothing"], said
+    assert f"points at {names}," in said[0][1], said
+
+
+def _all_pointer_findings(root: Path) -> list[tuple[str, str, str]]:
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.pointers import check_pointers
+
+    report = check_pointers(load_project(root)[0])
+    return [(f.code, f.severity, f.message) for f in report.findings]
+
+
+@pytest.mark.parametrize(
+    ("change", "sentence", "unchecked"),
+    [
+        # round 1 of #256: figures sent to the journal as files of their own
+        (("{{figure.forest}}", ""), "As Figure 1 shows.", "the main text's figures"),
+        # a table written by hand, in a form the first version did not count
+        (("{{table.baseline}}", "| A | B |\n|:--|--:|\n| x | y |"), "As Table 3 shows.",
+         "the main text's tables"),
+        # an image placed by hand
+        (("{{figure.forest}}", "![The forest plot](forest.png)"), "As Figure 2 shows.",
+         "the main text's figures"),
+        # the supplement places no figure by its binding
+        (None, "As Supplementary Figure 1 shows.", "the supplement's figures"),
+    ],
+)  # fmt: skip
+def test_a_kind_placed_some_other_way_is_not_checked_and_says_so(
+    project: Path, change: tuple[str, str] | None, sentence: str, unchecked: str
+) -> None:
+    """Exact counts only, Basile's choice on 2026-10-15: what is not placed by its binding
+    cannot be counted, so its pointers are not held to a count, and a note says so."""
+    if change:
+        main = main_md(project)
+        main.write_text(main.read_text(encoding="utf-8").replace(*change, 1), encoding="utf-8")
+    _add_to_results(project, sentence)
+    said = _all_pointer_findings(project)
+    assert not [s for s in said if s[0] != "pointers-unchecked"], said
+    assert any(code == "pointers-unchecked" and severity == "info" and unchecked in message
+               for code, severity, message in said), said  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "As Supplemental Table 1 shows.",
+        "As Extended Data Fig. 1 shows.",
+        "As Table 1 in the Supplement shows.",
+        "As Tables S1\N{EN DASH}2 show.",
+        "As eFigure 1 shows.",
+    ],
+)
+def test_a_pointer_to_the_supplement_is_no_citation_of_the_main_text(
+    project: Path, sentence: str
+) -> None:
+    """Round 1 of #256: read as the main text's, "Supplemental Table 1" before Table 1's
+    first citation made the main text's tables cited out of order."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("# Results\n", f"# Results\n\n{sentence}\n", 1), "utf-8")
+    assert not [s for s in _all_pointer_findings(project) if s[0] == "cited-out-of-order"]
+
+
+def test_a_pointer_that_ends_a_wrapped_line_is_a_citation(project: Path) -> None:
+    """Round 2 of #256: "shown in\nTable 1." was taken for a caption, and Table 1 for a
+    table cited nowhere."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("are shown in Table 1.", "are shown in\nTable 1.", 1),
+        encoding="utf-8",
+    )
+    assert _pointer_findings(project) == []
+
+
+def _declare(root: Path, line: str) -> None:
+    paper = root / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + f"\n{line}\n", encoding="utf-8")
+
+
+def test_a_figure_sent_as_a_file_is_declared_and_counted(project: Path) -> None:
+    """Round 2 of #256, Basile's choice of 2026-10-15: one figure bound, a flow chart sent to
+    the journal as a file of its own. Undeclared, "Figure 2" points at nothing; declared in
+    paper.yaml, it is counted, and must be cited like any other."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("can reconstruct it.", "can reconstruct it. The flow is in Figure 2.", 1),
+        encoding="utf-8",
+    )
+    assert [code for code, _ in _pointer_findings(project)] == ["pointer-to-nothing"]
+    _declare(project, "displays: {figures_as_files: 1}")
+    assert _pointer_findings(project) == []
+    main.write_text(text, encoding="utf-8")
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["display-not-cited"], said
+    assert said[0][1].startswith("Figure 2 ")
+
+
+def test_figures_all_sent_as_files_are_checked_once_declared(project: Path) -> None:
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("{{figure.forest}}", "", 1), encoding="utf-8"
+    )
+    _declare(project, "displays: {figures_as_files: 1}")
+    assert _pointer_findings(project) == []
+    _add_to_results(project, "As Figure 3 shows.")
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["pointer-to-nothing"], said
+    assert "and 1 sent as files" in said[0][1]
+
+
+def test_a_count_of_displays_sent_as_files_is_a_whole_number(project: Path) -> None:
+    _declare(project, "displays: {figures_as_files: -1}")
+    assert "schema-violation" in codes(gate_report(project))
+
+
+def test_a_caption_typed_above_a_table_is_no_citation_of_it(project: Path) -> None:
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("in Table 2, so", "below, so", 1)
+    main.write_text(
+        text.replace("{{table.two_by_two}}", "**Table 2.** Counts\n\n{{table.two_by_two}}", 1),
+        encoding="utf-8",
+    )
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["display-not-cited"], said
+
+
+def test_a_pointer_to_nothing_fails_from_the_internal_review(project: Path) -> None:
+    """Basile's choice on 2026-10-14: while the draft is written its tables move."""
+    from manuscript_guard.cli import _run_gates
+
+    _add_to_results(project, "As Table 9 shows.")
+    drafting, *_ = _run_gates(project, stage="drafting")
+    assert [f.severity for f in drafting.findings if f.code == "pointer-to-nothing"] == ["info"]
+    reviewing, *_ = _run_gates(project, stage="internal-review")
+    assert "pointer-to-nothing" in codes(reviewing)
+
+
+def test_tables_first_cited_out_of_order_are_said(project: Path) -> None:
+    _add_to_results(project, "Table 2 has the counts.")
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("Baseline characteristics are shown in Table 1. Table 2 has the counts.",
+                     "Table 2 has the counts. Baseline characteristics are shown in Table 1.", 1),
+        encoding="utf-8",
+    )  # fmt: skip
+    assert [code for code, _ in _pointer_findings(project)] == ["cited-out-of-order"]
+
+
+def test_a_table_cited_nowhere_is_said(project: Path) -> None:
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("in Table 2, so", "below, so", 1), encoding="utf-8")
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["display-not-cited"], said
+    assert said[0][1].startswith("Table 2 ")
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    ["In step 1204 reports were excluded.", "Box 47 lists the reports.",
+     "Panel 312 shows the reports.", "Item 125 lists them."],
+)  # fmt: skip
+def test_a_count_after_a_word_with_nothing_to_check_it_against_is_a_count(
+    project: Path, sentence: str
+) -> None:
+    _add_to_results(project, sentence)
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_count_after_a_list_of_tables_is_a_count(project: Path) -> None:
+    """Round 2 of #256: after "and" a comma ends the list, so "In Tables 1 and 2, 30
+    patients" is two pointers and a count, not a pointer to Table 30 and a 30 let through."""
+    _add_to_results(project, "In Tables 1 and 2, 30 patients were excluded.")
+    assert "unclassified-number" in codes(gate_report(project))
+    assert _pointer_findings(project) == []
+
+
+def test_a_serial_comma_ends_no_list_of_tables(project: Path) -> None:
+    """Round 3 of #256: "Tables 1, 2, and 3" stopped the pointer at 2, and the 3 was taken
+    for a cross-reference no gate held to a table, in a paper that places two."""
+    from manuscript_guard.gates.pointers import pointers_in
+
+    said = pointers_in("In Tables 1, 2, and 3, 30 patients were excluded.", Path("x"))
+    assert [p.number for p in said] == [1, 2, 3]
+    _add_to_results(project, "Tables 1, 2, and 3 show the reports.")
+    assert [code for code, _ in _pointer_findings(project)] == ["pointer-to-nothing"]
+
+
+def test_a_list_of_tables_is_one_pointer(project: Path) -> None:
+    """"Tables 1 and 2 show" left its 2 bound to nothing."""
+    _add_to_results(project, "Tables 1 and 2 show the reports.")
+    report = gate_report(project)
+    assert "unclassified-number" not in codes(report)
+    assert _pointer_findings(project) == []
 
 
 # ------------------------------------------------- the plan when the results were first known
@@ -6809,7 +7108,7 @@ def test_a_comment_mark_in_a_listing_hides_no_binding_from_the_build(project: Pa
 
 
 # A sentence in the example's Results, one in its Methods, and its last line.
-_IN_RESULTS = "are shown in Table 2."
+_IN_RESULTS = "are shown in Table 1."
 _IN_METHODS = "Reporting follows the checklist declared in `paper.yaml`."
 _AT_END = "None declared.\n"
 
@@ -9579,18 +9878,18 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    six read revisions with the earlier rounds in front of them, so the sixth supersedes
-    the five before it and each says it was not blinded."""
+    seven read revisions with the earlier rounds in front of them, so the seventh supersedes
+    the six before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok, report.render(project)
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
-                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2))
+                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 4, report.render(project)
-    assert report.counts["review_rounds_complete"] == 6
+    assert said == superseded + [("round-not-blinded", "review")] * 5, report.render(project)
+    assert report.counts["review_rounds_complete"] == 7
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -10606,6 +10905,48 @@ def test_a_run_nobody_agreed_to_changes_nothing(project: Path, monkeypatch) -> N
     after = {path: path.read_bytes() for path in sorted(project.rglob("*")) if path.is_file()}
     assert after == before
     assert not _review_failures(project)
+
+
+# --------------------------------------------------------------------------------------
+# What the data can answer, while the plan is written
+# --------------------------------------------------------------------------------------
+
+
+def _feasibility_said(root: Path, stage: str, **values: int) -> list[str]:
+    """G12 at a stage, with these values emitted besides the example's."""
+    from manuscript_guard.gates import check_design
+
+    if values:
+        fragment = next((root / "results").glob("*.json"))
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        for key, value in values.items():
+            document["values"][key.replace("__", ".")] = {"value": value, "display": str(value)}
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    project, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(project)
+    return [f.code for f in check_design(project, results, stage).findings
+            if f.code == "feasibility-not-run"]  # fmt: skip
+
+
+def test_a_plan_written_before_the_data_were_looked_at_is_a_warning(project: Path) -> None:
+    """Item 47: a plan could set out an analysis of data nobody had counted, and nothing
+    said so while it was written."""
+    assert _feasibility_said(project, "design") == ["feasibility-not-run"]
+    assert _feasibility_said(project, "drafting") == []
+
+
+def test_a_plan_with_feasibility_results_says_nothing(project: Path) -> None:
+    assert _feasibility_said(project, "design", feasibility__n_reports=4000) == []
+
+
+def test_a_plan_with_no_analysis_yet_is_not_asked_for_feasibility(project: Path) -> None:
+    """An empty Analysis is its own finding; the feasibility results wait for an analysis."""
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    start, end = text.index("## Analysis\n"), text.index("## Sample size")
+    plan.write_text(text[:start] + "## Analysis\n\nTBD\n\n" + text[end:], encoding="utf-8")
+    assert _feasibility_said(project, "design") == []
 
 
 # --------------------------------------------------------------------------------------

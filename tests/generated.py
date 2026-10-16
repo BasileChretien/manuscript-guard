@@ -583,6 +583,119 @@ def quotations(draw: st.DrawFn) -> tuple[str, str]:
     return source, " ".join(words[first : last + 1])
 
 
+# ---------------------------------------------------------------------- a vector figure
+
+#: Each kind of text a vector figure holds: what G4 reads the size of.
+TEXT_KINDS = ("unset", "pt", "mm", "em", "tspan", "use", "turned", "weight", "class")
+
+
+def _composed(left: tuple[float, ...], right: tuple[float, ...]) -> tuple[float, ...]:
+    """Two linear maps, (a, b, c, d) as SVG writes a matrix's first four, one after the
+    other: the parent's, then the child's."""
+    a, b, c, d = left
+    e, f, g, h = right
+    return (a * e + c * f, b * e + d * f, a * g + c * h, b * g + d * h)
+
+
+@st.composite
+def _transforms(draw: st.DrawFn) -> tuple[str, tuple[float, ...]]:
+    """A transform as an SVG writes it, and its linear part."""
+    import math
+
+    kind = draw(st.sampled_from(("scale", "scale2", "rotate", "matrix", "translate")))
+    one, two = (draw(st.integers(250, 3000)) / 1000 for _ in range(2))
+    if kind == "scale":
+        return f"scale({one})", (one, 0.0, 0.0, one)
+    if kind == "scale2":
+        return f"scale({one} {two})", (one, 0.0, 0.0, two)
+    if kind == "rotate":
+        angle = draw(st.integers(-180, 180))
+        turn = math.radians(angle)
+        return f"rotate({angle} 5 5)", (math.cos(turn), math.sin(turn), -math.sin(turn),
+                                        math.cos(turn))  # fmt: skip
+    if kind == "matrix":
+        skew = draw(st.integers(-500, 500)) / 1000
+        return f"matrix({one} 0 {skew} {two} 3 4)", (one, 0.0, skew, two)
+    return f"translate({one} {two})", (1.0, 0.0, 0.0, 1.0)
+
+
+@st.composite
+def vector_figures(draw: st.DrawFn) -> tuple[str, dict[str, float], list[float]]:
+    """An SVG figure with a text of every kind in it, each under transforms drawn at random:
+    a size not set, in pt, in mm, in em of its group's, a tspan in percent of its text's,
+    a text drawn through `<use>`, and one turned inside a scale that is not the same both
+    ways; and a line beside each. With the height each text is drawn at in units, and the
+    width of each line, worked out from the matrices."""
+    import math
+
+    texts: dict[str, float] = {}
+    lines: list[float] = []
+    defs, body, rules = [], [], []
+    for number, kind in enumerate(draw(st.permutations(TEXT_KINDS))):
+        label = f"t{number}"
+        drawn = draw(st.lists(_transforms(), max_size=3))
+        linear = (1.0, 0.0, 0.0, 1.0)
+        for _written, part in drawn:
+            linear = _composed(linear, part)
+        size = draw(st.integers(4, 24))
+        inner = f'<text x="1" y="1" font-size="{size}">{label}</text>'
+        units = float(size)
+        # The transforms inside the drawn ones that the kind itself puts on its text.
+        own = (1.0, 0.0, 0.0, 1.0)
+        if kind == "unset":
+            inner, units = f'<text x="1" y="1">{label}</text>', 16.0
+        elif kind == "pt":
+            inner, units = f'<text x="1" y="1" font-size="{size}pt">{label}</text>', size * 4 / 3
+        elif kind == "mm":
+            inner = f'<text x="1" y="1" style="font-size: {size}mm">{label}</text>'
+            units = size * 96 / 25.4
+        elif kind == "em":
+            group, em = draw(st.integers(6, 20)), draw(st.integers(5, 20)) / 10
+            text = f'<text x="1" y="1" font-size="{em}em">{label}</text>'
+            inner, units = f'<g font-size="{group}">{text}</g>', group * em
+        elif kind == "tspan":
+            share = draw(st.integers(40, 90))
+            inner = (f'<text x="1" y="1" font-size="{size}">{label}'
+                     f'<tspan font-size="{share}%">s{number}</tspan></text>')  # fmt: skip
+            texts[f"s{number}"] = size * share / 100 * math.hypot(linear[2], linear[3])
+        elif kind == "use":
+            scale = draw(st.integers(250, 3000)) / 1000
+            defs.append(f'<text id="u{number}" x="1" y="1" font-size="{size}">{label}</text>')
+            inner = f'<use xlink:href="#u{number}" transform="scale({scale})"/>'
+            own = (scale, 0.0, 0.0, scale)
+        elif kind == "weight":
+            # A bold text, its weight before its size, as matplotlib writes it.
+            inner = f"<text x=\"1\" y=\"1\" style=\"font: 700 {size}px sans-serif\">{label}</text>"
+        elif kind == "class":
+            # A size set through a class, as Illustrator writes it, over the attribute.
+            rules.append(f".c{number} {{ font-size: {size}px }}")
+            inner = f'<text x="1" y="1" class="c{number}" font-size="99">{label}</text>'
+        elif kind == "turned":
+            inner = (f'<g transform="scale(2 0.5)"><g transform="rotate(90)">'
+                     f'<text x="1" y="1" font-size="{size}">{label}</text></g></g>')  # fmt: skip
+            # Turned a quarter inside it, the text stands along the scale's 2, not its 0.5.
+            own = _composed((2.0, 0.0, 0.0, 0.5), (0.0, 1.0, -1.0, 0.0))
+        width = draw(st.integers(1, 30)) / 10
+        line = f'<path d="M0 0L1 1" stroke="black" stroke-width="{width}"/>'
+        if kind == "class":
+            # A line stroked by the stylesheet alone, as svglite strokes a black one.
+            line = f'<path class="stroked" d="M0 0L1 1" style="stroke-width: {width}"/>'
+        whole = _composed(linear, own)
+        texts[label] = units * math.hypot(whole[2], whole[3])
+        lines.append(width * math.sqrt(abs(linear[0] * linear[3] - linear[1] * linear[2])))
+        for written, _part in reversed(drawn):
+            inner, line = (f'<g transform="{written}">{inner}</g>',
+                           f'<g transform="{written}">{line}</g>')  # fmt: skip
+        body += [inner, line]
+    document = (
+        '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+        'width="400pt" height="300pt" viewBox="0 0 400 300">'
+        f"<style>.stroked {{ stroke: #000000 }} {' '.join(rules)}</style>"
+        f"<defs>{''.join(defs)}</defs>{''.join(body)}</svg>"
+    )
+    return document, texts, sorted(lines)
+
+
 # -------------------------------------------------------------- the results a plan promises
 
 _STEMS = ("ror", "case", "cohort", "hr", "events")
@@ -854,6 +967,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
+    "vector figure": vector_figures().map(lambda drawn: drawn[0]),
     "quote words": st.fixed_dictionaries(
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
     ),

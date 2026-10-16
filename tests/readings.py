@@ -547,6 +547,26 @@ def _quotation() -> Reading:
     return quotation
 
 
+@reading("vector figure")
+def _vector_figure() -> Reading:
+    """The texts and lines of an SVG figure as G4 reads them: each text's height and each
+    line's width in units, through every transform, where each text is anchored, and the
+    visible area."""
+    from manuscript_guard.gates.figure_svg import parse_svg
+
+    def marks(document: str) -> dict[str, Any] | None:
+        svg = parse_svg(document)
+        if svg is None:
+            return None
+        return {
+            "texts": [[m.text, f"{m.units:.9g}", [f"{v:.9g}" for v in m.at]] for m in svg.texts],
+            "lines": [f"{m.units:.9g}" for m in svg.lines],
+            "view": None if svg.view is None else [f"{v:.9g}" for v in svg.view],
+        }
+
+    return marks
+
+
 @reading("quote words")
 def _quote_words() -> Reading:
     """The words a ledger quote holds beside its value, which G7 counts to say a quote that

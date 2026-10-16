@@ -2326,6 +2326,26 @@ warning, as the rest of this gate is: an author may know the data from a registr
 report. Once the analysis runs, its results say what the data hold, and the question is not
 asked again.
 
+**A panel reads the plan before there are results.** A review panel reads the manuscript,
+which exists once the analysis has run; by then the design is spent, and a reviewer who says
+the comparison cannot answer the question says it too late. A design round is a panel that
+reads `design/plan.md` and the feasibility results at the `design` stage. It is kept apart
+from the manuscript's rounds, in `review/design/` (`panel-<n>.yaml`, and
+`round-<n>/<reviewer>.yaml` for a reading), so it never counts toward `rounds_required`
+and no manuscript round answers it. `manuscript-guard review --record <reviewer> --design
+--round <n> --verdict <verdict>` files a reading with the digest of what it read: the
+plan's bytes and each `feasibility.*` result's value and display. G12 then says a reading of
+a plan that has changed since, or of data counted again, is stale (`design-review-stale`);
+a reviewer on the panel who has not read (`design-review-missing`); and a major finding not
+answered by a resolution or an override with its reason (`design-major-open`). The last is
+a warning, and a failure at submission only, as the author decided: what an unanswered
+design objection means is the author's to weigh while there is still an analysis to change.
+A reading is sealed as a manuscript reading is (`review --seal <reviewer> --design`), and
+one changed after its seal is said (`design-reading-altered`), failing at submission. A
+project with no design round reads as it did before, counts included. For now a design
+round is read and filed by hand: `review --run` sends the manuscript, not the plan, and a
+reviewer's named readers are not read in a design round.
+
 **The plan is frozen when the first results are written.** A plan rewritten after the
 results are known is the pattern of a hypothesis fitted to its results, and it can be told
 mechanically. The first time either emitter writes results, it keeps the plan as it stood:
@@ -5142,6 +5162,11 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
+- **A design round is read by hand, and its overrides are anyone's.** `review --run`
+  does not send the plan to the models yet, a design panel's named readers are not read,
+  and an override of a design-round major needs a reason but no named person's sign-off.
+  Nothing yet asks for a design round before the analysis stage: one that was never held
+  says nothing.
 - **The feasibility results are asked for by their names only.** Any one result under
   `feasibility.` quiets `feasibility-not-run`: nothing checks that the counts cover the
   plan's variables or its selection steps, or that the script read the data the analysis

@@ -61,12 +61,21 @@ def test_a_run_of_verify_that_left_a_fragment_out_says_so(project: Path) -> None
 
     loaded, _ = load_project(project)
     agreed = tuple(f"v{n}" for n in range(31))
-    failed = Comparison("02_model.json", ran=False, only_on_disk=("m.point", "m.ci_low"))
+    for name, keys in (("02_model.json", ("m.point", "m.ci_low")), ("03_r.json", ("r.n",))):
+        values = {key: {"value": 1, "display": "1"} for key in keys}
+        (project / "results" / name).write_text(json.dumps({"values": values}), "utf-8")
+    # As verify builds them: a script that failed carries its error and no values (round 2).
+    failed = Comparison("02_model.json", ran=False, error="02_model.py exited 1")
     run = VerifyReport([Comparison("01_disproportionality.json", agreed=agreed), failed],
-                       skipped=[("03_r.json", "Rscript is not on PATH")])  # fmt: skip
+                       skipped=[("03_r.json", "no runner for .R on this machine")])  # fmt: skip
     record_verified(loaded, run)
     [line] = [line for line in _said(project) if "`verify`" in line]
-    assert line.endswith("31 of 33 values reproduced; 2 fragments not re-run; it did not pass")
+    assert line.endswith("31 of 34 values reproduced; 2 fragments not re-run; it did not pass")
+    skipped = VerifyReport([Comparison("01_disproportionality.json", agreed=agreed)],
+                           skipped=[("03_r.json", "no runner for .R on this machine")])  # fmt: skip
+    record_verified(loaded, skipped)
+    [line] = [line for line in _said(project) if "`verify`" in line]
+    assert line.endswith("31 of 32 values reproduced; 1 fragment not re-run")
     record_verified(loaded, VerifyReport([Comparison("01.json", agreed=agreed)]))
     [line] = [line for line in _said(project) if "`verify`" in line]
     assert line.endswith(": 31 of 31 values reproduced")

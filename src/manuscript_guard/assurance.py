@@ -139,8 +139,8 @@ def _verified(project: Project) -> list[str]:
     when, total = record.get("ran_on", "an unrecorded date"), record.get("values", 0)
     said = f"`verify` re-ran the analysis on {when}: {record.get('reproduced', 0)} of {total} " \
         "values reproduced"  # fmt: skip
-    left = record.get("not_rerun") or []
-    if left:
+    left = record.get("not_rerun")
+    if isinstance(left, list) and left:
         said += f"; {len(left)} fragment{'s' if len(left) > 1 else ''} not re-run"
     if not record.get("ok"):
         said += "; it did not pass"
@@ -161,19 +161,29 @@ def fragments_digest(project: Project) -> str:
 def record_verified(project: Project, result) -> Path:
     """Write what `verify` found, for `check` to say: when, how many of the values on disk
     it reproduced, the fragments it did not re-run, whether it passed, and the results it
-    re-ran. Round 1 of #306: counted from the fragments that re-ran alone, a skipped or a
-    failed one went unsaid, and "31 of 31" was printed of an analysis not all re-run."""
+    re-ran. Rounds 1 and 2 of #306: counted from the fragments that re-ran alone, a skipped or
+    a failed one went unsaid, and "31 of 31" was printed of an analysis not all re-run. A
+    fragment not re-run carries no values in the comparison, so its values are counted from
+    the file, as `verify` counts them."""
+    from manuscript_guard.verify import _values_of
+
     comparisons = result.comparisons
+    left = [name for name, _why in result.skipped] + [c.fragment for c in comparisons if not c.ran]
+    on_disk = 0
+    for name in left:
+        document = _read(project.path("results") / name)
+        on_disk += len(_values_of(document)) if document else 0
     path = project.path("build") / VERIFIED
     path.parent.mkdir(parents=True, exist_ok=True)
     record = {
         "schema": VERIFIED_SCHEMA,
         "ran_on": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        "values": sum(len(c.agreed) + len(c.differed) + len(c.only_on_disk) for c in comparisons),
+        "values": on_disk + sum(
+            len(c.agreed) + len(c.differed) + len(c.only_on_disk) for c in comparisons if c.ran
+        ),
         "reproduced": sum(len(c.agreed) for c in comparisons),
-        "not_rerun": [name for name, _why in result.skipped]
-        + [c.fragment for c in comparisons if not c.ran],
-        "ok": bool(result.ok and not result.skipped),
+        "not_rerun": left,
+        "ok": bool(result.ok),
         "results_sha256": fragments_digest(project),
     }
     path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8", newline="\n")

@@ -20,6 +20,7 @@ from manuscript_guard.gates.methods import check_methods, reconcile
 from manuscript_guard.gates.models import check_models
 from manuscript_guard.gates.numbers import check_numbers, source_files
 from manuscript_guard.gates.recomputed import check_recomputed
+from manuscript_guard.gates.relations import check_relations
 from manuscript_guard.gates.reporting import (
     available_checklists,
     check_reporting,
@@ -63,6 +64,7 @@ __all__ = [
     "check_bound_units",
     "check_citations",
     "check_consistency",
+    "check_relations",
     "check_design",
     "check_figure_reviews",
     "check_figure_source",

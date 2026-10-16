@@ -107,6 +107,10 @@ class Results:
     models: dict[str, Model] = field(default_factory=dict)
     # The steps that ran, which the Methods point at; G9 holds each to its claim.
     steps: dict[str, Step] = field(default_factory=dict)
+    # The arithmetic the analysis declares between its results, and its flow records, each
+    # with the fragment that declared it; G8 holds the values to them.
+    relations: tuple[dict, ...] = ()
+    flows: dict[str, dict] = field(default_factory=dict)
 
     def get(self, key: str) -> Value | None:
         return self.values.get(key)
@@ -159,6 +163,8 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
     variables: dict[str, Variable] = {}
     models: dict[str, Model] = {}
     steps: dict[str, Step] = {}
+    relations: list[dict] = []
+    flows: dict[str, dict] = {}
 
     for path in paths:
         document = read_structured(path)
@@ -258,6 +264,9 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
             )
         reports.append(_read_cards(document, path, variables, models))
         reports.append(_read_steps(document, path, steps))
+        relations += [{**relation, "source": path} for relation in document.get("relations", ())]
+        flows.update({key: {**flow, "source": path}
+                      for key, flow in (document.get("flows") or {}).items()})  # fmt: skip
 
     models_report, values, tables = _models_into(
         models, variables, values, tables
@@ -269,7 +278,8 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
         results_values=len(values),
         results_tables=len(tables),
     )
-    results = Results(values, tuple(fragments), tables, code_lists, variables, models, steps)
+    results = Results(values, tuple(fragments), tables, code_lists, variables, models, steps,
+                      tuple(relations), flows)  # fmt: skip
     return results, merged
 
 

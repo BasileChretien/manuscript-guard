@@ -47,6 +47,191 @@
       "propertyNames": { "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$" },
       "additionalProperties": { "$ref": "#/$defs/step" }
     },
+    "relations": {
+      "type": "array",
+      "description": "Arithmetic the analysis declares between its results, which G8 holds the values to, and their displays within their rounding: a sum, a difference, a ratio (times a scale), at_most and in_order. The keys may be another fragment's.",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "key",
+          "of"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "sum",
+              "difference",
+              "ratio",
+              "at_most",
+              "in_order"
+            ]
+          },
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+          },
+          "of": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+            }
+          },
+          "scale": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "difference",
+                    "ratio"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "of": {
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "at_most",
+                    "in_order"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "of": {
+                  "maxItems": 1
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "flows": {
+      "type": "object",
+      "description": "Flows of participants or records, each count a value of its own: each stage less its exclusions is the next, and the arms sum to the last stage. G8 holds them to it.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "stages",
+          "exclusions"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "stages": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "key"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+                }
+              }
+            }
+          },
+          "exclusions": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "key"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+                  }
+                }
+              }
+            }
+          },
+          "arms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "key"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+                }
+              }
+            }
+          },
+          "overlapping": {
+            "description": "True where any step's reasons may overlap, or the numbers of those steps: step n goes from stage n to stage n + 1.",
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
     "code_lists": {
       "type": "object",
       "description": "The code lists the analysis selected on, keyed by the table that prints them. RECORD 6.1 requires these to be published; keeping them as data beside the rendered table means the paper prints the list the code actually used, and the next study can reuse the definition rather than retyping it.",

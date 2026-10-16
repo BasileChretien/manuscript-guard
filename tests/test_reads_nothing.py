@@ -110,6 +110,8 @@ COMMANDS = {
     "review": Zero("the review panels", why="it says there are none, and G11 says `no-review`"),
     "reworded": Zero("the manuscript now and as it was",
                      why="it prints how many files it compared, 0 included"),
+    "sign": Zero("the findings a named person may sign off", exits=2,
+                 argv=("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
     "stages": Zero("nothing: it prints the stages", why="it reads the policy table only"),
     "submit": Zero("every gate at the submission stage, then the build", exits=1,
                    argv=("submit", "{project}")),

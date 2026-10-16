@@ -2385,8 +2385,33 @@ that has changed since (`approval-stale`). It warns and does not refuse: whether
 without one is the corresponding author's decision, and an approval given by e-mail is still
 one. An approval is a person's statement, so the hooks put to the person an agent's `approve`
 and an agent's edit of a file under `approvals/`, and refuse both where the tool cannot ask.
-A data custodian's sign-off is recorded the same way once the custodian has a place among the
-people the project names.
+
+## A named person signs what an agent must not
+
+Some findings are not the author's to close. A warning about a model the analysis fitted is
+the statistician's to judge, and an author who dismisses it has judged a question that was
+not theirs. `authors.yaml` names people for roles under `roles:`: the statistician, the data
+custodian, and the person responsible for ethics approval with the approval's reference. A
+role names an author as `approve --as` does, or someone who is not an author, by name. The
+corresponding author is the one `corresponding: true` marks, and no second place names them.
+
+A gate that raises a finding only one of them may close hands it to `sign_offs.settle` with
+the role, an id and the digest of what is signed. For G15 that is every warning about a
+model: those of one code on one model are signed together, bound to their messages and to
+the card of each model they name. `manuscript-guard sign --as <person> --finding <id>` writes
+the digest to a file under `approvals/sign-offs/` named by the id, its letters with eight
+characters of its digest, after checking that `--as` names the person the role names. The finding is then reported as information that says who signed it and
+when, with what they said. A sign-off of something that has changed since, one by someone
+the roles no longer name, and one copied to another finding count for nothing: the warning
+stands, and its hint names who signs it and the command. Unsigned, a warning stays a
+warning, as before. The record lives beside the authors' approvals, and the hooks put to the
+person an agent's `sign` and an agent's edit of the file, as they do an approval.
+
+G15's warning about a model kind the Methods name and the analysis did not fit is not
+signed: it is about the prose, and its hint already says when there is nothing to do. The
+data custodian and the ethics lead sign nothing yet. The small-cell exception, the
+custodian's authorisation of a model provider and the override of a design-round major
+finding will each be a signable finding when they are built.
 
 ## The plugin: skills for judgement, hooks for the moment of the mistake
 
@@ -7443,6 +7468,13 @@ Closed since, and why each mattered:
   further into an item: an indented one, one under a later item's own underline, or
   `- # Results` on the item's own line. The same goes for a definition list. The old scan
   saw none of these either.
+- **A sign-off says who ran `sign`, not who judged the finding.** As with an approval, a
+  co-author who runs it for the statistician, or an agent the person lets through, writes a
+  sign-off nobody gave. A statistician who is not an author is matched by the name, e-mail
+  address or ORCID iD written under `roles:`, which nothing checks against a register. A
+  sign-off names its person by name, and by ORCID iD where the record and the role both
+  give one: a role handed to someone else of the same name, with no ORCID iD on either
+  side, keeps the earlier person's sign-offs.
 - **An approval says who ran the command, not who read the manuscript.** A co-author who
   runs `approve` for a colleague, or an agent the person lets through, writes an approval
   nobody gave. The digest says what was current when it was given, not that it was read.

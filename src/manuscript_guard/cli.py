@@ -2094,6 +2094,49 @@ def cmd_approve(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sign(args: argparse.Namespace) -> int:
+    """Record a named person's sign-off of a finding only they may close. Their own act."""
+    from manuscript_guard.approvals import NoSuchAuthor
+    from manuscript_guard.gates.models import signables
+    from manuscript_guard.sign_offs import ROLES, holder, is_holder, sign
+
+    project, _ = load_project(args.path)
+    _namespace, results, _literature, _loaded = load_namespace(project)
+    standing = signables(project, results)
+    found = [signable for signable in standing if signable.id == args.finding]
+    if not found:
+        ids = ", ".join(signable.id for signable in standing) or "none"
+        print(
+            f"manuscript-guard: no finding {args.finding} stands to be signed off "
+            f"(those that do: {ids})",
+            file=sys.stderr,
+        )
+        return 2
+    signable = found[0]
+    role = ROLES[signable.role]
+    try:
+        person = holder(project, signable.role)
+    except NoSuchAuthor as exc:
+        print(f"manuscript-guard: roles: {signable.role} in authors.yaml: {exc}", file=sys.stderr)
+        return 2
+    if person is None:
+        print(
+            f"manuscript-guard: authors.yaml names no {signable.role} under `roles:`; "
+            f"only {role} signs off {signable.id}",
+            file=sys.stderr,
+        )
+        return 2
+    if not is_holder(project, person, args.as_):
+        print(
+            f"manuscript-guard: {args.as_!r} is not {role}; authors.yaml names {person.name}",
+            file=sys.stderr,
+        )
+        return 2
+    path = sign(project, signable, person, args.note)
+    print(f"{person.name}, {role}, signed off {signable.id} as it stands: {path}")
+    return 0
+
+
 def cmd_sync_bib(args: argparse.Namespace) -> int:
     """Rewrite literature/references.bib from what the manuscript cites."""
     from manuscript_guard.zotero import ZoteroUnavailable
@@ -2914,6 +2957,23 @@ def build_parser() -> argparse.ArgumentParser:
     )  # fmt: skip
     approve_.add_argument("--note", help="anything the author says with the approval")
     approve_.set_defaults(func=cmd_approve)
+
+    sign_ = sub.add_parser(
+        "sign",
+        help="record a named person's sign-off of a finding only they may close, such as a "
+        "G15 warning for the statistician; that person's own act",
+    )
+    sign_.add_argument("path", nargs="?", type=Path, default=Path("."))
+    sign_.add_argument(
+        "--as", dest="as_", required=True,
+        help="the person authors.yaml names for the role: ORCID iD, e-mail address or name",
+    )  # fmt: skip
+    sign_.add_argument(
+        "--finding", required=True, help="the id the finding's hint names, such as "
+        "G15/model-few-events/adjusted",
+    )  # fmt: skip
+    sign_.add_argument("--note", help="anything the person says with the sign-off")
+    sign_.set_defaults(func=cmd_sign)
 
     explain = sub.add_parser("explain", help="show how each number in a file was classified")
     explain.add_argument("file", type=Path)

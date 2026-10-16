@@ -6939,9 +6939,10 @@ Closed since, and why each mattered:
   The session-start hook compares the plugin's version (read from
   `$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json`) with the tool's and says so once, with the
   upgrade command, and blocks nothing. The command takes the latest release from PyPI. The
-  plugin's number is raised on `main` a few minutes before that release is uploaded, and a
-  release can fail: until PyPI has the number, the command finds nothing newer and the
-  next session warns again. The pipx half of the command reinstalls whatever PyPI has,
+  plugin's number is raised on `main` an hour and a half or more before that release is
+  uploaded, since the release waits for CI to pass on the commit, and a release can fail:
+  until PyPI has the number, the command finds nothing newer and the next session warns
+  again. The pipx half of the command reinstalls whatever PyPI has,
   where pip's upgrade only ever goes up: a copy that is ahead of PyPI, one from the
   repository or an editable one after a release that failed, is put back to the older
   release. Read from pipx's documentation, not run. The hook says nothing when the

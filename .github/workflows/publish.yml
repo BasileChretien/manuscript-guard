@@ -1,30 +1,41 @@
 name: Publish to PyPI
 
 # Every version on main is released. The maintainer raises the number on main after merges
-# that change the tool (CONTRIBUTING.md), and that push is the release: this workflow
-# builds, tags the commit, makes the GitHub Release, and uploads to PyPI, with nobody's
-# click.
+# that change the tool (CONTRIBUTING.md), and that push is the release, once CI has passed
+# on it: this workflow builds, tags the commit, makes the GitHub Release, and uploads to
+# PyPI, with nobody's click.
 #
 # A release on PyPI is permanent: a version can be withdrawn, and never replaced or used
 # again. So a push releases only where it raised the version to one PyPI does not have
 # (.github/scripts/release_decision.py). A push that leaves the number alone, or lowers it,
 # releases nothing, and neither does a second run for a version already there.
+#
+# Nor does a commit CI has not passed. Until 2026-10 this workflow started on the push
+# itself, without waiting for CI: three releases of 2026-10-08 went to PyPI while CI on
+# their commits had been cancelled, and a break on Windows or macOS could have shipped. So it
+# starts when CI's run on a push to main has finished, and releases the commit that run
+# tested, only if it passed. A release waits for main's CI: an hour and a half or more.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths: [pyproject.toml]
   # Not startable by hand, on purpose. A run by hand has no push behind it and builds
   # whatever main holds at that moment: after a later merge, that is not the commit the
   # number was raised on. A release that stopped half way is finished by re-running the
-  # failed jobs of its own run, which builds the same commit.
+  # failed jobs of its own run, which builds the same commit. A release whose CI failed is
+  # finished by re-running CI's failed jobs: when they pass, this starts again.
 
 permissions: {}
 
-# One release at a time, and never a second one cancelling the first mid-upload. GitHub
-# keeps one run waiting behind the one that is going: a third push that touches
-# pyproject.toml in those minutes cancels the one waiting, which is then re-run by hand.
+# One run per commit, and none cancelling another. Every CI run on main starts this
+# workflow, most of them to release nothing, so runs are not queued behind one another: in
+# one group GitHub keeps a single run waiting, and a newer one cancels it, so a release
+# waiting its turn would be cancelled by a commit that releases nothing. The tag and the
+# GitHub Release, which two runs could make for one number, are made one run at a time (the
+# `release` job), and only runs that release get there.
 concurrency:
-  group: publish-to-pypi
+  group: publish-to-pypi-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
@@ -32,8 +43,16 @@ jobs:
     name: Is there a version to release?
     # In this repository only. A fork that has Actions on would otherwise tag its own copy
     # and make a release there before PyPI, which trusts this repository alone, refused the
-    # upload. Every job below waits for this one, so none starts where it did not.
-    if: github.repository == 'BasileChretien/manuscript-guard' && github.ref == 'refs/heads/main'
+    # upload. And after CI's run on a push to main of this repository only: CI runs for pull
+    # requests too, and one from a fork whose branch is called main has its run on a branch
+    # called main. Every job below waits for this one, so none starts where it did not. How
+    # CI concluded is for the script to read: a release whose CI did not pass fails here,
+    # where it is seen, and a run with nothing to release ends quietly whatever CI said.
+    if: >-
+      github.repository == 'BasileChretien/manuscript-guard'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_branch == 'main'
+      && github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -42,20 +61,28 @@ jobs:
       publish: ${{ steps.decide.outputs.publish }}
       version: ${{ steps.decide.outputs.version }}
     steps:
+      # Every checkout here names the commit CI tested. A run started by another workflow's
+      # has main as it stands for its own commit, and main may have moved on since.
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha }}
           # The whole history, so that the commit this push replaced can be read.
           fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - id: decide
-        # The commit reaches the script through the environment, never as part of the
-        # command.
+        # The commit and CI's conclusion reach the script through the environment, never as
+        # part of the command. The token reads GitHub's record of the pushes to main, which
+        # names the commit the push replaced.
         env:
-          BEFORE: ${{ github.event.before }}
-        run: python .github/scripts/release_decision.py --before "$BEFORE" >> "$GITHUB_OUTPUT"
+          PUSHED: ${{ github.event.workflow_run.head_sha }}
+          CI: ${{ github.event.workflow_run.conclusion }}
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python .github/scripts/release_decision.py --pushed "$PUSHED" --ci "$CI"
+          >> "$GITHUB_OUTPUT"
 
   build:
     name: Build the distributions
@@ -69,6 +96,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -95,6 +123,11 @@ jobs:
     needs: [decide, build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # One at a time across runs, so that a second commit claiming a number finds the first
+    # one's tag when it checks out, and stops.
+    concurrency:
+      group: publish-to-pypi
+      cancel-in-progress: false
     # The one job that may write to the repository, and it writes a tag and a release.
     permissions:
       contents: write
@@ -102,6 +135,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha }}
           # With the tags, to see whether this version's is already there.
           fetch-depth: 0
       - name: Tag v<version> at this commit, unless it is already there
@@ -112,15 +146,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: v${{ needs.decide.outputs.version }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
         run: |
           if at=$(git rev-parse --quiet --verify "refs/tags/$TAG^{commit}"); then
-            if [ "$at" != "$GITHUB_SHA" ]; then
-              echo "::error::$TAG is already at $at, and this run builds $GITHUB_SHA"
+            if [ "$at" != "$COMMIT" ]; then
+              echo "::error::$TAG is already at $at, and this run builds $COMMIT"
               exit 1
             fi
           fi
           if ! gh release view "$TAG" > /dev/null 2>&1; then
-            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+            gh release create "$TAG" --target "$COMMIT" --title "$TAG" --generate-notes
           fi
 
   publish:

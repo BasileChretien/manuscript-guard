@@ -66,9 +66,12 @@ FEASIBILITY = "feasibility."
 PLANNED = r"(?i)\bplanned results?\b"
 
 #: What a planned result's code span holds: a key as the analysis emits it, `ror.point`, or
-#: as the manuscript binds it, `results.ror.point`; or a group of keys, `ror.*`. A span with
-#: no dot is code, not a key: `glm`, `R`.
-_PLANNED_KEY = re.compile(r"(?:results\.)?([A-Za-z_][\w-]*(?:\.[\w-]+)+)")
+#: as the manuscript binds it, `results.ror.point`, `results.dose`; or a group of keys,
+#: `ror.*`. A span with no dot is code, not a key: `glm`, `R`. Bound, a key needs none: the
+#: prefix is never part of it (round 1 of #305).
+_PLANNED_KEY = re.compile(
+    r"results\.([A-Za-z_][\w-]*(?:\.[\w-]+)*)|([A-Za-z_][\w-]*(?:\.[\w-]+)+)"
+)
 _PLANNED_GROUP = re.compile(r"(?:results\.)?([A-Za-z_][\w-]*(?:\.[\w-]+)*)\.\*")
 _BLANK_LINE = re.compile(r"\n[ \t]*\n")
 
@@ -199,7 +202,8 @@ def planned_results(text: str) -> list[Planned] | None:
             if group := _PLANNED_GROUP.fullmatch(said):
                 planned.append(Planned(group.group(1), True, _line(text, start)))
             elif key := _PLANNED_KEY.fullmatch(said):
-                planned.append(Planned(key.group(1), False, _line(text, start)))
+                named = next(part for part in key.groups() if part)
+                planned.append(Planned(named, False, _line(text, start)))
     return planned
 
 

@@ -2448,6 +2448,14 @@ def _a_bound_key_keeps_its_namespace(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(design, "_PLANNED_KEY", re.compile(r"([A-Za-z_][\w-]*(?:\.[\w-]+)+)"))
 
 
+def _a_bound_key_needs_a_dot(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood at b7235875: the prefix gave way to a key with no dot."""
+    from manuscript_guard.gates import design
+
+    dotted = re.compile(r"(?:results\.)?([A-Za-z_][\w-]*(?:\.[\w-]+)+)")
+    patch.setattr(design, "_PLANNED_KEY", dotted)
+
+
 def _the_planned_results_subsections_are_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import design
 
@@ -2988,6 +2996,10 @@ BROKEN = {
     ),
     "a bound key keeps its namespace": (
         _a_bound_key_keeps_its_namespace,
+        test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
+    ),
+    "a bound key needs a dot": (
+        _a_bound_key_needs_a_dot,
         test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
     ),
     "the Planned results' subsections are not read": (

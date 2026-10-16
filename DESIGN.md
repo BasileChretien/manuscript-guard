@@ -2314,7 +2314,8 @@ analysis never emitted. A plan may now hold a section headed "Planned results", 
 the seven, whose list items each open with the key of a result the paper will report, in
 backticks: `ror.point`, or `results.ror.point` as the manuscript binds it, or a group,
 `ror.*`. The first code span of each item is its key, read up to the next item or the
-item's first blank line, and a span with no dot is code, not a key. Once the stage is past
+item's first blank line, and a span with no dot is code, not a key; a key with no dot of its
+own is written bound, `results.dose`. Once the stage is past
 `design`, G12 warns where a key listed there names no value, table or model the analysis
 emitted (`planned-result-missing`), or names only values emitted with `quoted=False`
 (`planned-result-unquoted`), unless the Deviations section names the key: dropping a

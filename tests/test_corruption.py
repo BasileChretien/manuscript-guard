@@ -1598,6 +1598,20 @@ def test_a_planned_result_the_deviations_name_passes(project: Path) -> None:
     assert [code for code, _line in _planned_said(project)] == ["planned-result-missing"]
 
 
+def test_a_planned_key_with_no_dot_is_read_in_its_bound_form(project: Path) -> None:
+    """Round 1 of #305: `results.dose` was read as the key `results.dose`, since `dose` has
+    no dot, and a promise kept was said to be broken."""
+    promised = "- `results.dose`: the dose"
+    _plan_edited(project, "- `case.pct_serious`", f"{promised}\n- `case.pct_serious`")
+    assert _planned_said(project) == [("planned-result-missing", promised)]
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["dose"] = {"value": 5, "display": "5"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _planned_said(project) == []
+
+
 def test_a_planned_results_section_that_names_no_key_is_a_warning(project: Path) -> None:
     plan = project / "design" / "plan.md"
     text = plan.read_text(encoding="utf-8")

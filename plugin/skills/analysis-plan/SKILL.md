@@ -104,7 +104,7 @@ report, each item opening with the key the analysis will emit it under, in backt
 - `ror.*`: the reporting odds ratio and its 95% interval
 ```
 
-`ror.*` is every key under `ror.`. Agree the keys with whoever writes the analysis, since
+`ror.*` is every key under `ror.`. A key with no dot is written as the manuscript binds it, `results.dose`, since a span with no dot is read as code. Agree the keys with whoever writes the analysis, since
 they are its names. Once the analysis is under way, G12 warns where a listed key was never
 emitted (`planned-result-missing`) or was emitted with `quoted=False`
 (`planned-result-unquoted`). If a planned result will not be reported, say so under

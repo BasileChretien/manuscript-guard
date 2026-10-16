@@ -588,9 +588,10 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
     with the keys it lists, in order, as (key, whether it is a group).
 
     Each example holds one item of every kind, in an order drawn each time: a key; a key as
-    the manuscript binds it; a group of keys; words and no code; code that is not a key; a
-    key nested under an item that has none; and an item with no key followed, past a blank
-    line, by prose that holds one. Then a subsection with a key of its own. The section
+    the manuscript binds it; a key with no dot, bound; a group of keys; words and no code;
+    code that is not a key; a key nested under an item that has none; and an item with no
+    key followed, past a blank line, by prose that holds one. Then a subsection with a key of
+    its own. The section
     comes before the drawn text, which an open fence would otherwise swallow it into."""
     words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=6).map(" ".join)
     marker = st.sampled_from(_MARKERS)
@@ -605,6 +606,8 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
     plain, bound, stem = key(), key(), draw(st.sampled_from(_STEMS))
     kinds.append((f"{draw(marker)}`{plain}`: {wrapped()}\n", [(plain, False)]))
     kinds.append((f"{draw(marker)}`results.{bound}` {wrapped()}\n", [(bound, False)]))
+    undotted = draw(st.sampled_from(_STEMS))
+    kinds.append((f"{draw(marker)}`results.{undotted}`: {draw(words)}\n", [(undotted, False)]))
     kinds.append((f"{draw(marker)}`{stem}.*`: {wrapped()}\n", [(stem, True)]))
     kinds.append((f"{draw(marker)}{wrapped()}\n", []))
     kinds.append((f"{draw(marker)}`{draw(st.sampled_from(_CODE))}` {draw(words)}\n", []))

@@ -95,6 +95,9 @@ COMMANDS = {
     "fetch": Zero("a reporting guideline's published checklist",
                   why="it downloads what it is named, and refuses a name it does not know"),
     "hook": Zero("an agent tool's event", why="a hook never stops the tool that called it"),
+    "impact": Zero("the records the gates read, for each file named or changed",
+                   why="it says so when nothing has changed, and when nothing the gates "
+                   "record depends on a file"),
     "import": Zero("a co-author's returned .docx",
                    why="a document it cannot read back is refused (exit 1)"),
     "init": Zero("nothing: it writes a project", why="it makes the files the others read"),
@@ -107,6 +110,8 @@ COMMANDS = {
     "review": Zero("the review panels", why="it says there are none, and G11 says `no-review`"),
     "reworded": Zero("the manuscript now and as it was",
                      why="it prints how many files it compared, 0 included"),
+    "sign": Zero("the findings a named person may sign off", exits=2,
+                 argv=("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
     "stages": Zero("nothing: it prints the stages", why="it reads the policy table only"),
     "submit": Zero("every gate at the submission stage, then the build", exits=1,
                    argv=("submit", "{project}")),

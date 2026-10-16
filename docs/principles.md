@@ -99,9 +99,10 @@ standing in — pass `--root` to choose somewhere else. The recipes themselves s
 package, and a recipe of the same name in your project overrides the shipped one. See [ATTRIBUTION.md](../ATTRIBUTION.md) for each guideline's licence as read on
 2026-08-03 — one of them is non-commercial, and several state no reuse licence at all.
 
-Recipes ship for fifteen checklists: STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT 2025,
+Recipes ship for seventeen checklists: STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT 2025,
 PRISMA 2020 and its abstracts checklist, READUS-PV and its abstracts checklist, TRIPOD in
-its three variants, TRIPOD+AI and its abstracts checklist, and ARRIVE 2.0; and for one
+its three variants, TRIPOD+AI and its abstracts checklist, STARD 2015, CHEERS 2022 and
+ARRIVE 2.0; and for one
 instrument that is not a checklist, SANRA,
 the scale a narrative review is appraised with. You supply the official document; the profile
 is generated locally. Each profile records how thoroughly it was verified, because that

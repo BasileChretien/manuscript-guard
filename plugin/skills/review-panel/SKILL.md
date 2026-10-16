@@ -222,7 +222,9 @@ manuscript-guard review --seal methodologist --design --round 1   # once the fin
 ```
 
 G12 says a major finding not answered (a warning until submission), and a reading of a plan
-that has changed since. Answer a finding with what the plan now does, in `resolution:`.
+that has changed since. Answer a finding with what the plan now does, in `resolution:`. An
+objection left standing, `overridden:` with a reason, is the statistician's to accept: they
+sign it with `manuscript-guard sign`, as the warning's hint says. Never run `sign` for them.
 
 ## 5. Check
 

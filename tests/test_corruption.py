@@ -11734,6 +11734,51 @@ def test_a_design_round_is_not_a_round_of_the_manuscript(project: Path) -> None:
     assert check_review(load_project(project)[0]).counts == before
 
 
+_OVERRIDDEN = "  overridden: The indication is recorded for too few reports to restrict on.\n"
+
+
+def test_an_overridden_design_objection_is_signed_by_the_statistician(project: Path) -> None:
+    """Item 46: an override of a design-round major was the author's word alone; the
+    statistician the project names signs it, bound to the objection and the reason."""
+    from manuscript_guard.cli import main
+
+    record = _design_recorded(project, _DESIGN_MAJOR + _OVERRIDDEN)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    key = "G12/design-override/1/methodologist/d1"
+    said = _override_said(project)
+    assert [(code, severity) for code, severity, _hint in said] == [
+        ("design-override-unsigned", "warn")
+    ]
+    assert f'manuscript-guard sign --as "Blaise Sample" --finding {key}' in said[0][2]
+    assert main(["sign", str(project), "--as", "Ada Example", "--finding", key]) == 2
+    assert main(["sign", str(project), "--as", "Sample", "--finding", key]) == 0
+    signed = [(code, severity) for code, severity, _hint in _override_said(project)]
+    assert signed == [("design-override-unsigned", "info")]
+
+    # A reason rewritten after the signature wants it again.
+    text = record.read_text(encoding="utf-8")
+    record.write_text(text.replace("too few reports", "too few of the reports"), "utf-8")
+    [(code, severity, hint)] = _override_said(project)
+    assert (code, severity) == ("design-override-unsigned", "warn") and "changed since" in hint
+
+
+def test_a_resolved_design_objection_wants_no_signature(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    resolved = _OVERRIDDEN + "  resolution: The comparators are restricted to the indication.\n"
+    _design_recorded(project, _DESIGN_MAJOR + resolved)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    assert _override_said(project) == []
+
+
+def _override_said(root: Path) -> list[tuple[str, str, str]]:
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    project, _ = load_project(root)
+    return [(f.code, f.severity, f.hint or "") for f in check_design_rounds(project).findings
+            if f.code == "design-override-unsigned"]  # fmt: skip
+
+
 # --------------------------------------------------------------------------------------
 # TeX outside dollar signs in what the build prints of paper.yaml
 # --------------------------------------------------------------------------------------

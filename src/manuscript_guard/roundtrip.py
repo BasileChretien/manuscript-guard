@@ -385,6 +385,30 @@ def recorded_citations(fields: dict[str, str]):
     return read
 
 
+def inserted_citations(document: Path, known: dict[str, str] | None = None) -> dict[str, list]:
+    """The citations a co-author inserted in Word with a reference manager, by the identifier
+    of the paragraph each is in: the works each names (`citationfields.Work`). Its words come
+    back as prose, which a merge would write into the source as text. A field of a live build
+    the record knows (`known`, as `recorded_citations` reads it) is the source's own."""
+    from manuscript_guard.citationfields import citation_of, inserted
+    from manuscript_guard.docxtext import DocumentUnreadable, fields_of
+
+    try:
+        codes = fields_of(document)
+    except DocumentUnreadable as exc:
+        raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
+    found: dict[str, list] = {}
+    for name, listed in codes.items():
+        for code in listed:
+            ours = citation_of(code)
+            if ours is not None and known and ours.identity in known:
+                continue
+            works = inserted(code)
+            if works is not None:
+                found.setdefault(name, []).extend(works)
+    return found
+
+
 def paragraphs_of(document: Path) -> dict[str, str] | None:
     """What each identifier named when the document was built, as `paragraph_record` gives
     it and in the document's order, or None when it records nothing: a document built before

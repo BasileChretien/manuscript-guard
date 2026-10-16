@@ -309,6 +309,88 @@ def test_figure_script_that_ignores_results_is_caught(project: Path) -> None:
     assert "figure-script-ignores-results" in codes(gate_report(project))
 
 
+def _estimates_said(project: Path) -> list[str]:
+    return [
+        f.message.split("(")[0]
+        for f in gate_report(project).findings
+        if f.code == "figure-estimates"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("added", "said"),
+    [
+        ('sns.barplot(data=frame, x="arm", y="reports")', ["sns.barplot"]),
+        ('sns.barplot(data=frame, x="arm", y="reports", errorbar=None)', []),
+        ('sns.barplot(data=frame, x="arm", y="reports", seed=2024)', []),
+        ('sns.regplot(data=frame, x="dose", y="reports", ci=None)', []),
+        ("spread = frame.groupby('arm').reports.std()", [".reports.std"]),
+        ("spread = frame.reports.std(ddof=1)", []),
+        ("subset = frame.sample(200)", ["frame.sample"]),
+        ("np.random.seed(7)\nsubset = frame.sample(200)", []),
+        ("kept = frame.dropna()", ["frame.dropna"]),
+        ("# sns.barplot(data=frame) in a comment", []),
+    ],
+)
+def test_a_figure_that_estimates_while_it_draws_is_warned(
+    project: Path, added: str, said: list[str]
+) -> None:
+    """A bootstrap interval, a spread whose divisor is unstated, rows sampled or dropped in
+    the figure script: none passes through the results, and the random ones change at every
+    render. Each is a warning, until the call is told not to or a seed settles it."""
+    script = project / "figures" / "forest.py"
+    script.write_text(script.read_text(encoding="utf-8") + "\n" + added + "\n", encoding="utf-8")
+    assert _estimates_said(project) == said
+
+
+def test_an_estimate_with_its_reason_beside_the_figure_is_not_warned(project: Path) -> None:
+    script = project / "figures" / "forest.py"
+    script.write_text(
+        script.read_text(encoding="utf-8")
+        + '\nsns.barplot(data=frame, x="arm", y="y")\nsubset = frame.sample(20)\n',
+        encoding="utf-8",
+    )
+    sidecar = project / "figures" / "forest.guard.yaml"
+    sidecar.write_text(
+        sidecar.read_text(encoding="utf-8")
+        + "\nallow_estimates:\n  - value: barplot\n    why: the bars show the raw means\n"
+        + "  - value: sample\n",  # no reason, so no exemption
+        encoding="utf-8",
+    )
+    assert _estimates_said(project) == ["frame.sample"]
+
+
+@pytest.mark.parametrize(
+    ("script", "said"),
+    [
+        ("ggplot(d, aes(arm, y)) + stat_summary()", ["stat_summary"]),
+        ('ggplot(d, aes(x, y)) + geom_smooth(method = "lm", se = FALSE)', ["geom_smooth"]),
+        ("ggplot(d, aes(arm, y)) + geom_jitter(width = 0.2)", ["geom_jitter"]),
+        ("ggplot(d, aes(arm, y)) + geom_jitter(seed = NA)", ["geom_jitter"]),
+        # Round 1 of #288: geom_jitter takes no seed, and ggplot2 ignores one given to it.
+        ("ggplot(d, aes(arm, y)) + geom_jitter(seed = 1)", ["geom_jitter"]),
+        ("ggplot(d, aes(arm, y)) + geom_jitter(position = position_jitter(seed = 1))", []),
+        ("ggplot(d, aes(arm, y)) + geom_point(position = position_jitter(width = 0.2))",
+         ["position_jitter"]),
+        ("set.seed(3)\nggplot(d, aes(arm, y)) + geom_jitter()", []),
+        ("d <- na.omit(d)", ["na.omit"]),
+        ("x <- rnorm(10)", ["rnorm"]),
+        ("set.seed(3)\nx <- rnorm(10)", []),
+    ],
+)
+def test_an_r_figure_that_estimates_while_it_draws_is_warned(
+    tmp_path: Path, script: str, said: list[str]
+) -> None:
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "funnel.R"
+    path.write_text("library(ggplot2)\n" + script + "\n", encoding="utf-8")
+    report = check_figure_source(path, Classifier.load())
+    found = [f.message.split("(")[0] for f in report.findings if f.code == "figure-estimates"]
+    assert found == said
+
+
 def test_same_quantity_under_two_keys_is_caught(project: Path) -> None:
     """One quantity, two keys, two roundings — 3.84 in one place and 3.8 in another.
 
@@ -1461,6 +1543,71 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
 
     codes = {f.code for f in gate_report(project).findings}
     assert "unemitted-table-number" in codes
+
+
+# ------------------------------------------------- the environment the results were made in
+
+
+def _rerun_with(root: Path, files: dict[str, str]) -> None:
+    from conftest import run_analysis
+
+    for name, content in files.items():
+        (root / name).write_text(content, encoding="utf-8")
+    run_analysis(root)
+
+
+def _environment_said(root: Path) -> list[tuple[str, str]]:
+    return [
+        (f.severity, f.message)
+        for f in gate_report(root).findings
+        if f.code == "environment-changed"
+    ]
+
+
+def test_a_lockfile_changed_since_the_results_is_said(project: Path) -> None:
+    """Item 18: the emitter recorded no package environment, so a requirements file pinning
+    another version after the results were written went unsaid."""
+    _rerun_with(project, {"requirements.txt": "pandas==2.2.2\n"})
+    assert _environment_said(project) == []
+    (project / "requirements.txt").write_text("pandas==2.1.0\n", encoding="utf-8")
+    said = _environment_said(project)
+    assert said and all(severity == "warn" for severity, _ in said)
+    assert all("requirements.txt changed since these results" in m for _, m in said)
+
+
+@pytest.mark.parametrize("name", ["requirements.txt", "renv.lock", "uv.lock"])
+def test_a_lockfile_checked_out_with_other_line_endings_is_unchanged(
+    project: Path, name: str
+) -> None:
+    """Round 1 of #265: git checks a lockfile out with CRLF on Windows and LF elsewhere, and
+    a byte digest read that as a change."""
+    (project / name).write_bytes(b"pandas==2.2.2\r\nnumpy==2.0.0\r\n")
+    _rerun_with(project, {})
+    (project / name).write_bytes(b"pandas==2.2.2\nnumpy==2.0.0\n")
+    assert _environment_said(project) == []
+
+
+def test_a_lockfile_gone_or_new_since_the_results_is_said(project: Path) -> None:
+    _rerun_with(project, {"requirements.txt": "pandas==2.2.2\n"})
+    (project / "requirements.txt").unlink()
+    (project / "renv.lock").write_text("{}\n", encoding="utf-8")
+    said = " ".join(m for _, m in _environment_said(project))
+    assert "requirements.txt pinned the packages" in said and "is gone" in said
+    assert "renv.lock was not there when these results were written" in said
+
+
+def test_a_fragment_written_before_the_environment_was_recorded_says_nothing(
+    project: Path,
+) -> None:
+    from manuscript_guard.emit import write_digest
+
+    (project / "renv.lock").write_text("{}\n", encoding="utf-8")
+    for fragment in (project / "results").glob("*.json"):
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        document["provenance"].pop("environment", None)
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    assert _environment_said(project) == []
 
 
 # ------------------------------------------------- a pointer names what the document carries
@@ -3027,6 +3174,117 @@ def test_every_literature_value_ends_in_one_verdict(
     assert {name: counts[name] for name in expected} == expected, counts
     if code is not None:
         assert code in codes(report), report.render(project)
+
+
+# ------------------------------------------------------- a P worked out from its statistic
+# A statistic and a P that the analysis did not make agree: typed, quoted from a source, or
+# bound from two keys. G2 sees two numbers, each of which passed.
+
+
+def _recomputed(root: Path):
+    from manuscript_guard.gates import check_recomputed
+
+    project, _ = load_project(root)
+    namespace, results, _literature, _ = load_namespace(project)
+    return check_recomputed(project, namespace, results)
+
+
+def _recomputed_codes(root: Path, sentence: str) -> list[str]:
+    main = main_md(root)
+    main.write_text(main.read_text(encoding="utf-8") + "\n" + sentence + "\n", encoding="utf-8")
+    return [f.code for f in _recomputed(root).findings]
+
+
+def _emitted(root: Path, **displays: str) -> None:
+    """Values in the example's results, each with the display given, as an analysis would
+    emit them."""
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for key, display in displays.items():
+        digits = len(display.partition(".")[2])
+        value = {"value": float(display), "display": display, "digits": digits}
+        document["values"][key.replace("__", ".")] = value
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        ("Earlier work found t(23) = 2.45, p = .022 [@fictionalHepaticCohort2021].", []),
+        ("Earlier work found t(23) = 2.45, p = .041 [@fictionalHepaticCohort2021].",
+         ["p-inconsistent"]),
+        ("Earlier work found t(23) = 2.45, p = .40 [@fictionalHepaticCohort2021].",
+         ["p-decision-error"]),
+        ("The arms differed, *F*(2, 45) = 3.21, *P* = 0.30.", ["p-decision-error"]),
+        ("The arms differed, \N{GREEK SMALL LETTER CHI}^2^(1) = 0.5, *P* \\< 0.05.",
+         ["p-decision-error"]),
+        ("The arms differed, z = 3.30, P = 0.01.", ["p-inconsistent"]),
+        ("A one-sided t(23) = 2.45, p = .011, as planned.", []),
+        ("<!-- t(23) = 2.45, p = .40 -->", []),
+    ],
+)
+def test_a_p_that_does_not_follow_from_its_statistic_is_found(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    assert _recomputed_codes(project, sentence) == found
+
+
+def test_a_statistic_and_a_p_bound_from_two_analyses_are_found(project: Path) -> None:
+    """The crude t beside the adjusted P: each bound, each passed by G2, and no gate saw
+    that they disagree."""
+    _emitted(project, crude__t="2.45", adjusted__p="0.30")
+    sentence = "The groups differed, t(23) = {{results.crude.t}}, p = {{results.adjusted.p}}."
+    assert _recomputed_codes(project, sentence) == ["p-decision-error"]
+
+
+def test_a_p_is_judged_at_the_alpha_the_analysis_emits(project: Path) -> None:
+    """t(23) = 1.90 gives 0.070: below an alpha of 0.10, as the P of .03 printed beside it
+    is, so the two disagree and no decision does."""
+    sentence = "The groups differed, t(23) = 1.90, p = .03."
+    assert _recomputed_codes(project, sentence) == ["p-decision-error"]
+    _emitted(project, param__alpha="0.10")
+    assert [f.code for f in _recomputed(project).findings] == ["p-inconsistent"]
+
+
+def test_a_quote_whose_statistic_and_p_disagree_is_found(project: Path) -> None:
+    """The source's own numbers disagree, so the value taken from them may be the wrong
+    one of the two."""
+    said = (
+        "The crude incidence of drug-induced hepatic injury was 14 per 100 000 "
+        "person-years, t(23) = 2.45, p = .40."
+    )
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text(source.read_text(encoding="utf-8") + "\n" + said + "\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["quote"] = said
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = _literature_report(project)
+    assert [f.code for f in report.findings if f.code == "quote-p-inconsistent"] == [
+        "quote-p-inconsistent"
+    ]
+    assert report.counts["literature_verified"] == 2
+
+
+def test_an_audited_paper_s_p_that_does_not_follow_is_listed_apart(tmp_path: Path) -> None:
+    """`audit` reads a paper that was never bound, and needs no outputs for this."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("The groups differed, t = 2.45, df = 23, p = .40.\n", encoding="utf-8")
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("value\n23\n2.45\n0.40\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert [(d.line, d.context) for d in report.disagreements] == [
+        (1, "t = 2.45, df = 23, p = .40")
+    ]
+    shown = render(report, measure_discrimination(report.backing_values))
+    assert "P VALUES THAT DO NOT FOLLOW" in shown
+    assert "on the other side of 0.05" in shown
+    # Every number is in the outputs, and --strict counts only those.
+    assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == 0
 
 
 @pytest.mark.parametrize(

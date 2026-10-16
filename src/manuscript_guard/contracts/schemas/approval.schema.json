@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/approval/1",
+  "title": "manuscript-guard author approval",
+  "description": "One author's approval of the manuscript, bound to what it said: the digest of the prose and the results as `check` reads them to say a build is current. Written by `manuscript-guard approve --as <author>`, one file per author under approvals/, and never by an agent: an approval is a person's statement. `submit` warns where an author has none, or approved a manuscript that has changed since.",
+  "type": "object",
+  "required": ["schema", "author", "approved_on", "document_sha256"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/approval/1" },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The author's name as authors.yaml gives it."
+    },
+    "orcid": { "type": "string" },
+    "approved_on": { "type": "string", "format": "date" },
+    "document_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "What decides the built document when the author approved it: the manuscript's prose and the results."
+    },
+    "note": {
+      "type": "string",
+      "description": "Anything the author says with the approval, a condition included."
+    }
+  }
+}

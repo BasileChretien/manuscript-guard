@@ -76,6 +76,8 @@ GATES = {
 
 #: `{project}` is the empty project; `{empty}` an empty Markdown file beside it.
 COMMANDS = {
+    "approve": Zero("the authors in authors.yaml", exits=2,
+                    argv=("approve", "{project}", "--as", "Nobody Listed")),
     "audit": Zero("the papers and figures given, against the outputs given",
                   why="exits 1 under --strict when it read no number "
                   "(tests/test_cli.py, `test_audit_strict_fails_a_paper_with_no_number_in_it`); "

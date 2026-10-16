@@ -159,6 +159,13 @@ TERMS = (
     "\N{GREEK CAPITAL LETTER SIGMA}", "\N{MICRO SIGN}g",
 )  # fmt: skip
 
+#: Pointer words and the numbers after them: a pointer, a list of them, and a count after a
+#: word that points at nothing G2 can check, which only looks like one.
+POINTED = (
+    "Table 2", "Tables 1 and 2", "Figures 2-4", "Figure S1", "step 3", "step 1204", "Box 47",
+    "item 25", "panel 2A",
+)  # fmt: skip
+
 #: Spaces a manuscript holds that are not the space bar's.
 SPACES = (
     "\t", "\N{NO-BREAK SPACE}", "\N{THIN SPACE}", "\N{NARROW NO-BREAK SPACE}", "\x0c", "\x0b",
@@ -721,7 +728,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "sections": texts(),
     "numbers": st.fixed_dictionaries(
         {
-            "text": texts(),
+            "text": texts(POINTED),
             "terms": st.lists(
                 st.sampled_from(("CYP3A4", "COVID-19", "CO2", "HbA1c", "1,3-BDG")), max_size=2
             ),

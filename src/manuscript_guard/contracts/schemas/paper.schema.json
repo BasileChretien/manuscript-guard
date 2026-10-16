@@ -139,6 +139,17 @@
         }
       }
     },
+    "displays": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Tables and figures the journal gets as files of their own, which the text cites and does not place: a flow chart drawn by hand, a figure the journal asks for as a separate upload. G2 counts them with those placed by {{table.<key>}} and {{figure.<key>}}, so that a pointer to one is not a pointer to nothing.",
+      "properties": {
+        "figures_as_files": { "type": "integer", "minimum": 0 },
+        "tables_as_files": { "type": "integer", "minimum": 0 },
+        "supplementary_figures_as_files": { "type": "integer", "minimum": 0 },
+        "supplementary_tables_as_files": { "type": "integer", "minimum": 0 }
+      }
+    },
     "language": {
       "type": "object",
       "additionalProperties": false,

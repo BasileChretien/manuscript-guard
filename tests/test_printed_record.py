@@ -212,6 +212,16 @@ _BY_HAND = {
         {"manuscript-guard-printed": True}
     ),
     "a source that is null": lambda record, first: record.update(source=None),
+    # How the citations were made (item 27): only the two shapes a build writes.
+    "citations that are a list": lambda record, first: record.update(citations=[]),
+    "a style that is a number": lambda record, first: record.update(citations={"style": 3}),
+    "fields that are a list": lambda record, first: record.update(citations={"fields": []}),
+    "a field's text that is a number": lambda record, first: record.update(
+        citations={"fields": {"[]": 3}}
+    ),
+    "a style and fields at once": lambda record, first: record.update(
+        citations={"style": "a.csl", "fields": {}}
+    ),
     "no document named": lambda record, first: record.pop("document") and None,
 }
 

@@ -1073,6 +1073,102 @@ def test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document
     assert methods_gate.anchor_lines(text) == inside, text
 
 
+# ------------------------------------------------------------ pointers to tables and figures
+
+#: How a table or a figure is placed: by its binding, or written into the text.
+_PLACE = {
+    "table": ("{{table.t%d}}", "| Drug | Reports |\n|---|---|\n| A | %d |"),
+    "figure": ("{{figure.f%d}}", "![The forest plot %d](f.png)"),
+}
+#: How a pointer to one is written, as the singular, a list or a range of two.
+_WORD = {"table": ("Table", "table"), "figure": ("Figure", "Fig.", "figure")}
+_WORDS = {"table": ("Tables", "tables"), "figure": ("Figures", "Figs.")}
+_SUPPLEMENTARY = ("%s S%d", "Supplementary %s %d")
+_GAPS = (" ", " ", "\N{NO-BREAK SPACE}", "\n")
+#: What a finding says a pointer pointed at.
+_POINTED = re.compile(r"points at (?P<kind>table|figure) (?P<s>S)?(?P<n>\d+),")
+
+
+@st.composite
+def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, int]]]:
+    """A main text and a supplement placing tables and figures, and citing each of the main
+    text's in order; and pointers planted at what neither carries, one of each kind in
+    every example: past the main text's tables, in a list, past the supplement's tables in
+    the supplement's own words, and past the figures. The main text's tables and the
+    supplement's are placed by binding only, so they are counted; the main text's figures
+    include one placed by hand, so they are not, and a pointer past them is not said. What
+    the counted pointers point at is the third part."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    counts = {
+        (False, "table"): draw(st.integers(2, 3)),
+        (False, "figure"): draw(st.integers(1, 2)),
+        (True, "table"): draw(st.integers(1, 2)),
+        (True, "figure"): draw(st.integers(0, 1)),
+    }
+    parts: dict[bool, list[str]] = {False: ["# Results\n"], True: ["# Supplementary\n"]}
+    for (supplementary, kind), count in counts.items():
+        for number in range(1, count + 1):
+            # The main text's first figure is placed by hand, so its figures are not
+            # counted; every other display is placed by its binding.
+            by_hand = number == 1 and kind == "figure" and not supplementary
+            placed = _PLACE[kind][by_hand] % number
+            if supplementary:
+                cite = draw(st.sampled_from(_SUPPLEMENTARY)) % (_WORD[kind][0], number)
+            else:
+                cite = f"{draw(st.sampled_from(_WORD[kind]))}{draw(st.sampled_from(_GAPS))}{number}"
+            parts[supplementary].append(f"{words().capitalize()} in {cite}.\n\n{placed}\n")
+    planted: set[tuple[str, bool, int]] = set()
+    for kind in ("table", "figure"):
+        past = counts[False, kind] + draw(st.integers(1, 40))
+        parts[False].append(f"{words().capitalize()} {_WORD[kind][0]} {past}.\n")
+        if kind == "table":
+            planted.add((kind, False, past))
+    listed = counts[False, "table"] + draw(st.integers(1, 3))
+    join = draw(st.sampled_from((" and ", ", ", " & ")))
+    plural = draw(st.sampled_from(_WORDS["table"]))
+    parts[False].append(f"{words().capitalize()} {plural} 1{join}{listed}.\n")
+    planted.add(("table", False, listed))
+    beyond = counts[True, "table"] + 1
+    form = draw(st.sampled_from(_SUPPLEMENTARY))
+    parts[False].append(f"{words().capitalize()} {form % ('Table', beyond)}.\n")
+    planted.add(("table", True, beyond))
+    return "\n".join(parts[False]), "\n".join(parts[True]), planted
+
+
+@holds(100, _planted_pointers())
+def test_a_pointer_names_what_the_document_carries_or_is_said(
+    planted: tuple[str, str, set[tuple[str, bool, int]]],
+) -> None:
+    """A pointer to a table or a figure is held to the tables and figures each document
+    places, whichever way it places them: one pointing past them is said, a list read whole,
+    and one that points at what is there passes, cited in the order it is placed."""
+    import tempfile
+
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.pointers import check_pointers
+
+    main, supplement, expected = planted
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        (root / "paper.yaml").write_text("title: A paper\n", encoding="utf-8")
+        manuscript = root / "manuscript"
+        (manuscript / "supplementary").mkdir(parents=True)
+        (manuscript / "main.md").write_text(main, encoding="utf-8")
+        (manuscript / "supplementary" / "S1.md").write_text(supplement, encoding="utf-8")
+        report = check_pointers(load_project(root)[0])
+    said = {f.code for f in report.findings}
+    assert said <= {"pointer-to-nothing", "pointers-unchecked"}, (main, supplement, said)
+    assert "pointers-unchecked" in said, (main, supplement, report.findings)
+    named = (_POINTED.search(f.message) for f in report.findings)
+    found = {
+        (at["kind"], bool(at["s"]), int(at["n"])) for at in named if at is not None
+    }
+    assert found == expected, (main, supplement, report.findings)
+
+
 # --------------------------------------------------------------------------------- bindings
 
 
@@ -2447,6 +2543,30 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
 
+def _a_list_of_pointers_is_its_first(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_numbers", lambda found: [(bool(found["s0"]), int(found["n0"]))])
+
+
+def _the_supplement_s_tables_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import pointers
+
+    read = pointers.pointers_in
+    patch.setattr(
+        pointers, "pointers_in",
+        lambda text, path: [replace(p, supplementary=False) for p in read(text, path)],
+    )
+
+
+def _a_figure_placed_by_hand_is_counted_anyway(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_BY_HAND", {**pointers._BY_HAND, "figure": re.compile(r"(?!)")})
+
+
 def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import section_names
 
@@ -2966,6 +3086,18 @@ BROKEN = {
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
+    ),
+    "a list of tables is read as its first": (
+        _a_list_of_pointers_is_its_first,
+        test_a_pointer_names_what_the_document_carries_or_is_said,
+    ),
+    "the supplement's tables are counted as the paper's": (
+        _the_supplement_s_tables_are_the_paper_s,
+        test_a_pointer_names_what_the_document_carries_or_is_said,
+    ),
+    "a figure placed by hand is counted anyway": (
+        _a_figure_placed_by_hand_is_counted_anyway,
+        test_a_pointer_names_what_the_document_carries_or_is_said,
     ),
     "the Methods are read by the name G9 had for them": (
         _the_methods_are_read_by_their_old_name,

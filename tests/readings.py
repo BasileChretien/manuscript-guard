@@ -355,6 +355,30 @@ def _notation() -> Reading:
     return notation
 
 
+@reading("reported tests")
+def _reported_tests() -> Reading:
+    """Each test statistic with a P after it in its sentence, as it is printed, and what
+    G8 says of the P: the range the statistic gives, and whether the two disagree."""
+    from manuscript_guard.stats.reported import judge, reported_tests
+    from manuscript_guard.text.masking import mask
+
+    def reported(text: str) -> list[list[Any]]:
+        found = []
+        for test in reported_tests(mask(text)):
+            verdict = judge(test)
+            said = None if verdict is None else [
+                f"{verdict.low:.12g}", f"{verdict.high:.12g}", verdict.inconsistent,
+                verdict.decision,
+            ]  # fmt: skip
+            found.append(
+                [test.start, test.kind, test.statistic, list(test.df), test.sign, test.p,
+                 test.quiet, said]  # fmt: skip
+            )
+        return found
+
+    return reported
+
+
 @reading("abbreviations")
 def _abbreviations() -> Reading:
     from manuscript_guard.gates.language import _judge, _Known, _shipped
@@ -455,6 +479,21 @@ def _quote_words() -> Reading:
         return words_beside(given["quote"], given["value"])
 
     return quote_words
+
+
+@reading("quote placement")
+def _quote_placement() -> Reading:
+    """What G7 says of a quote its stored source does not hold exactly: how much of it the
+    source holds in order, on which lines, and what stands in the way."""
+    from manuscript_guard.literature.placement import place, said
+
+    def placed(given: dict[str, str]) -> list[Any] | None:
+        placement = place(given["source"], given["quote"])
+        if placement is None:
+            return None
+        return [placement.found, list(placement.lines), said(placement)]
+
+    return placed
 
 
 # -------------------------------------------------------------------- a whole project

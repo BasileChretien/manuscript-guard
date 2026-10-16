@@ -1,0 +1,27 @@
+schema: manuscript-guard/recipe/1
+
+# The abstract's checklist of TRIPOD+AI, a table of the same statement paper as the main
+# checklist. Its first column holds the item's number, or a section heading on a row of its
+# own.
+
+meta:
+  name: TRIPOD+AI-abstracts
+  long_name: "TRIPOD+AI for Abstracts"
+  version: "2024"
+  applies_to: "The abstract of a study developing or evaluating a clinical prediction model"
+  source_url: "https://doi.org/10.1136/bmj-2023-078378"
+  read_from: "Table 3 of the TRIPOD+AI statement paper (BMJ 2024, doi:10.1136/bmj-2023-078378), from Europe PMC's full text of PMC11019967"
+  retrieved_on: 2026-10-16
+  retrieved_by: "Europe PMC full text, read by the recipe's author"
+  licence: >-
+    CC BY 4.0 — the licence of the statement paper in its Europe PMC full text and in Crossref (http://creativecommons.org/licenses/by/4.0/). The XML's copyright line also carries the publisher's "no commercial re-use" wording, which the licence it states contradicts.
+  licence_url: http://creativecommons.org/licenses/by/4.0/
+  download_url: https://www.ebi.ac.uk/europepmc/webservices/rest/PMC11019967/fullTextXML
+  rows_sha256: ef134fcf28d96505f344237c34e07e41bb39162ad66ea2f687e30ce2fe987c73
+
+format: jats-table
+table: tbl3
+document: tripod-ai-statement.xml
+header_rows: 0
+id_column: 0
+text_column: 1

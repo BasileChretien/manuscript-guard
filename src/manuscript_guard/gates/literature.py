@@ -25,6 +25,7 @@ import re
 from manuscript_guard.contracts.literature import ABSTRACT_ONLY, ATTESTED, Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.literature.placement import why_not_found
 from manuscript_guard.literature.sources import (
     WORDS_BESIDE,
     UnreadableSource,
@@ -33,6 +34,7 @@ from manuscript_guard.literature.sources import (
     states_value,
     words_beside,
 )
+from manuscript_guard.stats.reported import described, judge, reported_tests
 
 GATE = "G7"
 
@@ -104,11 +106,15 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
 
         if not contains(text, quote):
             failed += 1
+            # What the source holds of the quote, and what stands in the way: said, and
+            # deciding nothing (`literature/placement.py`).
+            why = why_not_found(path, quote)
             report = report.with_findings(
                 Finding(
                     gate=GATE,
                     code="quote-not-in-source",
-                    message=f"{key}: the recorded quote does not appear in {source_file}",
+                    message=f"{key}: the recorded quote does not appear in {source_file}"
+                    + (f"; {why}" if why else ""),
                     path=value.source,
                     context=quote[:140],
                     hint="copy the sentence from the source rather than retyping it; if the "
@@ -134,6 +140,7 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
             continue
 
         verified += 1
+        report = report.merge(_tests_in_quote(key, value, quote))
         beside = words_beside(quote, value.display)
         if len(beside) < WORDS_BESIDE:
             report = report.with_findings(
@@ -167,6 +174,29 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
         literature_unverifiable=unverifiable,
         literature_failed=failed,
     )
+
+
+def _tests_in_quote(key: str, value, quote: str) -> Report:
+    """A quote whose statistic and P disagree: the source's own numbers do not agree with
+    each other, and the value taken from them may be the wrong one of the two."""
+    findings = []
+    for test in reported_tests(quote):
+        verdict = judge(test)
+        if verdict is None or not verdict.inconsistent:
+            continue
+        findings.append(
+            Finding(
+                gate=GATE,
+                code="quote-p-inconsistent",
+                severity=WARN,
+                message=f"{key}: in the source, {described(test, verdict)}",
+                path=value.source,
+                context=quote[:140],
+                hint="the source may carry a misprint; read its tables before citing a value "
+                "this sentence supports",
+            )
+        )
+    return Report(tuple(findings))
 
 
 def _check_attestation(key: str, value, detail: dict) -> Report:

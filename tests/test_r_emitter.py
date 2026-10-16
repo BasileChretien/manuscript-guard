@@ -73,9 +73,17 @@ em$write()
 
 @pytest.fixture
 def r_project(tmp_path: Path) -> Path:
+    return _built_r_project(tmp_path)
+
+
+def _built_r_project(tmp_path: Path, at_root: dict[str, str] | None = None) -> Path:
+    """A project the R emitter has written a fragment for, with `at_root`'s files at its
+    root first."""
     root = tmp_path / "rpaper"
     for sub in ("analysis", "data", "manuscript", "results"):
         (root / sub).mkdir(parents=True)
+    for name, content in (at_root or {}).items():
+        (root / name).write_text(content, encoding="utf-8")
     (root / "paper.yaml").write_text(
         'schema: manuscript-guard/paper/1\ntitle: "R"\nenglish_variant: en-GB\n', encoding="utf-8"
     )
@@ -101,6 +109,29 @@ def r_project(tmp_path: Path) -> Path:
         pytest.skip("R packages jsonlite and digest are not installed")
     assert out.returncode == 0, f"{out.stdout}\n{out.stderr}"
     return root
+
+
+def test_both_emitters_record_the_lockfiles_alike(tmp_path: Path) -> None:
+    """Item 18: the packages the analysis ran with, as the lockfiles pin them, in the same
+    order and with the same digests whichever language wrote the fragment."""
+    from manuscript_guard.emit import lockfile_digest
+    from manuscript_guard.paths import lockfiles
+
+    files = {
+        "renv.lock": '{"R": {"Version": "4.4.1"}}\r\n',
+        "requirements.txt": "pandas==2.2.2\n",
+        "requirements-dev.txt": "pytest\n",
+    }
+    root = _built_r_project(tmp_path, files)
+    fragment = next((root / "results").glob("*.json"))
+    recorded = json.loads(fragment.read_text(encoding="utf-8"))["provenance"]["environment"]
+    expected = [
+        {"path": path.name, "sha256": lockfile_digest(path)} for path in lockfiles(root)
+    ]
+    assert [entry["path"] for entry in expected] == [
+        "renv.lock", "requirements-dev.txt", "requirements.txt"
+    ]  # fmt: skip
+    assert recorded == expected
 
 
 def test_r_fragment_matches_the_schema(r_project: Path) -> None:

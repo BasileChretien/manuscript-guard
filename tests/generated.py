@@ -573,6 +573,24 @@ def quotations(draw: st.DrawFn) -> tuple[str, str]:
     return source, " ".join(words[first : last + 1])
 
 
+#: What can stand in a stored source between two words of a quote taken from it: line
+#: numbers, figures, a column's or a header's words, a hyphen at the end of a line, a symbol.
+INTERRUPTIONS = (
+    "\n12\n", " 41 42 ", "  Table 2  ", "\nRunning head\n", "-\n", "\N{SOFT HYPHEN}",
+    "\N{MIDDLE DOT}", "/", " & ",
+)  # fmt: skip
+
+
+@st.composite
+def nearly_quoted(draw: st.DrawFn) -> dict[str, str]:
+    """A source and a quote of it, with something put into the source anywhere, inside the
+    quote or beside it, as the text read from a PDF puts it there."""
+    source, quote = draw(quotations())
+    at = draw(st.integers(0, len(source)))
+    put = draw(st.sampled_from(INTERRUPTIONS))
+    return {"source": source[:at] + put + source[at:], "quote": quote}
+
+
 # ---------------------------------------------------------------------------- spellings
 
 #: Words one English writes and the other does not, with a name's capital, in capitals,
@@ -602,6 +620,18 @@ NOTATED = (
     "95% CI 1.2 to 3.4", "95% CI 1.2-3.4", "(95% CI {{results.low}} to {{results.high}})",
     "P = {{results.p}}", "5%", "5 %", "5mg", "5 mg", "{{results.dose}}mL",
     "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g", "(CI 95%-0.3 to 0.4)",
+)  # fmt: skip
+
+#: A test statistic and its P in each of the ways a results sentence writes them, right and
+#: wrong, and what a sentence says of a test that is not the textbook one: what the reading
+#: of reported tests finds and judges.
+REPORTED = (
+    "t(23) = 2.45, p = .022", "t(23) = 2.45, p = .41", "*t*(40) = \N{MINUS SIGN}2.1, *P* < 0.05",
+    "t = 2.45, df = 23, P = 0.022", "F(2, 45) = 3.21, p = .05", "_F_(1,234) = 5.6; P = .40",
+    "\N{GREEK SMALL LETTER CHI}2(1, N = 90) = 4.5, p < .05",
+    "\N{GREEK SMALL LETTER CHI}^2^(3) = 0.5, *P* \\< 0.001", "chi-square(2) = 9.1, p = .011",
+    "z = 4.10, P = 4.1e-5", "Z = 4.10, P = 4.1 x 10^-5^", "z = 1.2, p\n= .23", "one-sided",
+    "Welch's", "after Bonferroni adjustment", "{{results.t}}", "p = {{results.p}}", "t(",
 )  # fmt: skip
 
 
@@ -740,6 +770,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "quote words": st.fixed_dictionaries(
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
     ),
+    "quote placement": nearly_quoted(),
     "spelling": st.fixed_dictionaries(
         {
             "text": texts(SPELT),
@@ -748,6 +779,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "reported tests": texts(REPORTED),
     "units after": texts(BOUND_UNITS),
     "abbreviations": st.fixed_dictionaries(
         {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}

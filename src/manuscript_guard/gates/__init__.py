@@ -19,6 +19,7 @@ from manuscript_guard.gates.literature import check_literature_chain
 from manuscript_guard.gates.methods import check_methods, reconcile
 from manuscript_guard.gates.models import check_models
 from manuscript_guard.gates.numbers import check_numbers, source_files
+from manuscript_guard.gates.recomputed import check_recomputed
 from manuscript_guard.gates.relations import check_relations
 from manuscript_guard.gates.reporting import (
     available_checklists,
@@ -56,6 +57,7 @@ GATES = {
 
 __all__ = [
     "check_models",
+    "check_recomputed",
     "check_revision",
     "rounds",
     "GATES",

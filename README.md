@@ -126,11 +126,11 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 
 | Gate | Checks |
 |---|---|
-| G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since |
+| G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since; a warning where a lockfile pinning its packages has |
 | G2 | every number is classified, every declared value is quoted, and every pointer to a table or figure placed by its binding names one the document places; a unit written after a binding is the one emitted |
-| G3 | numbers in a figure's output *and in its source* trace back to results |
+| G3 | numbers in a figure's output *and in its source* trace back to results, and a script that estimates, samples or draws at random while it plots says why (a warning) |
 | G4 | word counts, required sections and required statements match the target journal, and the figure files meet its artwork rules (warnings) |
-| G5 | every reporting-checklist item is addressed, or excluded with a reason |
+| G5 | every reporting-checklist item is addressed, or excluded with a reason; a guideline its authors have replaced is pointed out |
 | G6 | model artefacts, AI phrasing, and unsupported appeals to authority |
 | G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote, with more than the value; each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there; from the records `lookup` keeps, no cited work is retracted and each DOI and PMID names the work cited, and no work is cited under two keys |
 | G8 | one quantity is not emitted twice under two names |
@@ -246,9 +246,11 @@ number in the file and the rule that classified it.
 | `check` | run every gate; `--submission` holds the manuscript to submission standards |
 | `bind` | show every unbound number and how to give it a source |
 | `explain` | show how each number in a file was classified |
+| `impact` | list what depends on a file, or on each file changed since a commit: results, the sentences that bind them, figures, Methods paragraphs, panel readings and co-author answers |
 | `verify` | re-run the analysis and check it still produces the recorded results |
 | `build` | produce the .docx; `--annotated` colours every number by what backs it |
 | `approve` | record an author's approval of the manuscript as it stands, which `submit` holds to the manuscript sent; the author's own act |
+| `sign` | record a named person's sign-off of a finding only they may close, a G15 warning for the statistician `authors.yaml` names; that person's own act |
 | `render` | substitute the bindings and stop there |
 | `stages` | what each stage means and what binds at it |
 | `journal` | list journal profiles, or start one from the annotated template |

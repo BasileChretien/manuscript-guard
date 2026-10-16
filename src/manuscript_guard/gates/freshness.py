@@ -22,12 +22,13 @@ from manuscript_guard.contracts.results import HOW_TO_EMIT, Results
 from manuscript_guard.emit import (
     DIGEST_SUFFIX,
     input_digest_matches,
+    lockfile_digest_matches,
     read_digest,
     sha256_of,
     source_digest_matches,
 )
 from manuscript_guard.findings import WARN, Finding, Report
-from manuscript_guard.paths import SOURCE_SUFFIXES
+from manuscript_guard.paths import SOURCE_SUFFIXES, lockfiles
 
 GATE = "G1"
 
@@ -73,6 +74,8 @@ def check_freshness(project: Project, results: Results) -> Report:
                         hint=f"re-run {fragment.generated_by}",
                     )
                 )
+
+        report = report.merge(_check_environment(project, fragment))
 
         script_path = project.root / fragment.generated_by
         if not script_path.exists():
@@ -145,6 +148,46 @@ def check_freshness(project: Project, results: Results) -> Report:
     return report.with_counts(
         fragments_checked=len(results.fragments), inputs_checked=checked_inputs
     )
+
+
+def _check_environment(project: Project, fragment) -> Report:
+    """Whether the packages pinned when these results were written are pinned still.
+
+    A lockfile records what the analysis ran with: `renv.lock`, `uv.lock`, a requirements
+    file. One that changed, went, or appeared since the results were written means a re-run
+    may run with other packages, and a result can move with them. A warning: the numbers on
+    disk are still the ones the analysis wrote. A fragment written before the emitter
+    recorded the environment says nothing here.
+    """
+    report = Report()
+    if fragment.environment is None:
+        return report
+    recorded = {entry["path"]: entry["sha256"] for entry in fragment.environment}
+    now = {
+        str(path.relative_to(project.root)).replace("\\", "/"): path
+        for path in lockfiles(project.root)
+    }
+    for name in sorted(set(recorded) | set(now)):
+        if name not in now:
+            said = f"{name} pinned the packages these results were written with, and is gone"
+        elif name not in recorded:
+            said = f"{name} was not there when these results were written"
+        elif not lockfile_digest_matches(now[name], recorded[name]):
+            said = f"{name} changed since these results were written"
+        else:
+            continue
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="environment-changed",
+                severity=WARN,
+                message=said,
+                path=fragment.path,
+                context=f"written {fragment.generated_at} by {fragment.generated_by}",
+                hint=f"re-run {fragment.generated_by} with the packages as they are pinned now",
+            )
+        )
+    return report
 
 
 def _check_built_document(project: Project) -> Report:

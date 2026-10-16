@@ -19,8 +19,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from manuscript_guard.contracts import ContractError
 from manuscript_guard.contracts._schema import read_structured, read_text, validate
-from manuscript_guard.contracts.project import Project
+from manuscript_guard.contracts.project import PAPER_FILE, Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SHIPPED_CHECKLISTS, recipes
@@ -73,6 +74,40 @@ def retrieval_advice(project: Project, name: str) -> str:
         "so `fetch` and `transcribe` cannot retrieve it; the reporting-checklist skill "
         "explains how to write one"
     )
+
+
+def superseded_by(project: Project, name: str) -> str | None:
+    """The guideline that replaced this one, as its recipe records from its authors' word."""
+    path = recipes(project.root).get(name)
+    if path is None:
+        return None
+    try:
+        document = read_structured(path)
+    except ContractError:  # an unreadable recipe is `transcribe`'s to report
+        return None
+    meta = document.get("meta") if isinstance(document, dict) else None
+    replaced = meta.get("superseded_by") if isinstance(meta, dict) else None
+    return str(replaced) if replaced else None
+
+
+def _superseded(project: Project, wanted: list) -> Report:
+    findings = []
+    for name in wanted:
+        replaced = superseded_by(project, str(name))
+        if replaced:
+            findings.append(
+                Finding(
+                    gate=GATE,
+                    code="guideline-superseded",
+                    severity=WARN,
+                    message=f"{name} has been replaced by {replaced}, its authors say",
+                    path=project.root / PAPER_FILE,
+                    hint=f"name {replaced} in reporting_guideline unless the journal asks "
+                    f"for {name}: `manuscript-guard fetch {replaced}` and `transcribe` "
+                    "retrieve it",
+                )
+            )
+    return Report(tuple(findings))
 
 
 def completion_path(project: Project, name: str) -> Path:
@@ -156,7 +191,7 @@ def check_reporting(project: Project) -> Report:
     if not wanted:
         return claims.with_counts(checklists=0)
 
-    report = claims
+    report = claims.merge(_superseded(project, wanted))
     complete = 0
     manuscript = "\n\n".join(
         read_text(p) for p in source_files(project.path("manuscript"))

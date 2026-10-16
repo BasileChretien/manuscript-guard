@@ -14,9 +14,12 @@ item's data, which a Refresh brings up to date.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import re
 from dataclasses import dataclass
+from xml.sax.saxutils import unescape
 
 #: A citation field's code. Word may split it over several `instrText` runs; it is read
 #: whole, joined, before it is matched.
@@ -73,3 +76,109 @@ def citation_of(code: str) -> Citation | None:
         json.dumps(items, sort_keys=True, ensure_ascii=False, separators=(",", ":")),
         formatted if isinstance(formatted, str) else "",
     )
+
+
+# ---------------------------------------------------------------- a citation inserted in Word
+
+#: A citation field a reference manager writes in Word, by its code: CSL JSON after the
+#: name, as Zotero's and others' fields hold it, or the XML of an `EN.CITE` field.
+_CSL_FIELD = re.compile(r"\A\s*ADDIN\s+(?:ZOTERO_ITEM\s+)?CSL_CITATION\s+(\{.*\})\s*\Z", re.DOTALL)
+_EN_CITE = re.compile(r"\A\s*ADDIN\s+EN\.CITE(?:\.DATA)?\b(.*)\Z", re.DOTALL)
+#: The tag of a content control a reference manager wraps a citation in, its CSL JSON
+#: encoded in base64 after the last underscore.
+_TAGGED = re.compile(r"\AMENDELEY_CITATION(?:_v\d+)?_?(.*)\Z", re.DOTALL)
+
+
+@dataclass(frozen=True)
+class Work:
+    """What a citation field says of one work it cites: as much as it says."""
+
+    author: str = ""
+    year: str = ""
+    title: str = ""
+    doi: str = ""
+
+    def __str__(self) -> str:
+        said = " ".join(part for part in (self.author, self.year) if part)
+        title = self.title if len(self.title) <= 80 else self.title[:77] + "..."
+        if title:
+            said = f'{said}, "{title}"' if said else f'"{title}"'
+        return said or "a work it does not name"
+
+
+def inserted(code: str) -> tuple[Work, ...] | None:
+    """The works a citation field or a reference manager's content control cites, where its
+    code is one (`fields_of` gives a content control's tag as its code); None where it is
+    not a citation's. A citation whose code cannot be read is one work it does not name."""
+    for pattern, read in ((_CSL_FIELD, _csl_works), (_TAGGED, _tagged_works)):
+        found = pattern.match(code)
+        if found is not None:
+            return read(found.group(1)) or (Work(),)
+    found = _EN_CITE.match(code)
+    if found is not None:
+        return _endnote_works(found.group(1)) or (Work(),)
+    return None
+
+
+def _csl_works(text: str) -> tuple[Work, ...]:
+    try:
+        data = json.loads(text)
+    except (ValueError, RecursionError):
+        return ()
+    entries = data.get("citationItems") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        return ()
+    works = []
+    for entry in entries:
+        item = entry.get("itemData") if isinstance(entry, dict) else None
+        works.append(_csl_work(item) if isinstance(item, dict) else Work())
+    return tuple(works)
+
+
+def _csl_work(item: dict) -> Work:
+    authors = item.get("author")
+    first = authors[0] if isinstance(authors, list) and authors else {}
+    author = ""
+    if isinstance(first, dict):
+        author = str(first.get("family") or first.get("literal") or "")
+    issued = item.get("issued")
+    year = ""
+    if isinstance(issued, dict):
+        parts = issued.get("date-parts")
+        if isinstance(parts, list) and parts and isinstance(parts[0], list) and parts[0]:
+            year = str(parts[0][0])
+        elif isinstance(issued.get("raw"), str):
+            year = issued["raw"][:4]
+    title = item.get("title")
+    doi = item.get("DOI")
+    return Work(
+        author,
+        year,
+        str(title) if isinstance(title, str) else "",
+        str(doi) if isinstance(doi, str) else "",
+    )
+
+
+def _tagged_works(text: str) -> tuple[Work, ...]:
+    encoded = text.rsplit("_", 1)[-1]
+    try:
+        decoded = base64.b64decode(encoded + "=" * (-len(encoded) % 4), validate=True)
+        return _csl_works(decoded.decode("utf-8"))
+    except (binascii.Error, ValueError):
+        return ()
+
+
+def _endnote_works(text: str) -> tuple[Work, ...]:
+    """Each `<Cite>` of an `EN.CITE` field: its first author, year and title. The XML is read
+    by its elements' names, not parsed: it is whatever the field's code says."""
+    text = unescape(text)
+    works = []
+    for cite in re.findall(r"<Cite\b.*?</Cite>", text, re.DOTALL):
+        def first(name: str, cite: str = cite) -> str:
+            found = re.search(rf"<{name}\b[^>]*>(.*?)</{name}>", cite, re.DOTALL)
+            return re.sub(r"<[^>]+>", "", found.group(1)).strip() if found else ""
+
+        author = first("Author").split(",")[0].strip()
+        works.append(Work(author, first("Year"), first("title"),
+                          first("electronic-resource-num")))  # fmt: skip
+    return tuple(works)

@@ -103,6 +103,15 @@ def _reject_wrong_type(url: str, destination: Path, data: bytes) -> None:
     version of this fetched two such pages and only the checksum caught them. Failing here
     says what actually happened.
     """
+    if destination.suffix.lower() == ".xml":
+        # A paper's full text from Europe PMC: an <article> near the top, and nothing else.
+        if b"<article" in data[:4096]:
+            return
+        raise FetchError(
+            f"{url} returned something other than a JATS article. Europe PMC serves an open "
+            "paper's full text at https://www.ebi.ac.uk/europepmc/webservices/rest/"
+            "<PMCID>/fullTextXML; a paper it holds no full text for cannot be read this way."
+        )
     expected = MAGIC.get(destination.suffix.lower())
     if expected is None or data.startswith(expected):
         return

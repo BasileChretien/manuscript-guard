@@ -86,3 +86,14 @@ __all__ = [
     "recipes",
     "workspace",
 ]
+
+
+#: The files that pin the packages an analysis ran with, looked for at the project root, as
+#: each tool names them: R's renv, uv, Poetry, pip's requirements files, and conda's export.
+LOCKFILES = ("renv.lock", "uv.lock", "poetry.lock", "environment.yml", "requirements*.txt")
+
+
+def lockfiles(root: Path) -> list[Path]:
+    """Every file at `root` that pins the packages an analysis runs with, in order of name."""
+    found = {path for pattern in LOCKFILES for path in root.glob(pattern) if path.is_file()}
+    return sorted(found, key=lambda path: path.name)

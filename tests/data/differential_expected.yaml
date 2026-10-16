@@ -39,3 +39,8 @@ expected:
     why: >-
       G8 counts the relations and flows the analysis declared, `relations_checked`, which
       is 0 in a project that declares none
+  - reading: numbers
+    why: >-
+      a step, a panel or a box takes a number up to 20 and an item up to 99, so a count
+      after one of them is unbound; a list after a plural pointer, "Tables 1 and 2", is read
+      whole

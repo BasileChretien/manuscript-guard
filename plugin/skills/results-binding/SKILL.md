@@ -62,6 +62,9 @@ What the emitter holds you to:
   other: emit them.
 - An R string holding digits is not refused the way Python refuses it. Do not publish
   `"12.3 (95% CI 10.1 to 14.9)"` as one value; publish the three numbers.
+- What the data can answer, counted before the analysis is settled, is published like any
+  result, under `feasibility.` from a script of its own (`analysis/00_feasibility.py`); the
+  [analysis-plan](../analysis-plan/SKILL.md) skill lists what to count.
 
 ### Arithmetic between results, and flows
 

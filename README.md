@@ -146,6 +146,14 @@ In place of a gate, a finding can carry one of two labels that are no gate of th
 `G0`, for a file of the project that cannot be used as it stands, and `BUILD`, for what
 the build would refuse or warn of.
 
+`check` ends by grouping what it did by what it is about: computational reproducibility,
+numerical provenance, reporting completeness, methodological validity, the literature, the
+review, and the language. For each it says which gates checked it and what they found, what
+was recorded and by whom and when (a run of `verify`, a panel's reading, a figure review, a
+value attested), and in words what no gate decides, such as whether the design supports the
+conclusion. There is no score: a single number would be read as "the paper is right", which
+no part of this says.
+
 You do not have to satisfy every gate on the first day. Each finding declares the stage at
 which it starts to matter, from `design` to `submission`, and until then it is printed and
 counted without failing the run: see [stages](docs/stages.md). What each gate guarantees and

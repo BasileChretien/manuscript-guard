@@ -2297,6 +2297,17 @@ with no plan behind it, and when a plan's section is a heading with nothing unde
 "Deviations from the plan" heading followed by nothing is the common case, and naming it is
 most of the value.
 
+**A plan is written knowing what the data hold.** A plan can set out an analysis of data
+nobody has counted: an adjustment for a covariate missing in half the rows, a subgroup of
+twelve patients. The author's own script counts them, never the tool, and publishes the
+counts like any result under `feasibility.`: the cohort at each selection step, the
+outcome's events, the missing values of each planned variable, the date range, the
+duplicates. At the `design` stage, G12 warns (`feasibility-not-run`) where the plan's
+analysis section says something and no result is emitted under `feasibility.`. It is a
+warning, as the rest of this gate is: an author may know the data from a registry's own
+report. Once the analysis runs, its results say what the data hold, and the question is not
+asked again.
+
 **The plan is frozen when the first results are written.** A plan rewritten after the
 results are known is the pattern of a hypothesis fitted to its results, and it can be told
 mechanically. The first time either emitter writes results, it keeps the plan as it stood:
@@ -5113,6 +5124,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
+- **The feasibility results are asked for by their names only.** Any one result under
+  `feasibility.` quiets `feasibility-not-run`: nothing checks that the counts cover the
+  plan's variables or its selection steps, or that the script read the data the analysis
+  will. G1 holds the results to the inputs the script declared, and no more. The question
+  is asked at the `design` stage alone, so a project that starts at a later stage is never
+  asked it.
 - **G4 reads the main-text files in path order, and the build prints them in another.** The
   build puts `main.md` first and sorts the rest by file name, not by path. A section's words
   count where the headings above it put them, so an `abstract.md` beside a `main.md` written

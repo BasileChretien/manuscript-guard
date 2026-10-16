@@ -829,10 +829,15 @@ the document and the recipe: re-run it and you get the same profile; run it agai
 revised checklist and the diff is the revision. Every item is then verified to appear
 verbatim in the document, using the same comparison the literature ledger uses for a quote.
 
-Thirteen checklists have recipes: STROBE (34 items), RECORD (13), RECORD-PE (15), CONSORT
+Fifteen checklists have recipes: STROBE (34 items), RECORD (13), RECORD-PE (15), CONSORT
 (41), SPIRIT 2025 (53), PRISMA 2020 (42) and its abstracts checklist (12), READUS-PV (32)
 and its abstracts checklist (12), TRIPOD in its three variants (31 development, 31
-validation, 37 both), and ARRIVE 2.0 (21). A fourteenth recipe is not a checklist: SANRA (6
+validation, 37 both), TRIPOD+AI (52) and its abstracts checklist (13), and ARRIVE 2.0 (21).
+TRIPOD+AI is read from the tables of its statement paper, as Europe PMC serves its full text,
+because no checklist file of it is better than the paper; its recipe says so (`read_from`),
+and records a digest of the table's rows rather than of the file. The three TRIPOD 2015
+recipes record that TRIPOD+AI replaced them (`superseded_by`), and G5 warns a project that
+names one. A sixteenth recipe is not a checklist: SANRA (6
 items), the scale an editor or a reviewer scores a narrative review with, which exists because
 no reporting guideline covers a narrative review and the first manuscript written with this
 toolkit is one. A scale's profile says `kind: scale`, and the submission pack presents it as a
@@ -7792,9 +7797,16 @@ Closed since, and why each mattered:
   transcribe, but two needed a second attempt and none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible
   wrong transcription, which is the best that can be done about it.
-- **TRIPOD+AI (2024) has no recipe.** Classic TRIPOD 2015 is transcribed from its three Word
-  checklists; the TRIPOD+AI checklist is available only as a table inside a PDF, which the
-  column reader is not shaped for.
+- **A paper's table is read only from Europe PMC's JATS.** A statement paper without an open
+  full text there (TARGET's, for one) cannot be read this way, and a checklist set as two
+  tables ("Table 2 (continued)") is two tables: the recipe names one. A cell that spans rows
+  is read in the first of them and left empty below, which carries a topic and would lose
+  text in the item's own column. The items are verified against the article's text, which
+  holds the table they were read from: that catches an item assembled wrong, not a column
+  read wrong.
+- **A replaced guideline is known only from its recipe.** `superseded_by` is written in the
+  recipe from what the new guideline's authors say. A project's own recipe, or a guideline
+  replaced after its recipe was written, says nothing until someone writes it in.
 - **ARRIVE's items are verified only at their opening clause**, for the reason above. It is
   the one profile whose tail text rests on the parser rather than on a check.
 - **ARRIVE's items are found only as poppler's `pdftotext` sets them.** The one from Xpdf,

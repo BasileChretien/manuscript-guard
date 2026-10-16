@@ -11600,6 +11600,140 @@ def test_a_plan_with_no_analysis_yet_is_not_asked_for_feasibility(project: Path)
     assert _feasibility_said(project, "design") == []
 
 
+# ------------------------------------------------- a panel reads the plan before the results
+
+_DESIGN_REMIT = "Whether the design supports the inference the plan intends: confounding, " \
+    "selection, immortal time, missing data, multiplicity"  # fmt: skip
+
+
+def _design_said(root: Path, submission: bool = False) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    project, _ = load_project(root)
+    return [(f.code, f.severity) for f in check_design_rounds(project, submission=submission)
+            .findings]  # fmt: skip
+
+
+def _design_recorded(root: Path, findings: str = "") -> Path:
+    from manuscript_guard.cli import main
+
+    assert main(["review", str(root), "--design", "--record", "methodologist", "--verdict",
+                 "major-revision", "--remit", _DESIGN_REMIT]) == 0  # fmt: skip
+    record = root / "review" / "design" / "round-1" / "methodologist.yaml"
+    if findings:
+        text = record.read_text(encoding="utf-8").replace("findings: []\n", findings)
+        record.write_text(text, encoding="utf-8")
+    return record
+
+
+_DESIGN_MAJOR = (
+    "findings:\n- id: d1\n  severity: major\n  finding: The comparator drugs share the "
+    "indication only in part, so the ratio mixes the drug with its indication.\n"
+)
+
+
+def test_a_design_round_reads_the_plan_and_its_majors_are_answered(project: Path) -> None:
+    """Item 46: no panel read the plan before there were results, and a design that could
+    not answer its question was said too late."""
+    from manuscript_guard.cli import main
+
+    assert _design_said(project) == []
+    record = _design_recorded(project, _DESIGN_MAJOR)
+    assert _design_said(project) == [("design-reading-unsealed", "warn"),
+                                     ("design-major-open", "warn")]  # fmt: skip
+    assert ("design-major-open", "fail") in _design_said(project, submission=True)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    assert _design_said(project) == [("design-major-open", "warn")]
+    text = record.read_text(encoding="utf-8")
+    record.write_text(text.replace("  finding: The comparator", "  resolution: The plan now "
+                                   "restricts the comparators to the same indication.\n"
+                                   "  finding: The comparator"), encoding="utf-8")  # fmt: skip
+    assert _design_said(project) == []
+
+
+def test_a_design_round_of_a_plan_changed_since_is_stale(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert _design_said(project) == [("design-review-stale", "warn")]
+    # Round 1 of #308: a later round that read the plan as it stands left the first stale
+    # for good. It supersedes it, as a manuscript round does.
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--round", "2", "--verdict", "pass"]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info")]
+
+
+def test_a_later_design_round_supersedes_only_the_readers_who_read_again(project: Path) -> None:
+    """Round 2 of #308: a later round of one reviewer superseded every stale reading of the
+    round before it, a reviewer who never read the plan as it stands included."""
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    remit = "Whether the analysis can estimate what is asked"
+    assert main(["review", str(project), "--design", "--record", "statistician", "--verdict",
+                 "pass", "--remit", remit]) == 0  # fmt: skip
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--round", "2", "--verdict", "pass"]) == 0  # fmt: skip
+    said = _design_said(project)
+    assert sorted(said) == [("design-review-stale", "warn"), ("design-review-superseded", "info")]
+
+
+def test_a_superseded_design_round_s_open_major_still_binds(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    _design_recorded(project, _DESIGN_MAJOR)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--round", "2", "--verdict", "pass"]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info"),
+                                     ("design-major-open", "warn")]  # fmt: skip
+
+
+def test_a_design_round_is_stale_when_the_data_are_counted_again(project: Path) -> None:
+    _feasibility_said(project, "design", feasibility__n_reports=4000)
+    _design_recorded(project)
+    assert _design_said(project) == []
+    _feasibility_said(project, "design", feasibility__n_reports=3999)
+    assert _design_said(project) == [("design-review-stale", "warn")]
+
+
+def test_a_design_reading_changed_after_its_seal_is_said(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    record = _design_recorded(project, _DESIGN_MAJOR)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    text = record.read_text(encoding="utf-8")
+    record.write_text(text.replace("severity: major", "severity: minor"), encoding="utf-8")
+    assert _design_said(project) == [("design-reading-altered", "warn")]
+    assert _design_said(project, submission=True) == [("design-reading-altered", "fail")]
+
+
+def test_a_design_panel_reviewer_who_has_not_read_is_said(project: Path) -> None:
+    _design_recorded(project)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"].append({"id": "clinician", "remit": "Whether the question matters"})
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    assert _design_said(project) == [("design-review-missing", "warn")]
+
+
+def test_a_design_round_is_not_a_round_of_the_manuscript(project: Path) -> None:
+    """Kept apart: a design round never counts toward the manuscript's rounds, and needs a
+    remit of its own before a folder is made for it."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.gates import check_review
+
+    before = check_review(load_project(project)[0]).counts
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--verdict", "pass"]) == 2  # fmt: skip
+    assert not (project / "review" / "design").exists()
+    _design_recorded(project)
+    assert check_review(load_project(project)[0]).counts == before
+
+
 # --------------------------------------------------------------------------------------
 # TeX outside dollar signs in what the build prints of paper.yaml
 # --------------------------------------------------------------------------------------

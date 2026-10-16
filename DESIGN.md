@@ -2449,6 +2449,28 @@ warning, as the rest of this gate is: an author may know the data from a registr
 report. Once the analysis runs, its results say what the data hold, and the question is not
 asked again.
 
+**A panel reads the plan before there are results.** A review panel reads the manuscript,
+which exists once the analysis has run; by then the design is spent, and a reviewer who says
+the comparison cannot answer the question says it too late. A design round is a panel that
+reads `design/plan.md` and the feasibility results at the `design` stage. It is kept apart
+from the manuscript's rounds, in `review/design/` (`panel-<n>.yaml`, and
+`round-<n>/<reviewer>.yaml` for a reading), so it never counts toward `rounds_required`
+and no manuscript round answers it. `manuscript-guard review --record <reviewer> --design
+--round <n> --verdict <verdict>` files a reading with the digest of what it read: the
+plan's bytes and each `feasibility.*` result's value and display. G12 then says a reading of
+a plan that has changed since, or of data counted again, is stale (`design-review-stale`),
+until the same reviewer reads the plan as it stands in a later round, which supersedes it
+(`design-review-superseded`, information; its open majors still bind);
+a reviewer on the panel who has not read (`design-review-missing`); and a major finding not
+answered by a resolution or an override with its reason (`design-major-open`). The last is
+a warning, and a failure at submission only, as the author decided: what an unanswered
+design objection means is the author's to weigh while there is still an analysis to change.
+A reading is sealed as a manuscript reading is (`review --seal <reviewer> --design`), and
+one changed after its seal is said (`design-reading-altered`), failing at submission. A
+project with no design round reads as it did before, counts included. For now a design
+round is read and filed by hand: `review --run` sends the manuscript, not the plan, and a
+reviewer's named readers are not read in a design round.
+
 **The results the plan promised are reported.** G2 says when the analysis emits a value
 that nothing quotes (`unquoted-result`); nothing said when the plan promised a result the
 analysis never emitted. A plan may now hold a section headed "Planned results", not one of
@@ -5359,6 +5381,11 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
+- **A design round is read by hand, and its overrides are anyone's.** `review --run`
+  does not send the plan to the models yet, a design panel's named readers are not read,
+  and an override of a design-round major needs a reason but no named person's sign-off.
+  Nothing yet asks for a design round before the analysis stage: one that was never held
+  says nothing.
 - **A planned result is held to its key, not to what the paper says of it.** G12 checks
   that a key listed under Planned results is emitted and quoted, not that the sentence
   quoting it reports the result the plan described: a planned "adjusted ratio" listed as

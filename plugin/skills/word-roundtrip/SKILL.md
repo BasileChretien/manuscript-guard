@@ -38,7 +38,9 @@ manuscript-guard build --offline
 
 - **Send the `--offline` build, without `--csl`.** The returned document is compared against
   an offline build in the default citation style, so a document built with a journal style
-  comes back with every cited paragraph refused. A live Zotero build probably does the same.
+  comes back with every cited paragraph refused. A Zotero field is read by the words it shows,
+  not by its code: one that shows what the offline build prints passes, and one that a style
+  switch or a refresh in Word made show other words refuses its paragraph.
 - Send `build/manuscript.docx`, and `build/supplementary.docx` if the supplement needs
   reading too. Each comes back as its own file and is imported on its own: `import` reads
   from the paragraph identifiers which of the two it is, and compares it with a fresh build

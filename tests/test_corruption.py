@@ -3236,6 +3236,117 @@ def test_every_literature_value_ends_in_one_verdict(
         assert code in codes(report), report.render(project)
 
 
+# ------------------------------------------------------- a P worked out from its statistic
+# A statistic and a P that the analysis did not make agree: typed, quoted from a source, or
+# bound from two keys. G2 sees two numbers, each of which passed.
+
+
+def _recomputed(root: Path):
+    from manuscript_guard.gates import check_recomputed
+
+    project, _ = load_project(root)
+    namespace, results, _literature, _ = load_namespace(project)
+    return check_recomputed(project, namespace, results)
+
+
+def _recomputed_codes(root: Path, sentence: str) -> list[str]:
+    main = main_md(root)
+    main.write_text(main.read_text(encoding="utf-8") + "\n" + sentence + "\n", encoding="utf-8")
+    return [f.code for f in _recomputed(root).findings]
+
+
+def _emitted(root: Path, **displays: str) -> None:
+    """Values in the example's results, each with the display given, as an analysis would
+    emit them."""
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for key, display in displays.items():
+        digits = len(display.partition(".")[2])
+        value = {"value": float(display), "display": display, "digits": digits}
+        document["values"][key.replace("__", ".")] = value
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        ("Earlier work found t(23) = 2.45, p = .022 [@fictionalHepaticCohort2021].", []),
+        ("Earlier work found t(23) = 2.45, p = .041 [@fictionalHepaticCohort2021].",
+         ["p-inconsistent"]),
+        ("Earlier work found t(23) = 2.45, p = .40 [@fictionalHepaticCohort2021].",
+         ["p-decision-error"]),
+        ("The arms differed, *F*(2, 45) = 3.21, *P* = 0.30.", ["p-decision-error"]),
+        ("The arms differed, \N{GREEK SMALL LETTER CHI}^2^(1) = 0.5, *P* \\< 0.05.",
+         ["p-decision-error"]),
+        ("The arms differed, z = 3.30, P = 0.01.", ["p-inconsistent"]),
+        ("A one-sided t(23) = 2.45, p = .011, as planned.", []),
+        ("<!-- t(23) = 2.45, p = .40 -->", []),
+    ],
+)
+def test_a_p_that_does_not_follow_from_its_statistic_is_found(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    assert _recomputed_codes(project, sentence) == found
+
+
+def test_a_statistic_and_a_p_bound_from_two_analyses_are_found(project: Path) -> None:
+    """The crude t beside the adjusted P: each bound, each passed by G2, and no gate saw
+    that they disagree."""
+    _emitted(project, crude__t="2.45", adjusted__p="0.30")
+    sentence = "The groups differed, t(23) = {{results.crude.t}}, p = {{results.adjusted.p}}."
+    assert _recomputed_codes(project, sentence) == ["p-decision-error"]
+
+
+def test_a_p_is_judged_at_the_alpha_the_analysis_emits(project: Path) -> None:
+    """t(23) = 1.90 gives 0.070: below an alpha of 0.10, as the P of .03 printed beside it
+    is, so the two disagree and no decision does."""
+    sentence = "The groups differed, t(23) = 1.90, p = .03."
+    assert _recomputed_codes(project, sentence) == ["p-decision-error"]
+    _emitted(project, param__alpha="0.10")
+    assert [f.code for f in _recomputed(project).findings] == ["p-inconsistent"]
+
+
+def test_a_quote_whose_statistic_and_p_disagree_is_found(project: Path) -> None:
+    """The source's own numbers disagree, so the value taken from them may be the wrong
+    one of the two."""
+    said = (
+        "The crude incidence of drug-induced hepatic injury was 14 per 100 000 "
+        "person-years, t(23) = 2.45, p = .40."
+    )
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text(source.read_text(encoding="utf-8") + "\n" + said + "\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["quote"] = said
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = _literature_report(project)
+    assert [f.code for f in report.findings if f.code == "quote-p-inconsistent"] == [
+        "quote-p-inconsistent"
+    ]
+    assert report.counts["literature_verified"] == 2
+
+
+def test_an_audited_paper_s_p_that_does_not_follow_is_listed_apart(tmp_path: Path) -> None:
+    """`audit` reads a paper that was never bound, and needs no outputs for this."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("The groups differed, t = 2.45, df = 23, p = .40.\n", encoding="utf-8")
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("value\n23\n2.45\n0.40\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert [(d.line, d.context) for d in report.disagreements] == [
+        (1, "t = 2.45, df = 23, p = .40")
+    ]
+    shown = render(report, measure_discrimination(report.backing_values))
+    assert "P VALUES THAT DO NOT FOLLOW" in shown
+    assert "on the other side of 0.05" in shown
+    # Every number is in the outputs, and --strict counts only those.
+    assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == 0
+
+
 @pytest.mark.parametrize(
     ("written", "said"),
     [

@@ -459,6 +459,20 @@ The presentation list is deliberately narrow. `x`, `y`, `n` and `digits` are **n
 because allowing bare coordinates would allow `data.frame(x = c(1, 2, 3))` — data typed
 into a figure script, which gets its own error message.
 
+**The marks the script computes.** Labels drawn from the results say nothing about the marks.
+`sns.barplot` draws a bootstrap 95% interval of the mean unless told not to, with no seed;
+`stat_summary` draws a mean and its standard error, `geom_smooth` a fitted line and its
+band, `geom_jitter` a jitter from a seed drawn at random. None of these passes through the
+results file: the interval drawn can differ from the one the text quotes, it ignores the
+clustering the analysis accounted for, and where it is random it changes at every render,
+so the figure's review goes stale each time. The script itself does the same when it takes
+a spread with numpy's `std`, which divides by n where pandas and R divide by n - 1, samples
+rows, draws at random with no seed, or drops the rows with a missing value. Each such call
+in `data/figure_estimates.yaml`, with what it does as its library's own reference page says,
+is a warning (`figure-estimates`) unless an argument turns it off (`errorbar=None`), its
+seed or divisor is given (`seed=`, `ddof=`), a seed set in the script settles a random one,
+or the figure's `<name>.guard.yaml` gives a reason under `allow_estimates`.
+
 **A human or model reading the picture (G10).** Gate G10 requires a current review record
 per figure. See below.
 
@@ -5054,6 +5068,19 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   to 2.58 with nothing run again. Listing the helper among the emitter's `inputs` makes its
   change an `input-changed` failure. `verify`, which runs the analysis again and compares
   every value, sees the change either way. Imports are not followed.
+- **The environment is the lockfiles at the project root, and only a warning.** Both
+  emitters record the digest of each of `renv.lock`, `uv.lock`, `poetry.lock`,
+  `environment.yml` and `requirements*.txt` found at the root, and G1 warns
+  (`environment-changed`) when one has changed, gone or appeared since a fragment was
+  written: the numbers on disk are still the ones the analysis wrote, and a re-run may not
+  give them. A lockfile in a subfolder, a package installed outside any lockfile, a system
+  library, a compiler, and a lockfile that does not match what is installed are not seen.
+  A lockfile is digested with its line endings left out, as a script is. One that is a
+  link to a file elsewhere is recorded by R under the path it links to, and by Python under
+  its own name. A fragment written before the emitters recorded the environment says
+  nothing. When a
+  re-run differs, `verify` says whether the analysis declares a seed: a parameter whose key
+  holds "seed".
 - **The figure-caption style reads one convention and nothing else.** The paragraph after a
   figure is set in `Figure Caption` (10 pt against 12 pt) when its text opens "Figure 1.",
   "Figure 4:" or "Figure S1."; the stop or colon has to come right after the number, so that
@@ -5350,6 +5377,17 @@ Added by the adversarial review, verified and **not** fixed:
   carry another outcome's number. Set membership is the backstop for the figure nobody
   scripted, and should be read as "no number here is a stranger", not as "every number here
   is the right one".
+- **A figure that estimates is found by the names of the calls it makes.** Only the calls in
+  `data/figure_estimates.yaml` are read, by the last part of their name: a function of the
+  script's own that wraps one, a call through an alias (`bar = sns.barplot`), seaborn's
+  `catplot` and `relplot`, which estimate only under some `kind`, and a density estimate
+  (`kdeplot`) are not. A method of the same name on another object is taken for one: any
+  `.sample(` or `.std(`. Any seed call in the script (`np.random.seed`, `default_rng(7)`,
+  `random.seed`, `set.seed`) is taken to settle every random call in it, though
+  `np.random.seed` does not seed Python's `random` module. A seaborn bootstrap is settled
+  only by its own `seed=`. `geom_smooth`, `stat_summary` and `dropna` have no argument that
+  quiets them: each needs a reason under `allow_estimates`, or the computation moved into
+  the analysis.
 - **The source-of-truth invariant does not survive a co-author round in Word, and a real
   paper is the proof.** This toolkit rests on "Markdown is the permanent source of truth and
   the .docx is a disposable build artifact". Run against a submitted pharmacology paper, the
@@ -7532,8 +7570,14 @@ Closed since, and why each mattered:
   written apart in the source with the same items and locators (`[@a]` and `[@a ]`) cannot
   say which a field was, and both are read by their words. What Zotero formats is not
   compared at all, the reference list included: an item whose data Zotero updated, or an
-  entry of the list a co-author edited, is not seen. A field a co-author inserts into a
-  document built offline is read by the words it shows.
+  entry of the list a co-author edited, is not seen.
+- **A citation a co-author inserts with a reference manager is named as far as its code
+  names it.** A CSL field (Zotero's and another's), a content control whose tag carries
+  CSL in base64, and an `EN.CITE` field's XML are read for the first author, the year, the
+  title and the DOI; an `EN.CITE.DATA` field, which holds the record in a binary form, is
+  "a work it does not name". Its key is found in `references.bib` by DOI or by title, as
+  written, and only there. One in a paragraph without an identifier (a heading, a table, a
+  caption) is not reported, as nothing there is compared.
 - **A document built with `--csl` is compared in the style its digest names.** Where that
   style is not where the build found it, or has changed, `import` says so and compares in
   the default style, refusing every paragraph that cites, until `--csl` names it. Line

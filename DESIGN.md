@@ -887,15 +887,16 @@ the document and the recipe: re-run it and you get the same profile; run it agai
 revised checklist and the diff is the revision. Every item is then verified to appear
 verbatim in the document, using the same comparison the literature ledger uses for a quote.
 
-Fifteen checklists have recipes: STROBE (34 items), RECORD (13), RECORD-PE (15), CONSORT
+Seventeen checklists have recipes: STROBE (34 items), RECORD (13), RECORD-PE (15), CONSORT
 (41), SPIRIT 2025 (53), PRISMA 2020 (42) and its abstracts checklist (12), READUS-PV (32)
 and its abstracts checklist (12), TRIPOD in its three variants (31 development, 31
-validation, 37 both), TRIPOD+AI (52) and its abstracts checklist (13), and ARRIVE 2.0 (21).
-TRIPOD+AI is read from the tables of its statement paper, as Europe PMC serves its full text,
+validation, 37 both), TRIPOD+AI (52) and its abstracts checklist (13), STARD 2015 (34),
+CHEERS 2022 (28) and ARRIVE 2.0 (21). TRIPOD+AI, and CHEERS 2022, are read from tables of
+their statement papers, as Europe PMC serves its full text,
 because no checklist file of it is better than the paper; its recipe says so (`read_from`),
 and records a digest of the table's rows rather than of the file. The three TRIPOD 2015
 recipes record that TRIPOD+AI replaced them (`superseded_by`), and G5 warns a project that
-names one. A sixteenth recipe is not a checklist: SANRA (6
+names one. An eighteenth recipe is not a checklist: SANRA (6
 items), the scale an editor or a reviewer scores a narrative review with, which exists because
 no reporting guideline covers a narrative review and the first manuscript written with this
 toolkit is one. A scale's profile says `kind: scale`, and the submission pack presents it as a
@@ -1530,6 +1531,37 @@ one is a question for the author.
 A threshold is not a measurement, so a float parameter is written as typed (fifteen
 significant digits, in both languages) unless `digits` or `display` says otherwise: 0.025
 rounded to two places is 0.03, a different test.
+
+## A P follows from its statistic
+
+A paper's own results are bound, and their arithmetic is the analysis's. Three kinds of
+number are not: a value quoted from another paper, a number typed into the prose, and two
+bound values that come from different keys. "t(23) = {{results.crude.t}}, p =
+{{results.adjusted.p}}" passes G2 once for each value, and says something no analysis
+computed.
+
+A t, F, chi-squared or z statistic with its degrees of freedom gives its P, and the P
+printed after it in the same sentence can be held to it. G8 does this in the manuscript as
+it prints, each binding replaced by its display; G7 does it in each ledger quote, where a
+disagreement means the source's own numbers disagree; `audit` does it in a paper that was
+never bound. The P is worked out over every value the statistic's printed digits allow:
+"2.45" stands for anything from 2.445 to 2.455, and "p = .041" for anything from 0.0405 to
+0.0415. The two disagree (`p-inconsistent`) when those ranges do not meet, and the
+disagreement is a decision error (`p-decision-error`) when they fall on either side of the
+significance level, the `param.alpha` the analysis emits or 0.05. "p < .05" stands for
+anything below 0.05.
+
+A sentence that calls its test one-sided, adjusted or corrected, Welch's,
+sphericity-corrected, exact, permutation or simulated is read and not judged: the P of
+such a test does not follow from the statistic by the textbook formula. All of it is a
+warning, and in `audit` it is listed apart and not counted by `--strict`, because a test
+can be one of those without its sentence saying so.
+
+The package depends on nothing numerical, and the four distributions need two functions
+beyond the standard library, the regularized incomplete beta and gamma functions. They are
+written from their definitions in the NIST Digital Library of Mathematical Functions,
+chapter 8, whose equations `stats/special.py` names, and they are tested against values
+SciPy computed once, outside the package. The two agree to a relative 1e-10.
 
 ## A model is read from its fit, and each variable says what it is
 
@@ -2370,6 +2402,21 @@ analysis section says something and no result is emitted under `feasibility.`. I
 warning, as the rest of this gate is: an author may know the data from a registry's own
 report. Once the analysis runs, its results say what the data hold, and the question is not
 asked again.
+
+**The results the plan promised are reported.** G2 says when the analysis emits a value
+that nothing quotes (`unquoted-result`); nothing said when the plan promised a result the
+analysis never emitted. A plan may now hold a section headed "Planned results", not one of
+the seven, whose list items each open with the key of a result the paper will report, in
+backticks: `ror.point`, or `results.ror.point` as the manuscript binds it, or a group,
+`ror.*`. The first code span of each item is its key, read up to the next item or the
+item's first blank line, and a span with no dot is code, not a key; a key with no dot of its
+own is written bound, `results.dose`. Once the stage is past
+`design`, G12 warns where a key listed there names no value, table or model the analysis
+emitted (`planned-result-missing`), or names only values emitted with `quoted=False`
+(`planned-result-unquoted`), unless the Deviations section names the key: dropping a
+promised result is a deviation, and saying so is the remedy. A section that names no key at
+all is a warning of its own (`planned-results-unkeyed`). A plan without the section says
+nothing to hold the results to and gets no finding.
 
 **The plan is frozen when the first results are written.** A plan rewritten after the
 results are known is the pattern of a hypothesis fitted to its results, and it can be told
@@ -5242,6 +5289,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
+- **A planned result is held to its key, not to what the paper says of it.** G12 checks
+  that a key listed under Planned results is emitted and quoted, not that the sentence
+  quoting it reports the result the plan described: a planned "adjusted ratio" listed as
+  `ror.point`, the crude one, passes. Keys are read from the list items' first code spans
+  only; a result the section describes in words is not checked, and a section with one key
+  and ten results in words says nothing of the ten. A Deviations section that names a key,
+  whatever it says of it, stands down that key's warning.
 - **The feasibility results are asked for by their names only.** Any one result under
   `feasibility.` quiets `feasibility-not-run`: nothing checks that the counts cover the
   plan's variables or its selection steps, or that the script read the data the analysis
@@ -5285,6 +5339,18 @@ Added by the adversarial review, verified and **not** fixed:
   read. Vulgar fractions and enclosed digits now are. Number words are left alone on
   purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and
   a rule that flags them is a rule that gets the gate switched off.
+- **A P is held to its statistic only in a sentence that writes both, for four kinds of
+  test.** t, F, chi-squared and z are read; r, U, H, W and the rest are not. A test in a
+  table, its statistic in one column and its P in another, is not read, and neither is a P
+  written before its statistic, "P = .03 (t(23) = 2.45)". A sentence ends at a stop before a
+  capital or a bracket, so "et al. (2019)" ends one, and a word before it that says the
+  test is not the textbook one is not seen. Such a word stands the test down wherever it is
+  in the sentence, about this test or not: "exact" or "corrected" said of anything. Degrees
+  of freedom with a thousands separator, "F(1, 1,234)", are not read. Decimal degrees of
+  freedom are read over their digits by the corners of that range, which is exact where the
+  P moves one way with each. A t or a z is read as two-sided unless its sentence says
+  otherwise, so a one-sided test the sentence does not call one is reported. A ledger quote
+  and an audited paper are judged at 0.05; only `check` reads `param.alpha`.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did
@@ -7961,6 +8027,14 @@ Closed since, and why each mattered:
   transcribe, but two needed a second attempt and none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible
   wrong transcription, which is the best that can be done about it.
+- **TARGET and CARE have no recipe.** TARGET (2025) sets items 6 and 7 side by side in one
+  table of its checklist file, each with sub-items a to h, and the transcriber reads one
+  item to a row: a recipe would drop item 7. Its statement states no open licence, so its
+  recipe would be one to download and use, not to share. CARE (2013) writes its sub-items
+  as "a)", each on a row of its own with bullet rows under some, which no recipe option
+  reads, and no copy of it carries a clean CC BY: The BMJ's and Global Advances' copies are
+  non-commercial and non-derivative, the copy in the Journal of Medical Case Reports names a
+  licence by an address that is not one, and the CARE site's badge is CC BY-NC.
 - **A paper's table is read only from Europe PMC's JATS.** A statement paper without an open
   full text there (TARGET's, for one) cannot be read this way, and a checklist set as two
   tables ("Table 2 (continued)") is two tables: the recipe names one. A cell that spans rows

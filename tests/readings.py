@@ -269,6 +269,19 @@ def _deviations() -> Reading:
     return deviations_said
 
 
+@reading("planned results")
+def _planned_results() -> Reading:
+    from manuscript_guard.gates.design import planned_results
+
+    def read(plan: str) -> Any:
+        """Each key the plan's Planned results section lists, whether it is a group, and its
+        line; None where the plan has no such section."""
+        found = planned_results(plan)
+        return None if found is None else [[p.key, p.group, p.line] for p in found]
+
+    return read
+
+
 @reading("interval order")
 def _interval_order() -> Reading:
     from manuscript_guard.contracts.values import RESULTS, Value
@@ -353,6 +366,30 @@ def _notation() -> Reading:
 
     _file("")
     return notation
+
+
+@reading("reported tests")
+def _reported_tests() -> Reading:
+    """Each test statistic with a P after it in its sentence, as it is printed, and what
+    G8 says of the P: the range the statistic gives, and whether the two disagree."""
+    from manuscript_guard.stats.reported import judge, reported_tests
+    from manuscript_guard.text.masking import mask
+
+    def reported(text: str) -> list[list[Any]]:
+        found = []
+        for test in reported_tests(mask(text)):
+            verdict = judge(test)
+            said = None if verdict is None else [
+                f"{verdict.low:.12g}", f"{verdict.high:.12g}", verdict.inconsistent,
+                verdict.decision,
+            ]  # fmt: skip
+            found.append(
+                [test.start, test.kind, test.statistic, list(test.df), test.sign, test.p,
+                 test.quiet, said]  # fmt: skip
+            )
+        return found
+
+    return reported
 
 
 @reading("abbreviations")

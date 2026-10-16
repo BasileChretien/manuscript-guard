@@ -219,6 +219,12 @@ CHANGED = {
         "MANY = 2\n",
         "spelling",
     ),
+    "a planned item read past its paragraph": (
+        "gates/design.py",
+        '_BLANK_LINE = re.compile(r"\\n[ \\t]*\\n")\n',
+        '_BLANK_LINE = re.compile(r"(?!)")\n',
+        "planned results",
+    ),
     "a stop against a binding that ends no sentence": (
         "gates/numbers.py",
         "    return before + 1 if start and text[start - 1] in _STOPS else before\n",

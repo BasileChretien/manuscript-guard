@@ -115,14 +115,16 @@ def test_a_separator_form_still_finds_its_value(project: Path) -> None:
 
 
 def _two_typed(project: Path) -> list:
-    """Two literals, each matching exactly one published value, in one file."""
+    """Two literals, each matching exactly one published value, in one file. Not the drug's
+    426 reports: the example's flow of reports repeats that count as working output, so a
+    typed 426 matches two values, as a typed 77 matches the cases and the 2 x 2 table."""
     path = project / "manuscript" / "main.md"
     text = path.read_text(encoding="utf-8")
     text = text.replace("{{results.ror.point}} (95% CI", "3.84 (95% CI", 1)
-    text = text.replace("{{results.cohort.n_drug_reports}}", "426", 1)
+    text = text.replace("{{results.case.n_serious}}", "28", 1)
     path.write_text(text, encoding="utf-8")
     items = [i for i in unbound(*loaded(project)) if i.certain]
-    assert {i.text for i in items} == {"3.84", "426"}, [i.text for i in items]
+    assert {i.text for i in items} == {"3.84", "28"}, [i.text for i in items]
     return sorted(items, key=lambda i: i.start)
 
 

@@ -39,3 +39,8 @@ expected:
     why: >-
       G6 also reads the text of the figures, the tables' captions and the cited references
       for a placeholder, and counts what it read, `writing_texts_elsewhere`
+  - reading: numbers
+    why: >-
+      a step, a panel or a box takes a number up to 20 and an item up to 99, so a count
+      after one of them is unbound; a list after a plural pointer, "Tables 1 and 2", is read
+      whole

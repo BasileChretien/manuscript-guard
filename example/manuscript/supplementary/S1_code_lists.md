@@ -14,6 +14,10 @@ code applied cannot come apart.
 
 {{table.outcome_codes}}
 
+Events were coded with the data generator's own list of event terms, release
+{{results.dictionary.generator_event_terms}}; a real study codes with MedDRA, and names the
+version the events were coded with.
+
 ## Table S2. The adjusted model
 
 The model as it was fitted: the outcome, and each variable with the kind it was declared and

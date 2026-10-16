@@ -454,6 +454,23 @@ VARIABLE_KINDS = ("binary", "categorical", "ordinal", "continuous", "count")
 _MOST_LEVELS = 50
 
 
+def _meddra_release(path: Path) -> str:
+    """The MedDRA version `meddra_release.asc` states: the first `$`-separated field of its
+    first line that is not blank, "26.1" in "26.1$English$...". A file that does not open
+    with a version is refused rather than read as one."""
+    try:
+        text = path.read_bytes().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = path.read_bytes().decode("latin-1")
+    line = next((line for line in text.splitlines() if line.strip()), "")
+    version = line.split("$", 1)[0].strip()
+    if not re.fullmatch(r"\d+(?:\.\d+)?", version):
+        raise ValueError(
+            f"{path.name}: its first line, {line[:40]!r}, does not open with a MedDRA version"
+        )
+    return version
+
+
 def _modules_of(name: str) -> set[str]:
     """The top-level modules an installed distribution provides.
 
@@ -1213,6 +1230,57 @@ class Emitter:
         key = "software." + re.sub(r"[^a-z0-9_]", "_", name.lower())
         self.value(key, version, label=True)
         self._values[key]["role"] = "software"
+        return version
+
+    def dictionary(
+        self, name: str, release: str | None = None, *, release_file: str | Path | None = None
+    ) -> str:
+        """Record a coding dictionary the analysis coded with, and its release.
+
+            em.dictionary("MedDRA", release_file="data/MedAscii/meddra_release.asc")
+            em.dictionary("WHODrug", "Global B3 March 2025", release_file="data/whodrug.txt")
+            em.dictionary("ICD-10", "2019")
+
+        Writes `dictionary.meddra`, which the Methods quote as
+        `{{results.dictionary.meddra}}`, so the release they name is the one the events were
+        coded with. A file named is the dictionary's own, as the analysis has it: it is
+        digested as an input, so a new release is a change G1 sees. MedDRA's ASCII release
+        carries its version in `meddra_release.asc`, the first of the `$`-separated fields of
+        its first line, and it is read from there; for any other dictionary the release is
+        given, and given with that file too it has to agree with it.
+        """
+        if not re.search(r"[A-Za-z]", name):
+            raise ValueError(f"dictionary {name!r}: a dictionary is named by its name")
+        if release is not None and not isinstance(release, str):
+            # A number has no digits of its own: 27.0 is "27" in R and "27.0" here.
+            raise ValueError(
+                f"dictionary {name!r}: give the release as text, as the dictionary writes it "
+                f"(\"27.0\", not 27.0)"
+            )
+        read = None
+        if release_file is not None:
+            path = Path(release_file)
+            if not path.is_absolute() and self.root is not None:
+                path = self.root / path
+            if not path.is_file():
+                raise FileNotFoundError(f"dictionary {name!r}: no file {path}")
+            if path.name.lower() == "meddra_release.asc":
+                read = _meddra_release(path)
+            self.add_input(release_file)
+        given = None if release is None else " ".join(str(release).split())
+        if given is not None and read is not None and given != read:
+            raise ValueError(
+                f"dictionary {name!r}: release {given!r} was given, and {path.name} says "
+                f"{read!r}"
+            )
+        version = read or given
+        if not version:
+            raise ValueError(
+                f"dictionary {name!r}: give its release, or the file that states it"
+            )
+        key = "dictionary." + re.sub(r"[^a-z0-9_]", "_", name.lower())
+        self.value(key, version, label=True)
+        self._values[key]["role"] = "dictionary"
         return version
 
     def variable(

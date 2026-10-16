@@ -365,6 +365,16 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+#: Quotations as a sentence writes them, with the citation that says whose words they are.
+_OPEN, _CLOSE = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
+QUOTED = (
+    _OPEN + "the risk was acceptable in all but the frailest" + _CLOSE + " [@agency2019]",
+    '"four words stand in here" [@a]',
+    _OPEN + "It was low. It was acceptable." + _CLOSE + " [@b; @c]",
+    '"so-called" [@d]',
+)
+
+
 def bindings() -> st.SearchStrategy[str]:
     """A manuscript with a binding where a line begins: after a line end, of Windows or
     not, and in some texts as the first thing in the file.
@@ -935,6 +945,15 @@ NOTATED = (
     "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g", "(CI 95%-0.3 to 0.4)",
 )  # fmt: skip
 
+#: A coding dictionary's release typed beside its name and elsewhere, and its name inside a
+#: longer word: what G2 finds typed where it should be bound.
+RELEASED = (
+    "MedDRA version 26.1", "MedDRA 26.1", "26.1", "WHODrug Global B3 March 2025",
+    "Global B3 March 2025", "ICD-10 2019", "ICD 10 version 2019", "in 2019", "micd_10ed 2019",
+    "{{results.dictionary.meddra}}", "MedDRA" + chr(10) + "26.1",
+)  # fmt: skip
+
+
 #: A test statistic and its P in each of the ways a results sentence writes them, right and
 #: wrong, and what a sentence says of a test that is not the textbook one: what the reading
 #: of reported tests finds and judges.
@@ -945,6 +964,19 @@ REPORTED = (
     "\N{GREEK SMALL LETTER CHI}^2^(3) = 0.5, *P* \\< 0.001", "chi-square(2) = 9.1, p = .011",
     "z = 4.10, P = 4.1e-5", "Z = 4.10, P = 4.1 x 10^-5^", "z = 1.2, p\n= .23", "one-sided",
     "Welch's", "after Bonferroni adjustment", "{{results.t}}", "p = {{results.p}}", "t(",
+)  # fmt: skip
+
+#: An estimate and its interval in each of the ways a results sentence writes them, right
+#: and wrong, with a P and without, and what a sentence says of an interval or a P that is
+#: not the plain one: what the reading of reported intervals finds and judges.
+ESTIMATES = (
+    "OR 2.6 (95% CI 2.1 to 3.2)", "OR 2.6 (95% CI 1.2-3.2)", "HR 0.80; 95% CI: 0.70, 0.91",
+    "the odds ratio was 1.9 (95% CI 1.2\N{EN DASH}3.0), P = 0.40", "aOR = 1.5 [CI 95% 1.1, 2.0]",
+    "MD \N{MINUS SIGN}0.4 (95% CI \N{MINUS SIGN}0.9 to 0.1), P = 0.01",
+    "mean difference 0.4 (95% CI -0.9--0.1)", "RR 1.50 (90% CI 1.05 to 2.14), P = 0.07",
+    "(95% profile-likelihood CI", "Bonferroni-adjusted P = 0.40", "P = 0.40 for interaction",
+    "and 1.1 (95% CI 0.8 to 1.5)", "hazard ratio\n2.1 (95% CI", "{{results.or}}",
+    "(95% CI {{results.lo}} to {{results.hi}})", "P = {{results.p}}", "CI 3.2 to 2.1",
 )  # fmt: skip
 
 
@@ -1064,6 +1096,7 @@ def _quotation_asked(drawn: tuple[tuple[str, str], str, str]) -> dict[str, str]:
 #: What each reading of `tests/readings.py` is given, by the reading's name.
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
+    "prose quotations": texts(QUOTED),
     "mask": texts(TERMS),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
@@ -1096,7 +1129,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
+    "reported intervals": texts(ESTIMATES),
     "units after": texts(BOUND_UNITS),
     "abbreviations": st.fixed_dictionaries(
         {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}

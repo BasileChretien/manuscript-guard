@@ -253,6 +253,29 @@ def _numbers() -> Reading:
     return numbers
 
 
+#: The coding dictionaries a generated text may type the release of.
+DICTIONARIES = {"meddra": "26.1", "whodrug": "Global B3 March 2025", "icd_10": "2019"}
+
+
+@reading("typed releases")
+def _typed_releases() -> Reading:
+    """Each place G2 finds a declared dictionary's release typed where it should be bound:
+    where it stands and whose release it is."""
+    from manuscript_guard.contracts.values import Value
+    from manuscript_guard.gates.numbers import typed_releases
+
+    declared = [
+        Value(key=f"dictionary.{name}", value=release, display=release, origin="results",
+              label=True, role="dictionary")
+        for name, release in DICTIONARIES.items()
+    ]  # fmt: skip
+
+    def releases(text: str) -> list[list[Any]]:
+        return [[start, end, value.key] for start, end, value in typed_releases(text, declared)]
+
+    return releases
+
+
 #: The intervals whose bounds a generated text quotes: the estimate, the level where the
 #: estimate has a second interval, and the keys of the lower and of the upper bound.
 INTERVALS = (
@@ -392,6 +415,36 @@ def _reported_tests() -> Reading:
     return reported
 
 
+@reading("reported intervals")
+def _reported_intervals() -> Reading:
+    """Each named estimate with a confidence interval after it, as it is printed, and what
+    G8 says of it: how far its arms differ, and whether it and its P disagree."""
+    from manuscript_guard.stats.intervals import (
+        asymmetry,
+        outside_interval,
+        p_against,
+        reported_intervals,
+    )
+    from manuscript_guard.text.masking import mask
+
+    def reported(text: str) -> list[list[Any]]:
+        found = []
+        for interval in reported_intervals(mask(text)):
+            share = asymmetry(interval)
+            against = p_against(interval)
+            found.append(
+                [interval.start, interval.end, interval.kind, interval.name, interval.estimate,
+                 interval.low, interval.high, interval.level,
+                 None if interval.p is None else list(interval.p), interval.quiet,
+                 interval.p_quiet, None if share is None else f"{share:.12g}",
+                 None if against is None else [against.excludes, against.alpha, against.null],
+                 outside_interval(interval)]
+            )  # fmt: skip
+        return found
+
+    return reported
+
+
 @reading("abbreviations")
 def _abbreviations() -> Reading:
     from manuscript_guard.gates.language import _judge, _Known, _shipped
@@ -403,6 +456,18 @@ def _abbreviations() -> Reading:
 
     _file("")
     return abbreviations
+
+
+@reading("prose quotations")
+def _prose_quotations() -> Reading:
+    """Each quotation of four words or more in a sentence that cites, with the paragraph's
+    line and the works cited: what G7 looks for in the stored sources."""
+    from manuscript_guard.gates.quotations import quotations_in
+
+    def quotations(text: str) -> list[list[Any]]:
+        return [[q.line, q.quote, list(q.keys)] for q in quotations_in(text)]
+
+    return quotations
 
 
 @reading("checker sentences")

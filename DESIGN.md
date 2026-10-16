@@ -836,6 +836,18 @@ volume. Two cited entries with the same title of four words or more and no ident
 common are a warning (`reference-title-duplicate`): they may be one work, or a correction
 and the paper it corrects.
 
+## A quotation in the prose is in its source
+
+G7 checks the ledger's quotes against the stored sources. A quotation written into a sentence
+of the manuscript was checked against nothing, and a misremembered one reads as checked. Now
+each quotation of four words or more, in straight or curly double marks, is looked for in the
+stored source of every work cited in the sentences it spans, with the ledger's `contains()`:
+a quotation of two sentences ends in the one that cites. The sentences are cut as the
+co-author's items are. Where it is in none of those sources, G7 warns
+(`quotation-not-in-source`); where none of the cited works has a source that can be read, a
+note says it could not be checked (`quotation-unchecked`). Page numbers are not compared: a
+PDF's page index is not the page printed on it.
+
 ## Only a person can sign an attestation
 
 `attested.yaml` exists to record that **a named human read something the toolkit could not
@@ -1532,6 +1544,19 @@ A threshold is not a measurement, so a float parameter is written as typed (fift
 significant digits, in both languages) unless `digits` or `display` says otherwise: 0.025
 rounded to two places is 0.03, a different test.
 
+**A coding dictionary is declared like a version.** "Events were coded with MedDRA version
+26.1 and drugs with WHODrug Global B3 2025" passed `26.1` as a software version tied to
+nothing, and failed `B3` and `2025` with no declared way to bind them. In a
+pharmacovigilance paper the release of MedDRA decides which preferred terms exist. So
+`em.dictionary("MedDRA", release_file=...)` records `dictionary.meddra` with the role
+`dictionary`, in both emitters, and digests the file it names as an input, so that a new
+release is a change G1 sees. MedDRA's ASCII release states its version in
+`meddra_release.asc`, the first `$`-separated field of its first line, and the emitter reads
+it from there; another dictionary's release is given, and checked against nothing. G2 fails a
+declared release typed where the dictionary is named within a few words before it on its
+line (`typed-dictionary-release`), and only there: "2019" is the release of ICD-10 and the
+year of many other things.
+
 ## A P follows from its statistic
 
 A paper's own results are bound, and their arithmetic is the analysis's. Three kinds of
@@ -1562,6 +1587,43 @@ beyond the standard library, the regularized incomplete beta and gamma functions
 written from their definitions in the NIST Digital Library of Mathematical Functions,
 chapter 8, whose equations `stats/special.py` names, and they are tested against values
 SciPy computed once, outside the package. The two agree to a relative 1e-10.
+
+An estimate printed with its confidence interval is held to it the same way, on the same
+three surfaces (`stats/intervals.py`). An estimate outside its own interval over every value
+the printed digits allow, a bound transposed past it or an estimate from another analysis,
+is `interval-excludes-estimate`, whatever kind of interval it is. And two identities hold
+for a Wald interval:
+
+- **A ratio's interval is symmetric on the log scale.** The arm from the lower bound up to
+  the estimate equals the arm from the estimate up to the upper bound. A bound misprinted,
+  or the crude estimate printed with the adjusted interval, makes them unequal.
+  `ratio-interval-asymmetric` is said where they differ by more than 30% of the
+  half-width at the least, over every value the three numbers' printed digits allow.
+  "ROR 2.6, 95% CI 2.1-3.2" differs by 2.8% as printed and by nothing within its rounding.
+- **The interval excludes the null exactly when P is below one less its level.** The null
+  is 1 for an odds, risk, hazard, rate or reporting ratio and 0 for a difference; a 90%
+  interval goes with 0.10. `p-against-interval` is said where the whole rounding box of a
+  bound is past the null and P is on the wrong side of the level as printed, or the reverse.
+
+The 30% was set against the intervals that are not Wald ones and whose sentence may not say
+so. A profile-likelihood interval (R's `confint()` on a logistic model) and an exact
+conditional one were worked out for 2-by-2 tables, once and outside the package. Their arms
+differ by 2 to 7% with tens of events in each group, 11 to 20% with three to five in the
+smaller, 23 to 25% with two, and 42% with one. So 30% leaves both alone except at one or two
+events, and still finds most misprinted bounds; a crude estimate beside an adjusted
+interval, which differ by less, is found only when they differ by a fair share of the
+half-width.
+
+A sentence that calls its interval profile-likelihood, exact, bootstrap, permutation,
+simulated, Bayesian or credible is read and judged on neither identity. One that calls its
+P one-sided, or adjusted or corrected for multiplicity, is not judged on the second.
+"Adjusted" alone stands nothing down: it is said of estimates far more often than of P
+values, and an adjusted odds ratio's interval is as symmetric as a crude one's. A P is taken
+as the estimate's own only where no other interval stands between them and nothing near it
+says it is a P for interaction, trend or heterogeneity. The words between a name and its
+estimate do not run across another estimate's name: "No difference in mortality, HR 0.83"
+names a hazard ratio, held to 1. Bounds whose signs cannot be read
+for sure are not read: "-0.9--0.1" is an en dash in Markdown or a hyphen and a minus.
 
 ## A model is read from its fit, and each variable says what it is
 
@@ -2403,6 +2465,28 @@ warning, as the rest of this gate is: an author may know the data from a registr
 report. Once the analysis runs, its results say what the data hold, and the question is not
 asked again.
 
+**A panel reads the plan before there are results.** A review panel reads the manuscript,
+which exists once the analysis has run; by then the design is spent, and a reviewer who says
+the comparison cannot answer the question says it too late. A design round is a panel that
+reads `design/plan.md` and the feasibility results at the `design` stage. It is kept apart
+from the manuscript's rounds, in `review/design/` (`panel-<n>.yaml`, and
+`round-<n>/<reviewer>.yaml` for a reading), so it never counts toward `rounds_required`
+and no manuscript round answers it. `manuscript-guard review --record <reviewer> --design
+--round <n> --verdict <verdict>` files a reading with the digest of what it read: the
+plan's bytes and each `feasibility.*` result's value and display. G12 then says a reading of
+a plan that has changed since, or of data counted again, is stale (`design-review-stale`),
+until the same reviewer reads the plan as it stands in a later round, which supersedes it
+(`design-review-superseded`, information; its open majors still bind);
+a reviewer on the panel who has not read (`design-review-missing`); and a major finding not
+answered by a resolution or an override with its reason (`design-major-open`). The last is
+a warning, and a failure at submission only, as the author decided: what an unanswered
+design objection means is the author's to weigh while there is still an analysis to change.
+A reading is sealed as a manuscript reading is (`review --seal <reviewer> --design`), and
+one changed after its seal is said (`design-reading-altered`), failing at submission. A
+project with no design round reads as it did before, counts included. For now a design
+round is read and filed by hand: `review --run` sends the manuscript, not the plan, and a
+reviewer's named readers are not read in a design round.
+
 **The results the plan promised are reported.** G2 says when the analysis emits a value
 that nothing quotes (`unquoted-result`); nothing said when the plan promised a result the
 analysis never emitted. A plan may now hold a section headed "Planned results", not one of
@@ -2464,6 +2548,30 @@ authors file and a merely unfinished one could be told apart.
 The effect is that `manuscript-guard init` followed by a first analysis script now reports
 zero failures at `design` and `analysis`, with the outstanding work listed as not yet due,
 and the same items fail from `drafting` onwards.
+
+## `check` says what it rests on, dimension by dimension
+
+A run with no failure read as "the paper is right", and it says much less. So `check` ends
+with what was checked, grouped by what it is about (`assurance.py`): computational
+reproducibility (G1), numerical provenance (G2, G3, G7, G8), reporting completeness (G4, G5,
+G13), methodological validity (G9, G12, G15), the literature (G7), the review (G10, G11), and
+the language and writing (G6, G14), the last added so that every gate is under one. For each
+it prints three kinds of line, which are the three kinds of evidence the toolkit has:
+`checked`, the gates that ran and what they found, with any that did not run or read
+nothing; `recorded`, what somebody recorded, by whom and when (the last run of `verify`, the
+panel's last round and its readers, the figure reviews, the values attested by a person);
+and `not checked`, in words, what no gate decides, such as whether the design supports the
+conclusion. A dimension with nothing recorded where a record is expected says so: "no review
+of the design", "no run of `verify` in this checkout". There is no score and no percentage,
+since a single number would be read as the verdict this is not, and the exit code is the
+findings' at the project's stage, as before. It is printed text only: `check --json` is
+unchanged.
+
+`verify` now records its last full run in the build folder (`build/verify.json`): when, how
+many values it reproduced of how many, and a digest of the results fragments it re-ran.
+`check` says that run, and says the results have changed since where they have. A run of
+some scripts only (`--only`) is not recorded, since it did not re-run the analysis. The
+folder is not committed, so a fresh checkout says `verify` has not run in it, which is true.
 
 ## An approval is bound to what the author read
 
@@ -5289,6 +5397,11 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
+- **A design round is read by hand, and its overrides are anyone's.** `review --run`
+  does not send the plan to the models yet, a design panel's named readers are not read,
+  and an override of a design-round major needs a reason but no named person's sign-off.
+  Nothing yet asks for a design round before the analysis stage: one that was never held
+  says nothing.
 - **A planned result is held to its key, not to what the paper says of it.** G12 checks
   that a key listed under Planned results is emitted and quoted, not that the sentence
   quoting it reports the result the plan described: a planned "adjusted ratio" listed as
@@ -5351,6 +5464,17 @@ Added by the adversarial review, verified and **not** fixed:
   P moves one way with each. A t or a z is read as two-sided unless its sentence says
   otherwise, so a one-sided test the sentence does not call one is reported. A ledger quote
   and an audited paper are judged at 0.05; only `check` reads `param.alpha`.
+- **An estimate is held to its interval only where a name for it stands before it.** OR,
+  RR, HR, IRR, ROR, PRR and their names in words are ratios; MD, RD, SMD and "difference"
+  are differences. "It was 2.6 (95% CI 2.1 to 3.2)" is not read, and neither is a second
+  interval with no name of its own, "and 1.1 (95% CI 0.8 to 1.5) in women". A ratio's
+  interval that is not a Wald one and does not say so, a profile-likelihood interval with
+  one or two events in a group, is reported as lopsided. An interval and a P from different
+  methods, a Wald interval beside a log-rank or chi-squared P, can fall on either side of
+  the level near it, and are reported unless the sentence calls the test exact or
+  likelihood-based, or the P adjusted for multiplicity. A word that stands an interval or
+  its P down does so wherever it is in the sentence, as for the tests. A P given before its
+  interval, or in a table column of its own, is not read.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did
@@ -5464,6 +5588,17 @@ Added by the adversarial review, verified and **not** fixed:
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
+- **A coding dictionary's release is read from a file only for MedDRA, and found typed only
+  beside its name.** That `meddra_release.asc` opens with the version, as the first of its
+  `$`-separated fields, is taken from published descriptions of the ASCII release; the
+  format document itself comes with a MedDRA licence and was not read. A file that does not
+  open with a version is refused, not guessed at. Every other dictionary's release is what
+  the script says. G2 finds a release typed only where the dictionary's name, as its key
+  writes it, stands within 60 characters before it on the same line: "coded with MedDRA
+  version" wrapped onto the next line, a name written another way ("the Medical Dictionary
+  for Regulatory Activities"), or the release written otherwise than declared ("B3 2025" for
+  "Global B3 March 2025") is not found. `verify` reports a release that differs on a re-run
+  as a difference, not as the environment: the dictionary is data.
 - **G3 checks a number drawn in a figure for set membership, not identity.** A text node in
   an SVG is accepted if it equals *any* results display, not the one that belongs at that
   position — so a forest plot labelled with the right value against the wrong outcome passes.
@@ -7600,6 +7735,11 @@ Closed since, and why each mattered:
   strictly, so `# **Methods**` is not Methods. In a .docx a heading style is what makes a
   heading, so a styled paragraph typed as `References {-}` starts a list, although Word
   prints the braces.
+- **A quotation in the prose is found by its marks.** Single marks, a block quotation with no
+  marks, and a quotation in a language whose marks differ (« », „ “) are not read. A
+  quotation of something that is not the cited work, a questionnaire's item in a sentence
+  that cites the instrument's paper, is looked for in that paper all the same, and warned of.
+  A quotation with emphasis inside it is compared with the emphasis marks in it.
 - **`impact` follows the edges the gates record, as loosely as they record them.** A figure
   script counts as reading the results when G3's heuristic says so, and then depends on
   every results file, not on the keys it reads. A sentence is named by its line, not its
@@ -7617,6 +7757,11 @@ Closed since, and why each mattered:
   further into an item: an indented one, one under a later item's own underline, or
   `- # Results` on the item's own line. The same goes for a definition list. The old scan
   saw none of these either.
+- **What `check` says was recorded is what the records say.** A panel's reader is named as
+  the record names it, a model or a person, and a figure review the same; nothing checks who
+  they are. The design review is said not recorded until a panel can read the plan before
+  there are results. `verify`'s record is the build folder's, so it says what was run in this
+  checkout and nothing of anyone else's.
 - **A sign-off says who ran `sign`, not who judged the finding.** As with an approval, a
   co-author who runs it for the statistician, or an agent the person lets through, writes a
   sign-off nobody gave. A statistician who is not an author is matched by the name, e-mail

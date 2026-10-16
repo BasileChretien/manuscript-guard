@@ -1064,6 +1064,58 @@ def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
     assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
 
 
+# --------------------------------------------- a quotation in the prose and its source
+
+
+@pytest.mark.parametrize(
+    ("sentence", "said"),
+    [
+        pytest.param(
+            "The cohort found that \u201cincidence rose with age and did not differ meaningfully "
+            "by sex\u201d [@fictionalHepaticCohort2021].", [], id="in its source",
+        ),
+        pytest.param(
+            "\u201cThe crude incidence of drug-induced hepatic injury was 14 per 100 000 "
+            "person-years. Incidence rose with age\u201d [@fictionalHepaticCohort2021].", [],
+            id="two sentences of its source",
+        ),
+        pytest.param(
+            "The cohort found that \u201cincidence fell with age and differed by sex\u201d "
+            "[@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+            id="misquoted",
+        ),
+        pytest.param(
+            'The agency judged it "acceptable in all but the frailest patients" '
+            "[@fictionalAgencyReport].", [("quotation-unchecked", "info")],
+            id="a work with no stored source",
+        ),
+        pytest.param(
+            'The cohort called it "meaningfully by sex" [@fictionalHepaticCohort2021].', [],
+            id="too short to be looked for",
+        ),
+        pytest.param(
+            'Some called it "acceptable in all but the frailest". Others disagreed '
+            "[@fictionalHepaticCohort2021].", [], id="cited in the next sentence",
+        ),
+    ],
+)  # fmt: skip
+def test_a_quotation_in_the_prose_is_in_the_source_it_cites(
+    project: Path, sentence: str, said: list
+) -> None:
+    """A quotation of four words or more in a sentence that cites a work is looked for in
+    that work's stored source, as the ledger's quotes are; one in a work with no stored
+    source is a note."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion\n", "\n" + sentence + "\n\n# Discussion\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    project_, _ = load_project(project)
+    found = check_prose_quotations(project_).findings
+    assert [(f.code, f.severity) for f in found] == said
+
+
 # ------------------------------------------------------------- what a change makes stale
 
 
@@ -3251,10 +3303,117 @@ def test_an_audited_paper_s_p_that_does_not_follow_is_listed_apart(tmp_path: Pat
         (1, "t = 2.45, df = 23, p = .40")
     ]
     shown = render(report, measure_discrimination(report.backing_values))
-    assert "P VALUES THAT DO NOT FOLLOW" in shown
+    assert "DO NOT FIT THE ONES BESIDE THEM" in shown
     assert "on the other side of 0.05" in shown
     # Every number is in the outputs, and --strict counts only those.
     assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == 0
+
+
+# ------------------------------------------------- an estimate, its interval and its P
+# A ratio's interval is symmetric on the log scale, and excludes its null exactly when the P
+# beside it is below one less its level. Numbers typed, quoted, or bound from two keys can
+# break either, and G2 sees each number pass.
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        ("The odds ratio was 2.6 (95% CI 2.1 to 3.2), P = 0.001.", []),
+        ("The odds ratio was 2.6 (95% CI 1.2 to 3.2).", ["ratio-interval-asymmetric"]),
+        ("The odds ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40.", ["p-against-interval"]),
+        ("The mean difference was 0.4 (95% CI -0.2 to 1.0), P = 0.001.",
+         ["p-against-interval"]),
+        ("The adjusted odds ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40.",
+         ["p-against-interval"]),
+        ("The odds ratio was 2.6 (95% profile-likelihood CI 1.2 to 3.2).", []),
+        ("The odds ratio was 1.9 (95% CI 1.2 to 3.0), Bonferroni-adjusted P = 0.40.", []),
+        ("The odds ratio was 1.9 (95% CI 1.2 to 3.0) in men and 1.1 (95% CI 0.8 to 1.5) in "
+         "women, P = 0.40 for interaction.", []),
+        ("The risk ratio was 1.50 (90% CI 1.05 to 2.14), P = 0.07.", []),
+        ("<!-- The odds ratio was 2.6 (95% CI 1.2 to 3.2). -->", []),
+        # Round 1 of #300: a bound transposed past its estimate, and a ratio named after
+        # the word "difference".
+        ("The odds ratio was 2.6 (95% CI 2.1 to 2.3).", ["interval-excludes-estimate"]),
+        ("The mean difference was 1.4 (95% CI 0.2 to 0.9).", ["interval-excludes-estimate"]),
+        ("No difference in mortality, HR 0.83 (95% CI 0.65 to 1.05), P = 0.13.", []),
+    ],
+)  # fmt: skip
+def test_an_interval_that_does_not_fit_its_estimate_or_its_p_is_found(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    assert _recomputed_codes(project, sentence) == found
+
+
+def test_an_estimate_bound_from_one_analysis_and_its_interval_from_another_is_found(
+    project: Path,
+) -> None:
+    """The crude estimate beside the adjusted interval, and the crude P beside the adjusted
+    estimate: each number bound, each passed by G2, and no gate saw that they disagree."""
+    _emitted(
+        project, crude__or="2.80", crude__p="0.080", adjusted__or="2.23",
+        adjusted__low="1.60", adjusted__high="3.10",
+    )  # fmt: skip
+    interval = "(95% CI {{results.adjusted.low}} to {{results.adjusted.high}})"
+    crude = "The odds ratio was {{results.crude.or}} " + interval + "."
+    assert _recomputed_codes(project, crude) == ["ratio-interval-asymmetric"]
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("{{results.crude.or}}", "{{results.adjusted.or}}"), "utf-8")
+    adjusted = "The adjusted odds ratio was {{results.adjusted.or}} " + interval
+    sentence = adjusted + ", P = {{results.crude.p}}."
+    assert _recomputed_codes(project, sentence) == ["p-against-interval"]
+    assert _recomputed(project).counts["printed_intervals_read"] == 5
+
+
+@pytest.mark.parametrize(
+    ("interval", "code"),
+    [
+        ("rate ratio 1.9, 95% CI 1.2-3.0, P = 0.40", "quote-p-against-interval"),
+        ("rate ratio 2.6, 95% CI 1.2-3.2", "quote-interval-asymmetric"),
+        # Round 2 of #300: each code G7 says of a quote has a case.
+        ("rate ratio 2.6, 95% CI 2.1-2.3", "quote-interval-excludes-estimate"),
+    ],
+)
+def test_a_quote_whose_interval_does_not_fit_its_p_is_found(
+    project: Path, interval: str, code: str
+) -> None:
+    """The source's own numbers disagree, so the value taken from them may be the wrong
+    one."""
+    said = (
+        "The crude incidence of drug-induced hepatic injury was 14 per 100 000 "
+        f"person-years ({interval})."
+    )
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text(source.read_text(encoding="utf-8") + "\n" + said + "\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["quote"] = said
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = _literature_report(project)
+    assert [f.code for f in report.findings if f.code.startswith("quote-")] == [code]
+    assert report.counts["literature_verified"] == 2
+
+
+def test_an_audited_paper_s_interval_that_does_not_fit_is_listed_apart(tmp_path: Path) -> None:
+    """`audit` reads a paper that was never bound, and needs no outputs for this."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "The odds ratio was 2.6 (95% CI 1.2 to 3.2).\n\n"
+        "The hazard ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40.\n\n"
+        "The risk ratio was 2.6 (95% CI 2.1 to 2.3).\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [])
+    assert [(d.line, d.context) for d in report.disagreements] == [
+        (1, "odds ratio was 2.6 (95% CI 1.2 to 3.2"),
+        (3, "hazard ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40"),
+        (5, "risk ratio was 2.6 (95% CI 2.1 to 2.3"),
+    ]
+    assert "outside its own interval" in report.disagreements[2].message
+    assert "arms differ" in report.disagreements[0].message
+    assert "excludes 1, and P = 0.40 is above 0.05" in report.disagreements[1].message
 
 
 @pytest.mark.parametrize(
@@ -10407,18 +10566,18 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    seven read revisions with the earlier rounds in front of them, so the seventh supersedes
-    the six before it and each says it was not blinded."""
+    eight read revisions with the earlier rounds in front of them, so the eighth supersedes
+    the seven before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok, report.render(project)
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
-                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2))
+                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 5, report.render(project)
-    assert report.counts["review_rounds_complete"] == 7
+    assert said == superseded + [("round-not-blinded", "review")] * 6, report.render(project)
+    assert report.counts["review_rounds_complete"] == 8
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -11478,6 +11637,140 @@ def test_a_plan_with_no_analysis_yet_is_not_asked_for_feasibility(project: Path)
     assert _feasibility_said(project, "design") == []
 
 
+# ------------------------------------------------- a panel reads the plan before the results
+
+_DESIGN_REMIT = "Whether the design supports the inference the plan intends: confounding, " \
+    "selection, immortal time, missing data, multiplicity"  # fmt: skip
+
+
+def _design_said(root: Path, submission: bool = False) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    project, _ = load_project(root)
+    return [(f.code, f.severity) for f in check_design_rounds(project, submission=submission)
+            .findings]  # fmt: skip
+
+
+def _design_recorded(root: Path, findings: str = "") -> Path:
+    from manuscript_guard.cli import main
+
+    assert main(["review", str(root), "--design", "--record", "methodologist", "--verdict",
+                 "major-revision", "--remit", _DESIGN_REMIT]) == 0  # fmt: skip
+    record = root / "review" / "design" / "round-1" / "methodologist.yaml"
+    if findings:
+        text = record.read_text(encoding="utf-8").replace("findings: []\n", findings)
+        record.write_text(text, encoding="utf-8")
+    return record
+
+
+_DESIGN_MAJOR = (
+    "findings:\n- id: d1\n  severity: major\n  finding: The comparator drugs share the "
+    "indication only in part, so the ratio mixes the drug with its indication.\n"
+)
+
+
+def test_a_design_round_reads_the_plan_and_its_majors_are_answered(project: Path) -> None:
+    """Item 46: no panel read the plan before there were results, and a design that could
+    not answer its question was said too late."""
+    from manuscript_guard.cli import main
+
+    assert _design_said(project) == []
+    record = _design_recorded(project, _DESIGN_MAJOR)
+    assert _design_said(project) == [("design-reading-unsealed", "warn"),
+                                     ("design-major-open", "warn")]  # fmt: skip
+    assert ("design-major-open", "fail") in _design_said(project, submission=True)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    assert _design_said(project) == [("design-major-open", "warn")]
+    text = record.read_text(encoding="utf-8")
+    record.write_text(text.replace("  finding: The comparator", "  resolution: The plan now "
+                                   "restricts the comparators to the same indication.\n"
+                                   "  finding: The comparator"), encoding="utf-8")  # fmt: skip
+    assert _design_said(project) == []
+
+
+def test_a_design_round_of_a_plan_changed_since_is_stale(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert _design_said(project) == [("design-review-stale", "warn")]
+    # Round 1 of #308: a later round that read the plan as it stands left the first stale
+    # for good. It supersedes it, as a manuscript round does.
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--round", "2", "--verdict", "pass"]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info")]
+
+
+def test_a_later_design_round_supersedes_only_the_readers_who_read_again(project: Path) -> None:
+    """Round 2 of #308: a later round of one reviewer superseded every stale reading of the
+    round before it, a reviewer who never read the plan as it stands included."""
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    remit = "Whether the analysis can estimate what is asked"
+    assert main(["review", str(project), "--design", "--record", "statistician", "--verdict",
+                 "pass", "--remit", remit]) == 0  # fmt: skip
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--round", "2", "--verdict", "pass"]) == 0  # fmt: skip
+    said = _design_said(project)
+    assert sorted(said) == [("design-review-stale", "warn"), ("design-review-superseded", "info")]
+
+
+def test_a_superseded_design_round_s_open_major_still_binds(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    _design_recorded(project, _DESIGN_MAJOR)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--round", "2", "--verdict", "pass"]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info"),
+                                     ("design-major-open", "warn")]  # fmt: skip
+
+
+def test_a_design_round_is_stale_when_the_data_are_counted_again(project: Path) -> None:
+    _feasibility_said(project, "design", feasibility__n_reports=4000)
+    _design_recorded(project)
+    assert _design_said(project) == []
+    _feasibility_said(project, "design", feasibility__n_reports=3999)
+    assert _design_said(project) == [("design-review-stale", "warn")]
+
+
+def test_a_design_reading_changed_after_its_seal_is_said(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    record = _design_recorded(project, _DESIGN_MAJOR)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    text = record.read_text(encoding="utf-8")
+    record.write_text(text.replace("severity: major", "severity: minor"), encoding="utf-8")
+    assert _design_said(project) == [("design-reading-altered", "warn")]
+    assert _design_said(project, submission=True) == [("design-reading-altered", "fail")]
+
+
+def test_a_design_panel_reviewer_who_has_not_read_is_said(project: Path) -> None:
+    _design_recorded(project)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"].append({"id": "clinician", "remit": "Whether the question matters"})
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    assert _design_said(project) == [("design-review-missing", "warn")]
+
+
+def test_a_design_round_is_not_a_round_of_the_manuscript(project: Path) -> None:
+    """Kept apart: a design round never counts toward the manuscript's rounds, and needs a
+    remit of its own before a folder is made for it."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.gates import check_review
+
+    before = check_review(load_project(project)[0]).counts
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--verdict", "pass"]) == 2  # fmt: skip
+    assert not (project / "review" / "design").exists()
+    _design_recorded(project)
+    assert check_review(load_project(project)[0]).counts == before
+
+
 # --------------------------------------------------------------------------------------
 # TeX outside dollar signs in what the build prints of paper.yaml
 # --------------------------------------------------------------------------------------
@@ -12366,6 +12659,44 @@ def test_a_typed_software_version_fails(project: Path) -> None:
     version = namespace["results.software.python"].display
     _replace_once(main_md(project), "{{results.software.python}}", version)
     assert "typed-software-version" in codes(gate_report(project))
+
+
+def _coded_with(root: Path, **releases: str) -> None:
+    """Coding dictionaries in the example's results, as `em.dictionary` declares them."""
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for name, release in releases.items():
+        document["values"][f"dictionary.{name}"] = {
+            "value": release, "display": release, "label": True, "role": "dictionary",
+        }  # fmt: skip
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "typed"),
+    [
+        ("Events were coded with MedDRA version 26.1.", ["'26.1'"]),
+        ("Drugs were coded with WHODrug Global B3 March 2025.", ["'Global B3 March 2025'"]),
+        ("Diagnoses were coded with ICD-10 2019 codes.", ["'2019'"]),
+        ("Events were coded with MedDRA version {{results.dictionary.meddra}}.", []),
+        ("Diagnoses were coded with ICD-10 {{results.dictionary.icd_10}} codes.", []),
+        # The release alone is not the dictionary's: the name has to stand before it.
+        ("Reports received in 2019 were read again.", []),
+        # Not as part of a longer word: "matched" holds "atc".
+        ("Reports were matched by hand in 2025 to each other.", []),
+    ],
+)
+def test_a_typed_dictionary_release_fails_and_only_beside_its_name(
+    project: Path, sentence: str, typed: list[str]
+) -> None:
+    _coded_with(project, meddra="26.1", whodrug="Global B3 March 2025", icd_10="2019",
+                atc="2025")  # fmt: skip
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\n" + sentence + "\n", encoding="utf-8")
+    found = [f for f in gate_report(project).failures if f.code == "typed-dictionary-release"]
+    assert [f.message.split(" is ")[0] for f in found] == typed
+    assert all("{{results.dictionary." in f.hint for f in found)
 
 
 def test_a_parameter_declared_and_never_read_fails(project: Path) -> None:

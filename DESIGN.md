@@ -2335,7 +2335,9 @@ from the manuscript's rounds, in `review/design/` (`panel-<n>.yaml`, and
 and no manuscript round answers it. `manuscript-guard review --record <reviewer> --design
 --round <n> --verdict <verdict>` files a reading with the digest of what it read: the
 plan's bytes and each `feasibility.*` result's value and display. G12 then says a reading of
-a plan that has changed since, or of data counted again, is stale (`design-review-stale`);
+a plan that has changed since, or of data counted again, is stale (`design-review-stale`),
+until the same reviewer reads the plan as it stands in a later round, which supersedes it
+(`design-review-superseded`, information; its open majors still bind);
 a reviewer on the panel who has not read (`design-review-missing`); and a major finding not
 answered by a resolution or an override with its reason (`design-major-open`). The last is
 a warning, and a failure at submission only, as the author decided: what an unanswered

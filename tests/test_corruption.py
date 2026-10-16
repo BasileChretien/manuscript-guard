@@ -10832,6 +10832,22 @@ def test_a_design_round_of_a_plan_changed_since_is_stale(project: Path) -> None:
     assert _design_said(project) == [("design-review-superseded", "info")]
 
 
+def test_a_later_design_round_supersedes_only_the_readers_who_read_again(project: Path) -> None:
+    """Round 2 of #308: a later round of one reviewer superseded every stale reading of the
+    round before it, a reviewer who never read the plan as it stands included."""
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    remit = "Whether the analysis can estimate what is asked"
+    assert main(["review", str(project), "--design", "--record", "statistician", "--verdict",
+                 "pass", "--remit", remit]) == 0  # fmt: skip
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--round", "2", "--verdict", "pass"]) == 0  # fmt: skip
+    said = _design_said(project)
+    assert sorted(said) == [("design-review-stale", "warn"), ("design-review-superseded", "info")]
+
+
 def test_a_superseded_design_round_s_open_major_still_binds(project: Path) -> None:
     from manuscript_guard.cli import main
 

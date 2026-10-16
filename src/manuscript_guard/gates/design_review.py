@@ -96,7 +96,8 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
     current = plan_digest(project)
     report = Report()
     open_major = 0
-    rounds: list[tuple[int, Report, bool]] = []
+    readings: list[tuple[int, str, Report, bool]] = []
+    current_rounds = 0
     for number, path in found:
         try:
             panel = read_structured(path)
@@ -107,29 +108,34 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
         report = report.merge(checked)
         if not checked.ok or not isinstance(panel, dict):
             continue
-        said, fresh = Report(), True
+        fresh_round = True
         for reviewer in panel["reviewers"]:
-            read, read_current, opened = _reading(project, number, reviewer, current, severity)
-            said = said.merge(read)
-            fresh = fresh and read_current
+            read, fresh, opened = _reading(project, number, reviewer, current, severity)
+            readings.append((number, reviewer["id"], read, fresh))
+            fresh_round = fresh_round and fresh
             open_major += opened
-        rounds.append((number, said, fresh))
-    # The latest round that read the plan as it stands supersedes every earlier one that read
-    # another (round 1 of #308: the further round the stale reading's hint asks for left it
-    # stale for good). Their open majors still bind: a later reading does not answer them.
-    latest = max((number for number, _said, fresh in rounds if fresh), default=0)
-    for number, said, fresh in rounds:
-        if not fresh and number < latest:
-            said = Report(tuple(
+        current_rounds += int(fresh_round)
+    # A stale reading is superseded by a later reading of the plan as it stands by the same
+    # reviewer: rounds 1 and 2 of #308, the further round the stale hint asks for left it
+    # stale for good, and then a later round of one reviewer silenced the others' too. Its
+    # open majors still bind: a later reading does not answer them.
+    read_again: dict[str, int] = {}
+    for number, name, _read, fresh in readings:
+        if fresh:
+            read_again[name] = max(read_again.get(name, 0), number)
+    for number, name, read, fresh in readings:
+        later = read_again.get(name, 0)
+        if not fresh and later > number:
+            read = Report(tuple(
                 replace(f, code="design-review-superseded", severity=INFO,
-                        message=f"{f.message} [superseded by design round {latest}]",
-                        hint=f"design round {latest} read the plan as it stands")
+                        message=f"{f.message} [superseded by design round {later}]",
+                        hint=f"{name} read the plan as it stands in design round {later}")
                 if f.code == "design-review-stale" else f
-                for f in said.findings
+                for f in read.findings
             ))  # fmt: skip
-        report = report.merge(said)
+        report = report.merge(read)
     return report.with_counts(
-        design_rounds=len(found), design_rounds_current=sum(fresh for *_r, fresh in rounds),
+        design_rounds=len(found), design_rounds_current=current_rounds,
         design_open_major=open_major,
     )  # fmt: skip
 

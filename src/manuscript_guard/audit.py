@@ -34,6 +34,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.stats.reported import described, judge, reported_tests
 from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, section_breaks
 from manuscript_guard.text.comments import unclear_comment_lines
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
@@ -92,6 +93,16 @@ class Candidate:
 
 
 @dataclass
+class Disagreement:
+    """A test statistic whose P, as the paper prints it, does not follow from it."""
+
+    source: Path
+    line: int
+    message: str
+    context: str
+
+
+@dataclass
 class AuditReport:
     papers: tuple[Path, ...] = ()
     backing_files: tuple[Path, ...] = ()
@@ -108,6 +119,9 @@ class AuditReport:
     #: apart from `unmatched`, where volumes and pages would bury the findings, but listed:
     #: four review rounds each found a caption some shape accepted.
     reference_like: list[Candidate] = field(default_factory=list)
+    #: Each test whose P does not follow from its statistic. No backing set is needed for
+    #: these, and they are listed apart: --strict does not count them.
+    disagreements: list[Disagreement] = field(default_factory=list)
 
     @property
     def examined(self) -> int:
@@ -728,6 +742,7 @@ def audit(
     )
 
     for path, text, by_shape, lines_are_blocks in sources:
+        report.disagreements += _disagreements(path, text)
         scan = classifier.scan(text, lines_are_blocks=lines_are_blocks)
         source_scan = None
         intervals = _intervals(text)
@@ -772,6 +787,22 @@ def audit(
                 report.unmatched.append(candidate)
 
     return report
+
+
+def _disagreements(path: Path, text: str) -> list[Disagreement]:
+    """The tests in a paper whose P does not follow from the statistic beside it."""
+    found = []
+    hidden = mask(text)
+    for test in reported_tests(hidden):
+        verdict = judge(test)
+        if verdict is None or not verdict.inconsistent:
+            continue
+        context = " ".join(hidden[test.start : test.end].replace("\x00", " ").split())
+        found.append(
+            Disagreement(path, hidden.count("\n", 0, test.start) + 1,
+                         described(test, verdict), context)  # fmt: skip
+        )
+    return found
 
 
 def _ranges(numbers: list[int]) -> str:
@@ -887,6 +918,21 @@ def render(report: AuditReport, discrimination: Discrimination, root: Path | Non
                 lines.append(f"    line {number}: {', '.join(numbers[number])}")
             if len(ordered) > 40:
                 lines.append(f"    (+{len(ordered) - 40} more lines: {_ranges(ordered[40:])})")
+
+    if report.disagreements:
+        lines.append("")
+        lines.append(
+            "P VALUES THAT DO NOT FOLLOW FROM THE STATISTIC BESIDE THEM, t and z read as "
+            "two-sided (not counted by --strict):"
+        )
+        by_paper: dict[Path, list[Disagreement]] = {}
+        for item in report.disagreements:
+            by_paper.setdefault(item.source, []).append(item)
+        for source, items in by_paper.items():
+            lines.append(f"  {show(source)}")
+            for item in items:
+                lines.append(f"    line {item.line}: {item.message}")
+                lines.append(f"      {item.context}")
 
     lines.append("")
     lines.append("What a match is worth here:")

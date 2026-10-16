@@ -55,6 +55,10 @@ conventions: []
 
 # Tokens containing digits that are names, not claims.
 terms: []
+
+# Tables and figures the journal gets as files of their own, cited in the text and not
+# placed in it (a flow chart drawn by hand): counted with those placed by {{{{figure.<key>}}}}.
+# displays: {{figures_as_files: 1}}
 """
 
 AUTHORS = """\

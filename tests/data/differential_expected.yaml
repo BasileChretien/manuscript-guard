@@ -39,3 +39,8 @@ expected:
     why: >-
       the paper.yaml that init writes has five more lines, a commented study_type, so a
       setting typed below them that cannot be parsed is reported five lines lower
+  - reading: numbers
+    why: >-
+      a step, a panel or a box takes a number up to 20 and an item up to 99, so a count
+      after one of them is unbound; a list after a plural pointer, "Tables 1 and 2", is read
+      whole

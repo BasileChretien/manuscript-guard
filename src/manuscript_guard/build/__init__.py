@@ -9,6 +9,7 @@ from manuscript_guard.build.assemble import Assembled, assemble, find_figure, re
 from manuscript_guard.build.document import (
     LIVE,
     OFFLINE,
+    PLAIN,
     BuildError,
     BuildResult,
     MisreadError,
@@ -29,6 +30,7 @@ __all__ = [
     "FIGURE_CAPTION",
     "LIVE",
     "OFFLINE",
+    "PLAIN",
     "Assembled",
     "BuildError",
     "BuildResult",

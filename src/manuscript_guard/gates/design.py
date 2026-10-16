@@ -29,6 +29,7 @@ from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured
 from manuscript_guard.contracts.project import Project
+from manuscript_guard.contracts.results import Results
 from manuscript_guard.emit import FROZEN_PLAN, source_digest_matches
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.methods import analysis_digests
@@ -52,6 +53,9 @@ REQUIRED = (
         "what changed after the plan was agreed, or that nothing did",
     ),
 )
+
+#: What every key a feasibility script emits opens with: `feasibility.n_reports`.
+FEASIBILITY = "feasibility."
 
 # A section that exists but says nothing useful.
 _EMPTY = re.compile(r"^\s*(?:tbd|todo|n/?a|-+|\.+|see below)?\s*$", re.IGNORECASE)
@@ -221,7 +225,13 @@ def _frozen(project: Project, path: Path, text: str) -> Report:
     )
 
 
-def check_design(project: Project) -> Report:
+def check_design(
+    project: Project, results: Results | None = None, stage: str | None = None
+) -> Report:
+    """The plan's sections, and, while it is being written, whether the data were looked at.
+
+    `results` and `stage` are what `check` has; called without them, the feasibility
+    results are not asked for."""
     path = plan_path(project)
     analysis = analysis_digests(project)
 
@@ -248,6 +258,7 @@ def check_design(project: Project) -> Report:
     report = Report((unreadable,)) if unreadable else Report()
     report = report.merge(_frozen(project, path, text))
     covered = 0
+    said: set[str] = set()
 
     required = required_for(project.study_type)
     for name, pattern, purpose in required:
@@ -278,6 +289,7 @@ def check_design(project: Project) -> Report:
             )
             continue
         covered += 1
+        said.add(name)
 
     if covered == len(required):
         report = report.with_findings(
@@ -290,4 +302,32 @@ def check_design(project: Project) -> Report:
             )
         )
 
+    if "analysis" in said and _feasibility_unknown(results, stage):
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="feasibility-not-run",
+                severity=WARN,
+                message="the plan sets out an analysis, and no result says what the data can "
+                f"answer: nothing is emitted under {FEASIBILITY}",
+                path=path,
+                hint="write a feasibility script, analysis/00_feasibility.py or .R, that emits "
+                "the cohort at each selection step, the outcome's events, each planned "
+                "variable's missing values, the date range and the duplicates found, as "
+                f"{FEASIBILITY}<name>; the analysis-plan skill has the outline",
+            )
+        )
+
     return report.with_counts(design_sections=covered, design_expected=len(required))
+
+
+def _feasibility_unknown(results: Results | None, stage: str | None) -> bool:
+    """While the plan is being written, whether no result says what the data can answer.
+
+    Asked at the design stage only: once the analysis has run, its own results say it.
+    """
+    from manuscript_guard.policy import DESIGN
+
+    if results is None or stage != DESIGN:
+        return False
+    return not any(key.startswith(FEASIBILITY) for key in results.values)

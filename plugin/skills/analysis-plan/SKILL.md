@@ -1,6 +1,6 @@
 ---
 name: analysis-plan
-description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty or plan-changed-after-results, or when the analysis is about to do something the plan did not say.
+description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run or plan-changed-after-results, or when the analysis is about to do something the plan did not say.
 ---
 
 # Writing down what you meant to do, before you do it
@@ -72,6 +72,25 @@ said they would do":
 
 Numbers in the plan are not checked. G2 reads only `manuscript/`, and the plan does not go
 in the submission pack.
+
+## What the data can answer
+
+Before the analysis section is settled, count what the data hold, with a script of the
+project's own and not by reading the data yourself: `analysis/00_feasibility.py` or `.R`,
+emitting through the emitter under `feasibility.`:
+
+- the size of the cohort after each selection step;
+- the outcome's events, or its prevalence;
+- the missing values of each variable the analysis plans to use;
+- the date range the data cover;
+- the duplicates found, and how they were found;
+- whatever else the design needs counted before it is fixed.
+
+Write these into the plan as bindings, "about {{results.feasibility.n_reports}} reports":
+nothing renders the plan, but the binding names the result, and G1 holds that result to the
+script and the data that made it. A count too small to publish is small in the plan too.
+At the `design` stage, G12 warns (`feasibility-not-run`) where the plan sets out an analysis
+and nothing is emitted under `feasibility.`.
 
 ## Dating it
 

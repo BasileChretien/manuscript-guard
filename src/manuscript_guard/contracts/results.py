@@ -48,6 +48,9 @@ class Fragment:
     # because fragments written before the field existed do not carry it; G1 falls back to
     # comparing modification times for those, which is what it always did.
     generated_by_sha256: str | None = None
+    # The lockfiles at the project root when the fragment was written, each with its
+    # digest. None for a fragment written before the emitters recorded them.
+    environment: tuple[dict, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -177,6 +180,9 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 vcs=prov.get("vcs", {}),
                 session=prov.get("session", {}),
                 generated_by_sha256=prov.get("generated_by_sha256"),
+                environment=(
+                    tuple(prov["environment"]) if "environment" in prov else None
+                ),
             )
         )
         corrections.update(document.get("corrections") or {})

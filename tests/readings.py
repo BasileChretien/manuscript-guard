@@ -497,6 +497,21 @@ def _quote_words() -> Reading:
     return quote_words
 
 
+@reading("quote placement")
+def _quote_placement() -> Reading:
+    """What G7 says of a quote its stored source does not hold exactly: how much of it the
+    source holds in order, on which lines, and what stands in the way."""
+    from manuscript_guard.literature.placement import place, said
+
+    def placed(given: dict[str, str]) -> list[Any] | None:
+        placement = place(given["source"], given["quote"])
+        if placement is None:
+            return None
+        return [placement.found, list(placement.lines), said(placement)]
+
+    return placed
+
+
 # -------------------------------------------------------------------- a whole project
 
 

@@ -13166,8 +13166,11 @@ def test_a_supplement_of_headings_and_tables_only_is_not_compared_with_the_paper
     compared with the paper, and every paragraph of the paper was reported deleted in Word."""
     from manuscript_guard.cli import main
 
+    # The release of the event terms is quoted in a heading: the supplement is still headings
+    # and tables, and every result the analysis says is quoted is.
     (project / SUPPLEMENT).write_text(
-        "# Supplementary methods\n\n## Table S1. Code lists used to identify the outcome\n\n"
+        "# Supplementary methods\n\n## Table S1. Code lists used to identify the outcome, "
+        "release {{results.dictionary.generator_event_terms}}\n\n"
         "{{table.outcome_codes}}\n\n## Table S2. The adjusted model\n\n{{table.model_adjusted}}\n",
         encoding="utf-8",
         newline="\n",

@@ -154,9 +154,12 @@ def _is_section(row: list[str], recipe: Recipe) -> bool:
     return len(filled) == 1 and filled[0] != recipe.text_column
 
 
-def transcribe(path: Path, recipe: Recipe) -> list[Item]:
-    """Apply a recipe to a document. Raises RecipeError when it plainly does not fit."""
-    tables = read_tables(path)
+def transcribe(
+    path: Path, recipe: Recipe, tables: list[list[list[str]]] | None = None
+) -> list[Item]:
+    """Apply a recipe to a document, or to `tables` already read from it. Raises RecipeError
+    when it plainly does not fit."""
+    tables = read_tables(path) if tables is None else tables
     if not tables:
         raise RecipeError(f"{path.name} has no tables")
     chosen = (
@@ -263,7 +266,15 @@ def _looks_like_header(row: list[str]) -> bool:
     joined = " ".join(row).lower()
     return any(
         marker in joined
-        for marker in ("item no", "item #", "item description", "checklist item", "recommendation")
+        for marker in (
+            "item no",
+            "item #",
+            "item description",
+            "checklist item",
+            "recommendation",
+            # The column a checklist leaves for the page an item is on: STARD 2015's header.
+            "reported on page",
+        )
     )
 
 

@@ -25,6 +25,7 @@ import re
 from manuscript_guard.contracts.literature import ABSTRACT_ONLY, ATTESTED, Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.literature.placement import why_not_found
 from manuscript_guard.literature.sources import (
     WORDS_BESIDE,
     UnreadableSource,
@@ -115,11 +116,15 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
 
         if not contains(text, quote):
             failed += 1
+            # What the source holds of the quote, and what stands in the way: said, and
+            # deciding nothing (`literature/placement.py`).
+            why = why_not_found(path, quote)
             report = report.with_findings(
                 Finding(
                     gate=GATE,
                     code="quote-not-in-source",
-                    message=f"{key}: the recorded quote does not appear in {source_file}",
+                    message=f"{key}: the recorded quote does not appear in {source_file}"
+                    + (f"; {why}" if why else ""),
                     path=value.source,
                     context=quote[:140],
                     hint="copy the sentence from the source rather than retyping it; if the "

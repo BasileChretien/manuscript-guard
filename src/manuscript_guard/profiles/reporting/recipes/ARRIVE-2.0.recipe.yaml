@@ -19,7 +19,7 @@ meta:
   retrieved_on: 2026-08-03
   retrieved_by: "downloaded by the author"
   licence: >-
-    CC BY — the ARRIVE 2.0 explanation and elaboration was published in PLOS Biology under CC-BY. The checklist's own terms are not separately stated.
+    NOT STATED for this PDF — the guidelines document states no licence of its own, and its site carries only a copyright line of the NC3Rs. The two papers ARRIVE 2.0 was published in, the statement (doi:10.1371/journal.pbio.3000410) and its explanation and elaboration (doi:10.1371/journal.pbio.3000411), are CC0 1.0 in their Europe PMC records and in Crossref, though the site calls the second CC-BY; this recipe reads neither paper.
   licence_url: https://arriveguidelines.org/arrive-guidelines
   download_url: https://arriveguidelines.org/sites/arrive/files/documents/ARRIVE%20guidelines%202.0%20-%20English.pdf
   sha256: 64a8f03f02496eac7eed4ba2b587ad8b9365670b946eb167bc68da5703d6c604

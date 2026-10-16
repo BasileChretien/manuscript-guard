@@ -1,0 +1,29 @@
+schema: manuscript-guard/recipe/1
+
+# TRIPOD+AI's checklist is published as a table of its statement paper, and its site offers
+# the same as a PDF. This reads the paper's table, from Europe PMC's full text, where it is
+# rows and cells rather than a page layout. The third column says whether an item is for a
+# model's development (D), its evaluation (E) or both.
+
+meta:
+  name: TRIPOD+AI
+  long_name: "TRIPOD+AI: reporting clinical prediction models that use regression or machine learning methods"
+  version: "2024"
+  applies_to: "Studies developing or evaluating a clinical prediction model, by regression or machine learning"
+  source_url: "https://doi.org/10.1136/bmj-2023-078378"
+  read_from: "Table 2 of the statement paper (BMJ 2024, doi:10.1136/bmj-2023-078378), from Europe PMC's full text of PMC11019967"
+  retrieved_on: 2026-10-16
+  retrieved_by: "Europe PMC full text, read by the recipe's author"
+  licence: >-
+    CC BY 4.0 — the licence of the statement paper in its Europe PMC full text and in Crossref (http://creativecommons.org/licenses/by/4.0/). The XML's copyright line also carries the publisher's "no commercial re-use" wording, which the licence it states contradicts.
+  licence_url: http://creativecommons.org/licenses/by/4.0/
+  download_url: https://www.ebi.ac.uk/europepmc/webservices/rest/PMC11019967/fullTextXML
+  rows_sha256: 7aea603ff20e0c45368d6dd46a46a060f0e4840797a0515173a0b186e40bab4c
+
+format: jats-table
+table: tbl2
+document: tripod-ai-statement.xml
+header_rows: 0
+topic_column: 0
+id_column: 1
+text_column: 3

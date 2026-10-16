@@ -339,6 +339,51 @@ reviewer, or the author six months later. Both files feed the same `lit.` namesp
 G7 reports the three depths separately. Abstract-only status is flagged but never fails a
 build; a `user-attested` entry missing its attester or statement does fail.
 
+## A pointer names what the document carries
+
+"As Table 4 shows" is a number like any other, and G2 let it through as a cross-reference:
+the rule read the word and whatever digits followed it. So "In step 1204 reports were
+excluded, as Table 4000 and Figure 9 show" passed whole, a count hidden behind "step" and
+two pointers at nothing. The example called its two tables "Table 2" and "Table 3" from the
+day its first table moved to the supplement as Table S1, and nothing said so: the build
+prints a table's caption as written and numbers nothing. LaTeX refuses a `\ref` to a label
+nobody defined; G2 now does the same for a pointer typed as text. Each finding fails from
+the internal-review stage, Basile's choice on 2026-10-14: while the draft is written its
+tables move and are numbered again.
+
+What the document carries is counted only where the count is known, Basile's choice on
+2026-10-15. A kind, tables or figures, of one document, the main text or the supplement, is
+checked where every one of them is placed by its binding, `{{table.<key>}}` or
+`{{figure.<key>}}`, counted in the order the files print. "Table 3" names the main text's
+third table; "Table S1", "Supplementary Table 1", "Supplemental Table 1", "eTable 1",
+"Extended Data Table 1", "Appendix Table 1" and "Table 1 in the Supplement" the supplement's
+first. A pointer to one there is not is `pointer-to-nothing`, a list read whole ("Tables 1
+and 2", "Figures 2–4", "Tables S1–3" being S1 to S3), and a list joined by a word only after
+a plural: "Table 2 and 3 patients" is one pointer. Where a document places one of a kind by
+hand (a pipe, grid, simple or multiline table, a caption line, an image, raw HTML) or none
+by its binding, as a paper whose figures go to the journal as files of their own does, its
+pointers to that kind are not checked, and one note says so (`pointers-unchecked`). The
+first version counted tables and images written by hand as well; its review found correct
+papers failed by every form of either it did not count, and by figures sent as files.
+Those a paper sends to the journal as files of their own, cited in the text and placed
+nowhere in it (a flow chart drawn by hand beside a forest plot that is bound), are declared
+in `paper.yaml`, `displays: {figures_as_files: 1}` and its three siblings for tables and the
+supplement, Basile's choice on 2026-10-15: they are counted with the bound ones, numbered
+with them, and have to be cited in order like them. A pointer that opens its paragraph and
+ends in a stop or a colon ("**Table 2.** Counts") is a caption typed above a table and no
+citation of it; one that opens a line inside a paragraph ends a sentence. The main text's tables and figures are held to
+what ICMJE asks for: each cited (`display-not-cited`), and first cited in the order they
+are numbered (`cited-out-of-order`). "Number tables consecutively in the order of their
+first citation in the text" and "Be sure that each table is cited in the text", from
+icmje.org, Preparing for Submission, read 2026-10-14; it says the same of the figures'
+order and gives the supplement no rule, so none is applied to it.
+
+The words that point at nothing a gate can check, a step, a panel, a box, an item, take a
+small number only: up to 20, as `categorical-label` does, and an item up to 99, since a
+checklist runs to 27 items. "Step 1204" is a count. A list after a plural is read as
+pointers by G2 too, where only its first number was before: "Tables 1 and 2 show" left its
+2 unbound.
+
 ## The corruption harness
 
 The claim "no stale number" is worth exactly as much as the evidence that the gate catches
@@ -2251,6 +2296,17 @@ bypassed on the first afternoon it costs something. So G12 warns: when analysis 
 with no plan behind it, and when a plan's section is a heading with nothing under it. A
 "Deviations from the plan" heading followed by nothing is the common case, and naming it is
 most of the value.
+
+**A plan is written knowing what the data hold.** A plan can set out an analysis of data
+nobody has counted: an adjustment for a covariate missing in half the rows, a subgroup of
+twelve patients. The author's own script counts them, never the tool, and publishes the
+counts like any result under `feasibility.`: the cohort at each selection step, the
+outcome's events, the missing values of each planned variable, the date range, the
+duplicates. At the `design` stage, G12 warns (`feasibility-not-run`) where the plan's
+analysis section says something and no result is emitted under `feasibility.`. It is a
+warning, as the rest of this gate is: an author may know the data from a registry's own
+report. Once the analysis runs, its results say what the data hold, and the question is not
+asked again.
 
 **The plan is frozen when the first results are written.** A plan rewritten after the
 results are known is the pattern of a hypothesis fitted to its results, and it can be told
@@ -5087,6 +5143,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
+- **The feasibility results are asked for by their names only.** Any one result under
+  `feasibility.` quiets `feasibility-not-run`: nothing checks that the counts cover the
+  plan's variables or its selection steps, or that the script read the data the analysis
+  will. G1 holds the results to the inputs the script declared, and no more. The question
+  is asked at the `design` stage alone, so a project that starts at a later stage is never
+  asked it.
 - **G4 reads the main-text files in path order, and the build prints them in another.** The
   build puts `main.md` first and sorts the rest by file name, not by path. A section's words
   count where the headings above it put them, so an `abstract.md` beside a `main.md` written
@@ -5816,6 +5878,17 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
+- **A pointer is held to the number of a placement, not to its key, and only where every
+  placement is a binding.** "Table 2" passes wherever the main text places two tables,
+  whichever two they are: the check sees the numbering, not which table a sentence means.
+  A paper that writes any of its tables or places any of its figures by hand has no
+  pointer of that kind checked, only a note; one that sends some as files of their own and
+  does not declare them in `paper.yaml` (`displays`) has a pointer past the bound ones
+  failed as pointing at nothing. A pointer
+  in a heading, or in a caption typed above its table ("**Table 2.**"), is checked for a
+  target and not counted as the citation that numbers a table. "Table 3 of Smith et al."
+  is read as a pointer to the paper's own Table 3. "Box", "Section" and "Equation" point at
+  nothing the check counts.
 - **The Methods are a heading that holds the word, and two gates read fewer headings than
   G4 counts.** G4 and G9 take for the Methods a heading whose title holds "methods" where
   the paper's structure allows it. In a paper with no heading G2 reads as the Methods, the

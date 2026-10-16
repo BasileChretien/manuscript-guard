@@ -138,7 +138,7 @@ def _run_gates(
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project)),
         ("G9", lambda: check_methods(project, namespace, results)),
-        ("G12", lambda: check_design(project)),
+        ("G12", lambda: check_design(project, results, chosen)),
         ("G8", lambda: check_consistency(results)),
         ("G2", lambda: check_small_cells(project, results)),
         ("G1", lambda: check_restricted_inputs(project, results)),

@@ -37,9 +37,10 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G2 holds a pointer to a table or a figure to what the document places by its binding,
-      notes the kinds it cannot count, and counts what it read: `pointers`,
-      `pointers_checked`, `tables_placed` and `figures_placed`
+      G8 works out the P each t, F, chi-squared or z statistic in the manuscript gives, and
+      counts them, `p_values_recomputed`; and it reads each named estimate printed with a
+      confidence interval, held to its interval and its P, and counts them,
+      `printed_intervals_read`
   - reading: numbers
     why: >-
       a step, a panel or a box takes a number up to 20 and an item up to 99, so a count

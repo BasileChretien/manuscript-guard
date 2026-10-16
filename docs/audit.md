@@ -33,6 +33,15 @@ of integers up to 100 already matched, and of fifteen deliberately corrupted hea
 numbers it caught none. A clean audit report is not a clean paper, and the report says so
 every time. Use `--strict` to exit non-zero on anything unmatched.
 
+One check needs no outputs. Each t, F, chi-squared or z statistic with a P after it in
+its sentence is held to that P: the P the statistic gives is worked out over every value
+their printed digits allow, and a P that does not follow is listed apart, with whether it
+falls on the other side of 0.05. A one-sided, adjusted or exact test the sentence names
+is not judged, and `--strict` does not count these. Each named estimate with a confidence
+interval after it is held to it the same way: an estimate outside its own interval, a
+ratio whose interval is lopsided on the log scale, and an interval that excludes its null beside a P above one less its level, or
+includes it beside one below, are listed with them.
+
 For a paper still being written, bind the numbers instead — then a stale one is impossible
 rather than merely searched for.
 

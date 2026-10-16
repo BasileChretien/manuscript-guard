@@ -88,6 +88,7 @@ BINDS_AT = {
     "unquoted-result": DRAFTING,
     "typed-parameter": DRAFTING,
     "typed-software-version": DRAFTING,
+    "typed-dictionary-release": DRAFTING,
     "typed-model-kind": DRAFTING,
     "unplaced-table": DRAFTING,
     "divergent-display": DRAFTING,

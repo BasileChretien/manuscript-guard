@@ -34,6 +34,17 @@ from manuscript_guard.literature.sources import (
     states_value,
     words_beside,
 )
+from manuscript_guard.stats.intervals import (
+    ASYMMETRY,
+    asymmetry,
+    described_against,
+    described_asymmetry,
+    described_outside,
+    outside_interval,
+    p_against,
+    reported_intervals,
+)
+from manuscript_guard.stats.reported import described, judge, reported_tests
 
 GATE = "G7"
 
@@ -139,6 +150,7 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
             continue
 
         verified += 1
+        report = report.merge(_tests_in_quote(key, value, quote))
         beside = words_beside(quote, value.display)
         if len(beside) < WORDS_BESIDE:
             report = report.with_findings(
@@ -172,6 +184,52 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
         literature_unverifiable=unverifiable,
         literature_failed=failed,
     )
+
+
+def _tests_in_quote(key: str, value, quote: str) -> Report:
+    """A quote whose statistic and P disagree: the source's own numbers do not agree with
+    each other, and the value taken from them may be the wrong one of the two."""
+    findings = []
+    for test in reported_tests(quote):
+        verdict = judge(test)
+        if verdict is None or not verdict.inconsistent:
+            continue
+        findings.append(
+            Finding(
+                gate=GATE,
+                code="quote-p-inconsistent",
+                severity=WARN,
+                message=f"{key}: in the source, {described(test, verdict)}",
+                path=value.source,
+                context=quote[:140],
+                hint="the source may carry a misprint; read its tables before citing a value "
+                "this sentence supports",
+            )
+        )
+    for interval in reported_intervals(quote):
+        share = asymmetry(interval)
+        verdict = p_against(interval)
+        said = []
+        if outside_interval(interval):
+            said.append(("quote-interval-excludes-estimate", described_outside(interval)))
+        if share is not None and share > ASYMMETRY:
+            said.append(("quote-interval-asymmetric", described_asymmetry(interval, share)))
+        if verdict is not None:
+            said.append(("quote-p-against-interval", described_against(interval, verdict)))
+        findings += [
+            Finding(
+                gate=GATE,
+                code=code,
+                severity=WARN,
+                message=f"{key}: in the source, {message}",
+                path=value.source,
+                context=quote[:140],
+                hint="the source may carry a misprint; read its tables before citing a value "
+                "this sentence supports",
+            )
+            for code, message in said
+        ]
+    return Report(tuple(findings))
 
 
 def _check_attestation(key: str, value, detail: dict) -> Report:

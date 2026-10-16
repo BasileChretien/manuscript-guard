@@ -38,6 +38,8 @@ someone looks for it.
 | STROBE | **CC BY** — the statement carrying this checklist was published in *PLoS Medicine* under the Creative Commons Attribution License. The STROBE site itself states only a bare copyright | strobe-statement.org, PMC2020495 |
 | PRISMA 2020 | **CC BY 4.0**, commercial use permitted, via the statement paper — same BMJ open-access wording as RECORD-PE. The site itself states only *"Copyright © 2024-2026 the PRISMA Executive"* and has no terms page (`/terms` is a 404) | PMC8005924 (*BMJ* 2021;372:n71) |
 | ARRIVE 2.0 | **Not stated** for the guidelines PDF the recipe reads; the site carries only a copyright line of the NC3Rs. The statement and the explanation and elaboration (*PLOS Biology* 2020) are **CC0 1.0** in their Europe PMC records and in Crossref, though the site calls the second CC-BY; an earlier pass recorded that CC-BY here. Read 2026-10-16 | arriveguidelines.org, PMC7360023, PMC7360025 |
+| STARD 2015 | **CC BY 4.0**, via the statement paper's licence in its Europe PMC full text; Crossref records only the publisher's text-and-data-mining terms. The Word checklist the EQUATOR Network serves states no terms of its own. Read 2026-10-16 | PMC4623764 (*BMJ* 2015, doi:10.1136/bmj.h5527) |
+| CHEERS 2022 | **CC BY 4.0**, via the licence of The BMJ's copy of the statement in its Europe PMC full text and in Crossref, with the same contradictory copyright line as TRIPOD+AI's. The statement was published in several journals at once, and one copy is CC BY-NC. Read 2026-10-16 | PMC8749494 (*BMJ* 2022, doi:10.1136/bmj-2021-067975) |
 | TRIPOD+AI | **CC BY 4.0**, via the statement paper's licence in its Europe PMC full text and in Crossref. The XML's copyright line also carries the publisher's no-commercial-reuse wording, which the licence it states contradicts. Read 2026-10-16 | PMC11019967 (*BMJ* 2024, doi:10.1136/bmj-2023-078378) |
 | CONSORT 2025 | **Download and copying explicitly permitted**, with a condition and a restriction, quoted in full below | consort-spirit.org/terms-of-use |
 | SPIRIT 2025 | As CONSORT — same site, same terms page | consort-spirit.org/terms-of-use |
@@ -76,8 +78,8 @@ built; SANRA, the fourteenth, was added later and verified the same way against 
 served by `down.asp?id=22862`. Anyone with the recipes and a network connection gets the same documents and the same
 profiles.
 
-The two TRIPOD+AI recipes, added on 2026-10-16, read the statement paper itself: its full text
-from Europe PMC (`/rest/PMC11019967/fullTextXML`). They record a digest of the table's rows
+The two TRIPOD+AI recipes and the CHEERS 2022 recipe, added on 2026-10-16, read the statement
+paper itself: its full text from Europe PMC (`/rest/<PMCID>/fullTextXML`). They record a digest of the table's rows
 rather than of the file, because Europe PMC can regenerate the XML with nothing in the table
 changed, and `fetch` refuses an answer that is not a JATS article.
 

@@ -96,6 +96,25 @@ def test_a_plain_topic_id_text_table(tmp_path: Path) -> None:
     assert items[1].text == "Describe the rationale for the review."
 
 
+def test_a_header_naming_the_page_an_item_is_on_is_no_topic(tmp_path: Path) -> None:
+    """STARD 2015's header names no item number the way the others do, only "No" and
+    "Reported on page #": read as a row, its "Section & Topic" became the topic of every
+    item until the first topic of the table's own."""
+    path = make_docx(
+        tmp_path / "a.docx",
+        [
+            # "&" as STARD writes it would need escaping in `make_docx`'s XML.
+            ["", "Section and Topic", "No", "Item", "Reported on page #"],
+            ["", "TITLE", "", "", ""],
+            ["", "", "1", "Identify the study as one of diagnostic accuracy.", ""],
+            ["", "Participants", "6", "Eligibility criteria", ""],
+        ],
+    )
+    recipe = Recipe("X", "a.docx", topic_column=1, id_column=2, text_column=3, min_text_words=2)
+    items = transcribe(path, recipe)
+    assert [(i.id, i.topic) for i in items] == [("1", "TITLE"), ("6", "Participants")]
+
+
 def test_continuation_rows_become_sub_items(tmp_path: Path) -> None:
     """STROBE writes item 1 as two rows, the second with only the text cell filled.
 

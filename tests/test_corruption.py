@@ -1794,6 +1794,103 @@ def test_results_with_no_kept_plan_are_a_note(project: Path) -> None:
     assert _plan_said(project) == [("plan-not-frozen", "info")]
 
 
+# ------------------------------------------------- the results the plan promised
+
+
+def _planned_said(root: Path, stage: str = "drafting", **unquoted: bool) -> list[tuple[str, str]]:
+    """G12's word on the plan's Planned results at a stage, with the values named emitted
+    with quoted=False: each finding's code and the line it points at."""
+    from manuscript_guard.gates import check_design
+
+    if unquoted:
+        fragment = next((root / "results").glob("*.json"))
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        for key in unquoted:
+            document["values"][key.replace("__", ".")]["quoted"] = False
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    project, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(project)
+    text = (root / "design" / "plan.md").read_text(encoding="utf-8").splitlines()
+    return [(f.code, text[f.line - 1].strip() if f.line else "")
+            for f in check_design(project, results, stage).findings
+            if f.code.startswith("planned-")]  # fmt: skip
+
+
+def test_a_result_the_plan_promised_and_the_analysis_never_emitted_is_a_warning(
+    project: Path,
+) -> None:
+    """Item 37: G2 said when the analysis emitted a value nothing quoted, and nothing said
+    when the plan promised a result the analysis never emitted."""
+    from manuscript_guard.gates import check_design
+
+    promised = "- `death.n_cases`: deaths among the cases"
+    _plan_edited(project, "- `case.pct_serious`", f"{promised}\n- `case.pct_serious`")
+    assert _planned_said(project) == [("planned-result-missing", promised)]
+    assert _planned_said(project, "design") == []
+    assert not [f for f in check_design(load_project(project)[0]).findings
+                if f.code.startswith("planned-")]  # fmt: skip
+
+
+def test_a_planned_result_emitted_unquoted_is_a_warning(project: Path) -> None:
+    assert _planned_said(project) == []
+    said = _planned_said(project, case__pct_serious=True)
+    assert said == [("planned-result-unquoted", "- `case.pct_serious`: the proportion of the "
+                     "cases that were serious")]  # fmt: skip
+
+
+def test_a_planned_group_counts_while_one_of_its_keys_is_quoted(project: Path) -> None:
+    assert _planned_said(project, ror__ci90_low=True, ror__ci90_high=True) == []
+    said = _planned_said(project, ror__point=True, ror__ci_low=True, ror__ci_high=True)
+    assert said == [("planned-result-unquoted", "- `ror.*`: the reporting odds ratio and its "
+                     "95% interval")]  # fmt: skip
+
+
+def test_a_planned_result_the_deviations_name_passes(project: Path) -> None:
+    _plan_edited(project, "- `case.pct_serious`",
+                 "- `death.n_cases`: deaths among the cases\n- `case.pct_serious`")  # fmt: skip
+    _plan_edited(project, "No analysis was added",
+                 "3. Deaths, `death.n_cases`, were not reported: the generator writes none.\n\n"
+                 "No analysis was added")  # fmt: skip
+    assert _planned_said(project) == []
+    _plan_edited(project, "Deaths, `death.n_cases`, were", "Deaths, `death.n_cases_all`, were")
+    assert [code for code, _line in _planned_said(project)] == ["planned-result-missing"]
+
+
+def test_a_planned_key_with_no_dot_is_read_in_its_bound_form(project: Path) -> None:
+    """Round 1 of #305: `results.dose` was read as the key `results.dose`, since `dose` has
+    no dot, and a promise kept was said to be broken."""
+    from manuscript_guard.gates import check_design
+
+    promised = "- `results.dose`: the dose"
+    _plan_edited(project, "- `case.pct_serious`", f"{promised}\n- `case.pct_serious`")
+    assert _planned_said(project) == [("planned-result-missing", promised)]
+    # Round 2 of #305: the word "dose" in the Deviations stood the key down.
+    _plan_edited(project, "No analysis was added", "The dose groups were analysed as planned.\n\n"
+                 "No analysis was added")  # fmt: skip
+    assert _planned_said(project) == [("planned-result-missing", promised)]
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(project_)
+    [said] = [f for f in check_design(project_, results, "drafting").findings
+              if f.code == "planned-result-missing"]  # fmt: skip
+    assert "lists results.dose among" in said.message and "naming results.dose" in said.hint
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["dose"] = {"value": 5, "display": "5"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _planned_said(project) == []
+
+
+def test_a_planned_results_section_that_names_no_key_is_a_warning(project: Path) -> None:
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    start, end = text.index("## Planned results\n"), text.index("## Sample size")
+    words = "## Planned results\n\nThe cases, the ratio and the share that were serious.\n\n"
+    plan.write_text(text[:start] + words + text[end:], encoding="utf-8")
+    assert _planned_said(project) == [("planned-results-unkeyed", "")]
+
+
 # ------------------------------------------------- the unit of analysis
 
 

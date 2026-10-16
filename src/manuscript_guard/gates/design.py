@@ -25,6 +25,7 @@ hypothesis fitted to its results; a warning, as everything here.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured
@@ -33,6 +34,9 @@ from manuscript_guard.contracts.results import Results
 from manuscript_guard.emit import FROZEN_PLAN, source_digest_matches
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.methods import analysis_digests
+from manuscript_guard.text.blocks import list_items
+from manuscript_guard.text.inline import code_spans
+from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import Section, split_sections, subsections
 
 GATE = "G12"
@@ -56,6 +60,30 @@ REQUIRED = (
 
 #: What every key a feasibility script emits opens with: `feasibility.n_reports`.
 FEASIBILITY = "feasibility."
+
+#: The heading of the plan's list of the results the paper will report. Not one of the seven:
+#: a plan without it says nothing to hold the results to.
+PLANNED = r"(?i)\bplanned results?\b"
+
+#: What a planned result's code span holds: a key as the analysis emits it, `ror.point`, or
+#: as the manuscript binds it, `results.ror.point`, `results.dose`; or a group of keys,
+#: `ror.*`. A span with no dot is code, not a key: `glm`, `R`. Bound, a key needs none: the
+#: prefix is never part of it (round 1 of #305).
+_PLANNED_KEY = re.compile(
+    r"results\.([A-Za-z_][\w-]*(?:\.[\w-]+)*)|([A-Za-z_][\w-]*(?:\.[\w-]+)+)"
+)
+_PLANNED_GROUP = re.compile(r"(?:results\.)?([A-Za-z_][\w-]*(?:\.[\w-]+)*)\.\*")
+_BLANK_LINE = re.compile(r"\n[ \t]*\n")
+
+
+@dataclass(frozen=True)
+class Planned:
+    """A result the plan says the paper will report: its key, or the stem of a group of
+    keys, and the line it is listed on."""
+
+    key: str
+    group: bool
+    line: int
 
 # A section that exists but says nothing useful.
 _EMPTY = re.compile(r"^\s*(?:tbd|todo|n/?a|-+|\.+|see below)?\s*$", re.IGNORECASE)
@@ -163,6 +191,141 @@ def deviations_said(text: str) -> str:
     return " ".join(" ".join(said).split())
 
 
+def planned_results(text: str) -> list[Planned] | None:
+    """The results a plan's Planned results section lists: for each list item under it, the
+    first code span the item holds, where that is a key or a group of keys. None where the
+    plan has no such section; an empty list where it has one and names no key in it.
+
+    An item is read up to the next item or its first blank line, so a nested item's key is
+    its own and not its parent's, and a key in prose after the list is no item's. An item
+    whose first code span is not a key is not read: it is code."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    sections = _plan_sections(text)
+    masked = mask(text)
+    spans = code_spans(masked)
+    items = list_items(text)
+    lines = text.count("\n") + 2
+    planned: list[Planned] | None = None
+    for index, section in enumerate(sections):
+        if not re.search(PLANNED, section.title):
+            continue
+        planned = planned or []
+        after = index + len(subsections(sections, index))
+        end = sections[after].line if after < len(sections) else lines
+        inside = [start for start in items if section.line < _line(text, start) < end]
+        for number, start in enumerate(inside):
+            stop = inside[number + 1] if number + 1 < len(inside) else _offset(text, end)
+            blank = _BLANK_LINE.search(text, start, stop)
+            stop = blank.start() if blank else stop
+            first = next((span for span in spans if start <= span[0] < stop), None)
+            if first is None:
+                continue
+            said = text[first[0] : first[1]].strip("`").strip()
+            if group := _PLANNED_GROUP.fullmatch(said):
+                planned.append(Planned(group.group(1), True, _line(text, start)))
+            elif key := _PLANNED_KEY.fullmatch(said):
+                named = next(part for part in key.groups() if part)
+                planned.append(Planned(named, False, _line(text, start)))
+    return planned
+
+
+def _line(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
+
+
+def _offset(text: str, line: int) -> int:
+    """Where line `line` (from 1) starts, or the end of the text past its last line."""
+    offset = 0
+    for _ in range(line - 1):
+        found = text.find("\n", offset)
+        if found < 0:
+            return len(text)
+        offset = found + 1
+    return offset
+
+
+def _emitted(results: Results, planned: Planned) -> list[bool]:
+    """Whether each result the planned key names is quoted: one entry for each value, table
+    or model it names, none where the analysis emitted nothing under it."""
+    key = planned.key
+    if planned.group:
+        return [v.quoted for k, v in results.values.items() if k.startswith(f"{key}.")]
+    if key in results.values:
+        return [results.values[key].quoted]
+    kind, _, name = key.partition(".")
+    if kind == "table" and name in results.tables:
+        return [results.tables[name].quoted]
+    if kind == "model" and name in results.models:
+        return [True]
+    return []
+
+
+def _written(planned: Planned) -> str:
+    """The key as a plan writes it: a key with no dot bound, since alone it is a word."""
+    if planned.group:
+        return f"{planned.key}.*"
+    return planned.key if "." in planned.key else f"results.{planned.key}"
+
+
+def _named(deviations: str, planned: Planned) -> bool:
+    """Whether the Deviations section names the key, as the plan lists it or bound. A key
+    with no dot only bound: `dose` is a word of the prose (round 2 of #305)."""
+    key = re.escape(_written(planned))
+    bound = r"(?:results\.)?" if planned.group or "." in planned.key else ""
+    return bool(re.search(rf"(?<![\w.-]){bound}{key}(?![\w-]|\.\w)", deviations))
+
+
+def _planned(text: str, path: Path, results: Results | None, stage: str | None) -> Report:
+    """The results the plan promised against those the analysis emitted and quoted.
+
+    Asked once the analysis is under way: at the design stage nothing has been emitted, and
+    called without results nothing can be compared."""
+    from manuscript_guard.policy import DESIGN
+
+    planned = planned_results(text)
+    if planned is None or results is None or stage in (None, DESIGN):
+        return Report()
+    if not planned:
+        return Report(
+            (
+                Finding(
+                    gate=GATE,
+                    code="planned-results-unkeyed",
+                    severity=WARN,
+                    message="the plan's Planned results section names no result by its key",
+                    path=path,
+                    hint="list each result the paper will report as an item that opens with "
+                    "its key in backticks, `ror.point`, or a group of keys, `ror.*`",
+                ),
+            ),
+            {"planned_results": 0},
+        )
+    deviations = deviations_said(text)
+    findings = []
+    for item in planned:
+        quoted = _emitted(results, item)
+        if quoted and any(quoted):
+            continue
+        if _named(deviations, item):
+            continue
+        written = _written(item)
+        findings.append(
+            Finding(
+                gate=GATE,
+                code="planned-result-unquoted" if quoted else "planned-result-missing",
+                severity=WARN,
+                message=f"the plan lists {written} among the results the paper will report, "
+                + ("and the analysis emits it with quoted=False" if quoted
+                   else "and the analysis emits nothing under it"),  # fmt: skip
+                path=path,
+                line=item.line,
+                hint="report it, or say under Deviations from the plan why it is not "
+                f"reported, naming {written}",
+            )
+        )
+    return Report(tuple(findings), {"planned_results": len(planned)})
+
+
 def _frozen(project: Project, path: Path, text: str) -> Report:
     """The plan against the copy kept when the first results were written."""
     frozen = project.root / FROZEN_PLAN
@@ -257,6 +420,7 @@ def check_design(
     sections = _plan_sections(text)
     report = Report((unreadable,)) if unreadable else Report()
     report = report.merge(_frozen(project, path, text))
+    report = report.merge(_planned(text, path, results, stage))
     covered = 0
     said: set[str] = set()
 

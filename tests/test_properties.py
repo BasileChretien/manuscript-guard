@@ -708,6 +708,218 @@ def test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not(
     assert found == expected, text
 
 
+# ----------------------------------------------------------- a P and the statistic before it
+
+#: Each way a test is written, and its kind.
+_TEST_FORMS = (
+    ("t", "t({d1}) = {s}, p {sign} {p}"),
+    ("t", "*t*({d1})\N{NO-BREAK SPACE}=\N{NO-BREAK SPACE}{s}, *p* {sign} {p}"),
+    ("t", "t = {s}, df = {d1}, P {sign} {p}"),
+    ("t", "t({d1}) =\n{s}, p-value {sign} {p}"),
+    ("F", "F({d1}, {d2}) = {s}, p {sign} {p}"),
+    ("F", "_F_({d1},{d2}) = {s}; P {sign} {p}"),
+    ("chi2", "\N{GREEK SMALL LETTER CHI}2({d1}) = {s}, p {sign} {p}"),
+    ("chi2", "\N{GREEK SMALL LETTER CHI}^2^({d1}, N = 312) = {s}, *P* {sign} {p}"),
+    ("chi2", "chi-square({d1}) = {s}, p {sign}\n{p}"),
+    ("z", "z = {s}, P {sign} {p}"),
+    ("z", "Z = {s}, p\n{sign} {p}"),
+)
+#: What a sentence says of a test whose P is not the textbook one.
+_NOT_TEXTBOOK = (
+    "one-sided, ", "after Bonferroni adjustment, ", "by permutation, ",
+    "with Welch's correction, ", "by an exact test, ",
+)  # fmt: skip
+#: Where each kind's statistic is drawn from, in thousandths, with the degrees of freedom:
+#: a P of 0.001 or more, one below 0.0005, and one above 0.2.
+_MODERATE = {"t": (300, 3000), "F": (500, 3500), "chi2": (500, 9000), "z": (200, 3000)}
+_LARGE = {"t": (5000, 9000), "F": (25000, 60000), "chi2": (40000, 80000), "z": (4000, 6000)}
+_SMALL = {"t": (300, 1000), "F": (500, 1200), "chi2": (500, 1500), "z": (200, 1200)}
+_DEGREES = {"t": ((20, 200),), "F": ((1, 5), (20, 200)), "chi2": ((1, 10),), "z": ()}
+#: What is printed for a P far from the one the statistic gives: for a large statistic,
+#: and for a small one.
+_FAR = {"large": (("=", ".40"), (">", ".05"), ("=", "0.62")), "small": (("<", ".01"),
+        ("=", ".001"))}  # fmt: skip
+
+
+def _true_p(kind: str, value: float, df: tuple[int, ...]) -> float:
+    from manuscript_guard.stats.special import p_chi2, p_f, p_t, p_z
+
+    calls = {"t": p_t, "F": p_f, "chi2": p_chi2, "z": p_z}
+    return calls[kind](abs(value), *df)
+
+
+def _printed_p(draw: st.DrawFn, p: float, shape: str) -> tuple[str, str]:
+    """A P as a paper prints the one its statistic gives: to three places, below a
+    threshold it is under, or as a power of ten."""
+    if shape == "<" and p < 0.05:
+        bound = next(t for t in (0.001, 0.01, 0.05) if p < t)
+        return "<", draw(st.sampled_from((f"{bound:g}", f"{bound:g}"[1:])))
+    if shape in ("e", "x10") and p < 0.001:
+        mantissa, exponent = f"{p:.1e}".split("e")
+        if shape == "e":
+            return "=", f"{p:.1e}"
+        times = draw(st.sampled_from(("x", "\N{MULTIPLICATION SIGN}")))
+        return "=", f"{mantissa} {times} 10^{int(exponent)}^"
+    shown = f"{p:.3f}"
+    return "=", draw(st.sampled_from((shown, shown.removeprefix("0"))))
+
+
+@st.composite
+def _reported_tests(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
+    """Every way of writing a test, each with a P that follows from its statistic, printed
+    every way a paper prints one, with a P that does not, and in a sentence that says the
+    test is not the textbook one; a P in the sentence after its statistic's, and two
+    statistics before one P. Each with the place it is found at and what is said of it."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    def statistic(kind: str, bounds: dict) -> tuple[str, tuple[str, ...], float]:
+        value = draw(st.integers(*bounds[kind])) / 1000 + 0.0003
+        printed = f"{value:.{draw(st.sampled_from((1, 2)))}f}"
+        if kind in ("t", "z") and draw(st.booleans()):
+            printed = draw(st.sampled_from(("-", "\N{MINUS SIGN}"))) + printed
+        df = tuple(draw(st.integers(*limits)) for limits in _DEGREES[kind])
+        return printed, tuple(map(str, df)), _true_p(kind, value, df)
+
+    plans: list[tuple[int, str]] = []
+    for index in range(len(_TEST_FORMS)):
+        plans += [(index, kind) for kind in ("moderate", "large", "far", "near", "quiet")]
+    plans += [(-1, "next sentence"), (-1, "two statistics")]
+    shapes = draw(st.permutations(("e", "x10", "<")))
+    sentences: list[tuple[str, tuple[Any, ...] | None]] = []
+    for number, (index, plan) in enumerate(draw(st.permutations(plans))):
+        if plan == "next sentence":
+            s, df, _p = statistic("t", _MODERATE)
+            sentences.append((f"t({df[0]}) = {s}. {words().capitalize()} p = .40", None))
+            continue
+        if plan == "two statistics":
+            first, first_df, _p = statistic("t", _MODERATE)
+            s, df, _p = statistic("t", _LARGE)
+            text = f"t({first_df[0]}) = {first} and t({df[0]}) = {s}, both p < .001"
+            offset = text.index(" and ") + len(" and ")
+            sentences.append((text, (offset, "t", s, df, "<", ".001", "right")))
+            continue
+        kind, form = _TEST_FORMS[index]
+        bounds = {"moderate": _MODERATE, "near": _SMALL}.get(plan, _LARGE)
+        s, df, p = statistic(kind, bounds)
+        if plan == "moderate":
+            sign, printed = _printed_p(draw, p, draw(st.sampled_from(("=", "<"))))
+        elif plan == "large":
+            sign, printed = _printed_p(draw, p, shapes[number % len(shapes)])
+        else:
+            sign, printed = draw(st.sampled_from(_FAR["small" if plan == "near" else "large"]))
+        d1, d2 = (*df, "", "")[:2]
+        text = form.format(d1=d1, d2=d2, s=s, sign=sign, p=printed)
+        lead = draw(st.sampled_from(_NOT_TEXTBOOK)) if plan == "quiet" else ""
+        said = {"moderate": "right", "large": "right", "quiet": "quiet"}.get(plan, "far")
+        sentences.append((lead + text, (len(lead), kind, s, df, sign, printed, said)))
+
+    parts: list[str] = []
+    expected: list[tuple[Any, ...]] = []
+    for text, planted in sentences:
+        opening = words().capitalize() + " "
+        if planted is not None:
+            at = len("".join(parts)) + len(opening) + planted[0]
+            expected.append((at, *planted[1:]))
+        parts.append(f"{opening}{text} {words()}.{draw(st.sampled_from((' ', chr(10))))}")
+    return "".join(parts), expected
+
+
+@holds(100, _reported_tests())
+def test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic(
+    planted: tuple[str, list[tuple[Any, ...]]],
+) -> None:
+    """Each test is found where it stands, its statistic, degrees of freedom and P as they
+    are printed, and nothing else is: not a P in the next sentence, and not the P of a
+    second statistic for the first. A P that follows from its statistic over every value
+    their printed digits allow agrees with it, one that does not is found, and a test its
+    sentence says is not the textbook one is not judged."""
+    from manuscript_guard.stats.reported import judge, reported_tests
+
+    text, expected = planted
+    found = reported_tests(text)
+    assert [(r.start, r.kind, r.statistic, r.df, r.sign, r.p) for r in found] == [
+        planted[:6] for planted in expected
+    ], text
+    for test, (*_read, said) in zip(found, expected, strict=True):
+        verdict = judge(test)
+        if said == "quiet":
+            assert verdict is None, (test, text)
+        else:
+            assert verdict is not None and verdict.inconsistent is (said == "far"), (
+                test, verdict,
+            )  # fmt: skip
+
+
+def _a_statistic_is_read_at_its_printed_value(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    patch.setattr(reported, "_range", lambda printed: (float(printed), float(printed)))
+
+
+def _a_p_is_looked_for_past_its_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    patch.setattr(reported, "_SENTENCE_END", re.compile(r"(?!)"))
+
+
+def _a_p_is_looked_for_past_the_next_statistic(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    reach = reported._reach
+    patch.setattr(
+        reported, "_reach", lambda match, following, ends, length: reach(match, None, ends, length)
+    )
+
+
+def _less_than_is_read_as_equal_to(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    patch.setattr(reported, "_SIGNS", {**reported._SIGNS, "<": "="})
+
+
+def _a_test_that_is_not_the_textbook_one_is_judged(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    patch.setattr(reported, "QUIET", re.compile(r"(?!)"))
+
+
+def _the_degrees_of_freedom_of_f_are_taken_the_other_way(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    p = reported._p
+    patch.setattr(reported, "_p", lambda kind, statistic, df: p(kind, statistic, df[::-1]))
+
+
+def _a_symbol_in_emphasis_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    plain = reported._STATISTIC.pattern.replace("[*_]{0,2}", "")
+    patch.setattr(reported, "_STATISTIC", re.compile(plain))
+
+
+def _a_test_over_two_lines_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    """A line break inside a test is read as nothing it can match."""
+    from manuscript_guard.stats import reported
+
+    for name in ("_STATISTIC", "_P"):
+        pattern = getattr(reported, name).pattern.replace(chr(92) + "n", chr(92) + "x01")
+        patch.setattr(reported, name, re.compile(pattern))
+
+
+def _a_power_of_ten_is_read_as_its_mantissa(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.stats import reported
+
+    p_range = reported._p_range
+    cut = re.compile("[eE]| ?[x\N{MULTIPLICATION SIGN}]")
+    patch.setattr(
+        reported, "_p_range", lambda test: p_range(replace(test, p=cut.split(test.p)[0]))
+    )
+
+
 # ------------------------------------------------------------ a section found by its heading
 
 #: What a paper calls its Methods, as G4 has always read a heading for them: with "methods"
@@ -2076,6 +2288,198 @@ def test_a_value_is_stated_whole_or_not_at_all(drawn: tuple[str, str]) -> None:
             assert contains(quote, value), (quote, value)
 
 
+# ------------------------------------------------------- a quote its source nearly holds
+
+#: The words a quote is drawn from: none of them is a word of the filler around it, so the
+#: quote is found where it was put and nowhere else.
+_QUOTE_WORDS = (
+    "hepatic", "injury", "incidence", "crude", "reported", "signal", "ratio", "class",
+    "drug", "liver", "renal", "rash", "fever", "dose", "trial", "arm", "risk", "rate",
+)  # fmt: skip
+#: What a quote's word was retyped as.
+_RETYPED = ("kidney", "cardiac", "monthly", "severe")
+#: Each way a source holds a quote nearly.
+_NEARLY = (
+    "numbers", "words", "header", "split", "symbol", "retyped", "first retyped", "too far",
+)  # fmt: skip
+
+
+@st.composite
+def _nearly_quoted(draw: st.DrawFn) -> list[tuple[str, str, str, tuple[Any, ...]]]:
+    """A source for each way it can hold a quote nearly: numbers or words between two of
+    its words, one of its words split by a hyphen at the end of a line, a symbol for a
+    space between two, one of its words retyped, its first retyped, and words between two
+    of them past the gap allowed. Each with the quote, the kind, and what is to be said of
+    it: the words, and the line it is on."""
+    from manuscript_guard.literature.placement import GAP
+
+    def filler(least: int, most: int) -> list[str]:
+        return draw(st.lists(st.sampled_from(FILLER), min_size=least, max_size=most))
+
+    def lines(words: list[str]) -> str:
+        return "".join(w + draw(st.sampled_from((" ", " ", "\n"))) for w in words)
+
+    cases = []
+    for kind in draw(st.permutations(_NEARLY)):
+        words = draw(st.lists(st.sampled_from(_QUOTE_WORDS), min_size=6, max_size=9, unique=True))
+        n = len(words)
+        # Where the source or the quote differs: in its second half, so that the reading
+        # from its first word is the longest.
+        at = draw(st.integers(max(2, n // 2), n - 2))
+        quote = " ".join(words)
+        held = list(words)
+        joins = [draw(st.sampled_from((" ", " ", "\n"))) for _ in range(n - 1)] + [" "]
+        which = at
+        if kind == "numbers":
+            joins[at] = draw(st.sampled_from(("\n12\n", " 41 42 ", "\n7\n8\n")))
+            expected: tuple[Any, ...] = (" ".join(joins[at].split()), words[at], words[at + 1])
+        elif kind in ("words", "too far"):
+            between = " ".join(filler(*((1, 4) if kind == "words" else (GAP + 1, GAP + 3))))
+            joins[at] = draw(st.sampled_from((" ", "\n"))) + between + " "
+            expected = (between, words[at], words[at + 1])
+        elif kind == "header":
+            # A header that holds the quote's next word, which is not its last: one
+            # interruption, and the word in it is not the quote's (round 1 of #301).
+            at = which = min(at, n - 3)
+            between = " ".join([*filler(1, 3), words[at + 1], *filler(1, 3)])
+            joins[at] = draw(st.sampled_from((" ", "\n"))) + between + " "
+            expected = (between, words[at], words[at + 1])
+        elif kind == "split":
+            which = draw(st.sampled_from([i for i, w in enumerate(words) if len(w) >= 4]))
+            cut = draw(st.integers(2, len(words[which]) - 2))
+            held[which] = words[which][:cut] + "-\n" + words[which][cut:]
+            expected = (words[which][:cut], words[which][cut:])
+        elif kind == "symbol":
+            joins[at] = draw(st.sampled_from(("\N{MIDDLE DOT}", "/", " & ")))
+            expected = (words[at], joins[at], words[at + 1])
+        elif kind == "retyped":
+            changed = list(words)
+            changed[at] = draw(st.sampled_from(_RETYPED))
+            quote = " ".join(changed)
+            expected = (at, words[at - 1], changed[at])
+        else:
+            changed = [draw(st.sampled_from(_RETYPED)), *words[1:]]
+            quote = " ".join(changed)
+            expected = (changed[0],)
+        before = lines(filler(1, 12))
+        source = before + "".join(w + j for w, j in zip(held, joins, strict=True))
+        source += lines(filler(1, 8))
+        # The line it is on: what the source puts in starts there; a split word's first
+        # half is there; a symbol follows the word before it.
+        offset = len(before) + sum(
+            len(w) + len(j) for w, j in zip(held[:which], joins[:which], strict=True)
+        )
+        if kind in ("numbers", "words", "header", "too far", "symbol"):
+            offset += len(held[at])
+        if kind in ("numbers", "words", "header", "too far"):
+            offset += len(joins[at]) - len(joins[at].lstrip())
+        cases.append((source, quote, kind, (*expected, source.count("\n", 0, offset) + 1)))
+    return cases
+
+
+@holds(100, _nearly_quoted())
+def test_a_quote_its_source_nearly_holds_is_said_to_and_where(
+    cases: list[tuple[str, str, str, tuple[Any, ...]]],
+) -> None:
+    """G7 fails a quote that is not in its source exactly, and says what the source holds of
+    it: its words in order with numbers between two of them, or words, or with one of them
+    split by a hyphen, or a symbol where the quote has a space; its words up to one retyped;
+    all but a first word retyped. Each on the line of the source it is on. Words further
+    apart than the gap allowed are not the quote."""
+    from manuscript_guard.literature.placement import place, said
+
+    for source, quote, kind, expected in cases:
+        assert not contains(source, quote), (kind, source, quote)
+        placement = place(source, quote)
+        assert placement is not None, (kind, source, quote)
+        told = said(placement)
+        line = expected[-1]
+        if kind in ("numbers", "words", "header"):
+            between, before, after = expected[:3]
+            shown = f"the source has '{between}' between '{before}' and '{after}' (line {line})"
+            assert shown in told, (kind, told, source)
+            assert ("numbers, such as" in told) is (kind == "numbers"), (kind, told)
+        elif kind == "split":
+            first, second = expected[:2]
+            assert told == (
+                f"its words are all there in order; '{first}' and '{second}' are one word, "
+                f"split by a hyphen (line {line})"
+            ), (told, source)
+        elif kind == "symbol":
+            before, symbol, after = expected[:3]
+            shown = f"between '{before}' and '{after}' (line {line}) the source has '{symbol}'"
+            assert shown in told, (told, source)
+        elif kind in ("retyped", "too far"):
+            found = expected[0] if kind == "retyped" else quote.split().index(expected[2])
+            opening = f"{found} of its {len(quote.split())} words are there in order"
+            assert told.startswith(opening), (kind, told, source)
+            if kind == "retyped":
+                assert f"after '{expected[1]}' the quote has '{expected[2]}'" in told, told
+        else:
+            assert f"its first word, '{expected[0]}', is not before them" in told, (told, source)
+
+
+def _the_words_of_a_quote_are_never_apart(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import placement
+
+    patch.setattr(placement, "GAP", 0)
+
+
+def _a_word_split_by_a_hyphen_is_two(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import placement
+
+    patch.setattr(placement, "_split_at", lambda source, tokens, k, word: False)
+
+
+def _numbers_between_two_words_are_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import placement
+
+    patch.setattr(placement.Break, "numbers", property(lambda self: False))
+
+
+def _a_quote_is_read_from_its_first_word_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import placement
+
+    patch.setattr(placement, "STARTS", 1)
+
+
+def _a_source_s_lines_are_counted_from_0(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import placement
+
+    patch.setattr(placement, "_line", lambda source, at: source.count("\n", 0, at))
+
+
+def _each_word_is_found_where_it_first_is(patch: pytest.MonkeyPatch) -> None:
+    """The reading as it was before round 1 of #301: each word at its first occurrence."""
+    from manuscript_guard.literature import placement
+
+    def first_found(source, tokens, words, first, at):
+        found, splits = [at], []
+        k = at + 1
+        if tokens[at].word != words[first]:
+            splits.append(at)
+            k = at + 2
+        for word in words[first + 1 :]:
+            for m in range(k, min(k + placement.GAP + 1, len(tokens))):
+                if tokens[m].word == word or placement._split_at(source, tokens, m, word):
+                    split = tokens[m].word != word
+                    found.append(m)
+                    splits += [m] if split else []
+                    k = m + 1 + split
+                    break
+            else:
+                break
+        return found, splits
+
+    patch.setattr(placement, "_walk", first_found)
+
+
+def _what_differs_is_looked_for_at_the_ends_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import placement
+
+    patch.setattr(placement, "_within", lambda *drawn: None)
+
+
 # ------------------------------------------------------------- a unit written after a binding
 
 #: What may follow a binding, with the unit read there, or None where none is: a gap of each
@@ -2186,6 +2590,107 @@ def test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not(
     for field in changed:
         found = problems("k", {"type": "misc", "isbn": field})
         assert [code for code, _said in found] == ["identifier-malformed"], (field, found)
+
+
+# ------------------------------------------------------------- a figure that estimates itself
+
+_FIGURE_FILLER = {
+    "python": ("x = 1", "fig, ax = plt.subplots()", "values = frame['y']", "ax.set_xlabel('Dose')"),
+    "r": ("x <- 1", "p <- ggplot(d, aes(x, y))", "theme_set(theme_bw())", "d$z <- d$x + 1"),
+}
+_SEED_CALLS = {"python": ("np.random.seed(7)", "rng = np.random.default_rng(7)"),
+               "r": ("set.seed(7)",)}  # fmt: skip
+
+
+def _called(draw: st.DrawFn, rule, language: str) -> str:
+    """A name a script calls one of the rule's calls by."""
+    if rule.prefixes:
+        prefix = draw(st.sampled_from(rule.prefixes))
+        return prefix + ("choice" if prefix == "random." else "normal")
+    name = draw(st.sampled_from(rule.names))
+    if language == "r":
+        return name
+    return draw(st.sampled_from(("sns.", "frame.", "frame.y."))) + name
+
+
+@st.composite
+def _figure_scripts(draw: st.DrawFn) -> list[tuple[str, str, list[tuple[int, str]]]]:
+    """A script in each language, seeded and not, with every call that estimates written
+    bare, told not to by each argument that does, with its seed or divisor given and given
+    as nothing, and in a comment and a string; in an order drawn each time, with where each
+    is found."""
+    from manuscript_guard.gates.figure_estimates import rules
+
+    scripts = []
+    for language in ("python", "r"):
+        equals = "=" if language == "python" else " = "
+        nothing = draw(st.sampled_from(("None",) if language == "python" else ("NA", "NULL")))
+        for seeded in (False, True):
+            plans: list[tuple[str, bool]] = []
+            for rule in rules()[language]:
+                call = _called(draw, rule, language)
+                plans.append((f"{call}(d)", not (rule.seeded and seeded)))
+                for name, values in rule.unless.items():
+                    plans.append((f"{call}(d, {name}{equals}{values[0]})", False))
+                if rule.stated:
+                    plans.append((f"{call}(d, {rule.stated}{equals}7)", False))
+                    plans.append(
+                        (f"{call}(d, {rule.stated}{equals}{nothing})", not (rule.seeded and seeded))
+                    )
+                plans.append((f"# {call}(d)", False))
+                plans.append((f'label = "{call}(d)"', False))
+            lines = [draw(st.sampled_from(_FIGURE_FILLER[language]))]
+            if seeded:
+                lines.append(draw(st.sampled_from(_SEED_CALLS[language])))
+            text, expected = "", []
+            for line, found in draw(st.permutations(plans)):
+                lines.append(draw(st.sampled_from(_FIGURE_FILLER[language])))
+                text = "\n".join(lines) + "\n"
+                if found:
+                    expected.append((len(text), line.split("(")[0]))
+                lines.append(line)
+            scripts.append((language, "\n".join(lines) + "\n", expected))
+    return scripts
+
+
+@holds(100, _figure_scripts())
+def test_a_call_that_estimates_is_found_unless_it_is_told_not_to(
+    scripts: list[tuple[str, str, list[tuple[int, str]]]],
+) -> None:
+    """Each call that estimates, samples, draws at random or drops rows is found where it
+    stands, in Python and R. Not where an argument turns it off or a seed or divisor is
+    given, not where a seed set in the script settles a random one, and not in a comment or
+    a string. A seed given as nothing ("None", "NA") settles nothing."""
+    from manuscript_guard.gates.figure_estimates import estimates_in
+
+    for language, text, expected in scripts:
+        found = [(e.call.start, e.call.name) for e in estimates_in(text, language)]
+        assert found == expected, (language, text)
+
+
+def _an_argument_that_turns_an_estimate_off_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_estimates
+
+    arguments = figure_estimates._arguments
+    patch.setattr(figure_estimates, "_arguments", lambda code, at: ({}, arguments(code, at)[1]))
+
+
+def _a_call_is_known_only_by_the_last_part_of_its_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_estimates
+
+    patch.setattr(figure_estimates, "named", lambda name, names: name.split(".")[-1] in names)
+
+
+def _a_seed_in_the_script_settles_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_estimates
+
+    patch.setattr(figure_estimates, "SEEDS", {"python": (), "r": ()})
+
+
+def _a_seed_given_as_nothing_is_taken_for_one(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_estimates
+
+    patch.setattr(figure_estimates, "NOT_GIVEN", (None,))
 
 
 # ------------------------------------------------------------- one work under two keys
@@ -2833,6 +3338,42 @@ BROKEN = {
         _a_wordless_piece_is_left_alone,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,
     ),
+    "a statistic is read at its printed value, not over what its last digit allows": (
+        _a_statistic_is_read_at_its_printed_value,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a statistic's P is looked for past the end of its sentence": (
+        _a_p_is_looked_for_past_its_sentence,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a statistic's P is looked for past the next statistic": (
+        _a_p_is_looked_for_past_the_next_statistic,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a P below a bound is read as equal to it": (
+        _less_than_is_read_as_equal_to,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a test its sentence calls one-sided or adjusted is judged as two-sided": (
+        _a_test_that_is_not_the_textbook_one_is_judged,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "an F's two degrees of freedom are taken the other way round": (
+        _the_degrees_of_freedom_of_f_are_taken_the_other_way,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a statistic's symbol in emphasis is not read": (
+        _a_symbol_in_emphasis_is_not_read,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a test wrapped onto a second line is not read": (
+        _a_test_over_two_lines_is_not_read,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a P written as a power of ten is read as its mantissa": (
+        _a_power_of_ten_is_read_as_its_mantissa,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
     "a claim runs back to the start of its paragraph, past the anchor before it": (
         _a_claim_runs_back_to_its_paragraph,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
@@ -2892,6 +3433,34 @@ BROKEN = {
     "the line directly below an anchor's own line counts, though it holds only anchors": (
         _each_anchors_line_is_its_own_run,
         test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document,
+    ),
+    "the words of a quote may never be apart": (
+        _the_words_of_a_quote_are_never_apart,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "a word split by a hyphen is read as two": (
+        _a_word_split_by_a_hyphen_is_two,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "numbers between two words of a quote are said to be words": (
+        _numbers_between_two_words_are_words,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "a quote is read from its first word only": (
+        _a_quote_is_read_from_its_first_word_only,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "a source's lines are counted from 0": (
+        _a_source_s_lines_are_counted_from_0,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "each word of a quote is found where it first is": (
+        _each_word_is_found_where_it_first_is,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "what differs is looked for only before and after a quote": (
+        _what_differs_is_looked_for_at_the_ends_only,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
     ),
     "a quotation is read as the paper's own words": (
         _a_quotation_is_the_papers_own,
@@ -3016,6 +3585,22 @@ BROKEN = {
     "an ISBN's groups are read as ISBNs": (
         _an_isbn_s_groups_are_read_as_isbns,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "an argument that turns a figure's estimate off is not read": (
+        _an_argument_that_turns_an_estimate_off_is_not_read,
+        test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
+    ),
+    "a call that estimates is known only by the last part of its name": (
+        _a_call_is_known_only_by_the_last_part_of_its_name,
+        test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
+    ),
+    "a seed set in a figure's script settles nothing": (
+        _a_seed_in_the_script_settles_nothing,
+        test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
+    ),
+    "a seed given as None or NA is taken for a seed": (
+        _a_seed_given_as_nothing_is_taken_for_one,
+        test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
     ),
     "a deviation is read with its line breaks": (
         _a_deviation_is_read_with_its_line_breaks,

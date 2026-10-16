@@ -231,16 +231,17 @@ def zotero_field(shown: str) -> str:
 
 @needs_pandoc
 @pytest.mark.parametrize(
-    ("shown", "refused"),
+    ("shown", "changed"),
     [("(Fictional and Fictional 2021)", False), ("[1]", True)],
     ids=["the default style's words", "another style's words"],
 )
-def test_a_live_zotero_field_is_read_by_the_words_it_shows(
-    project: Path, tmp_path: Path, shown: str, refused: bool, capsys
+def test_a_zotero_field_in_a_document_built_offline_is_named(
+    project: Path, tmp_path: Path, shown: str, changed: bool, capsys
 ) -> None:
-    """Today a Zotero field is read by the words it shows, never by its code: one that shows
-    what the offline build prints passes, and one a style switch or a refresh made show
-    something else is a changed citation, its paragraph refused."""
+    """A document built offline has no field of its own, so a Zotero field in it is a
+    citation a co-author inserted (item 30): its paragraph is refused and the work named,
+    whatever the words it shows. Pinned by #281 before that, the field was read by its words,
+    and one that showed what the offline build prints passed unread."""
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
@@ -248,11 +249,11 @@ def test_a_live_zotero_field_is_read_by_the_words_it_shows(
     returned = edit_docx(
         project / "build" / "manuscript.docx", tmp_path / "back.docx", {CITED: zotero_field(shown)}
     )
-    assert main(["import", str(returned), str(project)]) == (1 if refused else 0)
-    out = capsys.readouterr().out
+    assert main(["import", str(returned), str(project)]) == 1
+    out = " ".join(capsys.readouterr().out.split())
+    assert '"Hepatic injury" was cited in Word with a reference manager' in out, out
     named = "'(Fictional and Fictional 2021)' is the citation [@fictionalHepaticCohort2021]"
-    assert (named in out) is refused, out
-    assert ("NOT merged" in out) is refused, out
+    assert (named in out) is changed, out
 
 
 #: A citation style of the fewest lines, numeric, written here: no style of the official
@@ -503,6 +504,170 @@ def test_a_live_document_without_its_record_says_so(
     out = capsys.readouterr().out
     assert "the record of what each one cites is not here" in out, out
     assert "is the citation [@fictionalClassSignal2019]" in out
+
+
+# Item 30: a citation a co-author inserted with their own reference manager. Its words came
+# back as prose, merged into the source as text, and G2 then caught the year as a number
+# nobody bound.
+
+#: The CSL data of a work, as a reference manager's citation field carries it.
+CLASS_ITEM = {"itemData": {"title": "A disproportionality signal for a fictional drug class",
+                           "author": [{"family": "Fictional", "given": "Claire"}],
+                           "issued": {"date-parts": [[2019]]}}}  # fmt: skip
+UNKNOWN_ITEM = {"itemData": {"title": "A study that is not in the library",
+                             "author": [{"family": "Other", "given": "Ola"}],
+                             "issued": {"date-parts": [[2020]]}}}  # fmt: skip
+
+
+def _field_runs(code: str, shown: str) -> str:
+    from xml.sax.saxutils import escape
+
+    return (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        f'<w:r><w:instrText xml:space="preserve">{escape(code)}</w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        f'<w:r><w:t xml:space="preserve">{shown}</w:t></w:r>'
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+
+
+def _csl_code(item: dict, *, zotero: bool = True) -> str:
+    import json
+
+    name = "ZOTERO_ITEM CSL_CITATION" if zotero else "CSL_CITATION"
+    citation = {"citationID": "q", "citationItems": [{"id": 9, **item}]}
+    return f" ADDIN {name} {json.dumps(citation)} "
+
+
+def _mendeley_control(item: dict, shown: str) -> str:
+    import base64
+    import json
+
+    data = base64.b64encode(json.dumps({"citationItems": [item]}).encode()).decode()
+    return (
+        f'<w:sdt><w:sdtPr><w:tag w:val="MENDELEY_CITATION_v3_{data}"/></w:sdtPr>'
+        f'<w:sdtContent><w:r><w:t xml:space="preserve">{shown}</w:t></w:r></w:sdtContent></w:sdt>'
+    )
+
+
+ENDNOTE_CODE = (
+    " ADDIN EN.CITE <EndNote><Cite><Author>Other, Ola</Author><Year>2020</Year><RecNum>4"
+    "</RecNum><record><titles><title>A study that is not in the library</title></titles>"
+    "</record></Cite></EndNote>"
+)
+
+
+def _inserted_after_prose(inserted: str) -> dict[str, str]:
+    """A citation put in Word straight after the prose of a cited paragraph."""
+    return {PROSE_CITED: f'{PROSE_CITED}</w:t></w:r>{inserted}<w:r><w:t xml:space="preserve">'}
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("inserted", "said"),
+    [
+        (_field_runs(_csl_code(CLASS_ITEM), " (Fictional and Fictional 2019)"),
+         'Fictional 2019, "A disproportionality signal for a fictional drug class" was cited in '
+         "Word with a reference manager, whose field the build does not read: cite it in the .md "
+         "as [@fictionalClassSignal2019]"),
+        (_field_runs(_csl_code(UNKNOWN_ITEM, zotero=False), " [3]"),
+         'Other 2020, "A study that is not in the library" was cited in Word with a reference '
+         "manager, whose field the build does not read, and is not in references.bib"),
+        (_field_runs(ENDNOTE_CODE, " (Other 2020)"),
+         'Other 2020, "A study that is not in the library" was cited in Word'),
+        (_mendeley_control(CLASS_ITEM, " (Fictional and Fictional 2019)"),
+         "as [@fictionalClassSignal2019]"),
+        (_field_runs(" ADDIN EN.CITE.DATA ", " (Other 2020)"),
+         "a work it does not name was cited in Word"),
+    ],
+    ids=["zotero", "another manager's CSL field", "en.cite", "a tagged control", "unreadable"],
+)  # fmt: skip
+def test_a_citation_a_co_author_inserted_is_named_not_merged_as_prose(
+    project: Path, tmp_path: Path, capsys, inserted: str, said: str
+) -> None:
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    capsys.readouterr()
+    before = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx",
+        _inserted_after_prose(inserted),
+    )  # fmt: skip
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert said in " ".join(out.split()), out
+    assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_a_citation_inserted_in_a_paragraph_not_compared_stops_nothing(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    """Round 1 of #298: a paragraph changed in the source since the build is not compared,
+    and a citation inserted in it was refused under a name with no file, a traceback."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    capsys.readouterr()
+    main_md = project / "manuscript" / "main.md"
+    main_md.write_text(
+        main_md.read_text(encoding="utf-8").replace("drug class as a whole", "class as a whole"),
+        encoding="utf-8",
+    )
+    inserted = _field_runs(_csl_code(UNKNOWN_ITEM), " (Other 2020)")
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx",
+        _inserted_after_prose(inserted),
+    )  # fmt: skip
+    assert main(["import", str(returned), str(project), "--force"]) in (0, 1)
+    assert "Traceback" not in capsys.readouterr().err
+
+
+@needs_pandoc
+def test_a_citation_inserted_in_a_paragraph_whose_identifier_moved_on_is_named(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    """Round 2 of #298: a paragraph added above since the build moves each identifier below
+    it on, and the import follows them; read under its name twice over, a citation inserted
+    in a followed paragraph was not named, and the rewording merged its words as prose."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    capsys.readouterr()
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    heading = text.index("\n# ") + 1
+    added = text[:heading] + "A paragraph added since the build.\n\n" + text[heading:]
+    main_md.write_text(added, encoding="utf-8")
+    inserted = _field_runs(_csl_code(UNKNOWN_ITEM), " (Other 2020)")
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx",
+        _inserted_after_prose(inserted),
+    )  # fmt: skip
+    code = main(["import", str(returned), str(project), "--force", "--apply"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "(Other 2020)" not in main_md.read_text(encoding="utf-8"), out
+    assert code == 1 and 'Other 2020, "A study that is not in the library"' in out, out
+
+
+@needs_pandoc
+def test_a_new_citation_in_a_live_document_is_named_not_merged(
+    project: Path, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Beside the build's own fields, which the record knows, one the co-author added with
+    Zotero is a citation the source does not have."""
+    from manuscript_guard.cli import main
+
+    built = _built_live(project, tmp_path, monkeypatch, capsys)
+    before = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    inserted = _field_runs(_csl_code(UNKNOWN_ITEM), " (Other 2020)")
+    returned = edit_docx(built, tmp_path / "back.docx", _inserted_after_prose(inserted))
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = " ".join(capsys.readouterr().out.split())
+    assert 'Other 2020, "A study that is not in the library" was cited in Word' in out, out
+    assert "[@fictionalClassSignal2019]" not in out.split("cited in Word")[0][-200:]
+    assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == before
 
 
 @needs_pandoc

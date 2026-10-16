@@ -1,0 +1,29 @@
+schema: manuscript-guard/recipe/1
+
+# CHEERS 2022, for health economic evaluations, read from a table of its statement paper as
+# Europe PMC serves the full text. The statement was published in several journals at once;
+# this is The BMJ's copy, whose licence Europe PMC and Crossref both record. The checklist
+# file its publisher's site offers did not answer an automated download when this was read.
+
+meta:
+  name: CHEERS-2022
+  long_name: "Consolidated Health Economic Evaluation Reporting Standards"
+  version: "2022"
+  applies_to: "Health economic evaluations"
+  source_url: "https://doi.org/10.1136/bmj-2021-067975"
+  read_from: "Table 1 of the statement paper (BMJ 2022, doi:10.1136/bmj-2021-067975), from Europe PMC's full text of PMC8749494"
+  retrieved_on: 2026-10-16
+  retrieved_by: "Europe PMC full text, read by the recipe's author"
+  licence: >-
+    CC BY 4.0 — the licence of The BMJ's copy of the statement in its Europe PMC full text and in Crossref (http://creativecommons.org/licenses/by/4.0/). The XML's copyright line also carries the publisher's "no commercial re-use" wording, which the licence it states contradicts.
+  licence_url: http://creativecommons.org/licenses/by/4.0/
+  download_url: https://www.ebi.ac.uk/europepmc/webservices/rest/PMC8749494/fullTextXML
+  rows_sha256: 31d19911f8af9873757fb1b62f600d0042212535980306321fe000c3b26791bf
+
+format: jats-table
+table: tbl1
+document: cheers-2022-statement.xml
+header_rows: 0
+topic_column: 0
+id_column: 1
+text_column: 2

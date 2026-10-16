@@ -4,11 +4,11 @@ Some findings are not the author's to close. A warning about a model the analysi
 for the statistician to judge, an exception to the rule on small cells for the data
 custodian. `authors.yaml` names these people under `roles:`, and a gate that raises such a
 finding hands it here as a `Signable`: the role that may sign it, an id, and the digest of
-what is signed. `manuscript-guard sign --as <person> --finding <id>` writes
-`approvals/sign-offs/<id>.yaml` with that digest. The gate then reports the finding as
-information that says who signed it and when. A sign-off by someone who no longer holds the
-role counts for nothing, and so does one of something that has changed since it was signed.
-The finding then stands, with a hint that names who signs it.
+what is signed. `manuscript-guard sign --as <person> --finding <id>` writes that digest to
+`approvals/sign-offs/`, in a file named by the id (`path_of`). The gate then reports the
+finding as information that says who signed it and when. A sign-off by someone who no longer
+holds the role counts for nothing, and so does one of something that has changed since it
+was signed. The finding then stands, with a hint that names who signs it.
 
 A sign-off is a person's statement, as an author's approval is (`approvals.py`): the hooks
 put to the person an agent's `sign` and an agent's edit of a file under `approvals/`.
@@ -27,7 +27,7 @@ import yaml
 
 from manuscript_guard.approvals import DIRECTORY as APPROVALS
 from manuscript_guard.approvals import NoSuchAuthor, find_author, name_of
-from manuscript_guard.contracts._schema import read_structured, validate
+from manuscript_guard.contracts._schema import ContractError, read_structured, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, Finding
 
@@ -161,7 +161,12 @@ def settle(project: Project, signable: Signable) -> tuple[Finding, ...]:
             signable, f"{person.name}, {role}, signs it off with {command} if they judge it "
             "acceptable"
         )  # fmt: skip
-    record = read_structured(path)
+    try:
+        record = read_structured(path)
+    except ContractError as exc:
+        # Round 1 of #304: raised, it stopped G15, and every finding of the gate went with it.
+        unread = Finding(gate="G0", code="schema-violation", message=str(exc), path=path)
+        return (unread, *_waiting(signable, f"{path.name} is not a sign-off it can read"))
     checked = validate(record, "sign-off", path)
     if not checked.ok:
         return checked.findings + _waiting(signable, f"{path.name} is not a sign-off it can read")

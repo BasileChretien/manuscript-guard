@@ -1514,6 +1514,35 @@ def test_a_sign_off_counts_only_from_the_person_who_holds_the_role(project: Path
     said = _signed_said(project)
     assert [s for s, _m, _h in said] == ["fail", "warn"], said
     assert "is not a sign-off it can read" in said[1][2]
+    # Round 1 of #304: a record that is not YAML stopped G15, and its findings went with it.
+    record.write_text("said: [unclosed\n", encoding="utf-8")
+    said = _signed_said(project)
+    assert [s for s, _m, _h in said] == ["fail", "warn"], said
+    assert "cannot parse" in said[0][1] and "is not a sign-off it can read" in said[1][2]
+
+
+def test_a_sign_off_is_bound_to_every_model_the_warning_names(project: Path) -> None:
+    """Round 1 of #304: a warning that the adjusted model used other rows than the crude one
+    was bound to the adjusted model's card alone, and kept its sign-off when the crude model
+    was refitted on other rows of the same count. It keeps G15's place in the report, too."""
+    from manuscript_guard.cli import main
+
+    _crude_beside_adjusted(project, {"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["some"]})
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(project_)
+    raised = [f.code for f in check_models(project_, results).findings]
+    finding = "G15/models-on-different-rows/adjusted"
+    assert main(["sign", str(project), "--as", "Sample", "--finding", finding]) == 0
+    said = check_models(project_, results).findings
+    assert [f.code for f in said] == raised
+    assert [f.severity for f in said if f.code == "models-on-different-rows"] == ["info"]
+
+    other = hashlib.sha256(b"other").hexdigest()
+    _crude_beside_adjusted(project, {"rows_sha256": other}, {"rows_sha256": _ROWS["some"]})
+    _namespace, results, _literature, _report = load_namespace(project_)
+    said = [f for f in check_models(project_, results).findings
+            if f.code == "models-on-different-rows"]  # fmt: skip
+    assert [f.severity for f in said] == ["warn"] and "changed since" in said[0].hint
 
 
 def test_a_statistician_who_is_not_an_author_signs_by_name(project: Path) -> None:

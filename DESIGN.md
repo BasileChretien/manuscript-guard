@@ -2324,9 +2324,9 @@ corresponding author is the one `corresponding: true` marks, and no second place
 A gate that raises a finding only one of them may close hands it to `sign_offs.settle` with
 the role, an id and the digest of what is signed. For G15 that is every warning about a
 model: those of one code on one model are signed together, bound to their messages and to
-the model's card. `manuscript-guard sign --as <person> --finding <id>` writes
-`approvals/sign-offs/<id>.yaml` with the digest, after checking that `--as` names the person
-the role names. The finding is then reported as information that says who signed it and
+the card of each model they name. `manuscript-guard sign --as <person> --finding <id>` writes
+the digest to a file under `approvals/sign-offs/` named by the id, its letters with eight
+characters of its digest, after checking that `--as` names the person the role names. The finding is then reported as information that says who signed it and
 when, with what they said. A sign-off of something that has changed since, one by someone
 the roles no longer name, and one copied to another finding count for nothing: the warning
 stands, and its hint names who signs it and the command. Unsigned, a warning stays a
@@ -7350,7 +7350,10 @@ Closed since, and why each mattered:
 - **A sign-off says who ran `sign`, not who judged the finding.** As with an approval, a
   co-author who runs it for the statistician, or an agent the person lets through, writes a
   sign-off nobody gave. A statistician who is not an author is matched by the name, e-mail
-  address or ORCID iD written under `roles:`, which nothing checks against a register.
+  address or ORCID iD written under `roles:`, which nothing checks against a register. A
+  sign-off names its person by name, and by ORCID iD where the record and the role both
+  give one: a role handed to someone else of the same name, with no ORCID iD on either
+  side, keeps the earlier person's sign-offs.
 - **An approval says who ran the command, not who read the manuscript.** A co-author who
   runs `approve` for a colleague, or an agent the person lets through, writes an approval
   nobody gave. The digest says what was current when it was given, not that it was read.

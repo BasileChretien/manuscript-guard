@@ -127,7 +127,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | Gate | Checks |
 |---|---|
 | G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since |
-| G2 | every number is classified, and every declared value is quoted; a unit written after a binding is the one emitted |
+| G2 | every number is classified, every declared value is quoted, and every pointer to a table or figure placed by its binding names one the document places; a unit written after a binding is the one emitted |
 | G3 | numbers in a figure's output *and in its source* trace back to results, and a script that estimates, samples or draws at random while it plots says why (a warning) |
 | G4 | word counts, required sections and required statements match the target journal, and the figure files meet its artwork rules (warnings) |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason |
@@ -248,6 +248,7 @@ number in the file and the rule that classified it.
 | `explain` | show how each number in a file was classified |
 | `verify` | re-run the analysis and check it still produces the recorded results |
 | `build` | produce the .docx; `--annotated` colours every number by what backs it |
+| `approve` | record an author's approval of the manuscript as it stands, which `submit` holds to the manuscript sent; the author's own act |
 | `render` | substitute the bindings and stop there |
 | `stages` | what each stage means and what binds at it |
 | `journal` | list journal profiles, or start one from the annotated template |

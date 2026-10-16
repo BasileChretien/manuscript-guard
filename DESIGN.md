@@ -339,6 +339,51 @@ reviewer, or the author six months later. Both files feed the same `lit.` namesp
 G7 reports the three depths separately. Abstract-only status is flagged but never fails a
 build; a `user-attested` entry missing its attester or statement does fail.
 
+## A pointer names what the document carries
+
+"As Table 4 shows" is a number like any other, and G2 let it through as a cross-reference:
+the rule read the word and whatever digits followed it. So "In step 1204 reports were
+excluded, as Table 4000 and Figure 9 show" passed whole, a count hidden behind "step" and
+two pointers at nothing. The example called its two tables "Table 2" and "Table 3" from the
+day its first table moved to the supplement as Table S1, and nothing said so: the build
+prints a table's caption as written and numbers nothing. LaTeX refuses a `\ref` to a label
+nobody defined; G2 now does the same for a pointer typed as text. Each finding fails from
+the internal-review stage, Basile's choice on 2026-10-14: while the draft is written its
+tables move and are numbered again.
+
+What the document carries is counted only where the count is known, Basile's choice on
+2026-10-15. A kind, tables or figures, of one document, the main text or the supplement, is
+checked where every one of them is placed by its binding, `{{table.<key>}}` or
+`{{figure.<key>}}`, counted in the order the files print. "Table 3" names the main text's
+third table; "Table S1", "Supplementary Table 1", "Supplemental Table 1", "eTable 1",
+"Extended Data Table 1", "Appendix Table 1" and "Table 1 in the Supplement" the supplement's
+first. A pointer to one there is not is `pointer-to-nothing`, a list read whole ("Tables 1
+and 2", "Figures 2–4", "Tables S1–3" being S1 to S3), and a list joined by a word only after
+a plural: "Table 2 and 3 patients" is one pointer. Where a document places one of a kind by
+hand (a pipe, grid, simple or multiline table, a caption line, an image, raw HTML) or none
+by its binding, as a paper whose figures go to the journal as files of their own does, its
+pointers to that kind are not checked, and one note says so (`pointers-unchecked`). The
+first version counted tables and images written by hand as well; its review found correct
+papers failed by every form of either it did not count, and by figures sent as files.
+Those a paper sends to the journal as files of their own, cited in the text and placed
+nowhere in it (a flow chart drawn by hand beside a forest plot that is bound), are declared
+in `paper.yaml`, `displays: {figures_as_files: 1}` and its three siblings for tables and the
+supplement, Basile's choice on 2026-10-15: they are counted with the bound ones, numbered
+with them, and have to be cited in order like them. A pointer that opens its paragraph and
+ends in a stop or a colon ("**Table 2.** Counts") is a caption typed above a table and no
+citation of it; one that opens a line inside a paragraph ends a sentence. The main text's tables and figures are held to
+what ICMJE asks for: each cited (`display-not-cited`), and first cited in the order they
+are numbered (`cited-out-of-order`). "Number tables consecutively in the order of their
+first citation in the text" and "Be sure that each table is cited in the text", from
+icmje.org, Preparing for Submission, read 2026-10-14; it says the same of the figures'
+order and gives the supplement no rule, so none is applied to it.
+
+The words that point at nothing a gate can check, a step, a panel, a box, an item, take a
+small number only: up to 20, as `categorical-label` does, and an item up to 99, since a
+checklist runs to 27 items. "Step 1204" is a count. A list after a plural is read as
+pointers by G2 too, where only its first number was before: "Tables 1 and 2 show" left its
+2 unbound.
+
 ## The corruption harness
 
 The claim "no stale number" is worth exactly as much as the evidence that the gate catches
@@ -715,6 +760,19 @@ rendered page and the same sentence extracted from a PDF, and none of them chang
 written. A check whose failures are typographic noise gets switched off. A genuine
 paraphrase still fails: dropping "drug-induced" from a quoted sentence is reported.
 
+A quote that fails is often nearly there, and the finding says how
+(`literature/placement.py`). The quote's words are looked for in the source in order, each
+at most twelve words after the one before, a word split by a hyphen counting as one, from
+any of its first three words. Where all are there, the finding names what stands between
+two of them and on which line: numbers, which are most often line numbers or a column of
+figures read into the sentence, or words, which are the quote's own omission or a column,
+a footnote or a running header. Or it names the word split by a hyphen, or, where the
+words stand together, the first place the punctuation or a symbol differs, "2·6" for "2.6".
+Where only some are there, it says how many, and the quote's next word against what the
+source has in its place. The line is the file's own for a text file or a page, and is not
+given for a PDF, whose lines are its reader's. This is said and decides nothing: the quote
+fails until it is what the source says.
+
 PDF text comes from poppler's `pdftotext` if present, then `pypdf` if importable, and
 otherwise the entry is reported as unverifiable rather than passed. Neither is a hard
 dependency: a toolkit that will not install without a PDF stack is a toolkit people do not
@@ -815,10 +873,15 @@ the document and the recipe: re-run it and you get the same profile; run it agai
 revised checklist and the diff is the revision. Every item is then verified to appear
 verbatim in the document, using the same comparison the literature ledger uses for a quote.
 
-Thirteen checklists have recipes: STROBE (34 items), RECORD (13), RECORD-PE (15), CONSORT
+Fifteen checklists have recipes: STROBE (34 items), RECORD (13), RECORD-PE (15), CONSORT
 (41), SPIRIT 2025 (53), PRISMA 2020 (42) and its abstracts checklist (12), READUS-PV (32)
 and its abstracts checklist (12), TRIPOD in its three variants (31 development, 31
-validation, 37 both), and ARRIVE 2.0 (21). A fourteenth recipe is not a checklist: SANRA (6
+validation, 37 both), TRIPOD+AI (52) and its abstracts checklist (13), and ARRIVE 2.0 (21).
+TRIPOD+AI is read from the tables of its statement paper, as Europe PMC serves its full text,
+because no checklist file of it is better than the paper; its recipe says so (`read_from`),
+and records a digest of the table's rows rather than of the file. The three TRIPOD 2015
+recipes record that TRIPOD+AI replaced them (`superseded_by`), and G5 warns a project that
+names one. A sixteenth recipe is not a checklist: SANRA (6
 items), the scale an editor or a reviewer scores a narrative review with, which exists because
 no reporting guideline covers a narrative review and the first manuscript written with this
 toolkit is one. A scale's profile says `kind: scale`, and the submission pack presents it as a
@@ -2283,6 +2346,17 @@ with no plan behind it, and when a plan's section is a heading with nothing unde
 "Deviations from the plan" heading followed by nothing is the common case, and naming it is
 most of the value.
 
+**A plan is written knowing what the data hold.** A plan can set out an analysis of data
+nobody has counted: an adjustment for a covariate missing in half the rows, a subgroup of
+twelve patients. The author's own script counts them, never the tool, and publishes the
+counts like any result under `feasibility.`: the cohort at each selection step, the
+outcome's events, the missing values of each planned variable, the date range, the
+duplicates. At the `design` stage, G12 warns (`feasibility-not-run`) where the plan's
+analysis section says something and no result is emitted under `feasibility.`. It is a
+warning, as the rest of this gate is: an author may know the data from a registry's own
+report. Once the analysis runs, its results say what the data hold, and the question is not
+asked again.
+
 **The plan is frozen when the first results are written.** A plan rewritten after the
 results are known is the pattern of a hypothesis fitted to its results, and it can be told
 mechanically. The first time either emitter writes results, it keeps the plan as it stood:
@@ -2329,6 +2403,46 @@ authors file and a merely unfinished one could be told apart.
 The effect is that `manuscript-guard init` followed by a first analysis script now reports
 zero failures at `design` and `analysis`, with the outstanding work listed as not yet due,
 and the same items fail from `drafting` onwards.
+
+## An approval is bound to what the author read
+
+"All authors approved the final manuscript" was a sentence of the covering letter, typed.
+`manuscript-guard approve --as <author>` now records an author's approval in
+`approvals/<author>.yaml`, one file per author, with the digest of what decides the built
+document, the prose and the results, as `check` reads it to say a build is current. The
+author is found by ORCID iD, e-mail address, full name or family name in `authors.yaml`.
+`submit` warns where an author has no approval (`approval-missing`) or approved a manuscript
+that has changed since (`approval-stale`). It warns and does not refuse: whether to send
+without one is the corresponding author's decision, and an approval given by e-mail is still
+one. An approval is a person's statement, so the hooks put to the person an agent's `approve`
+and an agent's edit of a file under `approvals/`, and refuse both where the tool cannot ask.
+
+## A named person signs what an agent must not
+
+Some findings are not the author's to close. A warning about a model the analysis fitted is
+the statistician's to judge, and an author who dismisses it has judged a question that was
+not theirs. `authors.yaml` names people for roles under `roles:`: the statistician, the data
+custodian, and the person responsible for ethics approval with the approval's reference. A
+role names an author as `approve --as` does, or someone who is not an author, by name. The
+corresponding author is the one `corresponding: true` marks, and no second place names them.
+
+A gate that raises a finding only one of them may close hands it to `sign_offs.settle` with
+the role, an id and the digest of what is signed. For G15 that is every warning about a
+model: those of one code on one model are signed together, bound to their messages and to
+the card of each model they name. `manuscript-guard sign --as <person> --finding <id>` writes
+the digest to a file under `approvals/sign-offs/` named by the id, its letters with eight
+characters of its digest, after checking that `--as` names the person the role names. The finding is then reported as information that says who signed it and
+when, with what they said. A sign-off of something that has changed since, one by someone
+the roles no longer name, and one copied to another finding count for nothing: the warning
+stands, and its hint names who signs it and the command. Unsigned, a warning stays a
+warning, as before. The record lives beside the authors' approvals, and the hooks put to the
+person an agent's `sign` and an agent's edit of the file, as they do an approval.
+
+G15's warning about a model kind the Methods name and the analysis did not fit is not
+signed: it is about the prose, and its hint already says when there is nothing to do. The
+data custodian and the ethics lead sign nothing yet. The small-cell exception, the
+custodian's authorisation of a model provider and the override of a design-round major
+finding will each be a signable finding when they are built.
 
 ## The plugin: skills for judgement, hooks for the moment of the mistake
 
@@ -3050,6 +3164,23 @@ The annotated copy is deliberately **not stamped**. The source stamp is what G1 
 decide whether the document a co-author opens is current, and there must be exactly one such
 document. This one is named so it cannot be mailed to a journal by accident, for the same
 reason `manuscript.UNCHECKED.docx` is.
+
+## What a change makes stale
+
+The digests the gates record already form a graph, and each gate reads one edge of it: G1 an
+analysis script and its declared inputs to a results file; the bindings a results key to the
+sentences and table placements that quote it; G3 the results to the figure scripts that read
+them, and their render records to the figures drawn; G9 a marked step to the Methods
+paragraph that points at it; G10 a figure to its review; G11 the manuscript's files to the
+panel readings that read them; the co-author's answers to the items whose sentences they
+judged. Nothing showed the whole chain, so "I changed the cohort definition: what now has to
+be run again, read again or signed again?" had no answer in one place.
+
+`manuscript-guard impact <file>` walks it from a file and prints every dependant, with
+`--json` for a machine; with no file it takes the files changed since a commit (`--since`,
+HEAD by default) and the files git does not track yet. It is derived only: it keeps no record
+of its own, so it cannot go stale, and nobody fills it in. It says what depends on a file,
+not whether the dependant has changed; that is the gates' once the analysis has run again.
 
 ## Getting a number out of the red
 
@@ -5084,6 +5215,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
+- **The feasibility results are asked for by their names only.** Any one result under
+  `feasibility.` quiets `feasibility-not-run`: nothing checks that the counts cover the
+  plan's variables or its selection steps, or that the script read the data the analysis
+  will. G1 holds the results to the inputs the script declared, and no more. The question
+  is asked at the `design` stage alone, so a project that starts at a later stage is never
+  asked it.
 - **G4 reads the main-text files in path order, and the build prints them in another.** The
   build puts `main.md` first and sorts the rest by file name, not by path. A section's words
   count where the headings above it put them, so an `abstract.md` beside a `main.md` written
@@ -5799,6 +5936,14 @@ Closed since, and why each mattered:
   and ffl are folded before a quote is looked for. Anything else one reader spells out and
   another does not is compared as it comes: a quote typed with "oe" is not found in a source
   read as "œ". A quote copied from the source, which is what the hint asks for, is.
+- **What a failed quote is said to nearly be is read by words, not by meaning.** A word is a
+  run of letters and digits, so "2.6" is the words 2 and 6, and a quote whose number differs
+  in one digit is a quote with one word retyped. Words more than twelve apart are not read
+  as the quote's, so a quote broken by a long footnote is said to be partly there. A source
+  that holds the quote's words in order in two places is read at the one with the most of
+  them, then the fewest interruptions, then the fewest words in them, which need not be
+  where the author copied from. A soft hyphen inside a word fails the quote, as it always did, and is said to split
+  it. Only the first two interruptions are named, and the rest counted.
 - **An ellipsis set against a value hides it.** The ellipsis is folded to three full stops
   and a value is not read with a full stop before it, so a quote holding `…14 per 100 000`
   does not state 14 and is reported `value-not-in-quote`. With a space after the ellipsis
@@ -5827,6 +5972,17 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
+- **A pointer is held to the number of a placement, not to its key, and only where every
+  placement is a binding.** "Table 2" passes wherever the main text places two tables,
+  whichever two they are: the check sees the numbering, not which table a sentence means.
+  A paper that writes any of its tables or places any of its figures by hand has no
+  pointer of that kind checked, only a note; one that sends some as files of their own and
+  does not declare them in `paper.yaml` (`displays`) has a pointer past the bound ones
+  failed as pointing at nothing. A pointer
+  in a heading, or in a caption typed above its table ("**Table 2.**"), is checked for a
+  target and not counted as the citation that numbers a table. "Table 3 of Smith et al."
+  is read as a pointer to the paper's own Table 3. "Box", "Section" and "Equation" point at
+  nothing the check counts.
 - **The Methods are a heading that holds the word, and two gates read fewer headings than
   G4 counts.** G4 and G9 take for the Methods a heading whose title holds "methods" where
   the paper's structure allows it. In a paper with no heading G2 reads as the Methods, the
@@ -7340,6 +7496,11 @@ Closed since, and why each mattered:
   strictly, so `# **Methods**` is not Methods. In a .docx a heading style is what makes a
   heading, so a styled paragraph typed as `References {-}` starts a list, although Word
   prints the braces.
+- **`impact` follows the edges the gates record, as loosely as they record them.** A figure
+  script counts as reading the results when G3's heuristic says so, and then depends on
+  every results file, not on the keys it reads. A sentence is named by its line, not its
+  words. A reading that lists no files is taken to read the whole manuscript, as G11 takes
+  it. A co-author answer depends on a file when an item it answered has a sentence there.
 - **A unit after a binding is read from a list of symbols.** "mg" is read and "milligrams"
   is not, so a unit written out in words is compared with nothing; one-letter symbols other
   than g and h (m, L, s) are left out as G14 leaves them, so "{{results.length}} m" is not
@@ -7352,6 +7513,16 @@ Closed since, and why each mattered:
   further into an item: an indented one, one under a later item's own underline, or
   `- # Results` on the item's own line. The same goes for a definition list. The old scan
   saw none of these either.
+- **A sign-off says who ran `sign`, not who judged the finding.** As with an approval, a
+  co-author who runs it for the statistician, or an agent the person lets through, writes a
+  sign-off nobody gave. A statistician who is not an author is matched by the name, e-mail
+  address or ORCID iD written under `roles:`, which nothing checks against a register. A
+  sign-off names its person by name, and by ORCID iD where the record and the role both
+  give one: a role handed to someone else of the same name, with no ORCID iD on either
+  side, keeps the earlier person's sign-offs.
+- **An approval says who ran the command, not who read the manuscript.** A co-author who
+  runs `approve` for a colleague, or an agent the person lets through, writes an approval
+  nobody gave. The digest says what was current when it was given, not that it was read.
 - **List numbering is read where pandoc starts a list item, and only in Markdown.**
   `ordered-list-marker` took any line opening with "412. " for numbering, so a count a hard
   wrap put there passed G2; a list cannot interrupt a paragraph, and the rule now holds
@@ -7385,11 +7556,18 @@ Closed since, and why each mattered:
   term under a definition. Inside a list item's lines pandoc folds the digits in some
   positions and not others, and there an indented "1." under `\newpage` is still taken for
   numbering.
-- **`import` compares a returned document with an offline build in the default citation
-  style.** A document built with `--csl` comes back with every paragraph that cites refused,
-  its citations read as changed. A Zotero field is read by the words it shows and never by
-  its code, so a field a co-author refreshed into another style refuses its paragraph, and
-  one that shows the default style's words passes whatever item it names.
+- **A live document's citations are known by their codes, as the build recorded them.** The
+  record is a file beside the build: on another machine, or with `build/` cleaned, every
+  citation Zotero has refreshed reads as changed and its paragraph is refused. Two citations
+  written apart in the source with the same items and locators (`[@a]` and `[@a ]`) cannot
+  say which a field was, and both are read by their words. What Zotero formats is not
+  compared at all, the reference list included: an item whose data Zotero updated, or an
+  entry of the list a co-author edited, is not seen. A field a co-author inserts into a
+  document built offline is read by the words it shows.
+- **A document built with `--csl` is compared in the style its digest names.** Where that
+  style is not where the build found it, or has changed, `import` says so and compares in
+  the default style, refusing every paragraph that cites, until `--csl` names it. Line
+  endings changed by a checkout are not a change of style; any other edit is.
 - **Every indented line under a list is the list's for headings.** Pandoc ends a list at a
   line indented less than the item's text that starts no item, at a definition under it,
   and at a rule at the margin. The walk ends the items there, so a count opening a later
@@ -7739,9 +7917,16 @@ Closed since, and why each mattered:
   transcribe, but two needed a second attempt and none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible
   wrong transcription, which is the best that can be done about it.
-- **TRIPOD+AI (2024) has no recipe.** Classic TRIPOD 2015 is transcribed from its three Word
-  checklists; the TRIPOD+AI checklist is available only as a table inside a PDF, which the
-  column reader is not shaped for.
+- **A paper's table is read only from Europe PMC's JATS.** A statement paper without an open
+  full text there (TARGET's, for one) cannot be read this way, and a checklist set as two
+  tables ("Table 2 (continued)") is two tables: the recipe names one. A cell that spans rows
+  is read in the first of them and left empty below, which carries a topic and would lose
+  text in the item's own column. The items are verified against the article's text, which
+  holds the table they were read from: that catches an item assembled wrong, not a column
+  read wrong.
+- **A replaced guideline is known only from its recipe.** `superseded_by` is written in the
+  recipe from what the new guideline's authors say. A project's own recipe, or a guideline
+  replaced after its recipe was written, says nothing until someone writes it in.
 - **ARRIVE's items are verified only at their opening clause**, for the reason above. It is
   the one profile whose tail text rests on the parser rather than on a check.
 - **ARRIVE's items are found only as poppler's `pdftotext` sets them.** The one from Xpdf,

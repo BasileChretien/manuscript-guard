@@ -159,6 +159,13 @@ TERMS = (
     "\N{GREEK CAPITAL LETTER SIGMA}", "\N{MICRO SIGN}g",
 )  # fmt: skip
 
+#: Pointer words and the numbers after them: a pointer, a list of them, and a count after a
+#: word that points at nothing G2 can check, which only looks like one.
+POINTED = (
+    "Table 2", "Tables 1 and 2", "Figures 2-4", "Figure S1", "step 3", "step 1204", "Box 47",
+    "item 25", "panel 2A",
+)  # fmt: skip
+
 #: Spaces a manuscript holds that are not the space bar's.
 SPACES = (
     "\t", "\N{NO-BREAK SPACE}", "\N{THIN SPACE}", "\N{NARROW NO-BREAK SPACE}", "\x0c", "\x0b",
@@ -826,6 +833,24 @@ def pdf_figures(draw: st.DrawFn) -> tuple[bytes, list[float], list[float]]:
     return document, sorted(texts + form_texts), sorted(lines + form_lines)
 
 
+#: What can stand in a stored source between two words of a quote taken from it: line
+#: numbers, figures, a column's or a header's words, a hyphen at the end of a line, a symbol.
+INTERRUPTIONS = (
+    "\n12\n", " 41 42 ", "  Table 2  ", "\nRunning head\n", "-\n", "\N{SOFT HYPHEN}",
+    "\N{MIDDLE DOT}", "/", " & ",
+)  # fmt: skip
+
+
+@st.composite
+def nearly_quoted(draw: st.DrawFn) -> dict[str, str]:
+    """A source and a quote of it, with something put into the source anywhere, inside the
+    quote or beside it, as the text read from a PDF puts it there."""
+    source, quote = draw(quotations())
+    at = draw(st.integers(0, len(source)))
+    put = draw(st.sampled_from(INTERRUPTIONS))
+    return {"source": source[:at] + put + source[at:], "quote": quote}
+
+
 # ---------------------------------------------------------------------------- spellings
 
 #: Words one English writes and the other does not, with a name's capital, in capitals,
@@ -981,7 +1006,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "sections": texts(),
     "numbers": st.fixed_dictionaries(
         {
-            "text": texts(),
+            "text": texts(POINTED),
             "terms": st.lists(
                 st.sampled_from(("CYP3A4", "COVID-19", "CO2", "HbA1c", "1,3-BDG")), max_size=2
             ),
@@ -996,6 +1021,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "quote words": st.fixed_dictionaries(
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
     ),
+    "quote placement": nearly_quoted(),
     "spelling": st.fixed_dictionaries(
         {
             "text": texts(SPELT),

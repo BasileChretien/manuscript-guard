@@ -88,7 +88,7 @@ nothing read the sentence. This comment and that gate are the same fix.
 The database contained {{results.cohort.n_reports}} reports, of which
 {{results.cohort.n_drug_reports}} named example-drug. Hepatic injury was reported in
 {{results.case.n_cases}} of these; {{results.case.n_serious}} were flagged as serious
-({{results.case.pct_serious}}%). Baseline characteristics are shown in Table 2.
+({{results.case.pct_serious}}%). Baseline characteristics are shown in Table 1.
 
 {{table.baseline}}
 
@@ -96,7 +96,7 @@ Reporting of hepatic injury was disproportionate for example-drug, with a report
 ratio of {{results.ror.point}} (95% CI {{results.ror.ci_low}} to
 {{results.ror.ci_high}}; 90% CI {{results.ror.ci90_low}} to {{results.ror.ci90_high}}). The
 signal criterion defined in the Methods was {{results.signal.verdict}}. The estimate is shown
-in Figure 1, and the counts it was computed from in Table 3, so a reader
+in Figure 1, and the counts it was computed from in Table 2, so a reader
 can reconstruct it. Adjusted for age group and sex, the reporting odds ratio was
 {{results.ror_adjusted.point}} (95% CI {{results.ror_adjusted.ci_low}} to
 {{results.ror_adjusted.ci_high}}), given to three decimal places because to two it is the

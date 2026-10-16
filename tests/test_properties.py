@@ -1075,6 +1075,102 @@ def test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document
     assert methods_gate.anchor_lines(text) == inside, text
 
 
+# ------------------------------------------------------------ pointers to tables and figures
+
+#: How a table or a figure is placed: by its binding, or written into the text.
+_PLACE = {
+    "table": ("{{table.t%d}}", "| Drug | Reports |\n|---|---|\n| A | %d |"),
+    "figure": ("{{figure.f%d}}", "![The forest plot %d](f.png)"),
+}
+#: How a pointer to one is written, as the singular, a list or a range of two.
+_WORD = {"table": ("Table", "table"), "figure": ("Figure", "Fig.", "figure")}
+_WORDS = {"table": ("Tables", "tables"), "figure": ("Figures", "Figs.")}
+_SUPPLEMENTARY = ("%s S%d", "Supplementary %s %d")
+_GAPS = (" ", " ", "\N{NO-BREAK SPACE}", "\n")
+#: What a finding says a pointer pointed at.
+_POINTED = re.compile(r"points at (?P<kind>table|figure) (?P<s>S)?(?P<n>\d+),")
+
+
+@st.composite
+def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, int]]]:
+    """A main text and a supplement placing tables and figures, and citing each of the main
+    text's in order; and pointers planted at what neither carries, one of each kind in
+    every example: past the main text's tables, in a list, past the supplement's tables in
+    the supplement's own words, and past the figures. The main text's tables and the
+    supplement's are placed by binding only, so they are counted; the main text's figures
+    include one placed by hand, so they are not, and a pointer past them is not said. What
+    the counted pointers point at is the third part."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    counts = {
+        (False, "table"): draw(st.integers(2, 3)),
+        (False, "figure"): draw(st.integers(1, 2)),
+        (True, "table"): draw(st.integers(1, 2)),
+        (True, "figure"): draw(st.integers(0, 1)),
+    }
+    parts: dict[bool, list[str]] = {False: ["# Results\n"], True: ["# Supplementary\n"]}
+    for (supplementary, kind), count in counts.items():
+        for number in range(1, count + 1):
+            # The main text's first figure is placed by hand, so its figures are not
+            # counted; every other display is placed by its binding.
+            by_hand = number == 1 and kind == "figure" and not supplementary
+            placed = _PLACE[kind][by_hand] % number
+            if supplementary:
+                cite = draw(st.sampled_from(_SUPPLEMENTARY)) % (_WORD[kind][0], number)
+            else:
+                cite = f"{draw(st.sampled_from(_WORD[kind]))}{draw(st.sampled_from(_GAPS))}{number}"
+            parts[supplementary].append(f"{words().capitalize()} in {cite}.\n\n{placed}\n")
+    planted: set[tuple[str, bool, int]] = set()
+    for kind in ("table", "figure"):
+        past = counts[False, kind] + draw(st.integers(1, 40))
+        parts[False].append(f"{words().capitalize()} {_WORD[kind][0]} {past}.\n")
+        if kind == "table":
+            planted.add((kind, False, past))
+    listed = counts[False, "table"] + draw(st.integers(1, 3))
+    join = draw(st.sampled_from((" and ", ", ", " & ")))
+    plural = draw(st.sampled_from(_WORDS["table"]))
+    parts[False].append(f"{words().capitalize()} {plural} 1{join}{listed}.\n")
+    planted.add(("table", False, listed))
+    beyond = counts[True, "table"] + 1
+    form = draw(st.sampled_from(_SUPPLEMENTARY))
+    parts[False].append(f"{words().capitalize()} {form % ('Table', beyond)}.\n")
+    planted.add(("table", True, beyond))
+    return "\n".join(parts[False]), "\n".join(parts[True]), planted
+
+
+@holds(100, _planted_pointers())
+def test_a_pointer_names_what_the_document_carries_or_is_said(
+    planted: tuple[str, str, set[tuple[str, bool, int]]],
+) -> None:
+    """A pointer to a table or a figure is held to the tables and figures each document
+    places, whichever way it places them: one pointing past them is said, a list read whole,
+    and one that points at what is there passes, cited in the order it is placed."""
+    import tempfile
+
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.pointers import check_pointers
+
+    main, supplement, expected = planted
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        (root / "paper.yaml").write_text("title: A paper\n", encoding="utf-8")
+        manuscript = root / "manuscript"
+        (manuscript / "supplementary").mkdir(parents=True)
+        (manuscript / "main.md").write_text(main, encoding="utf-8")
+        (manuscript / "supplementary" / "S1.md").write_text(supplement, encoding="utf-8")
+        report = check_pointers(load_project(root)[0])
+    said = {f.code for f in report.findings}
+    assert said <= {"pointer-to-nothing", "pointers-unchecked"}, (main, supplement, said)
+    assert "pointers-unchecked" in said, (main, supplement, report.findings)
+    named = (_POINTED.search(f.message) for f in report.findings)
+    found = {
+        (at["kind"], bool(at["s"]), int(at["n"])) for at in named if at is not None
+    }
+    assert found == expected, (main, supplement, report.findings)
+
+
 # --------------------------------------------------------------------------------- bindings
 
 
@@ -2081,6 +2177,198 @@ def _a_font_s_first_number_is_its_size(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(figure_svg, "_FONT_SIZE", re.compile(pattern, re.IGNORECASE))
 
 
+# ------------------------------------------------------- a quote its source nearly holds
+
+#: The words a quote is drawn from: none of them is a word of the filler around it, so the
+#: quote is found where it was put and nowhere else.
+_QUOTE_WORDS = (
+    "hepatic", "injury", "incidence", "crude", "reported", "signal", "ratio", "class",
+    "drug", "liver", "renal", "rash", "fever", "dose", "trial", "arm", "risk", "rate",
+)  # fmt: skip
+#: What a quote's word was retyped as.
+_RETYPED = ("kidney", "cardiac", "monthly", "severe")
+#: Each way a source holds a quote nearly.
+_NEARLY = (
+    "numbers", "words", "header", "split", "symbol", "retyped", "first retyped", "too far",
+)  # fmt: skip
+
+
+@st.composite
+def _nearly_quoted(draw: st.DrawFn) -> list[tuple[str, str, str, tuple[Any, ...]]]:
+    """A source for each way it can hold a quote nearly: numbers or words between two of
+    its words, one of its words split by a hyphen at the end of a line, a symbol for a
+    space between two, one of its words retyped, its first retyped, and words between two
+    of them past the gap allowed. Each with the quote, the kind, and what is to be said of
+    it: the words, and the line it is on."""
+    from manuscript_guard.literature.placement import GAP
+
+    def filler(least: int, most: int) -> list[str]:
+        return draw(st.lists(st.sampled_from(FILLER), min_size=least, max_size=most))
+
+    def lines(words: list[str]) -> str:
+        return "".join(w + draw(st.sampled_from((" ", " ", "\n"))) for w in words)
+
+    cases = []
+    for kind in draw(st.permutations(_NEARLY)):
+        words = draw(st.lists(st.sampled_from(_QUOTE_WORDS), min_size=6, max_size=9, unique=True))
+        n = len(words)
+        # Where the source or the quote differs: in its second half, so that the reading
+        # from its first word is the longest.
+        at = draw(st.integers(max(2, n // 2), n - 2))
+        quote = " ".join(words)
+        held = list(words)
+        joins = [draw(st.sampled_from((" ", " ", "\n"))) for _ in range(n - 1)] + [" "]
+        which = at
+        if kind == "numbers":
+            joins[at] = draw(st.sampled_from(("\n12\n", " 41 42 ", "\n7\n8\n")))
+            expected: tuple[Any, ...] = (" ".join(joins[at].split()), words[at], words[at + 1])
+        elif kind in ("words", "too far"):
+            between = " ".join(filler(*((1, 4) if kind == "words" else (GAP + 1, GAP + 3))))
+            joins[at] = draw(st.sampled_from((" ", "\n"))) + between + " "
+            expected = (between, words[at], words[at + 1])
+        elif kind == "header":
+            # A header that holds the quote's next word, which is not its last: one
+            # interruption, and the word in it is not the quote's (round 1 of #301).
+            at = which = min(at, n - 3)
+            between = " ".join([*filler(1, 3), words[at + 1], *filler(1, 3)])
+            joins[at] = draw(st.sampled_from((" ", "\n"))) + between + " "
+            expected = (between, words[at], words[at + 1])
+        elif kind == "split":
+            which = draw(st.sampled_from([i for i, w in enumerate(words) if len(w) >= 4]))
+            cut = draw(st.integers(2, len(words[which]) - 2))
+            held[which] = words[which][:cut] + "-\n" + words[which][cut:]
+            expected = (words[which][:cut], words[which][cut:])
+        elif kind == "symbol":
+            joins[at] = draw(st.sampled_from(("\N{MIDDLE DOT}", "/", " & ")))
+            expected = (words[at], joins[at], words[at + 1])
+        elif kind == "retyped":
+            changed = list(words)
+            changed[at] = draw(st.sampled_from(_RETYPED))
+            quote = " ".join(changed)
+            expected = (at, words[at - 1], changed[at])
+        else:
+            changed = [draw(st.sampled_from(_RETYPED)), *words[1:]]
+            quote = " ".join(changed)
+            expected = (changed[0],)
+        before = lines(filler(1, 12))
+        source = before + "".join(w + j for w, j in zip(held, joins, strict=True))
+        source += lines(filler(1, 8))
+        # The line it is on: what the source puts in starts there; a split word's first
+        # half is there; a symbol follows the word before it.
+        offset = len(before) + sum(
+            len(w) + len(j) for w, j in zip(held[:which], joins[:which], strict=True)
+        )
+        if kind in ("numbers", "words", "header", "too far", "symbol"):
+            offset += len(held[at])
+        if kind in ("numbers", "words", "header", "too far"):
+            offset += len(joins[at]) - len(joins[at].lstrip())
+        cases.append((source, quote, kind, (*expected, source.count("\n", 0, offset) + 1)))
+    return cases
+
+
+@holds(100, _nearly_quoted())
+def test_a_quote_its_source_nearly_holds_is_said_to_and_where(
+    cases: list[tuple[str, str, str, tuple[Any, ...]]],
+) -> None:
+    """G7 fails a quote that is not in its source exactly, and says what the source holds of
+    it: its words in order with numbers between two of them, or words, or with one of them
+    split by a hyphen, or a symbol where the quote has a space; its words up to one retyped;
+    all but a first word retyped. Each on the line of the source it is on. Words further
+    apart than the gap allowed are not the quote."""
+    from manuscript_guard.literature.placement import place, said
+
+    for source, quote, kind, expected in cases:
+        assert not contains(source, quote), (kind, source, quote)
+        placement = place(source, quote)
+        assert placement is not None, (kind, source, quote)
+        told = said(placement)
+        line = expected[-1]
+        if kind in ("numbers", "words", "header"):
+            between, before, after = expected[:3]
+            shown = f"the source has '{between}' between '{before}' and '{after}' (line {line})"
+            assert shown in told, (kind, told, source)
+            assert ("numbers, such as" in told) is (kind == "numbers"), (kind, told)
+        elif kind == "split":
+            first, second = expected[:2]
+            assert told == (
+                f"its words are all there in order; '{first}' and '{second}' are one word, "
+                f"split by a hyphen (line {line})"
+            ), (told, source)
+        elif kind == "symbol":
+            before, symbol, after = expected[:3]
+            shown = f"between '{before}' and '{after}' (line {line}) the source has '{symbol}'"
+            assert shown in told, (told, source)
+        elif kind in ("retyped", "too far"):
+            found = expected[0] if kind == "retyped" else quote.split().index(expected[2])
+            opening = f"{found} of its {len(quote.split())} words are there in order"
+            assert told.startswith(opening), (kind, told, source)
+            if kind == "retyped":
+                assert f"after '{expected[1]}' the quote has '{expected[2]}'" in told, told
+        else:
+            assert f"its first word, '{expected[0]}', is not before them" in told, (told, source)
+
+
+def _the_words_of_a_quote_are_never_apart(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import placement
+
+    patch.setattr(placement, "GAP", 0)
+
+
+def _a_word_split_by_a_hyphen_is_two(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import placement
+
+    patch.setattr(placement, "_split_at", lambda source, tokens, k, word: False)
+
+
+def _numbers_between_two_words_are_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import placement
+
+    patch.setattr(placement.Break, "numbers", property(lambda self: False))
+
+
+def _a_quote_is_read_from_its_first_word_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import placement
+
+    patch.setattr(placement, "STARTS", 1)
+
+
+def _a_source_s_lines_are_counted_from_0(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import placement
+
+    patch.setattr(placement, "_line", lambda source, at: source.count("\n", 0, at))
+
+
+def _each_word_is_found_where_it_first_is(patch: pytest.MonkeyPatch) -> None:
+    """The reading as it was before round 1 of #301: each word at its first occurrence."""
+    from manuscript_guard.literature import placement
+
+    def first_found(source, tokens, words, first, at):
+        found, splits = [at], []
+        k = at + 1
+        if tokens[at].word != words[first]:
+            splits.append(at)
+            k = at + 2
+        for word in words[first + 1 :]:
+            for m in range(k, min(k + placement.GAP + 1, len(tokens))):
+                if tokens[m].word == word or placement._split_at(source, tokens, m, word):
+                    split = tokens[m].word != word
+                    found.append(m)
+                    splits += [m] if split else []
+                    k = m + 1 + split
+                    break
+            else:
+                break
+        return found, splits
+
+    patch.setattr(placement, "_walk", first_found)
+
+
+def _what_differs_is_looked_for_at_the_ends_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature import placement
+
+    patch.setattr(placement, "_within", lambda *drawn: None)
+
+
 # ------------------------------------------------------------- a unit written after a binding
 
 #: What may follow a binding, with the unit read there, or None where none is: a gap of each
@@ -2492,6 +2780,30 @@ def _a_deviation_is_read_with_its_line_breaks(patch: pytest.MonkeyPatch) -> None
 
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
+
+
+def _a_list_of_pointers_is_its_first(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_numbers", lambda found: [(bool(found["s0"]), int(found["n0"]))])
+
+
+def _the_supplement_s_tables_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import pointers
+
+    read = pointers.pointers_in
+    patch.setattr(
+        pointers, "pointers_in",
+        lambda text, path: [replace(p, supplementary=False) for p in read(text, path)],
+    )
+
+
+def _a_figure_placed_by_hand_is_counted_anyway(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_BY_HAND", {**pointers._BY_HAND, "figure": re.compile(r"(?!)")})
 
 
 def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
@@ -2950,6 +3262,34 @@ BROKEN = {
         _a_font_s_first_number_is_its_size,
         test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
     ),
+    "the words of a quote may never be apart": (
+        _the_words_of_a_quote_are_never_apart,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "a word split by a hyphen is read as two": (
+        _a_word_split_by_a_hyphen_is_two,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "numbers between two words of a quote are said to be words": (
+        _numbers_between_two_words_are_words,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "a quote is read from its first word only": (
+        _a_quote_is_read_from_its_first_word_only,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "a source's lines are counted from 0": (
+        _a_source_s_lines_are_counted_from_0,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "each word of a quote is found where it first is": (
+        _each_word_is_found_where_it_first_is,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
+    "what differs is looked for only before and after a quote": (
+        _what_differs_is_looked_for_at_the_ends_only,
+        test_a_quote_its_source_nearly_holds_is_said_to_and_where,
+    ),
     "a quotation is read as the paper's own words": (
         _a_quotation_is_the_papers_own,
         test_a_term_given_up_is_found_where_it_stands_and_nowhere_it_does_not,
@@ -3069,6 +3409,18 @@ BROKEN = {
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
+    ),
+    "a list of tables is read as its first": (
+        _a_list_of_pointers_is_its_first,
+        test_a_pointer_names_what_the_document_carries_or_is_said,
+    ),
+    "the supplement's tables are counted as the paper's": (
+        _the_supplement_s_tables_are_the_paper_s,
+        test_a_pointer_names_what_the_document_carries_or_is_said,
+    ),
+    "a figure placed by hand is counted anyway": (
+        _a_figure_placed_by_hand_is_counted_anyway,
+        test_a_pointer_names_what_the_document_carries_or_is_said,
     ),
     "the Methods are read by the name G9 had for them": (
         _the_methods_are_read_by_their_old_name,

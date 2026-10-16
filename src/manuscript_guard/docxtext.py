@@ -26,7 +26,7 @@ import hashlib
 import posixpath
 import re
 import zipfile
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import NamedTuple
@@ -367,24 +367,59 @@ def _kept(element: ET.Element) -> bool:
     return False
 
 
-def _read(element: ET.Element, fonts: Fonts) -> _Reading:
+#: Given a field's code, the text to read in place of the words it shows, or None to read
+#: them as shown. See `blocks`.
+FieldReading = Callable[[str], str | None]
+
+
+def _read(element: ET.Element, fonts: Fonts, fields: FieldReading | None = None) -> _Reading:
     """The visible text under `element`, where each marked token sits in it, what in it is
     not read as text, named, and where each identifier's bookmark sits in it.
 
     A character is read as the font it is in draws it: Insert > Symbol writes a `w:sym`,
     and text typed in the Symbol font is in that font's encoding. See `wordfonts`.
+
+    A field is its code, read across every `instrText` run between its `begin` and its
+    `separate`, then the words it shows up to its `end`. Where `fields` gives a text for the
+    code, that text is read in place of the words, and the words are not read.
     """
     out: list[object] = []
     marked: set[str] = set()
     unread: list[str] = []
     paragraph = element if element.tag == W + "p" else None
+    # The fields open at this point of the walk, innermost last: the code read so far, and
+    # whether the words shown are being read in place of. A field that ends in a later
+    # paragraph is read from that paragraph on as text.
+    open_fields: list[dict] = []
+
+    def shown_in_place() -> bool:
+        return any(field["replaced"] for field in open_fields)
 
     def walk(node: ET.Element, run: RunFonts) -> None:
         if node.tag in _UNSEEN:
             return
         if node.tag == W + "r":
             run = fonts.run(node, paragraph)
-        if node.tag == W + "t" and node.text:
+        if node.tag == W + "fldChar":
+            kind = node.get(W + "fldCharType", "")
+            if kind == "begin":
+                open_fields.append({"code": [], "shown": False, "replaced": False})
+            elif kind == "separate" and open_fields and not open_fields[-1]["shown"]:
+                field = open_fields[-1]
+                field["shown"] = True
+                instead = None if fields is None or shown_in_place() else fields(
+                    "".join(field["code"])
+                )
+                if instead is not None:
+                    out.append(instead)
+                    field["replaced"] = True
+            elif kind == "end" and open_fields:
+                open_fields.pop()
+        elif node.tag == W + "instrText" and open_fields and not open_fields[-1]["shown"]:
+            open_fields[-1]["code"].append(node.text or "")
+        elif shown_in_place() and node.tag not in (W + "bookmarkStart", W + "bookmarkEnd"):
+            pass
+        elif node.tag == W + "t" and node.text:
             text, missing = run.read(node.text)
             out.append(text)
             unread.extend(missing)
@@ -522,6 +557,7 @@ def _paragraph(
     moves: tuple[str, ...],
     fonts: Fonts,
     styles: _Styles,
+    fields: FieldReading | None = None,
 ) -> _Paragraph:
     names: list[str] = []
     comments: list[str] = []
@@ -558,7 +594,7 @@ def _paragraph(
     # Enter at the end of a paragraph marks its mark inserted too, and one retyped whole has
     # no text but inserted text: what it does have is the text it deleted.
     arrived = mark in ("moveTo", "ins") and not _kept(element) and not _removes(element)
-    text, tokens, unread, places = _read(element, fonts)
+    text, tokens, unread, places = _read(element, fonts, fields)
     maths = None
     if any(node.tag == _M + "oMath" for node in seen):
         # Word deletes an equation run by run with Track Changes on, leaving the `m:oMath`
@@ -604,6 +640,7 @@ def _walk_body(
     *,
     fonts: Fonts,
     table: bool = False,
+    fields: FieldReading | None = None,
 ) -> list[_Paragraph]:
     out: list[_Paragraph] = []
     for child in node:
@@ -612,13 +649,19 @@ def _walk_body(
             continue
         if child.tag == W + "p":
             found = moves.get(id(child), ())
-            out.append(_paragraph(child, table=table, moves=found, fonts=fonts, styles=styles))
+            out.append(
+                _paragraph(
+                    child, table=table, moves=found, fonts=fonts, styles=styles, fields=fields
+                )
+            )
         elif child.tag == W + "tbl":
-            out.extend(_walk_body(child, moves, styles, fonts=fonts, table=True))
+            out.extend(_walk_body(child, moves, styles, fonts=fonts, table=True, fields=fields))
         elif child.tag not in _UNSEEN and child.tag != W + "sectPr":
             # Content controls, custom XML, table rows and cells: look inside.
             inside = table or child.tag == W + "tc"
-            out.extend(_walk_body(child, moves, styles, fonts=fonts, table=inside))
+            out.extend(
+                _walk_body(child, moves, styles, fonts=fonts, table=inside, fields=fields)
+            )
     return out
 
 
@@ -713,7 +756,9 @@ def _settled(paragraphs: list[_Paragraph]) -> list[_Paragraph]:
 
 
 
-def paragraphs_of(document: Path, part: str = "word/document.xml") -> list[_Paragraph]:
+def paragraphs_of(
+    document: Path, part: str = "word/document.xml", fields: FieldReading | None = None
+) -> list[_Paragraph]:
     """Every paragraph in one part of the document, in order, tables included, each carrying
     the identifiers of the paragraph it is (see `_settled`)."""
     try:
@@ -728,18 +773,22 @@ def paragraphs_of(document: Path, part: str = "word/document.xml") -> list[_Para
         raise DocumentUnreadable(str(exc)) from exc
     body = root.find(W + "body")
     body = body if body is not None else root
-    return _settled(_walk_body(body, _move_names(body), styles, fonts=fonts))
+    return _settled(_walk_body(body, _move_names(body), styles, fonts=fonts, fields=fields))
 
 
-def blocks(document: Path) -> list[Block]:
+def blocks(document: Path, fields: FieldReading | None = None) -> list[Block]:
     """The body as a reader sees it once every tracked change is accepted.
+
+    `fields` reads a field by its code where it gives a text for it (see `_read`): a
+    citation of a live build, which shows whatever Zotero last formatted, is read as the
+    source wrote it.
 
     Each table is one block: its cells carry no identifiers and are not compared. A
     paragraph whose mark was deleted is folded into the one after it - a join, which is how
     Word shows it. If nothing of it is left, it was deleted outright and its identifier goes
     with it rather than being carried into its neighbour, where it would read as a join.
     """
-    paragraphs = paragraphs_of(document)
+    paragraphs = paragraphs_of(document, fields=fields)
     pictures = _pictures(document, {r for p in paragraphs for r in p.embeds})
     out: list[Block] = []
     pending: list[_Paragraph] = []

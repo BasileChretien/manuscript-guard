@@ -14,6 +14,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -481,7 +482,11 @@ def test_a_dry_run_says_what_would_go_where_and_sends_nothing(
     assert "manuscript/main.md" in out
     assert "profiles/journals/demo-journal.yaml" in out
     assert "authors.yaml" in out  # named among what is not sent
-    assert not any(KEY[i : i + 4] in out for i in range(len(KEY) - 3)), "part of the key"
+    # The request bodies' SHA-256 are printed, and four of them hold one of the key's runs of
+    # hex digits by chance about one run in twenty, as the example's on Linux did: a digest
+    # is not the key.
+    printed = re.sub(r"\b[0-9a-f]{64}\b", "<sha256>", out)
+    assert not any(KEY[i : i + 4] in printed for i in range(len(KEY) - 3)), "part of the key"
     assert snapshot(mixed) == before, "a dry run changed the project outside build/"
 
 

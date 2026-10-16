@@ -266,7 +266,15 @@ def _looks_like_header(row: list[str]) -> bool:
     joined = " ".join(row).lower()
     return any(
         marker in joined
-        for marker in ("item no", "item #", "item description", "checklist item", "recommendation")
+        for marker in (
+            "item no",
+            "item #",
+            "item description",
+            "checklist item",
+            "recommendation",
+            # The column a checklist leaves for the page an item is on: STARD 2015's header.
+            "reported on page",
+        )
     )
 
 

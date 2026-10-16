@@ -1,0 +1,25 @@
+schema: manuscript-guard/recipe/1
+
+# STARD 2015, for studies of diagnostic accuracy, read from the Word checklist the EQUATOR
+# Network serves. Its first column is empty, its second holds the section or the topic, and
+# one item is two words long ("Eligibility criteria"), so the shortest item is two words.
+
+meta:
+  name: STARD-2015
+  long_name: "Standards for Reporting of Diagnostic Accuracy Studies"
+  version: "2015"
+  applies_to: "Studies of diagnostic accuracy"
+  source_url: "https://www.equator-network.org/reporting-guidelines/stard/"
+  retrieved_on: 2026-10-16
+  retrieved_by: "downloaded by the recipe's author"
+  licence: >-
+    CC BY 4.0 — the STARD 2015 statement (BMJ 2015, doi:10.1136/bmj.h5527) carries the Creative Commons Attribution 4.0 licence in its Europe PMC full text (PMC4623764); Crossref records only the publisher's text-and-data-mining terms. The Word checklist states no terms of its own.
+  licence_url: http://creativecommons.org/licenses/by/4.0/
+  download_url: https://www.equator-network.org/wp-content/uploads/2015/10/STARD-2015-Checklist.docx
+  sha256: 95bcc6c2eb5e4800ea7d907ac1f6b4fdc29ffec8d5254170dabb20d7ba26fcce
+
+document: STARD-2015-Checklist.docx
+topic_column: 1
+id_column: 2
+text_column: 3
+min_text_words: 2

@@ -3109,6 +3109,23 @@ decide whether the document a co-author opens is current, and there must be exac
 document. This one is named so it cannot be mailed to a journal by accident, for the same
 reason `manuscript.UNCHECKED.docx` is.
 
+## What a change makes stale
+
+The digests the gates record already form a graph, and each gate reads one edge of it: G1 an
+analysis script and its declared inputs to a results file; the bindings a results key to the
+sentences and table placements that quote it; G3 the results to the figure scripts that read
+them, and their render records to the figures drawn; G9 a marked step to the Methods
+paragraph that points at it; G10 a figure to its review; G11 the manuscript's files to the
+panel readings that read them; the co-author's answers to the items whose sentences they
+judged. Nothing showed the whole chain, so "I changed the cohort definition: what now has to
+be run again, read again or signed again?" had no answer in one place.
+
+`manuscript-guard impact <file>` walks it from a file and prints every dependant, with
+`--json` for a machine; with no file it takes the files changed since a commit (`--since`,
+HEAD by default) and the files git does not track yet. It is derived only: it keeps no record
+of its own, so it cannot go stale, and nobody fills it in. It says what depends on a file,
+not whether the dependant has changed; that is the gates' once the analysis has run again.
+
 ## Getting a number out of the red
 
 `check` says a number is unbound and the annotated copy colours it red. Neither says what to
@@ -7409,6 +7426,11 @@ Closed since, and why each mattered:
   strictly, so `# **Methods**` is not Methods. In a .docx a heading style is what makes a
   heading, so a styled paragraph typed as `References {-}` starts a list, although Word
   prints the braces.
+- **`impact` follows the edges the gates record, as loosely as they record them.** A figure
+  script counts as reading the results when G3's heuristic says so, and then depends on
+  every results file, not on the keys it reads. A sentence is named by its line, not its
+  words. A reading that lists no files is taken to read the whole manuscript, as G11 takes
+  it. A co-author answer depends on a file when an item it answered has a sentence there.
 - **A unit after a binding is read from a list of symbols.** "mg" is read and "milligrams"
   is not, so a unit written out in words is compared with nothing; one-letter symbols other
   than g and h (m, L, s) are left out as G14 leaves them, so "{{results.length}} m" is not

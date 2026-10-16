@@ -10361,18 +10361,18 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    seven read revisions with the earlier rounds in front of them, so the seventh supersedes
-    the six before it and each says it was not blinded."""
+    eight read revisions with the earlier rounds in front of them, so the eighth supersedes
+    the seven before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok, report.render(project)
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
-                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2))
+                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 5, report.render(project)
-    assert report.counts["review_rounds_complete"] == 7
+    assert said == superseded + [("round-not-blinded", "review")] * 6, report.render(project)
+    assert report.counts["review_rounds_complete"] == 8
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -12320,6 +12320,44 @@ def test_a_typed_software_version_fails(project: Path) -> None:
     version = namespace["results.software.python"].display
     _replace_once(main_md(project), "{{results.software.python}}", version)
     assert "typed-software-version" in codes(gate_report(project))
+
+
+def _coded_with(root: Path, **releases: str) -> None:
+    """Coding dictionaries in the example's results, as `em.dictionary` declares them."""
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for name, release in releases.items():
+        document["values"][f"dictionary.{name}"] = {
+            "value": release, "display": release, "label": True, "role": "dictionary",
+        }  # fmt: skip
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "typed"),
+    [
+        ("Events were coded with MedDRA version 26.1.", ["'26.1'"]),
+        ("Drugs were coded with WHODrug Global B3 March 2025.", ["'Global B3 March 2025'"]),
+        ("Diagnoses were coded with ICD-10 2019 codes.", ["'2019'"]),
+        ("Events were coded with MedDRA version {{results.dictionary.meddra}}.", []),
+        ("Diagnoses were coded with ICD-10 {{results.dictionary.icd_10}} codes.", []),
+        # The release alone is not the dictionary's: the name has to stand before it.
+        ("Reports received in 2019 were read again.", []),
+        # Not as part of a longer word: "matched" holds "atc".
+        ("Reports were matched by hand in 2025 to each other.", []),
+    ],
+)
+def test_a_typed_dictionary_release_fails_and_only_beside_its_name(
+    project: Path, sentence: str, typed: list[str]
+) -> None:
+    _coded_with(project, meddra="26.1", whodrug="Global B3 March 2025", icd_10="2019",
+                atc="2025")  # fmt: skip
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\n" + sentence + "\n", encoding="utf-8")
+    found = [f for f in gate_report(project).failures if f.code == "typed-dictionary-release"]
+    assert [f.message.split(" is ")[0] for f in found] == typed
+    assert all("{{results.dictionary." in f.hint for f in found)
 
 
 def test_a_parameter_declared_and_never_read_fails(project: Path) -> None:

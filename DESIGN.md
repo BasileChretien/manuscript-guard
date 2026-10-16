@@ -1513,6 +1513,19 @@ A threshold is not a measurement, so a float parameter is written as typed (fift
 significant digits, in both languages) unless `digits` or `display` says otherwise: 0.025
 rounded to two places is 0.03, a different test.
 
+**A coding dictionary is declared like a version.** "Events were coded with MedDRA version
+26.1 and drugs with WHODrug Global B3 2025" passed `26.1` as a software version tied to
+nothing, and failed `B3` and `2025` with no declared way to bind them. In a
+pharmacovigilance paper the release of MedDRA decides which preferred terms exist. So
+`em.dictionary("MedDRA", release_file=...)` records `dictionary.meddra` with the role
+`dictionary`, in both emitters, and digests the file it names as an input, so that a new
+release is a change G1 sees. MedDRA's ASCII release states its version in
+`meddra_release.asc`, the first `$`-separated field of its first line, and the emitter reads
+it from there; another dictionary's release is given, and checked against nothing. G2 fails a
+declared release typed where the dictionary is named within a few words before it on its
+line (`typed-dictionary-release`), and only there: "2019" is the release of ICD-10 and the
+year of many other things.
+
 ## A P follows from its statistic
 
 A paper's own results are bound, and their arithmetic is the analysis's. Three kinds of
@@ -5455,6 +5468,17 @@ Added by the adversarial review, verified and **not** fixed:
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
+- **A coding dictionary's release is read from a file only for MedDRA, and found typed only
+  beside its name.** That `meddra_release.asc` opens with the version, as the first of its
+  `$`-separated fields, is taken from published descriptions of the ASCII release; the
+  format document itself comes with a MedDRA licence and was not read. A file that does not
+  open with a version is refused, not guessed at. Every other dictionary's release is what
+  the script says. G2 finds a release typed only where the dictionary's name, as its key
+  writes it, stands within 60 characters before it on the same line: "coded with MedDRA
+  version" wrapped onto the next line, a name written another way ("the Medical Dictionary
+  for Regulatory Activities"), or the release written otherwise than declared ("B3 2025" for
+  "Global B3 March 2025") is not found. `verify` reports a release that differs on a re-run
+  as a difference, not as the environment: the dictionary is data.
 - **G3 checks a number drawn in a figure for set membership, not identity.** A text node in
   an SVG is accepted if it equals *any* results display, not the one that belongs at that
   position — so a forest plot labelled with the right value against the wrong outcome passes.

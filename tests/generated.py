@@ -685,6 +685,15 @@ NOTATED = (
     "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g", "(CI 95%-0.3 to 0.4)",
 )  # fmt: skip
 
+#: A coding dictionary's release typed beside its name and elsewhere, and its name inside a
+#: longer word: what G2 finds typed where it should be bound.
+RELEASED = (
+    "MedDRA version 26.1", "MedDRA 26.1", "26.1", "WHODrug Global B3 March 2025",
+    "Global B3 March 2025", "ICD-10 2019", "ICD 10 version 2019", "in 2019", "micd_10ed 2019",
+    "{{results.dictionary.meddra}}", "MedDRA" + chr(10) + "26.1",
+)  # fmt: skip
+
+
 #: A test statistic and its P in each of the ways a results sentence writes them, right and
 #: wrong, and what a sentence says of a test that is not the textbook one: what the reading
 #: of reported tests finds and judges.
@@ -844,6 +853,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
     "units after": texts(BOUND_UNITS),
     "abbreviations": st.fixed_dictionaries(

@@ -208,7 +208,13 @@ def _number(printed: str) -> Decimal:
 
 
 def _p_range(test: Reported) -> tuple[float, float] | None:
-    match = re.fullmatch(_P_NUMBER, test.p)
+    return p_range(test.sign, test.p)
+
+
+def p_range(sign: str, printed: str) -> tuple[float, float] | None:
+    """The values a P printed with this sign stands for: "= 0.041" as 0.0405 to 0.0415,
+    "< 0.05" as 0 to 0.05. None where the number cannot be read."""
+    match = re.fullmatch(_P_NUMBER, printed)
     if match is None:
         return None
     exponent = next((e for e in match.group("e1", "e2", "e3", "e4", "e5") if e), "0")
@@ -219,9 +225,9 @@ def _p_range(test: Reported) -> tuple[float, float] | None:
     except (ValueError, InvalidOperation):
         return None
     value = mantissa.scaleb(power)
-    if test.sign == "<":
+    if sign == "<":
         return 0.0, float(value)
-    if test.sign == ">":
+    if sign == ">":
         return float(value), 1.0
     half = Decimal(5) * Decimal(10) ** (mantissa.as_tuple().exponent - 1 + power)
     return max(0.0, float(value - half)), min(1.0, float(value + half))

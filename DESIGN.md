@@ -1557,6 +1557,43 @@ written from their definitions in the NIST Digital Library of Mathematical Funct
 chapter 8, whose equations `stats/special.py` names, and they are tested against values
 SciPy computed once, outside the package. The two agree to a relative 1e-10.
 
+An estimate printed with its confidence interval is held to it the same way, on the same
+three surfaces (`stats/intervals.py`). An estimate outside its own interval over every value
+the printed digits allow, a bound transposed past it or an estimate from another analysis,
+is `interval-excludes-estimate`, whatever kind of interval it is. And two identities hold
+for a Wald interval:
+
+- **A ratio's interval is symmetric on the log scale.** The arm from the lower bound up to
+  the estimate equals the arm from the estimate up to the upper bound. A bound misprinted,
+  or the crude estimate printed with the adjusted interval, makes them unequal.
+  `ratio-interval-asymmetric` is said where they differ by more than 30% of the
+  half-width at the least, over every value the three numbers' printed digits allow.
+  "ROR 2.6, 95% CI 2.1-3.2" differs by 2.8% as printed and by nothing within its rounding.
+- **The interval excludes the null exactly when P is below one less its level.** The null
+  is 1 for an odds, risk, hazard, rate or reporting ratio and 0 for a difference; a 90%
+  interval goes with 0.10. `p-against-interval` is said where the whole rounding box of a
+  bound is past the null and P is on the wrong side of the level as printed, or the reverse.
+
+The 30% was set against the intervals that are not Wald ones and whose sentence may not say
+so. A profile-likelihood interval (R's `confint()` on a logistic model) and an exact
+conditional one were worked out for 2-by-2 tables, once and outside the package. Their arms
+differ by 2 to 7% with tens of events in each group, 11 to 20% with three to five in the
+smaller, 23 to 25% with two, and 42% with one. So 30% leaves both alone except at one or two
+events, and still finds most misprinted bounds; a crude estimate beside an adjusted
+interval, which differ by less, is found only when they differ by a fair share of the
+half-width.
+
+A sentence that calls its interval profile-likelihood, exact, bootstrap, permutation,
+simulated, Bayesian or credible is read and judged on neither identity. One that calls its
+P one-sided, or adjusted or corrected for multiplicity, is not judged on the second.
+"Adjusted" alone stands nothing down: it is said of estimates far more often than of P
+values, and an adjusted odds ratio's interval is as symmetric as a crude one's. A P is taken
+as the estimate's own only where no other interval stands between them and nothing near it
+says it is a P for interaction, trend or heterogeneity. The words between a name and its
+estimate do not run across another estimate's name: "No difference in mortality, HR 0.83"
+names a hazard ratio, held to 1. Bounds whose signs cannot be read
+for sure are not read: "-0.9--0.1" is an en dash in Markdown or a hyphen and a minus.
+
 ## A model is read from its fit, and each variable says what it is
 
 A parameter is one number. A model is a set of decisions: which outcome, which kind of
@@ -5369,6 +5406,17 @@ Added by the adversarial review, verified and **not** fixed:
   P moves one way with each. A t or a z is read as two-sided unless its sentence says
   otherwise, so a one-sided test the sentence does not call one is reported. A ledger quote
   and an audited paper are judged at 0.05; only `check` reads `param.alpha`.
+- **An estimate is held to its interval only where a name for it stands before it.** OR,
+  RR, HR, IRR, ROR, PRR and their names in words are ratios; MD, RD, SMD and "difference"
+  are differences. "It was 2.6 (95% CI 2.1 to 3.2)" is not read, and neither is a second
+  interval with no name of its own, "and 1.1 (95% CI 0.8 to 1.5) in women". A ratio's
+  interval that is not a Wald one and does not say so, a profile-likelihood interval with
+  one or two events in a group, is reported as lopsided. An interval and a P from different
+  methods, a Wald interval beside a log-rank or chi-squared P, can fall on either side of
+  the level near it, and are reported unless the sentence calls the test exact or
+  likelihood-based, or the P adjusted for multiplicity. A word that stands an interval or
+  its P down does so wherever it is in the sentence, as for the tests. A P given before its
+  interval, or in a table column of its own, is not read.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did

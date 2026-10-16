@@ -38,17 +38,52 @@ def test_check_says_what_each_dimension_rests_on_and_keeps_its_exit_code(
 
 def test_a_run_of_verify_is_said_until_the_results_change(project: Path) -> None:
     """`verify` re-runs the analysis and was said nowhere; `check` had no way to say it."""
+    from manuscript_guard.verify import Comparison, VerifyReport
+
     assert "    recorded:    no run of `verify` in this checkout" in _said(project)
     loaded, _ = load_project(project)
-    record_verified(loaded, 31, 31)
+    agreed = tuple(map(str, range(31)))
+    record_verified(loaded, VerifyReport([Comparison("01.json", agreed=agreed)]))
     [line] = [line for line in _said(project) if "`verify` re-ran" in line]
-    assert line.endswith("and reproduced 31 of 31 values")
+    assert line.endswith(": 31 of 31 values reproduced")
     fragment = next((project / "results").glob("*.json"))
     document = json.loads(fragment.read_text(encoding="utf-8"))
     document["values"]["cohort.n_reports"]["display"] = "4001"
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     [line] = [line for line in _said(project) if "`verify` re-ran" in line]
     assert line.endswith("; the results have changed since")
+
+
+def test_a_run_of_verify_that_left_a_fragment_out_says_so(project: Path) -> None:
+    """Round 1 of #306: a fragment skipped (no Rscript) or whose script failed was left out of
+    the count, and `check` said "reproduced 31 of 31 values" of an analysis not all re-run."""
+    from manuscript_guard.verify import Comparison, VerifyReport
+
+    loaded, _ = load_project(project)
+    agreed = tuple(f"v{n}" for n in range(31))
+    failed = Comparison("02_model.json", ran=False, only_on_disk=("m.point", "m.ci_low"))
+    run = VerifyReport([Comparison("01_disproportionality.json", agreed=agreed), failed],
+                       skipped=[("03_r.json", "Rscript is not on PATH")])  # fmt: skip
+    record_verified(loaded, run)
+    [line] = [line for line in _said(project) if "`verify`" in line]
+    assert line.endswith("31 of 33 values reproduced; 2 fragments not re-run; it did not pass")
+    record_verified(loaded, VerifyReport([Comparison("01.json", agreed=agreed)]))
+    [line] = [line for line in _said(project) if "`verify`" in line]
+    assert line.endswith(": 31 of 31 values reproduced")
+
+
+def test_a_reporting_checklist_that_stops_its_gate_is_said_under_reporting(project: Path) -> None:
+    """Round 1 of #306: the reporting gate stops under the name G8r, while its findings are
+    G5's, and its failure was counted in no dimension."""
+    stopped = Finding(gate="G8r", code="gate-errored", message="G8r could not run")
+    [line] = [line for line in _said(project, Report((stopped,))) if "G4, G5, G13" in line]
+    assert "G4, G5, G13: 1 failing, 0 warnings; G5 did not run" in line
+
+
+def test_an_attested_file_of_another_shape_says_nothing_of_it(project: Path) -> None:
+    attested = project / "literature" / "attested.yaml"
+    attested.write_text("schema: manuscript-guard/attested/1\nentries: 3\n", encoding="utf-8")
+    assert not [line for line in _said(project) if "attested" in line]
 
 
 def test_a_gate_that_did_not_run_or_read_nothing_is_said(project: Path) -> None:

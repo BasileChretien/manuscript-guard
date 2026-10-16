@@ -73,6 +73,10 @@ DIMENSIONS = (
     ),
 )
 
+#: A gate `check` names otherwise when it stops: the reporting gate's findings are G5's, and
+#: it stops as G8r (round 1 of #306).
+STOPPED_AS = {"G8r": "G5"}
+
 #: The count that says how much a gate read, where reading nothing is worth saying.
 READ = {
     "G1": "fragments_checked", "G2": "numeric_atoms", "G3": "figures_checked",
@@ -103,11 +107,14 @@ def assurance(report: Report, project: Project) -> list[str]:
 def _machine(report: Report, gates: tuple[str, ...]) -> str:
     """What the dimension's gates found: failures and warnings, and which read nothing or
     did not run."""
-    found = [f for f in report.findings if f.gate in gates]
+    found = [f for f in report.findings if STOPPED_AS.get(f.gate, f.gate) in gates]
     failing = sum(f.severity == FAIL for f in found)
     warning = sum(f.severity == WARN for f in found)
     said = f"{', '.join(gates)}: {failing} failing, {warning} warning{'' if warning == 1 else 's'}"
-    stopped = sorted({f.gate for f in found if f.code == "gate-errored"}, key=gates.index)
+    stopped = sorted(
+        {STOPPED_AS.get(f.gate, f.gate) for f in found if f.code == "gate-errored"},
+        key=gates.index,
+    )
     empty = [
         gate for gate in gates
         if gate not in stopped and gate in READ and report.counts.get(READ[gate], 0) == 0
@@ -130,8 +137,13 @@ def _verified(project: Project) -> list[str]:
     if not isinstance(record, dict) or record.get("schema") != VERIFIED_SCHEMA:
         return ["no run of `verify` in this checkout"]
     when, total = record.get("ran_on", "an unrecorded date"), record.get("values", 0)
-    reproduced = record.get("reproduced", 0)
-    said = f"`verify` re-ran the analysis on {when} and reproduced {reproduced} of {total} values"
+    said = f"`verify` re-ran the analysis on {when}: {record.get('reproduced', 0)} of {total} " \
+        "values reproduced"  # fmt: skip
+    left = record.get("not_rerun") or []
+    if left:
+        said += f"; {len(left)} fragment{'s' if len(left) > 1 else ''} not re-run"
+    if not record.get("ok"):
+        said += "; it did not pass"
     if fragments_digest(project) != record.get("results_sha256"):
         said += "; the results have changed since"
     return [said]
@@ -146,16 +158,22 @@ def fragments_digest(project: Project) -> str:
     return digest.hexdigest()
 
 
-def record_verified(project: Project, reproduced: int, total: int) -> Path:
-    """Write what `verify` found, for `check` to say: when, how many values it reproduced,
-    and the results it re-ran."""
+def record_verified(project: Project, result) -> Path:
+    """Write what `verify` found, for `check` to say: when, how many of the values on disk
+    it reproduced, the fragments it did not re-run, whether it passed, and the results it
+    re-ran. Round 1 of #306: counted from the fragments that re-ran alone, a skipped or a
+    failed one went unsaid, and "31 of 31" was printed of an analysis not all re-run."""
+    comparisons = result.comparisons
     path = project.path("build") / VERIFIED
     path.parent.mkdir(parents=True, exist_ok=True)
     record = {
         "schema": VERIFIED_SCHEMA,
         "ran_on": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        "values": total,
-        "reproduced": reproduced,
+        "values": sum(len(c.agreed) + len(c.differed) + len(c.only_on_disk) for c in comparisons),
+        "reproduced": sum(len(c.agreed) for c in comparisons),
+        "not_rerun": [name for name, _why in result.skipped]
+        + [c.fragment for c in comparisons if not c.ran],
+        "ok": bool(result.ok and not result.skipped),
         "results_sha256": fragments_digest(project),
     }
     path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8", newline="\n")
@@ -204,13 +222,15 @@ def _attested(project: Project) -> list[str]:
     """The values a person attested having read in a source the toolkit could not store."""
     from manuscript_guard.contracts.literature import ATTESTED_FILE
 
-    entries = _read(project.path("literature") / ATTESTED_FILE).get("entries") or []
-    people = sorted({str(e["attested_by"]) for e in entries if isinstance(e, dict)
-                     and e.get("attested_by")})  # fmt: skip
-    if not people:
+    entries = _read(project.path("literature") / ATTESTED_FILE).get("entries")
+    if not isinstance(entries, list):
         return []
+    attested = [e for e in entries if isinstance(e, dict) and e.get("attested_by")]
+    if not attested:
+        return []
+    people = sorted({str(entry["attested_by"]) for entry in attested})
     return [
-        f"{len(entries)} value{'s' if len(entries) > 1 else ''} attested as read in a source "
+        f"{len(attested)} value{'s' if len(attested) > 1 else ''} attested as read in a source "
         f"that could not be stored, by {', '.join(people)}"
     ]
 

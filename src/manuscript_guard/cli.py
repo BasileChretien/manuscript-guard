@@ -1565,9 +1565,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         return 2
     if not args.only:
         # What `check` says of reproducibility: a run of every script, and only that.
-        reproduced = sum(len(c.agreed) for c in result.comparisons)
-        total = reproduced + sum(len(c.differed) for c in result.comparisons)
-        record_verified(project, reproduced, total)
+        record_verified(project, result)
     return 0 if result.ok else 1
 
 

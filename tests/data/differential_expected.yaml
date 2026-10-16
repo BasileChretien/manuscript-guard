@@ -39,3 +39,8 @@ expected:
     why: >-
       G8 works out the P each t, F, chi-squared or z statistic in the manuscript gives, and
       counts them, `p_values_recomputed`
+  - reading: numbers
+    why: >-
+      a step, a panel or a box takes a number up to 20 and an item up to 99, so a count
+      after one of them is unbound; a list after a plural pointer, "Tables 1 and 2", is read
+      whole

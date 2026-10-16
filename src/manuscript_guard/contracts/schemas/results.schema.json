@@ -496,6 +496,19 @@
             }
           }
         },
+        "environment": {
+          "type": "array",
+          "description": "The lockfiles at the project root when this fragment was written (renv.lock, uv.lock, poetry.lock, environment.yml, requirements*.txt), each with its digest. G1 warns when one has changed, gone or appeared since. Absent in a fragment written before the emitters recorded it.",
+          "items": {
+            "type": "object",
+            "required": ["path", "sha256"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        },
         "session": {
           "type": "object",
           "description": "Enough of the computing environment to reconstruct it.",

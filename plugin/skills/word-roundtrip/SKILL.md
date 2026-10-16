@@ -45,8 +45,10 @@ manuscript-guard build --offline
     beside itself, so a co-author's Refresh, or a switch of style in Word, is no edit. A
     citation changed in Word with Zotero's dialog is refused. So is every refreshed one where
     that record is not there: import a live document on the machine that built it.
-  - A Zotero field a co-author inserts into a document built offline is read by the words it
-    shows.
+  - A citation a co-author inserts with their own reference manager (a field of Zotero's or
+    another's, or a content control one wraps it in) is not merged as text: its paragraph is
+    refused, and the import names the work and gives its key where `references.bib` holds
+    it. Cite it in the .md.
 - Send `build/manuscript.docx`, and `build/supplementary.docx` if the supplement needs
   reading too. Each comes back as its own file and is imported on its own: `import` reads
   from the paragraph identifiers which of the two it is, and compares it with a fresh build

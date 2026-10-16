@@ -126,9 +126,9 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 
 | Gate | Checks |
 |---|---|
-| G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since; an input the data custodian keeps is not in git |
+| G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since; an input the data custodian keeps is not in git; a warning where a lockfile pinning its packages has |
 | G2 | every number is classified, every declared value is quoted, and every pointer to a table or figure placed by its binding names one the document places; a unit written after a binding is the one emitted; no count is printed below the data custodian's minimum |
-| G3 | numbers in a figure's output *and in its source* trace back to results |
+| G3 | numbers in a figure's output *and in its source* trace back to results, and a script that estimates, samples or draws at random while it plots says why (a warning) |
 | G4 | word counts, required sections and required statements match the target journal, and the figure files meet its artwork rules (warnings) |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason; a guideline its authors have replaced is pointed out |
 | G6 | model artefacts, AI phrasing, and unsupported appeals to authority |

@@ -576,6 +576,86 @@ def _which_document(project, known: dict, returned, name: str) -> bool | None:
     return kinds == {True}
 
 
+def _refused_inserted(plan, inserted: dict[str, list], returned: list, project):
+    """The plan with each paragraph that holds a citation a co-author inserted with a
+    reference manager refused, naming the work, where it was merged or let be: its words
+    came back as prose, and merged they were written into the source as text, a year G2 then
+    caught as a number nobody bound. Where `references.bib` holds the work, its key is given."""
+    from dataclasses import replace
+
+    from manuscript_guard.merge import Refusal
+
+    entries = _bib_entries(project)
+    why_of = {
+        name: tuple(_said_inserted(work, entries) for work in works)
+        for name, works in inserted.items()
+    }
+    text_of = {name: block.text for block in returned for name in block.names}
+    refused = [
+        replace(refusal, why=refusal.why + why_of[refusal.name])
+        if refusal.name in why_of
+        else refusal
+        for refusal in plan.refused
+    ]
+    told = {refusal.name for refusal in refused}
+    refused += [
+        Refusal(name, text_of.get(name, ""), why)
+        for name, why in why_of.items()
+        if name not in told and name in text_of
+    ]
+    merged = {name: text for name, text in plan.merged.items() if name not in why_of}
+    return replace(plan, merged=merged, refused=tuple(refused))
+
+
+def _bib_entries(project) -> dict[str, dict[str, str]]:
+    from manuscript_guard.literature.bibfile import read_entries
+
+    path = project.path("literature") / "references.bib"
+    try:
+        return read_entries(path) if path.is_file() else {}
+    except (OSError, UnicodeDecodeError, ValueError):
+        return {}
+
+
+def _plain_title(text: str) -> str:
+    """A title as compared: letters and digits of any script, case and the rest folded."""
+    return " ".join(re.sub(r"[\W_]+", " ", text.replace("{", "").replace("}", "")).lower().split())
+
+
+def _first_family(authors: str) -> str:
+    """The first author's family name in a `.bib` author field: before the comma, or the
+    last word."""
+    first = authors.replace("{", "").replace("}", "").split(" and ")[0].strip()
+    family = first.split(",")[0] if "," in first else (first.split() or [""])[-1]
+    return family.strip().lower()
+
+
+def _the_work(work, fields: dict[str, str]) -> bool:
+    """Whether a `.bib` entry is the work a citation field names: by its DOI, or by its
+    title, and then by its year and first author wherever both say them. A title alone
+    was too little: two works whose titles share only "COVID-19" in Latin letters were one."""
+    doi = work.doi.lower().removeprefix("https://doi.org/")
+    if doi:
+        return fields.get("doi", "").lower().removeprefix("https://doi.org/") == doi
+    title = _plain_title(work.title)
+    if not title or _plain_title(fields.get("title", "")) != title:
+        return False
+    year = fields.get("year", "").strip()
+    if work.year and year and work.year != year:
+        return False
+    family = _first_family(fields.get("author", ""))
+    return not (work.author and family and work.author.strip().lower() != family)
+
+
+def _said_inserted(work, entries: dict[str, dict[str, str]]) -> str:
+    """What the import says of a work a co-author cited with their reference manager."""
+    key = next((key for key, fields in entries.items() if _the_work(work, fields)), None)
+    said = f"{work} was cited in Word with a reference manager, whose field the build does not read"
+    if key is not None:
+        return f"{said}: cite it in the .md as [@{key}]"
+    return f"{said}, and is not in references.bib: add it to the library, then cite it in the .md"
+
+
 def _style_built_with(
     project, name: str, digest: str, recorded: str | None, given: Path | None
 ) -> tuple[Path | None, str | None]:
@@ -623,6 +703,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         RoundTripError,
         cited_of,
         comments_in,
+        inserted_citations,
         named_now,
         numbering,
         numbering_refusal,
@@ -703,6 +784,14 @@ def cmd_import(args: argparse.Namespace) -> int:
 
     # The comparison is built as the document was: see `roundtrip.CITED_PROPERTY`.
     citations = read_citations(project.path("build"), edited, supplementary=supplementary)
+    try:
+        # A citation a co-author inserted with their own reference manager; see below.
+        inserted = inserted_citations(
+            edited, citations.get("fields") if cited == LIVE_CITATIONS else None
+        )
+    except RoundTripError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
     mode, style, narrative = OFFLINE, None, None
     if cited == LIVE_CITATIONS:
         # Each citation as the source writes it, on both sides: in the build compared with,
@@ -846,6 +935,19 @@ def cmd_import(args: argparse.Namespace) -> int:
         stale=stale,
         printed=printed,
     )
+    if inserted:
+        # Only the paragraphs compared, `known`, which goes by the names they have now: one
+        # that is not is said to be so below, and named in a refusal it had no file.
+        plan = _refused_inserted(
+            plan,
+            {
+                now_named(name): works
+                for name, works in inserted.items()
+                if now_named(name) in known
+            },
+            renamed,
+            project,
+        )
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
     # cells, headings, captions, list items, block quotes, the reference list, and anything

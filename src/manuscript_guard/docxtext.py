@@ -776,6 +776,48 @@ def paragraphs_of(
     return _settled(_walk_body(body, _move_names(body), styles, fonts=fonts, fields=fields))
 
 
+def fields_of(document: Path) -> dict[str, list[str]]:
+    """The code of each field in a paragraph, and the tag of each content control, by the
+    identifier the paragraph carries, in order: what is seen, a field deleted as a tracked
+    change being gone. A paragraph without an identifier is not listed.
+
+    What `import` reads a citation a co-author inserted with a reference manager by: its
+    words come back as prose, and its code names the work."""
+    try:
+        with open_archive(document) as archive:
+            root = read_part(archive, "word/document.xml", what=document.name)
+    except UnsafeDocument as exc:
+        raise DocumentUnreadable(str(exc)) from exc
+    found: dict[str, list[str]] = {}
+    for paragraph in root.iter(W + "p"):
+        names = [
+            node.get(W + "name", "")
+            for node in paragraph.iter(W + "bookmarkStart")
+            if _IDENTIFIER.match(node.get(W + "name", ""))
+        ]
+        if not names:
+            continue
+        codes: list[str] = []
+        code: list[str] | None = None
+        for node in _visible(paragraph):
+            if node.tag == W + "fldChar":
+                kind = node.get(W + "fldCharType", "")
+                if kind == "begin":
+                    code = []
+                elif kind == "separate" and code is not None:
+                    codes.append("".join(code))
+                    code = None
+            elif node.tag == W + "instrText" and code is not None:
+                code.append(node.text or "")
+            elif node.tag == W + "fldSimple":
+                codes.append(node.get(W + "instr", ""))
+            elif node.tag == W + "tag" and node.get(W + "val"):
+                codes.append(node.get(W + "val", ""))
+        if codes:
+            found.setdefault(names[0], []).extend(codes)
+    return found
+
+
 def blocks(document: Path, fields: FieldReading | None = None) -> list[Block]:
     """The body as a reader sees it once every tracked change is accepted.
 

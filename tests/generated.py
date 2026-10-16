@@ -622,6 +622,18 @@ NOTATED = (
     "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g", "(CI 95%-0.3 to 0.4)",
 )  # fmt: skip
 
+#: A test statistic and its P in each of the ways a results sentence writes them, right and
+#: wrong, and what a sentence says of a test that is not the textbook one: what the reading
+#: of reported tests finds and judges.
+REPORTED = (
+    "t(23) = 2.45, p = .022", "t(23) = 2.45, p = .41", "*t*(40) = \N{MINUS SIGN}2.1, *P* < 0.05",
+    "t = 2.45, df = 23, P = 0.022", "F(2, 45) = 3.21, p = .05", "_F_(1,234) = 5.6; P = .40",
+    "\N{GREEK SMALL LETTER CHI}2(1, N = 90) = 4.5, p < .05",
+    "\N{GREEK SMALL LETTER CHI}^2^(3) = 0.5, *P* \\< 0.001", "chi-square(2) = 9.1, p = .011",
+    "z = 4.10, P = 4.1e-5", "Z = 4.10, P = 4.1 x 10^-5^", "z = 1.2, p\n= .23", "one-sided",
+    "Welch's", "after Bonferroni adjustment", "{{results.t}}", "p = {{results.p}}", "t(",
+)  # fmt: skip
+
 
 # ---------------------------------------------------------------------- what an edit holds
 
@@ -767,6 +779,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "reported tests": texts(REPORTED),
     "units after": texts(BOUND_UNITS),
     "abbreviations": st.fixed_dictionaries(
         {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}

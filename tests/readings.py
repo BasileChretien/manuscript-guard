@@ -405,6 +405,18 @@ def _abbreviations() -> Reading:
     return abbreviations
 
 
+@reading("prose quotations")
+def _prose_quotations() -> Reading:
+    """Each quotation of four words or more in a sentence that cites, with the paragraph's
+    line and the works cited: what G7 looks for in the stored sources."""
+    from manuscript_guard.gates.quotations import quotations_in
+
+    def quotations(text: str) -> list[list[Any]]:
+        return [[q.line, q.quote, list(q.keys)] for q in quotations_in(text)]
+
+    return quotations
+
+
 @reading("checker sentences")
 def _checker_sentences() -> Reading:
     """How a co-author's items are cut out of a manuscript: the sentences of each paragraph.

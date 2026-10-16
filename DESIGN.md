@@ -805,6 +805,18 @@ volume. Two cited entries with the same title of four words or more and no ident
 common are a warning (`reference-title-duplicate`): they may be one work, or a correction
 and the paper it corrects.
 
+## A quotation in the prose is in its source
+
+G7 checks the ledger's quotes against the stored sources. A quotation written into a sentence
+of the manuscript was checked against nothing, and a misremembered one reads as checked. Now
+each quotation of four words or more, in straight or curly double marks, is looked for in the
+stored source of every work cited in the sentences it spans, with the ledger's `contains()`:
+a quotation of two sentences ends in the one that cites. The sentences are cut as the
+co-author's items are. Where it is in none of those sources, G7 warns
+(`quotation-not-in-source`); where none of the cited works has a source that can be read, a
+note says it could not be checked (`quotation-unchecked`). Page numbers are not compared: a
+PDF's page index is not the page printed on it.
+
 ## Only a person can sign an attestation
 
 `attested.yaml` exists to record that **a named human read something the toolkit could not
@@ -7579,6 +7591,11 @@ Closed since, and why each mattered:
   strictly, so `# **Methods**` is not Methods. In a .docx a heading style is what makes a
   heading, so a styled paragraph typed as `References {-}` starts a list, although Word
   prints the braces.
+- **A quotation in the prose is found by its marks.** Single marks, a block quotation with no
+  marks, and a quotation in a language whose marks differ (« », „ “) are not read. A
+  quotation of something that is not the cited work, a questionnaire's item in a sentence
+  that cites the instrument's paper, is looked for in that paper all the same, and warned of.
+  A quotation with emphasis inside it is compared with the emphasis marks in it.
 - **`impact` follows the edges the gates record, as loosely as they record them.** A figure
   script counts as reading the results when G3's heuristic says so, and then depends on
   every results file, not on the keys it reads. A sentence is named by its line, not its

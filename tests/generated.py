@@ -365,6 +365,16 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+#: Quotations as a sentence writes them, with the citation that says whose words they are.
+_OPEN, _CLOSE = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
+QUOTED = (
+    _OPEN + "the risk was acceptable in all but the frailest" + _CLOSE + " [@agency2019]",
+    '"four words stand in here" [@a]',
+    _OPEN + "It was low. It was acceptable." + _CLOSE + " [@b; @c]",
+    '"so-called" [@d]',
+)
+
+
 def bindings() -> st.SearchStrategy[str]:
     """A manuscript with a binding where a line begins: after a line end, of Windows or
     not, and in some texts as the first thing in the file.
@@ -804,6 +814,7 @@ def _quotation_asked(drawn: tuple[tuple[str, str], str, str]) -> dict[str, str]:
 #: What each reading of `tests/readings.py` is given, by the reading's name.
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
+    "prose quotations": texts(QUOTED),
     "mask": texts(TERMS),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),

@@ -70,6 +70,7 @@ from manuscript_guard.gates import language as language_gate
 from manuscript_guard.gates import methods as methods_gate
 from manuscript_guard.gates import models as models_gate
 from manuscript_guard.gates import numbers as numbers_gate
+from manuscript_guard.gates import quotations as quotations_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
 from manuscript_guard.gates.language import _file, _hidden
@@ -1302,6 +1303,65 @@ def test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document
     text, paragraphs, inside = planted
     assert _paragraphs_pandoc_reads(placeholders.substitute(text, {})) == paragraphs, text
     assert methods_gate.anchor_lines(text) == inside, text
+
+
+# ------------------------------------------------------- a quotation and the work it cites
+
+_OPEN, _CLOSE = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
+#: Each kind of sentence with a quotation, written with `{q}` for the quotation, `{k}` for
+#: its citation key and `{o}` `{c}` for curly marks, with whether G7 looks for the
+#: quotation: in straight or curly marks, across a line break, of two sentences, with two
+#: works cited or a narrative one, and not where it is short, where the citation is in the
+#: next sentence, or in a comment.
+_QUOTATION_KINDS = (
+    ('Reports said "{q}" [@{k}].', True, 1),
+    ("Reports said {o}{q}{c} [@{k}].", True, 1),
+    ("Reports said {o}{q}\nand more words here{c} [@{k}].", True, 1),
+    ("{o}It was low. {q}.{c} [@{k}]", True, 1),
+    ("Reports said {o}{q}{c} [@{k}; @{k}x].", True, 2),
+    ("As @{k} wrote, {o}{q}{c}.", True, 1),
+    ('Reports said "too short" [@{k}].', False, 1),
+    ('Reports said "{q}". Later work agreed [@{k}].', False, 1),
+    ('Reports said <!-- "{q}" [@{k}] -->.', False, 1),
+)
+
+
+@st.composite
+def _planted_quotations(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, tuple[str, ...]]]]:
+    """A paragraph of filler sentences around each kind of quotation, in an order drawn each
+    time, with the quotations G7 should look for, by the paragraph's line."""
+    paragraphs: list[str] = []
+    found: list[tuple[int, str, tuple[str, ...]]] = []
+    line = 1
+    for index, (kind, looked, keys) in enumerate(draw(st.permutations(_QUOTATION_KINDS))):
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=8))
+        quote = " ".join(words)
+        key = f"source{index}"
+        before = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+        sentence = kind.replace("{q}", quote).replace("{k}", key)
+        sentence = sentence.replace("{o}", _OPEN).replace("{c}", _CLOSE)
+        paragraph = f"{before.capitalize()}. {sentence}"
+        if looked:
+            written = quote + (" and more words here" if "and more" in kind else "")
+            if kind.startswith("{o}It was low."):
+                written = f"It was low. {quote}."
+            cited = (key, f"{key}x")[:keys]
+            found.append((line, written, cited))
+        paragraphs.append(paragraph)
+        line += paragraph.count("\n") + 2
+    return "\n\n".join(paragraphs), found
+
+
+@holds(150, _planted_quotations())
+def test_a_quotation_is_found_with_the_works_its_sentences_cite_and_no_other(
+    planted: tuple[str, list[tuple[int, str, tuple[str, ...]]]],
+) -> None:
+    """A quotation of four words or more, in straight or curly marks, is taken with
+    the works cited in the sentences it spans; not a short one, not one whose citation is in
+    the next sentence, and not one in a comment."""
+    text, expected = planted
+    found = [(q.line, q.quote, q.keys) for q in quotations_gate.quotations_in(text)]
+    assert found == expected, text
 
 
 # ------------------------------------------------------------ pointers to tables and figures
@@ -3234,6 +3294,20 @@ def _a_claim_keeps_the_words_of_a_comment(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "blank_comments", lambda text: text)
 
 
+def _a_quotation_is_in_straight_marks_only(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(quotations_gate, "_QUOTED", re.compile(r'"([^"\n]+(?:\n[^"\n]+)*)"()'))
+
+
+def _a_quotation_takes_its_paragraphs_citations(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import produce
+
+    patch.setattr(produce, "_split", lambda flat: [flat])
+
+
+def _a_quotation_in_a_comment_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(quotations_gate, "blank_comments", lambda text: text)
+
+
 def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
 
@@ -3366,6 +3440,18 @@ BROKEN = {
     "a claim keeps the words of a comment inside it": (
         _a_claim_keeps_the_words_of_a_comment,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a quotation is in straight marks only": (
+        _a_quotation_is_in_straight_marks_only,
+        test_a_quotation_is_found_with_the_works_its_sentences_cite_and_no_other,
+    ),
+    "a quotation takes its paragraph's citations": (
+        _a_quotation_takes_its_paragraphs_citations,
+        test_a_quotation_is_found_with_the_works_its_sentences_cite_and_no_other,
+    ),
+    "a quotation in a comment is read": (
+        _a_quotation_in_a_comment_is_read,
+        test_a_quotation_is_found_with_the_works_its_sentences_cite_and_no_other,
     ),
     "a heading is part of the paragraph under it": (
         _a_heading_is_part_of_the_paragraph_under_it,

@@ -1064,6 +1064,58 @@ def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
     assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
 
 
+# --------------------------------------------- a quotation in the prose and its source
+
+
+@pytest.mark.parametrize(
+    ("sentence", "said"),
+    [
+        pytest.param(
+            "The cohort found that \u201cincidence rose with age and did not differ meaningfully "
+            "by sex\u201d [@fictionalHepaticCohort2021].", [], id="in its source",
+        ),
+        pytest.param(
+            "\u201cThe crude incidence of drug-induced hepatic injury was 14 per 100 000 "
+            "person-years. Incidence rose with age\u201d [@fictionalHepaticCohort2021].", [],
+            id="two sentences of its source",
+        ),
+        pytest.param(
+            "The cohort found that \u201cincidence fell with age and differed by sex\u201d "
+            "[@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+            id="misquoted",
+        ),
+        pytest.param(
+            'The agency judged it "acceptable in all but the frailest patients" '
+            "[@fictionalAgencyReport].", [("quotation-unchecked", "info")],
+            id="a work with no stored source",
+        ),
+        pytest.param(
+            'The cohort called it "meaningfully by sex" [@fictionalHepaticCohort2021].', [],
+            id="too short to be looked for",
+        ),
+        pytest.param(
+            'Some called it "acceptable in all but the frailest". Others disagreed '
+            "[@fictionalHepaticCohort2021].", [], id="cited in the next sentence",
+        ),
+    ],
+)  # fmt: skip
+def test_a_quotation_in_the_prose_is_in_the_source_it_cites(
+    project: Path, sentence: str, said: list
+) -> None:
+    """A quotation of four words or more in a sentence that cites a work is looked for in
+    that work's stored source, as the ledger's quotes are; one in a work with no stored
+    source is a note."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion\n", "\n" + sentence + "\n\n# Discussion\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    project_, _ = load_project(project)
+    found = check_prose_quotations(project_).findings
+    assert [(f.code, f.severity) for f in found] == said
+
+
 # ------------------------------------------------------------- what a change makes stale
 
 

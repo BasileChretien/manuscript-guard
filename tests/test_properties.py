@@ -2359,6 +2359,107 @@ def test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not(
         assert [code for code, _said in found] == ["identifier-malformed"], (field, found)
 
 
+# ------------------------------------------------------------- a figure that estimates itself
+
+_FIGURE_FILLER = {
+    "python": ("x = 1", "fig, ax = plt.subplots()", "values = frame['y']", "ax.set_xlabel('Dose')"),
+    "r": ("x <- 1", "p <- ggplot(d, aes(x, y))", "theme_set(theme_bw())", "d$z <- d$x + 1"),
+}
+_SEED_CALLS = {"python": ("np.random.seed(7)", "rng = np.random.default_rng(7)"),
+               "r": ("set.seed(7)",)}  # fmt: skip
+
+
+def _called(draw: st.DrawFn, rule, language: str) -> str:
+    """A name a script calls one of the rule's calls by."""
+    if rule.prefixes:
+        prefix = draw(st.sampled_from(rule.prefixes))
+        return prefix + ("choice" if prefix == "random." else "normal")
+    name = draw(st.sampled_from(rule.names))
+    if language == "r":
+        return name
+    return draw(st.sampled_from(("sns.", "frame.", "frame.y."))) + name
+
+
+@st.composite
+def _figure_scripts(draw: st.DrawFn) -> list[tuple[str, str, list[tuple[int, str]]]]:
+    """A script in each language, seeded and not, with every call that estimates written
+    bare, told not to by each argument that does, with its seed or divisor given and given
+    as nothing, and in a comment and a string; in an order drawn each time, with where each
+    is found."""
+    from manuscript_guard.gates.figure_estimates import rules
+
+    scripts = []
+    for language in ("python", "r"):
+        equals = "=" if language == "python" else " = "
+        nothing = draw(st.sampled_from(("None",) if language == "python" else ("NA", "NULL")))
+        for seeded in (False, True):
+            plans: list[tuple[str, bool]] = []
+            for rule in rules()[language]:
+                call = _called(draw, rule, language)
+                plans.append((f"{call}(d)", not (rule.seeded and seeded)))
+                for name, values in rule.unless.items():
+                    plans.append((f"{call}(d, {name}{equals}{values[0]})", False))
+                if rule.stated:
+                    plans.append((f"{call}(d, {rule.stated}{equals}7)", False))
+                    plans.append(
+                        (f"{call}(d, {rule.stated}{equals}{nothing})", not (rule.seeded and seeded))
+                    )
+                plans.append((f"# {call}(d)", False))
+                plans.append((f'label = "{call}(d)"', False))
+            lines = [draw(st.sampled_from(_FIGURE_FILLER[language]))]
+            if seeded:
+                lines.append(draw(st.sampled_from(_SEED_CALLS[language])))
+            text, expected = "", []
+            for line, found in draw(st.permutations(plans)):
+                lines.append(draw(st.sampled_from(_FIGURE_FILLER[language])))
+                text = "\n".join(lines) + "\n"
+                if found:
+                    expected.append((len(text), line.split("(")[0]))
+                lines.append(line)
+            scripts.append((language, "\n".join(lines) + "\n", expected))
+    return scripts
+
+
+@holds(100, _figure_scripts())
+def test_a_call_that_estimates_is_found_unless_it_is_told_not_to(
+    scripts: list[tuple[str, str, list[tuple[int, str]]]],
+) -> None:
+    """Each call that estimates, samples, draws at random or drops rows is found where it
+    stands, in Python and R. Not where an argument turns it off or a seed or divisor is
+    given, not where a seed set in the script settles a random one, and not in a comment or
+    a string. A seed given as nothing ("None", "NA") settles nothing."""
+    from manuscript_guard.gates.figure_estimates import estimates_in
+
+    for language, text, expected in scripts:
+        found = [(e.call.start, e.call.name) for e in estimates_in(text, language)]
+        assert found == expected, (language, text)
+
+
+def _an_argument_that_turns_an_estimate_off_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_estimates
+
+    arguments = figure_estimates._arguments
+    patch.setattr(figure_estimates, "_arguments", lambda code, at: ({}, arguments(code, at)[1]))
+
+
+def _a_call_is_known_only_by_the_last_part_of_its_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_estimates
+
+    patch.setattr(figure_estimates, "named", lambda name, names: name.split(".")[-1] in names)
+
+
+def _a_seed_in_the_script_settles_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_estimates
+
+    patch.setattr(figure_estimates, "SEEDS", {"python": (), "r": ()})
+
+
+def _a_seed_given_as_nothing_is_taken_for_one(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_estimates
+
+    patch.setattr(figure_estimates, "NOT_GIVEN", (None,))
+
+
 # ------------------------------------------------------------- one work under two keys
 
 
@@ -3243,6 +3344,22 @@ BROKEN = {
     "an ISBN's groups are read as ISBNs": (
         _an_isbn_s_groups_are_read_as_isbns,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "an argument that turns a figure's estimate off is not read": (
+        _an_argument_that_turns_an_estimate_off_is_not_read,
+        test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
+    ),
+    "a call that estimates is known only by the last part of its name": (
+        _a_call_is_known_only_by_the_last_part_of_its_name,
+        test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
+    ),
+    "a seed set in a figure's script settles nothing": (
+        _a_seed_in_the_script_settles_nothing,
+        test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
+    ),
+    "a seed given as None or NA is taken for a seed": (
+        _a_seed_given_as_nothing_is_taken_for_one,
+        test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
     ),
     "a deviation is read with its line breaks": (
         _a_deviation_is_read_with_its_line_breaks,

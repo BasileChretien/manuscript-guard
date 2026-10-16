@@ -573,6 +573,86 @@ def _which_document(project, known: dict, returned, name: str) -> bool | None:
     return kinds == {True}
 
 
+def _refused_inserted(plan, inserted: dict[str, list], returned: list, project):
+    """The plan with each paragraph that holds a citation a co-author inserted with a
+    reference manager refused, naming the work, where it was merged or let be: its words
+    came back as prose, and merged they were written into the source as text, a year G2 then
+    caught as a number nobody bound. Where `references.bib` holds the work, its key is given."""
+    from dataclasses import replace
+
+    from manuscript_guard.merge import Refusal
+
+    entries = _bib_entries(project)
+    why_of = {
+        name: tuple(_said_inserted(work, entries) for work in works)
+        for name, works in inserted.items()
+    }
+    text_of = {name: block.text for block in returned for name in block.names}
+    refused = [
+        replace(refusal, why=refusal.why + why_of[refusal.name])
+        if refusal.name in why_of
+        else refusal
+        for refusal in plan.refused
+    ]
+    told = {refusal.name for refusal in refused}
+    refused += [
+        Refusal(name, text_of.get(name, ""), why)
+        for name, why in why_of.items()
+        if name not in told and name in text_of
+    ]
+    merged = {name: text for name, text in plan.merged.items() if name not in why_of}
+    return replace(plan, merged=merged, refused=tuple(refused))
+
+
+def _bib_entries(project) -> dict[str, dict[str, str]]:
+    from manuscript_guard.literature.bibfile import read_entries
+
+    path = project.path("literature") / "references.bib"
+    try:
+        return read_entries(path) if path.is_file() else {}
+    except (OSError, UnicodeDecodeError, ValueError):
+        return {}
+
+
+def _plain_title(text: str) -> str:
+    """A title as compared: letters and digits of any script, case and the rest folded."""
+    return " ".join(re.sub(r"[\W_]+", " ", text.replace("{", "").replace("}", "")).lower().split())
+
+
+def _first_family(authors: str) -> str:
+    """The first author's family name in a `.bib` author field: before the comma, or the
+    last word."""
+    first = authors.replace("{", "").replace("}", "").split(" and ")[0].strip()
+    family = first.split(",")[0] if "," in first else (first.split() or [""])[-1]
+    return family.strip().lower()
+
+
+def _the_work(work, fields: dict[str, str]) -> bool:
+    """Whether a `.bib` entry is the work a citation field names: by its DOI, or by its
+    title, and then by its year and first author wherever both say them. A title alone
+    was too little: two works whose titles share only "COVID-19" in Latin letters were one."""
+    doi = work.doi.lower().removeprefix("https://doi.org/")
+    if doi:
+        return fields.get("doi", "").lower().removeprefix("https://doi.org/") == doi
+    title = _plain_title(work.title)
+    if not title or _plain_title(fields.get("title", "")) != title:
+        return False
+    year = fields.get("year", "").strip()
+    if work.year and year and work.year != year:
+        return False
+    family = _first_family(fields.get("author", ""))
+    return not (work.author and family and work.author.strip().lower() != family)
+
+
+def _said_inserted(work, entries: dict[str, dict[str, str]]) -> str:
+    """What the import says of a work a co-author cited with their reference manager."""
+    key = next((key for key, fields in entries.items() if _the_work(work, fields)), None)
+    said = f"{work} was cited in Word with a reference manager, whose field the build does not read"
+    if key is not None:
+        return f"{said}: cite it in the .md as [@{key}]"
+    return f"{said}, and is not in references.bib: add it to the library, then cite it in the .md"
+
+
 def _style_built_with(
     project, name: str, digest: str, recorded: str | None, given: Path | None
 ) -> tuple[Path | None, str | None]:
@@ -620,6 +700,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         RoundTripError,
         cited_of,
         comments_in,
+        inserted_citations,
         named_now,
         numbering,
         numbering_refusal,
@@ -700,6 +781,14 @@ def cmd_import(args: argparse.Namespace) -> int:
 
     # The comparison is built as the document was: see `roundtrip.CITED_PROPERTY`.
     citations = read_citations(project.path("build"), edited, supplementary=supplementary)
+    try:
+        # A citation a co-author inserted with their own reference manager; see below.
+        inserted = inserted_citations(
+            edited, citations.get("fields") if cited == LIVE_CITATIONS else None
+        )
+    except RoundTripError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
     mode, style, narrative = OFFLINE, None, None
     if cited == LIVE_CITATIONS:
         # Each citation as the source writes it, on both sides: in the build compared with,
@@ -843,6 +932,19 @@ def cmd_import(args: argparse.Namespace) -> int:
         stale=stale,
         printed=printed,
     )
+    if inserted:
+        # Only the paragraphs compared, `known`, which goes by the names they have now: one
+        # that is not is said to be so below, and named in a refusal it had no file.
+        plan = _refused_inserted(
+            plan,
+            {
+                now_named(name): works
+                for name, works in inserted.items()
+                if now_named(name) in known
+            },
+            renamed,
+            project,
+        )
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
     # cells, headings, captions, list items, block quotes, the reference list, and anything
@@ -1579,6 +1681,40 @@ def cmd_stages(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_impact(args: argparse.Namespace) -> int:
+    """Everything that depends on each file named, or on each file changed since a commit.
+
+    Read-only, and derived: it follows the records the gates read and keeps none of its own.
+    """
+    from manuscript_guard.impact import NoChanges, as_json, as_text, changed_files, impact_of
+
+    start = args.files[0].parent if args.files else Path.cwd()
+    project, _ = load_project(start)
+    _namespace, results, literature, _ = load_namespace(project)
+    files = list(args.files)
+    if not files:
+        try:
+            files = changed_files(project, args.since)
+        except NoChanges as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        if not files:
+            if args.json:
+                print("[]")
+            else:
+                print(f"nothing has changed since {args.since}")
+            return 0
+    impacts = [impact_of(project, results, literature, path) for path in files]
+    if args.json:
+        print(as_json(impacts))
+        return 0
+    for index, impact in enumerate(impacts):
+        if index:
+            print()
+        print("\n".join(as_text(impact)))
+    return 0
+
+
 def cmd_explain(args: argparse.Namespace) -> int:
     """Show how every numeric atom in a file was classified.
 
@@ -2057,6 +2193,49 @@ def cmd_approve(args: argparse.Namespace) -> int:
         return 2
     path = approve(project, author, args.note)
     print(f"{name_of(author)} approved the manuscript as it stands: {path}")
+    return 0
+
+
+def cmd_sign(args: argparse.Namespace) -> int:
+    """Record a named person's sign-off of a finding only they may close. Their own act."""
+    from manuscript_guard.approvals import NoSuchAuthor
+    from manuscript_guard.gates.models import signables
+    from manuscript_guard.sign_offs import ROLES, holder, is_holder, sign
+
+    project, _ = load_project(args.path)
+    _namespace, results, _literature, _loaded = load_namespace(project)
+    standing = signables(project, results)
+    found = [signable for signable in standing if signable.id == args.finding]
+    if not found:
+        ids = ", ".join(signable.id for signable in standing) or "none"
+        print(
+            f"manuscript-guard: no finding {args.finding} stands to be signed off "
+            f"(those that do: {ids})",
+            file=sys.stderr,
+        )
+        return 2
+    signable = found[0]
+    role = ROLES[signable.role]
+    try:
+        person = holder(project, signable.role)
+    except NoSuchAuthor as exc:
+        print(f"manuscript-guard: roles: {signable.role} in authors.yaml: {exc}", file=sys.stderr)
+        return 2
+    if person is None:
+        print(
+            f"manuscript-guard: authors.yaml names no {signable.role} under `roles:`; "
+            f"only {role} signs off {signable.id}",
+            file=sys.stderr,
+        )
+        return 2
+    if not is_holder(project, person, args.as_):
+        print(
+            f"manuscript-guard: {args.as_!r} is not {role}; authors.yaml names {person.name}",
+            file=sys.stderr,
+        )
+        return 2
+    path = sign(project, signable, person, args.note)
+    print(f"{person.name}, {role}, signed off {signable.id} as it stands: {path}")
     return 0
 
 
@@ -2881,9 +3060,39 @@ def build_parser() -> argparse.ArgumentParser:
     approve_.add_argument("--note", help="anything the author says with the approval")
     approve_.set_defaults(func=cmd_approve)
 
+    sign_ = sub.add_parser(
+        "sign",
+        help="record a named person's sign-off of a finding only they may close, such as a "
+        "G15 warning for the statistician; that person's own act",
+    )
+    sign_.add_argument("path", nargs="?", type=Path, default=Path("."))
+    sign_.add_argument(
+        "--as", dest="as_", required=True,
+        help="the person authors.yaml names for the role: ORCID iD, e-mail address or name",
+    )  # fmt: skip
+    sign_.add_argument(
+        "--finding", required=True, help="the id the finding's hint names, such as "
+        "G15/model-few-events/adjusted",
+    )  # fmt: skip
+    sign_.add_argument("--note", help="anything the person says with the sign-off")
+    sign_.set_defaults(func=cmd_sign)
+
     explain = sub.add_parser("explain", help="show how each number in a file was classified")
     explain.add_argument("file", type=Path)
     explain.set_defaults(func=cmd_explain)
+
+    impact = sub.add_parser(
+        "impact",
+        help="list what depends on a file: results, sentences, figures, Methods, readings "
+        "and answers that go stale when it changes",
+    )
+    impact.add_argument(
+        "files", nargs="*", type=Path,
+        help="files of the project; with none, the files changed since --since",
+    )  # fmt: skip
+    impact.add_argument("--since", default="HEAD", help="the commit to compare with (HEAD)")
+    impact.add_argument("--json", action="store_true", help="print JSON")
+    impact.set_defaults(func=cmd_impact)
 
     models = sub.add_parser(
         "models", help="print each fitted model as its card, with what G15 says of it"

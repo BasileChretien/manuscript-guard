@@ -30,9 +30,51 @@
     "equal_contribution_note": {
       "type": "string",
       "description": "Sentence printed for the equal-contribution group, e.g. 'A.B. and C.D. contributed equally to this work.'"
+    },
+    "roles": {
+      "type": "object",
+      "description": "The people who sign off what only they may close, with `manuscript-guard sign`: the statistician signs a G15 warning left standing. The corresponding author is the one `corresponding: true` marks.",
+      "additionalProperties": false,
+      "properties": {
+        "statistician": { "$ref": "#/$defs/holder" },
+        "data_custodian": { "$ref": "#/$defs/holder" },
+        "ethics_lead": {
+          "allOf": [
+            { "$ref": "#/$defs/holder" },
+            { "type": "object", "required": ["approval"] }
+          ],
+          "description": "The person responsible for the ethics approval, with the approval's reference."
+        }
+      }
     }
   },
   "$defs": {
+    "holder": {
+      "description": "An author, named as `approve --as` names one (ORCID iD, e-mail address, full name or family name), or someone who is not an author, by name.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "oneOf": [{ "required": ["author"] }, { "required": ["name"] }],
+          "properties": {
+            "author": { "type": "string", "minLength": 1 },
+            "name": { "type": "string", "minLength": 1 },
+            "orcid": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{4}-\\d{4}-\\d{3}[\\dX]$"
+            },
+            "email": { "type": "string", "format": "email" },
+            "organisation": { "type": "string" },
+            "approval": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The reference of the ethics approval, for the ethics lead."
+            }
+          }
+        }
+      ]
+    },
     "author": {
       "type": "object",
       "required": ["given", "family", "affiliations", "corresponding", "equal_contribution"],

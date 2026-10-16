@@ -85,7 +85,10 @@ Then fill in, in this order:
    passes validation, so nothing will remind you to replace it. ORCID, CRediT roles, funding
    and competing interests are not enforced by the check. The submission pack reports a
    missing competing-interests statement per author, and CRediT and funding only when no
-   author has any; a missing ORCID is left out without comment.
+   author has any; a missing ORCID is left out without comment. Ask who the statistician
+   is, and write them under `roles:` (`statistician: <family name or ORCID iD>`): a G15
+   warning left standing is theirs to sign off, with `manuscript-guard sign --as <them>
+   --finding <id>` as its hint says. Never run `sign` for them.
 2. **`paper.yaml`**: the title, `english_variant` (`en-GB` or `en-US`; ask, do not
    assume: G14 holds the manuscript's spelling to it), and the reporting
    guideline under the key `reporting_guideline` (singular, a list). Any key the schema does

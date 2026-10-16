@@ -1,0 +1,86 @@
+schema: manuscript-guard/figure-estimates/1
+
+# A plotting call or a script operation that estimates, samples, draws at random or drops
+# rows while a figure is drawn. What it draws never passes through the results file: it can
+# differ from the interval the text quotes, it ignores what the analysis accounted for (the
+# clustering of the rows, the weights), and where it is random it changes at every render,
+# so the figure's review goes stale each time. G3 warns on each one in a figure's script
+# (`figure-estimates`), unless an argument tells the call not to, a seed is set, or
+# `<name>.guard.yaml` gives a reason under `allow_estimates`.
+#
+# Each entry names a call by the last part of its name ("barplot" is `sns.barplot` and
+# `seaborn.barplot`), or by what its name opens with (`prefix`). Then:
+#   what      what it does unless it is told otherwise, read on the library's own reference
+#             page on the date in `read`;
+#   unless    arguments, and the values of each, that turn the estimate off;
+#   stated    an argument that, given any value, settles what the call does: a seed, the
+#             divisor of a standard deviation, or a position judged as a call of its own;
+#   settle    how the hint says to give it, where "give <stated>" would not say enough;
+#   seeded    true when a seed set anywhere in the script (`np.random.seed(1)`,
+#             `random.seed(1)`, `np.random.default_rng(1)`, `set.seed(1)`) settles it.
+
+python:
+  - names: [barplot, pointplot, lineplot]
+    what: draws a bootstrap 95% confidence interval of the mean by default, with no seed
+    read: seaborn reference pages for barplot, pointplot and lineplot, 2026-10-15
+    unless: {errorbar: ["None"]}
+    stated: seed
+  - names: [regplot, lmplot]
+    what: draws a bootstrap 95% confidence band round the fitted line by default, with no seed
+    read: seaborn reference page for regplot, 2026-10-15
+    unless: {ci: ["None"], fit_reg: ["False"]}
+    stated: seed
+  - names: [stripplot]
+    what: moves each point by a random jitter by default, and takes no seed
+    read: seaborn reference page for stripplot, 2026-10-15
+    unless: {jitter: ["False", "0"]}
+  - names: [std, nanstd, var, nanvar]
+    what: >-
+      computes a spread in the figure script, where numpy divides by n (ddof=0) and pandas
+      by n - 1 (ddof=1), so the same data gives two different error bars
+    read: numpy.std and pandas.DataFrame.std reference pages, 2026-10-15
+    stated: ddof
+  - names: [sample]
+    what: samples rows at random
+    read: pandas.DataFrame.sample reference page, 2026-10-15
+    stated: random_state
+    seeded: true
+  - names: [dropna]
+    what: drops every row with a missing value, so the figure can show other rows than the analysis used
+    read: pandas.DataFrame.dropna reference page, 2026-10-15
+  - prefix: [np.random., numpy.random., random.]
+    what: draws at random
+    read: numpy.random and the random module of the standard library
+    seeded: true
+
+r:
+  - names: [stat_summary, stat_summary_bin]
+    what: computes a mean and its standard error (mean_se) in the plot by default
+    read: ggplot2 reference page for stat_summary, 2026-10-15
+  - names: [geom_smooth, stat_smooth]
+    what: fits a smoother in the plot and draws its 95% band by default
+    read: ggplot2 reference page for geom_smooth, 2026-10-15
+  - names: [geom_jitter]
+    what: >-
+      moves each point by a random jitter, through a position_jitter whose seed is drawn at
+      random; it takes no seed of its own, and one given to it is ignored
+    read: ggplot2 reference pages for geom_jitter and position_jitter, 2026-10-15
+    stated: position
+    settle: give position = position_jitter(seed = 1)
+    seeded: true
+  - names: [position_jitter]
+    what: moves each point by a random jitter, from a seed drawn at random by default (seed = NA)
+    read: ggplot2 reference page for position_jitter, 2026-10-15
+    stated: seed
+    seeded: true
+  - names: [slice_sample, sample_n, sample_frac, sample]
+    what: samples rows at random
+    read: dplyr reference pages for slice_sample and sample_n; base R sample
+    seeded: true
+  - names: [rnorm, runif, rbinom, rpois, rexp, rgamma, rbeta]
+    what: draws at random
+    read: base R Distributions
+    seeded: true
+  - names: [na.omit, drop_na, complete.cases]
+    what: drops every row with a missing value, so the figure can show other rows than the analysis used
+    read: base R na.omit and complete.cases; tidyr drop_na

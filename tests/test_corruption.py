@@ -3220,11 +3220,16 @@ def test_a_text_anchored_outside_a_vector_figure_is_a_warning(project: Path) -> 
     figure = project / "figures" / "forest.svg"
     text = figure.read_text(encoding="utf-8")
     assert _vector_said(project, None, formats=["png", "svg"]) == []
-    figure.write_text(text.replace('x="87.64" y="131.038437"', 'x="487.64" y="131.038437"', 1),
-                      encoding="utf-8")  # fmt: skip
+    # The figure is drawn again on each machine, and matplotlib places its labels a little
+    # differently on each (CI on Linux): the first label is moved by its own x, not found
+    # by the one this machine wrote.
+    first = re.search(r'<text\b[^>]*?\bx="([-\d.]+)" y="([-\d.]+)"', text)
+    assert first is not None, "the example's figure writes its labels as text"
+    x, y = float(first.group(1)) + 400, float(first.group(2))
+    figure.write_text(text[: first.start(1)] + f"{x:g}" + text[first.end(1) :], encoding="utf-8")
     said = [f for f in _journal(project).findings if f.code == "figure-text-clipped"]
     assert [(f.severity, f.path.name) for f in said] == [("warn", "forest.svg")]
-    assert "anchored at (488, 131)" in said[0].message
+    assert f"anchored at ({x:.0f}, {y:.0f})" in said[0].message
 
 
 def test_the_message_says_how_small_a_vector_figure_s_text_prints(project: Path) -> None:

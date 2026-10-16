@@ -46,6 +46,7 @@ from generated import (
     generated,
     holds,
     lines,
+    planned_plans,
     quotations,
     signs,
     sources,
@@ -608,6 +609,24 @@ def test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not(
     plan, rewrapped, longer = drawn
     assert deviations_said(plan) == deviations_said(rewrapped), rewrapped
     assert deviations_said(plan) != deviations_said(longer), longer
+
+
+# ------------------------------------------------------------- the results a plan promises
+
+
+@holds(100, planned_plans())
+def test_a_planned_result_is_read_from_its_own_item_and_nowhere_else(
+    drawn: tuple[str, list[tuple[str, bool]]],
+) -> None:
+    """Item 37: each key the Planned results section lists, in the order it lists them, as
+    the plan writes it, binds it or groups it, its subsections included; and nothing from an
+    item with no key, code that is not a key, or prose after the list."""
+    from manuscript_guard.gates.design import planned_results
+
+    plan, listed = drawn
+    read = planned_results(plan)
+    assert read is not None, plan
+    assert [(found.key, found.group) for found in read] == listed, plan
 
 
 # ------------------------------------------------------------------------------ parameters
@@ -2915,6 +2934,39 @@ def _a_deviation_is_read_with_its_line_breaks(patch: pytest.MonkeyPatch) -> None
     patch.setattr(design, "deviations_said", as_typed)
 
 
+def _a_planned_item_runs_past_its_paragraph(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "_BLANK_LINE", re.compile(r"(?!)"))
+
+
+def _code_with_no_dot_is_a_planned_key(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    undotted = re.compile(r"(?:results\.)?([A-Za-z_][\w-]*(?:\.[\w-]+)*)")
+    patch.setattr(design, "_PLANNED_KEY", undotted)
+
+
+def _a_bound_key_keeps_its_namespace(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "_PLANNED_KEY", re.compile(r"([A-Za-z_][\w-]*(?:\.[\w-]+)+)"))
+
+
+def _a_bound_key_needs_a_dot(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood at b7235875: the prefix gave way to a key with no dot."""
+    from manuscript_guard.gates import design
+
+    dotted = re.compile(r"(?:results\.)?([A-Za-z_][\w-]*(?:\.[\w-]+)+)")
+    patch.setattr(design, "_PLANNED_KEY", dotted)
+
+
+def _the_planned_results_subsections_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "subsections", lambda sections, index: [sections[index]])
+
+
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
@@ -3518,6 +3570,26 @@ BROKEN = {
     "a deviation is read with its line breaks": (
         _a_deviation_is_read_with_its_line_breaks,
         test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not,
+    ),
+    "a planned item runs past its paragraph": (
+        _a_planned_item_runs_past_its_paragraph,
+        test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
+    ),
+    "code with no dot is a planned key": (
+        _code_with_no_dot_is_a_planned_key,
+        test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
+    ),
+    "a bound key keeps its namespace": (
+        _a_bound_key_keeps_its_namespace,
+        test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
+    ),
+    "a bound key needs a dot": (
+        _a_bound_key_needs_a_dot,
+        test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
+    ),
+    "the Planned results' subsections are not read": (
+        _the_planned_results_subsections_are_not_read,
+        test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
     ),
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,

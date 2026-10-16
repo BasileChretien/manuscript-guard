@@ -729,6 +729,19 @@ rendered page and the same sentence extracted from a PDF, and none of them chang
 written. A check whose failures are typographic noise gets switched off. A genuine
 paraphrase still fails: dropping "drug-induced" from a quoted sentence is reported.
 
+A quote that fails is often nearly there, and the finding says how
+(`literature/placement.py`). The quote's words are looked for in the source in order, each
+at most twelve words after the one before, a word split by a hyphen counting as one, from
+any of its first three words. Where all are there, the finding names what stands between
+two of them and on which line: numbers, which are most often line numbers or a column of
+figures read into the sentence, or words, which are the quote's own omission or a column,
+a footnote or a running header. Or it names the word split by a hyphen, or, where the
+words stand together, the first place the punctuation or a symbol differs, "2·6" for "2.6".
+Where only some are there, it says how many, and the quote's next word against what the
+source has in its place. The line is the file's own for a text file or a page, and is not
+given for a PDF, whose lines are its reader's. This is said and decides nothing: the quote
+fails until it is what the source says.
+
 PDF text comes from poppler's `pdftotext` if present, then `pypdf` if importable, and
 otherwise the entry is reported as unverifiable rather than passed. Neither is a hard
 dependency: a toolkit that will not install without a PDF stack is a toolkit people do not
@@ -5836,6 +5849,14 @@ Closed since, and why each mattered:
   and ffl are folded before a quote is looked for. Anything else one reader spells out and
   another does not is compared as it comes: a quote typed with "oe" is not found in a source
   read as "œ". A quote copied from the source, which is what the hint asks for, is.
+- **What a failed quote is said to nearly be is read by words, not by meaning.** A word is a
+  run of letters and digits, so "2.6" is the words 2 and 6, and a quote whose number differs
+  in one digit is a quote with one word retyped. Words more than twelve apart are not read
+  as the quote's, so a quote broken by a long footnote is said to be partly there. A source
+  that holds the quote's words in order in two places is read at the one with the most of
+  them, then the fewest interruptions, then the fewest words in them, which need not be
+  where the author copied from. A soft hyphen inside a word fails the quote, as it always did, and is said to split
+  it. Only the first two interruptions are named, and the rest counted.
 - **An ellipsis set against a value hides it.** The ellipsis is folded to three full stops
   and a value is not read with a full stop before it, so a quote holding `…14 per 100 000`
   does not state 14 and is reported `value-not-in-quote`. With a space after the ellipsis

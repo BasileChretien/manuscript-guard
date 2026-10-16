@@ -2646,6 +2646,43 @@ def test_every_literature_value_ends_in_one_verdict(
 
 
 @pytest.mark.parametrize(
+    ("written", "said"),
+    [
+        ("drug-induced hepatic\n12\ninjury",
+         "the source has '12' between 'hepatic' and 'injury' (line 13): numbers"),
+        ("drug-induced hepa-\ntic injury", "'hepa' and 'tic' are one word, split by a hyphen"),
+        ("hepatic injury", "the source has 'drug-induced' between 'of' and 'hepatic' (line 12)"),
+        ("drug-induced liver injury",
+         "after 'induced' the quote has 'hepatic', where the source has 'liver injury was'"),
+        ("per 100\N{MIDDLE DOT}000",
+         "between '100' and '000' (line 12) the source has '\N{MIDDLE DOT}' where the quote "
+         "has ' '"),
+    ],
+)  # fmt: skip
+def test_a_quote_not_in_its_source_says_what_stands_in_the_way(
+    project: Path, written: str, said: str
+) -> None:
+    """Item 19: G7 fails a quote that is not in the source exactly, and used to say only
+    that. The quote's words in order, with line numbers, a hyphen or a symbol between, are
+    put right in a minute once that is named. The verdict is the same."""
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    text = source.read_text(encoding="utf-8")
+    plain = "drug-induced hepatic injury" if "induced" in written else "per 100 000"
+    if written == "hepatic injury":
+        # The quote leaves a word out, rather than the source putting one in.
+        path = project / "literature" / "ledger.yaml"
+        ledger = path.read_text(encoding="utf-8")
+        path.write_text(ledger.replace("of drug-induced hepatic", "of hepatic", 1), "utf-8")
+    else:
+        source.write_text(text.replace(plain, written, 1), encoding="utf-8")
+    report = _literature_report(project)
+    found = [f for f in report.findings if f.code == "quote-not-in-source"]
+    assert len(found) == 1 and found[0].severity == "fail", report.render(project)
+    assert said in found[0].message, found[0].message
+    assert report.counts["literature_failed"] == 1
+
+
+@pytest.mark.parametrize(
     ("quote", "short"),
     [
         ("A signal was detected for the class as a whole (ROR 2.6, 95% CI 2.1-3.2).", False),

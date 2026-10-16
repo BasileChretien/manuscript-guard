@@ -1,15 +1,15 @@
 schema: manuscript-guard/panel/1
 round: 7
-opened_on: 2026-10-16
-manuscript_sha256: a30bcbeaf6202c15e36f1b2086e4f5c4415818baf2bf7fe34bdc0f0663a14bff
+opened_on: '2026-10-14'
 blinded: false
-rationale: 'A revision round for one sentence. Table S1 now says which dictionary the events
-  were coded with and its release, a value the analysis writes and the note binds. The remit
-  that reads case definitions reads it, with the earlier rounds in front of it.'
+rationale: 'A revision round for the numbers of the tables. The main text called its two tables
+  Table 2 and Table 3, a numbering left from when the code lists were its first table, before
+  they moved to the supplement as Table S1. G2 now holds a pointer to a table or a figure to
+  one the document places, and to the order ICMJE asks for; the remit that reads the reporting
+  reads the paper again, with the earlier rounds in front of it.'
 reviewers:
-- id: pharmacoepidemiologist
-  role: Pharmacoepidemiologist
-  remit: Whether the design can answer the question asked. Case and exposure definitions,
-    denominators, the difference between disproportionate reporting and risk, and
-    the biases specific to spontaneous reporting.
-  why: The case definition's dictionary and release are now named in Table S1.
+- id: checklist-auditor
+  role: Reporting auditor
+  remit: Whether each DEMO-OBS item is genuinely addressed in the text, rather than answered
+    in the completion file by pointing at a section that does not cover it.
+  why: The pointers to the tables, which the reporting items send a reader to.

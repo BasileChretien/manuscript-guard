@@ -1,13 +1,13 @@
 # Findings go below, each with an id, a severity and the finding itself. An empty
 # list is a reviewer who found nothing, which is a claim in its own right.
 schema: manuscript-guard/review/1
-round: 7
+round: 8
 reviewer: pharmacoepidemiologist
 reviewed_by: Claude Code
 reviewed_on: '2026-10-16'
-manuscript_sha256: a30bcbeaf6202c15e36f1b2086e4f5c4415818baf2bf7fe34bdc0f0663a14bff
+manuscript_sha256: f3f8738ba532f45757992c2e071669db8c8fcd65a27257bbd398187910f639be
 file_sha256:
-  main.md: a311507746e68073566d3873acc1a06f6cc3e297f21be0595d4c3525308b50a9
+  main.md: 0ae317d5a168abfba8b10ec4b14a754b18767f70868dc649f520f2aff911e9bd
   supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
 verdict: pass
 summary: Table S1 now names the dictionary the outcome was coded with and its release, bound
@@ -16,10 +16,10 @@ summary: Table S1 now names the dictionary the outcome was coded with and its re
   a reader of a disproportionality analysis needs made. Nothing from the earlier rounds is
   reopened.
 findings:
-- id: r7-pe-01
+- id: r8-pe-01
   severity: comment
   where: Table S1
   finding: The note names the generator's own term list rather than MedDRA, which is true of
     these data; a reader copying the example should change it to the dictionary and release
     their events were coded with, and the binding will then print that release.
-reading_sha256: 6fd1c7841a17b5d5b598088f8d7c961a3da38f66f00438db244e1398ac7c9bcd
+reading_sha256: cdfe48ce0a272b886921cbb1c204d0f21fb0998cc116bdc99cc217c90434301c

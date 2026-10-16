@@ -708,6 +708,218 @@ def test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not(
     assert found == expected, text
 
 
+# ----------------------------------------------------------- a P and the statistic before it
+
+#: Each way a test is written, and its kind.
+_TEST_FORMS = (
+    ("t", "t({d1}) = {s}, p {sign} {p}"),
+    ("t", "*t*({d1})\N{NO-BREAK SPACE}=\N{NO-BREAK SPACE}{s}, *p* {sign} {p}"),
+    ("t", "t = {s}, df = {d1}, P {sign} {p}"),
+    ("t", "t({d1}) =\n{s}, p-value {sign} {p}"),
+    ("F", "F({d1}, {d2}) = {s}, p {sign} {p}"),
+    ("F", "_F_({d1},{d2}) = {s}; P {sign} {p}"),
+    ("chi2", "\N{GREEK SMALL LETTER CHI}2({d1}) = {s}, p {sign} {p}"),
+    ("chi2", "\N{GREEK SMALL LETTER CHI}^2^({d1}, N = 312) = {s}, *P* {sign} {p}"),
+    ("chi2", "chi-square({d1}) = {s}, p {sign}\n{p}"),
+    ("z", "z = {s}, P {sign} {p}"),
+    ("z", "Z = {s}, p\n{sign} {p}"),
+)
+#: What a sentence says of a test whose P is not the textbook one.
+_NOT_TEXTBOOK = (
+    "one-sided, ", "after Bonferroni adjustment, ", "by permutation, ",
+    "with Welch's correction, ", "by an exact test, ",
+)  # fmt: skip
+#: Where each kind's statistic is drawn from, in thousandths, with the degrees of freedom:
+#: a P of 0.001 or more, one below 0.0005, and one above 0.2.
+_MODERATE = {"t": (300, 3000), "F": (500, 3500), "chi2": (500, 9000), "z": (200, 3000)}
+_LARGE = {"t": (5000, 9000), "F": (25000, 60000), "chi2": (40000, 80000), "z": (4000, 6000)}
+_SMALL = {"t": (300, 1000), "F": (500, 1200), "chi2": (500, 1500), "z": (200, 1200)}
+_DEGREES = {"t": ((20, 200),), "F": ((1, 5), (20, 200)), "chi2": ((1, 10),), "z": ()}
+#: What is printed for a P far from the one the statistic gives: for a large statistic,
+#: and for a small one.
+_FAR = {"large": (("=", ".40"), (">", ".05"), ("=", "0.62")), "small": (("<", ".01"),
+        ("=", ".001"))}  # fmt: skip
+
+
+def _true_p(kind: str, value: float, df: tuple[int, ...]) -> float:
+    from manuscript_guard.stats.special import p_chi2, p_f, p_t, p_z
+
+    calls = {"t": p_t, "F": p_f, "chi2": p_chi2, "z": p_z}
+    return calls[kind](abs(value), *df)
+
+
+def _printed_p(draw: st.DrawFn, p: float, shape: str) -> tuple[str, str]:
+    """A P as a paper prints the one its statistic gives: to three places, below a
+    threshold it is under, or as a power of ten."""
+    if shape == "<" and p < 0.05:
+        bound = next(t for t in (0.001, 0.01, 0.05) if p < t)
+        return "<", draw(st.sampled_from((f"{bound:g}", f"{bound:g}"[1:])))
+    if shape in ("e", "x10") and p < 0.001:
+        mantissa, exponent = f"{p:.1e}".split("e")
+        if shape == "e":
+            return "=", f"{p:.1e}"
+        times = draw(st.sampled_from(("x", "\N{MULTIPLICATION SIGN}")))
+        return "=", f"{mantissa} {times} 10^{int(exponent)}^"
+    shown = f"{p:.3f}"
+    return "=", draw(st.sampled_from((shown, shown.removeprefix("0"))))
+
+
+@st.composite
+def _reported_tests(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
+    """Every way of writing a test, each with a P that follows from its statistic, printed
+    every way a paper prints one, with a P that does not, and in a sentence that says the
+    test is not the textbook one; a P in the sentence after its statistic's, and two
+    statistics before one P. Each with the place it is found at and what is said of it."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    def statistic(kind: str, bounds: dict) -> tuple[str, tuple[str, ...], float]:
+        value = draw(st.integers(*bounds[kind])) / 1000 + 0.0003
+        printed = f"{value:.{draw(st.sampled_from((1, 2)))}f}"
+        if kind in ("t", "z") and draw(st.booleans()):
+            printed = draw(st.sampled_from(("-", "\N{MINUS SIGN}"))) + printed
+        df = tuple(draw(st.integers(*limits)) for limits in _DEGREES[kind])
+        return printed, tuple(map(str, df)), _true_p(kind, value, df)
+
+    plans: list[tuple[int, str]] = []
+    for index in range(len(_TEST_FORMS)):
+        plans += [(index, kind) for kind in ("moderate", "large", "far", "near", "quiet")]
+    plans += [(-1, "next sentence"), (-1, "two statistics")]
+    shapes = draw(st.permutations(("e", "x10", "<")))
+    sentences: list[tuple[str, tuple[Any, ...] | None]] = []
+    for number, (index, plan) in enumerate(draw(st.permutations(plans))):
+        if plan == "next sentence":
+            s, df, _p = statistic("t", _MODERATE)
+            sentences.append((f"t({df[0]}) = {s}. {words().capitalize()} p = .40", None))
+            continue
+        if plan == "two statistics":
+            first, first_df, _p = statistic("t", _MODERATE)
+            s, df, _p = statistic("t", _LARGE)
+            text = f"t({first_df[0]}) = {first} and t({df[0]}) = {s}, both p < .001"
+            offset = text.index(" and ") + len(" and ")
+            sentences.append((text, (offset, "t", s, df, "<", ".001", "right")))
+            continue
+        kind, form = _TEST_FORMS[index]
+        bounds = {"moderate": _MODERATE, "near": _SMALL}.get(plan, _LARGE)
+        s, df, p = statistic(kind, bounds)
+        if plan == "moderate":
+            sign, printed = _printed_p(draw, p, draw(st.sampled_from(("=", "<"))))
+        elif plan == "large":
+            sign, printed = _printed_p(draw, p, shapes[number % len(shapes)])
+        else:
+            sign, printed = draw(st.sampled_from(_FAR["small" if plan == "near" else "large"]))
+        d1, d2 = (*df, "", "")[:2]
+        text = form.format(d1=d1, d2=d2, s=s, sign=sign, p=printed)
+        lead = draw(st.sampled_from(_NOT_TEXTBOOK)) if plan == "quiet" else ""
+        said = {"moderate": "right", "large": "right", "quiet": "quiet"}.get(plan, "far")
+        sentences.append((lead + text, (len(lead), kind, s, df, sign, printed, said)))
+
+    parts: list[str] = []
+    expected: list[tuple[Any, ...]] = []
+    for text, planted in sentences:
+        opening = words().capitalize() + " "
+        if planted is not None:
+            at = len("".join(parts)) + len(opening) + planted[0]
+            expected.append((at, *planted[1:]))
+        parts.append(f"{opening}{text} {words()}.{draw(st.sampled_from((' ', chr(10))))}")
+    return "".join(parts), expected
+
+
+@holds(100, _reported_tests())
+def test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic(
+    planted: tuple[str, list[tuple[Any, ...]]],
+) -> None:
+    """Each test is found where it stands, its statistic, degrees of freedom and P as they
+    are printed, and nothing else is: not a P in the next sentence, and not the P of a
+    second statistic for the first. A P that follows from its statistic over every value
+    their printed digits allow agrees with it, one that does not is found, and a test its
+    sentence says is not the textbook one is not judged."""
+    from manuscript_guard.stats.reported import judge, reported_tests
+
+    text, expected = planted
+    found = reported_tests(text)
+    assert [(r.start, r.kind, r.statistic, r.df, r.sign, r.p) for r in found] == [
+        planted[:6] for planted in expected
+    ], text
+    for test, (*_read, said) in zip(found, expected, strict=True):
+        verdict = judge(test)
+        if said == "quiet":
+            assert verdict is None, (test, text)
+        else:
+            assert verdict is not None and verdict.inconsistent is (said == "far"), (
+                test, verdict,
+            )  # fmt: skip
+
+
+def _a_statistic_is_read_at_its_printed_value(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    patch.setattr(reported, "_range", lambda printed: (float(printed), float(printed)))
+
+
+def _a_p_is_looked_for_past_its_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    patch.setattr(reported, "_SENTENCE_END", re.compile(r"(?!)"))
+
+
+def _a_p_is_looked_for_past_the_next_statistic(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    reach = reported._reach
+    patch.setattr(
+        reported, "_reach", lambda match, following, ends, length: reach(match, None, ends, length)
+    )
+
+
+def _less_than_is_read_as_equal_to(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    patch.setattr(reported, "_SIGNS", {**reported._SIGNS, "<": "="})
+
+
+def _a_test_that_is_not_the_textbook_one_is_judged(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    patch.setattr(reported, "QUIET", re.compile(r"(?!)"))
+
+
+def _the_degrees_of_freedom_of_f_are_taken_the_other_way(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    p = reported._p
+    patch.setattr(reported, "_p", lambda kind, statistic, df: p(kind, statistic, df[::-1]))
+
+
+def _a_symbol_in_emphasis_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    plain = reported._STATISTIC.pattern.replace("[*_]{0,2}", "")
+    patch.setattr(reported, "_STATISTIC", re.compile(plain))
+
+
+def _a_test_over_two_lines_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    """A line break inside a test is read as nothing it can match."""
+    from manuscript_guard.stats import reported
+
+    for name in ("_STATISTIC", "_P"):
+        pattern = getattr(reported, name).pattern.replace(chr(92) + "n", chr(92) + "x01")
+        patch.setattr(reported, name, re.compile(pattern))
+
+
+def _a_power_of_ten_is_read_as_its_mantissa(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.stats import reported
+
+    p_range = reported._p_range
+    cut = re.compile("[eE]| ?[x\N{MULTIPLICATION SIGN}]")
+    patch.setattr(
+        reported, "_p_range", lambda test: p_range(replace(test, p=cut.split(test.p)[0]))
+    )
+
+
 # ------------------------------------------------------------ a section found by its heading
 
 #: What a paper calls its Methods, as G4 has always read a heading for them: with "methods"
@@ -3179,6 +3391,42 @@ BROKEN = {
     "a piece with no word of its own is left alone": (
         _a_wordless_piece_is_left_alone,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
+    "a statistic is read at its printed value, not over what its last digit allows": (
+        _a_statistic_is_read_at_its_printed_value,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a statistic's P is looked for past the end of its sentence": (
+        _a_p_is_looked_for_past_its_sentence,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a statistic's P is looked for past the next statistic": (
+        _a_p_is_looked_for_past_the_next_statistic,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a P below a bound is read as equal to it": (
+        _less_than_is_read_as_equal_to,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a test its sentence calls one-sided or adjusted is judged as two-sided": (
+        _a_test_that_is_not_the_textbook_one_is_judged,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "an F's two degrees of freedom are taken the other way round": (
+        _the_degrees_of_freedom_of_f_are_taken_the_other_way,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a statistic's symbol in emphasis is not read": (
+        _a_symbol_in_emphasis_is_not_read,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a test wrapped onto a second line is not read": (
+        _a_test_over_two_lines_is_not_read,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a P written as a power of ten is read as its mantissa": (
+        _a_power_of_ten_is_read_as_its_mantissa,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
     ),
     "a claim runs back to the start of its paragraph, past the anchor before it": (
         _a_claim_runs_back_to_its_paragraph,

@@ -7517,8 +7517,14 @@ Closed since, and why each mattered:
   written apart in the source with the same items and locators (`[@a]` and `[@a ]`) cannot
   say which a field was, and both are read by their words. What Zotero formats is not
   compared at all, the reference list included: an item whose data Zotero updated, or an
-  entry of the list a co-author edited, is not seen. A field a co-author inserts into a
-  document built offline is read by the words it shows.
+  entry of the list a co-author edited, is not seen.
+- **A citation a co-author inserts with a reference manager is named as far as its code
+  names it.** A CSL field (Zotero's and another's), a content control whose tag carries
+  CSL in base64, and an `EN.CITE` field's XML are read for the first author, the year, the
+  title and the DOI; an `EN.CITE.DATA` field, which holds the record in a binary form, is
+  "a work it does not name". Its key is found in `references.bib` by DOI or by title, as
+  written, and only there. One in a paragraph without an identifier (a heading, a table, a
+  caption) is not reported, as nothing there is compared.
 - **A document built with `--csl` is compared in the style its digest names.** Where that
   style is not where the build found it, or has changed, `import` says so and compares in
   the default style, refusing every paragraph that cites, until `--csl` names it. Line

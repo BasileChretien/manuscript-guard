@@ -147,16 +147,22 @@ def test_a_figure_that_is_not_xml_or_refers_to_itself_is_read_safely(tmp_path: P
     assert 1 < len(looped.texts) <= 17
 
 
-def test_a_long_stylesheet_is_read_in_time_linear_in_it(tmp_path: Path) -> None:
+def _stylesheet(groups: int) -> str:
+    run = "QUJD" * groups
+    return (
+        f"{HEAD}<style>{run} @media print {{ .s {{ font-size: 3px }} }} "
+        f"@font-face {{ src: url(data:font/woff2,{run}) }}</style>"
+        '<text class="s">a</text></svg>'
+    )
+
+
+def test_a_long_stylesheet_is_read_in_time_linear_in_it(assert_linear) -> None:
     """Round 2 of #302: the rule pattern was tried again at every character of a run with
     no brace, and 20,000 characters took seconds. A font embedded in a stylesheet makes such
     runs; the figure is read in one pass, and an at-rule's own rules are read."""
-    import time
+    from manuscript_guard.gates.figure_svg import parse_svg
 
-    run = "QUJD" * 50_000
-    started = time.perf_counter()
-    svg = _svg(tmp_path, f"<style>{run} @media print {{ .s {{ font-size: 3px }} }} "
-                         f"@font-face {{ src: url(data:font/woff2,{run}) }}</style>"
-                         '<text class="s">a</text>')  # fmt: skip
-    assert time.perf_counter() - started < 2.0
+    svg = parse_svg(_stylesheet(1000))
+    assert svg is not None
     assert [(mark.text, mark.units) for mark in svg.texts] == [("a", 3.0)]
+    assert_linear(_stylesheet, parse_svg, 2000, "an SVG's stylesheet, by a run with no brace")

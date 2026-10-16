@@ -238,10 +238,19 @@ def _emitted(results: Results, planned: Planned) -> list[bool]:
     return []
 
 
+def _written(planned: Planned) -> str:
+    """The key as a plan writes it: a key with no dot bound, since alone it is a word."""
+    if planned.group:
+        return f"{planned.key}.*"
+    return planned.key if "." in planned.key else f"results.{planned.key}"
+
+
 def _named(deviations: str, planned: Planned) -> bool:
-    """Whether the Deviations section names the key, as the plan lists it or bound."""
-    key = re.escape(planned.key) + (r"\.\*" if planned.group else "")
-    return bool(re.search(rf"(?<![\w.-])(?:results\.)?{key}(?![\w-]|\.\w)", deviations))
+    """Whether the Deviations section names the key, as the plan lists it or bound. A key
+    with no dot only bound: `dose` is a word of the prose (round 2 of #305)."""
+    key = re.escape(_written(planned))
+    bound = r"(?:results\.)?" if planned.group or "." in planned.key else ""
+    return bool(re.search(rf"(?<![\w.-]){bound}{key}(?![\w-]|\.\w)", deviations))
 
 
 def _planned(text: str, path: Path, results: Results | None, stage: str | None) -> Report:
@@ -277,7 +286,7 @@ def _planned(text: str, path: Path, results: Results | None, stage: str | None) 
             continue
         if _named(deviations, item):
             continue
-        written = f"{item.key}.*" if item.group else item.key
+        written = _written(item)
         findings.append(
             Finding(
                 gate=GATE,

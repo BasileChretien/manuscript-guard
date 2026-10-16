@@ -1601,9 +1601,20 @@ def test_a_planned_result_the_deviations_name_passes(project: Path) -> None:
 def test_a_planned_key_with_no_dot_is_read_in_its_bound_form(project: Path) -> None:
     """Round 1 of #305: `results.dose` was read as the key `results.dose`, since `dose` has
     no dot, and a promise kept was said to be broken."""
+    from manuscript_guard.gates import check_design
+
     promised = "- `results.dose`: the dose"
     _plan_edited(project, "- `case.pct_serious`", f"{promised}\n- `case.pct_serious`")
     assert _planned_said(project) == [("planned-result-missing", promised)]
+    # Round 2 of #305: the word "dose" in the Deviations stood the key down.
+    _plan_edited(project, "No analysis was added", "The dose groups were analysed as planned.\n\n"
+                 "No analysis was added")  # fmt: skip
+    assert _planned_said(project) == [("planned-result-missing", promised)]
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(project_)
+    [said] = [f for f in check_design(project_, results, "drafting").findings
+              if f.code == "planned-result-missing"]  # fmt: skip
+    assert "lists results.dose among" in said.message and "naming results.dose" in said.hint
     fragment = next((project / "results").glob("*.json"))
     document = json.loads(fragment.read_text(encoding="utf-8"))
     document["values"]["dose"] = {"value": 5, "display": "5"}

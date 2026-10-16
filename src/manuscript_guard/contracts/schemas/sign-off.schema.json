@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/sign-off/1",
+  "title": "manuscript-guard sign-off",
+  "description": "A named person's sign-off of a finding only they may close, bound to what it said: the digest of the findings and of what they are about, a model's card for a G15 warning. Written by `manuscript-guard sign --as <person> --finding <id>`, one file per finding under approvals/sign-offs/, and never by an agent: a sign-off is a person's statement. The finding is then reported as information that names who signed it; a sign-off of something that has changed since, or by someone who no longer holds the role, counts for nothing.",
+  "type": "object",
+  "required": ["schema", "finding", "role", "person", "signed_on", "signed_sha256"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/sign-off/1" },
+    "finding": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The id the finding's hint names, such as G15/model-few-events/adjusted."
+    },
+    "role": { "enum": ["statistician", "data_custodian", "ethics_lead"] },
+    "person": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The person's name as authors.yaml gives it."
+    },
+    "orcid": { "type": "string" },
+    "signed_on": { "type": "string", "format": "date" },
+    "signed_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "What was signed: the findings' messages and what they are about."
+    },
+    "said": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The findings as they read when signed, for whoever reads the file."
+    },
+    "note": {
+      "type": "string",
+      "description": "Anything the person says with the sign-off, why it is acceptable included."
+    }
+  }
+}

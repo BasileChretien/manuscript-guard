@@ -140,3 +140,62 @@ def test_a_field_deleted_in_word_is_not_read(tmp_path: Path) -> None:
     assert _read(tmp_path, _run("Before") + deleted + _run(" after"), lambda c: "[@a]") == (
         "Before after"
     )
+
+
+# ------------------------------------------------------------- a citation inserted in Word
+
+
+@pytest.mark.parametrize(
+    ("code", "named"),
+    [
+        (_code([ITEM]), ["Hepatic injury"]),
+        (" ADDIN CSL_CITATION " + json.dumps({"citationItems": [{"itemData": {
+            "author": [{"literal": "WHO"}], "issued": {"raw": "2019-05"}, "title": "T"}}]}),
+         ['WHO 2019, "T"']),
+        (" ADDIN ZOTERO_ITEM CSL_CITATION {not json} ", ["a work it does not name"]),
+        (" ADDIN EN.CITE &lt;EndNote&gt;&lt;Cite&gt;&lt;Author&gt;Smith, J&lt;/Author&gt;"
+         "&lt;Year&gt;2020&lt;/Year&gt;&lt;/Cite&gt;&lt;/EndNote&gt;", ["Smith 2020"]),
+        (" ADDIN EN.CITE.DATA ", ["a work it does not name"]),
+        ("MENDELEY_CITATION_v3_not-base64!", ["a work it does not name"]),
+    ],
+)  # fmt: skip
+def test_a_citation_inserted_in_word_names_what_it_can(code: str, named: list[str]) -> None:
+    from manuscript_guard.citationfields import inserted
+
+    works = inserted(code)
+    assert works is not None
+    shown = [str(work) for work in works]
+    assert all(any(part in said for said in shown) for part in named), shown
+
+
+@pytest.mark.parametrize("code", [" PAGE ", " HYPERLINK \"https://example.org\" ", "a tag"])
+def test_a_field_or_tag_that_is_no_citation_is_none(code: str) -> None:
+    from manuscript_guard.citationfields import inserted
+
+    assert inserted(code) is None
+
+
+@pytest.mark.parametrize(
+    ("work", "fields", "key"),
+    [
+        ({"title": "COVID-19\u30ef\u30af\u30c1\u30f3\u63a5\u7a2e\u5f8c\u306e\u5fc3\u7b4b\u708e"},
+         {"title": "COVID-19\u60a3\u8005\u306b\u304a\u3051\u308b\u7814\u7a76"}, None),
+        ({"title": "Editorial", "year": "2021", "author": "Smith"},
+         {"title": "{Editorial}", "year": "2019", "author": "Smith, J"}, None),
+        ({"title": "Editorial", "year": "2021", "author": "Smith"},
+         {"title": "{Editorial}", "year": "2021", "author": "Jones, A and Smith, J"}, None),
+        ({"title": "A study, of hepatic injury", "year": "2021", "author": "Fictional"},
+         {"title": "A {Study} of Hepatic Injury", "year": "2021", "author": "Fictional, Anne"},
+         "k"),
+        ({"doi": "https://doi.org/10.1/ABC"}, {"doi": "10.1/abc", "title": "x"}, "k"),
+    ],
+)  # fmt: skip
+def test_a_work_cited_in_word_is_matched_to_a_key_only_when_it_is_that_work(
+    work: dict, fields: dict, key: str | None
+) -> None:
+    """Round 1 of #298: titles compared in Latin letters alone made two works one."""
+    from manuscript_guard.citationfields import Work
+    from manuscript_guard.cli import _said_inserted
+
+    said = _said_inserted(Work(**work), {"k": fields})
+    assert ("[@k]" in said) is (key is not None), said

@@ -20,8 +20,8 @@ quote can be checked against its source.
 
 Recipes ship for STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT-2025, PRISMA-2020,
 PRISMA-2020-abstracts, READUS-PV, READUS-PV-abstracts, TRIPOD-development,
-TRIPOD-validation, TRIPOD-development-validation, TRIPOD+AI, TRIPOD+AI-abstracts, ARRIVE-2.0
-and SANRA. Name the guideline in
+TRIPOD-validation, TRIPOD-development-validation, TRIPOD+AI, TRIPOD+AI-abstracts, STARD-2015,
+CHEERS-2022, ARRIVE-2.0 and SANRA. Name the guideline in
 `paper.yaml` as the recipe is named (`reporting_guideline: [STROBE]`, a list). Extensions hold
 only their own items. RECORD adds to STROBE, so a study that follows RECORD lists both, and
 RECORD-PE adds to RECORD, so one that follows it lists STROBE, RECORD and RECORD-PE.

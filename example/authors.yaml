@@ -1,5 +1,10 @@
 schema: manuscript-guard/authors/1
 
+# Who signs off what only they may close (`manuscript-guard sign`): the statistician
+# signs a warning about a model the analysis fitted, if it is acceptable.
+roles:
+  statistician: Sample
+
 affiliations:
   - id: uni
     text: "Department of Clinical Pharmacology, Example University Graduate School of Medicine, Springfield, Japan"

@@ -959,6 +959,35 @@ def test_an_approval_written_by_an_agent_is_put_to_the_author(
     assert run("guard-write", payload, capsys) is None
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        'manuscript-guard sign --as "Blaise Sample" --finding G15/model-few-events/adjusted',
+        "cd paper && mguard sign --as Sample --finding G15/x/y --note fine",
+        "python -m manuscript_guard.cli sign . --as 0000-0001-5109-3700 --finding G15/x/y",
+    ],
+)
+def test_a_sign_off_given_by_an_agent_is_put_to_the_person(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """Item 48: a sign-off says the person a role names judged a finding acceptable."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "Only that person can say so" in reason(result)
+    payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
+    assert decision(run("guard-submission", payload, capsys)) == "deny"
+
+
+def test_a_sign_off_written_by_an_agent_is_put_to_the_person(
+    in_claude_code: Path, capsys
+) -> None:
+    path = in_claude_code / "approvals" / "sign-offs" / "g15-model-few-events-adjusted.yaml"
+    payload = _writes(in_claude_code, file_path=str(path), content="person: Blaise Sample\n")
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == "ask"
+    assert "manuscript-guard sign --as" in reason(result)
+
+
 def _attested(project: Path) -> Path:
     return project / "literature" / "attested.yaml"
 

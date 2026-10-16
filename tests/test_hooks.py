@@ -320,6 +320,8 @@ def test_no_standard_input_at_all_is_an_empty_event(monkeypatch) -> None:
         ("build/manuscript.docx", "regenerated"),
         ("profiles/reporting/STROBE.yaml", "transcribed"),
         ("checks/decisions.csv", "a decision nobody made"),
+        # Item 26: the plan as it stood when the first results were written.
+        ("design/plan.frozen.yaml", "first results were written"),
     ],
 )
 def test_generated_files_cannot_be_edited(
@@ -923,6 +925,38 @@ def test_a_submission_refused_says_the_panel_too(in_claude_code: Path, capsys) -
     result = run("guard-submission", _shell(in_claude_code, command), capsys)
     assert decision(result) == "deny"
     assert "submission check" in reason(result) and "author's decision" in reason(result)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'manuscript-guard approve --as "Ada Example"',
+        "cd paper && mguard approve --as 0000-0002-1825-0097",
+        "python -m manuscript_guard.cli approve --as Example --note fine",
+    ],
+)
+def test_an_approval_given_by_an_agent_is_put_to_the_author(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """An approval says an author read the manuscript: only that author can give it."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "Only that author can say so" in reason(result)
+    payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
+    assert decision(run("guard-submission", payload, capsys)) == "deny"
+
+
+def test_an_approval_written_by_an_agent_is_put_to_the_author(
+    in_claude_code: Path, capsys
+) -> None:
+    path = in_claude_code / "approvals" / "ada-example.yaml"
+    payload = _writes(in_claude_code, file_path=str(path), content="author: Ada Example\n")
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == "ask"
+    assert "manuscript-guard approve" in reason(result)
+    elsewhere = in_claude_code / "notes" / "approvals.yaml"
+    payload = _writes(in_claude_code, file_path=str(elsewhere), content="author: Ada\n")
+    assert run("guard-write", payload, capsys) is None
 
 
 def _attested(project: Path) -> Path:

@@ -626,6 +626,24 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
     return plan, [*listed, (secondary, False)]
 
 
+#: What can stand in a stored source between two words of a quote taken from it: line
+#: numbers, figures, a column's or a header's words, a hyphen at the end of a line, a symbol.
+INTERRUPTIONS = (
+    "\n12\n", " 41 42 ", "  Table 2  ", "\nRunning head\n", "-\n", "\N{SOFT HYPHEN}",
+    "\N{MIDDLE DOT}", "/", " & ",
+)  # fmt: skip
+
+
+@st.composite
+def nearly_quoted(draw: st.DrawFn) -> dict[str, str]:
+    """A source and a quote of it, with something put into the source anywhere, inside the
+    quote or beside it, as the text read from a PDF puts it there."""
+    source, quote = draw(quotations())
+    at = draw(st.integers(0, len(source)))
+    put = draw(st.sampled_from(INTERRUPTIONS))
+    return {"source": source[:at] + put + source[at:], "quote": quote}
+
+
 # ---------------------------------------------------------------------------- spellings
 
 #: Words one English writes and the other does not, with a name's capital, in capitals,
@@ -794,6 +812,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "quote words": st.fixed_dictionaries(
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
     ),
+    "quote placement": nearly_quoted(),
     "spelling": st.fixed_dictionaries(
         {
             "text": texts(SPELT),

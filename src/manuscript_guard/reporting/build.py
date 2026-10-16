@@ -38,11 +38,32 @@ def load_recipe(path: Path) -> tuple[Recipe, dict]:
             "items",
             "options",
             "stop_at",
+            "table",
         )
     }
+    if layout["format"] == "jats-table":
+        # A paper's table is not the checklist file: the recipe says which it read.
+        for required in ("read_from",):
+            if not meta.get(required):
+                raise RecipeError(f"{path.name}: a jats-table recipe needs meta.{required}")
+        if not layout["table"]:
+            raise RecipeError(f"{path.name}: a jats-table recipe names its `table`")
     parse.pop("download_url", None)
     recipe = Recipe.from_dict(parse)
     return recipe, {**meta, "_layout": layout}
+
+
+def rows_digest_of(recipe_path: Path, sources_dir: Path) -> str | None:
+    """The digest of the rows a jats-table recipe reads, for its author to record; None for
+    any other recipe, or where the document is not there to read."""
+    _recipe, meta = load_recipe(recipe_path)
+    layout = meta["_layout"]
+    document = sources_dir / _recipe.document
+    if layout.get("format") != "jats-table" or not document.exists():
+        return None
+    from manuscript_guard.reporting.jats import rows_digest, table_rows
+
+    return rows_digest(*table_rows(document, str(layout["table"])))
 
 
 def build_profile(
@@ -62,7 +83,9 @@ def build_profile(
             f"{meta['source_url']} and put it there."
         )
 
-    expected = meta.get("sha256")
+    # The bytes of a paper's XML can change with nothing in its table changed; such a recipe
+    # records a digest of the rows instead, checked where they are read.
+    expected = meta.get("sha256") if parse_mode != "jats-table" else None
     if expected and not allow_changed:
         import hashlib
 
@@ -109,6 +132,24 @@ def build_profile(
             "verification": verification_for(layout.get("items"), layout.get("options")),
             "kind": "scale",
         }
+    elif parse_mode == "jats-table":
+        from manuscript_guard.literature.sources import contains
+        from manuscript_guard.reporting.jats import article_text, rows_digest, table_rows
+
+        head, body = table_rows(document, str(layout["table"]))
+        expected_rows = meta.get("rows_sha256")
+        if expected_rows and not allow_changed and rows_digest(head, body) != expected_rows:
+            raise RecipeError(
+                f"table {layout['table']} of {recipe.document} is not the table this recipe "
+                f"was written for: its rows have changed.\n"
+                f"    A revised checklist may have moved or renumbered items. Check "
+                f"{meta['source_url']}, update the recipe, and record the new rows_sha256 "
+                f"(`manuscript-guard transcribe` prints it). Use --allow-changed to "
+                f"transcribe anyway."
+            )
+        items = transcribe(document, recipe, tables=[body])
+        haystack = article_text(document)
+        unverified = [item.id for item in items if not contains(haystack, item.text)]
     elif str(parse_mode).startswith("pdf"):
         from manuscript_guard.literature.sources import contains
         from manuscript_guard.reporting.columns import ColumnRecipe, transcribe_columns
@@ -141,6 +182,11 @@ def build_profile(
         # those differently, and a reader of the profile should not have to infer it.
         "kind": meta.get("kind", ""),
         "licence": meta["licence"],
+        # Which document the items were read from, where it is not the checklist file: a
+        # table of the statement paper can differ from the file in a column or a footnote.
+        "read_from": meta.get("read_from", ""),
+        # The guideline that replaced this one, as its authors say; G5 points it out.
+        "superseded_by": meta.get("superseded_by", ""),
         # What actually happened, not what was hoped for. This was a constant string saying
         # "every item verified verbatim in the source", written whether or not verify()
         # came back clean — so a profile with eleven unverified items was byte-identical in

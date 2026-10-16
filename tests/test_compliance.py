@@ -494,6 +494,27 @@ def test_a_guideline_with_a_recipe_is_told_the_commands_that_retrieve_it(project
     assert "no recipe" not in hints
 
 
+@pytest.mark.parametrize(
+    ("named", "replaced"),
+    [("TRIPOD-development", "TRIPOD+AI"), ("TRIPOD-validation", "TRIPOD+AI"), ("STROBE", None)],
+)
+def test_a_guideline_its_authors_replaced_is_pointed_out(
+    project: Path, named: str, replaced: str | None
+) -> None:
+    """TRIPOD+AI's authors say its checklist replaces TRIPOD 2015's. A project naming the old
+    one is told, as a warning: a journal may still ask for it."""
+    edit_yaml(project / "paper.yaml", lambda d: d.update(reporting_guideline=[named]))
+    said = [f for f in reporting_report(project).findings if f.code == "guideline-superseded"]
+    if replaced is None:
+        assert said == []
+        return
+    from manuscript_guard.findings import WARN
+
+    assert [(f.severity, f.path.name) for f in said] == [(WARN, "paper.yaml")]
+    assert f"replaced by {replaced}" in said[0].message
+    assert f"manuscript-guard fetch {replaced}" in said[0].hint
+
+
 def test_a_recipe_the_project_wrote_is_told_the_commands_too(project: Path) -> None:
     """`fetch` and `transcribe` read a project's own recipes as well as the shipped ones, so
     the hint has to as well, or it says "no recipe" for one they would use."""

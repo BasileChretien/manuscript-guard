@@ -99,12 +99,14 @@ standing in — pass `--root` to choose somewhere else. The recipes themselves s
 package, and a recipe of the same name in your project overrides the shipped one. See [ATTRIBUTION.md](../ATTRIBUTION.md) for each guideline's licence as read on
 2026-08-03 — one of them is non-commercial, and several state no reuse licence at all.
 
-Recipes ship for thirteen checklists: STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT 2025,
+Recipes ship for fifteen checklists: STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT 2025,
 PRISMA 2020 and its abstracts checklist, READUS-PV and its abstracts checklist, TRIPOD in
-its three variants, and ARRIVE 2.0; and for one instrument that is not a checklist, SANRA,
+its three variants, TRIPOD+AI and its abstracts checklist, and ARRIVE 2.0; and for one
+instrument that is not a checklist, SANRA,
 the scale a narrative review is appraised with. You supply the official document; the profile
 is generated locally. Each profile records how thoroughly it was verified, because that
-differs — a Word table allows every item's full text to be checked, a column-laid-out PDF only
+differs — a Word table, or a table of the statement paper read from its full text, allows
+every item's full text to be checked, a column-laid-out PDF only
 each item's opening clause, and a rating scale read line by line allows no independent check
 at all, offering instead the rules it reads by — what is read on each page, what each line
 becomes, and what is counted — with the cases worth knowing pinned in named tests rather than

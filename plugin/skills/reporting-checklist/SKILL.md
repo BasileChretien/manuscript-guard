@@ -20,7 +20,8 @@ quote can be checked against its source.
 
 Recipes ship for STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT-2025, PRISMA-2020,
 PRISMA-2020-abstracts, READUS-PV, READUS-PV-abstracts, TRIPOD-development,
-TRIPOD-validation, TRIPOD-development-validation, ARRIVE-2.0 and SANRA. Name the guideline in
+TRIPOD-validation, TRIPOD-development-validation, TRIPOD+AI, TRIPOD+AI-abstracts, ARRIVE-2.0
+and SANRA. Name the guideline in
 `paper.yaml` as the recipe is named (`reporting_guideline: [STROBE]`, a list). Extensions hold
 only their own items. RECORD adds to STROBE, so a study that follows RECORD lists both, and
 RECORD-PE adds to RECORD, so one that follows it lists STROBE, RECORD and RECORD-PE.
@@ -52,6 +53,12 @@ project, prints the licence before it starts, and checks the file against the ch
 recipe records. It is a download, so tell the author which guideline and which site before
 you run it. READUS-PV is licensed for non-commercial use only, and the command says so.
 
+- TRIPOD+AI has no checklist file better than its statement paper, so its recipes read the
+  paper's tables from the full text Europe PMC serves, and `fetch` downloads that XML. The
+  recipe says which table it read (`read_from`), and checks a digest of the table's rows,
+  not of the file, which Europe PMC can regenerate. TRIPOD+AI replaced TRIPOD 2015, as its
+  authors say, and `check` warns `guideline-superseded` when `paper.yaml` names a TRIPOD
+  2015 checklist: name TRIPOD+AI unless the journal asks for the old one.
 - If the recipe records no download address, `fetch` says so. Open the guideline's page,
   save the file into `profiles/reporting/sources/` yourself, or pass
   `--url <direct link> --save-url` to record the address for next time.

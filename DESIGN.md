@@ -729,6 +729,19 @@ rendered page and the same sentence extracted from a PDF, and none of them chang
 written. A check whose failures are typographic noise gets switched off. A genuine
 paraphrase still fails: dropping "drug-induced" from a quoted sentence is reported.
 
+A quote that fails is often nearly there, and the finding says how
+(`literature/placement.py`). The quote's words are looked for in the source in order, each
+at most twelve words after the one before, a word split by a hyphen counting as one, from
+any of its first three words. Where all are there, the finding names what stands between
+two of them and on which line: numbers, which are most often line numbers or a column of
+figures read into the sentence, or words, which are the quote's own omission or a column,
+a footnote or a running header. Or it names the word split by a hyphen, or, where the
+words stand together, the first place the punctuation or a symbol differs, "2·6" for "2.6".
+Where only some are there, it says how many, and the quote's next word against what the
+source has in its place. The line is the file's own for a text file or a page, and is not
+given for a PDF, whose lines are its reader's. This is said and decides nothing: the quote
+fails until it is what the source says.
+
 PDF text comes from poppler's `pdftotext` if present, then `pypdf` if importable, and
 otherwise the entry is reported as unverifiable rather than passed. Neither is a hard
 dependency: a toolkit that will not install without a PDF stack is a toolkit people do not
@@ -829,10 +842,15 @@ the document and the recipe: re-run it and you get the same profile; run it agai
 revised checklist and the diff is the revision. Every item is then verified to appear
 verbatim in the document, using the same comparison the literature ledger uses for a quote.
 
-Thirteen checklists have recipes: STROBE (34 items), RECORD (13), RECORD-PE (15), CONSORT
+Fifteen checklists have recipes: STROBE (34 items), RECORD (13), RECORD-PE (15), CONSORT
 (41), SPIRIT 2025 (53), PRISMA 2020 (42) and its abstracts checklist (12), READUS-PV (32)
 and its abstracts checklist (12), TRIPOD in its three variants (31 development, 31
-validation, 37 both), and ARRIVE 2.0 (21). A fourteenth recipe is not a checklist: SANRA (6
+validation, 37 both), TRIPOD+AI (52) and its abstracts checklist (13), and ARRIVE 2.0 (21).
+TRIPOD+AI is read from the tables of its statement paper, as Europe PMC serves its full text,
+because no checklist file of it is better than the paper; its recipe says so (`read_from`),
+and records a digest of the table's rows rather than of the file. The three TRIPOD 2015
+recipes record that TRIPOD+AI replaced them (`superseded_by`), and G5 warns a project that
+names one. A sixteenth recipe is not a checklist: SANRA (6
 items), the scale an editor or a reviewer scores a narrative review with, which exists because
 no reporting guideline covers a narrative review and the first manuscript written with this
 toolkit is one. A scale's profile says `kind: scale`, and the submission pack presents it as a
@@ -5855,6 +5873,14 @@ Closed since, and why each mattered:
   and ffl are folded before a quote is looked for. Anything else one reader spells out and
   another does not is compared as it comes: a quote typed with "oe" is not found in a source
   read as "œ". A quote copied from the source, which is what the hint asks for, is.
+- **What a failed quote is said to nearly be is read by words, not by meaning.** A word is a
+  run of letters and digits, so "2.6" is the words 2 and 6, and a quote whose number differs
+  in one digit is a quote with one word retyped. Words more than twelve apart are not read
+  as the quote's, so a quote broken by a long footnote is said to be partly there. A source
+  that holds the quote's words in order in two places is read at the one with the most of
+  them, then the fewest interruptions, then the fewest words in them, which need not be
+  where the author copied from. A soft hyphen inside a word fails the quote, as it always did, and is said to split
+  it. Only the first two interruptions are named, and the rest counted.
 - **An ellipsis set against a value hides it.** The ellipsis is folded to three full stops
   and a value is not read with a full stop before it, so a quote holding `…14 per 100 000`
   does not state 14 and is reported `value-not-in-quote`. With a space after the ellipsis
@@ -7816,9 +7842,16 @@ Closed since, and why each mattered:
   transcribe, but two needed a second attempt and none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible
   wrong transcription, which is the best that can be done about it.
-- **TRIPOD+AI (2024) has no recipe.** Classic TRIPOD 2015 is transcribed from its three Word
-  checklists; the TRIPOD+AI checklist is available only as a table inside a PDF, which the
-  column reader is not shaped for.
+- **A paper's table is read only from Europe PMC's JATS.** A statement paper without an open
+  full text there (TARGET's, for one) cannot be read this way, and a checklist set as two
+  tables ("Table 2 (continued)") is two tables: the recipe names one. A cell that spans rows
+  is read in the first of them and left empty below, which carries a topic and would lose
+  text in the item's own column. The items are verified against the article's text, which
+  holds the table they were read from: that catches an item assembled wrong, not a column
+  read wrong.
+- **A replaced guideline is known only from its recipe.** `superseded_by` is written in the
+  recipe from what the new guideline's authors say. A project's own recipe, or a guideline
+  replaced after its recipe was written, says nothing until someone writes it in.
 - **ARRIVE's items are verified only at their opening clause**, for the reason above. It is
   the one profile whose tail text rests on the parser rather than on a check.
 - **ARRIVE's items are found only as poppler's `pdftotext` sets them.** The one from Xpdf,

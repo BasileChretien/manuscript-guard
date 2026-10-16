@@ -309,6 +309,88 @@ def test_figure_script_that_ignores_results_is_caught(project: Path) -> None:
     assert "figure-script-ignores-results" in codes(gate_report(project))
 
 
+def _estimates_said(project: Path) -> list[str]:
+    return [
+        f.message.split("(")[0]
+        for f in gate_report(project).findings
+        if f.code == "figure-estimates"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("added", "said"),
+    [
+        ('sns.barplot(data=frame, x="arm", y="reports")', ["sns.barplot"]),
+        ('sns.barplot(data=frame, x="arm", y="reports", errorbar=None)', []),
+        ('sns.barplot(data=frame, x="arm", y="reports", seed=2024)', []),
+        ('sns.regplot(data=frame, x="dose", y="reports", ci=None)', []),
+        ("spread = frame.groupby('arm').reports.std()", [".reports.std"]),
+        ("spread = frame.reports.std(ddof=1)", []),
+        ("subset = frame.sample(200)", ["frame.sample"]),
+        ("np.random.seed(7)\nsubset = frame.sample(200)", []),
+        ("kept = frame.dropna()", ["frame.dropna"]),
+        ("# sns.barplot(data=frame) in a comment", []),
+    ],
+)
+def test_a_figure_that_estimates_while_it_draws_is_warned(
+    project: Path, added: str, said: list[str]
+) -> None:
+    """A bootstrap interval, a spread whose divisor is unstated, rows sampled or dropped in
+    the figure script: none passes through the results, and the random ones change at every
+    render. Each is a warning, until the call is told not to or a seed settles it."""
+    script = project / "figures" / "forest.py"
+    script.write_text(script.read_text(encoding="utf-8") + "\n" + added + "\n", encoding="utf-8")
+    assert _estimates_said(project) == said
+
+
+def test_an_estimate_with_its_reason_beside_the_figure_is_not_warned(project: Path) -> None:
+    script = project / "figures" / "forest.py"
+    script.write_text(
+        script.read_text(encoding="utf-8")
+        + '\nsns.barplot(data=frame, x="arm", y="y")\nsubset = frame.sample(20)\n',
+        encoding="utf-8",
+    )
+    sidecar = project / "figures" / "forest.guard.yaml"
+    sidecar.write_text(
+        sidecar.read_text(encoding="utf-8")
+        + "\nallow_estimates:\n  - value: barplot\n    why: the bars show the raw means\n"
+        + "  - value: sample\n",  # no reason, so no exemption
+        encoding="utf-8",
+    )
+    assert _estimates_said(project) == ["frame.sample"]
+
+
+@pytest.mark.parametrize(
+    ("script", "said"),
+    [
+        ("ggplot(d, aes(arm, y)) + stat_summary()", ["stat_summary"]),
+        ('ggplot(d, aes(x, y)) + geom_smooth(method = "lm", se = FALSE)', ["geom_smooth"]),
+        ("ggplot(d, aes(arm, y)) + geom_jitter(width = 0.2)", ["geom_jitter"]),
+        ("ggplot(d, aes(arm, y)) + geom_jitter(seed = NA)", ["geom_jitter"]),
+        # Round 1 of #288: geom_jitter takes no seed, and ggplot2 ignores one given to it.
+        ("ggplot(d, aes(arm, y)) + geom_jitter(seed = 1)", ["geom_jitter"]),
+        ("ggplot(d, aes(arm, y)) + geom_jitter(position = position_jitter(seed = 1))", []),
+        ("ggplot(d, aes(arm, y)) + geom_point(position = position_jitter(width = 0.2))",
+         ["position_jitter"]),
+        ("set.seed(3)\nggplot(d, aes(arm, y)) + geom_jitter()", []),
+        ("d <- na.omit(d)", ["na.omit"]),
+        ("x <- rnorm(10)", ["rnorm"]),
+        ("set.seed(3)\nx <- rnorm(10)", []),
+    ],
+)
+def test_an_r_figure_that_estimates_while_it_draws_is_warned(
+    tmp_path: Path, script: str, said: list[str]
+) -> None:
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    path = tmp_path / "funnel.R"
+    path.write_text("library(ggplot2)\n" + script + "\n", encoding="utf-8")
+    report = check_figure_source(path, Classifier.load())
+    found = [f.message.split("(")[0] for f in report.findings if f.code == "figure-estimates"]
+    assert found == said
+
+
 def test_same_quantity_under_two_keys_is_caught(project: Path) -> None:
     """One quantity, two keys, two roundings — 3.84 in one place and 3.8 in another.
 

@@ -15,6 +15,7 @@ may not be a literal at all.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -981,6 +982,61 @@ def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
     assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
 
 
+# ------------------------------------------------------------- the authors' approvals
+
+
+def _approvals_said(root: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.approvals import check_approvals
+
+    project, _ = load_project(root)
+    found = check_approvals(project).findings
+    assert all(f.severity == "warn" for f in found)
+    return sorted((f.code, f.message.split(" approved")[0].split(" has not")[0]) for f in found)
+
+
+def test_an_approval_is_bound_to_the_manuscript_the_author_read(project: Path) -> None:
+    """`approve --as` records an author's approval with the digest of the prose and
+    the results; `submit` says which authors have none, and which approved a manuscript that
+    has changed since. An author is found by ORCID iD, e-mail, full name or family name."""
+    from manuscript_guard.cli import main
+
+    assert _approvals_said(project) == [
+        ("approval-missing", "Ada Example"), ("approval-missing", "Blaise Sample")
+    ]
+    assert main(["approve", str(project), "--as", "0000-0002-1825-0097"]) == 0
+    assert main(["approve", str(project), "--as", "blaise sample", "--note", "as read"]) == 0
+    assert _approvals_said(project) == []
+    record = yaml.safe_load((project / "approvals" / "0000-0001-5109-3700.yaml").read_text("utf-8"))
+    assert record["author"] == "Blaise Sample" and record["note"] == "as read"
+    assert main(["approve", str(project), "--as", "Nobody"]) == 2
+
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\nOne sentence more.\n", "utf-8")
+    assert _approvals_said(project) == [
+        ("approval-stale", "Ada Example"), ("approval-stale", "Blaise Sample")
+    ]
+    assert main(["approve", str(project), "--as", "Example"]) == 0
+    assert _approvals_said(project) == [("approval-stale", "Blaise Sample")]
+
+
+def test_two_authors_named_alike_are_approved_apart(project: Path) -> None:
+    """Round 1 of #284: an approval was filed by the author's name folded to plain letters,
+    so two authors with one name shared a file, and the one who never approved was not
+    said. A file kept by the ORCID iD is each author's own, and a record names its author."""
+    from manuscript_guard.cli import main
+
+    authors = project / "authors.yaml"
+    text = authors.read_text(encoding="utf-8")
+    alike = "given: Wei\n    family: Zhang"
+    for given, family in (("Ada", "Example"), ("Blaise", "Sample")):
+        text = text.replace(f"given: {given}\n    family: {family}", alike)
+    authors.write_text(text, encoding="utf-8")
+    assert main(["approve", str(project), "--as", "0000-0002-1825-0097"]) == 0
+    assert _approvals_said(project) == [("approval-missing", "Wei Zhang")]
+    assert main(["approve", str(project), "--as", "0000-0001-5109-3700"]) == 0
+    assert _approvals_said(project) == []
+
+
 # ------------------------------------------------ the unit written after a binding
 
 
@@ -1233,6 +1289,250 @@ def test_a_fragment_written_before_the_environment_was_recorded_says_nothing(
     assert _environment_said(project) == []
 
 
+# ------------------------------------------------- a pointer names what the document carries
+# "In step 1204 reports were excluded, as Table 4000 and Figure 9 show." passed G2 whole: each
+# number followed a pointer word. The example itself called its two tables "Table 2" and
+# "Table 3", after its first had moved to the supplement.
+
+
+def _pointer_findings(root: Path) -> list[tuple[str, str]]:
+    return [
+        (f.code, f.message)
+        for f in gate_report(root).findings
+        if f.code in ("pointer-to-nothing", "cited-out-of-order", "display-not-cited")
+    ]
+
+
+def _add_to_results(root: Path, sentence: str) -> None:
+    main = main_md(root)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("Baseline characteristics are shown in Table 1.",
+                     f"Baseline characteristics are shown in Table 1. {sentence}", 1),
+        encoding="utf-8",
+    )  # fmt: skip
+
+
+def test_the_example_points_at_what_it_carries(project: Path) -> None:
+    assert _pointer_findings(project) == []
+
+
+@pytest.mark.parametrize(
+    ("sentence", "names"),
+    [
+        ("As Table 4000 shows.", "table 4000"),
+        ("As Figure 9 shows.", "figure 9"),
+        ("As Table S5 shows.", "table S5"),
+        ("As Supplemental Table 3 shows.", "table S3"),
+        ("As eTable 4 shows.", "table S4"),
+        ("As Tables 1 and 3 show.", "table 3"),
+        ("As Figures 1\N{EN DASH}2 show.", "figure 2"),
+    ],
+)
+def test_a_pointer_to_what_the_document_does_not_carry_is_said(
+    project: Path, sentence: str, names: str
+) -> None:
+    _add_to_results(project, sentence)
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["pointer-to-nothing"], said
+    assert f"points at {names}," in said[0][1], said
+
+
+def _all_pointer_findings(root: Path) -> list[tuple[str, str, str]]:
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.pointers import check_pointers
+
+    report = check_pointers(load_project(root)[0])
+    return [(f.code, f.severity, f.message) for f in report.findings]
+
+
+@pytest.mark.parametrize(
+    ("change", "sentence", "unchecked"),
+    [
+        # round 1 of #256: figures sent to the journal as files of their own
+        (("{{figure.forest}}", ""), "As Figure 1 shows.", "the main text's figures"),
+        # a table written by hand, in a form the first version did not count
+        (("{{table.baseline}}", "| A | B |\n|:--|--:|\n| x | y |"), "As Table 3 shows.",
+         "the main text's tables"),
+        # an image placed by hand
+        (("{{figure.forest}}", "![The forest plot](forest.png)"), "As Figure 2 shows.",
+         "the main text's figures"),
+        # the supplement places no figure by its binding
+        (None, "As Supplementary Figure 1 shows.", "the supplement's figures"),
+    ],
+)  # fmt: skip
+def test_a_kind_placed_some_other_way_is_not_checked_and_says_so(
+    project: Path, change: tuple[str, str] | None, sentence: str, unchecked: str
+) -> None:
+    """Exact counts only, Basile's choice on 2026-10-15: what is not placed by its binding
+    cannot be counted, so its pointers are not held to a count, and a note says so."""
+    if change:
+        main = main_md(project)
+        main.write_text(main.read_text(encoding="utf-8").replace(*change, 1), encoding="utf-8")
+    _add_to_results(project, sentence)
+    said = _all_pointer_findings(project)
+    assert not [s for s in said if s[0] != "pointers-unchecked"], said
+    assert any(code == "pointers-unchecked" and severity == "info" and unchecked in message
+               for code, severity, message in said), said  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "As Supplemental Table 1 shows.",
+        "As Extended Data Fig. 1 shows.",
+        "As Table 1 in the Supplement shows.",
+        "As Tables S1\N{EN DASH}2 show.",
+        "As eFigure 1 shows.",
+    ],
+)
+def test_a_pointer_to_the_supplement_is_no_citation_of_the_main_text(
+    project: Path, sentence: str
+) -> None:
+    """Round 1 of #256: read as the main text's, "Supplemental Table 1" before Table 1's
+    first citation made the main text's tables cited out of order."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("# Results\n", f"# Results\n\n{sentence}\n", 1), "utf-8")
+    assert not [s for s in _all_pointer_findings(project) if s[0] == "cited-out-of-order"]
+
+
+def test_a_pointer_that_ends_a_wrapped_line_is_a_citation(project: Path) -> None:
+    """Round 2 of #256: "shown in\nTable 1." was taken for a caption, and Table 1 for a
+    table cited nowhere."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("are shown in Table 1.", "are shown in\nTable 1.", 1),
+        encoding="utf-8",
+    )
+    assert _pointer_findings(project) == []
+
+
+def _declare(root: Path, line: str) -> None:
+    paper = root / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + f"\n{line}\n", encoding="utf-8")
+
+
+def test_a_figure_sent_as_a_file_is_declared_and_counted(project: Path) -> None:
+    """Round 2 of #256, Basile's choice of 2026-10-15: one figure bound, a flow chart sent to
+    the journal as a file of its own. Undeclared, "Figure 2" points at nothing; declared in
+    paper.yaml, it is counted, and must be cited like any other."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("can reconstruct it.", "can reconstruct it. The flow is in Figure 2.", 1),
+        encoding="utf-8",
+    )
+    assert [code for code, _ in _pointer_findings(project)] == ["pointer-to-nothing"]
+    _declare(project, "displays: {figures_as_files: 1}")
+    assert _pointer_findings(project) == []
+    main.write_text(text, encoding="utf-8")
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["display-not-cited"], said
+    assert said[0][1].startswith("Figure 2 ")
+
+
+def test_figures_all_sent_as_files_are_checked_once_declared(project: Path) -> None:
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("{{figure.forest}}", "", 1), encoding="utf-8"
+    )
+    _declare(project, "displays: {figures_as_files: 1}")
+    assert _pointer_findings(project) == []
+    _add_to_results(project, "As Figure 3 shows.")
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["pointer-to-nothing"], said
+    assert "and 1 sent as files" in said[0][1]
+
+
+def test_a_count_of_displays_sent_as_files_is_a_whole_number(project: Path) -> None:
+    _declare(project, "displays: {figures_as_files: -1}")
+    assert "schema-violation" in codes(gate_report(project))
+
+
+def test_a_caption_typed_above_a_table_is_no_citation_of_it(project: Path) -> None:
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("in Table 2, so", "below, so", 1)
+    main.write_text(
+        text.replace("{{table.two_by_two}}", "**Table 2.** Counts\n\n{{table.two_by_two}}", 1),
+        encoding="utf-8",
+    )
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["display-not-cited"], said
+
+
+def test_a_pointer_to_nothing_fails_from_the_internal_review(project: Path) -> None:
+    """Basile's choice on 2026-10-14: while the draft is written its tables move."""
+    from manuscript_guard.cli import _run_gates
+
+    _add_to_results(project, "As Table 9 shows.")
+    drafting, *_ = _run_gates(project, stage="drafting")
+    assert [f.severity for f in drafting.findings if f.code == "pointer-to-nothing"] == ["info"]
+    reviewing, *_ = _run_gates(project, stage="internal-review")
+    assert "pointer-to-nothing" in codes(reviewing)
+
+
+def test_tables_first_cited_out_of_order_are_said(project: Path) -> None:
+    _add_to_results(project, "Table 2 has the counts.")
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        text.replace("Baseline characteristics are shown in Table 1. Table 2 has the counts.",
+                     "Table 2 has the counts. Baseline characteristics are shown in Table 1.", 1),
+        encoding="utf-8",
+    )  # fmt: skip
+    assert [code for code, _ in _pointer_findings(project)] == ["cited-out-of-order"]
+
+
+def test_a_table_cited_nowhere_is_said(project: Path) -> None:
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("in Table 2, so", "below, so", 1), encoding="utf-8")
+    said = _pointer_findings(project)
+    assert [code for code, _ in said] == ["display-not-cited"], said
+    assert said[0][1].startswith("Table 2 ")
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    ["In step 1204 reports were excluded.", "Box 47 lists the reports.",
+     "Panel 312 shows the reports.", "Item 125 lists them."],
+)  # fmt: skip
+def test_a_count_after_a_word_with_nothing_to_check_it_against_is_a_count(
+    project: Path, sentence: str
+) -> None:
+    _add_to_results(project, sentence)
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_count_after_a_list_of_tables_is_a_count(project: Path) -> None:
+    """Round 2 of #256: after "and" a comma ends the list, so "In Tables 1 and 2, 30
+    patients" is two pointers and a count, not a pointer to Table 30 and a 30 let through."""
+    _add_to_results(project, "In Tables 1 and 2, 30 patients were excluded.")
+    assert "unclassified-number" in codes(gate_report(project))
+    assert _pointer_findings(project) == []
+
+
+def test_a_serial_comma_ends_no_list_of_tables(project: Path) -> None:
+    """Round 3 of #256: "Tables 1, 2, and 3" stopped the pointer at 2, and the 3 was taken
+    for a cross-reference no gate held to a table, in a paper that places two."""
+    from manuscript_guard.gates.pointers import pointers_in
+
+    said = pointers_in("In Tables 1, 2, and 3, 30 patients were excluded.", Path("x"))
+    assert [p.number for p in said] == [1, 2, 3]
+    _add_to_results(project, "Tables 1, 2, and 3 show the reports.")
+    assert [code for code, _ in _pointer_findings(project)] == ["pointer-to-nothing"]
+
+
+def test_a_list_of_tables_is_one_pointer(project: Path) -> None:
+    """"Tables 1 and 2 show" left its 2 bound to nothing."""
+    _add_to_results(project, "Tables 1 and 2 show the reports.")
+    report = gate_report(project)
+    assert "unclassified-number" not in codes(report)
+    assert _pointer_findings(project) == []
+
+
 # ------------------------------------------------- the plan when the results were first known
 
 
@@ -1319,6 +1619,102 @@ def _unit_said(root: Path) -> list[tuple[str, str]]:
     assert results.models, "the example fits a model"
     said = check_models(project, results).findings
     return [(f.code, f.severity) for f in said if f.code == "unit-rows-independent"]
+
+
+def _models_said(root: Path, code: str) -> list[str]:
+    project, _ = load_project(root)
+    _namespace, results, _literature, report = load_namespace(project)
+    assert "adjusted" in results.models, report.render()
+    return [f.message for f in check_models(project, results).findings if f.code == code]
+
+
+def _given(card: dict, fields: dict) -> dict:
+    """The card with these fields, a field given None taken out."""
+    return {key: value for key, value in {**card, **fields}.items() if value is not None}
+
+
+def _crude_beside_adjusted(root: Path, crude: dict, adjusted: dict) -> None:
+    """The example's adjusted model, and a crude one of the same outcome with only the
+    exposure, each card given the fields passed."""
+    for fragment in (root / "results").glob("*.json"):
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        card = document["models"]["adjusted"]
+        document["models"]["crude"] = _given(card, {
+            "name": "Crude model", "formula": "hepatic ~ exposed",
+            "terms": [t for t in card["terms"] if t["term"] == "exposed"], "parameters": 1,
+            **crude,
+        })  # fmt: skip
+        document["models"]["adjusted"] = _given(card, adjusted)
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+
+
+def _adjusted_has(root: Path, **fields) -> None:
+    _crude_beside_adjusted(root, {}, fields)
+    for fragment in (root / "results").glob("*.json"):
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        del document["models"]["crude"]
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+
+
+_ROWS = {name: hashlib.sha256(name.encode("utf-8")).hexdigest() for name in ("all", "some")}
+
+
+@pytest.mark.parametrize(
+    ("crude", "adjusted", "said"),
+    [
+        ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["some"], "n_used": 3800}, 1),
+        # Equal counts and different rows: the digest tells them apart.
+        ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["some"]}, 1),
+        ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["all"]}, 0),
+        # A card that does not say which rows it used is not compared.
+        ({"rows_sha256": None}, {"rows_sha256": _ROWS["some"]}, 0),
+        # The same terms on other rows are a subgroup, by design.
+        ({"rows_sha256": _ROWS["all"], "terms": "adjusted's"}, {"rows_sha256": _ROWS["some"]}, 0),
+    ],
+    ids=["fewer rows", "as many rows", "the same rows", "rows unknown", "a subgroup"],
+)
+def test_a_crude_and_an_adjusted_model_on_different_rows_are_a_warning(
+    project: Path, crude: dict, adjusted: dict, said: int
+) -> None:
+    """Item 36: a covariate's missing values drop rows from the adjusted model only, and
+    the crude and adjusted estimates were compared as if one adjustment parted them."""
+    if crude.get("terms") == "adjusted's":
+        crude = {**crude, "terms": json.loads(next((project / "results").glob("*.json"))
+                 .read_text(encoding="utf-8"))["models"]["adjusted"]["terms"]}  # fmt: skip
+    _crude_beside_adjusted(project, crude, adjusted)
+    found = _models_said(project, "models-on-different-rows")
+    assert len(found) == said, found
+    assert all(message.startswith("model 'adjusted': its terms include all of 'crude'")
+               for message in found)  # fmt: skip
+
+
+_POISSON = {"language": "Python", "package": "statsmodels", "class": "GLM",
+            "family": "Poisson", "link": "Log"}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("fields", "said"),
+    [
+        ({"engine": _POISSON, "covariance": "nonrobust"}, 1),
+        ({"engine": _POISSON, "covariance": "model-based"}, 1),
+        ({"engine": _POISSON, "covariance": "HC0"}, 0),
+        ({"engine": _POISSON, "covariance": None}, 0),
+        # Round 1 of #289: with a person-time offset the model estimates a rate ratio, and
+        # its own variance is the right one.
+        ({"engine": _POISSON, "covariance": "nonrobust", "offset": True}, 0),
+        ({"covariance": "nonrobust"}, 0),
+    ],
+    ids=["nonrobust", "model-based", "robust", "not said", "rate", "logistic"],
+)
+def test_a_poisson_model_of_a_binary_outcome_wants_a_robust_variance(
+    project: Path, fields: dict, said: int
+) -> None:
+    """Item 36: a risk ratio from Poisson regression of a binary outcome, with the model's
+    own standard errors, passed; they overstate its error."""
+    _adjusted_has(project, **fields)
+    assert len(_models_said(project, "poisson-binary-variance")) == said
 
 
 def test_rows_of_one_unit_taken_as_independent_are_a_warning(project: Path) -> None:
@@ -2028,6 +2424,120 @@ def test_an_entry_complete_in_either_format_needs_no_other_field(fields: dict) -
     assert problems("k", fields) == []
 
 
+# One work cited under two keys: the reference list prints it twice.
+
+
+def _both_have(
+    root: Path, first: dict[str, str], second: dict[str, str], types: tuple[str, str] = ("", "")
+) -> None:
+    """Give each of the example's two references the fields named, and the entry type. Their
+    volumes go, so that a volume is only the one a test gives."""
+    bib = root / "literature" / "references.bib"
+    text = bib.read_text(encoding="utf-8")
+    text = text.replace("  volume  = {12},\n", "").replace("  volume  = {7},\n", "")
+    keys = ("fictionalHepaticCohort2021", "fictionalClassSignal2019")
+    for key, fields, kind in zip(keys, (first, second), types, strict=True):
+        opening = f"@article{{{key},\n"
+        added = "".join(f"  {name} = {{{value}}},\n" for name, value in fields.items())
+        text = text.replace(opening, "@" + (kind or "article") + opening[8:] + added, 1)
+    bib.write_text(text, encoding="utf-8")
+
+
+def _duplicate_findings(root: Path) -> list[tuple[str, str, str]]:
+    return [
+        (f.code, f.severity, f.message)
+        for f in _g7(root).findings
+        if f.code in ("reference-duplicate", "reference-title-duplicate")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "named"),
+    [
+        ({"doi": "10.5555/x.1"}, {"doi": "https://doi.org/10.5555/X.1."}, "DOI"),
+        ({"pmid": "31000001"}, {"pmid": "031000001"}, "PMID"),
+        ({"pmcid": "PMC1234"}, {"pmcid": "pmc1234"}, "PMCID"),
+        ({"isbn": "0-306-40615-2"}, {"isbn": "978-0-306-40615-7"}, "ISBN"),
+    ],
+)
+def test_one_work_cited_under_two_keys_fails(
+    project: Path, first: dict, second: dict, named: str
+) -> None:
+    _both_have(project, first, second, ("book", "collection") if named == "ISBN" else ("", ""))
+    said = _duplicate_findings(project)
+    assert [(code, severity) for code, severity, _ in said] == [("reference-duplicate", "fail")]
+    assert f"by the same {named}" in said[0][2]
+
+
+def test_one_work_under_two_keys_fails_from_internal_review(project: Path) -> None:
+    from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
+
+    _both_have(project, {"doi": "10.5555/x.1"}, {"doi": "10.5555/x.1"})
+    report = _g7(project)
+    drafting, _ = apply_stage(report, DRAFTING)
+    assert "reference-duplicate" not in {f.code for f in drafting.failures}
+    reviewed, _ = apply_stage(report, INTERNAL_REVIEW)
+    assert "reference-duplicate" in {f.code for f in reviewed.failures}
+
+
+def test_two_entries_with_one_title_are_a_warning(project: Path) -> None:
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8").replace(
+            "A disproportionality signal for a fictional drug class",
+            "HEPATIC INJURY IN A FICTIONAL NATIONAL COHORT, 2010--2019",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    said = _duplicate_findings(project)
+    assert [(code, severity) for code, severity, _ in said] == [
+        ("reference-title-duplicate", "warn")
+    ]  # fmt: skip
+
+
+_ISBN = "978-0-306-40615-7"
+
+
+@pytest.mark.parametrize(
+    ("types", "first", "second"),
+    [
+        # Two chapters of one book carry its ISBN, or its DOI.
+        (("incollection", "incollection"), {"isbn": _ISBN}, {"isbn": "0-306-40615-2"}),
+        (("inbook", "inbook"), {"doi": "10.5555/book.1"}, {"doi": "10.5555/book.1"}),
+        # Two papers of one proceedings volume.
+        (("inproceedings", "inproceedings"), {"isbn": _ISBN}, {"isbn": _ISBN}),
+        # A book cited beside one of its chapters.
+        (
+            ("book", "incollection"),
+            {"isbn": _ISBN, "doi": "10.5555/book.1"},
+            {"isbn": _ISBN, "doi": "10.5555/book.1"},
+        ),
+        # Two volumes of one set, under the set's ISBN.
+        (("book", "book"), {"isbn": _ISBN, "volume": "1"}, {"isbn": _ISBN, "volume": "2"}),
+        # An ISBN on an article or a misc entry names no book that is cited.
+        (("article", "misc"), {"isbn": _ISBN}, {"isbn": _ISBN}),
+    ],
+)
+def test_parts_of_one_book_are_two_works(
+    project: Path, types: tuple[str, str], first: dict, second: dict
+) -> None:
+    _both_have(project, first, second, types)
+    assert _duplicate_findings(project) == []
+
+
+def test_different_works_and_an_uncited_duplicate_say_nothing(project: Path) -> None:
+    _both_have(project, {"doi": "10.5555/x.1"}, {"doi": "10.5555/x.2"})
+    assert _duplicate_findings(project) == []
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8")
+        + "\n@article{uncitedCopy2021,\n  doi = {10.5555/x.1},\n  title = {T},\n}\n",
+        encoding="utf-8",
+    )
+    assert _duplicate_findings(project) == []
+
+
 def _zotero(monkeypatch, items: list[dict]) -> None:
     from test_zotero import FakeBBT
 
@@ -2237,6 +2747,108 @@ def _journal(root: Path):
 
     project, _ = load_project(root)
     return check_journal(project)
+
+
+#: What G4 says of the figure files.
+_ARTWORK_CODES = ("figure-format", "figure-resolution", "figure-height", "figure-file-size",
+                  "figure-shrinks", "legend-words")  # fmt: skip
+
+
+def _artwork_said(root: Path, side: dict | None = None, **rules) -> list[tuple[str, str]]:
+    """G4 with the example's journal given these artwork rules, and the example's figure
+    this sidecar: forest.png is 1950 by 660 pixels, drawn at 300 dpi, 165 mm wide."""
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-15", "confirmed": True, **rules}  # fmt: skip
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    if side:
+        sidecar = root / "figures" / "forest.guard.yaml"
+        guard = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+        sidecar.write_text(yaml.safe_dump({**guard, **side}, sort_keys=False), encoding="utf-8")
+    report = _journal(root)
+    assert report.ok or not [f for f in report.failures if f.code == "schema"], report.render()
+    return [(f.code, f.severity) for f in report.findings if f.code in _ARTWORK_CODES]
+
+
+@pytest.mark.parametrize(
+    ("rules", "side", "said"),
+    [
+        # 1950 pixels over 89 mm is 556 dpi.
+        ({"min_dpi": {"halftone": 600}, "widths_mm": [89, 183]}, None,
+         [("figure-resolution", "warn")]),
+        ({"min_dpi": {"halftone": 500}, "widths_mm": [89, 183]}, None, []),
+        # Printed 60 mm wide, it is 825 dpi.
+        ({"min_dpi": {"halftone": 600}, "widths_mm": [89]}, {"print_width_mm": 60}, []),
+        ({"min_dpi": {"halftone": 300, "line_art": 1000}, "widths_mm": [89]},
+         {"kind": "line_art"}, [("figure-resolution", "warn")]),
+        ({"formats": ["tiff", "eps"]}, None, [("figure-format", "warn")]),
+        ({"formats": ["tiff", "png"]}, None, []),
+        # Round 1 of #291: a journal writes "jpg" or "tif" as often as "jpeg" or "tiff".
+        ({"formats": ["tif", "jpg"]}, None, [("figure-format", "warn")]),
+        ({"max_file_mb": 0.005}, None, [("figure-file-size", "warn")] * 2),
+        # 89 mm wide, 660 / 1950 of that high: 30 mm.
+        ({"max_height_mm": 20, "widths_mm": [89]}, None, [("figure-height", "warn")]),
+        # Drawn 165 mm wide and printed 89: 10 pt prints at 5.4.
+        ({"min_text_pt": 6, "widths_mm": [89]}, None, [("figure-shrinks", "warn")]),
+        ({"min_text_pt": 5, "widths_mm": [89]}, None, []),
+        ({"min_dpi": {"halftone": 600}, "widths_mm": [89], "applies_from": "acceptance"},
+         None, [("figure-resolution", "info")]),
+    ],
+)
+def test_a_figure_file_the_journal_would_refuse_is_a_warning(
+    project: Path, rules: dict, side: dict | None, said: list
+) -> None:
+    """Item 17: resolution, format, size and height were free text in a profile's notes,
+    and the first anyone heard of them was the portal refusing the upload."""
+    assert _artwork_said(project, side, **rules) == said
+
+
+@pytest.mark.parametrize("written", ["tif", "TIF", "tiff"])
+def test_a_tiff_is_taken_however_the_journal_writes_it(project: Path, written: str) -> None:
+    """Round 1 of #291: "tif" in a profile matched no file, and the message said the TIFF
+    was a format the journal does not take."""
+    shutil.copy(project / "figures" / "forest.png", project / "figures" / "forest.tif")
+    assert _artwork_said(project, formats=[written.lower(), "eps"]) == []
+
+
+@pytest.mark.parametrize(
+    ("width_mm", "rules", "shown"),
+    [
+        # Round 1 of #291: 299.7 dpi was printed "300 dpi", beside a minimum of 300.
+        (165.27, {"min_dpi": {"halftone": 300}}, "at 299.6 dpi"),
+        # Round 2: 299.97 was printed "300.0", and 300.03 beside a maximum of 300 too.
+        (165.11, {"min_dpi": {"halftone": 300}}, "at 299.9 dpi"),
+        (165.09, {"max_dpi": 300}, "at 300.1 dpi"),
+    ],
+)
+def test_a_resolution_at_its_limit_is_printed_on_the_side_it_fails(
+    project: Path, width_mm: float, rules: dict, shown: str
+) -> None:
+    _artwork_said(project, {"print_width_mm": width_mm}, **rules)
+    found = [f for f in _journal(project).findings if f.code == "figure-resolution"]
+    assert len(found) == 1 and shown in found[0].message, found
+
+
+def test_a_supplementary_figure_is_held_to_the_supplement_s_rules(project: Path) -> None:
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8").replace("{{figure.forest}}\n", ""),
+                    encoding="utf-8")  # fmt: skip
+    supplement = project / "manuscript" / "supplementary" / "S1.md"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_text("# Supplementary figure\n\n{{figure.forest}}\n", encoding="utf-8")
+    said = _artwork_said(project, widths_mm=[89], min_dpi={"halftone": 300},
+                         supplementary={"max_dpi": 300})  # fmt: skip
+    assert said == [("figure-resolution", "warn")]
+
+
+def test_a_legend_longer_than_the_journal_takes_is_a_warning(project: Path) -> None:
+    main = main_md(project)
+    legend = "**Figure 1.** " + " ".join(["The reporting odds ratio and its interval."] * 4)
+    main.write_text(main.read_text(encoding="utf-8").replace(
+        "{{figure.forest}}\n", "{{figure.forest}}\n\n" + legend + "\n"), encoding="utf-8")
+    assert _artwork_said(project, legend_words=20) == [("legend-words", "warn")]
+    assert _artwork_said(project, legend_words=40) == []
 
 
 def test_a_second_files_front_matter_is_not_a_required_section(project: Path) -> None:
@@ -6343,7 +6955,7 @@ def test_a_comment_mark_in_a_listing_hides_no_binding_from_the_build(project: Pa
 
 
 # A sentence in the example's Results, one in its Methods, and its last line.
-_IN_RESULTS = "are shown in Table 2."
+_IN_RESULTS = "are shown in Table 1."
 _IN_METHODS = "Reporting follows the checklist declared in `paper.yaml`."
 _AT_END = "None declared.\n"
 
@@ -9113,18 +9725,18 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    six read revisions with the earlier rounds in front of them, so the sixth supersedes
-    the five before it and each says it was not blinded."""
+    seven read revisions with the earlier rounds in front of them, so the seventh supersedes
+    the six before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok, report.render(project)
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
-                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2))
+                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 4, report.render(project)
-    assert report.counts["review_rounds_complete"] == 6
+    assert said == superseded + [("round-not-blinded", "review")] * 5, report.render(project)
+    assert report.counts["review_rounds_complete"] == 7
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -10140,6 +10752,48 @@ def test_a_run_nobody_agreed_to_changes_nothing(project: Path, monkeypatch) -> N
     after = {path: path.read_bytes() for path in sorted(project.rglob("*")) if path.is_file()}
     assert after == before
     assert not _review_failures(project)
+
+
+# --------------------------------------------------------------------------------------
+# What the data can answer, while the plan is written
+# --------------------------------------------------------------------------------------
+
+
+def _feasibility_said(root: Path, stage: str, **values: int) -> list[str]:
+    """G12 at a stage, with these values emitted besides the example's."""
+    from manuscript_guard.gates import check_design
+
+    if values:
+        fragment = next((root / "results").glob("*.json"))
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        for key, value in values.items():
+            document["values"][key.replace("__", ".")] = {"value": value, "display": str(value)}
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    project, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(project)
+    return [f.code for f in check_design(project, results, stage).findings
+            if f.code == "feasibility-not-run"]  # fmt: skip
+
+
+def test_a_plan_written_before_the_data_were_looked_at_is_a_warning(project: Path) -> None:
+    """Item 47: a plan could set out an analysis of data nobody had counted, and nothing
+    said so while it was written."""
+    assert _feasibility_said(project, "design") == ["feasibility-not-run"]
+    assert _feasibility_said(project, "drafting") == []
+
+
+def test_a_plan_with_feasibility_results_says_nothing(project: Path) -> None:
+    assert _feasibility_said(project, "design", feasibility__n_reports=4000) == []
+
+
+def test_a_plan_with_no_analysis_yet_is_not_asked_for_feasibility(project: Path) -> None:
+    """An empty Analysis is its own finding; the feasibility results wait for an analysis."""
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    start, end = text.index("## Analysis\n"), text.index("## Sample size")
+    plan.write_text(text[:start] + "## Analysis\n\nTBD\n\n" + text[end:], encoding="utf-8")
+    assert _feasibility_said(project, "design") == []
 
 
 # --------------------------------------------------------------------------------------

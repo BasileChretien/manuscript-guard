@@ -1,0 +1,24 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 7
+reviewer: checklist-auditor
+reviewed_by: Claude Code
+reviewed_on: '2026-10-14'
+manuscript_sha256: 90fae1c228d9d76f788344401076301ec77e9f61d7f1d928313c469879ef0acd
+file_sha256:
+  main.md: 0ae317d5a168abfba8b10ec4b14a754b18767f70868dc649f520f2aff911e9bd
+  supplementary/S1_code_lists.md: 0424bddf5bebf482147a5579ea720fbfe9e701fadfb0b6898cdb21aa34fc0708
+verdict: pass
+summary: The main text called its two tables Table 2 and Table 3, a numbering left from when
+  the code lists were its first table; they moved to the supplement as Table S1. The tables
+  are now Table 1 and Table 2, first cited in that order, and every pointer in the paper names
+  a table or figure it places.
+findings:
+- id: r7-ca-01
+  severity: comment
+  where: Results
+  finding: Table 1 and Table 2 are cited in the order they are placed, each once at least, and
+    Table S1 and Figure 1 name what the supplement and the main text carry. DEMO-OBS items 6
+    and 7 send a reader to the Results, where the tables are cited, and are unchanged.
+reading_sha256: 547f829ab8caa99a63eeddcc4d6cf80325566a422606be1d7b738bf5939dae1c

@@ -339,6 +339,51 @@ reviewer, or the author six months later. Both files feed the same `lit.` namesp
 G7 reports the three depths separately. Abstract-only status is flagged but never fails a
 build; a `user-attested` entry missing its attester or statement does fail.
 
+## A pointer names what the document carries
+
+"As Table 4 shows" is a number like any other, and G2 let it through as a cross-reference:
+the rule read the word and whatever digits followed it. So "In step 1204 reports were
+excluded, as Table 4000 and Figure 9 show" passed whole, a count hidden behind "step" and
+two pointers at nothing. The example called its two tables "Table 2" and "Table 3" from the
+day its first table moved to the supplement as Table S1, and nothing said so: the build
+prints a table's caption as written and numbers nothing. LaTeX refuses a `\ref` to a label
+nobody defined; G2 now does the same for a pointer typed as text. Each finding fails from
+the internal-review stage, Basile's choice on 2026-10-14: while the draft is written its
+tables move and are numbered again.
+
+What the document carries is counted only where the count is known, Basile's choice on
+2026-10-15. A kind, tables or figures, of one document, the main text or the supplement, is
+checked where every one of them is placed by its binding, `{{table.<key>}}` or
+`{{figure.<key>}}`, counted in the order the files print. "Table 3" names the main text's
+third table; "Table S1", "Supplementary Table 1", "Supplemental Table 1", "eTable 1",
+"Extended Data Table 1", "Appendix Table 1" and "Table 1 in the Supplement" the supplement's
+first. A pointer to one there is not is `pointer-to-nothing`, a list read whole ("Tables 1
+and 2", "Figures 2–4", "Tables S1–3" being S1 to S3), and a list joined by a word only after
+a plural: "Table 2 and 3 patients" is one pointer. Where a document places one of a kind by
+hand (a pipe, grid, simple or multiline table, a caption line, an image, raw HTML) or none
+by its binding, as a paper whose figures go to the journal as files of their own does, its
+pointers to that kind are not checked, and one note says so (`pointers-unchecked`). The
+first version counted tables and images written by hand as well; its review found correct
+papers failed by every form of either it did not count, and by figures sent as files.
+Those a paper sends to the journal as files of their own, cited in the text and placed
+nowhere in it (a flow chart drawn by hand beside a forest plot that is bound), are declared
+in `paper.yaml`, `displays: {figures_as_files: 1}` and its three siblings for tables and the
+supplement, Basile's choice on 2026-10-15: they are counted with the bound ones, numbered
+with them, and have to be cited in order like them. A pointer that opens its paragraph and
+ends in a stop or a colon ("**Table 2.** Counts") is a caption typed above a table and no
+citation of it; one that opens a line inside a paragraph ends a sentence. The main text's tables and figures are held to
+what ICMJE asks for: each cited (`display-not-cited`), and first cited in the order they
+are numbered (`cited-out-of-order`). "Number tables consecutively in the order of their
+first citation in the text" and "Be sure that each table is cited in the text", from
+icmje.org, Preparing for Submission, read 2026-10-14; it says the same of the figures'
+order and gives the supplement no rule, so none is applied to it.
+
+The words that point at nothing a gate can check, a step, a panel, a box, an item, take a
+small number only: up to 20, as `categorical-label` does, and an item up to 99, since a
+checklist runs to 27 items. "Step 1204" is a count. A list after a plural is read as
+pointers by G2 too, where only its first number was before: "Tables 1 and 2 show" left its
+2 unbound.
+
 ## The corruption harness
 
 The claim "no stale number" is worth exactly as much as the evidence that the gate catches
@@ -452,6 +497,28 @@ The worked example earned this the hard way. Its first review returned `concerns
 manuscript said Figure 1 showed the estimate "against the comparators" and the figure had
 one row. Every other gate passed it, because every number in the figure was correct. The
 sentence was what was wrong.
+
+## A figure file meets the journal's artwork guide
+
+A journal states the formats it takes, the resolution each kind of figure needs at the width
+it prints, the largest file and the longest legend. These were free text in a profile's
+`notes`, and the first anyone heard of them was the portal refusing the upload. A profile
+now carries them under `figures:`, read from the journal's own artwork guide, with the date
+it was read and whether every value was found on it (`confirmed`). G4 holds each figure the
+manuscript places to them: its formats (`figure-format`), a raster's resolution at the width
+it prints for its kind (`figure-resolution`), its printed height (`figure-height`), the size
+of each file (`figure-file-size`), and the paragraph that labels it (`legend-words`). A
+raster drawn much larger than it prints is said too (`figure-shrinks`): a figure drawn 165 mm
+wide and printed at 89 mm prints the 10 pt text a plotting library draws at 5.4 pt, though
+its resolution passes. The size of a raster is read from its own header, PNG, JPEG or TIFF,
+with the standard library.
+
+A figure's print width and kind are in its `<name>.guard.yaml` (`print_width_mm`, `kind`).
+Without them the narrowest width the journal prints at is taken, so that a resolution found
+too low is too low at any width, and the kind is halftone. A figure placed only in the
+supplement is held to the profile's `supplementary:` rules where it has them. All of it is a
+warning, and a note where the journal applies the rules only once the paper is accepted
+(`applies_from: acceptance`).
 
 ## The build
 
@@ -697,6 +764,19 @@ list is first printed for others to read; while drafting, an entry can still be 
 placeholder, and it is reported and deferred. Whether a DOI is registered, names the work
 the entry describes, or was retracted is for a lookup that records what it found, and none
 is made here.
+
+**One work is cited under one key.** Two cited entries with the same DOI, PMID, PMCID or
+ISBN are one work, and the reference list prints it twice, numbered twice; G7 caught one key
+carried by two items in Zotero and not two keys for one work. Each identifier is compared as
+it names the work (`gates/duplicates.py`): a DOI undressed and in lower case, a PMID without
+leading noughts, a PMCID in capitals, an ISBN-10 as the ISBN-13 it is. Such a pair fails
+from internal-review (`reference-duplicate`), as the other findings about the reference
+list do. An ISBN names a book, and a chapter or a conference paper can carry its book's
+ISBN or DOI, so a part of a book (`@incollection`, `@inbook`, `@inproceedings` and their
+like) is compared by its title alone, and an ISBN is read only from a whole book, with its
+volume. Two cited entries with the same title of four words or more and no identifier in
+common are a warning (`reference-title-duplicate`): they may be one work, or a correction
+and the paper it corrects.
 
 ## Only a person can sign an attestation
 
@@ -1486,6 +1566,23 @@ cluster-robust (`cluster`, or a HAC by group or panel) nor a mixed model or esti
 equations. The R emitter finds the data in the fit (`glm`) or where the call names it
 (`lm`), and leaves out the rows the fit dropped.
 
+**Two models compared are fitted on the same rows.** A crude and an adjusted estimate are
+set side by side to say what the adjustment did, and a covariate's missing values drop rows
+from the adjusted model only: the change between the two is then partly the rows'. Equal
+counts can hide different rows, so each card records a digest of the labels of the rows
+its fit used (`rows_sha256`: pandas' index, R's row names). G15 warns
+(`models-on-different-rows`) where two models of one outcome, one's terms a strict subset
+of the other's, were fitted on different rows. The same terms on different rows are a
+subgroup, by design, and are left alone.
+
+**A Poisson regression of a binary outcome has a robust variance.** Poisson regression of a
+binary outcome estimates a risk ratio, and its model-based variance overstates the error;
+a sandwich variance corrects it (Zou, Am J Epidemiol 2004;159:702-6). G15 warns
+(`poisson-binary-variance`) on a Poisson model of an outcome declared binary, or of a
+comparison written in the formula, whose card records model-based standard errors. A fit
+with an offset or an exposure is left alone: events over person-time estimate a rate ratio,
+and that model's own variance is the right one. Each emitter records the offset on the card.
+
 ## A step of the code and the text that points at it
 
 The ledger of G9 records that a person read the Methods against the analysis, file by file.
@@ -2200,6 +2297,17 @@ with no plan behind it, and when a plan's section is a heading with nothing unde
 "Deviations from the plan" heading followed by nothing is the common case, and naming it is
 most of the value.
 
+**A plan is written knowing what the data hold.** A plan can set out an analysis of data
+nobody has counted: an adjustment for a covariate missing in half the rows, a subgroup of
+twelve patients. The author's own script counts them, never the tool, and publishes the
+counts like any result under `feasibility.`: the cohort at each selection step, the
+outcome's events, the missing values of each planned variable, the date range, the
+duplicates. At the `design` stage, G12 warns (`feasibility-not-run`) where the plan's
+analysis section says something and no result is emitted under `feasibility.`. It is a
+warning, as the rest of this gate is: an author may know the data from a registry's own
+report. Once the analysis runs, its results say what the data hold, and the question is not
+asked again.
+
 **The plan is frozen when the first results are written.** A plan rewritten after the
 results are known is the pattern of a hypothesis fitted to its results, and it can be told
 mechanically. The first time either emitter writes results, it keeps the plan as it stood:
@@ -2246,6 +2354,21 @@ authors file and a merely unfinished one could be told apart.
 The effect is that `manuscript-guard init` followed by a first analysis script now reports
 zero failures at `design` and `analysis`, with the outstanding work listed as not yet due,
 and the same items fail from `drafting` onwards.
+
+## An approval is bound to what the author read
+
+"All authors approved the final manuscript" was a sentence of the covering letter, typed.
+`manuscript-guard approve --as <author>` now records an author's approval in
+`approvals/<author>.yaml`, one file per author, with the digest of what decides the built
+document, the prose and the results, as `check` reads it to say a build is current. The
+author is found by ORCID iD, e-mail address, full name or family name in `authors.yaml`.
+`submit` warns where an author has no approval (`approval-missing`) or approved a manuscript
+that has changed since (`approval-stale`). It warns and does not refuse: whether to send
+without one is the corresponding author's decision, and an approval given by e-mail is still
+one. An approval is a person's statement, so the hooks put to the person an agent's `approve`
+and an agent's edit of a file under `approvals/`, and refuse both where the tool cannot ask.
+A data custodian's sign-off is recorded the same way once the custodian has a place among the
+people the project names.
 
 ## The plugin: skills for judgement, hooks for the moment of the mistake
 
@@ -5014,6 +5137,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
+- **The feasibility results are asked for by their names only.** Any one result under
+  `feasibility.` quiets `feasibility-not-run`: nothing checks that the counts cover the
+  plan's variables or its selection steps, or that the script read the data the analysis
+  will. G1 holds the results to the inputs the script declared, and no more. The question
+  is asked at the `design` stage alone, so a project that starts at a later stage is never
+  asked it.
 - **G4 reads the main-text files in path order, and the build prints them in another.** The
   build puts `main.md` first and sorts the rest by file name, not by path. A section's words
   count where the headings above it put them, so an `abstract.md` beside a `main.md` written
@@ -5039,6 +5168,14 @@ Added by the adversarial review, verified and **not** fixed:
   digest can be recomputed. It is a separate command because it executes the project's own
   code, which a gate must never do. It cannot make a non-deterministic analysis agree with
   itself; it reports the disagreement and says to set a seed.
+- **Two models' rows are compared by their labels, within one language.** pandas numbers
+  rows from 0 and R from 1, so a model fitted in Python and one fitted in R on the same
+  data are always taken for different rows; and two data frames whose labels were reset
+  between the fits are too. A count with a person-time denominator modelled with no offset
+  is not yet read: it needs the rate the analysis declares, which nothing records. An R
+  `lm` or `glm` records "model-based" standard errors whatever is done after the fit, so a
+  modified Poisson regression whose sandwich variance is computed beside the fit
+  (`sandwich::vcovHC`) is still warned.
 - **Numbers written as words escape the tokeniser.** "four thousand and twenty-one" is not
   read. Vulgar fractions and enclosed digits now are. Number words are left alone on
   purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and
@@ -5129,6 +5266,16 @@ Added by the adversarial review, verified and **not** fixed:
   are counted under it together, as two whose patterns begin alike are. Before the review
   of #153 the second one's matches replaced the first's, under either kind of shared name,
   and a number the first was written for failed as unbound.
+- **A figure file is read for its pixels only where it is a PNG, JPEG or TIFF.** The text
+  size and line width of a vector figure, SVG, PDF or EPS, and the fonts a PDF embeds, are
+  not read yet, nor is a raster inside an EPS or PDF. `min_line_pt` is in the profile and
+  checked against nothing. A figure the build places is the first of its files in the
+  build's order, PNG first, and every file of it is held to the rules, so a figure kept as
+  PNG and TIFF is held to the journal's limits twice. A JPEG whose JFIF header records no
+  resolution, or a PNG with no `pHYs` chunk, is not said to shrink: how large it was drawn
+  is unknown. A legend is the paragraph straight after the figure that opens with "Figure"
+  and its number; a legend written above it, or in the figure, is not counted. A megabyte
+  is 1,048,576 bytes, the larger of the two a journal may mean.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
@@ -5725,6 +5872,17 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
+- **A pointer is held to the number of a placement, not to its key, and only where every
+  placement is a binding.** "Table 2" passes wherever the main text places two tables,
+  whichever two they are: the check sees the numbering, not which table a sentence means.
+  A paper that writes any of its tables or places any of its figures by hand has no
+  pointer of that kind checked, only a note; one that sends some as files of their own and
+  does not declare them in `paper.yaml` (`displays`) has a pointer past the bound ones
+  failed as pointing at nothing. A pointer
+  in a heading, or in a caption typed above its table ("**Table 2.**"), is checked for a
+  target and not counted as the citation that numbers a table. "Table 3 of Smith et al."
+  is read as a pointer to the paper's own Table 3. "Box", "Section" and "Equation" point at
+  nothing the check counts.
 - **The Methods are a heading that holds the word, and two gates read fewer headings than
   G4 counts.** G4 and G9 take for the Methods a heading whose title holds "methods" where
   the paper's structure allows it. In a paper with no heading G2 reads as the Methods, the
@@ -5754,6 +5912,13 @@ Closed since, and why each mattered:
   first three digits are no ISBN prefix. An ISBN-10 that opens with 978 or 979, followed in
   the same field by another ISBN and parted from it by a space only, is read as the start
   of an ISBN-13 and reported.
+- **Two keys for one work are found by an identifier or a title, and only among what is
+  cited.** Two entries of one work with no identifier in common and titles that differ, a
+  preprint and its article, or a translation, are not found. A title of fewer than four
+  words is not compared. A chapter or a conference paper cited twice is found only by its
+  title, a warning, and a book cited twice with a volume in one entry only is not found. A
+  DOI is compared as the file writes it, so `\_` is not read as `_` nor `%28` as `(`, and a
+  title's TeX accents and commands are read as letters: `Caf\'e` is two words.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
   citation, no reporting guideline, no analysis code, no fitted model or no revision round
   has nothing for G3, G10, G7, G8r, G9, G15 or G13 to read, and each passes with its count
@@ -7243,6 +7408,9 @@ Closed since, and why each mattered:
   further into an item: an indented one, one under a later item's own underline, or
   `- # Results` on the item's own line. The same goes for a definition list. The old scan
   saw none of these either.
+- **An approval says who ran the command, not who read the manuscript.** A co-author who
+  runs `approve` for a colleague, or an agent the person lets through, writes an approval
+  nobody gave. The digest says what was current when it was given, not that it was read.
 - **List numbering is read where pandoc starts a list item, and only in Markdown.**
   `ordered-list-marker` took any line opening with "412. " for numbering, so a count a hard
   wrap put there passed G2; a list cannot interrupt a paragraph, and the rule now holds
@@ -7276,11 +7444,18 @@ Closed since, and why each mattered:
   term under a definition. Inside a list item's lines pandoc folds the digits in some
   positions and not others, and there an indented "1." under `\newpage` is still taken for
   numbering.
-- **`import` compares a returned document with an offline build in the default citation
-  style.** A document built with `--csl` comes back with every paragraph that cites refused,
-  its citations read as changed. A Zotero field is read by the words it shows and never by
-  its code, so a field a co-author refreshed into another style refuses its paragraph, and
-  one that shows the default style's words passes whatever item it names.
+- **A live document's citations are known by their codes, as the build recorded them.** The
+  record is a file beside the build: on another machine, or with `build/` cleaned, every
+  citation Zotero has refreshed reads as changed and its paragraph is refused. Two citations
+  written apart in the source with the same items and locators (`[@a]` and `[@a ]`) cannot
+  say which a field was, and both are read by their words. What Zotero formats is not
+  compared at all, the reference list included: an item whose data Zotero updated, or an
+  entry of the list a co-author edited, is not seen. A field a co-author inserts into a
+  document built offline is read by the words it shows.
+- **A document built with `--csl` is compared in the style its digest names.** Where that
+  style is not where the build found it, or has changed, `import` says so and compares in
+  the default style, refusing every paragraph that cites, until `--csl` names it. Line
+  endings changed by a checkout are not a change of style; any other edit is.
 - **Every indented line under a list is the list's for headings.** Pandoc ends a list at a
   line indented less than the item's text that starts no item, at a definition under it,
   and at a rule at the margin. The walk ends the items there, so a count opening a later

@@ -5053,6 +5053,19 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   to 2.58 with nothing run again. Listing the helper among the emitter's `inputs` makes its
   change an `input-changed` failure. `verify`, which runs the analysis again and compares
   every value, sees the change either way. Imports are not followed.
+- **The environment is the lockfiles at the project root, and only a warning.** Both
+  emitters record the digest of each of `renv.lock`, `uv.lock`, `poetry.lock`,
+  `environment.yml` and `requirements*.txt` found at the root, and G1 warns
+  (`environment-changed`) when one has changed, gone or appeared since a fragment was
+  written: the numbers on disk are still the ones the analysis wrote, and a re-run may not
+  give them. A lockfile in a subfolder, a package installed outside any lockfile, a system
+  library, a compiler, and a lockfile that does not match what is installed are not seen.
+  A lockfile is digested with its line endings left out, as a script is. One that is a
+  link to a file elsewhere is recorded by R under the path it links to, and by Python under
+  its own name. A fragment written before the emitters recorded the environment says
+  nothing. When a
+  re-run differs, `verify` says whether the analysis declares a seed: a parameter whose key
+  holds "seed".
 - **The figure-caption style reads one convention and nothing else.** The paragraph after a
   figure is set in `Figure Caption` (10 pt against 12 pt) when its text opens "Figure 1.",
   "Figure 4:" or "Figure S1."; the stop or colon has to come right after the number, so that

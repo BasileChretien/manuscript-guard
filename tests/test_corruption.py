@@ -1418,6 +1418,71 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
     assert "unemitted-table-number" in codes
 
 
+# ------------------------------------------------- the environment the results were made in
+
+
+def _rerun_with(root: Path, files: dict[str, str]) -> None:
+    from conftest import run_analysis
+
+    for name, content in files.items():
+        (root / name).write_text(content, encoding="utf-8")
+    run_analysis(root)
+
+
+def _environment_said(root: Path) -> list[tuple[str, str]]:
+    return [
+        (f.severity, f.message)
+        for f in gate_report(root).findings
+        if f.code == "environment-changed"
+    ]
+
+
+def test_a_lockfile_changed_since_the_results_is_said(project: Path) -> None:
+    """Item 18: the emitter recorded no package environment, so a requirements file pinning
+    another version after the results were written went unsaid."""
+    _rerun_with(project, {"requirements.txt": "pandas==2.2.2\n"})
+    assert _environment_said(project) == []
+    (project / "requirements.txt").write_text("pandas==2.1.0\n", encoding="utf-8")
+    said = _environment_said(project)
+    assert said and all(severity == "warn" for severity, _ in said)
+    assert all("requirements.txt changed since these results" in m for _, m in said)
+
+
+@pytest.mark.parametrize("name", ["requirements.txt", "renv.lock", "uv.lock"])
+def test_a_lockfile_checked_out_with_other_line_endings_is_unchanged(
+    project: Path, name: str
+) -> None:
+    """Round 1 of #265: git checks a lockfile out with CRLF on Windows and LF elsewhere, and
+    a byte digest read that as a change."""
+    (project / name).write_bytes(b"pandas==2.2.2\r\nnumpy==2.0.0\r\n")
+    _rerun_with(project, {})
+    (project / name).write_bytes(b"pandas==2.2.2\nnumpy==2.0.0\n")
+    assert _environment_said(project) == []
+
+
+def test_a_lockfile_gone_or_new_since_the_results_is_said(project: Path) -> None:
+    _rerun_with(project, {"requirements.txt": "pandas==2.2.2\n"})
+    (project / "requirements.txt").unlink()
+    (project / "renv.lock").write_text("{}\n", encoding="utf-8")
+    said = " ".join(m for _, m in _environment_said(project))
+    assert "requirements.txt pinned the packages" in said and "is gone" in said
+    assert "renv.lock was not there when these results were written" in said
+
+
+def test_a_fragment_written_before_the_environment_was_recorded_says_nothing(
+    project: Path,
+) -> None:
+    from manuscript_guard.emit import write_digest
+
+    (project / "renv.lock").write_text("{}\n", encoding="utf-8")
+    for fragment in (project / "results").glob("*.json"):
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        document["provenance"].pop("environment", None)
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    assert _environment_said(project) == []
+
+
 # ------------------------------------------------- a pointer names what the document carries
 # "In step 1204 reports were excluded, as Table 4000 and Figure 9 show." passed G2 whole: each
 # number followed a pointer word. The example itself called its two tables "Table 2" and

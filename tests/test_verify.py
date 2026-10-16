@@ -73,6 +73,23 @@ def test_a_re_signed_edit_is_caught_even_though_g1_passes(project: Path) -> None
     assert "rerun-differs" in {f.code for f in to_report(result).failures}
 
 
+def test_a_difference_says_whether_the_analysis_declares_a_seed(project: Path) -> None:
+    """Item 18: "set a seed" was said whether the analysis had one or not."""
+    from manuscript_guard.verify import _unseeded
+
+    assert "declares no seed" in _unseeded(())
+    said = _unseeded(("param.seed",))
+    assert "declares param.seed" in said and "no seed" not in said
+    path = fragment_of(project)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["values"]["ror.point"]["value"] = 9.99
+    document["values"]["ror.point"]["display"] = "9.99"
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(path)
+    hints = {f.hint for f in to_report(run(project)).failures if f.code == "rerun-differs"}
+    assert hints == {_unseeded(())}, "the example declares no seed"
+
+
 def test_a_version_found_on_another_machine_is_reported_and_reproduces(project: Path) -> None:
     """The example records the Python it ran under, and a re-run elsewhere runs under its own:
     that is the environment, said in a warning, and every result still has to agree."""

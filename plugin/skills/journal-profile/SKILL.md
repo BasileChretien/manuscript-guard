@@ -70,6 +70,11 @@ none because it produces confident failures about a rule that does not exist.
 Note what the page does *not* say, too. A journal that is silent on data availability is
 not a journal that forbids the statement, and the difference belongs in `notes`.
 
+**Store the page.** Save the instructions page, as text, to
+`profiles/journals/sources/<slug>.txt` in the project, the text you are reading the rules
+from. That is the page every rule of the profile is held to. It is the author's copy, in
+their project: do not add a journal's page to anyone else's repository.
+
 ## 3. Fill the template
 
 ```bash
@@ -84,6 +89,20 @@ you no longer need.
 
 Project profiles override anything shipped, so this is also how you correct a profile that
 has gone stale.
+
+**Quote every rule.** Under `quotes:`, give each rule the words of the stored page it was
+read from, as the page writes them, keyed by the rule (`limits.abstract_words`,
+`structure.required_sections`, `required_statements.<id>`, `references`, ...). A rule you
+cannot find words for is not on the page: delete it. Each rule on the page that no gate
+checks, a running title or the cover letter's contents, goes under `manual:` with its quote,
+so that none is dropped without a trace. `check` then:
+
+- fails a quote that is not on the stored page (`journal-quote-not-on-page`), and a limit
+  whose number its quote does not state (`journal-limit-not-in-quote`);
+- warns of the rules with no quote (`journal-rule-unquoted`), and of a quote for a rule the
+  profile does not state;
+- warns that the page is not stored, or is not the text the profile recorded, and prints the
+  digest to record as `page_sha256` once the profile has been read against it.
 
 The shape it ends up as:
 
@@ -134,6 +153,16 @@ figures:                        # from the journal's artwork guide, not its gene
   legend_words: 250
   # applies_from: acceptance    # where the rules are waived until the paper is accepted
   # supplementary: {max_dpi: 300, max_file_mb: 10}
+
+page_sha256: 3f9c...            # as check prints it, once the profile is read against the page
+
+quotes:                         # the stored page's words for each rule
+  limits.abstract_words: "The abstract should not exceed 250 words."
+  required_statements.data-availability: "All research articles must include a Data Availability Statement."
+
+manual:                         # the page's rules no gate checks, quoted
+  - rule: suggested reviewers
+    quote: "Please suggest three potential reviewers in your cover letter."
 
 notes:
   - "Cover letter must name three suggested reviewers."

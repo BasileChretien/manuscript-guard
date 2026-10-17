@@ -1074,6 +1074,123 @@ def _custodian(root: Path, minimum: int) -> None:
     paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
 
 
+def _run_cli(argv: list[str]) -> int:
+    from manuscript_guard.cli import main
+
+    return main(argv)
+
+
+def _keeps_data(root: Path, monkeypatch, *models: str, custodian: bool = True):
+    """The example, unreviewed and read by these models through a transport that answers
+    every call, where the custodian restricts sending and authors.yaml names them."""
+    from test_review_run import KEY_A, KEY_B, Providers, configure
+
+    from manuscript_guard.panel import client
+
+    transport = Providers()
+    monkeypatch.setattr(client, "default_transport", transport)
+    monkeypatch.setenv("OPENAI_API_KEY", KEY_A)
+    monkeypatch.setenv("MISTRAL_API_KEY", KEY_B)
+    monkeypatch.setenv("LAB_API_KEY", "lab-key-0123456789SECRETC")
+    shutil.rmtree(root / "review")
+    configure(root, *models)
+    paper = root / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["custodian"] = {"restricts_sending": True}
+    document["review"]["providers"] = {
+        "lab": {"base_url": "https://llm.lab.invalid/v1", "key_env": "LAB_API_KEY"}
+    }
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    if custodian:
+        authors = root / "authors.yaml"
+        authors.write_text(authors.read_text(encoding="utf-8").replace(
+            "roles:\n  statistician: Sample\n",
+            "roles:\n  statistician: Sample\n  data_custodian:\n    name: Cora Keeper\n",
+        ), encoding="utf-8")  # fmt: skip
+    return transport
+
+
+def _authorise(root: Path, provider: str) -> int:
+    return _run_cli(["sign", str(root), "--as", "Cora Keeper",
+                 "--finding", f"G11/custodian/send-to/{provider}"])  # fmt: skip
+
+
+def test_a_restricted_manuscript_goes_to_no_provider_the_custodian_has_not_authorised(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """Item 29: the data custodian decides whether the manuscript may go to a model
+    provider. Before, `review --run` sent it to every provider review.models named."""
+    from test_review_run import MODEL_A, MODEL_B
+
+    transport = _keeps_data(project, monkeypatch, MODEL_A, MODEL_B)
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 2
+    err = " ".join(capsys.readouterr().err.split())
+    assert "nothing was sent" in err and "restricts where the manuscript" in err, err
+    assert '`manuscript-guard sign --as "Cora Keeper" --finding G11/custodian/send-to/openai`' \
+        in err, err  # fmt: skip
+    assert "send-to/mistral" in err and transport.requests == []
+    assert not (project / "review" / "round-1").exists()
+    # One provider authorised: nothing is sent, for the other.
+    assert _authorise(project, "openai") == 0
+    capsys.readouterr()
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 2
+    err = capsys.readouterr().err
+    assert "send-to/mistral" in err and "send-to/openai" not in err and transport.requests == []
+    assert _authorise(project, "mistral") == 0
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 0
+    assert len(transport.requests) == 8
+
+
+def test_an_authorisation_is_of_the_address_it_was_given_for(
+    project: Path, monkeypatch, capsys
+) -> None:
+    transport = _keeps_data(project, monkeypatch, "lab/model-c")
+    assert _authorise(project, "lab") == 0
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8").replace(
+        "llm.lab.invalid", "elsewhere.invalid"), encoding="utf-8")  # fmt: skip
+    capsys.readouterr()
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 2
+    assert "changed since" in capsys.readouterr().err and transport.requests == []
+
+
+def test_a_model_on_this_machine_needs_no_authorisation_and_one_sent_on_from_it_does(
+    project: Path, monkeypatch, capsys
+) -> None:
+    transport = _keeps_data(project, monkeypatch, "ollama/model-l")
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 0
+    assert len(transport.requests) == 4
+    transport = _keeps_data(project, monkeypatch, "ollama/gpt-oss:120b-cloud")
+    capsys.readouterr()
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 2
+    err = " ".join(capsys.readouterr().err.split())
+    assert "and on to Ollama's servers" in err and transport.requests == []
+
+
+def test_with_no_custodian_named_the_refusal_says_to_name_one(
+    project: Path, monkeypatch, capsys
+) -> None:
+    from test_review_run import MODEL_A
+
+    transport = _keeps_data(project, monkeypatch, MODEL_A, custodian=False)
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 2
+    assert "name the data custodian under `roles:`" in capsys.readouterr().err
+    assert transport.requests == []
+    assert _authorise(project, "openai") == 2
+
+
+def test_a_dry_run_of_a_restricted_manuscript_says_a_run_would_send_nothing(
+    project: Path, monkeypatch, capsys
+) -> None:
+    from test_review_run import MODEL_A
+
+    transport = _keeps_data(project, monkeypatch, MODEL_A)
+    assert _run_cli(["review", str(project), "--run", "--dry-run"]) == 0
+    out = " ".join(capsys.readouterr().out.split())
+    assert "A run would send nothing" in out and "Dry run: nothing was sent" in out
+    assert transport.requests == []
+
+
 def _value_has(root: Path, key: str, **fields) -> None:
     """The results file with `fields` set on `key`, one set to None taken out, and its
     digest written again."""

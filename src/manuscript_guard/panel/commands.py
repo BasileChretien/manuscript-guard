@@ -159,9 +159,26 @@ def run_panel(
             return 1
         print("Every reading of this round is already on file, so there is nothing to send.")
         return 0
+    stopped = _not_authorised(plan, project)
+    if stopped and not dry_run:
+        print(f"manuscript-guard: nothing was sent. {stopped}", file=sys.stderr)
+        return 2
     if dry_run:
+        if stopped:
+            print(f"A run would send nothing: {stopped}\n")
         return _dry_run(plan, project)
     return _send(plan, project, yes, environ)
+
+
+def _not_authorised(plan, project) -> str:
+    """Why the data custodian's restriction stops this plan, or "" where it does not: a
+    provider off this machine that the custodian has not authorised as it now stands."""
+    from manuscript_guard.panel.custodian import unauthorised
+    from manuscript_guard.panel.plan import passed_on_calls
+    from manuscript_guard.panel.run import providers_of
+
+    leaving = [p for p in providers_of(plan) if not p.local or passed_on_calls(plan, p)]
+    return " ".join(f"{f.message}; {f.hint}." for f in unauthorised(project, leaving))
 
 
 def _still_waiting(waiting: Sequence[tuple[str, str]], *, design: bool = False) -> str:

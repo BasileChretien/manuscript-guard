@@ -70,6 +70,22 @@ def isbn_valid(written: str) -> bool:
     return False
 
 
+def doi_of(fields: dict[str, str]) -> str | None:
+    """An entry's DOI as it is looked up: well formed, undressed, in lower case (a DOI is
+    matched without regard to case). None where it has none, or one G7 says is malformed."""
+    doi = normal_doi(fields.get("doi", ""))
+    return doi.lower() if doi and _DOI.fullmatch(doi) else None
+
+
+def pmid_of(fields: dict[str, str]) -> str | None:
+    """An entry's PMID, where it has a well-formed one, in either place it is written."""
+    eprinttype = (fields.get("eprinttype") or fields.get("archiveprefix") or "").lower()
+    pmid = fields.get("pmid", "").strip() or (
+        fields.get("eprint", "").strip() if eprinttype == "pubmed" else ""
+    )
+    return pmid if pmid and _PMID.fullmatch(pmid) else None
+
+
 #: What an ISBN field holds beside its numbers: a label, and a qualifier in brackets.
 _ISBN_ASIDE = re.compile(r"\bISBN(?:-?1[03])?\s*:?|\([^()]*\)", re.IGNORECASE)
 
@@ -172,4 +188,12 @@ _HINTS = {
 }
 
 
-__all__ = ["REQUIRED", "check_identifiers", "isbn_valid", "normal_doi", "problems"]
+__all__ = [
+    "REQUIRED",
+    "check_identifiers",
+    "doi_of",
+    "isbn_valid",
+    "normal_doi",
+    "pmid_of",
+    "problems",
+]

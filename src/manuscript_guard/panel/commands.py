@@ -112,8 +112,10 @@ def run_panel(
     dry_run: bool,
     yes: bool = False,
     environ: Mapping[str, str] | None = None,
+    design: bool = False,
 ) -> int:
-    """Have a round of the panel read by the models in `review.models`.
+    """Have a round of the panel read by the models in `review.models`: of the manuscript,
+    or with `design` a design round, which reads the plan.
 
     The same statement is printed whether or not anything is sent: which files go to which
     host, and how many calls that is. A dry run stops there. A run then needs a yes, typed
@@ -139,7 +141,7 @@ def run_panel(
         )
         return 2
     try:
-        plan = make_plan(project, round_number=round_number, one_each=one_each)
+        plan = make_plan(project, round_number=round_number, one_each=one_each, design=design)
     except PlanError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -147,13 +149,13 @@ def run_panel(
     print(describe(plan, project, environ))
     print()
     if not plan.calls:
-        waiting = unread(project, plan.round)
+        waiting = unread(project, plan.round, design=plan.design)
         if waiting:
             print(
                 "Every reading this run would ask for is on file, so there is nothing to "
                 "send. The round is not complete:"
             )
-            print(_still_waiting(waiting))
+            print(_still_waiting(waiting, design=plan.design))
             return 1
         print("Every reading of this round is already on file, so there is nothing to send.")
         return 0
@@ -162,7 +164,7 @@ def run_panel(
     return _send(plan, project, yes, environ)
 
 
-def _still_waiting(waiting: Sequence[tuple[str, str]]) -> str:
+def _still_waiting(waiting: Sequence[tuple[str, str]], *, design: bool = False) -> str:
     """The readers the panel names that have not reported, and the two ways out."""
     rows = _table([(f"  {reviewer}", reader) for reviewer, reader in waiting])
     return (
@@ -171,6 +173,7 @@ def _still_waiting(waiting: Sequence[tuple[str, str]]) -> str:
         "This run did not ask them: they are not in review.models, or --one-each dealt "
         "another model to that reviewer. A model is listed there and the command run again. "
         "A person files their own reading: `manuscript-guard review --record <reviewer> "
+        + ("--design " if design else "") +
         "--reading <who> --verdict <verdict>`. A reader that is not going to report is "
         "taken out of its reviewer's `readers` in the panel file."
     )
@@ -246,7 +249,7 @@ def _send(plan, project, yes: bool, environ: Mapping[str, str] | None) -> int:
     if why:
         print(
             "manuscript-guard: nothing was sent. No reply could be filed as a review record "
-            f"of this manuscript as it stands: {why}",
+            f"of this {'plan' if plan.design else 'manuscript'} as it stands: {why}",
             file=sys.stderr,
         )
         return 2
@@ -260,8 +263,9 @@ def _send(plan, project, yes: bool, environ: Mapping[str, str] | None) -> int:
     )
     if not yes:
         if not interactive():
+            what = "plan" if plan.design else "manuscript"
             print(
-                "manuscript-guard: nothing was sent. The manuscript is unpublished and this "
+                f"manuscript-guard: nothing was sent. The {what} is unpublished and this "
                 f"would send it to {hosts}; that needs a yes. Run the command in a terminal "
                 "to be asked, or add --yes.",
                 file=sys.stderr,
@@ -297,7 +301,7 @@ def _send(plan, project, yes: bool, environ: Mapping[str, str] | None) -> int:
     outcomes = run_plan(project, plan, environ=environ, say=say, stopping=stopping)
     filed = [outcome for outcome in outcomes if outcome.filed]
     unsent = [outcome for outcome in outcomes if not outcome.sent]
-    where = f"review/round-{plan.round}"
+    where = plan.round_dir(project).relative_to(project.root).as_posix()
     print(f"\nFiled {len(filed)} of {len(outcomes)} readings in {where}/.")
     if unsent:
         print(f"The run was stopped: {len(unsent)} of {len(outcomes)} calls were not sent.")
@@ -316,14 +320,15 @@ def _send(plan, project, yes: bool, environ: Mapping[str, str] | None) -> int:
     asked = {(outcome.call.reviewer, outcome.call.filename) for outcome in outcomes}
     others = [
         (reviewer, reader)
-        for reviewer, reader in unread(project, plan.round)
+        for reviewer, reader in unread(project, plan.round, design=plan.design)
         if (reviewer, f"{reviewer}.{reading_slug(reader)}") not in asked
     ]
     if others:
-        print("The round is not complete: " + _still_waiting(others))
+        print("The round is not complete: " + _still_waiting(others, design=plan.design))
     print(
-        "`manuscript-guard review` shows where the round stands. Answer each major finding "
-        "in its record with a `resolution` or an `overridden`."
+        f"`manuscript-guard review{' --design' if plan.design else ''}` shows where the round "
+        "stands. Answer each major finding in its record with a `resolution` or an "
+        "`overridden`."
     )
     return 0 if len(filed) == len(outcomes) and not others else 1
 

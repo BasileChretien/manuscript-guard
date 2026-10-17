@@ -56,6 +56,7 @@ from generated import (
     pdf_figures,
     planned_plans,
     quotations,
+    share_tables,
     signs,
     sources,
     texts,
@@ -1287,6 +1288,122 @@ def _an_interval_over_two_lines_is_not_read(patch: pytest.MonkeyPatch) -> None:
     assert wrap in intervals._INTERVAL.pattern
     pattern = intervals._INTERVAL.pattern.replace(wrap, "")
     patch.setattr(intervals, "_INTERVAL", re.compile(pattern))
+
+
+# ---------------------------------------------------------------------- a table's shares
+
+
+@holds(100, share_tables())
+def test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator(
+    drawn: tuple[str, list[tuple[Any, ...]]],
+) -> None:
+    """Item 19: each count and its share in a pipe table is found where it stands, with its
+    denominator: its own, its column header's n, or none. A row whose label names a mean or
+    a median is not read although it says %, nor one whose "%" is a unit, nor a table in a
+    fenced listing, nor a share in a sentence; a characteristic's categories whose shares
+    add up to 100 are read with nothing else to say so. A share is off where neither its
+    denominator, nor its row's total, nor its categories' total gives it within half a unit
+    of its last place, and uncertain where its row's label carries a footnote marker."""
+    from manuscript_guard.stats.shares import off, table_shares
+    from manuscript_guard.text.tables import markdown_tables
+
+    text, expected = drawn
+    found = [share for table in markdown_tables(text) for share in table_shares(table)]
+    assert [
+        (s.line, s.count, s.percent, s.over, s.uncertain is not None, off(s)) for s in found
+    ] == expected, text
+
+
+def _a_share_is_held_to_its_printed_value(patch: pytest.MonkeyPatch) -> None:
+    """Only the share's own tolerance: what adds up to 100 keeps its slack (round 1 of
+    #314)."""
+    from decimal import Decimal
+    from fractions import Fraction
+
+    from manuscript_guard.stats import shares
+
+    def exact(count: int, over: int, percent: str) -> bool:
+        return over > 0 and Fraction(100 * count, over) == Fraction(Decimal(percent))
+
+    patch.setattr(shares, "_fits", exact)
+
+
+def _a_unit_percent_says_shares(patch: pytest.MonkeyPatch) -> None:
+    """Both halves: a "%" in a label says shares, and a unit no longer bars its row."""
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_SAYS_SHARES", re.compile("%"))
+
+
+def _categories_are_held_to_their_column_alone(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    summed = shares._summed
+
+    def without_totals(rows: list) -> dict:
+        return {where: (None, members, whole)
+                for where, (_total, members, whole) in summed(rows).items()}  # fmt: skip
+
+    patch.setattr(shares, "_summed", without_totals)
+
+
+def _a_label_row_with_its_p_value_is_a_header(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_P_ONLY", re.compile(r"\s*"))
+
+
+def _a_run_of_categories_takes_in_the_row_after_them(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    def whole(matches: list) -> int:
+        return len(matches) if shares._about_100([m.group("percent") for m in matches]) else 0
+
+    patch.setattr(shares, "_categories", whole)
+
+
+def _a_label_naming_a_mean_is_read_as_shares(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_barred", lambda row, column: False)
+
+
+def _shares_adding_up_to_100_say_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_summed", lambda rows: {})
+
+
+def _a_row_is_never_read_as_shares_of_its_total(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_row_total", lambda matches: None)
+
+
+def _a_footnote_marker_is_not_seen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_NOTE", re.compile(r"(?!)"))
+
+
+def _a_header_names_no_denominator(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_N", re.compile(r"(?!)(?P<n>)"))
+
+
+def _a_count_with_its_own_denominator_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    pattern = shares._SHARE.pattern.replace("(?P<over>", "(?P<over>(?!)")
+    assert pattern != shares._SHARE.pattern
+    patch.setattr(shares, "_SHARE", re.compile(pattern))
+
+
+def _a_table_in_a_fenced_listing_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import tables
+
+    patch.setattr(tables, "mask", lambda text: text)
 
 
 # ------------------------------------------------------------ a section found by its heading
@@ -3368,6 +3485,86 @@ def test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not(
         assert [code for code, _said in found] == ["identifier-malformed"], (field, found)
 
 
+# ------------------------------------------------------------- a cited title, as registered
+
+#: British spellings a cited title may have where the registry has the American one.
+_BRITISH = ("haemorrhage", "tumour", "behaviour", "randomised", "paediatric", "anaemia",
+            "centre", "oestrogen", "leukaemia", "labelled")  # fmt: skip
+#: Words a title holds that a careless reading would drop for being short, and others of the
+#: same length that a different work's title would hold in their place.
+_SHORT = ("CT", "B", "C", "T2", "IV", "UK", "D", "X")
+_OTHER_SHORT = ("MR", "A", "E", "T1", "II", "EU", "K", "Y")
+#: What G7 is to find the same title in, and what it is to find another title in.
+_SAME_TITLE = ("subtitle", "flagged", "typeset", "american", "tagged", "texed")
+_OTHER_TITLE = ("short words", "other words")
+
+
+@st.composite
+def _retitled(draw: st.DrawFn) -> tuple[str, list[tuple[str, str, str]]]:
+    """A cited title of drawn words with short ones among them and British spellings, and
+    one registered title for each way a registry writes the same title, and for each way
+    another work's title differs: every kind in every example, so that a rule broken for
+    one kind fails whatever the seed. Two kinds mark up part of a word: the registry with
+    a tag (`re<sub>ports</sub>`), the entry with a TeX command whose braces the .bib reader
+    took away (`re\\textsubscriptports`, or `\\emph ` before a word)."""
+    words = draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=10))
+    british = draw(st.lists(st.sampled_from(_BRITISH), min_size=1, max_size=2, unique=True))
+    # Short words enough that replacing them all leaves less than the share held: more
+    # than 15 in 100 of the title once they are in it.
+    short = (len(words) + len(british)) * 15 // 85 + 1
+    for word in [*british, *draw(st.lists(st.sampled_from(_SHORT), min_size=short,
+                                          max_size=short, unique=True))]:  # fmt: skip
+        words.insert(draw(st.integers(0, len(words))), word)
+    cited = " ".join(words)
+    listed, _with_ize = _variants()
+    american = " ".join(listed[w][1] if w in british else w for w in words)
+    subtitle = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+    swap = dict(zip(_SHORT, _OTHER_SHORT, strict=True))
+    other = list(words)
+    for at in draw(st.permutations(range(len(words))))[: len(words) * 15 // 85 + 1]:
+        other[at] = "zygote" if other[at] != "zygote" else "quorum"
+    long = [at for at, word in enumerate(words) if len(word) > 1]
+    at = draw(st.sampled_from(long))
+    cut = draw(st.integers(1, len(words[at]) - 1))
+    tagged, texed = american.split(" "), list(words)
+    tagged[at] = f"{tagged[at][:cut]}<sub>{tagged[at][cut:]}</sub>"
+    command = draw(st.sampled_from(("\\textsubscript", "\\textsuperscript", "\\emph")))
+    texed[at] = f"{texed[at][:cut]}{command}{texed[at][cut:]}"
+    registered = {
+        "subtitle": f"{american}: {subtitle}",
+        "flagged": f"RETRACTED: {american}",
+        "typeset": draw(st.sampled_from((str.upper, str.title)))(american).replace(" ", ", ", 1),
+        "american": american,
+        "tagged": " ".join(tagged),
+        "texed": american,
+        "short words": " ".join(swap.get(w, w) for w in words),
+        "other words": " ".join(other),
+    }
+    entry = {"texed": " ".join(texed)}
+    return cited, [
+        (kind, entry.get(kind, cited), registered[kind]) for kind in (*_SAME_TITLE, *_OTHER_TITLE)
+    ]
+
+
+@holds(150, _retitled())
+def test_a_cited_title_is_found_in_its_registered_form_and_not_in_another(
+    drawn: tuple[str, list[tuple[str, str, str]]],
+) -> None:
+    """G7 holds a cited title to the registry's: the same title with a subtitle the entry
+    left out, the flag a registry puts in front, another case and punctuation, or American
+    spelling holds all its words; a title with words of its own in place of more than a
+    sixth of them, short ones included, is another work's."""
+    from manuscript_guard.gates import lookups
+
+    _cited, registered = drawn
+    for kind, cited, title in registered:
+        held = lookups.title_held(cited, title)
+        if kind in _SAME_TITLE:
+            assert held == 1.0, (kind, cited, title, held)
+        else:
+            assert held is not None and held < lookups.TITLE_HELD, (kind, cited, title, held)
+
+
 # ------------------------------------------------------------- a figure that estimates itself
 
 _FIGURE_FILLER = {
@@ -3719,6 +3916,55 @@ def _a_name_is_a_threshold_like_the_figure_beside_it(patch: pytest.MonkeyPatch) 
 
 def _a_nought_is_trimmed_off_a_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(tokens, "_TRAIL", tokens._TRAIL + "0")
+
+
+def _short_words_are_dropped_from_a_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import lookups
+
+    words = lookups.title_words
+    patch.setattr(
+        lookups, "title_words",
+        lambda title: None if words(title) is None else [w for w in words(title) if len(w) > 2],
+    )  # fmt: skip
+
+
+def _a_british_title_is_read_as_written(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import lookups
+
+    patch.setattr(lookups, "_variants", lambda: ({}, frozenset()))
+
+
+def _a_tag_is_read_as_a_space(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import lookups
+
+    class Spaced:
+        def sub(self, _with: str, text: str) -> str:
+            return re.sub(r"<[^<>]*>", " ", text)
+
+    patch.setattr(lookups, "_TAGS", Spaced())
+
+
+def _a_tex_command_takes_the_letters_after_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import lookups
+
+    patch.setattr(lookups, "_untex", lambda found: "")
+
+
+def _a_title_is_compared_both_ways(patch: pytest.MonkeyPatch) -> None:
+    """The share both titles have of each other, as a search would compare them: a subtitle
+    the entry left out then counts against it."""
+    from collections import Counter
+
+    from manuscript_guard.gates import lookups
+
+    def held(cited: str, registered: str) -> float | None:
+        mine, theirs = lookups.title_words(cited), lookups.title_words(registered)
+        if not mine or theirs is None:
+            return None
+        both = sum((Counter(mine) & Counter(theirs)).values())
+        return both / max(len(mine), len(theirs))
+
+    patch.setattr(lookups, "title_held", held)
 
 
 def _an_isbn_10_is_not_read_as_its_isbn_13(patch: pytest.MonkeyPatch) -> None:
@@ -4364,6 +4610,54 @@ BROKEN = {
         _an_interval_over_two_lines_is_not_read,
         test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
     ),
+    "a share is held to its printed value, not half a unit either side": (
+        _a_share_is_held_to_its_printed_value,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a row whose label names a mean or a median is read as shares": (
+        _a_label_naming_a_mean_is_read_as_shares,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a label whose % is a unit says its numbers are shares": (
+        _a_unit_percent_says_shares,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a characteristic's categories are held to their column's n alone": (
+        _categories_are_held_to_their_column_alone,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a characteristic's label row with its P value beside it is read as a header": (
+        _a_label_row_with_its_p_value_is_a_header,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a run of categories takes in the characteristic after them": (
+        _a_run_of_categories_takes_in_the_row_after_them,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "categories whose shares add up to 100 are not read as shares": (
+        _shares_adding_up_to_100_say_nothing,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a row's shares are never read as shares of its total": (
+        _a_row_is_never_read_as_shares_of_its_total,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a footnote marker on a row's label is not seen": (
+        _a_footnote_marker_is_not_seen,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a column header's n is not read as its denominator": (
+        _a_header_names_no_denominator,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a count with its own denominator, n/N (%), is not read": (
+        _a_count_with_its_own_denominator_is_not_read,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a table in a fenced listing is read": (
+        _a_table_in_a_fenced_listing_is_read,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
     "a claim runs back to the start of its paragraph, past the anchor before it": (
         _a_claim_runs_back_to_its_paragraph,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
@@ -4675,6 +4969,26 @@ BROKEN = {
     "an ISBN-13 is weighed as an ISBN-10": (
         _an_isbn_13_is_weighed_as_an_isbn_10,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "short words are dropped from a cited title": (
+        _short_words_are_dropped_from_a_title,
+        test_a_cited_title_is_found_in_its_registered_form_and_not_in_another,
+    ),
+    "a British title is read as written": (
+        _a_british_title_is_read_as_written,
+        test_a_cited_title_is_found_in_its_registered_form_and_not_in_another,
+    ),
+    "a registry's tag is read as a space": (
+        _a_tag_is_read_as_a_space,
+        test_a_cited_title_is_found_in_its_registered_form_and_not_in_another,
+    ),
+    "a TeX command takes the letters after it": (
+        _a_tex_command_takes_the_letters_after_it,
+        test_a_cited_title_is_found_in_its_registered_form_and_not_in_another,
+    ),
+    "a cited title is compared both ways": (
+        _a_title_is_compared_both_ways,
+        test_a_cited_title_is_found_in_its_registered_form_and_not_in_another,
     ),
     "an ISBN-10 is not read as its ISBN-13": (
         _an_isbn_10_is_not_read_as_its_isbn_13,

@@ -886,6 +886,17 @@ def test_a_panel_sent_without_asking_is_put_to_the_author(
     assert "openai/gpt-test, mistral/large-test" in said and "author's decision" in said
 
 
+def test_a_design_panel_sent_without_asking_is_put_to_the_author_as_the_plan(
+    in_claude_code: Path, capsys
+) -> None:
+    """Item 46: a design round sends the plan, and the question put says so."""
+    _with_models(in_claude_code)
+    command = "manuscript-guard review --design --run --yes"
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "with the analysis plan and the feasibility results" in reason(result)
+
+
 @pytest.mark.parametrize(
     "command",
     [

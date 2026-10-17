@@ -543,6 +543,45 @@ def _run_r(script: Path, root: Path) -> subprocess.CompletedProcess:
     return out
 
 
+RESTRICTED_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$add_input("data/kept.csv", restricted = TRUE)
+em$add_input("data/open.csv")
+em$value("n", 412L)
+em$write()
+"""
+
+
+def test_r_and_python_record_an_input_declared_restricted_alike(tmp_path: Path) -> None:
+    """An input the data custodian keeps is written into the provenance by either language,
+    so that G1 can hold it out of git whichever wrote the results."""
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    (root / "data").mkdir()
+    for name in ("kept.csv", "open.csv"):
+        (root / "data" / name).write_text("a,b\n1,2\n", encoding="utf-8")
+    script = root / "analysis" / "restricted.R"
+    script.write_text(RESTRICTED_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    fragment = next((root / "results").glob("*.json"))
+    from_r = json.loads(fragment.read_text(encoding="utf-8"))["provenance"]["inputs"]
+    em = Emitter(script, root=root)
+    em.add_input("data/kept.csv", restricted=True)
+    em.add_input("data/open.csv")
+    em.value("n", 412)
+    from_python = json.loads(em.write().read_text(encoding="utf-8"))["provenance"]["inputs"]
+    assert [(i["path"], i.get("restricted")) for i in from_r] == [
+        (i["path"], i.get("restricted")) for i in from_python
+    ] == [("data/kept.csv", True), ("data/open.csv", None)]
+
+
 def test_r_and_python_declare_and_read_parameters_alike(tmp_path: Path) -> None:
     """One meaning in two languages: the same calls give the same keys, values, displays,
     and the same answer to whether the script reads what it declared."""

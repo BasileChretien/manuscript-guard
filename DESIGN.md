@@ -836,6 +836,104 @@ volume. Two cited entries with the same title of four words or more and no ident
 common are a warning (`reference-title-duplicate`): they may be one work, or a correction
 and the paper it corrects.
 
+## A reference is looked up once, and the answer is kept
+
+Whether a cited work exists, is the work the entry describes, and still stands is a question
+for the registries, and `check` must give the same answer offline in CI. So the question is
+asked by a command of its own, `manuscript-guard lookup`, and the answer is written down:
+one file per cited reference, `literature/lookups/<citekey>.yaml`, committed with the
+paper. It holds the identifiers looked up, the digest of the `references.bib` entry they
+came from, what each registry said, and the day it was asked. The pattern is the journal
+profile's: retrieved, dated, and read as data. The gates read the record and never ask
+anyone; `lookup` asks again only for a reference with no record, an entry changed since,
+or an answer that did not come, and `--again` asks for all of them. `--dry-run` says what
+would be asked and sends nothing.
+
+A DOI is asked of Crossref, for the work's title, type, years (print, online, issued,
+posted), container, volume, pages and article number, the notices that update it
+(`updated-by`: retractions, corrections, expressions of concern, from the publisher and from
+the Retraction Watch data Crossref carries), the notice it is (`update-to`), and the
+published version a preprint became (`is-preprint-of`). It is asked of OpenAlex for its
+`is_retracted`. Where Crossref does not know it, DataCite is asked, since a dataset's DOI is
+registered there and not at Crossref; where neither knows it, the handle API of doi.org,
+which every agency's DOIs pass through and which says only whether the DOI is registered. A
+Crossref 404 alone proves nothing: JaLC, mEDRA and KISTI register DOIs Crossref never sees.
+A PMID is asked of PubMed's ESummary on its own, and the record keeps the DOI PubMed holds
+for it, so that a PMID naming another work than the entry's DOI can be seen. The DOI is
+looked up as G7 reads it, undressed and in lower case.
+
+Each answer ends `found`, `absent` or `unresolvable`. Only an answer in the shape the
+service documents is either of the first two; a 429, a 500, a timeout, a redirect, or a 200
+whose body is an error (`{"error": ...}` from the E-utilities, `"status": "failed"` from
+Crossref) is unresolvable, with the reason, and never read as "not retracted". A 429's
+`Retry-After` is obeyed once when it is 30 seconds or less. Requests to one host are at
+least 0.2 s apart, and to NCBI 0.34 s, its limit without a key.
+
+The shapes were checked on 2026-10-15 against each service's documentation and against live
+answers: Crossref `/works/{doi}` (`status`, `message-type: work`, a 404 with a plain-text
+body for an unknown DOI, `updated-by` and `update-to` entries holding `DOI`, `type`,
+`source`, `updated`, a preprint's `relation.is-preprint-of`; a single record may be asked
+5 times a second, 10 with a contact address, the limits Crossref's notice of 2026-07-21
+kept from its change of 2025-12-01); OpenAlex
+`/works/doi:{doi}` (`id`, `is_retracted`, `publication_year`, a 404 for an unknown DOI; a
+key raises its daily allowance and is optional); DataCite `/dois/{doi}`
+(`data.attributes.titles[].title`, `types.resourceTypeGeneral`, `publicationYear` as a
+number, a 404); the doi.org handle API (`responseCode` 1 with HTTP 200, 100 with HTTP 404
+for a handle that does not exist, 200 for a handle with no values); and ESummary in JSON
+(`result.uids`, each PMID's `title`, `sortpubdate`, `pubtype`, `articleids`, and
+`{"error": "cannot get document summary"}` under a PMID it does not know, with HTTP 200).
+Crossref updates of the Retraction Watch kind write `expression-of-concern`, Crossmark's
+own write `expression_of_concern`; the record reads both as one kind. Zotero flags retracted
+items itself, from the same data, but Better BibTeX's JSON-RPC does not return the flag:
+`item.search` gives CSL-JSON with no field for it (Better BibTeX 9.0.71, Zotero 9.0.6,
+2026-10-15), so the lookup asks the registries and not Zotero.
+
+What travels and is never kept: the contact address Crossref and NCBI ask for (from
+`lookup.contact` in `paper.yaml`, or `MANUSCRIPT_GUARD_CONTACT`), NCBI's key
+(`NCBI_API_KEY`) and OpenAlex's (`OPENALEX_API_KEY`), all in the query string, where the
+services ask for them. The record holds no URL, and a record that would hold one of those
+values is refused before it is written. Redirects are not followed, so a key goes to the
+host it was meant for or nowhere, and nothing is sent unencrypted off this machine.
+
+**G7 reads the records, and asks nobody.** For each cited reference with a DOI or a PMID
+(`gates/lookups.py`):
+
+- *Retracted* fails from drafting (`reference-retracted`): a retraction, withdrawal or
+  removal among the notices Crossref holds for the DOI, OpenAlex's `is_retracted`, or
+  PubMed's "Retracted Publication". A paper that discusses the retracted work, or cites
+  its notice, says why under `lookup.cited_as_retracted` in `paper.yaml`, and G7 then
+  notes it. An expression of concern or a partial retraction is a warning; a correction
+  is kept in the record and not reported.
+- *Not the work cited* fails from internal-review, since a draft may not have its records
+  yet. A DOI that no registry has: Crossref, DataCite and doi.org all said so, and one
+  that did not answer proves nothing (`doi-unregistered`), and a PMID PubMed does not know
+  (`pmid-unknown`). A DOI that is a notice (Crossref's `update-to` of a retraction,
+  correction, erratum or the like; a new version or a new edition of a work is the work), a
+  journal, a series, a component, or a whole issue or volume for an entry that does not
+  cite one, and a PMID PubMed types as a notice (`reference-not-the-work`). A registered title that holds less than 85% of the cited
+  title's words (`reference-title-mismatch`): the cited title is held to the registered
+  one with its subtitle and to its original-language title, so a subtitle the entry left
+  out costs nothing; markup, TeX, case, accents and punctuation are folded (a tag or a
+  command is part of the word it marks, `PM<sub>2.5</sub>` and `PM\textsubscript{2.5}`
+  being "PM2.5", and an accent command keeps its letter), British
+  spellings are read as American through G14's list, and no word is dropped for being
+  short, since "CT" and "MRI" are the difference between two papers. A title mostly in
+  another script than Latin is not compared. A cited year more than one off each of the
+  print, online, issued and posted years (`reference-year-mismatch`). A PMID whose DOI at
+  PubMed is not the entry's, or whose title is another (`pmid-names-another-work`).
+  Authors are not compared: initials against full names defeat a comparison of words.
+- *Warnings*: a preprint published since or withdrawn, a volume or first page or article
+  number that differs from Crossref's (`reference-details-differ`), pages that are a
+  placeholder ("e000", "in press"), an entry changed since its lookup, the references with
+  an identifier that were never looked up (one finding for all of them), and those looked
+  up longer ago than `lookup.max_age_days` (365 by default). An answer that did not come is
+  a note, and a lookup in which none came is a warning: nothing is known of that
+  reference, retracted or not.
+- *The record itself*: one whose `answers_sha256` no longer matches what it says fails from
+  drafting (`lookup-record-edited`), since an edit by hand can take a retraction out; one
+  dated in the future, one that is not a record, or one filed under another citekey fails
+  from internal-review.
+
 ## A quotation in the prose is in its source
 
 G7 checks the ledger's quotes against the stored sources. A quotation written into a sentence
@@ -1674,6 +1772,45 @@ says it is a P for interaction, trend or heterogeneity. The words between a name
 estimate do not run across another estimate's name: "No difference in mortality, HR 0.83"
 names a hazard ratio, held to 1. Bounds whose signs cannot be read
 for sure are not read: "-0.9--0.1" is an en dash in Markdown or a hyphen and a minus.
+
+An n (%) in a table of a paper given to `audit` is held to its denominator
+(`stats/shares.py`): the count's own, "640/1200 (53.3)", or the "n = 1200" of its column's
+header, the nearest above it in a row with no count. The count over the denominator has to
+give the share printed within half a unit of its last place. The table is read as rows of
+cells (`text/tables.py`): a Markdown pipe table from the masked text, so that one in a
+fenced listing is not a table, and a .docx table as Word lays it out, from marks the reader
+puts on the first line of each cell and takes out again, so the text the rest of the audit
+reads is unchanged. A cell spanning columns counts as each.
+
+What is read is only a column of shares. A label that names a mean, a median, an SD, an
+IQR, a range or a CI, the row's or the one over its rows, or a header that does, bars it,
+"%" or not: "HbA1c, %, mean (SD)" holds two numbers that are not a count and its share. So
+does a row's label that ends on a unit in percent, "Oxygen saturation, %" or "LVEF (%)",
+with no "n" before the "%", for a cell with no "%" of its own and a number no more than 100:
+a measure, whose mean (SD) is printed as whole numbers beside the shares, and not "Male sex
+(%) | 640 (58.0%)" (rounds 1 and 2 of #314). Of the rest, a cell is read where something
+says it is a share: a "%" in the cell, or "n (%)", "No. (%)" or "n/N (%)" in the row's
+label, in the label over its rows or in its column's header. A "%" alone in a label is a
+unit and says nothing; read as "these are shares", it listed a mean saturation of 96 (3) as
+8% of its column (round 1 of #314). Or a cell is read where it is one of a characteristic's
+categories: the rows under a label of their own, which may have its P value beside it or a
+dash, all of whose shares in its column add up to about 100 (round 2 of #314: a P beside the
+label made it a header). Where the longest run of them from the top that adds up to about 100
+is shorter than all of them, it is still the categories for letting a share off as a share of
+their total, the row after them being the next characteristic (round 2: a row after the
+subtypes joined them); but it never says a cell is a share (round 3: a whole-number mean's
+running sum with the shares passed through 100, and the mean was listed).
+
+A share is listed only where no reading of it gives the share printed: of its denominator;
+of its row's total, where the row's shares add up to 100 across it; or of its categories'
+total, where their shares add up to 100 down the column. The last is what the subtypes of
+another row are, "Type 1" and "Type 2" as shares of those with diabetes, and what a
+characteristic counted among those with data is (round 1 of #314: both were listed as
+errors). A row whose label carries a footnote marker, a superscript, a footnote's reference,
+a dagger, or which names an n of its own, is listed as uncertain: a note under the table may
+give it the patients with data as its denominator. A share that is off says which
+denominators it would fit, which is what a share of those with data looks like. Listed with
+the other disagreements, and not counted by `--strict`.
 
 ## A model is read from its fit, and each variable says what it is
 
@@ -2557,8 +2694,24 @@ a warning, and a failure at submission only, as the author decided: what an unan
 design objection means is the author's to weigh while there is still an analysis to change.
 A reading is sealed as a manuscript reading is (`review --seal <reviewer> --design`), and
 one changed after its seal is said (`design-reading-altered`), failing at submission. A
-project with no design round reads as it did before, counts included. For now a design
-round is read and filed by hand: `review --run` sends the manuscript, not the plan.
+project with no design round reads as it did before, counts included.
+
+A design round is read by the models as a manuscript round is: `review --design --run`
+plans it from `review/design/`, says what would be sent where, asks, and files each reply
+as a design reading, `round-<n>/<reviewer>.<model>.yaml`, sealed and carrying the digest of
+the plan it read (`plan_sha256`). What is sent is a list of its own (`prompt.gather_design`):
+the paper's facts from `paper.yaml`, `design/plan.md` without its front matter and comments
+and with its feasibility results printed into it, and the feasibility results, each under its
+key. Not the manuscript, and no result but a feasibility one: a binding in the plan to any
+other result, a value or a table, is sent as written, since a design round reads the plan
+before there are results (round 1 of #316: a table the plan bound was printed whole). Each
+reviewer is told it reads a plan before its analysis is run, and that a major finding is one
+the design cannot meet: the instructions are the manuscript round's, rewritten in ten places
+and naming no manuscript, so the reply asked for is the same. A
+first design round with no panel gets a starter one, a methodologist whose remit names the
+study type's risks and a statistician who reads the plan against the feasibility results;
+a later design round needs its panel written. The guard hook puts `review --design --run
+--yes` to the author as it puts `review --run --yes`, saying that the plan is what goes.
 
 A design remit read more than once, by several models or by a model and a person, is filed
 as a manuscript round's is: each reader the panel lists for the reviewer under `readers` has
@@ -2699,6 +2852,25 @@ the roles no longer name, and one copied to another finding count for nothing: t
 stands, and its hint names who signs it and the command. Unsigned, a warning stays a
 warning, as before. The record lives beside the authors' approvals, and the hooks put to the
 person an agent's `sign` and an agent's edit of the file, as they do an approval.
+
+The corresponding author signs one thing: the journal's rules that no gate checks. A
+journal profile keeps each rule of the page that no gate holds under `manual:`, with its
+quote (item 50), and until now nobody was asked to hold the paper to them. G4 now raises them
+as one warning, `journal-manual-unsigned`, naming the rules, which the corresponding author
+signs off once they have checked the paper against each, bound to the rules, their quotes
+and the page's digest: a rule added, a quote changed or the page read again wants a new
+signature. `submit` puts them in the pack as `journal-checklist.md`, each rule with the
+page's words and a box to tick, and says under them who signed them off and when, or who is
+to. The corresponding author is the one author `corresponding: true` marks; with none
+marked, or more than one, the hint says to mark one.
+
+A profile a year old is warned of (`journal-profile-stale`), and the page is read again:
+`manuscript-guard journal --reread <file>` takes the page as it now stands, as text, and
+prints its difference from the stored page and, for each rule of the profile, `manual:` ones
+among them, whether its quote is still on it. A rule whose words are gone is the one to read
+again; the difference shows the rest, a rule the page added among it. The command writes
+nothing and exits 1 where a rule's quote is gone: adopting the page, saving it over the
+stored one and recording its digest, which the command prints, is the author's.
 
 G15's warning about a model kind the Methods name and the analysis did not fit is not
 signed: it is about the prose, and its hint already says when there is nothing to do. The
@@ -3426,6 +3598,25 @@ The annotated copy is deliberately **not stamped**. The source stamp is what G1 
 decide whether the document a co-author opens is current, and there must be exactly one such
 document. This one is named so it cannot be mailed to a journal by accident, for the same
 reason `manuscript.UNCHECKED.docx` is.
+
+## What a data custodian forbids is declared
+
+Many custodians of health data, pharmacovigilance and claims databases among them, forbid
+publishing a count below a minimum, since a cell of two patients in a rare category can name
+them, and forbid the data leaving their hands. Neither was written anywhere a gate could
+read. `paper.yaml` now says the custodian's minimum (`custodian: {minimum_cell_count: 5}`),
+and G2 fails each count the manuscript or the supplement binds that is at least one and
+below it (`count-below-minimum`), naming the key, from the `internal-review` stage: a team
+reads its own small counts while it drafts, and a panel sent to a model provider is already
+outside it. A count is a whole number the analysis emitted with no unit, that is neither a
+parameter, a software version nor a label; "3 years" is emitted with its unit and is no
+count of people, and nought is no small cell.
+
+An input is declared restricted where the analysis declares it, in either emitter
+(`em.add_input(path, restricted=True)`, `em$add_input(path, restricted = TRUE)`), and the
+results record it. G1 fails while git tracks such a file (`restricted-input-tracked`), from
+the first stage: a pushed repository is a copy outside the custodian's hands. Git is asked
+with a time limit; where it cannot be asked, the finding is a warning.
 
 ## What a change makes stale
 
@@ -5499,9 +5690,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
-- **A design round is read by hand.** `review --run` does not send the plan to the
-  models yet. Nothing yet asks for a design round before the analysis stage: one that was
-  never held says nothing. An unsigned
+- **Nothing asks for a design round before the analysis stage.** One that was never
+  held says nothing. A design round's request carries the plan and the feasibility results
+  only: the reporting guideline and the journal's profile are not sent, and a plan's
+  binding to a result that is not a feasibility one is sent as written. An unsigned
   override of a design-round major is a warning, at submission too, as a new warning
   starts.
 - **A planned result is held to its key, not to what the paper says of it.** G12 checks
@@ -5577,6 +5769,32 @@ Added by the adversarial review, verified and **not** fixed:
   likelihood-based, or the P adjusted for multiplicity. A word that stands an interval or
   its P down does so wherever it is in the sentence, as for the tests. A P given before its
   interval, or in a table column of its own, is not read.
+- **An n (%) is held to its denominator only where the table writes both, in one cell, in
+  a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
+  count and its share in columns of their own, nor a share whose denominator only a caption
+  or a note under the table states ("Values are n (%)", "of those with data"). A share of
+  those with data, under a header that gives everyone, is listed: as uncertain where the
+  row's label carries a footnote marker, as plainly off where it does not. A row whose
+  shares add up to 100 across it is let off if they are shares of its total, so a wrong
+  share in a row of two that happens to add up to 100 with the other, and fits the row's
+  total, is not listed; and a row-percentage table with a Total column, whose shares add up
+  to 200, is listed whole. Categories with nothing but their sum to say they are shares are
+  read only where every row of their run adds up to 100: followed in the same run by the
+  next characteristic, they are not read, and a wrong count among them is not listed
+  (`test_categories_run_on_into_the_next_characteristic_are_not_read`); a whole-number mean
+  in a run that adds up to 100 with it is read and listed. Both are the price of not letting
+  a running sum say what is a share (round 3 of #314). Categories that add up to 100 are let
+  off as shares of their own
+  total in the same way. A group label's "n (%)" reaches every row with a count below it
+  until a row without one, and a data row with no count in it is read as a header, so its
+  "n = 980" becomes the denominator below it. A superscript unit in a label, kg/m^2^, reads as
+  a footnote marker and makes the row uncertain. A group label that says only "%",
+  "Smoking status, %", says nothing, so its categories are read only where their shares add
+  up to 100, and one wrong among them leaves them all unread. A unit label with a footnote
+  marker after it, or with no comma before its "%" ("SpO2 %"), is not a measure.
+  Categories whose counts add up to an old denominator are let off as shares of it. "No. of
+  patients (%)" and "% (n)" are not read as saying shares. A nested Word table is read as
+  text in its cell.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did
@@ -6305,10 +6523,14 @@ Closed since, and why each mattered:
   until the quote holds the digits. A limit of none or one is not held to its quote's number
   at all, only its quote to the page: "may not include figures", "Figures: none" and "a
   single table" were each read wrong by a rule that tried, one way or the other.
-- **A rule left out of a journal profile entirely is not seen.** Nothing yet reads the stored
-  page for rules that are neither a field nor under `manual:`, `submit` does not yet turn
-  `manual:` into a checklist a named person signs, and re-reading a page a year on does not
-  yet show what changed in it. A profile without quotes is warned of, not failed.
+- **A rule left out of a journal profile entirely is not seen.** Nothing reads the stored
+  page for rules that are neither a field nor under `manual:`: which sentences of a page are
+  rules is the reader's judgement, and a heuristic that guessed it would warn of every
+  sentence it misread. `journal --reread` shows a rule the page added a year on only as a
+  line of the difference, for the author to read. A profile without quotes is warned of,
+  not failed. The checklist of `manual:` rules is signed as a whole: a sign-off says the
+  corresponding author checked every rule on it, not which. It is bound to the rules and the
+  page, not to the paper: a cover letter or a title page edited after it stays signed.
 - **No real journal profile is distributed**, and no transcribed checklist text. Recipes for
   thirteen checklists are, so a user needs only the official document. Journals get a
   different answer, and deliberately: an annotated template
@@ -6378,6 +6600,20 @@ Closed since, and why each mattered:
   at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
   input is missing by mistake rather than by design is caught only where another finding
   depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
+- **A lookup record is kept beside what it describes, so it catches an edit, not a
+  forger.** `answers_sha256` is in the record it digests: an answer edited by hand is
+  reported, and one edited by someone who computes the digest again is not. A reference
+  with no DOI and no PMID is not looked up and not checked, and `lookup` says so of each.
+  The registries can be wrong, and late: a retraction Crossref and OpenAlex do not yet
+  carry is not in the record, and the record is as old as the day it was asked. Requests
+  are paced at fixed intervals rather than by the limits each answer states in its
+  headers.
+- **The title comparison is one-sided and by words.** A registered title that holds every
+  cited word and many more passes, and so does one whose words are the same in another
+  order. A notice a publisher deposited as a journal article, with no `update-to`, is read
+  as the work, and a DOI only doi.org knows has no title to compare. Volumes, pages and
+  article numbers are compared with Crossref's only. A title in another script than Latin,
+  and the authors of every reference, are not compared.
 - **No test reads a skill for the user's language or for a reference added to the paper.**
   A skill that tells the agent which language to speak to the user in, or to add a
   reference to the paper itself, is caught by whoever reviews the skill, not by
@@ -8111,6 +8347,13 @@ Closed since, and why each mattered:
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.
+- **A small count is found where it is bound, by its value.** A count printed in an emitted
+  table, a percentage that gives a small count away with its denominator, and a count typed
+  rather than bound are not read; G2 fails a typed count for being typed. A whole number
+  with no unit that is no count of people (a number of sites, of years written without the
+  unit) fails as one: emit it with its unit. A restricted input that git ignores but that a
+  person copies elsewhere is not seen, and one that was committed and then removed stays in
+  the history, which only a rewrite takes out.
 - **G9 cannot tell a refactor from a change of meaning.** Every edit to an analysis file
   prompts a re-read, including one that only moved a function. That is the safe direction,
   but it is friction. A step's digest leaves comments and layout out, but a variable renamed

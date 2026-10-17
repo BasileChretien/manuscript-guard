@@ -722,6 +722,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   state <- new.env(parent = emptyenv())
   state$values <- list()
   state$inputs <- as.character(inputs)
+  state$restricted <- character()
   state$tables <- list()
   state$code_lists <- list()
   state$variables <- list()
@@ -1138,8 +1139,11 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     invisible(NULL)
   }
 
-  add_input <- function(path) {
+  # `restricted` says the data custodian forbids the file leaving their hands: G1 then fails
+  # while git tracks it.
+  add_input <- function(path, restricted = FALSE) {
     state$inputs <- c(state$inputs, path)
+    if (isTRUE(restricted)) state$restricted <- c(state$restricted, path)
     invisible(NULL)
   }
 
@@ -1147,11 +1151,13 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     input_records <- lapply(state$inputs, function(path) {
       full <- if (file.exists(path)) path else file.path(project_root, path)
       if (!file.exists(full)) stop("declared input does not exist: ", full, call. = FALSE)
-      list(
+      record <- list(
         path = relative(full),
         sha256 = mg_input_digest(full),
         bytes = as.integer(file.info(full)$size)
       )
+      if (path %in% state$restricted) record$restricted <- TRUE
+      record
     })
 
     sha <- mg_git(project_root, c("rev-parse", "HEAD"))

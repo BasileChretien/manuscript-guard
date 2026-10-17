@@ -1159,6 +1159,9 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
       record <- list(
         path = relative(full),
         sha256 = mg_input_digest(full),
+        # The bytes as they are, which a Git LFS or git-annex pointer names the content by,
+        # so G1 can tell an input that is not fetched (item 35). As `raw_sha256` in Python.
+        raw_sha256 = digest::digest(file = full, algo = "sha256"),
         bytes = as.integer(file.info(full)$size)
       )
       if (path %in% state$restricted) record$restricted <- TRUE

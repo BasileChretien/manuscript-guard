@@ -3,26 +3,28 @@
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
     "generated_by_sha256": "e53c51ef88faf606141616026778cd7422461ef608f56a8b9a3a7f246aa5c7c4",
-    "generated_at": "2026-10-17T06:40:42+00:00",
+    "generated_at": "2026-10-17T09:55:01+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.2.444"
     },
     "vcs": {
-      "sha": "ed4272bfb3a593201bfe300e4de9ce70d9881546",
+      "sha": "2835a9b242f3d5d8c61a14019fd38f9c3875adcc",
       "dirty": true,
-      "branch": "feat/synthetic-inputs"
+      "branch": "feat/input-pointers"
     },
     "inputs": [
       {
         "path": "data/reports.csv",
         "sha256": "55aa913a7f8cbc6c432e263e04fa12f3e148809dbd4ddc6fc8fd5b10c916886c",
+        "raw_sha256": "55aa913a7f8cbc6c432e263e04fa12f3e148809dbd4ddc6fc8fd5b10c916886c",
         "bytes": 172822,
         "synthetic": true
       },
       {
         "path": "data/event_terms.txt",
         "sha256": "11c7ea29eed993adde1c66775c033e5133bb180a6bfa6f24b7f1fa0609a00c7d",
+        "raw_sha256": "11c7ea29eed993adde1c66775c033e5133bb180a6bfa6f24b7f1fa0609a00c7d",
         "bytes": 50
       }
     ],

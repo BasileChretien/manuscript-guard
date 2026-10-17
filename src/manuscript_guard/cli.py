@@ -58,6 +58,7 @@ from manuscript_guard.gates import (
     check_numbers,
     check_prose_quotations,
     check_recomputed,
+    check_reported,
     check_reporting,
     check_review,
     check_revision,
@@ -145,6 +146,7 @@ def _run_gates(
         ("G12", lambda: check_design(project, results, chosen).merge(
             check_design_rounds(project, submission=at_submission))),
         ("G8", lambda: check_consistency(results)),
+        ("G8", lambda: check_reported(project, results)),
         ("G8", lambda: check_recomputed(project, namespace, results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
         ("G14", lambda: check_language(project)),

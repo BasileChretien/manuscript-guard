@@ -2459,6 +2459,30 @@ The covering letter is deliberately not generated. It is the one part addressed 
 particular editor about a particular paper at a particular moment, and a generated one reads
 exactly like a generated one.
 
+## A number a summary gives is one the paper reports
+
+An abstract summarises the paper, and a conclusion what it found: neither introduces data.
+Nothing held that. G2 holds a binding to the analysis wherever it stands, so a key bound in
+the Abstract and nowhere else passed, and G8 compared the results only with themselves. G8
+now warns (`summary-not-reported`) of a results key the Abstract or a conclusion binds that
+the paper reports nowhere: not bound in the Methods or the Results, not declared the same
+quantity as a key that is (`same_as`, either way), not bound in the supplement, and not
+printed in a table or drawn in a figure the manuscript places.
+
+The Methods count as reporting because an abstract's own Methods restate them: the example
+gives its study period there, and the Methods are where it is reported. The Discussion and
+the Introduction do not. A section is found by the one reading of headings the gates share
+(`text/section_names.py`): the Methods as G4, G9 and G14 find them, the abstract by its
+heading or the title the journal's profile gives it, the Results by a title that opens with
+"Results" or "Findings", numbered or marked, and a conclusion by "Conclusion", "Concluding
+remarks" or a title that is "Summary" alone. The outermost heading that names a part decides,
+so the abstract's own "Results" summarise and a "Summary" under the Results is theirs. A
+heading over the Introduction or the Methods is the paper's title written as a heading, and
+names no part. The headings are carried from one file of the paper into the next, as G14
+carries them.
+
+It is a warning: a new rule starts as one, until what it says of real papers is known.
+
 ## The design gate warns and never blocks
 
 Writing down what you intended before you did it is the strongest single thing available for
@@ -5301,6 +5325,15 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   Nothing reads it afterwards and the next build makes its own, so the cost is a stray file in
   a cache. Sweeping the directory instead would mean one build deleting a file another build
   is reading, which is the failure this naming exists to prevent.
+- **A number a summary gives is looked for by its key, and in a table or figure by its
+  display.** A key printed in a table or drawn in a figure the paper places counts as
+  reported when its display stands there as a number of its own, so a coincidence keeps the
+  warning back: the example's figure draws a tick at 10, and a key whose display is 10 is
+  reported by it. A figure with no text layer, a PNG alone, reports nothing, and neither
+  does a table's caption. A section whose title names the Results in other words
+  ("Outcomes", "Main results") is not read as the Results, and a conclusion written as a
+  bold paragraph rather than a heading is not read as one. Literature values (`lit.`) are
+  not looked for: an abstract may give the background it rests on.
 - **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and

@@ -77,6 +77,7 @@ from manuscript_guard.gates import methods as methods_gate
 from manuscript_guard.gates import models as models_gate
 from manuscript_guard.gates import numbers as numbers_gate
 from manuscript_guard.gates import quotations as quotations_gate
+from manuscript_guard.gates import reported as reported_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
 from manuscript_guard.gates.language import _file, _hidden
@@ -1268,10 +1269,10 @@ _ABSTRACT_TITLES = (None, "Summary", "Overview")
 _TITLE = "# Statistical methods for signal detection\n\n"
 
 
-def _under_a_title(text: str) -> str:
+def _under_a_title(text: str, title: str = _TITLE) -> str:
     """The paper with its title as a heading over it, every other heading one level down."""
     lowered = re.sub(r"(?m)^(#+) ", lambda found: "#" + found.group(1) + " ", text)
-    return _TITLE + lowered
+    return title + lowered
 
 
 @st.composite
@@ -1335,6 +1336,87 @@ def test_a_section_g4_counts_present_is_a_section_the_gates_read(
         counted = measure(text, named).abstract_words
         assert _present("Abstract", sections, named) == is_one, (text, named)
         assert (counted > 0) == is_one, (text, named, counted)
+
+
+# ------------------------------------------- a number a summary gives and the paper does not
+
+#: What a paper calls its Results, and what it may call a section that is not them.
+_THE_RESULTS = (
+    "Results", "3. Results", "**3. Results**", "III. Results", "Results and discussion",
+    "Findings", "Results {#sec-results}",
+)  # fmt: skip
+_NO_RESULTS = ("Comparison with earlier results", "Outcomes")
+#: What a paper calls a conclusion, the Lancet's "Summary" at the end of it among them.
+_CONCLUSIONS = (
+    "Conclusions", "Conclusion", "6. Conclusions", "Concluding remarks",
+    "Conclusions and relevance", "Summary and conclusions", "Summary",
+)  # fmt: skip
+#: A paper's title as a heading over the whole paper, holding the word for the Results.
+_RESULTS_TITLE = "# Results of a survey of reports\n\n"
+
+
+@st.composite
+def _papers_with_summaries(draw: st.DrawFn) -> list[tuple[str, str | None, set[str]]]:
+    """A paper for each way of writing the Results against each of the abstract, with the
+    keys each of them should leave unreported. A key given in the abstract alone (`a`), with
+    the Results (`b`), the Methods (`m`) or the Discussion (`d`); in a conclusion under the
+    Discussion alone (`c`) or with the Results (`e`); and in a "Summary" under the Results
+    (`s`). Every way of writing a conclusion, an abstract structured with headings of its
+    own and not, each title a profile may give the abstract, and both layouts, with and
+    without the paper's title over it, are in every example."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    conclusions = draw(st.permutations(_CONCLUSIONS))
+    papers = []
+    for row, results in enumerate((*_THE_RESULTS, *_NO_RESULTS)):
+        for column, abstract in enumerate(_THE_ABSTRACT):
+            conclusion = conclusions[(row + column) % len(conclusions)]
+            structured = draw(st.booleans()) != bool(column % 2)
+            given = "{{results.a}} {{results.d}}"
+            opening = f"\n\n## Results\n\n{given} " if structured else f"\n\n{given} "
+            text = (
+                f"# {abstract}{opening}{words()} {{{{results.b}}}} {{{{results.m}}}}.\n\n"
+                f"# Introduction\n\n{words()}.\n\n"
+                f"# Methods\n\n{words()} {{{{results.m}}}} {words()}.\n\n"
+                f"# {results}\n\n{words()} {{{{results.b}}}} {{{{results.e}}}}.\n\n"
+                f"## Summary\n\n{words()} {{{{results.s}}}}.\n\n"
+                f"# Discussion\n\n{words()} {{{{results.d}}}}.\n\n"
+                f"## {conclusion}\n\n{words()} {{{{results.c}}}} {{{{results.e}}}}.\n"
+            )
+            reports = results in _THE_RESULTS
+            for named in _ABSTRACT_TITLES:
+                summary = abstract in _THE_ABSTRACT[:4] or abstract == named
+                unreported = {"c"} | (set() if reports else {"e", "s"})
+                if summary:
+                    unreported |= {"a", "d"} | (set() if reports else {"b"})
+                for paper in (text, _under_a_title(text, _RESULTS_TITLE)):
+                    papers.append((paper, named, unreported))
+    return papers
+
+
+@holds(20, _papers_with_summaries())
+def test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called(
+    papers: list[tuple[str, str | None, set[str]]],
+) -> None:
+    """A key the Abstract or a conclusion binds, and the Methods and the Results do
+    not, is left unreported, and no other: whatever the parts are called, numbered or not,
+    an abstract with a "Results" of its own included, and a "Summary" under the Results not
+    taken for one, with the paper's title over it all or not."""
+    for text, named, unreported in papers:
+        given, reported = reported_gate.Walk(named).read(text)
+        found = {one.key for one in given if one.key not in reported}
+        assert found == unreported, (text, named)
+        # And as two files of one paper, the second opening inside the Results the first
+        # leaves open: the headings are carried from one file into the next, and what a
+        # section of the first was is not taken by one of the second (round 1 of #272).
+        cut = text.index("{{results.b}} {{results.e}}")
+        walk = reported_gate.Walk(named)
+        first, second = walk.read(text[:cut]), walk.read(text[cut:])
+        reported = first[1] | second[1]
+        found = {one.key for one in first[0] + second[0] if one.key not in reported}
+        assert found == unreported, (text[:cut], text[cut:], named)
 
 
 # --------------------------------------------------------------------------- models named
@@ -3890,6 +3972,40 @@ def _a_claim_keeps_the_words_of_a_comment(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "blank_comments", lambda text: text)
 
 
+def _a_numbered_results_heading_is_no_results(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate, "names_results", lambda title: title in ("Results", "Findings"))
+
+
+def _the_abstracts_results_report(patch: pytest.MonkeyPatch) -> None:
+    def place(self: reported_gate.Walk) -> object:
+        if any(id(section) in self.reports for section in self.chain):
+            return reported_gate.REPORTED
+        for section in self.chain:
+            if section.names_abstract(self.named) or id(section) in self.summaries:
+                return section.title
+        return None
+
+    patch.setattr(reported_gate.Walk, "_place", place)
+
+
+def _the_headings_of_a_file_are_not_carried_into_the_next(patch: pytest.MonkeyPatch) -> None:
+    real = reported_gate.Walk.read
+
+    def read(self: reported_gate.Walk, text: str) -> tuple[list, set[str]]:
+        self.chain.clear()
+        return real(self, text)
+
+    patch.setattr(reported_gate.Walk, "read", read)
+
+
+def _a_title_over_the_paper_is_its_results(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate.Walk, "_opens", lambda self, section, methods: False)
+
+
+def _the_methods_report_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate, "methods_sections", lambda sections, named=None: [])
+
+
 def _a_quotation_is_in_straight_marks_only(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(quotations_gate, "_QUOTED", re.compile(r'"([^"\n]+(?:\n[^"\n]+)*)"()'))
 
@@ -4004,6 +4120,26 @@ BROKEN = {
     "a piece with no word of its own is left alone": (
         _a_wordless_piece_is_left_alone,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
+    "a numbered Results heading is not the Results": (
+        _a_numbered_results_heading_is_no_results,
+        test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "the abstract's own Results report": (
+        _the_abstracts_results_report,
+        test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "the headings of one file are not carried into the next": (
+        _the_headings_of_a_file_are_not_carried_into_the_next,
+        test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "a paper's title over it all is its Results": (
+        _a_title_over_the_paper_is_its_results,
+        test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "the Methods report nothing": (
+        _the_methods_report_nothing,
+        test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
     ),
     "a statistic is read at its printed value, not over what its last digit allows": (
         _a_statistic_is_read_at_its_printed_value,

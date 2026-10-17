@@ -16,9 +16,10 @@ rounds, and a manuscript round never answers the design.
 A reading of a plan that has changed since is stale. A major finding not answered, by a
 resolution or by an override with its reason, is a warning, and a failure at submission
 only: what an unanswered design objection means is the author's to weigh while there is
-still an analysis to change. A reading is sealed as a manuscript reading is
-(`review --seal <reviewer> --design --round <n>`), and one changed after its seal fails at
-submission.
+still an analysis to change. An override, an objection left standing, is the
+statistician's to accept, and is said until they sign it (`override_signables`). A reading
+is sealed as a manuscript reading is (`review --seal <reviewer> --design --round <n>`), and
+one changed after its seal fails at submission.
 """
 
 from __future__ import annotations
@@ -168,11 +169,11 @@ def override_signables(project: Project) -> list[Signable]:
                 key = f"{GATE}/design-override/{number}/{name}/{finding['id']}"
                 raised = _finding(
                     "design-override-unsigned",
+                    # What was overridden, and why; who signs is the hint's, as `settle`
+                    # writes it (round 1 of #313: "nobody has signed" stayed once signed).
                     f"design round {number}: {name} {finding['id']} is overridden "
-                    f"({reason[:100]}), and nobody the project names has signed the override",
+                    f"({reason if len(reason) <= 100 else reason[:99] + '…'})",
                     record, severity=WARN,
-                    hint="an objection to the design left standing is the statistician's to "
-                    "accept",
                 )  # fmt: skip
                 digest = digest_of(key, finding.get("finding"), reason)
                 out.append(Signable("statistician", key, digest, (raised,)))

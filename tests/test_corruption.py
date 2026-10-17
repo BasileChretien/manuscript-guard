@@ -11754,6 +11754,12 @@ def test_an_overridden_design_objection_is_signed_by_the_statistician(project: P
     assert main(["sign", str(project), "--as", "Sample", "--finding", key]) == 0
     signed = [(code, severity) for code, severity, _hint in _override_said(project)]
     assert signed == [("design-override-unsigned", "info")]
+    # Round 1 of #313: the message said nobody had signed, and kept saying it once signed.
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    [message] = [f.message for f in check_design_rounds(load_project(project)[0]).findings
+                 if f.code == "design-override-unsigned"]  # fmt: skip
+    assert "nobody" not in message and "signed off by Blaise Sample" in message
 
     # A reason rewritten after the signature wants it again.
     text = record.read_text(encoding="utf-8")

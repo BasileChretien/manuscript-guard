@@ -1199,6 +1199,187 @@ def test_both_emitters_record_an_input_declared_restricted(tmp_path: Path) -> No
     ]
 
 
+
+
+# ----------------------------------- a number a summary gives that the paper reports nowhere
+
+
+def _unreported(root: Path) -> list[tuple[str, str, int]]:
+    """What G8 says of a summary: the key, the heading it was given under, the line."""
+    from manuscript_guard.gates import check_reported
+
+    project, _ = load_project(root)
+    _, results, _, _ = load_namespace(project)
+    found = check_reported(project, results).findings
+    assert all(f.severity == "warn" for f in found)
+    return [
+        (f.message.split()[0], re.search(r"under '([^']*)'", f.message)[1], f.line) for f in found
+    ]
+
+
+def _swap(root: Path, old: str, new: str) -> None:
+    path = main_md(root)
+    text = path.read_text(encoding="utf-8")
+    assert text.count(old) == 1, old
+    path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+#: Where the example's abstract concludes, and a count of serious cases written into it.
+_CONCLUDES = "synthetic data. Disproportionality"
+_SERIOUS = "synthetic data, {{results.case.n_serious}} of them serious. Disproportionality"
+
+
+def test_a_number_a_summary_gives_and_the_paper_reports_nowhere_is_warned(project: Path) -> None:
+    """An abstract or a conclusion introduces no data. The example's abstract gives
+    nothing the Methods or the Results do not, and passes; a key given in the Abstract, or
+    under a "Conclusions" heading, and bound in neither, is warned of where it was given."""
+    from manuscript_guard.cli import _run_gates
+
+    assert _unreported(project) == []
+    _swap(project, _CONCLUDES, _SERIOUS)
+    _swap(project, "\n# Data availability", "\n## 5. Conclusions\n\nOf {{results.case.n_cases}}"
+          " cases, {{results.case.n_serious}} were serious.\n\n# Data availability")  # fmt: skip
+    assert _unreported(project) == []  # the Results bind both
+    _swap(project, "{{results.case.n_serious}} were flagged", "some were flagged")
+    said = [
+        ("results.case.n_serious", "Abstract", _line_of(project, "of them serious")),
+        ("results.case.n_serious", "Conclusions", _line_of(project, "were serious.")),
+    ]
+    assert _unreported(project) == said
+    report, _project, _chosen, _deferred = _run_gates(project)
+    assert sum(f.code == "summary-not-reported" for f in report.findings) == 2
+    # The abstract's period is reported in the Methods, which its own Methods restate.
+    _swap(project, "{{results.cohort.period_start}} to {{results.cohort.period_end}}, a period",
+          "the start to the end, a period")  # fmt: skip
+    line = _line_of(project, "covering {{results.cohort.period_start}}")
+    assert _unreported(project) == [
+        ("results.cohort.period_start", "Abstract", line),
+        ("results.cohort.period_end", "Abstract", line),
+        *said,
+    ]
+
+
+def test_a_number_the_same_quantity_as_one_reported_is_reported(project: Path) -> None:
+    """A coarser form for the abstract is a second key emitted with `same_as`, as the
+    emitter's docstring asks: it is reported where the key it is the same as is, either way
+    round the declaration goes."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["case.serious_abstract"] = dict(
+        document["values"]["case.n_serious"], same_as="case.n_serious"
+    )
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    _swap(project, _CONCLUDES, _SERIOUS.replace("n_serious", "serious_abstract"))
+    assert _unreported(project) == []
+    # And the other way round: the Results bind the key that names the other.
+    _swap(project, "{{results.case.n_serious}} were flagged",
+          "{{results.case.serious_abstract}} were flagged")  # fmt: skip
+    _swap(project, _SERIOUS.replace("n_serious", "serious_abstract"), _SERIOUS)
+    assert _unreported(project) == []
+    _swap(project, "{{results.case.serious_abstract}} were flagged", "some were flagged")
+    assert [key for key, _, _ in _unreported(project)] == ["results.case.n_serious"]
+
+
+def test_a_number_printed_in_a_table_or_a_figure_the_paper_places_is_reported(
+    project: Path,
+) -> None:
+    """A count shown only in Table 2, and an estimate drawn only in Figure 1, are reported
+    there: until the paper no longer places the table or the figure."""
+    _swap(project, "Hepatic injury was reported in\n{{results.case.n_cases}} of these",
+          "Hepatic injury was reported in\nsome of these")  # fmt: skip
+    _swap(project, "ratio of {{results.ror.point}} (95% CI", "ratio of this (95% CI")
+    assert _unreported(project) == []  # 77 is in both tables, and 3.84 in the figure
+    _swap(project, "{{table.two_by_two}}", "")
+    assert _unreported(project) == []
+    _swap(project, "{{table.baseline}}", "")
+    _swap(project, "{{figure.forest}}", "")
+    cases = _line_of(project, "{{results.case.n_cases}} described")
+    ratio = _line_of(project, "ratio was {{results.ror.point}}")
+    assert _unreported(project) == [
+        ("results.case.n_cases", "Abstract", cases),
+        ("results.ror.point", "Abstract", ratio),
+    ]
+
+
+def test_a_section_of_a_later_file_is_not_taken_for_one_of_an_earlier() -> None:
+    """Round 1 of #272: which sections report and which summarise was kept by identity, and
+    once a file's sections were freed a section of the next file could be given the address
+    of one of them. A conclusion in the second file was then read as the Results of the
+    first, now and then: about one read in twenty with forty Results subsections."""
+    from manuscript_guard.gates.reported import Given, Walk
+
+    subgroups = "".join(f"## Subgroup {i}\n\nz\n\n" for i in range(40))
+    paper = "# Abstract\n\n{{results.a}}\n\n# Methods\n\nm\n\n# Results\n\n{{results.a}}\n\n"
+    discussion = "# Discussion\n\nd\n\n## Conclusions\n\n{{results.y}}\n\n## Limitations\n\nl\n"
+    for _ in range(300):
+        walk = Walk(None)
+        walk.read(paper + subgroups)
+        assert walk.read(discussion) == ([Given("y", "Conclusions", 7)], set())
+
+
+def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
+    """The supplement reports what the paper has no room for, under any heading."""
+    _swap(project, "{{results.case.n_serious}} were flagged", "some were flagged")
+    _swap(project, _CONCLUDES, _SERIOUS)
+    assert len(_unreported(project)) == 1
+    supplement = project / "manuscript" / "supplementary" / "s1.md"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_text("# Table S1\n\n{{results.case.n_serious}} serious.\n", encoding="utf-8")
+    assert _unreported(project) == []
+
+
+# --------------------------------------------- a quotation in the prose and its source
+
+
+@pytest.mark.parametrize(
+    ("sentence", "said"),
+    [
+        pytest.param(
+            "The cohort found that \u201cincidence rose with age and did not differ meaningfully "
+            "by sex\u201d [@fictionalHepaticCohort2021].", [], id="in its source",
+        ),
+        pytest.param(
+            "\u201cThe crude incidence of drug-induced hepatic injury was 14 per 100 000 "
+            "person-years. Incidence rose with age\u201d [@fictionalHepaticCohort2021].", [],
+            id="two sentences of its source",
+        ),
+        pytest.param(
+            "The cohort found that \u201cincidence fell with age and differed by sex\u201d "
+            "[@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+            id="misquoted",
+        ),
+        pytest.param(
+            'The agency judged it "acceptable in all but the frailest patients" '
+            "[@fictionalAgencyReport].", [("quotation-unchecked", "info")],
+            id="a work with no stored source",
+        ),
+        pytest.param(
+            'The cohort called it "meaningfully by sex" [@fictionalHepaticCohort2021].', [],
+            id="too short to be looked for",
+        ),
+        pytest.param(
+            'Some called it "acceptable in all but the frailest". Others disagreed '
+            "[@fictionalHepaticCohort2021].", [], id="cited in the next sentence",
+        ),
+    ],
+)  # fmt: skip
+def test_a_quotation_in_the_prose_is_in_the_source_it_cites(
+    project: Path, sentence: str, said: list
+) -> None:
+    """A quotation of four words or more in a sentence that cites a work is looked for in
+    that work's stored source, as the ledger's quotes are; one in a work with no stored
+    source is a note."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion\n", "\n" + sentence + "\n\n# Discussion\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    project_, _ = load_project(project)
+    found = check_prose_quotations(project_).findings
+    assert [(f.code, f.severity) for f in found] == said
+
+
 # ------------------------------------------------------------- what a change makes stale
 
 
@@ -1551,6 +1732,193 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
 
     codes = {f.code for f in gate_report(project).findings}
     assert "unemitted-table-number" in codes
+
+
+# ------------------------------------------------- a placeholder, wherever it is written
+
+
+def _g6(root: Path, results=None):
+    from manuscript_guard.gates import check_writing
+
+    project, _ = load_project(root)
+    if results is None:
+        _namespace, results, _literature, _report = load_namespace(project)
+    return check_writing(project, results)
+
+
+def _placeholders(report) -> list[tuple[str, str]]:
+    return [(f.severity, f.message) for f in report.findings if f.code == "model-artefact"]
+
+
+def _with_paragraph(root: Path, paragraph: str) -> None:
+    path = main_md(root)
+    path.write_text(path.read_text(encoding="utf-8") + f"\n\n{paragraph}\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "slot",
+    [
+        "n = XXXX patients",
+        "[TO BE COMPLETED]",
+        "[CLAIM NEEDS EVIDENCE]",
+        "[PLACEHOLDER - VERIFY]",
+        "[Repository]",
+        "[DOI/accession]",
+        "[citation needed]",
+        "[describe the cohort]",
+        "Lorem ipsum dolor sit amet",
+        "FIXME",
+        "TKTK",
+        "fill in later.",
+        "This section is a template.",
+        "Discussion prompt: what else?",
+        "dated 2025-XX-XX",
+        "INSERT_SOURCE_URL_30",
+        # Round 1 of #262: an instruction cut by a hard wrap, and one before a colon.
+        "approved by [insert the name of the\nethics committee]",
+        "[insert number]: 2024",
+        "[CITATION NEEDED]",
+        # Round 2 of #262: a count of thousands, an instruction marked for Word, and filler
+        # before a list item, which main or round 1 caught.
+        "1,XXX reports",
+        "[insert the date]{.mark}",
+        "- Dose: fill in later\n- Route: oral",
+    ],
+)
+def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None:
+    """Item 10.6: `XXX` was read only whole, so `XXXX` passed, and a slot in capitals, a
+    thing to supply in brackets, filler text and an instruction to the writer passed too."""
+    _with_paragraph(project, f"The cohort was {slot} as planned.")
+    said = _placeholders(_g6(project))
+    assert [severity for severity, _ in said] == ["fail"], said
+
+
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "The karyotype was 47,XXX in one patient.",
+        "Women with XXX syndrome were not excluded.",
+        "The code is in a [repository](https://example.org/code).",
+        "As the review put it [Add-on therapy in epilepsy] (in Spanish).",
+        "Drugs that replace later lines of therapy were counted.",
+        "TK inhibitors were the reference group.",
+        # Round 1 of #262: an abbreviation nested in parentheses is in brackets and capitals,
+        # a hard wrap is no end of a phrase, and a paper on teaching has discussion prompts.
+        "Cases of SJS or TEN [SJS/TEN] were counted.",
+        "Terms were coded (system organ class/preferred term [SOC/PT]).",
+        "Drugs that replace later\nlines of therapy were counted.",
+        "Each case ended with discussion prompts.",
+    ],
+)
+def test_what_looks_like_a_placeholder_and_is_prose_passes(project: Path, prose: str) -> None:
+    _with_paragraph(project, prose)
+    assert _placeholders(_g6(project)) == []
+
+
+def test_a_placeholder_drawn_in_a_figure_fails(project: Path) -> None:
+    """A "TBD" in a figure reached the document: G6 read only the manuscript."""
+    figure = project / "figures" / "forest.svg"
+    text = figure.read_text(encoding="utf-8")
+    figure.write_text(text.replace("</svg>", "<text>Panel TBD</text></svg>", 1), encoding="utf-8")
+    report = _g6(project)
+    said = [f for f in report.findings if f.code == "model-artefact"]
+    assert [(f.severity, f.path.name) for f in said] == [("fail", "forest.svg")]
+    assert "the text of forest.svg" in said[0].message
+
+
+def test_a_placeholder_in_a_table_caption_fails(project: Path) -> None:
+    """The caption an analysis writes for its table was read by no gate for a placeholder."""
+    from dataclasses import replace
+
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(project_)
+    baseline = replace(results.tables["baseline"], caption="Reports by drug group. TODO units.")
+    results = replace(results, tables={**results.tables, "baseline": baseline})
+    said = _placeholders(_g6(project, results))
+    assert len(said) == 1 and "the caption of table 'baseline'" in said[0][1], said
+
+
+def _cited_entry_has(root: Path, field: str) -> None:
+    bib = root / "literature" / "references.bib"
+    opening = "@article{fictionalHepaticCohort2021,\n"
+    text = bib.read_text(encoding="utf-8")
+    bib.write_text(text.replace(opening, opening + f"  {field},\n", 1), encoding="utf-8")
+
+
+def test_a_placeholder_in_a_cited_reference_fails_on_its_line(project: Path) -> None:
+    """A "TBD" in a field of a cited entry is printed in the reference list."""
+    _cited_entry_has(project, "number = {TBD}")
+    _cited_entry_has(project, "doi = {[DOI]}")
+    report = _g6(project)
+    said = [f for f in report.findings if f.code == "model-artefact"]
+    assert [(f.severity, f.path.name) for f in said] == [("fail", "references.bib")] * 2
+    # Round 2 of #262: a slot that is the whole of a field, in brackets, is a slot.
+    assert any("the doi of @fictionalHepaticCohort2021" in f.message for f in said)
+    number = [f for f in said if "the number of @fictionalHepaticCohort2021" in f.message]
+    lines = (project / "literature" / "references.bib").read_text(encoding="utf-8").splitlines()
+    assert len(number) == 1 and "TBD" in lines[number[0].line - 1]
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        # Capitals only outside the manuscript: "Todo" opens many a Spanish title.
+        "title = {Todo sobre la farmacovigilancia}",
+        "title = {Drug response in women with a 47,XXX karyotype}",
+        # Round 1 of #262: titles PubMed translated into English, in brackets.
+        "title = {[Your diagnosis?]}",
+        "title = {[TREATMENT OF EPILEPSY WITH PHENYTOIN]}",
+        # Fields no reference list prints.
+        "abstract = {TODO}",
+        "file = {TBD.pdf}",
+    ],
+)
+def test_what_a_cited_reference_holds_and_is_no_placeholder_passes(
+    project: Path, field: str
+) -> None:
+    _cited_entry_has(project, field)
+    assert _placeholders(_g6(project)) == []
+
+
+def test_a_placeholder_on_an_entrys_first_line_is_found_on_it(project: Path) -> None:
+    """Round 1 of #262: a field written on the entry's line was put on the next entry's."""
+    bib = project / "literature" / "references.bib"
+    opening = "@article{fictionalHepaticCohort2021,\n"
+    text = bib.read_text(encoding="utf-8")
+    bib.write_text(text.replace(opening, opening[:-1] + " number = {TBD},\n", 1), encoding="utf-8")
+    said = [f for f in _g6(project).findings if f.code == "model-artefact"]
+    lines = bib.read_text(encoding="utf-8").splitlines()
+    assert len(said) == 1 and lines[said[0].line - 1].startswith("@article{fictionalHepatic")
+
+
+def test_a_placeholder_in_an_uncited_reference_says_nothing(project: Path) -> None:
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8") + "\n@article{uncitedDraft2024,\n  title = {TODO},\n}\n",
+        encoding="utf-8",
+    )
+    assert _placeholders(_g6(project)) == []
+
+
+@pytest.mark.parametrize(
+    ("rule", "prose"),
+    [
+        ("chat-closer", "I hope this helps the reader."),
+        ("source-disclaimer", "While specific details about the cohort are limited, it grew."),
+        ("stacked-hedge", "The signal could potentially reflect stimulated reporting."),
+        ("upbeat-close", "The future of pharmacovigilance lies in its ability to adapt."),
+        ("text-about-text", "In this section, we will discuss the background."),
+        ("user-should", "The user should add the dose here."),
+    ],
+)
+def test_the_phrasing_the_essay_lists_is_a_warning(project: Path, rule: str, prose: str) -> None:
+    """Item 10.6: phrasing the source essay lists and G6 did not read, each a warning and
+    never a failure."""
+    _with_paragraph(project, prose)
+    report = _g6(project)
+    said = [f for f in report.findings if f.message.startswith(f"{rule}:")]
+    assert [(f.code, f.severity) for f in said] == [("ai-phrasing", "warn")], said
+    assert _placeholders(report) == []
 
 
 # ------------------------------------------------- the environment the results were made in
@@ -1927,6 +2295,103 @@ def test_the_kept_plan_is_never_written_again(project: Path) -> None:
 def test_results_with_no_kept_plan_are_a_note(project: Path) -> None:
     (project / "design" / "plan.frozen.yaml").unlink()
     assert _plan_said(project) == [("plan-not-frozen", "info")]
+
+
+# ------------------------------------------------- the results the plan promised
+
+
+def _planned_said(root: Path, stage: str = "drafting", **unquoted: bool) -> list[tuple[str, str]]:
+    """G12's word on the plan's Planned results at a stage, with the values named emitted
+    with quoted=False: each finding's code and the line it points at."""
+    from manuscript_guard.gates import check_design
+
+    if unquoted:
+        fragment = next((root / "results").glob("*.json"))
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        for key in unquoted:
+            document["values"][key.replace("__", ".")]["quoted"] = False
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    project, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(project)
+    text = (root / "design" / "plan.md").read_text(encoding="utf-8").splitlines()
+    return [(f.code, text[f.line - 1].strip() if f.line else "")
+            for f in check_design(project, results, stage).findings
+            if f.code.startswith("planned-")]  # fmt: skip
+
+
+def test_a_result_the_plan_promised_and_the_analysis_never_emitted_is_a_warning(
+    project: Path,
+) -> None:
+    """Item 37: G2 said when the analysis emitted a value nothing quoted, and nothing said
+    when the plan promised a result the analysis never emitted."""
+    from manuscript_guard.gates import check_design
+
+    promised = "- `death.n_cases`: deaths among the cases"
+    _plan_edited(project, "- `case.pct_serious`", f"{promised}\n- `case.pct_serious`")
+    assert _planned_said(project) == [("planned-result-missing", promised)]
+    assert _planned_said(project, "design") == []
+    assert not [f for f in check_design(load_project(project)[0]).findings
+                if f.code.startswith("planned-")]  # fmt: skip
+
+
+def test_a_planned_result_emitted_unquoted_is_a_warning(project: Path) -> None:
+    assert _planned_said(project) == []
+    said = _planned_said(project, case__pct_serious=True)
+    assert said == [("planned-result-unquoted", "- `case.pct_serious`: the proportion of the "
+                     "cases that were serious")]  # fmt: skip
+
+
+def test_a_planned_group_counts_while_one_of_its_keys_is_quoted(project: Path) -> None:
+    assert _planned_said(project, ror__ci90_low=True, ror__ci90_high=True) == []
+    said = _planned_said(project, ror__point=True, ror__ci_low=True, ror__ci_high=True)
+    assert said == [("planned-result-unquoted", "- `ror.*`: the reporting odds ratio and its "
+                     "95% interval")]  # fmt: skip
+
+
+def test_a_planned_result_the_deviations_name_passes(project: Path) -> None:
+    _plan_edited(project, "- `case.pct_serious`",
+                 "- `death.n_cases`: deaths among the cases\n- `case.pct_serious`")  # fmt: skip
+    _plan_edited(project, "No analysis was added",
+                 "3. Deaths, `death.n_cases`, were not reported: the generator writes none.\n\n"
+                 "No analysis was added")  # fmt: skip
+    assert _planned_said(project) == []
+    _plan_edited(project, "Deaths, `death.n_cases`, were", "Deaths, `death.n_cases_all`, were")
+    assert [code for code, _line in _planned_said(project)] == ["planned-result-missing"]
+
+
+def test_a_planned_key_with_no_dot_is_read_in_its_bound_form(project: Path) -> None:
+    """Round 1 of #305: `results.dose` was read as the key `results.dose`, since `dose` has
+    no dot, and a promise kept was said to be broken."""
+    from manuscript_guard.gates import check_design
+
+    promised = "- `results.dose`: the dose"
+    _plan_edited(project, "- `case.pct_serious`", f"{promised}\n- `case.pct_serious`")
+    assert _planned_said(project) == [("planned-result-missing", promised)]
+    # Round 2 of #305: the word "dose" in the Deviations stood the key down.
+    _plan_edited(project, "No analysis was added", "The dose groups were analysed as planned.\n\n"
+                 "No analysis was added")  # fmt: skip
+    assert _planned_said(project) == [("planned-result-missing", promised)]
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(project_)
+    [said] = [f for f in check_design(project_, results, "drafting").findings
+              if f.code == "planned-result-missing"]  # fmt: skip
+    assert "lists results.dose among" in said.message and "naming results.dose" in said.hint
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["dose"] = {"value": 5, "display": "5"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _planned_said(project) == []
+
+
+def test_a_planned_results_section_that_names_no_key_is_a_warning(project: Path) -> None:
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    start, end = text.index("## Planned results\n"), text.index("## Sample size")
+    words = "## Planned results\n\nThe cases, the ratio and the share that were serious.\n\n"
+    plan.write_text(text[:start] + words + text[end:], encoding="utf-8")
+    assert _planned_said(project) == [("planned-results-unkeyed", "")]
 
 
 # ------------------------------------------------- the unit of analysis
@@ -3289,10 +3754,117 @@ def test_an_audited_paper_s_p_that_does_not_follow_is_listed_apart(tmp_path: Pat
         (1, "t = 2.45, df = 23, p = .40")
     ]
     shown = render(report, measure_discrimination(report.backing_values))
-    assert "P VALUES THAT DO NOT FOLLOW" in shown
+    assert "DO NOT FIT THE ONES BESIDE THEM" in shown
     assert "on the other side of 0.05" in shown
     # Every number is in the outputs, and --strict counts only those.
     assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == 0
+
+
+# ------------------------------------------------- an estimate, its interval and its P
+# A ratio's interval is symmetric on the log scale, and excludes its null exactly when the P
+# beside it is below one less its level. Numbers typed, quoted, or bound from two keys can
+# break either, and G2 sees each number pass.
+
+
+@pytest.mark.parametrize(
+    ("sentence", "found"),
+    [
+        ("The odds ratio was 2.6 (95% CI 2.1 to 3.2), P = 0.001.", []),
+        ("The odds ratio was 2.6 (95% CI 1.2 to 3.2).", ["ratio-interval-asymmetric"]),
+        ("The odds ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40.", ["p-against-interval"]),
+        ("The mean difference was 0.4 (95% CI -0.2 to 1.0), P = 0.001.",
+         ["p-against-interval"]),
+        ("The adjusted odds ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40.",
+         ["p-against-interval"]),
+        ("The odds ratio was 2.6 (95% profile-likelihood CI 1.2 to 3.2).", []),
+        ("The odds ratio was 1.9 (95% CI 1.2 to 3.0), Bonferroni-adjusted P = 0.40.", []),
+        ("The odds ratio was 1.9 (95% CI 1.2 to 3.0) in men and 1.1 (95% CI 0.8 to 1.5) in "
+         "women, P = 0.40 for interaction.", []),
+        ("The risk ratio was 1.50 (90% CI 1.05 to 2.14), P = 0.07.", []),
+        ("<!-- The odds ratio was 2.6 (95% CI 1.2 to 3.2). -->", []),
+        # Round 1 of #300: a bound transposed past its estimate, and a ratio named after
+        # the word "difference".
+        ("The odds ratio was 2.6 (95% CI 2.1 to 2.3).", ["interval-excludes-estimate"]),
+        ("The mean difference was 1.4 (95% CI 0.2 to 0.9).", ["interval-excludes-estimate"]),
+        ("No difference in mortality, HR 0.83 (95% CI 0.65 to 1.05), P = 0.13.", []),
+    ],
+)  # fmt: skip
+def test_an_interval_that_does_not_fit_its_estimate_or_its_p_is_found(
+    project: Path, sentence: str, found: list[str]
+) -> None:
+    assert _recomputed_codes(project, sentence) == found
+
+
+def test_an_estimate_bound_from_one_analysis_and_its_interval_from_another_is_found(
+    project: Path,
+) -> None:
+    """The crude estimate beside the adjusted interval, and the crude P beside the adjusted
+    estimate: each number bound, each passed by G2, and no gate saw that they disagree."""
+    _emitted(
+        project, crude__or="2.80", crude__p="0.080", adjusted__or="2.23",
+        adjusted__low="1.60", adjusted__high="3.10",
+    )  # fmt: skip
+    interval = "(95% CI {{results.adjusted.low}} to {{results.adjusted.high}})"
+    crude = "The odds ratio was {{results.crude.or}} " + interval + "."
+    assert _recomputed_codes(project, crude) == ["ratio-interval-asymmetric"]
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("{{results.crude.or}}", "{{results.adjusted.or}}"), "utf-8")
+    adjusted = "The adjusted odds ratio was {{results.adjusted.or}} " + interval
+    sentence = adjusted + ", P = {{results.crude.p}}."
+    assert _recomputed_codes(project, sentence) == ["p-against-interval"]
+    assert _recomputed(project).counts["printed_intervals_read"] == 5
+
+
+@pytest.mark.parametrize(
+    ("interval", "code"),
+    [
+        ("rate ratio 1.9, 95% CI 1.2-3.0, P = 0.40", "quote-p-against-interval"),
+        ("rate ratio 2.6, 95% CI 1.2-3.2", "quote-interval-asymmetric"),
+        # Round 2 of #300: each code G7 says of a quote has a case.
+        ("rate ratio 2.6, 95% CI 2.1-2.3", "quote-interval-excludes-estimate"),
+    ],
+)
+def test_a_quote_whose_interval_does_not_fit_its_p_is_found(
+    project: Path, interval: str, code: str
+) -> None:
+    """The source's own numbers disagree, so the value taken from them may be the wrong
+    one."""
+    said = (
+        "The crude incidence of drug-induced hepatic injury was 14 per 100 000 "
+        f"person-years ({interval})."
+    )
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text(source.read_text(encoding="utf-8") + "\n" + said + "\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["quote"] = said
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = _literature_report(project)
+    assert [f.code for f in report.findings if f.code.startswith("quote-")] == [code]
+    assert report.counts["literature_verified"] == 2
+
+
+def test_an_audited_paper_s_interval_that_does_not_fit_is_listed_apart(tmp_path: Path) -> None:
+    """`audit` reads a paper that was never bound, and needs no outputs for this."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "The odds ratio was 2.6 (95% CI 1.2 to 3.2).\n\n"
+        "The hazard ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40.\n\n"
+        "The risk ratio was 2.6 (95% CI 2.1 to 2.3).\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [])
+    assert [(d.line, d.context) for d in report.disagreements] == [
+        (1, "odds ratio was 2.6 (95% CI 1.2 to 3.2"),
+        (3, "hazard ratio was 1.9 (95% CI 1.2 to 3.0), P = 0.40"),
+        (5, "risk ratio was 2.6 (95% CI 2.1 to 2.3"),
+    ]
+    assert "outside its own interval" in report.disagreements[2].message
+    assert "arms differ" in report.disagreements[0].message
+    assert "excludes 1, and P = 0.40 is above 0.05" in report.disagreements[1].message
 
 
 @pytest.mark.parametrize(
@@ -3424,6 +3996,67 @@ def test_a_figure_file_the_journal_would_refuse_is_a_warning(
     """Item 17: resolution, format, size and height were free text in a profile's notes,
     and the first anyone heard of them was the portal refusing the upload."""
     assert _artwork_said(project, side, **rules) == said
+
+
+#: What G4 says of the text and lines inside a vector figure.
+_VECTOR_CODES = ("figure-text-small", "figure-line-thin", "figure-text-clipped")
+
+
+def _vector_said(root: Path, side: dict | None = None, **rules) -> list[tuple[str, str]]:
+    _artwork_said(root, side, **rules)
+    return [(f.code, f.severity) for f in _journal(root).findings if f.code in _VECTOR_CODES]
+
+
+@pytest.mark.parametrize(
+    ("rules", "side", "said"),
+    [
+        # forest.svg is 468 units wide, and its smallest text 8 units: at 89 mm, 4.31 pt.
+        ({"min_text_pt": 5, "widths_mm": [89, 183]}, None, [("figure-text-small", "warn")]),
+        ({"min_text_pt": 4, "widths_mm": [89, 183]}, None, []),
+        # Printed 120 mm wide it is 5.8 pt; at 183, 8.9.
+        ({"min_text_pt": 5, "widths_mm": [89]}, {"print_width_mm": 120}, []),
+        ({"min_text_pt": 5, "widths_mm": [183]}, None, []),
+        # Its thinnest line is 0.6 units: at 89 mm, 0.32 pt.
+        ({"min_line_pt": 0.5, "widths_mm": [89]}, None, [("figure-line-thin", "warn")]),
+        ({"min_line_pt": 0.25, "widths_mm": [89]}, None, []),
+        # Without a print width, at its own: 468 pt, where 8 units are 8 pt.
+        ({"min_text_pt": 9}, None, [("figure-text-small", "warn")]),
+        ({"min_text_pt": 5, "widths_mm": [89], "applies_from": "acceptance"}, None,
+         [("figure-text-small", "info")]),
+    ],
+)  # fmt: skip
+def test_text_or_lines_too_small_where_a_vector_figure_prints_are_a_warning(
+    project: Path, rules: dict, side: dict | None, said: list
+) -> None:
+    """Item 17: a vector figure is scaled to the width it prints at, and its text and lines
+    with it; a journal's least text and line are at the printed size."""
+    assert _vector_said(project, side, **rules) == said
+
+
+def test_a_text_anchored_outside_a_vector_figure_is_a_warning(project: Path) -> None:
+    """Item 17: a label placed past the edge of what an SVG shows is cut off in print."""
+    figure = project / "figures" / "forest.svg"
+    text = figure.read_text(encoding="utf-8")
+    assert _vector_said(project, None, formats=["png", "svg"]) == []
+    # The figure is drawn again on each machine, and matplotlib places its labels a little
+    # differently on each (CI on Linux): the first label is moved by its own x, not found
+    # by the one this machine wrote.
+    first = re.search(r'<text\b[^>]*?\bx="([-\d.]+)" y="([-\d.]+)"', text)
+    assert first is not None, "the example's figure writes its labels as text"
+    x, y = float(first.group(1)) + 400, float(first.group(2))
+    figure.write_text(text[: first.start(1)] + f"{x:g}" + text[first.end(1) :], encoding="utf-8")
+    said = [f for f in _journal(project).findings if f.code == "figure-text-clipped"]
+    assert [(f.severity, f.path.name) for f in said] == [("warn", "forest.svg")]
+    assert f"anchored at ({x:.0f}, {y:.0f})" in said[0].message
+
+
+def test_the_message_says_how_small_a_vector_figure_s_text_prints(project: Path) -> None:
+    _artwork_said(project, None, min_text_pt=5, widths_mm=[89])
+    said = [f for f in _journal(project).findings if f.code == "figure-text-small"]
+    assert len(said) == 1
+    assert "prints at 4.31 pt at 89 mm wide, the narrowest the journal prints at," in (
+        said[0].message
+    ), said[0].message
 
 
 @pytest.mark.parametrize("written", ["tif", "TIF", "tiff"])
@@ -10347,18 +10980,18 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    seven read revisions with the earlier rounds in front of them, so the seventh supersedes
-    the six before it and each says it was not blinded."""
+    eight read revisions with the earlier rounds in front of them, so the eighth supersedes
+    the seven before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok, report.render(project)
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
-                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2))
+                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 5, report.render(project)
-    assert report.counts["review_rounds_complete"] == 7
+    assert said == superseded + [("round-not-blinded", "review")] * 6, report.render(project)
+    assert report.counts["review_rounds_complete"] == 8
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -11418,6 +12051,191 @@ def test_a_plan_with_no_analysis_yet_is_not_asked_for_feasibility(project: Path)
     assert _feasibility_said(project, "design") == []
 
 
+# ------------------------------------------------- a panel reads the plan before the results
+
+_DESIGN_REMIT = "Whether the design supports the inference the plan intends: confounding, " \
+    "selection, immortal time, missing data, multiplicity"  # fmt: skip
+
+
+def _design_said(root: Path, submission: bool = False) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    project, _ = load_project(root)
+    return [(f.code, f.severity) for f in check_design_rounds(project, submission=submission)
+            .findings]  # fmt: skip
+
+
+def _design_recorded(root: Path, findings: str = "") -> Path:
+    from manuscript_guard.cli import main
+
+    assert main(["review", str(root), "--design", "--record", "methodologist", "--verdict",
+                 "major-revision", "--remit", _DESIGN_REMIT]) == 0  # fmt: skip
+    record = root / "review" / "design" / "round-1" / "methodologist.yaml"
+    if findings:
+        text = record.read_text(encoding="utf-8").replace("findings: []\n", findings)
+        record.write_text(text, encoding="utf-8")
+    return record
+
+
+_DESIGN_MAJOR = (
+    "findings:\n- id: d1\n  severity: major\n  finding: The comparator drugs share the "
+    "indication only in part, so the ratio mixes the drug with its indication.\n"
+)
+
+
+def test_a_design_round_reads_the_plan_and_its_majors_are_answered(project: Path) -> None:
+    """Item 46: no panel read the plan before there were results, and a design that could
+    not answer its question was said too late."""
+    from manuscript_guard.cli import main
+
+    assert _design_said(project) == []
+    record = _design_recorded(project, _DESIGN_MAJOR)
+    assert _design_said(project) == [("design-reading-unsealed", "warn"),
+                                     ("design-major-open", "warn")]  # fmt: skip
+    assert ("design-major-open", "fail") in _design_said(project, submission=True)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    assert _design_said(project) == [("design-major-open", "warn")]
+    text = record.read_text(encoding="utf-8")
+    record.write_text(text.replace("  finding: The comparator", "  resolution: The plan now "
+                                   "restricts the comparators to the same indication.\n"
+                                   "  finding: The comparator"), encoding="utf-8")  # fmt: skip
+    assert _design_said(project) == []
+
+
+def test_a_design_round_of_a_plan_changed_since_is_stale(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert _design_said(project) == [("design-review-stale", "warn")]
+    # Round 1 of #308: a later round that read the plan as it stands left the first stale
+    # for good. It supersedes it, as a manuscript round does.
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--round", "2", "--verdict", "pass"]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info")]
+
+
+def test_a_later_design_round_supersedes_only_the_readers_who_read_again(project: Path) -> None:
+    """Round 2 of #308: a later round of one reviewer superseded every stale reading of the
+    round before it, a reviewer who never read the plan as it stands included."""
+    from manuscript_guard.cli import main
+
+    _design_recorded(project)
+    remit = "Whether the analysis can estimate what is asked"
+    assert main(["review", str(project), "--design", "--record", "statistician", "--verdict",
+                 "pass", "--remit", remit]) == 0  # fmt: skip
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--round", "2", "--verdict", "pass"]) == 0  # fmt: skip
+    said = _design_said(project)
+    assert sorted(said) == [("design-review-stale", "warn"), ("design-review-superseded", "info")]
+
+
+def test_a_superseded_design_round_s_open_major_still_binds(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    _design_recorded(project, _DESIGN_MAJOR)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--round", "2", "--verdict", "pass"]) == 0  # fmt: skip
+    assert _design_said(project) == [("design-review-superseded", "info"),
+                                     ("design-major-open", "warn")]  # fmt: skip
+
+
+def test_a_design_round_is_stale_when_the_data_are_counted_again(project: Path) -> None:
+    _feasibility_said(project, "design", feasibility__n_reports=4000)
+    _design_recorded(project)
+    assert _design_said(project) == []
+    _feasibility_said(project, "design", feasibility__n_reports=3999)
+    assert _design_said(project) == [("design-review-stale", "warn")]
+
+
+def test_a_design_reading_changed_after_its_seal_is_said(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    record = _design_recorded(project, _DESIGN_MAJOR)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    text = record.read_text(encoding="utf-8")
+    record.write_text(text.replace("severity: major", "severity: minor"), encoding="utf-8")
+    assert _design_said(project) == [("design-reading-altered", "warn")]
+    assert _design_said(project, submission=True) == [("design-reading-altered", "fail")]
+
+
+def test_a_design_panel_reviewer_who_has_not_read_is_said(project: Path) -> None:
+    _design_recorded(project)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"].append({"id": "clinician", "remit": "Whether the question matters"})
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    assert _design_said(project) == [("design-review-missing", "warn")]
+
+
+def test_a_design_round_is_not_a_round_of_the_manuscript(project: Path) -> None:
+    """Kept apart: a design round never counts toward the manuscript's rounds, and needs a
+    remit of its own before a folder is made for it."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.gates import check_review
+
+    before = check_review(load_project(project)[0]).counts
+    assert main(["review", str(project), "--design", "--record", "methodologist",
+                 "--verdict", "pass"]) == 2  # fmt: skip
+    assert not (project / "review" / "design").exists()
+    _design_recorded(project)
+    assert check_review(load_project(project)[0]).counts == before
+
+
+_OVERRIDDEN = "  overridden: The indication is recorded for too few reports to restrict on.\n"
+
+
+def test_an_overridden_design_objection_is_signed_by_the_statistician(project: Path) -> None:
+    """Item 46: an override of a design-round major was the author's word alone; the
+    statistician the project names signs it, bound to the objection and the reason."""
+    from manuscript_guard.cli import main
+
+    record = _design_recorded(project, _DESIGN_MAJOR + _OVERRIDDEN)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    key = "G12/design-override/1/methodologist/d1"
+    said = _override_said(project)
+    assert [(code, severity) for code, severity, _hint in said] == [
+        ("design-override-unsigned", "warn")
+    ]
+    assert f'manuscript-guard sign --as "Blaise Sample" --finding {key}' in said[0][2]
+    assert main(["sign", str(project), "--as", "Ada Example", "--finding", key]) == 2
+    assert main(["sign", str(project), "--as", "Sample", "--finding", key]) == 0
+    signed = [(code, severity) for code, severity, _hint in _override_said(project)]
+    assert signed == [("design-override-unsigned", "info")]
+    # Round 1 of #313: the message said nobody had signed, and kept saying it once signed.
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    [message] = [f.message for f in check_design_rounds(load_project(project)[0]).findings
+                 if f.code == "design-override-unsigned"]  # fmt: skip
+    assert "nobody" not in message and "signed off by Blaise Sample" in message
+
+    # A reason rewritten after the signature wants it again.
+    text = record.read_text(encoding="utf-8")
+    record.write_text(text.replace("too few reports", "too few of the reports"), "utf-8")
+    [(code, severity, hint)] = _override_said(project)
+    assert (code, severity) == ("design-override-unsigned", "warn") and "changed since" in hint
+
+
+def test_a_resolved_design_objection_wants_no_signature(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    resolved = _OVERRIDDEN + "  resolution: The comparators are restricted to the indication.\n"
+    _design_recorded(project, _DESIGN_MAJOR + resolved)
+    assert main(["review", str(project), "--design", "--seal", "methodologist"]) == 0
+    assert _override_said(project) == []
+
+
+def _override_said(root: Path) -> list[tuple[str, str, str]]:
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    project, _ = load_project(root)
+    return [(f.code, f.severity, f.hint or "") for f in check_design_rounds(project).findings
+            if f.code == "design-override-unsigned"]  # fmt: skip
+
+
 # --------------------------------------------------------------------------------------
 # TeX outside dollar signs in what the build prints of paper.yaml
 # --------------------------------------------------------------------------------------
@@ -12306,6 +13124,44 @@ def test_a_typed_software_version_fails(project: Path) -> None:
     version = namespace["results.software.python"].display
     _replace_once(main_md(project), "{{results.software.python}}", version)
     assert "typed-software-version" in codes(gate_report(project))
+
+
+def _coded_with(root: Path, **releases: str) -> None:
+    """Coding dictionaries in the example's results, as `em.dictionary` declares them."""
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for name, release in releases.items():
+        document["values"][f"dictionary.{name}"] = {
+            "value": release, "display": release, "label": True, "role": "dictionary",
+        }  # fmt: skip
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "typed"),
+    [
+        ("Events were coded with MedDRA version 26.1.", ["'26.1'"]),
+        ("Drugs were coded with WHODrug Global B3 March 2025.", ["'Global B3 March 2025'"]),
+        ("Diagnoses were coded with ICD-10 2019 codes.", ["'2019'"]),
+        ("Events were coded with MedDRA version {{results.dictionary.meddra}}.", []),
+        ("Diagnoses were coded with ICD-10 {{results.dictionary.icd_10}} codes.", []),
+        # The release alone is not the dictionary's: the name has to stand before it.
+        ("Reports received in 2019 were read again.", []),
+        # Not as part of a longer word: "matched" holds "atc".
+        ("Reports were matched by hand in 2025 to each other.", []),
+    ],
+)
+def test_a_typed_dictionary_release_fails_and_only_beside_its_name(
+    project: Path, sentence: str, typed: list[str]
+) -> None:
+    _coded_with(project, meddra="26.1", whodrug="Global B3 March 2025", icd_10="2019",
+                atc="2025")  # fmt: skip
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\n" + sentence + "\n", encoding="utf-8")
+    found = [f for f in gate_report(project).failures if f.code == "typed-dictionary-release"]
+    assert [f.message.split(" is ")[0] for f in found] == typed
+    assert all("{{results.dictionary." in f.hint for f in found)
 
 
 def test_a_parameter_declared_and_never_read_fails(project: Path) -> None:

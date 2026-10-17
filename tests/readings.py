@@ -215,6 +215,22 @@ def _sections() -> Reading:
     return sections
 
 
+@reading("summaries")
+def _summaries() -> Reading:
+    """The results keys a file gives in its Abstract or a conclusion, and those it binds where
+    the paper reports them: G8's reading of the parts of a paper."""
+    from manuscript_guard.gates.reported import Walk
+
+    def summaries(given: dict[str, Any]) -> dict[str, Any]:
+        found, reported = Walk(given["abstract title"]).read(given["text"])
+        return {
+            "given": [[one.key, one.heading, one.line] for one in found],
+            "reported": sorted(reported),
+        }
+
+    return summaries
+
+
 # ----------------------------------------------------------------------------- numbers
 
 
@@ -253,6 +269,29 @@ def _numbers() -> Reading:
     return numbers
 
 
+#: The coding dictionaries a generated text may type the release of.
+DICTIONARIES = {"meddra": "26.1", "whodrug": "Global B3 March 2025", "icd_10": "2019"}
+
+
+@reading("typed releases")
+def _typed_releases() -> Reading:
+    """Each place G2 finds a declared dictionary's release typed where it should be bound:
+    where it stands and whose release it is."""
+    from manuscript_guard.contracts.values import Value
+    from manuscript_guard.gates.numbers import typed_releases
+
+    declared = [
+        Value(key=f"dictionary.{name}", value=release, display=release, origin="results",
+              label=True, role="dictionary")
+        for name, release in DICTIONARIES.items()
+    ]  # fmt: skip
+
+    def releases(text: str) -> list[list[Any]]:
+        return [[start, end, value.key] for start, end, value in typed_releases(text, declared)]
+
+    return releases
+
+
 #: The intervals whose bounds a generated text quotes: the estimate, the level where the
 #: estimate has a second interval, and the keys of the lower and of the upper bound.
 INTERVALS = (
@@ -267,6 +306,19 @@ def _deviations() -> Reading:
     from manuscript_guard.gates.design import deviations_said
 
     return deviations_said
+
+
+@reading("planned results")
+def _planned_results() -> Reading:
+    from manuscript_guard.gates.design import planned_results
+
+    def read(plan: str) -> Any:
+        """Each key the plan's Planned results section lists, whether it is a group, and its
+        line; None where the plan has no such section."""
+        found = planned_results(plan)
+        return None if found is None else [[p.key, p.group, p.line] for p in found]
+
+    return read
 
 
 @reading("interval order")
@@ -341,6 +393,18 @@ def _units_after() -> Reading:
     return units
 
 
+@reading("limit stated")
+def _limit_stated() -> Reading:
+    """Whether the quote of a journal profile's limit states its number, which G4 fails
+    where it does not."""
+    from manuscript_guard.gates.journal_quotes import _states
+
+    def stated(given: dict[str, Any]) -> bool:
+        return _states(given["text"], given["value"])
+
+    return stated
+
+
 @reading("notation")
 def _notation() -> Reading:
     from manuscript_guard.gates.notation import judge_notation
@@ -379,6 +443,36 @@ def _reported_tests() -> Reading:
     return reported
 
 
+@reading("reported intervals")
+def _reported_intervals() -> Reading:
+    """Each named estimate with a confidence interval after it, as it is printed, and what
+    G8 says of it: how far its arms differ, and whether it and its P disagree."""
+    from manuscript_guard.stats.intervals import (
+        asymmetry,
+        outside_interval,
+        p_against,
+        reported_intervals,
+    )
+    from manuscript_guard.text.masking import mask
+
+    def reported(text: str) -> list[list[Any]]:
+        found = []
+        for interval in reported_intervals(mask(text)):
+            share = asymmetry(interval)
+            against = p_against(interval)
+            found.append(
+                [interval.start, interval.end, interval.kind, interval.name, interval.estimate,
+                 interval.low, interval.high, interval.level,
+                 None if interval.p is None else list(interval.p), interval.quiet,
+                 interval.p_quiet, None if share is None else f"{share:.12g}",
+                 None if against is None else [against.excludes, against.alpha, against.null],
+                 outside_interval(interval)]
+            )  # fmt: skip
+        return found
+
+    return reported
+
+
 @reading("abbreviations")
 def _abbreviations() -> Reading:
     from manuscript_guard.gates.language import _judge, _Known, _shipped
@@ -390,6 +484,18 @@ def _abbreviations() -> Reading:
 
     _file("")
     return abbreviations
+
+
+@reading("prose quotations")
+def _prose_quotations() -> Reading:
+    """Each quotation of four words or more in a sentence that cites, with the paragraph's
+    line and the works cited: what G7 looks for in the stored sources."""
+    from manuscript_guard.gates.quotations import quotations_in
+
+    def quotations(text: str) -> list[list[Any]]:
+        return [[q.line, q.quote, list(q.keys)] for q in quotations_in(text)]
+
+    return quotations
 
 
 @reading("checker sentences")
@@ -467,6 +573,48 @@ def _quotation() -> Reading:
         }
 
     return quotation
+
+
+# --------------------------------------------------------------------------- placeholders
+
+
+@reading("placeholders")
+def _placeholders() -> Reading:
+    from manuscript_guard.gates.writing import artefacts_in, load_rules
+
+    def placeholders(text: str) -> dict[str, Any]:
+        """What G6's artefact rules find in a text, read as the manuscript and as the text
+        of a figure, a caption or a reference: each rule, where, and what it matched."""
+        rules = load_rules()
+        return {
+            side: [
+                [rule["id"], match.start(), match.group(0)]
+                for rule, match in artefacts_in(rules, text, manuscript=side == "manuscript")
+            ]
+            for side in ("manuscript", "elsewhere")
+        }
+
+    return placeholders
+
+
+@reading("vector figure")
+def _vector_figure() -> Reading:
+    """The texts and lines of an SVG figure as G4 reads them: each text's height and each
+    line's width in units, through every transform, where each text is anchored, and the
+    visible area."""
+    from manuscript_guard.gates.figure_svg import parse_svg
+
+    def marks(document: str) -> dict[str, Any] | None:
+        svg = parse_svg(document)
+        if svg is None:
+            return None
+        return {
+            "texts": [[m.text, f"{m.units:.9g}", [f"{v:.9g}" for v in m.at]] for m in svg.texts],
+            "lines": [f"{m.units:.9g}" for m in svg.lines],
+            "view": None if svg.view is None else [f"{v:.9g}" for v in svg.view],
+        }
+
+    return marks
 
 
 @reading("quote words")

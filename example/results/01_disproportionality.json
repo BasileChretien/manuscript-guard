@@ -2,14 +2,14 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "e0b73a268daf8a5e227f3296b9e0278caa5084cc29fba641c629d797c8f624e7",
-    "generated_at": "2026-10-15T09:16:50+00:00",
+    "generated_by_sha256": "c6b0368e9f89d86be85afff143fb52c923a223595e91249bdfa9442889376ff8",
+    "generated_at": "2026-10-17T03:31:51+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.439"
+      "version": "0.2.443"
     },
     "vcs": {
-      "sha": "97911415d04c6b3189d321a03fa09c928cc0d09d",
+      "sha": "9fef3b41c31036ec21f4901ea4a784f165d4351a",
       "dirty": true,
       "branch": "feat/small-cells"
     },
@@ -18,8 +18,14 @@
         "path": "data/reports.csv",
         "sha256": "55aa913a7f8cbc6c432e263e04fa12f3e148809dbd4ddc6fc8fd5b10c916886c",
         "bytes": 172822
+      },
+      {
+        "path": "data/event_terms.txt",
+        "sha256": "11c7ea29eed993adde1c66775c033e5133bb180a6bfa6f24b7f1fa0609a00c7d",
+        "bytes": 50
       }
     ],
+    "environment": [],
     "session": {
       "language": "Python",
       "version": "3.12.3",
@@ -169,6 +175,12 @@
       "value": 3380,
       "display": "3380",
       "quoted": false
+    },
+    "dictionary.generator_event_terms": {
+      "value": "1",
+      "display": "1",
+      "label": true,
+      "role": "dictionary"
     }
   },
   "tables": {
@@ -624,6 +636,8 @@
       "n_used": 4000,
       "n_dropped": 0,
       "converged": true,
+      "covariance": "nonrobust",
+      "rows_sha256": "bf613ab651f66e796c1818fdd686d4b3ab9c3b1a0f24980f0008e9c544555f92",
       "events": 271,
       "events_by_level": {
         "age_group": {

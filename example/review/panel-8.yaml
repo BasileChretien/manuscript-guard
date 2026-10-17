@@ -1,0 +1,15 @@
+schema: manuscript-guard/panel/1
+round: 8
+opened_on: 2026-10-16
+manuscript_sha256: f3f8738ba532f45757992c2e071669db8c8fcd65a27257bbd398187910f639be
+blinded: false
+rationale: 'A revision round for one sentence. Table S1 now says which dictionary the events
+  were coded with and its release, a value the analysis writes and the note binds. The remit
+  that reads case definitions reads it, with the earlier rounds in front of it.'
+reviewers:
+- id: pharmacoepidemiologist
+  role: Pharmacoepidemiologist
+  remit: Whether the design can answer the question asked. Case and exposure definitions,
+    denominators, the difference between disproportionate reporting and risk, and
+    the biases specific to spontaneous reporting.
+  why: The case definition's dictionary and release are now named in Table S1.

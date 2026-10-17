@@ -15,6 +15,11 @@
 #
 # Guidelines change without announcement, so `source_url` and `retrieved_on` are required:
 # a profile with no provenance is a rumour. G4 warns when one is more than a year old.
+#
+# AND QUOTE THE PAGE. Store the page as text when you read it, and give every rule the words
+# of the page it was read from, under `quotes:` near the end. G4 fails a quote that is not on
+# the stored page and a limit its quote does not state, so a rule read wrong, or never on the
+# page, fails rather than misleading. A rule no gate checks goes under `manual:`, quoted.
 # ─────────────────────────────────────────────────────────────────────────────────────────
 
 schema: manuscript-guard/journal/1
@@ -39,6 +44,12 @@ retrieved_on: 2026-01-01
 # Who or what read it. `manuscript-guard journal` writes its own name here; a person filling
 # this in by hand should write theirs, so a reader knows which to trust.
 retrieved_by: "REPLACE — who or what read the page"
+
+# The page itself, saved as text when it was read: in profiles/journals/sources/<slug>.txt,
+# or wherever `page_file` names, from the project's root. Every quote below is held to it.
+# G4 prints the digest to record once the profile has been read against it.
+# page_file: profiles/journals/sources/my-journal.txt
+# page_sha256: REPLACE — as G4 prints it
 
 # Limits almost always differ by article type — an original article, a brief report and a
 # letter have different ceilings at the same journal. ONE PROFILE DESCRIBES ONE TYPE. If you
@@ -232,6 +243,31 @@ reporting_guidelines:
 #   legend_words: 250
 #   # Rules of their own for supplementary figures, in place of the ones above.
 #   # supplementary: {max_dpi: 300, max_file_mb: 10}
+
+# ── Quotes ───────────────────────────────────────────────────────────────────────────────
+#
+# For every rule above, the words of the stored page it was read from, as the page writes
+# them, under the rule's key: limits.<name>, structure.required_sections,
+# structure.abstract_structured, structure.abstract_headings, structure.abstract_title,
+# required_statements.<id>, references, english_variant, blinding, reporting_guidelines.
+# G4 names every rule that has none. A limit's number must be in its quote, as digits
+# ("3500", "3,500") or as a word up to twenty ("four").
+#
+#   limits.abstract_words: "Abstracts should not exceed 250 words."
+#   required_statements.funding: "All sources of funding must be declared."
+
+quotes: {}
+
+# ── Manual rules ─────────────────────────────────────────────────────────────────────────
+#
+# The rules on the page that no gate checks, each with its quote: a running title, the
+# cover letter's contents, the order of the title page. Nothing on the page is dropped
+# without a trace: it is a field above, or it is here.
+#
+#   - rule: running title
+#     quote: "Provide a running title of no more than 50 characters."
+
+manual: []
 
 # ── Notes ────────────────────────────────────────────────────────────────────────────────
 #

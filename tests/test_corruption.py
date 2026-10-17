@@ -3462,6 +3462,20 @@ def test_an_audited_table_s_n_percent_off_its_denominator_is_listed_apart(
     assert "line 12: n (%) 1,800 (50.0)" in shown
 
 
+def test_a_header_that_names_its_n_before_a_comma_gives_its_denominator(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #314: "Exposed, n = 1200, n (%)" named no denominator, since a count was
+    not read where a comma followed it, and every share under it was held to nothing."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("| | Exposed, n = 1,200, n (%) |\n|---|---|\n"
+                     "| Diabetes | 300 (26.0) |\n", encoding="utf-8")  # fmt: skip
+    [said] = audit([paper], []).disagreements
+    assert said.message.startswith("n (%) 300 (26.0): 300 of 1200 is 25.00%")
+
+
 def _cell(text: str, *, span: int = 1) -> str:
     props = f'<w:tcPr><w:gridSpan w:val="{span}"/></w:tcPr>' if span > 1 else ""
     return f"<w:tc>{props}<w:p>{text}</w:p></w:tc>"
@@ -3524,6 +3538,16 @@ def test_an_n_percent_in_a_word_table_is_read_by_its_row_and_column(tmp_path: Pa
         # Shares of the row's own total.
         "| | A (n = 100) | B (n = 200) |\n|---|---|---|\n"
         "| Exposed, n (%) | 30 (60.0) | 20 (40.0) |\n",
+        # A "%" that is a unit, its mean (SD) printed as whole numbers (round 1 of #314).
+        "| | A (n = 1200) | B (n = 3400) |\n|---|---|---|\n"
+        "| Oxygen saturation, % | 96 (3) | 95 (4) |\n| LVEF, % | 55 (10) | 54 (11) |\n",
+        # A unit in percent under a header that says n (%): a measure all the same.
+        "| | A (n = 1200), n (%) |\n|---|---|\n| HbA1c (%) | 7 (1) |\n"
+        "| Diabetes, n (%) | 300 (25.0) |\n",
+        # The subtypes of another row, shares of it and not of the column (round 1 of #314).
+        "| | A (n = 1200) | B (n = 3400) |\n|---|---|---|\n"
+        "| Diabetes, n (%) | 300 (25.0) | 700 (20.6) |\n| Diabetes type | | |\n"
+        "| Type 1 | 30 (10.0) | 70 (10.0) |\n| Type 2 | 270 (90.0) | 630 (90.0) |\n",
         # In a fenced listing.
         "```\n| | A (n = 1200) |\n|---|---|\n| Diabetes, n (%) | 300 (26.0) |\n```\n",
         # In the reference list.

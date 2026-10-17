@@ -1620,16 +1620,26 @@ reads is unchanged. A cell spanning columns counts as each.
 
 What is read is only a column of shares. A label that names a mean, a median, an SD, an
 IQR, a range or a CI, the row's or the one over its rows, or a header that does, bars it,
-"%" or not: "HbA1c, %, mean (SD)" holds two numbers that are not a count and its share. Of
-the rest, a cell is read where a "%" in it, in the row's label, in the label over its rows
-or in its column's header says so, or where its column's shares add up to 100 over a run
-of rows with no other row between: a characteristic's categories. A row whose shares add up
-to 100 across it is read as shares of its total as well, and is listed only where neither
-reading gives the share printed. A row whose label carries a footnote marker, a
-superscript, a footnote's reference, a dagger, or which names an n of its own, is listed as
-uncertain: a note under the table may give it the patients with data as its denominator.
-A share that is off says which denominators it would fit, which is what a share of those
-with data looks like. Listed with the other disagreements, and not counted by `--strict`.
+"%" or not: "HbA1c, %, mean (SD)" holds two numbers that are not a count and its share. So
+does a row's label that ends on a unit in percent, "Oxygen saturation, %" or "LVEF (%)",
+with no "n" before the "%": a measure, whose mean (SD) is printed as whole numbers beside
+the shares. Of the rest, a cell is read where something says it is a share: a "%" in the
+cell, or "n (%)", "No. (%)" or "n/N (%)" in the row's label, in the label over its rows or
+in its column's header. A "%" alone in a label is a unit and says nothing; read as "these
+are shares", it listed a mean saturation of 96 (3) as 8% of its column (round 1 of #314).
+Or a cell is read where it is one of a characteristic's categories, the rows under a label
+of their own, and their shares in its column add up to about 100.
+
+A share is listed only where no reading of it gives the share printed: of its denominator;
+of its row's total, where the row's shares add up to 100 across it; or of its categories'
+total, where their shares add up to 100 down the column. The last is what the subtypes of
+another row are, "Type 1" and "Type 2" as shares of those with diabetes, and what a
+characteristic counted among those with data is (round 1 of #314: both were listed as
+errors). A row whose label carries a footnote marker, a superscript, a footnote's reference,
+a dagger, or which names an n of its own, is listed as uncertain: a note under the table may
+give it the patients with data as its denominator. A share that is off says which
+denominators it would fit, which is what a share of those with data looks like. Listed with
+the other disagreements, and not counted by `--strict`.
 
 ## A model is read from its fit, and each variable says what it is
 
@@ -5489,7 +5499,13 @@ Added by the adversarial review, verified and **not** fixed:
   row's label carries a footnote marker, as plainly off where it does not. A row whose
   shares add up to 100 across it is let off if they are shares of its total, so a wrong
   share in a row of two that happens to add up to 100 with the other, and fits the row's
-  total, is not listed. A nested Word table is read as text in its cell.
+  total, is not listed; and a row-percentage table with a Total column, whose shares add up
+  to 200, is listed whole. Categories that add up to 100 are let off as shares of their own
+  total in the same way. A group label's "n (%)" reaches every row with a count below it
+  until a row without one, and a data row with no count in it is read as a header, so its
+  "n = 980" becomes the denominator below it. A superscript unit in a label, kg/m^2^, reads as
+  a footnote marker and makes the row uncertain. A nested Word table is read as text in its
+  cell.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did

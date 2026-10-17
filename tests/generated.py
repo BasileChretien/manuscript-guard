@@ -857,8 +857,14 @@ MARKERS = (
 #: Rows that name another statistic, which are never read as shares, although each says %.
 NOT_SHARES = ("HbA1c, %, mean (SD)", "Ejection fraction, %, median (IQR)",
               "Adherence, %, median (range)")  # fmt: skip
+#: Rows whose label gives a unit, a "%", and whose mean (SD) is printed as whole numbers:
+#: never read as shares either (round 1 of #314).
+UNITS = ("Oxygen saturation, %", "LVEF, %", "Haematocrit, %")
 #: The kinds of row each table of `share_tables` holds one of.
-SHARE_ROWS = ("right", "wrong", "mean", "noted", "group", "summed", "own", "of the row")
+SHARE_ROWS = (
+    "right", "wrong", "mean", "unit", "noted", "group", "summed", "subtypes", "own",
+    "of the row",
+)  # fmt: skip
 
 #: A share as the reading finds it: its line, count, share as printed, denominator, whether
 #: it is uncertain, and whether it is off.
@@ -895,10 +901,12 @@ def _wrong(draw: st.DrawFn, percents: list[str], which: int, places: int) -> lis
 def share_tables(draw: st.DrawFn) -> tuple[str, list[Shared]]:
     """A paper with a table of shares, a row of each kind of `SHARE_ROWS` in an order drawn:
     shares right under a label that says n (%), and one wrong among cells that say %; a mean
-    (SD); a share wrong under a label with a footnote marker; the categories of a
-    characteristic under a label that says n (%), and those of one under a label that says
-    nothing, whose shares add up to 100; a count with its own denominator, one right and one
-    wrong; and a row of shares of its own total, which are not their column's. Then a table
+    (SD), under a label that names it, and under one whose "%" is a unit; a share wrong
+    under a label with a footnote marker; the categories of a characteristic under a label
+    that says n (%), and those of one under a label that says nothing, whose shares add up
+    to 100; a row and its subtypes, shares of that row's count; a count with its own
+    denominator, one right and one wrong; and a row of shares of its own total, which are
+    not their column's. Then a table
     whose header names no denominator, the first table's wrong share in a fenced listing,
     and a count and its share in a sentence, none of which is held to anything. With each
     share the reading finds (`Shared`), in the order it finds them."""
@@ -930,8 +938,24 @@ def share_tables(draw: st.DrawFn) -> tuple[str, list[Shared]]:
         counts = [draw(st.integers(0, n)) for n in overs]
         return counts, [_printed(c, n, places) for c, n in zip(counts, overs, strict=True)]
 
-    row("Characteristic", [draw(st.sampled_from(HEADED)).format(arm=arm, n=count(n))
-                           for arm, n in zip(("Exposed", "Unexposed"), sizes, strict=True)])
+    def cut(totals: list[int]) -> None:
+        """Categories under a label of their own, each arm's total cut among them, so that
+        their shares of it add up to 100; and a row after them that ends their run."""
+        parts = draw(st.integers(2, 4))
+        edges = [[0, *sorted(draw(st.lists(st.integers(0, n), min_size=parts - 1,
+                                           max_size=parts - 1))), n] for n in totals]
+        for at, category in enumerate(CATEGORIES[:parts]):
+            counts = [edge[at + 1] - edge[at] for edge in edges]
+            percents = [_printed(c, n, places) for c, n in zip(counts, totals, strict=True)]
+            shares(category, counts, percents, sizes)
+        row("Age, years", ["54.2 (12.1)", "55.0 (11.8)"])
+
+    # The first arm's header says its numbers are n (%), as a table that gives the other
+    # statistics in its labels does; the second's says nothing, so that what else says a
+    # cell is a share is drawn too.
+    headers = [draw(st.sampled_from(HEADED)).format(arm=arm, n=count(n))
+               for arm, n in zip(("Exposed", "Unexposed"), sizes, strict=True)]  # fmt: skip
+    row("Characteristic", [f"{headers[0]}, n (%)", headers[1]])
     lines.append("|---|---|---|")
     fenced = ""
     for kind in draw(st.permutations(SHARE_ROWS)):
@@ -949,25 +973,26 @@ def share_tables(draw: st.DrawFn) -> tuple[str, list[Shared]]:
                 label = draw(name)
                 label = f"{label}, n (%){marker}" if last else f"{label}{marker}, n (%)"
                 shares(label, counts, percents, sizes, wrong=which, noted=True)
-        elif kind == "mean":
-            row(draw(st.sampled_from(NOT_SHARES)),
+        elif kind in ("mean", "unit"):
+            row(draw(st.sampled_from(NOT_SHARES if kind == "mean" else UNITS)),
                 [f"{draw(st.integers(1, 99))} ({draw(st.integers(1, 40))})" for _arm in sizes])
         elif kind == "group":
             row(f"{draw(st.sampled_from(SPLIT_BY))}, n (%)", ["", ""])
             for category in CATEGORIES[: draw(st.integers(2, 4))]:
                 shares(category, *counted(sizes), sizes)
+            row("Age, years", ["54.2 (12.1)", "55.0 (11.8)"])
         elif kind == "summed":
             row(draw(st.sampled_from(SPLIT_BY)), ["", ""])
-            parts = draw(st.integers(2, 4))
-            # Each arm cut into the categories, so that their shares add up to 100.
-            edges = [[0, *sorted(draw(st.lists(st.integers(0, n), min_size=parts - 1,
-                                               max_size=parts - 1))), n] for n in sizes]
-            for at, category in enumerate(CATEGORIES[:parts]):
-                counts = [edge[at + 1] - edge[at] for edge in edges]
-                percents = [_printed(c, n, places) for c, n in zip(counts, sizes, strict=True)]
-                shares(category, counts, percents, sizes)
-            # The run of categories ends here, at a label of its own.
-            row("Other characteristics", ["", ""])
+            cut(sizes)
+        elif kind == "subtypes":
+            # A row, and the subtypes of what it counts: shares of that count, which is at
+            # most half its arm's, so that the largest subtype is not its column's share.
+            parent = draw(name)
+            within = [draw(st.integers(10, n // 2)) for n in sizes]
+            shares(f"{parent}, n (%)", within,
+                   [_printed(c, n, places) for c, n in zip(within, sizes, strict=True)], sizes)
+            row(f"{parent} type", ["", ""])
+            cut(within)
         elif kind == "own":
             owns = [draw(st.integers(10, 900)) for _arm in sizes]
             counts, percents = counted(owns)

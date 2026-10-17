@@ -1256,11 +1256,11 @@ def test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denomin
 ) -> None:
     """Item 19: each count and its share in a pipe table is found where it stands, with its
     denominator: its own, its column header's n, or none. A row whose label names a mean or
-    a median is not read although it says %, nor a table in a fenced listing, nor a share in
-    a sentence; a characteristic's categories whose shares add up to 100 are read with
-    nothing else to say so. A share is off where neither its denominator nor its row's total
-    gives it within half a unit of its last place, and uncertain where its row's label
-    carries a footnote marker."""
+    a median is not read although it says %, nor one whose "%" is a unit, nor a table in a
+    fenced listing, nor a share in a sentence; a characteristic's categories whose shares
+    add up to 100 are read with nothing else to say so. A share is off where neither its
+    denominator, nor its row's total, nor its categories' total gives it within half a unit
+    of its last place, and uncertain where its row's label carries a footnote marker."""
     from manuscript_guard.stats.shares import off, table_shares
     from manuscript_guard.text.tables import markdown_tables
 
@@ -1272,11 +1272,31 @@ def test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denomin
 
 
 def _a_share_is_held_to_its_printed_value(patch: pytest.MonkeyPatch) -> None:
+    """Only the share's own tolerance: what adds up to 100 keeps its slack (round 1 of
+    #314)."""
+    from decimal import Decimal
     from fractions import Fraction
 
     from manuscript_guard.stats import shares
 
-    patch.setattr(shares, "_half", lambda percent: Fraction(0))
+    def exact(count: int, over: int, percent: str) -> bool:
+        return over > 0 and Fraction(100 * count, over) == Fraction(Decimal(percent))
+
+    patch.setattr(shares, "_fits", exact)
+
+
+def _a_unit_percent_says_shares(patch: pytest.MonkeyPatch) -> None:
+    """Both halves: a "%" in a label says shares, and a unit no longer bars its row."""
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_SAYS_SHARES", re.compile("%"))
+
+
+def _categories_are_held_to_their_column_alone(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    summed = shares._summed
+    patch.setattr(shares, "_summed", lambda rows: dict.fromkeys(summed(rows)))
 
 
 def _a_label_naming_a_mean_is_read_as_shares(patch: pytest.MonkeyPatch) -> None:
@@ -1288,7 +1308,7 @@ def _a_label_naming_a_mean_is_read_as_shares(patch: pytest.MonkeyPatch) -> None:
 def _shares_adding_up_to_100_say_nothing(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import shares
 
-    patch.setattr(shares, "_summed", lambda rows: set())
+    patch.setattr(shares, "_summed", lambda rows: {})
 
 
 def _a_row_is_never_read_as_shares_of_its_total(patch: pytest.MonkeyPatch) -> None:
@@ -4031,6 +4051,14 @@ BROKEN = {
     ),
     "a row whose label names a mean or a median is read as shares": (
         _a_label_naming_a_mean_is_read_as_shares,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a label whose % is a unit says its numbers are shares": (
+        _a_unit_percent_says_shares,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a characteristic's categories are held to their column's n alone": (
+        _categories_are_held_to_their_column_alone,
         test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
     ),
     "categories whose shares add up to 100 are not read as shares": (

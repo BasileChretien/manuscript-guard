@@ -13,14 +13,19 @@ its denominator against the share printed, within half a unit of its last printe
 * **Only a column of shares is read.** A row whose label, or the label of the rows it falls
   under, names a mean, a median, an SD, an IQR or a range is never read, nor a column whose
   header names one: mean (SD) and median (IQR) never fire. Of the rest, a cell is read where
-  something says it is a share: a "%" in the cell, in the row's label, in the label of the
-  rows it falls under or in its column's header; or the shares of its column add up to about
-  100 over a run of rows, the categories of one characteristic.
+  something says it is a share: a "%" in the cell; "n (%)", "No. (%)" or "n/N (%)" in the
+  row's label, in the label of the rows it falls under or in its column's header; or, for
+  the categories of one characteristic, the rows under a label of their own, shares of its
+  column that add up to about 100. A "%" alone in a label is a unit, and a row whose label
+  ends on one, "Oxygen saturation, %", is a measure and never read (round 1 of #314: its
+  mean (SD) was read as a count and its share).
 * **The denominator is the cell's own, or its column's**: the "n = N" of the column's header,
   the nearest above it in a row with no count in it. With neither, nothing is checked.
-* **A share of the row is not wrong.** Where a row's shares add up to about 100 across its
-  columns, it is read as shares of the row's total as well, and is off only where neither
-  reading gives the share printed.
+* **A share of the row, or of the categories' own total, is not wrong.** Where a row's
+  shares add up to about 100 across its columns, it is read as shares of the row's total as
+  well; and where a characteristic's categories add up to about 100 down a column, as shares
+  of their own total, which is what a subtype of another row, or a share of those with data,
+  is (round 1 of #314). A share is off only where no reading gives the share printed.
 * **A row whose label carries a footnote marker is uncertain**: a note under the table may
   give it another denominator, those with data, say. It is listed, and says so.
 
@@ -40,12 +45,22 @@ from fractions import Fraction
 from manuscript_guard.text.tables import Table, TableCell
 
 _SPACES = "\N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE} "
-#: A whole number, with its thousands apart or not.
-_COUNT = rf"(?:\d{{1,3}}(?:[,{_SPACES}]\d{{3}})+(?![\d.])|\d+(?![\d.,]))"
+#: A whole number, with its thousands apart or not; not the start of "1,23". A comma after
+#: it ends it: "Exposed, n = 40, n (%)" names 40 (round 1 of #314).
+_COUNT = rf"(?:\d{{1,3}}(?:[,{_SPACES}]\d{{3}})+(?![\d.])|\d+(?![\d.]|,\d))"
 _SHARE = re.compile(
     rf"(?P<count>{_COUNT})(?:\s*/\s*(?P<over>{_COUNT}))?\s*[(\[]\s*"
     r"(?P<percent>\d{1,3}(?:\.\d+)?)\s*(?P<sign>%)?\s*[)\]]"
 )
+#: What says the numbers under a label or a header are counts and their shares: "n (%)",
+#: "No. (%)", "n/N (%)", "n, %". A "%" alone is a unit.
+_SAYS_SHARES = re.compile(
+    r"(?<![A-Za-z])(?:n|no\.?|number)\s*(?:/\s*n\s*)?(?:[(\[]\s*%\s*[)\]]|,\s*%)",
+    re.IGNORECASE,
+)
+#: A label that ends on a unit in percent, "Oxygen saturation, %" or "LVEF (%)": a measure,
+#: whose numbers are its mean and spread, unless "n" stands before the "%".
+_UNIT = re.compile(r"(?:,|\()\s*%\s*\)?\s*$")
 #: A denominator a header or a label names: "n = 1200", "(N=1,200)".
 _N = re.compile(rf"(?<![A-Za-z])[nN]\s*=\s*(?P<n>{_COUNT})")
 #: What says a number in brackets is not a share. Read before a "%": a label that names a
@@ -55,13 +70,16 @@ _NOT_A_SHARE = re.compile(
     r"|range|min(?:imum)?|max(?:imum)?|CI|percentiles?|quartiles?)\b",
     re.IGNORECASE,
 )
+#: Raised letters, and the superscript and subscript block.
+_RAISED_LETTERS = f"{chr(0x1D2C)}-{chr(0x1D6A)}{chr(0x1D9B)}-{chr(0x1DBF)}"
+_RAISED_DIGITS = f"{chr(0x2070)}-{chr(0x209F)}"
 #: A footnote marker: a superscript, `^a^` as Markdown and the table reader write it, a
 #: footnote's own `[^1]`, a dagger and its kin, a raised letter; an asterisk, a hash or a
 #: raised digit at the end.
 _NOTE = re.compile(
     r"\^[^^\s]{1,8}\^|\[\^[^\]\s]+\]|[\N{DAGGER}\N{DOUBLE DAGGER}\N{SECTION SIGN}"
-    r"\N{PILCROW SIGN}\N{DOUBLE VERTICAL LINE}ᴬ-ᵪᶛ-ᶿ]"
-    r"|[*#\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO}\N{SUPERSCRIPT THREE}⁰-₟]+\s*$"
+    rf"\N{{PILCROW SIGN}}\N{{DOUBLE VERTICAL LINE}}{_RAISED_LETTERS}]"
+    rf"|[*#\N{{SUPERSCRIPT ONE}}\N{{SUPERSCRIPT TWO}}\N{{SUPERSCRIPT THREE}}{_RAISED_DIGITS}]+\s*$"
 )
 #: Emphasis around a whole cell, `**12 (3.0)**`.
 _EMPHASIS = re.compile(r"(\*{1,3}|_{1,3})(?P<inner>.+)\1")
@@ -85,6 +103,9 @@ class Share:
     own: bool
     #: Where the row's shares add up to about 100 across it, their counts summed.
     row_total: int | None
+    #: Where it is one of a characteristic's categories, and their shares in its column add
+    #: up to about 100, their counts summed.
+    run_total: int | None
     #: The row's label, as printed.
     label: str
     #: Why its denominator may be another, where the table says so.
@@ -103,8 +124,10 @@ class _Row:
     over: dict[int, int]
     #: Each column whose header says it holds shares (True) or another statistic (False).
     said: dict[int, bool]
-    #: Rows with no count between them share a run: the categories of one characteristic.
+    #: Rows with no count between them share a run.
     run: int
+    #: Whether the run opens under a label of its own: the categories of one characteristic.
+    categories: bool
     context: str
 
 
@@ -126,7 +149,7 @@ def table_shares(table: Table) -> list[Share]:
                 count=_whole(match.group("count")),
                 percent=match.group("percent"),
                 over=_whole(own) if own else row.over.get(column), own=bool(own),
-                row_total=total, label=row.label,
+                row_total=total, run_total=summed.get((row.run, column)), label=row.label,
                 uncertain=_uncertain(row, cell), context=row.context,
             ))  # fmt: skip
     return found
@@ -134,12 +157,14 @@ def table_shares(table: Table) -> list[Share]:
 
 def off(share: Share) -> bool:
     """Whether the share printed is not what the count gives of its denominator, nor of the
-    row's total where its row reads as shares of that."""
+    row's total where its row reads as shares of that, nor of its categories' total."""
     if share.over is None:
         return False
-    if _fits(share.count, share.over, share.percent):
-        return False
-    return share.row_total is None or not _fits(share.count, share.row_total, share.percent)
+    return not any(
+        _fits(share.count, over, share.percent)
+        for over in (share.over, share.row_total, share.run_total)
+        if over is not None
+    )
 
 
 def described(share: Share) -> str:
@@ -170,7 +195,7 @@ def _rows(table: Table) -> list[_Row]:
     rows: list[_Row] = []
     over: dict[int, int] = {}
     said: dict[int, bool] = {}
-    group, run = "", 0
+    group, run, categories = "", 0, False
     for row in table:
         placed = list(_columns(row))
         label = row[0].text if row else ""
@@ -179,18 +204,19 @@ def _rows(table: Table) -> list[_Row]:
             if (match := _SHARE.fullmatch(_clean(cell.text)[0])) is not None
         )  # fmt: skip
         if not shaped:
-            run += 1
+            run, categories = run + 1, False
             if any(cell.text.strip() for _column, cell in placed[1:]):
                 group = ""
                 for column, cell in placed[1:]:
                     _header(cell, column, over, said)
             elif label.strip():
-                group = label
+                group, categories = label, True
             continue
         context = " | ".join(" ".join(cell.text.split()) for cell in row)
         if len(context) > _CONTEXT:
             context = context[: _CONTEXT - 1] + "\N{HORIZONTAL ELLIPSIS}"
-        rows.append(_Row(shaped, label, group, dict(over), dict(said), run, context))
+        rows.append(_Row(shaped, label, group, dict(over), dict(said), run, categories,
+                         context))  # fmt: skip
     return rows
 
 
@@ -212,33 +238,40 @@ def _header(cell: TableCell, column: int, over: dict[int, int], said: dict[int, 
             over[each] = next(iter(named))
         if _NOT_A_SHARE.search(cell.text):
             said[each] = False
-        elif "%" in cell.text:
+        elif _SAYS_SHARES.search(cell.text):
             said[each] = True
 
 
 def _barred(row: _Row, column: int) -> bool:
     """Whether the row's label, the label over it or the column's header names another
-    statistic."""
-    return bool(_NOT_A_SHARE.search(row.label) or _NOT_A_SHARE.search(row.group)) or \
+    statistic, or the row's label a unit in percent: under a header that says n (%), the
+    mean (SD) of "Oxygen saturation, %" is printed beside the shares (round 1 of #314)."""
+    unit = bool(_UNIT.search(row.label)) and not _SAYS_SHARES.search(row.label)
+    return unit or bool(_NOT_A_SHARE.search(row.label) or _NOT_A_SHARE.search(row.group)) or \
         row.said.get(column) is False  # fmt: skip
 
 
 def _a_share(row: _Row, column: int, cell: TableCell, summed: bool) -> bool:
     if _barred(row, column):
         return False
-    return "%" in cell.text or "%" in row.label or "%" in row.group or \
-        row.said.get(column) is True or summed  # fmt: skip
+    return "%" in cell.text or bool(_SAYS_SHARES.search(row.label)) or \
+        bool(_SAYS_SHARES.search(row.group)) or row.said.get(column) is True or summed  # fmt: skip
 
 
-def _summed(rows: list[_Row]) -> set[tuple[int, int]]:
-    """Each run and column whose shares add up to about 100: a characteristic's categories,
-    with nothing else to say they are shares."""
-    printed: dict[tuple[int, int], list[str]] = {}
+def _summed(rows: list[_Row]) -> dict[tuple[int, int], int]:
+    """Each run of a characteristic's categories, the rows under a label of their own, and
+    each column in which their shares add up to about 100, with their counts summed: what
+    they are shares of, whether or not anything else says they are shares."""
+    printed: dict[tuple[int, int], list[re.Match[str]]] = {}
     for row in rows:
-        for column, _cell, match in row.cells:
+        for column, _cell, match in row.cells if row.categories else ():
             if not _barred(row, column):
-                printed.setdefault((row.run, column), []).append(match.group("percent"))
-    return {where for where, percents in printed.items() if _about_100(percents)}
+                printed.setdefault((row.run, column), []).append(match)
+    return {
+        where: sum(_whole(match.group("count")) for match in matches)
+        for where, matches in printed.items()
+        if _about_100([match.group("percent") for match in matches])
+    }
 
 
 def _row_total(matches: list[re.Match[str]]) -> int | None:

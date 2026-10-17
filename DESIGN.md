@@ -512,6 +512,43 @@ manuscript said Figure 1 showed the estimate "against the comparators" and the f
 one row. Every other gate passed it, because every number in the figure was correct. The
 sentence was what was wrong.
 
+## The journal shortlist is a record
+
+The journal-profile skill had the agent propose three to five journals and the author
+choose, and said to record the shortlist and the decision in the project without naming a
+file or a shape. `journals/shortlist.yaml` is that record, held to a schema
+(`contracts/schemas/shortlist.schema.json`):
+
+* the author's criteria, asked for first and written down with who stated them and when:
+  the article type, open access and a funder's mandate, the APC budget, speed, the indexing
+  required, the audience, and how strong the author judges the contribution, which is their
+  statement and never an agent's grade;
+* the candidates, each claim made of one with its source URL and the date it was read, the
+  recent papers like this one that justify the fit, and the honest risk;
+* the ranking and its reasons, the decision and who made it, and the history of earlier
+  choices, which is what the skill reads again after a rejection.
+
+Whether a journal is one the registries know follows the pattern of `lookup`: an opt-in
+command asks, the answers are kept dated, and `check` reads them offline.
+`lookup --journals` asks the NLM Catalog (through E-utilities: ESearch on `<issn>[IS]`,
+ESummary's `currentindexingstatus`) whether each ISSN's journal is currently indexed for
+MEDLINE, and DOAJ (its search API, version 4) whether it is listed. It sends an ISSN and
+nothing of the manuscript. Each answer is kept in `journals/lookups/<issn>.yaml` with the
+digest of what it says. G4 warns when the target journal, found by its profile, by the
+profile's name or else by the decision, is not currently indexed for MEDLINE on any of its
+ISSNs (`journal-not-in-medline`), and when it is open access and DOAJ lists it on none
+(`journal-not-in-doaj`). A predatory journal is in neither, and a sound one can be outside
+them; the author can say why in the candidate (`outside_medline`, `outside_doaj`), and the
+warning is then a note that quotes them. Neither ever fails (decided 2026-10-15). A record
+that is missing or edited, or an answer that did not come, is no evidence either way: a
+note (`journal-not-looked-up`). A journal ranked or chosen that is not among the candidates
+is a warning (`shortlist-unknown-journal`), and so is a shortlist that breaks its schema.
+
+Finding the journals that publish papers like this one is the skill's work, not the
+command's: a journal-name estimator that takes a title and an abstract, and PubMed. Both are
+asked by the agent, with the author's knowledge, and each claim is recorded with its source
+and date. The command never sends the manuscript's text anywhere.
+
 ## A figure file meets the journal's artwork guide
 
 A journal states the formats it takes, the resolution each kind of figure needs at the width
@@ -6545,6 +6582,15 @@ Closed since, and why each mattered:
   at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
   input is missing by mistake rather than by design is caught only where another finding
   depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
+- **A journal is looked up by its ISSN, and judged by two registries.** A shortlist entry
+  with no ISSN is not looked up, and an ISSN mistyped as another journal's is looked up as
+  that journal. Being currently indexed for MEDLINE and listed in DOAJ is evidence against a
+  predatory journal, not proof of a sound one, and a journal can leave either after it was
+  asked; the record is as old as the day it was asked. A journal's being open access is the
+  shortlist's word (`open_access: true`), not read from DOAJ. The target journal is matched
+  to the shortlist by its profile's slug or its name, so a candidate named otherwise than
+  its profile is not found. The record's digest catches an edit, not someone who computes it
+  again.
 - **A lookup record is kept beside what it describes, so it catches an edit, not a
   forger.** `answers_sha256` is in the record it digests: an answer edited by hand is
   reported, and one edited by someone who computes the digest again is not. A reference

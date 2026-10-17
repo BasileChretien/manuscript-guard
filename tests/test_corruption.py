@@ -4525,6 +4525,103 @@ def _journal(root: Path):
     return check_journal(project)
 
 
+# ---------------------------------------------------- the journal shortlist (item 49)
+
+
+def _shortlist_said(root: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.shortlist import check_shortlist
+
+    project, _ = load_project(root)
+    return [(f.code, f.severity) for f in check_shortlist(project).findings]
+
+
+def _target_said(root: Path, table=None, **candidate) -> list[tuple[str, str]]:
+    """G4 of the example's journal, shortlisted with these fields and looked up."""
+    from test_journal_lookup import look_up_journals, write_shortlist
+
+    write_shortlist(root, **candidate)
+    look_up_journals(root, table)
+    return _shortlist_said(root)
+
+
+def test_a_shortlist_is_held_to_its_schema_as_a_warning(project: Path) -> None:
+    from test_journal_lookup import write_shortlist
+
+    assert _shortlist_said(project) == []
+    write_shortlist(project, issn=["1111-111"])
+    assert _shortlist_said(project) == [("shortlist-schema", "warn")]
+
+
+def test_a_journal_chosen_from_outside_the_shortlist_is_said(project: Path) -> None:
+    from test_journal_lookup import write_shortlist
+
+    write_shortlist(project)
+    path = project / "journals" / "shortlist.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["decision"]["journal"] = "A Journal Nobody Considered"
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert ("shortlist-unknown-journal", "warn") in _shortlist_said(project)
+
+
+def test_a_target_journal_not_indexed_for_medline_is_said(project: Path) -> None:
+    """Item 49: a predatory journal is in neither MEDLINE nor DOAJ. The shortlist chose the
+    example's journal, and the NLM Catalog said it is not currently indexed."""
+    from test_journal_lookup import Table, esearch, esummary
+
+    assert _target_said(project) == []
+    assert _target_said(project, Table(esummary=esummary("N"))) == [
+        ("journal-not-in-medline", "warn")
+    ]
+    assert _target_said(project, Table(esearch=esearch())) == [("journal-not-in-medline", "warn")]
+    # The author's reason makes it a note that quotes them.
+    said = _target_said(project, Table(esummary=esummary("N")),
+                        outside_medline="A society journal of the field, indexed in Embase.")
+    assert said == [("journal-not-in-medline", "info")]
+
+
+def test_an_open_access_target_journal_not_in_doaj_is_said(project: Path) -> None:
+    from test_journal_lookup import Table, listed
+
+    assert _target_said(project, Table(doaj=listed(total=0))) == []
+    assert _target_said(project, Table(doaj=listed(total=0)), open_access=True) == [
+        ("journal-not-in-doaj", "warn")
+    ]
+    assert _target_said(project, open_access=True) == []
+
+
+def test_what_is_not_known_of_the_target_journal_is_a_note(project: Path) -> None:
+    """An answer that did not come, or a record missing or edited, is no evidence that the
+    journal is outside MEDLINE: a note, and no warning."""
+    from test_journal_lookup import ONLINE, Table, _json, esummary, write_shortlist
+
+    said = _target_said(project, Table(esearch=_json(500, {})), open_access=True)
+    assert said == [("journal-not-looked-up", "info")]
+    write_shortlist(project)
+    for record in (project / "journals" / "lookups").glob("*.yaml"):
+        record.unlink()
+    assert _shortlist_said(project) == [("journal-not-looked-up", "info")]
+    _target_said(project, Table(esummary=esummary("N")))
+    edited = project / "journals" / "lookups" / f"{ONLINE}.yaml"
+    edited.write_text(edited.read_text(encoding="utf-8").replace("2026-10-17", "2026-10-18"),
+                      encoding="utf-8")  # fmt: skip
+    assert _shortlist_said(project) == [("journal-not-looked-up", "info")]
+
+
+def test_the_target_journal_is_found_by_its_profile_its_name_or_the_decision(
+    project: Path,
+) -> None:
+    from test_journal_lookup import Table, esummary
+
+    no = Table(esummary=esummary("N"))
+    assert _target_said(project, no, profile="another-profile") == [
+        ("journal-not-in-medline", "warn")
+    ]  # by the profile's name, "Journal of Demonstrative Pharmacoepidemiology"
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8").replace("target_journal: demo-journal\n",
+                                                               ""), encoding="utf-8")  # fmt: skip
+    assert _target_said(project, no) == [("journal-not-in-medline", "warn")]
+
+
 #: What G4 says of the figure files.
 _ARTWORK_CODES = ("figure-format", "figure-resolution", "figure-height", "figure-file-size",
                   "figure-shrinks", "legend-words")  # fmt: skip

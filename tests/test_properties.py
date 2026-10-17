@@ -35,7 +35,9 @@ from typing import Any
 import pytest
 from generated import (
     AGREED,
+    DATA_IDENTIFIERS,
     FILLER,
+    FIXED_LINKS,
     HELD,
     INPUTS,
     LOOKALIKES,
@@ -43,6 +45,7 @@ from generated import (
     PLACEHOLDERS,
     SOURCE_GAPS,
     SOURCE_WORDS,
+    TEMPORARY_LINKS,
     TERMS,
     TYPOGRAPHY,
     bindings,
@@ -583,6 +586,40 @@ def _seen_and_judged(text: str) -> None:
             with_scan = CLASSIFIER.classify(atom, chain, scan)
             assert with_scan == CLASSIFIER.classify(atom, chain), (text, atom.text)
             assert with_scan.kind in (TERM, STRUCTURAL, CONVENTION, UNCLASSIFIED)
+
+
+# ------------------------------------------------------------------- a data statement
+
+
+@st.composite
+def _statements(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """Drawn words, and the same with every kind of link put in at places drawn: each
+    temporary one, and each link to a fixed version of a repository."""
+    text = draw(texts())
+    pieces = text.split(" ")
+    for link in TEMPORARY_LINKS + FIXED_LINKS:
+        pieces.insert(draw(st.integers(0, len(pieces))), link)
+    return text, " ".join(pieces)
+
+
+@holds(100, _statements())
+def test_each_identifier_names_data_and_each_temporary_link_is_found(
+    drawn: tuple[str, str],
+) -> None:
+    """Whatever the words around it, each kind of identifier satisfies a journal that asks
+    for one, and each temporary link is found, and no link to a fixed version."""
+    from manuscript_guard.gates.data_statement import judge_statement
+
+    text, linked = drawn
+    policy = {"identifier_required": True}
+    for identifier in DATA_IDENTIFIERS:
+        said = judge_statement(f"{text} {identifier} {text}", policy, set(), Path("x"))
+        assert "data-identifier-missing" not in {f.code for f in said.findings}, identifier
+    found = judge_statement(linked, {}, set(), Path("x")).findings
+    temporary = sorted(f.message.split("'")[1] for f in found if f.code == "data-link-temporary")
+    before = judge_statement(text, {}, set(), Path("x")).findings
+    drawn_links = sorted(f.message.split("'")[1] for f in before if f.code == "data-link-temporary")
+    assert temporary == sorted(drawn_links + list(TEMPORARY_LINKS)), (temporary, linked)
 
 
 # ------------------------------------------------------------- what the plan's deviations say
@@ -3959,6 +3996,19 @@ def _an_isbn_13_is_weighed_as_an_isbn_10(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(identifiers, "isbn_valid", valid)
 
 
+def _an_accession_number_is_no_identifier(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_statement
+
+    patch.setattr(data_statement, "IDENTIFIERS", data_statement.IDENTIFIERS[:1])
+
+
+def _a_release_is_temporary(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_statement
+
+    loose = data_statement.TEMPORARY.pattern.replace("/?(?![\\w/-])", "")
+    patch.setattr(data_statement, "TEMPORARY", re.compile(loose, re.IGNORECASE))
+
+
 def _placeholder_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
     from dataclasses import replace
 
@@ -4947,6 +4997,14 @@ BROKEN = {
     "an ISBN's groups are read as ISBNs": (
         _an_isbn_s_groups_are_read_as_isbns,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "an accession number is no identifier": (
+        _an_accession_number_is_no_identifier,
+        test_each_identifier_names_data_and_each_temporary_link_is_found,
+    ),
+    "a link to a release is temporary": (
+        _a_release_is_temporary,
+        test_each_identifier_names_data_and_each_temporary_link_is_found,
     ),
     "a karyotype is read as a placeholder": (
         _a_karyotype_is_a_placeholder,

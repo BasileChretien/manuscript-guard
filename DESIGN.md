@@ -1127,6 +1127,21 @@ Two smaller decisions fell out of this:
 - **"n/a" is rejected as a reason.** A checklist item excluded needs a reason a reviewer
   could read — "no interventions were assigned" — because a reviewer does read this file.
 
+**What the Data availability statement says is the journal's rule, not the tool's.** G4 found
+the statement's heading and read nothing under it. Publishers differ on what it must hold:
+Springer Nature asks that data which cannot be shared openly say why, PLOS accepts "on
+request" only for data that cannot be public and holds a paper until its identifiers come
+(both pages read 2026-10-15), and this toolkit's own example names no identifier at all. A
+universal rule would be wrong for most of them. So a profile records its journal's policy in
+`data_availability`, with the page and the day it was read: the phrasings the journal does
+not accept, each with what makes it acceptable (`unless`, a reason or a route), whether a
+persistent identifier is required, and the journal's own forms for an article with no data.
+G4 reads the statement against them and fails what the journal does not accept, from
+internal review. Two warnings follow wherever a profile records a policy: storage that is
+neither persistent nor archived, a shared drive or a repository on a code host linked bare
+(a release, a tag or a commit is a fixed version), and a dataset DOI that the reference list
+does not cite, since data a paper rests on are cited like any other source.
+
 ## Word counting is a stated rule
 
 A limit is only checkable if both sides agree what is counted, and journals rarely say. The
@@ -8373,6 +8388,22 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A data statement is read by patterns, and only where the profile records a policy.** An
+  identifier is a DOI, an accession number of the archives listed in
+  `gates/data_statement.py` (GEO, SRA and its peers, BioProject, EGA, ArrayExpress, dbGaP),
+  a handle or an ARK, a Zenodo record, an OSF project, or a page archived by the Internet
+  Archive or Perma.cc; another archive's accession is found only where the profile lists it.
+  An identifier anywhere in the statement satisfies the rule, whatever it names, and so does
+  the DOI of a dataset the statement cites by its key: an entry of type `dataset` only, so a
+  `@misc` that holds a dataset and says nothing of it is not read as one. A forbidden
+  phrasing is matched as the profile writes it, without regard to case, and its `unless`
+  anywhere in the statement accepts it. The statement is the section under its heading, its subsections included, the
+  outermost where several headings match; a statement written as a paragraph with no heading
+  of its own is not read. A link to a repository with any path after its name, a branch's as
+  much as a release's, is taken for a fixed version, and a bare repository is warned of even
+  where the statement names its archive too. A dataset's DOI counts as cited when an entry of
+  `references.bib` holds it, whether the text cites that entry or not. A regular expression
+  in the profile that does not compile stops G4, as one in its required statements does.
 - **A placeholder is found by its kind, and only in the text the gate reads.** In the
   manuscript TODO and TBD count in any case, as they always did, so a Spanish "todo" quoted
   in the prose is one. A slot in brackets in a form the rules do not name, "[Name of the

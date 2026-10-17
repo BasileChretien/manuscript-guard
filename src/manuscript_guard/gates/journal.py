@@ -19,6 +19,7 @@ from pathlib import Path
 from manuscript_guard.contracts._schema import ContractError, read_structured, read_text, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.gates.data_statement import check_data_statement
 from manuscript_guard.gates.figure_files import check_figure_files
 from manuscript_guard.gates.journal_quotes import check_quotes, manual_signable
 from manuscript_guard.gates.numbers import source_files
@@ -120,6 +121,7 @@ def check_journal(project: Project) -> Report:
     report = report.merge(_check_abstract_found(document, text, path))
     report = report.merge(_check_structure(document, text, path))
     report = report.merge(_check_statements(document, text, path))
+    report = report.merge(check_data_statement(document, text, path, project))
     report = report.merge(_check_variant(document, project))
     report = report.merge(check_figure_files(project, document, path))
 

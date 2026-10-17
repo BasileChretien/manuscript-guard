@@ -1,6 +1,6 @@
 ---
 name: journal-profile
-description: Choose a target journal with the author, then read that journal's instructions for authors and fill the annotated profile template with its limits, required sections and required statements. Use when choosing where to submit, when check reports journal-profile-missing or journal-profile-stale, or before submitting to a different journal.
+description: Choose a target journal with the author, then read that journal's instructions for authors and fill the annotated profile template with its limits, required sections and required statements. Use when choosing where to submit, when check reports journal-profile-missing, journal-profile-stale, data-statement-forbidden, data-identifier-missing, data-link-temporary or data-doi-uncited, or before submitting to a different journal.
 ---
 
 # Turning author guidelines into something a build can check
@@ -231,6 +231,17 @@ only what it states, with the kind of figure each resolution is for. Where the g
 one resolution for every figure, give it for each kind. A figure's own width and kind go in
 its `figures/<name>.guard.yaml` (`print_width_mm: 89`, `kind: line_art`); without them G4
 assumes the narrowest width and a halftone.
+
+Where the journal's data policy says what the statement must hold, fill `data_availability`
+from that page, with its address and the day you read it: the phrasings it does not accept
+(`forbidden`, each with `unless` for what makes it acceptable, a reason or a route), whether a
+persistent identifier is required (`identifier_required`), and its own words for an article
+with no data (`no_data`). The template shows the shape. Policies differ from one publisher to
+the next, so take each rule from this journal's page; where the page says nothing, leave the
+block out, and G4 reads nothing under the heading. G4 then fails a forbidden phrasing
+(`data-statement-forbidden`) and a missing identifier (`data-identifier-missing`) from internal
+review, and warns on a shared-drive or bare code-host link (`data-link-temporary`) and on a
+dataset DOI the reference list does not cite (`data-doi-uncited`).
 
 `notes` is where everything the build cannot check goes — cover letter contents, suggested
 reviewers, portal quirks. It is not a dumping ground; it is the list you will otherwise

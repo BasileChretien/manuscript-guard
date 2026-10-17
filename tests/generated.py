@@ -949,6 +949,25 @@ SPELT = (
 )  # fmt: skip
 
 
+#: What names a dataset, one of each kind the data statement rule knows; links to storage
+#: that is neither persistent nor archived, one of each kind; and links to a fixed version of
+#: a repository, which are neither. What the data statement reading must tell apart.
+DATA_IDENTIFIERS = (
+    "10.5281/zenodo.1234567", "GSE123456", "SRP123456", "PRJNA123456", "EGAS00001000001",
+    "E-MTAB-1234", "phs000001.v1", "hdl.handle.net/10000/1", "ark:/13030/qt1",
+    "https://zenodo.org/records/123", "https://osf.io/ab3cd",
+    "https://web.archive.org/web/2020/x", "https://perma.cc/AB12-CD34",
+)  # fmt: skip
+TEMPORARY_LINKS = (
+    "https://drive.google.com/file/x", "https://www.dropbox.com/s/x", "https://1drv.ms/u/x",
+    "https://github.com/someone/study", "https://gitlab.com/someone/study/",
+)  # fmt: skip
+FIXED_LINKS = (
+    "https://github.com/someone/study/releases/tag/v1.0",
+    "https://github.com/someone/study/tree/4f2a9c1",
+)
+
+
 #: A placeholder of each kind G6 reads, as it is typed and as the rule finds it; the words
 #: that are one in the manuscript only, in lower case; and what looks like one and is prose:
 #: a karyotype, a syndrome, a link, a title translated into English in brackets, a phrase
@@ -1379,6 +1398,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
     "placeholders": texts(
         tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
     ),

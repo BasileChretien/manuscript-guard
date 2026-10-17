@@ -36,6 +36,10 @@
           "type": "integer",
           "minimum": 2,
           "description": "The smallest count that may be published. A count the manuscript binds that is at least one and below it fails G2 from the internal-review stage."
+        },
+        "restricts_sending": {
+          "type": "boolean",
+          "description": "The custodian forbids sending the manuscript or its results anywhere they have not agreed to: `review --run` sends to a model the built-in Ollama runs on this machine, and to any other provider, one added at localhost included, only once the data custodian named in authors.yaml has authorised it with `manuscript-guard sign`."
         }
       }
     },

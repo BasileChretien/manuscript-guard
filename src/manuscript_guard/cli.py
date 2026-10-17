@@ -2328,12 +2328,13 @@ def cmd_sign(args: argparse.Namespace) -> int:
     from manuscript_guard.gates.design_review import override_signables
     from manuscript_guard.gates.journal_quotes import manual_signables
     from manuscript_guard.gates.models import signables
+    from manuscript_guard.panel.custodian import send_signables
     from manuscript_guard.sign_offs import CORRESPONDING, ROLES, holder, is_holder, sign
 
     project, _ = load_project(args.path)
     _namespace, results, _literature, _loaded = load_namespace(project)
     standing = signables(project, results) + override_signables(project) + \
-        manual_signables(project)  # fmt: skip
+        manual_signables(project) + send_signables(project)  # fmt: skip
     found = [signable for signable in standing if signable.id == args.finding]
     if not found:
         ids = ", ".join(signable.id for signable in standing) or "none"

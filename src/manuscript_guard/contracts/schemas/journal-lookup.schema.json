@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/journal-lookup/1",
+  "title": "manuscript-guard journal lookup record",
+  "description": "What the NLM Catalog and DOAJ said of one ISSN of a shortlisted journal, on one day. `manuscript-guard lookup --journals` writes it to journals/lookups/<issn>.yaml; G4 reads it offline. It holds what was answered, never the requests.",
+  "type": "object",
+  "required": ["schema", "issn", "looked_up_on", "sources", "answers_sha256"],
+  "additionalProperties": false,
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 },
+    "issn": { "type": "string", "pattern": "^\\d{4}-\\d{3}[\\dX]$" },
+    "unresolvable": {
+      "type": "object",
+      "required": ["status", "why"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "const": "unresolvable" },
+        "why": { "$ref": "#/$defs/text" }
+      }
+    },
+    "absent": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": { "status": { "const": "absent" } }
+    }
+  },
+  "properties": {
+    "schema": { "const": "manuscript-guard/journal-lookup/1" },
+    "issn": { "$ref": "#/$defs/issn" },
+    "looked_up_on": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nlm_catalog": {
+          "oneOf": [
+            { "$ref": "#/$defs/unresolvable" },
+            { "$ref": "#/$defs/absent" },
+            {
+              "type": "object",
+              "required": ["status", "records"],
+              "additionalProperties": false,
+              "properties": {
+                "status": { "const": "found" },
+                "records": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "required": ["nlm_id", "currently_indexed"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "nlm_id": { "$ref": "#/$defs/text" },
+                      "title": { "$ref": "#/$defs/text" },
+                      "currently_indexed": {
+                        "type": "boolean",
+                        "description": "The catalogue's currentindexingstatus: currently indexed for MEDLINE."
+                      },
+                      "issns": { "type": "array", "items": { "$ref": "#/$defs/issn" } }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "doaj": {
+          "oneOf": [
+            { "$ref": "#/$defs/unresolvable" },
+            { "$ref": "#/$defs/absent" },
+            {
+              "type": "object",
+              "required": ["status", "id"],
+              "additionalProperties": false,
+              "properties": {
+                "status": { "const": "found" },
+                "id": { "$ref": "#/$defs/text" },
+                "title": { "$ref": "#/$defs/text" },
+                "issns": { "type": "array", "items": { "$ref": "#/$defs/issn" } },
+                "last_updated": { "$ref": "#/$defs/text" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "answers_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

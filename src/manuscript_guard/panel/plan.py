@@ -8,6 +8,11 @@ function, so what the author agreed to and what is sent cannot differ.
 By default every configured model reads every reviewer's remit, because the point of several
 models is that one's blind spot is another's finding. `one_each` is the cheaper mode: one
 model per reviewer, dealt across the list in turn.
+
+A design round is planned the same way (`design=True`), from `review/design/`: its panel,
+or a starter one in its first round, is sent the plan and the feasibility results
+(`prompt.gather_design`) instead of the manuscript, and its readings are filed beside the
+design panel's records.
 """
 
 from __future__ import annotations
@@ -19,19 +24,28 @@ from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured, validate
 from manuscript_guard.contracts.project import Project
+from manuscript_guard.gates.design_review import (
+    design_panel_path,
+    design_panels,
+    design_record_path,
+    design_root,
+)
 from manuscript_guard.gates.review import (
     panel_path,
     panels,
     reading_path,
     reading_slug,
+    round_dir,
 )
 from manuscript_guard.panel.client import ANTHROPIC_DEFAULT_MAX_TOKENS, build_body
 from manuscript_guard.panel.prompt import (
     FROM_PAPER,
     NOT_SENT,
+    NOT_SENT_DESIGN,
     Material,
     PromptError,
     gather,
+    gather_design,
     system_text,
 )
 from manuscript_guard.panel.providers import (
@@ -121,6 +135,33 @@ STARTER_PANELS: dict[int, tuple[dict, ...]] = {
     ),
 }
 
+#: The first design round's panel, when it has none: the two readers a plan needs before
+#: its analysis is run. As the manuscript's starters, it assumes no field.
+STARTER_DESIGN_PANEL: tuple[dict, ...] = (
+    {
+        "id": "design-methods",
+        "role": "Methodologist for this kind of study",
+        "remit": "Whether the design can support the inference the plan intends. How the "
+        "population, the exposure or intervention, the comparison and the outcome are "
+        "defined, and whether the plan says how it meets each risk the study type carries: "
+        "confounding, selection, immortal time, missing data, multiplicity, and leakage "
+        "between what a model is fitted on and what it is tested on.",
+        "why": "A design objection answered before the analysis is one the analysis can "
+        "still meet.",
+    },
+    {
+        "id": "statistics",
+        "role": "Statistician",
+        "remit": "Whether the planned analysis can estimate what the plan asks with the data "
+        "the feasibility results describe: the cohort at each step, the events, the missing "
+        "values and the date range; whether the models, their adjustment and their "
+        "sensitivity analyses fit those numbers; and whether the sample can answer the "
+        "question at all.",
+        "why": "The feasibility results say what the data can answer before the analysis is "
+        "fitted to them.",
+    },
+)
+
 EXAMPLE = "review:\n  models: [openai/<model>, mistral/<model>, moonshot/<model>]"
 
 
@@ -162,10 +203,40 @@ class Plan:
     already_filed: int
     max_output_tokens: int | None
     material: Material
+    #: A design round: the plan is read, and the readings are filed under `review/design/`.
+    design: bool = False
+
+    @property
+    def name(self) -> str:
+        return f"{'design round' if self.design else 'round'} {self.round}"
+
+    @property
+    def schema(self) -> str:
+        """What the readings of this round are held to."""
+        return "design-review" if self.design else "review"
+
+    def reading_path(self, project: Project, reviewer: str, reader: str | None) -> Path:
+        return _reading_path(project, self.round, reviewer, reader, design=self.design)
+
+    def round_dir(self, project: Project) -> Path:
+        if self.design:
+            return design_root(project) / f"round-{self.round}"
+        return round_dir(project, self.round)
 
 
-def starter_panel(round_number: int) -> tuple[dict, ...]:
-    """The reviewers a run asks when the round has no panel file. Rounds 1 and 2 only."""
+def _reading_path(
+    project: Project, number: int, reviewer: str, reader: str | None, *, design: bool
+) -> Path:
+    if design:
+        return design_record_path(project, number, reviewer, reader)
+    return reading_path(project, number, reviewer, reader)
+
+
+def starter_panel(round_number: int, *, design: bool = False) -> tuple[dict, ...]:
+    """The reviewers a run asks when the round has no panel file. Rounds 1 and 2 only, and
+    the first design round."""
+    if design:
+        return tuple(dict(r) for r in STARTER_DESIGN_PANEL) if round_number == 1 else ()
     return tuple(dict(reviewer) for reviewer in STARTER_PANELS.get(round_number, ()))
 
 
@@ -190,19 +261,21 @@ def _reviewers_of(path: Path) -> list[dict]:
     return list(document["reviewers"])
 
 
-def _read_in_full(project: Project, number: int, reviewer: dict) -> bool:
+def _read_in_full(
+    project: Project, number: int, reviewer: dict, *, design: bool = False
+) -> bool:
     """Whether a remit has every reading its panel asks for, as G11 counts them: one from
     each reader it names, or the reviewer's plain record when it names none."""
     readers = reviewer.get("readers")
     if not readers:
-        return reading_path(project, number, reviewer["id"]).exists()
+        return _reading_path(project, number, reviewer["id"], None, design=design).exists()
     return all(
-        reading_path(project, number, reviewer["id"], str(reader)).exists()
+        _reading_path(project, number, reviewer["id"], str(reader), design=design).exists()
         for reader in readers
     )
 
 
-def unread(project: Project, number: int) -> list[tuple[str, str]]:
+def unread(project: Project, number: int, *, design: bool = False) -> list[tuple[str, str]]:
     """The readers a round's panel names whose reading is not on file, as (reviewer,
     reader). Empty when the round has no panel, or one that cannot be read.
 
@@ -210,7 +283,7 @@ def unread(project: Project, number: int) -> list[tuple[str, str]]:
     `review.models`, or one that `--one-each` dealt to another reviewer this time. The
     command must not call a round read while the panel is still waiting for them.
     """
-    path = panel_path(project, number)
+    path = design_panel_path(project, number) if design else panel_path(project, number)
     if not path.exists():
         return []
     try:
@@ -221,20 +294,22 @@ def unread(project: Project, number: int) -> list[tuple[str, str]]:
         (reviewer["id"], str(reader))
         for reviewer in reviewers
         for reader in reviewer.get("readers") or ()
-        if not reading_path(project, number, reviewer["id"], str(reader)).exists()
-    ]
+        if not _reading_path(project, number, reviewer["id"], str(reader), design=design)
+        .exists()
+    ]  # fmt: skip
 
 
-def next_round(project: Project) -> int:
+def next_round(project: Project, *, design: bool = False) -> int:
     """The first round in which somebody has not reported, else the one after the last."""
     last = 0
-    for number, path in panels(project):
+    for number, path in design_panels(project) if design else panels(project):
         last = max(last, number)
         try:
             reviewers = _reviewers_of(path)
         except PlanError:
             return number
-        if not all(_read_in_full(project, number, reviewer) for reviewer in reviewers):
+        if not all(_read_in_full(project, number, reviewer, design=design)
+                   for reviewer in reviewers):  # fmt: skip
             return number
     return last + 1
 
@@ -246,9 +321,14 @@ def _pairs(reviewers: tuple[dict, ...], models: tuple[Model, ...], one_each: boo
 
 
 def make_plan(
-    project: Project, *, round_number: int | None = None, one_each: bool = False
+    project: Project,
+    *,
+    round_number: int | None = None,
+    one_each: bool = False,
+    design: bool = False,
 ) -> Plan:
-    """Every call a run of this round would make. Nothing is written and nothing is sent."""
+    """Every call a run of this round would make. Nothing is written and nothing is sent.
+    With `design`, of a design round: the plan is what is read."""
     try:
         models = configured_models(project.paper)
     except ConfigError as exc:
@@ -267,21 +347,26 @@ def make_plan(
                 f"({reading_slug(model.reader)}); list one of them"
             )
 
-    number = next_round(project) if round_number is None else round_number
+    number = next_round(project, design=design) if round_number is None else round_number
     if number < 1:
         raise PlanError("rounds are numbered from 1")
-    path = panel_path(project, number)
+    path = design_panel_path(project, number) if design else panel_path(project, number)
     exists = path.exists()
-    reviewers = tuple(_reviewers_of(path)) if exists else starter_panel(number)
+    reviewers = tuple(_reviewers_of(path)) if exists else starter_panel(number, design=design)
     if not reviewers:
+        where = path.relative_to(project.root).as_posix()
         raise PlanError(
+            f"design round {number} has no panel, and only the first has a starter. Say who "
+            f"reads the plan in this round by writing {where}; the reviewers of an earlier "
+            "design panel can be copied into it"
+            if design else
             f"round {number} has no panel, and only rounds 1 and 2 have a starter. Say who "
             f"reads the manuscript in this round by writing review/{path.name}; the "
             "reviewers of an earlier panel can be copied into it"
-        )
+        )  # fmt: skip
 
     try:
-        material = gather(project)
+        material = gather_design(project) if design else gather(project)
     except PromptError as exc:
         raise PlanError(str(exc)) from None
 
@@ -296,10 +381,11 @@ def make_plan(
     calls: list[Call] = []
     filed = 0
     for reviewer, model in paired:
-        if reading_path(project, number, reviewer["id"], model.reader).exists():
+        if _reading_path(project, number, reviewer["id"], model.reader, design=design).exists():
             filed += 1
             continue
-        body = build_body(model, system_text(reviewer), material.user, max_output_tokens=cap)
+        body = build_body(model, system_text(reviewer, design=design), material.user,
+                          max_output_tokens=cap)  # fmt: skip
         calls.append(Call(reviewer["id"], model, body))
 
     return Plan(
@@ -314,6 +400,7 @@ def make_plan(
         already_filed=filed,
         max_output_tokens=cap,
         material=material,
+        design=design,
     )
 
 
@@ -376,9 +463,10 @@ def _columns(rows: Sequence[tuple[str, ...]], indent: str = "  ") -> list[str]:
 def _headline(plan: Plan) -> str:
     reviewers = _plural(len(plan.reviewers), "reviewer")
     calls = _plural(len(plan.calls), "call")
+    which = plan.name[0].upper() + plan.name[1:]
     if plan.one_each:
-        return f"Round {plan.round}: {reviewers}, one model each = {calls}"
-    return f"Round {plan.round}: {reviewers} x {_plural(len(plan.models), 'model')} = {calls}"
+        return f"{which}: {reviewers}, one model each = {calls}"
+    return f"{which}: {reviewers} x {_plural(len(plan.models), 'model')} = {calls}"
 
 
 def describe(plan: Plan, project: Project, environ: Mapping[str, str] | None = None) -> str:
@@ -423,7 +511,8 @@ def describe(plan: Plan, project: Project, environ: Mapping[str, str] | None = N
             f"  ({_plural(count, 'binding')} {'has' if count == 1 else 'have'} no value yet "
             "and would be sent as written)"
         )
-    lines += ["", f"Not sent: {', '.join(NOT_SENT)}.", "", "Where it goes:"]
+    kept = NOT_SENT_DESIGN if plan.design else NOT_SENT
+    lines += ["", f"Not sent: {', '.join(kept)}.", "", "Where it goes:"]
 
     rows = []
     for provider in dict.fromkeys(model.provider for model in plan.models):
@@ -479,7 +568,9 @@ def _usable(provider, environ: Mapping[str, str] | None) -> bool:
 
 
 def dry_run_dir(plan: Plan, project: Project) -> Path:
-    return project.path("build") / DRY_RUN_DIR[0] / f"round-{plan.round}" / DRY_RUN_DIR[1]
+    under = project.path("build") / DRY_RUN_DIR[0]
+    under = under / "design" if plan.design else under
+    return under / f"round-{plan.round}" / DRY_RUN_DIR[1]
 
 
 def write_dry_run(plan: Plan, project: Project) -> list[Path]:
@@ -508,13 +599,14 @@ def as_text(plan: Plan) -> str:
     reviewer's instructions, then the one message every reviewer and model is given.
     """
     parts = [
-        f"What round {plan.round} of the panel would be sent. The files beside this one "
+        f"What {plan.name} of the panel would be sent. The files beside this one "
         "are the request bodies, byte for byte; this is their text, for reading.",
     ]
     asked = {call.reviewer for call in plan.calls}
     for reviewer in plan.reviewers:
         if reviewer["id"] in asked:
-            parts += [f"{RULE} instructions to {reviewer['id']}", system_text(reviewer).rstrip()]
+            told = system_text(reviewer, design=plan.design).rstrip()
+            parts += [f"{RULE} instructions to {reviewer['id']}", told]
     parts += [f"{RULE} the message every reviewer is given", plan.material.user.rstrip()]
     return "\n\n".join(parts) + "\n"
 

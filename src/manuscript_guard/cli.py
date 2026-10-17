@@ -435,15 +435,28 @@ def _design_round(args: argparse.Namespace) -> int:
     from manuscript_guard.gates.design_review import check_design_rounds
     from manuscript_guard.record import RecordError, seal_design_review, write_design_review
 
-    if args.run or args.dry_run or args.providers or args.record_figure:
+    if args.providers or args.record_figure:
         print(
-            "manuscript-guard: a design round is read and filed by hand for now: "
-            "`review --record <reviewer> --design --round <n> --verdict <verdict>`, with "
-            "`--reading <reader>` for a named reading, then "
-            "`review --seal <reviewer> --design --round <n>`",
+            "manuscript-guard: --design is a design round: `review --design --run` has the "
+            "models read the plan, and `review --record <reviewer> --design --verdict "
+            "<verdict>` files a reading by hand",
             file=sys.stderr,
         )
         return 2
+    if args.run or args.dry_run:
+        from manuscript_guard.panel.commands import run_panel
+
+        if not args.run:
+            print(
+                "manuscript-guard: --dry-run goes with --run: `review --design --run "
+                "--dry-run` shows what a run of the design panel would send",
+                file=sys.stderr,
+            )
+            return 2
+        return run_panel(
+            args.path, round_number=args.round, one_each=args.one_each,
+            dry_run=args.dry_run, yes=args.yes, design=True,
+        )  # fmt: skip
     project, _ = load_project(args.path)
     round_number = 1 if args.round is None else args.round
     try:
@@ -3062,7 +3075,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="a design round: with --record, write review/design/round-N/REVIEWER.yaml for "
         "the analysis plan and the feasibility results as they now stand; with --seal, seal "
-        "it; alone, say where the design rounds stand (G12)",
+        "it; with --run, have the models in review.models read the plan; alone, say where "
+        "the design rounds stand (G12)",
     )
     review.add_argument(
         "--record-figure",

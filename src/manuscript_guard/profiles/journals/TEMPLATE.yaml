@@ -186,13 +186,14 @@ required_statements:
 # ── References ───────────────────────────────────────────────────────────────────────────
 
 references:
-  # A Zotero style name, which a live build hands to Zotero's Word plugin as the document's
-  # citation style. An offline build does not read it: it formats with `--csl <file>` or the
-  # default style. The Zotero style repository (zotero.org/styles) is the usual source and
-  # often lists the journal by name. Delete when you cannot find a matching style; a live
-  # build then names none and Zotero asks for one on the first refresh, which is better than
-  # formatting to the wrong journal's rules.
-  csl: ""            # e.g. "vancouver"; delete the line if no style matches
+  # The style's name in the CSL style repository, which Zotero uses too: the last part of
+  # its address at zotero.org/styles, where the journal is often listed by name. A live
+  # build hands it to Zotero's Word plugin as the document's citation style.
+  # `manuscript-guard style` fetches it once into profiles/journals/styles/, and an offline
+  # build then formats with it unless `--csl <file>` names another. Delete the line when no
+  # style matches; a live build then names none and Zotero asks for one on the first
+  # refresh, which is better than formatting to the wrong journal's rules.
+  csl: ""            # e.g. "the-lancet"; delete the line if no style matches
 
   # The style as the journal names it, for a human reading this file: "Vancouver",
   # "AMA 11th edition", "Harvard".

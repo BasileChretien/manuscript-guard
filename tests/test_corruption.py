@@ -4999,6 +4999,69 @@ def test_a_structured_abstract_heading_in_a_comment_is_missing(project: Path) ->
     assert "abstract-headings-missing" in codes(_journal(project))
 
 
+# ------------------------------------------------- the journal's citation style (item 51)
+
+
+def _style_said(root: Path) -> list[tuple[str, str]]:
+    return [(f.code, f.severity) for f in _journal(root).findings
+            if f.code.startswith("journal-style")]  # fmt: skip
+
+
+def test_a_journal_style_the_project_does_not_keep_is_said(project: Path) -> None:
+    """The offline build formatted in pandoc's default style, whatever the profile named, and
+    nothing said so."""
+    from test_style import DEPENDENT, keep_style, name_style
+
+    assert _style_said(project) == []
+    name_style(project, DEPENDENT)
+    assert _style_said(project) == [("journal-style-not-stored", "warn")]
+    name_style(project, "https://example.org/styles/elsewhere")
+    assert _style_said(project) == [("journal-style-not-stored", "warn")]
+    keep_style(project, DEPENDENT)
+    assert _style_said(project) == []
+
+
+def test_a_kept_style_edited_since_is_said_and_not_used(project: Path) -> None:
+    from test_style import DEPENDENT, PARENT, keep_style
+
+    from manuscript_guard.journal_style import stored
+
+    keep_style(project, DEPENDENT)
+    parent = project / "profiles" / "journals" / "styles" / f"{PARENT}.csl"
+    parent.write_bytes(parent.read_bytes() + b"<!-- edited -->")
+    assert _style_said(project) == [("journal-style-changed", "warn")]
+    assert stored(load_project(project)[0], DEPENDENT) is None
+    parent.unlink()
+    [said] = [f for f in _journal(project).findings if f.code == "journal-style-changed"]
+    assert f"{PARENT}.csl (missing)" in said.message
+
+
+@pytest.mark.parametrize(
+    ("found", "numbered", "said"),
+    [
+        ("numeric", True, []),
+        ("numeric", False, [("journal-style-format", "warn")]),
+        ("author-date", True, [("journal-style-format", "warn")]),
+        ("author-date", False, []),
+        ("note", True, [("journal-style-format", "warn")]),
+    ],
+)
+def test_a_style_that_numbers_otherwise_than_the_profile_is_said(
+    project: Path, found: str, numbered: bool, said: list
+) -> None:
+    """The style's own citation format against the profile's `numbered:`: one of the two
+    was read wrong from the journal's page."""
+    from test_style import DEPENDENT, keep_style, name_style
+
+    keep_style(project, DEPENDENT)
+    record = project / "profiles" / "journals" / "styles" / f"{DEPENDENT}.yaml"
+    document = yaml.safe_load(record.read_text(encoding="utf-8"))
+    record.write_text(yaml.safe_dump({**document, "citation_format": found}, sort_keys=False),
+                      encoding="utf-8")  # fmt: skip
+    name_style(project, DEPENDENT, numbered=numbered)
+    assert _style_said(project) == said
+
+
 # ------------------------------------------------------------- what the build prints
 # The build strips every file's front matter and writes the header from paper.yaml. Text
 # the gates read there and the build drops is checked, then left out of the document.

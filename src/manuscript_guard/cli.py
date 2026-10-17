@@ -1978,6 +1978,7 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
         project,
         marked,
         mode=OFFLINE if args.offline else LIVE,
+        csl=_journal_style(project, args),
         output=build_dir / "manuscript.annotated.docx",
         reference_doc=reference,
         stamp=False,
@@ -2067,8 +2068,9 @@ def cmd_build(args: argparse.Namespace) -> int:
     if output is None and not report.ok:
         output = project.path("build") / "manuscript.UNCHECKED.docx"
 
+    style = _journal_style(project, args)
     try:
-        result = build_document(project, assembled, mode=mode, csl=args.csl, output=output)
+        result = build_document(project, assembled, mode=mode, csl=style, output=output)
     except MisreadError as exc:
         # A refusal, like a failing gate, not a build that could not run.
         print(f"manuscript-guard: {exc}", file=sys.stderr)
@@ -2096,7 +2098,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"{fields} live Zotero citation field{'' if fields == 1 else 's'}")
 
     try:
-        supplement = _build_supplement(project, assembled, mode=mode, csl=args.csl)
+        supplement = _build_supplement(project, assembled, mode=mode, csl=style)
     except MisreadError as exc:
         print(f"manuscript-guard: the supplement is not built: {exc}", file=sys.stderr)
         return 1
@@ -2165,8 +2167,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
     document = args.document
     if document is None:
         mode = OFFLINE if args.offline else LIVE
+        style = _journal_style(project, args)
         try:
-            built = build_document(project, assembled, mode=mode, csl=args.csl)
+            built = build_document(project, assembled, mode=mode, csl=style)
         except MisreadError as exc:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 1
@@ -2189,7 +2192,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
         # lying in build/ is how a supplement arrives at a journal a version behind the
         # paper it is supplementing.
         try:
-            _build_supplement(project, assembled, mode=mode, csl=args.csl)
+            _build_supplement(project, assembled, mode=mode, csl=style)
         except MisreadError as exc:
             print(f"manuscript-guard: the supplement is not built: {exc}", file=sys.stderr)
             print("\nThe pack is not assembled.")
@@ -2366,6 +2369,83 @@ def cmd_lookup(args: argparse.Namespace) -> int:
         )
         return 1
     return 0
+
+
+def cmd_style(args: argparse.Namespace) -> int:
+    """Fetch the target journal's citation style from the CSL style repository, and keep it
+    in the project for the offline build."""
+    from manuscript_guard import journal_style
+    from manuscript_guard.contracts._schema import read_structured
+    from manuscript_guard.gates.journal import profile_path
+    from manuscript_guard.lookup import styles
+
+    project, _ = load_project(args.path)
+    slug = project.target_journal
+    path = profile_path(project, slug) if slug else None
+    document = read_structured(path) if path is not None else None
+    named = journal_style.profile_style(document) if isinstance(document, dict) else ""
+    if not named:
+        reason = (
+            "paper.yaml names no target journal" if not slug
+            else f"there is no profile for {slug}" if path is None
+            else f"the profile of {slug} names no style (`references: {{csl: ...}}`)"
+        )  # fmt: skip
+        print(f"manuscript-guard: no style to fetch: {reason}", file=sys.stderr)
+        return 2
+    name = journal_style.style_name(named)
+    if name is None:
+        print(
+            f"manuscript-guard: {named!r} is not the name of a style in the CSL style "
+            "repository, nor its zotero.org/styles URL; pass a style file to the build with "
+            "`--csl FILE` instead",
+            file=sys.stderr,
+        )
+        return 2
+    record = journal_style.read_record(project, name)
+    if record is not None and not journal_style.changed(project, record) and not args.again:
+        print(f"{name}: kept since {record['retrieved_on']}, and unchanged; nothing was sent")
+        return 0
+    if args.dry_run:
+        print(f"would fetch {name} from the CSL style repository; nothing was sent")
+        return 0
+    try:
+        record = styles.store(project, name)
+    except styles.NotFetched as exc:
+        print(f"manuscript-guard: {exc}; nothing was written", file=sys.stderr)
+        return 1
+    parent = record.get("parent")
+    where = journal_style.folder(project).relative_to(project.root).as_posix()
+    print(
+        f"stored {name}"
+        + (f", and {parent['style']}, the style it depends on," if parent else "")
+        + f" in {where}/; an offline build formats with it"
+    )
+    licence = record.get("licence") or (parent or {}).get("licence") or "see the files"
+    print(
+        "The styles are the CSL project's, under the licence each file names "
+        f"({licence}): keep the notices in them."
+    )
+    return 0
+
+
+def _journal_style(project, args: argparse.Namespace) -> Path | None:
+    """The style an offline build formats with: `--csl` where it is given, or else the target
+    journal's, where `manuscript-guard style` keeps it unchanged. None for pandoc's default.
+    A live build formats in Zotero, with the style the profile names."""
+    if args.csl is not None or not getattr(args, "offline", False):
+        return args.csl
+    from manuscript_guard.gates.journal import _profile
+    from manuscript_guard.journal_style import profile_style, stored
+
+    document = _profile(project)
+    named = profile_style(document) if document is not None else ""
+    found = stored(project, named) if named else None
+    if named and found is None:
+        print(
+            f"the journal's citation style {named} is not kept as it was fetched, so citations "
+            "are in pandoc's default style; `manuscript-guard check` says why"
+        )
+    return None if found is None else found.path
 
 
 def cmd_checklist(args: argparse.Namespace) -> int:
@@ -3272,7 +3352,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="write manuscript.annotated.docx instead: every number highlighted by what "
         "backs it, with its source shown on hover",
     )
-    build.add_argument("--csl", type=Path, help="citation style, for offline builds")
+    build.add_argument(
+        "--csl",
+        type=Path,
+        help="citation style, for offline builds; the journal's, kept by `style`, otherwise",
+    )
     build.add_argument("-o", "--output", type=Path)
     build.add_argument("--skip-checks", action="store_true", help="build even if gates fail")
     build.add_argument("--stage", choices=STAGES, help="how far along you are")
@@ -3298,6 +3382,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="say what would be looked up, and send nothing"
     )
     lookup.set_defaults(func=cmd_lookup)
+
+    style = sub.add_parser(
+        "style",
+        help="fetch the journal's citation style from the CSL style repository, for the "
+        "offline build",
+    )
+    style.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    style.add_argument(
+        "--again", action="store_true", help="fetch it again, though it is kept and unchanged"
+    )
+    style.add_argument(
+        "--dry-run", action="store_true", help="say what would be fetched, and send nothing"
+    )
+    style.set_defaults(func=cmd_style)
 
     checklist = sub.add_parser("checklist", help="write the completion file for a checklist")
     checklist.add_argument("guideline", nargs="?", help="e.g. STROBE; defaults to paper.yaml")

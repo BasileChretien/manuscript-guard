@@ -547,6 +547,7 @@ NAMED_NOWHERE = {
     "checks/items.json": "written by `checker build`",
     "checks/decisions.csv": "written by `checker` when the answers come back",
     "profiles/journals/journal-of-examples.yaml": "an example of a profile's name",
+    "profiles/journals/styles/": "written by `style`",
     "supplementary/S1.md": "an example of a supplement's file",
     "build/response-to-reviewers.md": "written by `respond`",
     "build/manuscript.docx": "written by `build`",

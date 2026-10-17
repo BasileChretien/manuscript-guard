@@ -565,6 +565,33 @@ supplement is held to the profile's `supplementary:` rules where it has them. Al
 warning, and a note where the journal applies the rules only once the paper is accepted
 (`applies_from: acceptance`).
 
+## The journal's citation style is used by every build
+
+A profile names the journal's citation style as the CSL style repository and Zotero name it
+(`references: {csl: the-lancet}`). Only the live build used it, by handing the name to
+Zotero. The offline build, which is what CI and a co-author without Zotero get, formatted in
+pandoc's default style unless `--csl` named a file. `manuscript-guard style` now fetches the
+style once from the repository's own files and keeps it in the project, under
+`profiles/journals/styles/`. A name is asked for at the repository's root, where its
+independent styles are, and then under `dependent/`. A dependent style holds no formatting of
+its own and names the style it formats like (`<link rel="independent-parent">`), so that
+style is fetched from the root and kept beside it. A record, `<name>.yaml`, holds each
+file's address, the SHA-256 of its bytes, the licence it names, the day, and the style's
+citation format.
+
+An offline build without `--csl` formats with the stored style, and `--csl` still wins. The
+folder of whatever style the build is given is put on pandoc's resource path after the
+working directory, because pandoc looks there for a dependent style's parent, by its name,
+before it would fetch it: an offline build of a stored dependent style opens no connection.
+A live build hands the same name to Zotero, as before, so both format alike where Zotero
+has the style installed. G4 warns where the profile names a style and the project holds no
+copy (`journal-style-not-stored`); where a stored file is not what was fetched
+(`journal-style-changed`), which the build then does not use; and where the style's
+citation format, the dependent style's own or else its parent's, disagrees with the
+profile's `numbered:` (`journal-style-format`). The styles are the CSL project's, under
+CC BY-SA 3.0, and live in the author's project: nothing of them is in this package, and the
+tests write their own.
+
 ## The build
 
 The .docx is regenerated from Markdown every time and never edited or patched. That is what
@@ -6545,6 +6572,16 @@ Closed since, and why each mattered:
   at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
   input is missing by mistake rather than by design is caught only where another finding
   depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
+- **A stored citation style is held to its digest, and trusted beyond that.** `style`
+  takes what the CSL style repository serves on its default branch, and the record's
+  digests catch a file edited since, not a style that was wrong when fetched. A dependent
+  style whose parent is itself dependent is refused. A style the
+  profile names by another site's URL is not fetched; `--csl` is then the way. G4 compares
+  the citation format with `numbered:` only, so a numeric style whose numbers sit in
+  brackets, for a journal that wants them superscript, passes. A style named in the profile
+  but always given by hand with `--csl` is warned of all the same, since `check` does not
+  know what the build is passed. The document records the digest of the style it was given,
+  so `import` notices a changed dependent style, and not a changed parent beside it.
 - **A lookup record is kept beside what it describes, so it catches an edit, not a
   forger.** `answers_sha256` is in the record it digests: an answer edited by hand is
   reported, and one edited by someone who computes the digest again is not. A reference

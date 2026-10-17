@@ -137,7 +137,7 @@ required_statements:
 references:
   style_name: Vancouver
   numbered: true
-  csl: vancouver                # the style Zotero applies in a live build; offline needs --csl
+  csl: elsevier-vancouver        # the CSL repository's name: Zotero's in a live build, kept by `style` for offline
 
 reporting_guidelines: [STROBE]
 
@@ -190,6 +190,14 @@ its job. Word counts are reported alongside the limit, and the counting rule is 
 in the package's `manuscript_guard/text/sections.py` — citations, tables, images and markup
 are excluded. Where the
 journal counts differently, say so rather than arguing with the tool.
+
+Where the profile names a style under `references: csl:`, run `manuscript-guard style` once.
+It fetches the style from the CSL style repository, with the style it depends on where it is
+a dependent one, into `profiles/journals/styles/`, and the offline build then formats
+citations as the journal does. Until then `check` warns `journal-style-not-stored`. It warns
+`journal-style-changed` when a stored file was edited, and `journal-style-format` when the
+style numbers citations and `numbered:` says it does not, or the other way round: read the
+journal's page again to know which of the two is wrong.
 
 ## Changing journals after a rejection
 

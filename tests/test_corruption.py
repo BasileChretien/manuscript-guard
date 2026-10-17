@@ -1064,6 +1064,143 @@ def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
     assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
 
 
+# ------------------------------------------------- what a data custodian forbids
+
+
+def _custodian(root: Path, minimum: int) -> None:
+    paper = root / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["custodian"] = {"minimum_cell_count": minimum}
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _value_has(root: Path, key: str, **fields) -> None:
+    """The results file with `fields` set on `key`, one set to None taken out, and its
+    digest written again."""
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    merged = {**document["values"][key], **fields}
+    document["values"][key] = {name: value for name, value in merged.items() if value is not None}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def _small(root: Path) -> list[tuple[str, int]]:
+    from manuscript_guard.gates.custodian import check_small_cells
+
+    project, _ = load_project(root)
+    _, results, _, _ = load_namespace(project)
+    found = check_small_cells(project, results).findings
+    assert all(f.code == "count-below-minimum" and f.severity == "fail" for f in found)
+    return [(f.message.split()[0], f.line) for f in found]
+
+
+def test_a_count_below_the_custodians_minimum_is_not_printed(project: Path) -> None:
+    """The custodian forbids a count below its minimum. The example's counts are
+    all above five; three serious cases are not, at a minimum of five, and are at one of
+    three. Nought is no small cell, and a parameter, a number with a unit and a label are
+    no count of people. The finding binds from internal review."""
+    from manuscript_guard.cli import _run_gates
+
+    _custodian(project, 5)
+    assert _small(project) == []
+    _value_has(project, "case.n_serious", value=3, display="3")
+    line = next(
+        n for n, text in enumerate(main_md(project).read_text(encoding="utf-8").splitlines(), 1)
+        if "{{results.case.n_serious}}" in text
+    )
+    assert _small(project) == [("results.case.n_serious", line)]
+    # Round 2 of #275: a display with a word after it, a decimal or a sign prints the count.
+    for display in ("3 patients", "3.0", "+3"):
+        _value_has(project, "case.n_serious", value=3, display=display)
+        assert _small(project) == [("results.case.n_serious", line)], display
+    _value_has(project, "case.n_serious", value=3, display="3")
+    _custodian(project, 3)
+    assert _small(project) == []
+    _custodian(project, 5)
+    # Round 1 of #275: a count the analysis holds back with its display prints no small one.
+    for fields in ({"value": 0, "display": "0"}, {"unit": "years"}, {"label": True},
+                   {"display": "<5"}):  # fmt: skip
+        _value_has(project, "case.n_serious", value=3, display="3", unit=None, label=False)
+        _value_has(project, "case.n_serious", **fields)
+        assert _small(project) == [], fields
+    # `param.signal.min_cases` is 3, and is bound in the Methods: a parameter, no count. And
+    # the example's period, three years long, carries its unit (round 1 of #275).
+    assert "{{results.param.signal.min_cases}}" in main_md(project).read_text(encoding="utf-8")
+    _value_has(project, "cohort.n_years", value=3, display="3")
+    assert _small(project) == []
+
+    _value_has(project, "case.n_serious", value=3, display="3", unit=None, label=False)
+    report, _project, _chosen, _deferred = _run_gates(project, stage="drafting")
+    assert "count-below-minimum" not in codes(report)
+    report, _project, _chosen, _deferred = _run_gates(project, stage="internal-review")
+    assert "count-below-minimum" in codes(report)
+
+
+def _git(root: Path, *args: str) -> None:
+    import subprocess
+
+    subprocess.run(["git", "-c", "core.fsmonitor=false", *args], cwd=root, check=True,
+                   capture_output=True, timeout=60)  # fmt: skip
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_an_input_declared_restricted_is_not_tracked_by_git(project: Path) -> None:
+    """An input the custodian keeps may not be in the repository. Outside one, or
+    ignored, it passes; added to git, G1 fails, from the first stage."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.gates.custodian import check_restricted_inputs
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    data = document["provenance"]["inputs"][0]["path"]
+    document["provenance"]["inputs"][0]["restricted"] = True
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    def tracked() -> list[str]:
+        loaded, _ = load_project(project)
+        _, results, _, _ = load_namespace(loaded)
+        found = check_restricted_inputs(loaded, results).findings
+        return [f.message for f in found if f.severity == "fail"]
+
+    assert tracked() == []  # no repository
+    _git(project, "init", "-q")
+    (project / ".gitignore").write_text(f"{data}\n", encoding="utf-8")
+    _git(project, "add", ".")
+    assert tracked() == []
+    _git(project, "add", "-f", data)
+    assert tracked() == [f"{data} is declared restricted, and git tracks it"]
+    report, _project, _chosen, _deferred = _run_gates(project, stage="design")
+    assert "restricted-input-tracked" in codes(report)
+
+
+def test_both_emitters_record_an_input_declared_restricted(tmp_path: Path) -> None:
+    """`add_input(path, restricted=True)` is written into the provenance, and an
+    input not so declared carries no such field."""
+    from manuscript_guard.emit import Emitter
+
+    root = tmp_path / "paper"
+    (root / "analysis").mkdir(parents=True)
+    (root / "data").mkdir()
+    (root / "paper.yaml").write_text("schema: manuscript-guard/paper/1\ntitle: T\n", "utf-8")
+    for name in ("kept.csv", "open.csv"):
+        (root / "data" / name).write_text("a,b\n1,2\n", encoding="utf-8")
+    script = root / "analysis" / "a.py"
+    script.write_text("# reads the data\n", encoding="utf-8")
+    em = Emitter(script, root=root)
+    em.add_input("data/kept.csv", restricted=True)
+    em.add_input("data/open.csv")
+    em.value("n", 412)
+    inputs = json.loads(em.write().read_text(encoding="utf-8"))["provenance"]["inputs"]
+    assert [(i["path"], i.get("restricted")) for i in inputs] == [
+        ("data/kept.csv", True),
+        ("data/open.csv", None),
+    ]
+
+
+
+
 # ----------------------------------- a number a summary gives that the paper reports nowhere
 
 

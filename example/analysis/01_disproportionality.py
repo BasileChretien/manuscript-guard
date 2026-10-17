@@ -121,7 +121,9 @@ def main() -> None:
     em.value("cohort.n_drug_reports", a + b)
     em.value("cohort.period_start", years[0], display=str(years[0]))
     em.value("cohort.period_end", years[-1], display=str(years[-1]))
-    em.value("cohort.n_years", years[-1] - years[0] + 1)
+    # A number that is no count of people is emitted with its unit: a custodian's minimum
+    # cell count is read against the counts, and a short period is not a small cell.
+    em.value("cohort.n_years", years[-1] - years[0] + 1, unit="years")
 
     em.value("case.n_cases", a)
     em.value("case.n_serious", serious)

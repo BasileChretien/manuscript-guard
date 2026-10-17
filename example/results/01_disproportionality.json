@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "f2f95979a15c951293b94a51df222ebe32fd021e43ab6b758e08829dcd49fd98",
-    "generated_at": "2026-10-15T23:28:12+00:00",
+    "generated_by_sha256": "c6b0368e9f89d86be85afff143fb52c923a223595e91249bdfa9442889376ff8",
+    "generated_at": "2026-10-17T03:31:51+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.440"
+      "version": "0.2.443"
     },
     "vcs": {
-      "sha": "5f07419deb9a934f3170ea05387dc5d501f59169",
+      "sha": "9fef3b41c31036ec21f4901ea4a784f165d4351a",
       "dirty": true,
-      "branch": "feat/coding-dictionaries"
+      "branch": "feat/small-cells"
     },
     "inputs": [
       {
@@ -25,6 +25,7 @@
         "bytes": 50
       }
     ],
+    "environment": [],
     "session": {
       "language": "Python",
       "version": "3.12.3",
@@ -103,7 +104,8 @@
     },
     "cohort.n_years": {
       "value": 10,
-      "display": "10"
+      "display": "10",
+      "unit": "years"
     },
     "case.n_cases": {
       "value": 77,

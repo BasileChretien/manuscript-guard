@@ -77,6 +77,9 @@ BINDS_AT = {
     "manuscript-empty": DRAFTING,
     "authors-incomplete": DRAFTING,
     "unclassified-number": DRAFTING,
+    # A count the custodian forbids may be read inside the team; not outside it, which a
+    # panel sent to a model provider already is.
+    "count-below-minimum": INTERNAL_REVIEW,
     "code-block-text-number": DRAFTING,
     "raw-block": DRAFTING,
     # TeX in the text that the Word writer leaves out. Pandoc is asked for it, and what it

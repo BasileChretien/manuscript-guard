@@ -1029,6 +1029,8 @@ class Emitter:
     _models: dict[str, dict] = field(default_factory=dict, init=False)
     # The steps of the analysis that ran, each with where its code is and a digest of it.
     _steps: dict[str, dict] = field(default_factory=dict, init=False)
+    # The inputs declared restricted, as they were written to `add_input`.
+    _restricted: set[str] = field(default_factory=set, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
@@ -1555,8 +1557,12 @@ class Emitter:
         self.table(key, list(columns), rows, caption=caption)
         self._code_lists[key] = structured
 
-    def add_input(self, path: str | Path) -> None:
+    def add_input(self, path: str | Path, *, restricted: bool = False) -> None:
+        """Declare a data file the analysis read. `restricted` says the data custodian
+        forbids it leaving their hands: G1 then fails while git tracks it."""
         self.inputs.append(path)
+        if restricted:
+            self._restricted.add(str(path))
 
     def _provenance(self) -> dict:
         root = self.root
@@ -1573,6 +1579,7 @@ class Emitter:
                     "path": str(path.relative_to(root)).replace("\\", "/"),
                     "sha256": input_digest(path),
                     "bytes": path.stat().st_size,
+                    **({"restricted": True} if str(raw) in self._restricted else {}),
                 }
             )
 

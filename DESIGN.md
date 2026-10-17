@@ -6281,7 +6281,8 @@ Closed since, and why each mattered:
   sentence it misread. `journal --reread` shows a rule the page added a year on only as a
   line of the difference, for the author to read. A profile without quotes is warned of,
   not failed. The checklist of `manual:` rules is signed as a whole: a sign-off says the
-  corresponding author checked every rule on it, not which.
+  corresponding author checked every rule on it, not which. It is bound to the rules and the
+  page, not to the paper: a cover letter or a title page edited after it stays signed.
 - **No real journal profile is distributed**, and no transcribed checklist text. Recipes for
   thirteen checklists are, so a user needs only the official document. Journals get a
   different answer, and deliberately: an annotated template

@@ -423,23 +423,43 @@ def test_the_rules_no_gate_checks_are_signed_off_by_the_corresponding_author(
     checklist = journal_checklist(load_project(project)[0])
     assert ("| [ ] | cover letter | Send a cover letter of no more than one page with every "
             "submission. |") in checklist  # fmt: skip
-    assert "Not signed off:" in checklist
+    assert "\nNot signed off yet by the corresponding author.\n" in checklist
+    # Round 1 of #318: with two rules, "; " stood between them, and the line of who signed
+    # was cut from there.
+    second = {"rule": "title page; its order", "quote": "Give a running title."}
+    edit_yaml(project / JOURNAL, lambda d: d["manual"].append(second))
     assert main(["sign", str(project), "--as", "Blaise Sample", "--finding", key]) == 2
     assert main(["sign", str(project), "--as", "Example", "--finding", key]) == 0
     [signed] = _manual(project)
     assert signed.severity == "info"
     assert "signed off by Ada Example, the corresponding author, on " in signed.message
-    assert "Signed off by Ada Example, the corresponding author, on " in journal_checklist(
+    assert "\nSigned off by Ada Example, the corresponding author, on " in journal_checklist(
         load_project(project)[0]
     )
-    # A rule added to the list wants it signed again.
-    added = {"rule": "running title", "quote": "Give a running title."}
-    edit_yaml(project / JOURNAL, lambda d: d["manual"].append(added))
+    # A rule changed wants it signed again.
+    edit_yaml(project / JOURNAL, lambda d: d["manual"][1].update(rule="running title"))
     [again] = _manual(project)
     assert again.severity == "warn" and "changed since" in again.hint
 
 
-def test_with_no_corresponding_author_the_hint_says_to_mark_one(project: Path) -> None:
+def test_a_journal_checklist_whose_sign_off_cannot_be_read_says_it_is_not_signed(
+    project: Path,
+) -> None:
+    """Round 1 of #318: `settle` says more than one thing of a sign-off it cannot read, and
+    the checklist, which took one, raised while the pack was being assembled."""
+    from manuscript_guard.gates.journal_quotes import journal_checklist
+    from manuscript_guard.sign_offs import path_of
+
+    record = path_of(load_project(project)[0], "G4/journal-manual/demo-journal")
+    record.parent.mkdir(parents=True)
+    record.write_text("finding: [\n", encoding="utf-8")
+    checklist = journal_checklist(load_project(project)[0])
+    assert checklist.endswith("\nNot signed off yet by the corresponding author.\n")
+
+
+def test_with_no_corresponding_author_the_hint_says_to_mark_one(project: Path, capsys) -> None:
+    from manuscript_guard.cli import main
+
     def nobody(document: dict) -> None:
         for author in document["authors"]:
             author["corresponding"] = False
@@ -447,6 +467,9 @@ def test_with_no_corresponding_author_the_hint_says_to_mark_one(project: Path) -
     edit_yaml(project / "authors.yaml", nobody)
     [said] = _manual(project)
     assert "mark one author `corresponding: true` in authors.yaml" in said.hint
+    key = "G4/journal-manual/demo-journal"
+    assert main(["sign", str(project), "--as", "Example", "--finding", key]) == 2
+    assert "marks no single author `corresponding: true`" in capsys.readouterr().err
 
 
 def test_a_page_read_again_shows_what_changed_and_which_rules_it_touches(

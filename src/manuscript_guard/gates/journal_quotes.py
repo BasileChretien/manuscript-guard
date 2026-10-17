@@ -263,12 +263,15 @@ def journal_checklist(project: Project) -> str | None:
         if isinstance(entry, dict):
             cells = [str(entry.get("rule", "")), str(entry.get("quote", ""))]
             lines.append("| [ ] | " + " | ".join(_cell(cell) for cell in cells) + " |")
-    [said] = settle(project, signable)
-    signed = said.message.split("; ", 1)[-1]
+    # The last of what `settle` says: a sign-off it cannot read comes with a finding of its
+    # own first (round 1 of #318: unpacked as one, it raised while the pack was assembled).
+    said = settle(project, signable)[-1]
+    # Who signed is after the rules, which may themselves hold "; " (round 1 of #318).
+    _rules, _marker, signed = said.message.rpartition("; signed off by ")
     lines += [
         "",
-        f"{signed[:1].upper()}{signed[1:]}." if said.severity == INFO
-        else f"Not signed off: {said.hint}.",
+        f"Signed off by {signed}." if said.severity == INFO and _marker
+        else "Not signed off yet by the corresponding author.",
     ]  # fmt: skip
     return "\n".join(lines) + "\n"
 

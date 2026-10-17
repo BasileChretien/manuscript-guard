@@ -2303,7 +2303,7 @@ def cmd_sign(args: argparse.Namespace) -> int:
     from manuscript_guard.gates.design_review import override_signables
     from manuscript_guard.gates.journal_quotes import manual_signables
     from manuscript_guard.gates.models import signables
-    from manuscript_guard.sign_offs import ROLES, holder, is_holder, sign
+    from manuscript_guard.sign_offs import CORRESPONDING, ROLES, holder, is_holder, sign
 
     project, _ = load_project(args.path)
     _namespace, results, _literature, _loaded = load_namespace(project)
@@ -2326,9 +2326,13 @@ def cmd_sign(args: argparse.Namespace) -> int:
         print(f"manuscript-guard: roles: {signable.role} in authors.yaml: {exc}", file=sys.stderr)
         return 2
     if person is None:
+        # The corresponding author is marked on an author, not named under `roles:`, whose
+        # schema refuses the key (round 1 of #318).
+        missing = f"names no {signable.role} under `roles:`"
+        if signable.role == CORRESPONDING:
+            missing = "marks no single author `corresponding: true`"
         print(
-            f"manuscript-guard: authors.yaml names no {signable.role} under `roles:`; "
-            f"only {role} signs off {signable.id}",
+            f"manuscript-guard: authors.yaml {missing}; only {role} signs off {signable.id}",
             file=sys.stderr,
         )
         return 2

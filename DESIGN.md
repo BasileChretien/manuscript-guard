@@ -2508,12 +2508,14 @@ A design round is read by the models as a manuscript round is: `review --design 
 plans it from `review/design/`, says what would be sent where, asks, and files each reply
 as a design reading, `round-<n>/<reviewer>.<model>.yaml`, sealed and carrying the digest of
 the plan it read (`plan_sha256`). What is sent is a list of its own (`prompt.gather_design`):
-the paper's facts from `paper.yaml`, `design/plan.md` as the build would print it, and the
-feasibility results, each under its key. Not the manuscript, and no result but a feasibility
-one: a binding in the plan to any other result is sent as written, since a design round
-reads the plan before there are results. Each reviewer is told it reads a plan before its
-analysis is run, and that a major finding is one the design cannot meet: the instructions are
-the manuscript round's, rewritten in seven places, so the reply asked for is the same. A
+the paper's facts from `paper.yaml`, `design/plan.md` without its front matter and comments
+and with its feasibility results printed into it, and the feasibility results, each under its
+key. Not the manuscript, and no result but a feasibility one: a binding in the plan to any
+other result, a value or a table, is sent as written, since a design round reads the plan
+before there are results (round 1 of #316: a table the plan bound was printed whole). Each
+reviewer is told it reads a plan before its analysis is run, and that a major finding is one
+the design cannot meet: the instructions are the manuscript round's, rewritten in ten places
+and naming no manuscript, so the reply asked for is the same. A
 first design round with no panel gets a starter one, a methodologist whose remit names the
 study type's risks and a statistician who reads the plan against the feasibility results;
 a later design round needs its panel written. The guard hook puts `review --design --run

@@ -54,8 +54,8 @@ the manuscript itself, in the acknowledgements or the funding statement, go with
 
 **A design round is read the same way, before there are results.** `manuscript-guard
 review --design --run` sends each reviewer of `review/design/panel-<n>.yaml`, or of a starter
-design panel in the first design round, the paper's facts, `design/plan.md` as the build
-would print it, and the feasibility results. Not the manuscript, and no result but a
+design panel in the first design round, the paper's facts, `design/plan.md` without its
+comments and with its feasibility results printed into it, and the feasibility results. Not the manuscript, and no result but a
 feasibility one. Each reply is filed under `review/design/round-<n>/`, and G12 reads it:
 
 ```bash

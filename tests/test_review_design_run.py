@@ -84,6 +84,36 @@ def test_a_design_dry_run_sends_the_plan_and_the_feasibility_results(
     assert not (planned / "review" / "design").exists()
 
 
+def test_a_table_the_plan_binds_is_sent_as_written(planned: Path, capsys) -> None:
+    """Round 1 of #316: a value binding was printed only for a feasibility result, and a
+    table binding for any table the analysis had emitted. No table is a feasibility one."""
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((planned / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    table = {"columns": ["Group", "Reports"], "rows": [["Exposed", "SECRET-ROW-426"]]}
+    document.setdefault("tables", {})["baseline"] = table
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    _plan_edited(planned, "## Outcome", "## Outcome\n\nTable 1 will be {{table.baseline}}.\n")
+    assert design_run(planned, "--dry-run") == 0
+    assert "would be sent as written" in capsys.readouterr().out
+    folder = planned / "build" / "review" / "design" / "round-1" / "dry-run"
+    text = (folder / "as-text.txt").read_text(encoding="utf-8")
+    assert "Table 1 will be {{table.baseline}}." in text
+    assert "SECRET-ROW-426" not in text
+
+
+def test_the_design_instructions_name_no_manuscript() -> None:
+    """Round 1 of #316: three places still pointed the reader at a manuscript it is not
+    sent."""
+    from manuscript_guard.panel.prompt import DESIGN_SYSTEM
+
+    assert "manuscript" not in DESIGN_SYSTEM.lower()
+
+
 def test_a_design_run_files_a_design_reading_for_each_reviewer_and_model(
     planned: Path, providers: Providers, capsys
 ) -> None:

@@ -20,9 +20,10 @@ and every HTML comment, which is where authors keep their notes. Figures are pic
 are not sent; the place of each is marked.
 
 **A design round is sent the plan instead** (`gather_design`): the facts about the paper,
-`design/plan.md` as the build would print it, and the feasibility results, each under its
-key. Not the manuscript, and no result but a feasibility one: a binding in the plan to any
-other result is sent as written. Its reviewers are told they read a plan before its analysis
+`design/plan.md` without its front matter and comments and with its feasibility results
+printed into it, and the feasibility results, each under its key. Not the manuscript, and no
+result but a feasibility one: a binding in the plan to any other result, a value or a table,
+is sent as written. Its reviewers are told they read a plan before its analysis
 is run (`system_text(..., design=True)`); the reply asked of them is the same.
 
 **The failure of a model reviewer is agreeableness.** A panel of personas that all approve
@@ -37,6 +38,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 from manuscript_guard.build.assemble import render_table, strip_front_matter
 from manuscript_guard.contracts import load_namespace
@@ -189,6 +191,10 @@ _DESIGN_CHANGES = (
      "not met, or the data cannot answer what is asked. The authors must answer it before "
      "the analysis is run."),
     ("Give one verdict on the paper as seen", "Give one verdict on the plan as seen"),
+    ("Agreeing with a paper is the easy mistake", "Agreeing with a plan is the easy mistake"),
+    ("A computation ask says why the numbers and tables already reported cannot answer it.",
+     "A computation ask says why the feasibility results cannot answer it."),
+    ('"where in the manuscript, or what is absent"', '"where in the plan, or what is absent"'),
     ("The next message holds facts about the paper, the target journal's requirements and "
      "the reporting guideline where the authors have recorded them, and every file of the "
      "manuscript. Numbers and tables that the authors take from their analysis are shown as "
@@ -439,7 +445,8 @@ def gather(project: Project) -> Material:
 
 def gather_design(project: Project) -> Material:
     """Read what every reviewer of a design round is sent: the facts about the paper, the
-    plan as the build would print it, and the feasibility results. Nothing else.
+    plan without its front matter and comments, its feasibility results printed into it, and
+    the feasibility results. Nothing else.
 
     Only a feasibility result is printed into the plan: a binding to any other result is
     sent as written and counted, since a design round reads the plan before there are
@@ -459,10 +466,13 @@ def gather_design(project: Project) -> Material:
     namespace, results, _literature, _report = load_namespace(project)
     counted = {key: value for key, value in results.values.items() if key.startswith(FEASIBILITY)}
     printable = {f"results.{key}": value for key, value in counted.items()}
+    # A table is a result too, and none is a feasibility one (a table's key has no dot): one
+    # the plan binds is sent as written (round 1 of #316: it was printed into the request).
+    tables = SimpleNamespace(tables={})
     data, text = _read(plan, label)
-    shown, unrendered = _as_read(text, printable, results)
+    shown, unrendered = _as_read(text, printable, tables)
     parts = ["# The paper", _about(project), "# The analysis plan", _block(label, shown)]
-    sent = [Sent(label, "as the build would print it")]
+    sent = [Sent(label, "without its comments, its feasibility results printed into it")]
     if counted:
         listed = "\n".join(f"{key}: {value.display}" for key, value in sorted(counted.items()))
         parts += ["# The feasibility results", _block("results: feasibility.*", listed)]

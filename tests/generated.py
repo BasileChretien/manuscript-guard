@@ -949,6 +949,15 @@ SPELT = (
 )  # fmt: skip
 
 
+#: The bindings of statistics that say what they belong to, as `whole_namespace` in
+#: tests/readings.py declares them: what the reading of a statistic quoted whole sorts.
+WHOLE = (
+    "{{results.or.point}}", "{{results.or.ci_low}}", "{{results.or.ci_high}}",
+    "{{results.or.p}}", "{{results.hr.p}}", "{{results.female.pct}}",
+    "{{results.female.n}}", "{{results.cohort.n}}",
+)  # fmt: skip
+
+
 #: What names a dataset, one of each kind the data statement rule knows; links to storage
 #: that is neither persistent nor archived, one of each kind; and links to a fixed version of
 #: a repository, which are neither. What the data statement reading must tell apart.
@@ -1380,6 +1389,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "interval order": intervals(),
+    "quoted whole": texts(WHOLE),
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),

@@ -1660,6 +1660,45 @@ estimate do not run across another estimate's name: "No difference in mortality,
 names a hazard ratio, held to 1. Bounds whose signs cannot be read
 for sure are not read: "-0.9--0.1" is an en dash in Markdown or a hyphen and a minus.
 
+An n (%) in a table of a paper given to `audit` is held to its denominator
+(`stats/shares.py`): the count's own, "640/1200 (53.3)", or the "n = 1200" of its column's
+header, the nearest above it in a row with no count. The count over the denominator has to
+give the share printed within half a unit of its last place. The table is read as rows of
+cells (`text/tables.py`): a Markdown pipe table from the masked text, so that one in a
+fenced listing is not a table, and a .docx table as Word lays it out, from marks the reader
+puts on the first line of each cell and takes out again, so the text the rest of the audit
+reads is unchanged. A cell spanning columns counts as each.
+
+What is read is only a column of shares. A label that names a mean, a median, an SD, an
+IQR, a range or a CI, the row's or the one over its rows, or a header that does, bars it,
+"%" or not: "HbA1c, %, mean (SD)" holds two numbers that are not a count and its share. So
+does a row's label that ends on a unit in percent, "Oxygen saturation, %" or "LVEF (%)",
+with no "n" before the "%", for a cell with no "%" of its own and a number no more than 100:
+a measure, whose mean (SD) is printed as whole numbers beside the shares, and not "Male sex
+(%) | 640 (58.0%)" (rounds 1 and 2 of #314). Of the rest, a cell is read where something
+says it is a share: a "%" in the cell, or "n (%)", "No. (%)" or "n/N (%)" in the row's
+label, in the label over its rows or in its column's header. A "%" alone in a label is a
+unit and says nothing; read as "these are shares", it listed a mean saturation of 96 (3) as
+8% of its column (round 1 of #314). Or a cell is read where it is one of a characteristic's
+categories: the rows under a label of their own, which may have its P value beside it or a
+dash, all of whose shares in its column add up to about 100 (round 2 of #314: a P beside the
+label made it a header). Where the longest run of them from the top that adds up to about 100
+is shorter than all of them, it is still the categories for letting a share off as a share of
+their total, the row after them being the next characteristic (round 2: a row after the
+subtypes joined them); but it never says a cell is a share (round 3: a whole-number mean's
+running sum with the shares passed through 100, and the mean was listed).
+
+A share is listed only where no reading of it gives the share printed: of its denominator;
+of its row's total, where the row's shares add up to 100 across it; or of its categories'
+total, where their shares add up to 100 down the column. The last is what the subtypes of
+another row are, "Type 1" and "Type 2" as shares of those with diabetes, and what a
+characteristic counted among those with data is (round 1 of #314: both were listed as
+errors). A row whose label carries a footnote marker, a superscript, a footnote's reference,
+a dagger, or which names an n of its own, is listed as uncertain: a note under the table may
+give it the patients with data as its denominator. A share that is off says which
+denominators it would fit, which is what a share of those with data looks like. Listed with
+the other disagreements, and not counted by `--strict`.
+
 ## A model is read from its fit, and each variable says what it is
 
 A parameter is one number. A model is a set of decisions: which outcome, which kind of
@@ -5562,6 +5601,32 @@ Added by the adversarial review, verified and **not** fixed:
   likelihood-based, or the P adjusted for multiplicity. A word that stands an interval or
   its P down does so wherever it is in the sentence, as for the tests. A P given before its
   interval, or in a table column of its own, is not read.
+- **An n (%) is held to its denominator only where the table writes both, in one cell, in
+  a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
+  count and its share in columns of their own, nor a share whose denominator only a caption
+  or a note under the table states ("Values are n (%)", "of those with data"). A share of
+  those with data, under a header that gives everyone, is listed: as uncertain where the
+  row's label carries a footnote marker, as plainly off where it does not. A row whose
+  shares add up to 100 across it is let off if they are shares of its total, so a wrong
+  share in a row of two that happens to add up to 100 with the other, and fits the row's
+  total, is not listed; and a row-percentage table with a Total column, whose shares add up
+  to 200, is listed whole. Categories with nothing but their sum to say they are shares are
+  read only where every row of their run adds up to 100: followed in the same run by the
+  next characteristic, they are not read, and a wrong count among them is not listed
+  (`test_categories_run_on_into_the_next_characteristic_are_not_read`); a whole-number mean
+  in a run that adds up to 100 with it is read and listed. Both are the price of not letting
+  a running sum say what is a share (round 3 of #314). Categories that add up to 100 are let
+  off as shares of their own
+  total in the same way. A group label's "n (%)" reaches every row with a count below it
+  until a row without one, and a data row with no count in it is read as a header, so its
+  "n = 980" becomes the denominator below it. A superscript unit in a label, kg/m^2^, reads as
+  a footnote marker and makes the row uncertain. A group label that says only "%",
+  "Smoking status, %", says nothing, so its categories are read only where their shares add
+  up to 100, and one wrong among them leaves them all unread. A unit label with a footnote
+  marker after it, or with no comma before its "%" ("SpO2 %"), is not a measure.
+  Categories whose counts add up to an old denominator are let off as shares of it. "No. of
+  patients (%)" and "% (n)" are not read as saying shares. A nested Word table is read as
+  text in its cell.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did

@@ -473,6 +473,24 @@ def _reported_intervals() -> Reading:
     return reported
 
 
+@reading("table shares")
+def _table_shares() -> Reading:
+    """Each count and its share in a pipe table, as it is printed, with the denominator the
+    table names for it and its row's total, whether it is uncertain, and whether `audit`
+    lists it as off."""
+    from manuscript_guard.stats.shares import off, table_shares
+    from manuscript_guard.text.tables import markdown_tables
+
+    def read(text: str) -> list[list[Any]]:
+        return [
+            [s.line, s.printed, s.count, s.percent, s.over, s.own, s.row_total, s.label,
+             s.uncertain, off(s)]
+            for table in markdown_tables(text) for s in table_shares(table)
+        ]  # fmt: skip
+
+    return read
+
+
 @reading("abbreviations")
 def _abbreviations() -> Reading:
     from manuscript_guard.gates.language import _judge, _Known, _shipped

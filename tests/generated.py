@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Iterable
+from decimal import ROUND_HALF_UP, Decimal
 from functools import cache
 from typing import Any, TypeVar
 
@@ -1028,6 +1029,204 @@ ESTIMATES = (
 )  # fmt: skip
 
 
+# ------------------------------------------------------------------------ a table's shares
+
+#: What the rows of a table of shares are about. None names a statistic, a note or an n.
+CHARACTERISTICS = (
+    "Diabetes", "Hypertension", "Female sex", "Current smoker", "Prior stroke",
+    "Heart failure", "Statin use", "Chronic kidney disease",
+)  # fmt: skip
+#: The categories of a characteristic, and the characteristics that have them.
+CATEGORIES = ("North", "South", "East", "West")
+SPLIT_BY = ("Region", "Education", "Season of entry")
+#: How a header names its column's denominator.
+HEADED = (
+    "{arm} (n = {n})", "{arm} (N={n})", "{arm}, n = {n}",
+    "{arm}\N{NO-BREAK SPACE}(n\N{NO-BREAK SPACE}=\N{NO-BREAK SPACE}{n})",
+)  # fmt: skip
+#: A footnote marker, and whether it ends the label rather than following its words.
+MARKERS = (
+    ("^a^", False), ("[^1]", False), ("\N{DAGGER}", False), ("\N{DOUBLE DAGGER}", False),
+    ("*", True), ("\N{SUPERSCRIPT ONE}", True),
+)  # fmt: skip
+#: Rows that name another statistic, which are never read as shares, although each says %.
+NOT_SHARES = ("HbA1c, %, mean (SD)", "Ejection fraction, %, median (IQR)",
+              "Adherence, %, median (range)")  # fmt: skip
+#: Rows whose label gives a unit, a "%", and whose mean (SD) is printed as whole numbers:
+#: never read as shares either (round 1 of #314).
+UNITS = ("Oxygen saturation, %", "LVEF, %", "Haematocrit, %")
+#: What a characteristic's own label row holds beside it: nothing, or its P value.
+P_VALUES = ("", "0.04", "<0.001", "P = 0.12", "0.81*")
+#: The kinds of row each table of `share_tables` holds one of.
+SHARE_ROWS = (
+    "right", "wrong", "mean", "unit", "noted", "group", "summed", "subtypes", "own",
+    "of the row",
+)  # fmt: skip
+
+#: A share as the reading finds it: its line, count, share as printed, denominator, whether
+#: it is uncertain, and whether it is off.
+Shared = tuple[int, int, str, "int | None", bool, bool]
+
+
+def _printed(count: int, over: int, places: int) -> str:
+    """`count` of `over` as a share, rounded half up to `places`."""
+    step = Decimal(1).scaleb(-places)
+    return str((Decimal(100 * count) / Decimal(over)).quantize(step, rounding=ROUND_HALF_UP))
+
+
+def _about_100(percents: list[str]) -> bool:
+    """Whether a row's shares could be shares of its total: they add up to 100 within what
+    their rounding allows."""
+    slack = sum(Decimal(5).scaleb(-len(p.partition(".")[2]) - 1) for p in percents)
+    return abs(sum(Decimal(p) for p in percents) - 100) <= slack
+
+
+def _wrong(draw: st.DrawFn, percents: list[str], which: int, places: int) -> list[str]:
+    """`percents` with the one at `which` put a few units off, and off far enough that the
+    row's shares do not add up to 100 either."""
+    step = Decimal(1).scaleb(-places)
+    units = draw(st.integers(3, 60)) * draw(st.sampled_from((1, -1)))
+    for tried in (units, -units, *(way * more for more in range(3, 200) for way in (1, -1))):
+        value = Decimal(percents[which]) + tried * step
+        moved = [*percents[:which], str(value.quantize(step)), *percents[which + 1 :]]
+        if 0 <= value <= 100 and not _about_100(moved):
+            return moved
+    raise AssertionError(f"no share off from {percents}")  # pragma: no cover
+
+
+@st.composite
+def share_tables(draw: st.DrawFn) -> tuple[str, list[Shared]]:
+    """A paper with a table of shares, a row of each kind of `SHARE_ROWS` in an order drawn:
+    shares right under a label that says n (%), and one wrong among cells that say %; a mean
+    (SD), under a label that names it, and under one whose "%" is a unit; a share wrong
+    under a label with a footnote marker; the categories of a characteristic under a label
+    that says n (%), and those of one under a label that says nothing, whose shares add up
+    to 100; a row and its subtypes, shares of that row's count; a count with its own
+    denominator, one right and one wrong; and a row of shares of its own total, which are
+    not their column's. Then a table
+    whose header names no denominator, the first table's wrong share in a fenced listing,
+    and a count and its share in a sentence, none of which is held to anything. With each
+    share the reading finds (`Shared`), in the order it finds them."""
+    places = draw(st.integers(0, 2))
+    grouped = draw(st.booleans())
+    sizes = [draw(st.integers(40, 5000)) for _arm in range(2)]
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
+    name = st.sampled_from(CHARACTERISTICS)
+    lines: list[str] = [draw(sentence).capitalize() + ".", ""]
+    expected: list[Shared] = []
+
+    def count(number: int) -> str:
+        return f"{number:,}" if grouped else str(number)
+
+    def row(label: str, cells: list[str], p: str = "") -> None:
+        """A row, with a P value in the last column or nothing."""
+        lines.append("| " + " | ".join([label, *cells, p]) + " |")
+
+    def shares(label: str, counts: list[int], percents: list[str], overs: list[Any], *,
+               wrong: int | None = None, sign: str = "", noted: bool = False,
+               own: bool = False, read: tuple[int, ...] = (0, 1)) -> None:  # fmt: skip
+        """A row of shares, and what the reading finds in it, in the columns it reads."""
+        drawn = list(zip(counts, percents, overs, strict=True))
+        row(label, [f"{count(c)}/{count(d)} ({p}{sign})" if own else f"{count(c)} ({p}{sign})"
+                    for c, p, d in drawn])  # fmt: skip
+        expected.extend((len(lines), c, p, d, noted, column == wrong)
+                        for column, (c, p, d) in enumerate(drawn) if column in read)  # fmt: skip
+
+    def counted(overs: list[int]) -> tuple[list[int], list[str]]:
+        counts = [draw(st.integers(0, n)) for n in overs]
+        return counts, [_printed(c, n, places) for c, n in zip(counts, overs, strict=True)]
+
+    def cut(totals: list[int], read: tuple[int, ...] = (0, 1)) -> None:
+        """Categories under a label of their own, each arm's total cut among them, so that
+        their shares of it add up to 100, read in the columns `read` names."""
+        parts = draw(st.integers(2, 4))
+        edges = [[0, *sorted(draw(st.lists(st.integers(0, n), min_size=parts - 1,
+                                           max_size=parts - 1))), n] for n in totals]
+        for at, category in enumerate(CATEGORIES[:parts]):
+            counts = [edge[at + 1] - edge[at] for edge in edges]
+            percents = [_printed(c, n, places) for c, n in zip(counts, totals, strict=True)]
+            shares(category, counts, percents, sizes, read=read)
+
+    # The first arm's header says its numbers are n (%), as a table that gives the other
+    # statistics in its labels does; the second's says nothing, so that what else says a
+    # cell is a share is drawn too.
+    headers = [draw(st.sampled_from(HEADED)).format(arm=arm, n=count(n))
+               for arm, n in zip(("Exposed", "Unexposed"), sizes, strict=True)]  # fmt: skip
+    row("Characteristic", [f"{headers[0]}, n (%)", headers[1]], "P")
+    lines.append("|---|---|---|---|")
+    fenced = ""
+    for kind in draw(st.permutations(SHARE_ROWS)):
+        if kind == "right":
+            shares(f"{draw(name)}, n (%)", *counted(sizes), sizes)
+        elif kind in ("wrong", "noted"):
+            counts, percents = counted(sizes)
+            which = draw(st.integers(0, 1))
+            percents = _wrong(draw, percents, which, places)
+            if kind == "wrong":
+                shares(draw(name), counts, percents, sizes, wrong=which, sign="%")
+                fenced = "\n".join([*lines[2:4], lines[-1]])
+            else:
+                marker, last = draw(st.sampled_from(MARKERS))
+                label = draw(name)
+                label = f"{label}, n (%){marker}" if last else f"{label}{marker}, n (%)"
+                shares(label, counts, percents, sizes, wrong=which, noted=True)
+        elif kind in ("mean", "unit"):
+            row(draw(st.sampled_from(NOT_SHARES if kind == "mean" else UNITS)),
+                [f"{draw(st.integers(1, 99))} ({draw(st.integers(1, 40))})" for _arm in sizes])
+        elif kind == "group":
+            label = f"{draw(st.sampled_from(SPLIT_BY))}, n (%)"
+            row(label, ["", ""], draw(st.sampled_from(P_VALUES)))
+            for category in CATEGORIES[: draw(st.integers(2, 4))]:
+                shares(category, *counted(sizes), sizes)
+            # The next characteristic straight after them, its label saying n (%).
+            shares(f"{draw(name)}, n (%)", *counted(sizes), sizes)
+        elif kind == "summed":
+            row(draw(st.sampled_from(SPLIT_BY)), ["", ""], draw(st.sampled_from(P_VALUES)))
+            cut(sizes)
+            row("Age, years", ["54.2 (12.1)", "55.0 (11.8)"])
+        elif kind == "subtypes":
+            # A row, and the subtypes of what it counts: shares of that count, which is at
+            # most half its arm's, so that the largest subtype is not its column's share.
+            parent = draw(name)
+            within = [draw(st.integers(10, n // 2)) for n in sizes]
+            shares(f"{parent}, n (%)", within,
+                   [_printed(c, n, places) for c, n in zip(within, sizes, strict=True)], sizes)
+            row(f"{parent} type", ["", ""], draw(st.sampled_from(P_VALUES[1:])))
+            # The run with the row after them does not add up to 100, so nothing says the
+            # subtypes are shares where the header does not (round 3 of #314); where it does,
+            # they are let off as shares of their own total.
+            cut(within, read=(0,))
+            # The next characteristic straight after them, with nothing in its label to say
+            # it holds shares: read where its header says so, and not one of the subtypes
+            # (round 2 of #314). A tenth of its arm or more, so that it cannot be.
+            counts = [draw(st.integers(n // 10, n)) for n in sizes]
+            percents = [_printed(c, n, places) for c, n in zip(counts, sizes, strict=True)]
+            row(draw(name), [f"{count(c)} ({p})" for c, p in zip(counts, percents, strict=True)])
+            expected.append((len(lines), counts[0], percents[0], sizes[0], False, False))
+        elif kind == "own":
+            owns = [draw(st.integers(10, 900)) for _arm in sizes]
+            counts, percents = counted(owns)
+            which = draw(st.integers(0, 1))
+            percents = _wrong(draw, percents, which, places)
+            shares(f"{draw(name)}, n/N (%)", counts, percents, owns, wrong=which, own=True)
+        else:
+            # Shares of the row's own total, which is at most half the smaller arm's, so
+            # that neither is its column's share.
+            total = draw(st.integers(10, min(sizes) // 2))
+            first = draw(st.integers(-(-total // 5), total * 4 // 5))
+            counts = [first, total - first]
+            shares(f"{draw(name)}, n (%)", counts,
+                   [_printed(c, total, places) for c in counts], sizes)
+    lines += ["", draw(sentence).capitalize() + ".", ""]
+    # A table whose header names no denominator: its shares are read, and held to nothing.
+    lines += ["| Outcome | Cases | Controls | P |", "|---|---|---|---|"]
+    shares(f"{draw(name)}, n (%)", *counted(sizes), [None, None])
+    lines += ["", "```", fenced, "```", ""]
+    shown = f"{count(sizes[0] // 3)} ({draw(st.integers(1, 99))}.0%)"
+    lines += [f"{draw(sentence).capitalize()} {shown} {draw(sentence)}.", ""]
+    return "\n".join(lines), expected
+
+
 # ---------------------------------------------------------------------- what an edit holds
 
 #: A binding, a citation and a number in each of the ways one is written: what `reworded`
@@ -1186,6 +1385,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),
+    "table shares": share_tables().map(lambda drawn: drawn[0]),
     "units after": texts(BOUND_UNITS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}

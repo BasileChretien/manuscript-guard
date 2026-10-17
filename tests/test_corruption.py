@@ -3730,6 +3730,212 @@ def test_an_audited_paper_s_interval_that_does_not_fit_is_listed_apart(tmp_path:
     assert "excludes 1, and P = 0.40 is above 0.05" in report.disagreements[1].message
 
 
+#: A table 1 with four shares off their denominators: a count copied from another row, one
+#: under a label with a footnote marker, one of its own denominator, and one among the
+#: categories of a characteristic whose shares add up to 100. And a mean (SD) that says %.
+_SHARES_OFF = (
+    "Table 1. Characteristics.\n\n"
+    "| Characteristic | Exposed (n = 1200) | Unexposed (N=3,400) |\n"
+    "|---|---|---|\n"
+    "| HbA1c, %, mean (SD) | 54 (12) | 55 (11) |\n"
+    "| Female sex, n (%) | 640 (53.3) | 1,800 (52.9) |\n"
+    "| Diabetes, n (%) | 300 (26.0) | 700 (20.6) |\n"
+    "| Smoking^a^, n (%) | 200 (17.5) | 500 (14.7) |\n"
+    "| Stroke, n/N (%) | 12/40 (35.0) | 9/45 (20.0) |\n"
+    "| Region | | |\n"
+    "| North | 600 (50.0) | 1,700 (50.0) |\n"
+    "| South | 600 (50.0) | 1,800 (50.0) |\n"
+)
+
+
+def test_an_audited_table_s_n_percent_off_its_denominator_is_listed_apart(
+    tmp_path: Path,
+) -> None:
+    """Item 19.4: an n (%) in a table is held to the denominator the table names, its own or
+    its column header's n, within half a unit of the share's last place. It needs no
+    outputs, and is listed with the P and the intervals that do not fit. The share says
+    which denominators it would fit, and a row whose label carries a footnote marker says
+    it is uncertain: a note may give it another."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_SHARES_OFF, encoding="utf-8")
+    report = audit([paper], [])
+    assert [(d.line, d.message) for d in report.disagreements] == [
+        (7, "n (%) 300 (26.0): 300 of 1200 is 25.00%, not 26.0; 26.0% is 300 of 1152 to 1156"),
+        (8, "n (%) 200 (17.5): 200 of 1200 is 16.67%, not 17.5; 17.5% is 200 of 1140 to 1146 "
+            "(uncertain: the row's label carries a footnote marker, and a note may give it "
+            "another denominator)"),
+        (9, "n (%) 12/40 (35.0): 12 of 40 is 30.00%, not 35.0"),
+        (12, "n (%) 1,800 (50.0): 1800 of 3400 is 52.94%, not 50.0; 50.0% is 1800 of 3597 "
+             "to 3603"),
+    ]  # fmt: skip
+    assert report.disagreements[0].context == "Diabetes, n (%) | 300 (26.0) | 700 (20.6)"
+    shown = render(report, measure_discrimination(set()))
+    assert "an n (%) and its denominator" in shown
+    assert "line 12: n (%) 1,800 (50.0)" in shown
+
+
+def test_a_header_that_names_its_n_before_a_comma_gives_its_denominator(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #314: "Exposed, n = 1200, n (%)" named no denominator, since a count was
+    not read where a comma followed it, and every share under it was held to nothing."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("| | Exposed, n = 1,200, n (%) |\n|---|---|\n"
+                     "| Diabetes | 300 (26.0) |\n", encoding="utf-8")  # fmt: skip
+    [said] = audit([paper], []).disagreements
+    assert said.message.startswith("n (%) 300 (26.0): 300 of 1200 is 25.00%")
+
+
+@pytest.mark.parametrize(
+    ("written", "listed"),
+    [
+        # A characteristic's categories with its P value on its label row (round 2 of #314).
+        ("| | A (n = 1200) | B (n = 3400) | P |\n|---|---|---|---|\n| Sex | | | 0.12 |\n"
+         "| Male | 604 (53.3) | 1800 (52.9) | |\n| Female | 560 (46.7) | 1600 (47.1) | |\n",
+         "n (%) 604 (53.3): 604 of 1200 is 50.33%"),
+        # A yes/no characteristic whose label ends "(%)" (round 2 of #314).
+        ("| | A (n = 1200), n (%) |\n|---|---|\n| Male sex (%) | 640 (58.0%) |\n",
+         "n (%) 640 (58.0%): 640 of 1200 is 53.33%"),
+    ],
+)  # fmt: skip
+def test_an_n_percent_off_its_denominator_is_listed_in_a_shape_review_found(
+    tmp_path: Path, written: str, listed: str
+) -> None:
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(written, encoding="utf-8")
+    [said] = audit([paper], []).disagreements
+    assert said.message.startswith(listed)
+
+
+def test_categories_run_on_into_the_next_characteristic_are_not_read(tmp_path: Path) -> None:
+    """A known gap, pinned (round 3 of #314): with nothing but their sum to say they are
+    shares, categories followed in the same run by the next characteristic are not read,
+    and 650 (50.0), which is 54.17% of 1200, is not listed. Without the Diabetes row it is."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    table = ("| | Overall (n = 1200) |\n|---|---|\n| Smoking status | |\n"
+             "| Never | 650 (50.0) |\n| Former | 400 (33.3) |\n"
+             "| Current | 200 (16.7) |\n")  # fmt: skip
+    paper.write_text(table + "| Diabetes | 300 (25.0) |\n", encoding="utf-8")
+    assert audit([paper], []).disagreements == []
+    paper.write_text(table, encoding="utf-8")
+    assert [d.line for d in audit([paper], []).disagreements] == [4]
+
+
+def _cell(text: str, *, span: int = 1) -> str:
+    props = f'<w:tcPr><w:gridSpan w:val="{span}"/></w:tcPr>' if span > 1 else ""
+    return f"<w:tc>{props}<w:p>{text}</w:p></w:tc>"
+
+
+def _run(text: str, *, raised: bool = False) -> str:
+    props = '<w:rPr><w:vertAlign w:val="superscript"/></w:rPr>' if raised else ""
+    return f'<w:r>{props}<w:t xml:space="preserve">{text}</w:t></w:r>'
+
+
+def test_an_n_percent_in_a_word_table_is_read_by_its_row_and_column(tmp_path: Path) -> None:
+    """Item 19.4: in a .docx each cell is a line of its own, so a table is read as Word lays
+    it out, rows of cells, a header cell spanning two columns counted as each. A footnote
+    marker typed as superscript, or a footnote's own reference, makes the row uncertain.
+    The text the rest of the audit reads is what it was: the marks go."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.text.docx import read_docx_text
+
+    def row(*cells: str) -> str:
+        return "<w:tr>" + "".join(cells) + "</w:tr>"
+
+    def plain(*texts: str) -> list[str]:
+        return [_cell(_run(text)) for text in texts]
+
+    table = "<w:tbl>" + "".join([
+        row(_cell(""), _cell(_run("Arms (n = 900)"), span=2)),
+        row(*plain("Characteristic", "Exposed", "Unexposed")),
+        row(*plain("Diabetes, n (%)", "300 (33.3)", "100 (11.0)")),
+        row(_cell(_run("Smoking") + _run("a", raised=True) + _run(", n (%)")),
+            *plain("90 (10.0)", "95 (11.0)")),
+        row(_cell(_run("Stroke, n (%)") + '<w:r><w:footnoteReference w:id="2"/></w:r>'),
+            *plain("9 (1.0)", "18 (3.0)")),
+    ]) + "</w:tbl>"  # fmt: skip
+    paper = _docx(tmp_path / "paper.docx", _p("Results") + table + _p("After the table."))
+    said = audit([paper], []).disagreements
+    assert [d.message.split(";")[0] for d in said] == [
+        "n (%) 100 (11.0): 100 of 900 is 11.11%, not 11.0",
+        "n (%) 95 (11.0): 95 of 900 is 10.56%, not 11.0",
+        "n (%) 18 (3.0): 18 of 900 is 2.00%, not 3.0",
+    ]
+    assert ["uncertain" in d.message for d in said] == [False, True, True]
+    assert said[1].context == "Smoking^a^, n (%) | 90 (10.0) | 95 (11.0)"
+    body = read_docx_text(paper).body
+    assert "\nSmokinga, n (%) | \n90 (10.0) | \n" in body
+    assert not any(chr(mark) in body for mark in range(0x19, 0x20))
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        # No denominator anywhere in the table.
+        "| Characteristic | Exposed | Unexposed |\n|---|---|---|\n"
+        "| Diabetes, n (%) | 300 (26.0) | 7 (2.0) |\n",
+        # A label that names a median, although it says %.
+        "| | A (n = 100) |\n|---|---|\n| Ejection fraction, %, median (IQR) | 55 (15) |\n",
+        # A column whose header names a mean, although it says n (%).
+        "| | Mean (SD) or n (%), n = 100 |\n|---|---|\n| Visits | 4 (2) |\n",
+        # Nothing says the numbers in brackets are shares, and they do not add up to 100.
+        "| | A (n = 50) |\n|---|---|\n| Visits | 3 (2) |\n| Calls | 5 (1) |\n",
+        # Shares of the row's own total.
+        "| | A (n = 100) | B (n = 200) |\n|---|---|---|\n"
+        "| Exposed, n (%) | 30 (60.0) | 20 (40.0) |\n",
+        # A "%" that is a unit, its mean (SD) printed as whole numbers (round 1 of #314).
+        "| | A (n = 1200) | B (n = 3400) |\n|---|---|---|\n"
+        "| Oxygen saturation, % | 96 (3) | 95 (4) |\n| LVEF, % | 55 (10) | 54 (11) |\n",
+        # A unit in percent under a header that says n (%): a measure all the same.
+        "| | A (n = 1200), n (%) |\n|---|---|\n| HbA1c (%) | 7 (1) |\n"
+        "| Diabetes, n (%) | 300 (25.0) |\n",
+        # A whole-number mean whose running sum with the shares passes through 100, under
+        # a section label and a header that does not say n (%) (round 3 of #314).
+        "| | Overall (n = 1200) |\n|---|---|\n| Baseline | |\n| Age, years | 62 (11) |\n"
+        "| Female sex | 540 (45.0) |\n| Hypertension | 528 (44.0) |\n"
+        "| Diabetes | 216 (18.0) |\n",
+        # The subtypes again, the next characteristic straight after them (round 2).
+        "| | A (n = 1200), n (%) | B (n = 3400), n (%) |\n|---|---|---|\n"
+        "| Diabetes, n (%) | 300 (25.0) | 700 (20.6) |\n| Diabetes type | | |\n"
+        "| Type 1 | 30 (10.0) | 70 (10.0) |\n| Type 2 | 270 (90.0) | 630 (90.0) |\n"
+        "| Hypertension, n (%) | 500 (41.7) | 1400 (41.2) |\n",
+        # And with a P value beside their label (round 2).
+        "| | A (n = 1200) | B (n = 3400) | P |\n|---|---|---|---|\n"
+        "| Diabetes, n (%) | 300 (25.0) | 700 (20.6) | 0.01 |\n"
+        "| Diabetes type | | | 0.40 |\n| Type 1 | 30 (10.0) | 70 (10.0) | |\n"
+        "| Type 2 | 270 (90.0) | 630 (90.0) | |\n",
+        # The subtypes of another row, shares of it and not of the column (round 1 of #314).
+        "| | A (n = 1200) | B (n = 3400) |\n|---|---|---|\n"
+        "| Diabetes, n (%) | 300 (25.0) | 700 (20.6) |\n| Diabetes type | | |\n"
+        "| Type 1 | 30 (10.0) | 70 (10.0) |\n| Type 2 | 270 (90.0) | 630 (90.0) |\n",
+        # In a fenced listing.
+        "```\n| | A (n = 1200) |\n|---|---|\n| Diabetes, n (%) | 300 (26.0) |\n```\n",
+        # In the reference list.
+        "Text.\n\n# References\n\n| | A (n = 1200) |\n|---|---|\n"
+        "| Diabetes, n (%) | 300 (26.0) |\n",
+        # In a sentence.
+        "Diabetes was present in 300 (26.0%) of the 1200 exposed patients (n = 1200).\n",
+    ],
+)  # fmt: skip
+def test_an_n_percent_held_to_nothing_is_not_listed(tmp_path: Path, written: str) -> None:
+    """Item 19.4: only a column of shares with a denominator is held to it. Mean (SD) and
+    median (IQR) never fire, a share of the row is not wrong, and a table that is not one,
+    or not the paper's, is not read."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(written, encoding="utf-8")
+    assert audit([paper], []).disagreements == []
+
+
 @pytest.mark.parametrize(
     ("written", "said"),
     [

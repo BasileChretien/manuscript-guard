@@ -810,6 +810,12 @@ BOUND_UNITS = (
     "{{results.temp}} \N{DEGREE SIGN}C",
 )  # fmt: skip
 
+#: A journal's limit as its page may write it, and numbers and words it is not.
+QUOTED_LIMITS = (
+    "3500", "3,500", "3 500", "3500-word", "13500", "3500.5", "3,5000", "35000", "four",
+    "fourteen", "fourfold", "Four", "4", "14", "4.5",
+)  # fmt: skip
+
 NOTATED = (
     "P = 0.03", "p=0.04", "*P* < 0.001", "p-value", "n = 12", "n=3", "N= 40",
     "95% CI 1.2 to 3.4", "95% CI 1.2-3.4", "(95% CI {{results.low}} to {{results.high}})",
@@ -1006,6 +1012,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),
     "units after": texts(BOUND_UNITS),
+    "limit stated": st.fixed_dictionaries(
+        {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}
+    ),
     "abbreviations": st.fixed_dictionaries(
         {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}
     ),

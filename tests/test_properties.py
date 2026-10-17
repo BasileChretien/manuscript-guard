@@ -71,6 +71,7 @@ from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
 from manuscript_guard.gates import bound_units as bound_units_gate
+from manuscript_guard.gates import journal_quotes as journal_quotes_gate
 from manuscript_guard.gates import language as language_gate
 from manuscript_guard.gates import methods as methods_gate
 from manuscript_guard.gates import models as models_gate
@@ -3051,6 +3052,59 @@ def test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is(
     assert found == expected, text
 
 
+# ------------------------------------------------------------ a journal's limit, in its quote
+
+#: Words that write a number up to twenty, as G4 reads them.
+_NUMBER_WORDS = journal_quotes_gate._WORDS
+
+
+@st.composite
+def _limits_quoted(draw: st.DrawFn) -> list[tuple[str, int, bool]]:
+    """A limit, and its number written into a quote each way a page writes it, and each way
+    a quote holds a number or a word that is not it: one of every kind in each example,
+    among words drawn each time."""
+    value = draw(st.integers(1, 99_999))
+    small = draw(st.integers(1, 9))
+    group = draw(st.integers(100, 999))
+
+    def among(written: str) -> str:
+        before = draw(st.lists(st.sampled_from(FILLER), max_size=3))
+        after = draw(st.lists(st.sampled_from(FILLER), max_size=3))
+        return " ".join([*before, written, *after])
+
+    cases = [
+        (among(str(value)), value, True),
+        (among(f"{value:,}"), value, True),
+        (among(f"{value:,}".replace(",", " ")), value, True),
+        (among(f"{value}-word"), value, True),
+        (among(_NUMBER_WORDS[small]), small, True),
+        (among(_NUMBER_WORDS[small].capitalize()), small, True),
+        (among(f"1{value}"), value, False),
+        (among(f"{value}0"), value, False),
+        (among(f"{value}.5"), value, False),
+        (among(f"{value},000"), value, False),
+        (among(f"{_NUMBER_WORDS[small]}fold"), small, False),
+        (among(f"{small + 10}"), small, False),
+        # The last group of a number written with spaces between its thousands, and a group of
+        # three after a number that cannot be one, as a limits table saved as text has it.
+        (among(f"{small} {group}"), group, False),
+        (among(f"{small}{small} {group}"), group, False),
+        (among(f"{value + 1000} {group}"), group, True),
+        (among(f"{group + 1} {group}"), group, True),
+    ]
+    return draw(st.permutations(cases))
+
+
+@holds(150, _limits_quoted())
+def test_a_limit_is_stated_by_its_number_and_by_no_longer_one(
+    cases: list[tuple[str, int, bool]],
+) -> None:
+    """A journal's limit is in its quote as digits, with or without a separator of
+    thousands, or as a word up to twenty; not inside a longer number or a longer word."""
+    for quote, value, stated in cases:
+        assert journal_quotes_gate._states(quote, value) is stated, (quote, value)
+
+
 # ---------------------------------------------------------------------- an ISBN's check digit
 
 
@@ -3871,6 +3925,26 @@ def _a_slash_divides_by_symbols_only(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
 
 
+def _a_limit_is_read_inside_a_longer_number(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_DIGITS", "{}")
+
+
+def _a_limit_is_read_before_a_decimal(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_DIGITS", r"(?<![0-9.,]){}(?![0-9])")
+
+
+def _a_limit_has_no_separator_of_thousands(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_forms", lambda value: {str(value)})
+
+
+def _a_limit_s_word_is_read_inside_a_longer_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_WORD", "{}")
+
+
+def _a_limit_is_read_after_a_space_between_thousands(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_GROUP_BEFORE", re.compile(r"(?!)"))
+
+
 def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
 
@@ -4062,6 +4136,26 @@ BROKEN = {
     "a slash divides by the list's symbols only": (
         _a_slash_divides_by_symbols_only,
         test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
+    ),
+    "a limit is read inside a longer number": (
+        _a_limit_is_read_inside_a_longer_number,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a limit is read before a decimal": (
+        _a_limit_is_read_before_a_decimal,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a limit has no separator of thousands": (
+        _a_limit_has_no_separator_of_thousands,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a limit's word is read inside a longer word": (
+        _a_limit_s_word_is_read_inside_a_longer_word,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a limit is read after a space between thousands": (
+        _a_limit_is_read_after_a_space_between_thousands,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
     ),
     "a claim keeps its line breaks": (
         _a_claim_keeps_its_line_breaks,

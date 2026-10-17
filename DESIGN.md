@@ -1609,6 +1609,28 @@ estimate do not run across another estimate's name: "No difference in mortality,
 names a hazard ratio, held to 1. Bounds whose signs cannot be read
 for sure are not read: "-0.9--0.1" is an en dash in Markdown or a hyphen and a minus.
 
+An n (%) in a table of a paper given to `audit` is held to its denominator
+(`stats/shares.py`): the count's own, "640/1200 (53.3)", or the "n = 1200" of its column's
+header, the nearest above it in a row with no count. The count over the denominator has to
+give the share printed within half a unit of its last place. The table is read as rows of
+cells (`text/tables.py`): a Markdown pipe table from the masked text, so that one in a
+fenced listing is not a table, and a .docx table as Word lays it out, from marks the reader
+puts on the first line of each cell and takes out again, so the text the rest of the audit
+reads is unchanged. A cell spanning columns counts as each.
+
+What is read is only a column of shares. A label that names a mean, a median, an SD, an
+IQR, a range or a CI, the row's or the one over its rows, or a header that does, bars it,
+"%" or not: "HbA1c, %, mean (SD)" holds two numbers that are not a count and its share. Of
+the rest, a cell is read where a "%" in it, in the row's label, in the label over its rows
+or in its column's header says so, or where its column's shares add up to 100 over a run
+of rows with no other row between: a characteristic's categories. A row whose shares add up
+to 100 across it is read as shares of its total as well, and is listed only where neither
+reading gives the share printed. A row whose label carries a footnote marker, a
+superscript, a footnote's reference, a dagger, or which names an n of its own, is listed as
+uncertain: a note under the table may give it the patients with data as its denominator.
+A share that is off says which denominators it would fit, which is what a share of those
+with data looks like. Listed with the other disagreements, and not counted by `--strict`.
+
 ## A model is read from its fit, and each variable says what it is
 
 A parameter is one number. A model is a set of decisions: which outcome, which kind of
@@ -5459,6 +5481,15 @@ Added by the adversarial review, verified and **not** fixed:
   likelihood-based, or the P adjusted for multiplicity. A word that stands an interval or
   its P down does so wherever it is in the sentence, as for the tests. A P given before its
   interval, or in a table column of its own, is not read.
+- **An n (%) is held to its denominator only where the table writes both, in one cell, in
+  a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
+  count and its share in columns of their own, nor a share whose denominator only a caption
+  or a note under the table states ("Values are n (%)", "of those with data"). A share of
+  those with data, under a header that gives everyone, is listed: as uncertain where the
+  row's label carries a footnote marker, as plainly off where it does not. A row whose
+  shares add up to 100 across it is let off if they are shares of its total, so a wrong
+  share in a row of two that happens to add up to 100 with the other, and fits the row's
+  total, is not listed. A nested Word table is read as text in its cell.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did

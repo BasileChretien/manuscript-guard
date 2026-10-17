@@ -49,6 +49,7 @@ from generated import (
     lines,
     planned_plans,
     quotations,
+    share_tables,
     signs,
     sources,
     texts,
@@ -1244,6 +1245,82 @@ def _an_interval_over_two_lines_is_not_read(patch: pytest.MonkeyPatch) -> None:
     assert wrap in intervals._INTERVAL.pattern
     pattern = intervals._INTERVAL.pattern.replace(wrap, "")
     patch.setattr(intervals, "_INTERVAL", re.compile(pattern))
+
+
+# ---------------------------------------------------------------------- a table's shares
+
+
+@holds(100, share_tables())
+def test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator(
+    drawn: tuple[str, list[tuple[Any, ...]]],
+) -> None:
+    """Item 19: each count and its share in a pipe table is found where it stands, with its
+    denominator: its own, its column header's n, or none. A row whose label names a mean or
+    a median is not read although it says %, nor a table in a fenced listing, nor a share in
+    a sentence; a characteristic's categories whose shares add up to 100 are read with
+    nothing else to say so. A share is off where neither its denominator nor its row's total
+    gives it within half a unit of its last place, and uncertain where its row's label
+    carries a footnote marker."""
+    from manuscript_guard.stats.shares import off, table_shares
+    from manuscript_guard.text.tables import markdown_tables
+
+    text, expected = drawn
+    found = [share for table in markdown_tables(text) for share in table_shares(table)]
+    assert [
+        (s.line, s.count, s.percent, s.over, s.uncertain is not None, off(s)) for s in found
+    ] == expected, text
+
+
+def _a_share_is_held_to_its_printed_value(patch: pytest.MonkeyPatch) -> None:
+    from fractions import Fraction
+
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_half", lambda percent: Fraction(0))
+
+
+def _a_label_naming_a_mean_is_read_as_shares(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_barred", lambda row, column: False)
+
+
+def _shares_adding_up_to_100_say_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_summed", lambda rows: set())
+
+
+def _a_row_is_never_read_as_shares_of_its_total(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_row_total", lambda matches: None)
+
+
+def _a_footnote_marker_is_not_seen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_NOTE", re.compile(r"(?!)"))
+
+
+def _a_header_names_no_denominator(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_N", re.compile(r"(?!)(?P<n>)"))
+
+
+def _a_count_with_its_own_denominator_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    pattern = shares._SHARE.pattern.replace("(?P<over>", "(?P<over>(?!)")
+    assert pattern != shares._SHARE.pattern
+    patch.setattr(shares, "_SHARE", re.compile(pattern))
+
+
+def _a_table_in_a_fenced_listing_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import tables
+
+    patch.setattr(tables, "mask", lambda text: text)
 
 
 # ------------------------------------------------------------ a section found by its heading
@@ -3947,6 +4024,38 @@ BROKEN = {
     "an interval wrapped onto a second line is not read": (
         _an_interval_over_two_lines_is_not_read,
         test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "a share is held to its printed value, not half a unit either side": (
+        _a_share_is_held_to_its_printed_value,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a row whose label names a mean or a median is read as shares": (
+        _a_label_naming_a_mean_is_read_as_shares,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "categories whose shares add up to 100 are not read as shares": (
+        _shares_adding_up_to_100_say_nothing,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a row's shares are never read as shares of its total": (
+        _a_row_is_never_read_as_shares_of_its_total,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a footnote marker on a row's label is not seen": (
+        _a_footnote_marker_is_not_seen,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a column header's n is not read as its denominator": (
+        _a_header_names_no_denominator,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a count with its own denominator, n/N (%), is not read": (
+        _a_count_with_its_own_denominator_is_not_read,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a table in a fenced listing is read": (
+        _a_table_in_a_fenced_listing_is_read,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
     ),
     "a claim runs back to the start of its paragraph, past the anchor before it": (
         _a_claim_runs_back_to_its_paragraph,

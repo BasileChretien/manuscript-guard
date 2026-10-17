@@ -3922,6 +3922,43 @@ def test_the_message_says_how_small_a_vector_figure_s_text_prints(project: Path)
     ), said[0].message
 
 
+#: What G4 says of a PDF figure.
+_PDF_CODES = (*_VECTOR_CODES, "figure-font-type3", "figure-font-not-embedded")
+
+
+@pytest.mark.parametrize(
+    ("font", "content", "rules", "said"),
+    [
+        (b"/Type3 /BaseFont /ABCDEF+DejaVuSans", b"", {},
+         [("figure-font-type3", "warn")]),
+        (b"/Type1 /BaseFont /Helvetica", b"", {}, [("figure-font-not-embedded", "warn")]),
+        # A page 216 pt wide printed at 89 mm: 5 pt text prints at 5.84, a 0.2 pt line at 0.23.
+        (b"/Type3 /BaseFont /S", b"BT /F1 5 Tf (a) Tj ET", {"min_text_pt": 6},
+         [("figure-font-type3", "warn"), ("figure-text-small", "warn")]),
+        (b"/Type3 /BaseFont /S", b"BT /F1 5 Tf (a) Tj ET", {"min_text_pt": 5},
+         [("figure-font-type3", "warn")]),
+        (b"/Type3 /BaseFont /S", b"0.2 w 0 0 m 1 1 l S", {"min_line_pt": 0.25},
+         [("figure-font-type3", "warn"), ("figure-line-thin", "warn")]),
+        (b"/Type1 /BaseFont /Helvetica", b"", {"applies_from": "acceptance"},
+         [("figure-font-not-embedded", "info")]),
+    ],
+)  # fmt: skip
+def test_a_pdf_figure_s_fonts_text_and_lines_the_journal_would_refuse_are_a_warning(
+    project: Path, font: bytes, content: bytes, rules: dict, said: list
+) -> None:
+    """Item 17: a PDF figure's fonts are Type 3 unless matplotlib is told otherwise, or not in
+    the file at all where R's pdf() wrote it; and its text and lines print at the size of
+    the width it prints at."""
+    from generated import pdf_document
+
+    fonts = {"F1": b"<< /Type /Font /Subtype " + font + b" >>"}
+    (project / "figures" / "forest.pdf").write_bytes(pdf_document(content, fonts))
+    _artwork_said(project, None, widths_mm=[89], **rules)
+    found = [(f.code, f.severity) for f in _journal(project).findings
+             if f.code in _PDF_CODES and f.path.name == "forest.pdf"]  # fmt: skip
+    assert found == said
+
+
 @pytest.mark.parametrize("written", ["tif", "TIF", "tiff"])
 def test_a_tiff_is_taken_however_the_journal_writes_it(project: Path, written: str) -> None:
     """Round 1 of #291: "tif" in a profile matched no file, and the message said the TIFF

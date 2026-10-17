@@ -719,6 +719,153 @@ def vector_figures(draw: st.DrawFn) -> tuple[str, dict[str, float], list[float]]
     return document, texts, sorted(lines)
 
 
+# --------------------------------------------------------------------------- a PDF figure
+
+
+def pdf_document(
+    content: bytes,
+    fonts: dict[str, bytes] | None = None,
+    forms: dict[str, tuple[bytes, str]] | None = None,
+    *,
+    width: float = 216,
+    compress: bool = True,
+    packed: bool = False,
+    split: bool = False,
+) -> bytes:
+    """A PDF of one page that draws `content`, with `fonts` (a name and the font's own
+    dictionary, which may refer to the objects after it as `{n}`) and `forms` (a name, and
+    the form's content and `/Matrix`). Its fonts are packed in an object stream where
+    `packed` is set, and its content in a stream for each line where `split` is. No
+    cross-reference table: what reads it reads its objects."""
+    fonts = fonts or {"F1": b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"}
+    forms = forms or {}
+    objects: list[bytes] = []
+
+    def add(body: bytes) -> int:
+        objects.append(body)
+        return len(objects)
+
+    def stream(data: bytes, extra: bytes = b"") -> bytes:
+        import zlib
+
+        if compress:
+            data = zlib.compress(data)
+            extra += b" /Filter /FlateDecode"
+        return b"<< /Length %d%s >>\nstream\n" % (len(data), extra) + data + b"\nendstream"
+
+    add(b"<< /Type /Catalog /Pages 2 0 R >>")
+    add(b"<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 %g 144] >>" % width)
+    add(b"")  # the page, once its resources are known
+    pieces = content.split(b"\n") if split else [content]
+    for piece in pieces:
+        add(stream(piece))
+    font_refs, packed_bodies = [], []
+    for name, body in fonts.items():
+        number = len(objects) + 1 if not packed else 100 + len(packed_bodies)
+        body = body.replace(b"{n}", b"%d" % (number + 1))
+        if packed:
+            packed_bodies.append((number, body))
+        else:
+            add(body)
+        font_refs.append(b"/%s %d 0 R" % (name.encode(), number))
+    if packed:
+        header = b" ".join(b"%d %d" % (n, sum(len(b) + 1 for _m, b in packed_bodies[:i]))
+                           for i, (n, _b) in enumerate(packed_bodies))  # fmt: skip
+        body = b"\n".join(b for _n, b in packed_bodies)
+        add(stream(header + b"\n" + body, b" /Type /ObjStm /N %d /First %d"
+                   % (len(packed_bodies), len(header) + 1)))  # fmt: skip
+    form_refs = []
+    for name, (data, matrix) in forms.items():
+        number = add(stream(data, b" /Type /XObject /Subtype /Form /BBox [0 0 216 144] "
+                                  b"/Matrix [" + matrix.encode() + b"]"))  # fmt: skip
+        form_refs.append(b"/%s %d 0 R" % (name.encode(), number))
+    contents = b"[" + b" ".join(b"%d 0 R" % (4 + i) for i in range(len(pieces))) + b"]"
+    objects[2] = (b"<< /Type /Page /Parent 2 0 R /Contents " + contents
+                  + b" /Resources << /Font << "
+                  + b" ".join(font_refs) + b" >> /XObject << " + b" ".join(form_refs)
+                  + b" >> >> >>")  # fmt: skip
+    out = b"%PDF-1.5\n"
+    for number, body in enumerate(objects, 1):
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    return out + b"%%EOF\n"
+
+
+def _row(left: tuple[float, ...], right: tuple[float, ...]) -> tuple[float, ...]:
+    """Two PDF matrices, (a, b, c, d, e, f), `left` then `right`, a point a row vector."""
+    a, b, c, d, e, f = left
+    g, h, i, j, k, m = right
+    return (a * g + b * i, a * h + b * j, c * g + d * i, c * h + d * j,
+            e * g + f * i + k, e * h + f * j + m)  # fmt: skip
+
+
+@st.composite
+def pdf_figures(draw: st.DrawFn) -> tuple[bytes, list[float], list[float]]:
+    """A PDF figure whose page draws texts and lines under transforms drawn at random:
+    `cm` inside `q` and `Q`, a text matrix set by `Tm` and moved by `Td`, and a form drawn
+    by `Do` under its own `/Matrix`; and a path that is filled, which is no line. With the
+    height of each text and the width of each line, worked out from the matrices."""
+    import math
+
+    def matrix() -> tuple[float, ...]:
+        kind = draw(st.sampled_from(("scale", "scale2", "turn", "skew", "move")))
+        one, two = (draw(st.integers(250, 3000)) / 1000 for _ in range(2))
+        if kind == "scale":
+            return (one, 0.0, 0.0, one, 3.0, 4.0)
+        if kind == "scale2":
+            return (one, 0.0, 0.0, two, 0.0, 0.0)
+        if kind == "turn":
+            return (0.0, one, -one, 0.0, 5.0, 5.0)
+        if kind == "skew":
+            return (one, 0.0, draw(st.integers(-500, 500)) / 1000, two, 0.0, 0.0)
+        return (1.0, 0.0, 0.0, 1.0, one, two)
+
+    def written(m: tuple[float, ...]) -> bytes:
+        return b" ".join(b"%g" % x for x in m)
+
+    def drawing(ctm: tuple[float, ...]) -> tuple[bytes, list[float], list[float]]:
+        """Some texts and lines, each under transforms of its own, inside q and Q."""
+        content, texts, lines = b"", [], []
+        for _ in range(draw(st.integers(1, 3))):
+            around = [matrix() for _ in range(draw(st.integers(0, 2)))]
+            inner = ctm
+            for m in around:
+                inner = _row(m, inner)
+            size = draw(st.integers(4, 24))
+            tm = matrix()
+            moved = (1.0, 0.0, 0.0, 1.0, *(draw(st.integers(-20, 20)) for _ in range(2)))
+            text = _row(_row(moved, tm), inner)
+            width = draw(st.integers(1, 30)) / 10
+            shows = draw(st.sampled_from((b"(t) Tj", b"[(t) -20 (u)] TJ", b"(t) '")))
+            # A line stroked at its width, and a path filled, which draws no line.
+            strokes = b" ET %g w 0 0 m 10 10 l S 2 w 0 0 m 5 5 l f Q\n" % width
+            content += (b"q " + b" ".join(written(m) + b" cm" for m in around)
+                        + b" BT /F1 %d Tf " % size + written(tm) + b" Tm %g %g Td " % moved[4:]
+                        + shows + strokes)  # fmt: skip
+            texts.append(size * math.hypot(text[2], text[3]))
+            lines.append(width * math.sqrt(abs(inner[0] * inner[3] - inner[1] * inner[2])))
+        return content, texts, lines
+
+    # The whole page under a transform that one content stream opens and another closes,
+    # as an editor wraps a page: the streams draw as one.
+    wrap = matrix()
+    content, texts, lines = drawing(wrap)
+    # A transform left open by a q that a Q closes: what follows is drawn without it.
+    content = b"q " + written(matrix()) + b" cm Q\n" + content
+    form_matrix, placed = matrix(), matrix()
+    # A form draws under its /Matrix, and that under the page's transform where `Do` is;
+    # and with the line width set before `Do`, until it sets one of its own.
+    inner = _row(form_matrix, _row(placed, wrap))
+    form_drawn, form_texts, form_lines = drawing(inner)
+    inherited = draw(st.integers(1, 30)) / 10
+    form_drawn = b"0 0 m 3 3 l S\n" + form_drawn
+    form_lines.append(inherited * math.sqrt(abs(inner[0] * inner[3] - inner[1] * inner[2])))
+    content += b"q " + written(placed) + b" cm %g w /X1 Do Q\n" % inherited
+    content = b"q " + written(wrap) + b" cm\n" + content.rstrip(b"\n").replace(b"\n", b" ") + b"\nQ"
+    document = pdf_document(content, forms={"X1": (form_drawn, written(form_matrix).decode())},
+                            split=True)  # fmt: skip
+    return document, sorted(texts + form_texts), sorted(lines + form_lines)
+
+
 # -------------------------------------------------------------- the results a plan promises
 
 _STEMS = ("ror", "case", "cohort", "hr", "events")
@@ -1019,6 +1166,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
     "vector figure": vector_figures().map(lambda drawn: drawn[0]),
+    # As text, a byte a character, so that the bytes pass to a reader as they are.
+    "pdf figure": pdf_figures().map(lambda drawn: drawn[0].decode("latin-1")),
     "quote words": st.fixed_dictionaries(
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
     ),

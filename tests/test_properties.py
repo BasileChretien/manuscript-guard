@@ -50,6 +50,7 @@ from generated import (
     generated,
     holds,
     lines,
+    pdf_figures,
     planned_plans,
     quotations,
     signs,
@@ -2874,6 +2875,90 @@ def _a_line_is_not_widened(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(figure_svg, "_widened", lambda matrix: 1.0)
 
 
+@holds(100, pdf_figures())
+def test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn(
+    drawn: tuple[bytes, list[float], list[float]],
+) -> None:
+    """A PDF figure's texts and lines as G4 reads them: each text at the size `Tf` sets it,
+    through the text matrix and every `cm` around it, and a form's under its `/Matrix`;
+    each line stroked at its width through the same, and a filled path no line. What `q`
+    saves, `Q` gives back."""
+    from manuscript_guard.gates.figure_pdf import parse_pdf
+
+    document, texts, lines = drawn
+    figure = parse_pdf(document)
+    assert figure is not None
+    assert sorted(size for _text, size in figure.texts) == pytest.approx(texts, rel=1e-9)
+    assert sorted(figure.lines) == pytest.approx(lines, rel=1e-9)
+
+
+def _pdf_operations_without(patch: pytest.MonkeyPatch, *dropped: bytes) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    operations = figure_pdf._operations
+    patch.setattr(
+        figure_pdf,
+        "_operations",
+        lambda data: ((ops, op) for ops, op in operations(data) if op not in dropped),
+    )
+
+
+def _a_pdf_s_transforms_are_composed_the_other_way(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    multiply = figure_pdf._multiply
+    patch.setattr(figure_pdf, "_multiply", lambda left, right: multiply(right, left))
+
+
+def _q_does_not_give_back_what_it_saved(patch: pytest.MonkeyPatch) -> None:
+    _pdf_operations_without(patch, b"Q")
+
+
+def _the_text_matrix_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    _pdf_operations_without(patch, b"Tm")
+
+
+def _a_form_is_drawn_without_its_matrix(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    patch.setattr(figure_pdf, "_form_matrix", lambda held, objects: figure_pdf.IDENTITY)
+
+
+def _a_form_is_not_drawn(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    patch.setattr(figure_pdf, "_form", lambda *drawn: None)
+
+
+def _a_filled_path_is_a_line(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    patch.setattr(figure_pdf, "_STROKES", {*figure_pdf._STROKES, b"f"})
+
+
+def _a_form_draws_with_a_state_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    form = figure_pdf._form
+    patch.setattr(figure_pdf, "_form", lambda *drawn: form(*drawn[:6], figure_pdf.START))
+
+
+def _a_page_s_streams_are_drawn_apart(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    def apart(streams, resources, objects, figure):
+        for data in streams:
+            figure_pdf._draw(data, resources, figure_pdf.IDENTITY, objects, figure, 0)
+
+    patch.setattr(figure_pdf, "_draw_page", apart)
+
+
+def _a_pdf_text_is_as_tall_as_a_line_is_wide(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    patch.setattr(figure_pdf, "_height", figure_pdf._widened)
+
+
 def _a_figure_s_stylesheet_is_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import svg_style
 
@@ -4352,6 +4437,42 @@ BROKEN = {
     "a line is not widened by the transforms around it": (
         _a_line_is_not_widened,
         test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a PDF's transforms are composed the other way round": (
+        _a_pdf_s_transforms_are_composed_the_other_way,
+        test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "Q does not give back what q saved": (
+        _q_does_not_give_back_what_it_saved,
+        test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a PDF's text matrix is not read": (
+        _the_text_matrix_is_not_read,
+        test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a PDF form is drawn without its matrix": (
+        _a_form_is_drawn_without_its_matrix,
+        test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a PDF form is not drawn": (
+        _a_form_is_not_drawn,
+        test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a filled path in a PDF is a line": (
+        _a_filled_path_is_a_line,
+        test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a PDF form draws with a line width and font size of its own": (
+        _a_form_draws_with_a_state_of_its_own,
+        test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a page's content streams are drawn apart": (
+        _a_page_s_streams_are_drawn_apart,
+        test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a PDF text is as tall as a line under the same transforms is wide": (
+        _a_pdf_text_is_as_tall_as_a_line_is_wide,
+        test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
     ),
     "a vector figure's stylesheet is not read": (
         _a_figure_s_stylesheet_is_not_read,

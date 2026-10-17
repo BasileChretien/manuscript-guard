@@ -5507,7 +5507,13 @@ Added by the adversarial review, verified and **not** fixed:
   shares add up to 100 across it is let off if they are shares of its total, so a wrong
   share in a row of two that happens to add up to 100 with the other, and fits the row's
   total, is not listed; and a row-percentage table with a Total column, whose shares add up
-  to 200, is listed whole. Categories that add up to 100 are let off as shares of their own
+  to 200, is listed whole. Categories with nothing but their sum to say they are shares are
+  read only where every row of their run adds up to 100: followed in the same run by the
+  next characteristic, they are not read, and a wrong count among them is not listed
+  (`test_categories_run_on_into_the_next_characteristic_are_not_read`); a whole-number mean
+  in a run that adds up to 100 with it is read and listed. Both are the price of not letting
+  a running sum say what is a share (round 3 of #314). Categories that add up to 100 are let
+  off as shares of their own
   total in the same way. A group label's "n (%)" reaches every row with a count below it
   until a row without one, and a data row with no count in it is read as a header, so its
   "n = 980" becomes the denominator below it. A superscript unit in a label, kg/m^2^, reads as

@@ -3499,6 +3499,22 @@ def test_an_n_percent_off_its_denominator_is_listed_in_a_shape_review_found(
     assert said.message.startswith(listed)
 
 
+def test_categories_run_on_into_the_next_characteristic_are_not_read(tmp_path: Path) -> None:
+    """A known gap, pinned (round 3 of #314): with nothing but their sum to say they are
+    shares, categories followed in the same run by the next characteristic are not read,
+    and 650 (50.0), which is 54.17% of 1200, is not listed. Without the Diabetes row it is."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    table = ("| | Overall (n = 1200) |\n|---|---|\n| Smoking status | |\n"
+             "| Never | 650 (50.0) |\n| Former | 400 (33.3) |\n"
+             "| Current | 200 (16.7) |\n")  # fmt: skip
+    paper.write_text(table + "| Diabetes | 300 (25.0) |\n", encoding="utf-8")
+    assert audit([paper], []).disagreements == []
+    paper.write_text(table, encoding="utf-8")
+    assert [d.line for d in audit([paper], []).disagreements] == [4]
+
+
 def _cell(text: str, *, span: int = 1) -> str:
     props = f'<w:tcPr><w:gridSpan w:val="{span}"/></w:tcPr>' if span > 1 else ""
     return f"<w:tc>{props}<w:p>{text}</w:p></w:tc>"

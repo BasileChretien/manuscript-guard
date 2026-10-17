@@ -20,9 +20,10 @@ from manuscript_guard.contracts._schema import ContractError, read_structured, r
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.figure_files import check_figure_files
-from manuscript_guard.gates.journal_quotes import check_quotes
+from manuscript_guard.gates.journal_quotes import check_quotes, manual_signable
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SHIPPED_JOURNALS
+from manuscript_guard.sign_offs import settle
 from manuscript_guard.text.masking import without_front_matter
 from manuscript_guard.text.section_names import bare, methods_sections, names_abstract
 from manuscript_guard.text.sections import measure, scannable, split_sections
@@ -104,6 +105,9 @@ def check_journal(project: Project) -> Report:
 
     report = report.merge(_check_freshness(document, path))
     report = report.merge(check_quotes(project, slug, document, path))
+    signable = manual_signable(slug, document, path)
+    if signable is not None:
+        report = report.with_findings(*settle(project, signable))
 
     # The main text only. A journal's word count, display-item count and required sections
     # are about the paper; a supplement counted against them turned a compliant submission

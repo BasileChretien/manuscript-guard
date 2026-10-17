@@ -35,12 +35,15 @@ DIRECTORY = f"{APPROVALS}/sign-offs"
 SCHEMA = "manuscript-guard/sign-off/1"
 
 #: The roles `authors.yaml` may name under `roles:`, each as a finding's hint calls it. The
-#: corresponding author is not among them: `corresponding: true` on an author names them.
+#: corresponding author is one too, named not under `roles:` but by `corresponding: true` on
+#: one author (`CORRESPONDING`).
 ROLES = {
     "statistician": "the statistician",
     "data_custodian": "the data custodian",
     "ethics_lead": "the person responsible for ethics approval",
+    "corresponding_author": "the corresponding author",
 }
+CORRESPONDING = "corresponding_author"
 
 #: How long the readable part of a sign-off's file name may be.
 _SLUG = 60
@@ -75,7 +78,16 @@ def digest_of(*parts: object) -> str:
 def holder(project: Project, role: str) -> Holder | None:
     """The person `authors.yaml` names for the role, or None where it names nobody.
 
-    Raises NoSuchAuthor where the role names an author `authors.yaml` does not list."""
+    Raises NoSuchAuthor where the role names an author `authors.yaml` does not list. The
+    corresponding author is the one author marked `corresponding: true`, and nobody where
+    none or several are."""
+    if role == CORRESPONDING:
+        listed = project.authors.get("authors") if isinstance(project.authors, dict) else None
+        marked = [author for author in listed or () if isinstance(author, dict)
+                  and author.get("corresponding") is True]  # fmt: skip
+        if len(marked) != 1:
+            return None
+        return Holder(name_of(marked[0]), marked[0].get("orcid"), marked[0].get("email"))
     roles = project.authors.get("roles") if isinstance(project.authors, dict) else None
     said = (roles or {}).get(role) if isinstance(roles, dict) else None
     if isinstance(said, str):
@@ -149,10 +161,12 @@ def settle(project: Project, signable: Signable) -> tuple[Finding, ...]:
     except NoSuchAuthor as exc:
         return _waiting(signable, f"`roles: {signable.role}` in authors.yaml: {exc}")
     if person is None:
+        named = "mark one author `corresponding: true`" if signable.role == CORRESPONDING \
+            else f"name {role} under `roles:`"  # fmt: skip
         return _waiting(
             signable,
-            f"name {role} under `roles:` in authors.yaml; if they judge it acceptable, they "
-            f"sign it off with `manuscript-guard sign --as <them> --finding {signable.id}`",
+            f"{named} in authors.yaml; if they judge it acceptable, they sign it off with "
+            f"`manuscript-guard sign --as <them> --finding {signable.id}`",
         )
     command = f'`manuscript-guard sign --as "{person.name}" --finding {signable.id}`'
     path = path_of(project, signable.id)

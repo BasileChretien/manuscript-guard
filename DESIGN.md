@@ -2962,7 +2962,7 @@ holds both. `evals/`, beside the plugin, holds the cases `claude plugin eval` ru
 
 Run with and without the plugin, the routing cases show what each skill adds over the model
 alone; a skill that adds nothing measurable is cut, or folded into another's references. What
-a run cannot establish: that a skill fires for a user's own wording, which 26 prompts
+a run cannot establish: that a skill fires for a user's own wording, which 28 prompts
 do not sample; that a judged outcome is right, since the judge is a model; and anything about a model
 other than the one run. No run is recorded yet: the model is the author's choice.
 

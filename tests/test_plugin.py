@@ -432,7 +432,7 @@ OVERLAPPING = frozenset({
 })  # fmt: skip
 #: Wording that would steer an agent away from the user's other tools.
 PRIORITY = re.compile(
-    r"\b(?:prefer|in place of|instead of|rather than|always use|over (?:any|other)"
+    r"\b(?:prefer\w*|in place of|instead of|rather than|always use|over (?:any|others?)"
     r"|even when (?:the user|you) (?:does|do) not ask)\b",
     re.IGNORECASE,
 )
@@ -452,7 +452,9 @@ def test_a_skill_says_which_of_ours_it_is_not_for_and_claims_no_priority() -> No
         assert set(sent_to) <= names - {name}, (name, sent_to)
         assert PRIORITY.search(description) is None, (name, description)
         if name in OVERLAPPING:
-            assert "Not for " in description and sent_to, name
+            # The last sentence (round 1 of #319: anywhere in the description passed).
+            last = re.split(r"(?<=\.)\s+(?=[A-Z])", description.strip())[-1]
+            assert last.startswith("Not for ") and USE.search(last), (name, last)
 
 
 #: The routing suite `claude plugin eval` runs by hand (item 52; docs/agent-tools.md). It
@@ -467,7 +469,8 @@ GRADER_KEYS = frozenset({
     "type", "weight", "arm", "pattern", "flags", "match", "target", "tool", "input_match",
     "min", "max", "before", "after", "path", "exists", "criteria", "focus", "baseline_file",
 })  # fmt: skip
-NAMED_SKILL = re.compile(r'\(\?:\[\\w-\]\+:\)\?([a-z][a-z0-9-]*)"')
+#: The skills a grader names: one, or several as `(?:a|b|c)`.
+NAMED_SKILL = re.compile(r'\(\?:\[\\w-\]\+:\)\?(?:\(\?:)?([a-z][a-z0-9|-]*)\)?"')
 
 
 def test_the_routing_cases_are_whole_and_name_only_our_skills() -> None:
@@ -476,7 +479,8 @@ def test_the_routing_cases_are_whole_and_name_only_our_skills() -> None:
     is run by hand, never here: this holds only its shape."""
     names = set(skill_names())
     routed = set()
-    cases = sorted(path for path in EVALS.iterdir() if path.is_dir())
+    # A case is a folder with a prompt; a run writes `results/` beside them (round 1 of #319).
+    cases = sorted(path for path in EVALS.iterdir() if (path / "prompt.md").is_file())
     assert len(cases) >= 25
     for folder in cases:
         front = frontmatter(folder / "prompt.md")
@@ -489,10 +493,11 @@ def test_the_routing_cases_are_whole_and_name_only_our_skills() -> None:
             keys = frontmatter(grader)
             assert keys.get("type") and set(keys) <= GRADER_KEYS, (grader, keys)
             text = grader.read_text(encoding="utf-8")
-            for named in NAMED_SKILL.findall(text):
-                assert named in names, (grader, named)
-                if grader.stem == "skill-fired" and folder.name.startswith("route-"):
-                    routed.add(named)
+            for listed in NAMED_SKILL.findall(text):
+                for named in listed.split("|"):
+                    assert named in names, (grader, named)
+                    if grader.stem == "skill-fired" and folder.name.startswith("route-"):
+                        routed.add(named)
     assert routed == names, sorted(names - routed)
 
 

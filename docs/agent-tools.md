@@ -107,7 +107,7 @@ cases grant Bash, which on Windows runs only under WSL2. From the repository's r
 claude plugin eval plugin --eval-dir evals --ablation with-without --runs 3 --model <model> --max-cost-usd <budget>
 ```
 
-A run is paid, and is 156 runs at the size chosen (26 cases, 3 runs, 2 arms): run
+A run is paid, and is 168 runs at the size chosen (28 cases, 3 runs, 2 arms): run
 one case once first (`--eval-dir evals --case <name> --runs 1 --ablation none`) to measure its tokens. The
 report goes to `evals/results/`, which git ignores. Record each run's date, model and
 result in DESIGN.md, and run it again whenever a pull request changes a skill's name or

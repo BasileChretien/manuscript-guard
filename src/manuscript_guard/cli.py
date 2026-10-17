@@ -435,15 +435,28 @@ def _design_round(args: argparse.Namespace) -> int:
     from manuscript_guard.gates.design_review import check_design_rounds
     from manuscript_guard.record import RecordError, seal_design_review, write_design_review
 
-    if args.run or args.dry_run or args.providers or args.record_figure:
+    if args.providers or args.record_figure:
         print(
-            "manuscript-guard: a design round is read and filed by hand for now: "
-            "`review --record <reviewer> --design --round <n> --verdict <verdict>`, with "
-            "`--reading <reader>` for a named reading, then "
-            "`review --seal <reviewer> --design --round <n>`",
+            "manuscript-guard: --design is a design round: `review --design --run` has the "
+            "models read the plan, and `review --record <reviewer> --design --verdict "
+            "<verdict>` files a reading by hand",
             file=sys.stderr,
         )
         return 2
+    if args.run or args.dry_run:
+        from manuscript_guard.panel.commands import run_panel
+
+        if not args.run:
+            print(
+                "manuscript-guard: --dry-run goes with --run: `review --design --run "
+                "--dry-run` shows what a run of the design panel would send",
+                file=sys.stderr,
+            )
+            return 2
+        return run_panel(
+            args.path, round_number=args.round, one_each=args.one_each,
+            dry_run=args.dry_run, yes=args.yes, design=True,
+        )  # fmt: skip
     project, _ = load_project(args.path)
     round_number = 1 if args.round is None else args.round
     try:
@@ -1660,6 +1673,47 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 1 if failed and args.strict else 0
 
 
+def _reread(project, new: Path) -> int:
+    """`journal --reread`: the stored page against the page read again, and the rules whose
+    quotes it no longer holds. Writes nothing: adopting the page is the author's."""
+    from manuscript_guard.gates.journal_quotes import DIFF_LINES, reread
+
+    try:
+        text = new.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        print(f"manuscript-guard: {new} cannot be read as UTF-8 text: {exc}", file=sys.stderr)
+        return 2
+    found = reread(project, text)
+    if found is None:
+        print("manuscript-guard: paper.yaml names no journal with a profile to read the page "
+              "for", file=sys.stderr)  # fmt: skip
+        return 2
+    if not found.diff:
+        print("The page read again is the stored page, word for word.")
+    else:
+        shown = list(found.diff[:DIFF_LINES])
+        print("\n".join(shown))
+        if len(found.diff) > DIFF_LINES:
+            print(f"... and {len(found.diff) - DIFF_LINES} more lines of difference")
+    gone = [key for key, on_page in found.rules if not on_page]
+    print()
+    for key, on_page in found.rules:
+        print(f"  {'still on the page' if on_page else 'NOT on the page  '}  {key}")
+    print()
+    if gone:
+        print(f"{len(gone)} rule(s) quote words the page no longer has: read each again, and "
+              "correct its value and its quote, or remove it.")  # fmt: skip
+    stored = found.stored
+    inside = stored.is_relative_to(project.root)
+    where = stored.relative_to(project.root).as_posix() if inside else str(stored)
+    print(
+        f"Read the difference for rules the page added, too. To adopt the page, save it over "
+        f"{where}, then record page_sha256: {found.digest} and today's retrieved_on in the "
+        "profile."
+    )
+    return 1 if gone else 0
+
+
 def cmd_journal(args: argparse.Namespace) -> int:
     """Show the journal profiles available, or copy the annotated template into a project."""
     from manuscript_guard.gates.journal import available_profiles
@@ -1669,6 +1723,9 @@ def cmd_journal(args: argparse.Namespace) -> int:
     if not contract_report.ok:
         print(contract_report.render(project.root))
         return 2
+
+    if args.reread:
+        return _reread(project, args.reread)
 
     if args.template:
         source = SHIPPED_JOURNALS / "TEMPLATE.yaml"
@@ -2270,12 +2327,14 @@ def cmd_sign(args: argparse.Namespace) -> int:
     """Record a named person's sign-off of a finding only they may close. Their own act."""
     from manuscript_guard.approvals import NoSuchAuthor
     from manuscript_guard.gates.design_review import override_signables
+    from manuscript_guard.gates.journal_quotes import manual_signables
     from manuscript_guard.gates.models import signables
-    from manuscript_guard.sign_offs import ROLES, holder, is_holder, sign
+    from manuscript_guard.sign_offs import CORRESPONDING, ROLES, holder, is_holder, sign
 
     project, _ = load_project(args.path)
     _namespace, results, _literature, _loaded = load_namespace(project)
-    standing = signables(project, results) + override_signables(project)
+    standing = signables(project, results) + override_signables(project) + \
+        manual_signables(project)  # fmt: skip
     found = [signable for signable in standing if signable.id == args.finding]
     if not found:
         ids = ", ".join(signable.id for signable in standing) or "none"
@@ -2293,9 +2352,13 @@ def cmd_sign(args: argparse.Namespace) -> int:
         print(f"manuscript-guard: roles: {signable.role} in authors.yaml: {exc}", file=sys.stderr)
         return 2
     if person is None:
+        # The corresponding author is marked on an author, not named under `roles:`, whose
+        # schema refuses the key (round 1 of #318).
+        missing = f"names no {signable.role} under `roles:`"
+        if signable.role == CORRESPONDING:
+            missing = "marks no single author `corresponding: true`"
         print(
-            f"manuscript-guard: authors.yaml names no {signable.role} under `roles:`; "
-            f"only {role} signs off {signable.id}",
+            f"manuscript-guard: authors.yaml {missing}; only {role} signs off {signable.id}",
             file=sys.stderr,
         )
         return 2
@@ -3091,6 +3154,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SLUG",
         help="copy the annotated template to profiles/journals/<SLUG>.yaml",
     )
+    journal.add_argument(
+        "--reread",
+        metavar="FILE",
+        type=Path,
+        help="the journal's page read again, as text: show what changed from the stored page "
+        "and which rules quote words it no longer has; writes nothing",
+    )
     journal.set_defaults(func=cmd_journal)
 
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
@@ -3142,7 +3212,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="a design round: with --record, write review/design/round-N/REVIEWER.yaml for "
         "the analysis plan and the feasibility results as they now stand; with --seal, seal "
-        "it; alone, say where the design rounds stand (G12)",
+        "it; with --run, have the models in review.models read the plan; alone, say where "
+        "the design rounds stand (G12)",
     )
     review.add_argument(
         "--record-figure",

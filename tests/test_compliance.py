@@ -401,6 +401,105 @@ def test_the_page_may_be_stored_where_the_profile_says(project: Path) -> None:
     assert _quoted(journal_report(project)) == []
 
 
+def _manual(root: Path) -> list:
+    return [f for f in journal_report(root).findings if f.code == "journal-manual-unsigned"]
+
+
+def test_the_rules_no_gate_checks_are_signed_off_by_the_corresponding_author(
+    project: Path,
+) -> None:
+    """Item 50: a rule under `manual:` was kept, and nobody was asked to hold the paper to
+    it. The pack carries it as a checklist, and the corresponding author signs it off,
+    bound to the rules and their quotes."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.gates.journal_quotes import journal_checklist
+
+    [said] = _manual(project)
+    assert (said.severity, said.message) == (
+        "warn", "1 rule(s) of the demo-journal profile are checked by no gate: cover letter"
+    )  # fmt: skip
+    key = "G4/journal-manual/demo-journal"
+    assert f'manuscript-guard sign --as "Ada Example" --finding {key}' in said.hint
+    checklist = journal_checklist(load_project(project)[0])
+    assert ("| [ ] | cover letter | Send a cover letter of no more than one page with every "
+            "submission. |") in checklist  # fmt: skip
+    assert "\nNot signed off yet by the corresponding author.\n" in checklist
+    # Round 1 of #318: with two rules, "; " stood between them, and the line of who signed
+    # was cut from there.
+    second = {"rule": "title page; its order", "quote": "Give a running title."}
+    edit_yaml(project / JOURNAL, lambda d: d["manual"].append(second))
+    assert main(["sign", str(project), "--as", "Blaise Sample", "--finding", key]) == 2
+    assert main(["sign", str(project), "--as", "Example", "--finding", key]) == 0
+    [signed] = _manual(project)
+    assert signed.severity == "info"
+    assert "signed off by Ada Example, the corresponding author, on " in signed.message
+    assert "\nSigned off by Ada Example, the corresponding author, on " in journal_checklist(
+        load_project(project)[0]
+    )
+    # A rule changed wants it signed again.
+    edit_yaml(project / JOURNAL, lambda d: d["manual"][1].update(rule="running title"))
+    [again] = _manual(project)
+    assert again.severity == "warn" and "changed since" in again.hint
+
+
+def test_a_journal_checklist_whose_sign_off_cannot_be_read_says_it_is_not_signed(
+    project: Path,
+) -> None:
+    """Round 1 of #318: `settle` says more than one thing of a sign-off it cannot read, and
+    the checklist, which took one, raised while the pack was being assembled."""
+    from manuscript_guard.gates.journal_quotes import journal_checklist
+    from manuscript_guard.sign_offs import path_of
+
+    record = path_of(load_project(project)[0], "G4/journal-manual/demo-journal")
+    record.parent.mkdir(parents=True)
+    record.write_text("finding: [\n", encoding="utf-8")
+    checklist = journal_checklist(load_project(project)[0])
+    assert checklist.endswith("\nNot signed off yet by the corresponding author.\n")
+
+
+def test_with_no_corresponding_author_the_hint_says_to_mark_one(project: Path, capsys) -> None:
+    from manuscript_guard.cli import main
+
+    def nobody(document: dict) -> None:
+        for author in document["authors"]:
+            author["corresponding"] = False
+
+    edit_yaml(project / "authors.yaml", nobody)
+    [said] = _manual(project)
+    assert "mark one author `corresponding: true` in authors.yaml" in said.hint
+    key = "G4/journal-manual/demo-journal"
+    assert main(["sign", str(project), "--as", "Example", "--finding", key]) == 2
+    assert "marks no single author `corresponding: true`" in capsys.readouterr().err
+
+
+def test_a_page_read_again_shows_what_changed_and_which_rules_it_touches(
+    project: Path, capsys
+) -> None:
+    """Item 50: a profile a year old is read against the page again. What changed is shown,
+    and each rule whose quote the new page no longer holds is named, to be read again."""
+    from manuscript_guard.cli import main
+
+    page = (project / PAGE).read_text(encoding="utf-8")
+    new = project / "page-again.txt"
+    new.write_text(page.replace("should not exceed 300 words", "should not exceed 250 words")
+                   + "\nGive a running title of no more than 40 characters.\n",
+                   encoding="utf-8")  # fmt: skip
+    assert main(["journal", str(project), "--reread", str(new)]) == 1
+    out = capsys.readouterr().out
+    assert "+Give a running title of no more than 40 characters." in out
+    assert "NOT on the page    limits.abstract_words" in out
+    assert "still on the page  manual: cover letter" in out
+    assert "1 rule(s) quote words the page no longer has" in out
+    # Nothing is written: adopting the page is the author's.
+    assert (project / PAGE).read_text(encoding="utf-8") == page
+
+    new.write_text(page, encoding="utf-8")
+    assert main(["journal", str(project), "--reread", str(new)]) == 0
+    assert "The page read again is the stored page, word for word." in capsys.readouterr().out
+    new.write_bytes(b"\xff\xfe not UTF-8")
+    assert main(["journal", str(project), "--reread", str(new)]) == 2
+
+
 @pytest.mark.parametrize(
     ("quote", "value", "states"),
     [

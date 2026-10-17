@@ -925,6 +925,25 @@ SPELT = (
 )  # fmt: skip
 
 
+#: A placeholder of each kind G6 reads, as it is typed and as the rule finds it; the words
+#: that are one in the manuscript only, in lower case; and what looks like one and is prose:
+#: a karyotype, a syndrome, a link, a title translated into English in brackets, a phrase
+#: that goes on, a kinase. What the placeholder reading must tell apart.
+PLACEHOLDERS = (
+    ("XXXX", "XXXX"), ("[TO BE COMPLETED]", "[TO BE COMPLETED]"),
+    ("[Repository]", "[Repository]"), ("[describe the cohort]", "[describe the cohort]"),
+    ("lorem ipsum", "lorem ipsum"), ("fill in later.", "fill in later"), ("TODO", "TODO"),
+    ("2025-XX-XX", "2025-XX"), ("INSERT_SOURCE_URL", "INSERT_SOURCE_URL"),
+    ("[insert the\nname]", "[insert the\nname]"), ("1,XXX", "XXX"),
+)  # fmt: skip
+LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
+LOOKALIKES = (
+    "47,XXX", "XXX syndrome", "[repository](https://example.org)",
+    "[Add-on therapy in epilepsy]", "replace later lines", "replace later\nlines",
+    "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]",
+)  # fmt: skip
+
+
 #: A statistic in each of the ways one is written, typed and bound, and a number with
 #: its unit: what the notation reading must count apart.
 #: Bindings with a unit written after them, each way a unit is written.
@@ -1129,6 +1148,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "placeholders": texts(
+        tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
+    ),
     "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),

@@ -207,6 +207,23 @@ list above, and the earlier rounds are not on it.
 
 Two rounds by default; `review.rounds_required` in `paper.yaml` changes it.
 
+## A design round, before the analysis
+
+The panel above reads the manuscript, once there are results. A design round reads the
+plan, `design/plan.md`, and the feasibility results, while the analysis can still change.
+Give it one or two reviewers whose remits ask whether the design supports the inference the
+plan intends, naming the risks of the study type: confounding, selection, immortal time,
+missing data, multiplicity, leakage. File each reading by hand:
+
+```bash
+manuscript-guard review --record methodologist --design --round 1 --verdict major-revision \
+  --remit "Whether the design supports the inference the plan intends"
+manuscript-guard review --seal methodologist --design --round 1   # once the findings are in
+```
+
+G12 says a major finding not answered (a warning until submission), and a reading of a plan
+that has changed since. Answer a finding with what the plan now does, in `resolution:`.
+
 ## 5. Check
 
 ```bash

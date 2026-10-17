@@ -1257,7 +1257,7 @@ def test_a_demonstration_says_so_on_its_title_page(project: Path) -> None:
     from manuscript_guard.build.submission import title_page
 
     page = title_page(load_project(project)[0])
-    assert "**A demonstration.** The data this paper reports are synthetic" in page
+    assert "**A demonstration.** The data this paper analyses are synthetic; its results" in page
     _not_a_demonstration(project)
     assert "A demonstration" not in title_page(load_project(project)[0])
 

@@ -8185,6 +8185,12 @@ Closed since, and why each mattered:
   unit) fails as one: emit it with its unit. A restricted input that git ignores but that a
   person copies elsewhere is not seen, and one that was committed and then removed stays in
   the history, which only a rewrite takes out.
+- **A synthetic input is followed to the results the text binds, and no further.** G1 names
+  a result of a run that read a synthetic input where the manuscript or the supplement binds
+  it as `results.` or `table.`. A figure drawn from such a run and placed with `figure.` is
+  not named, nor a result of a second script that reads the first one's results file as its
+  input: the declaration belongs to the run that made it. Declare the input again in the
+  second script. Nothing finds an input that is synthetic and not declared so.
 - **G9 cannot tell a refactor from a change of meaning.** Every edit to an analysis file
   prompts a re-read, including one that only moved a function. That is the safe direction,
   but it is friction. A step's digest leaves comments and layout out, but a variable renamed

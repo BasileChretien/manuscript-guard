@@ -1145,7 +1145,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   # extract or a test fixture: G1 then says so of every result the manuscript quotes from
   # this run, and fails at submission.
   add_input <- function(path, restricted = FALSE, synthetic = FALSE) {
-    if (!(path %in% state$inputs)) state$inputs <- c(state$inputs, path)
+    # One path or several, as `list.files()` gives them; one already declared is not listed twice.
+    state$inputs <- c(state$inputs, setdiff(as.character(path), state$inputs))
     if (isTRUE(restricted)) state$restricted <- c(state$restricted, path)
     if (isTRUE(synthetic)) state$synthetic <- c(state$synthetic, path)
     invisible(NULL)

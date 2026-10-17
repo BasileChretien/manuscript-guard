@@ -1117,6 +1117,21 @@ Two smaller decisions fell out of this:
 - **"n/a" is rejected as a reason.** A checklist item excluded needs a reason a reviewer
   could read — "no interventions were assigned" — because a reviewer does read this file.
 
+**What the Data availability statement says is the journal's rule, not the tool's.** G4 found
+the statement's heading and read nothing under it. Publishers differ on what it must hold:
+Springer Nature asks that data which cannot be shared openly say why, PLOS accepts "on
+request" only for data that cannot be public and holds a paper until its identifiers come
+(both pages read 2026-10-15), and this toolkit's own example names no identifier at all. A
+universal rule would be wrong for most of them. So a profile records its journal's policy in
+`data_availability`, with the page and the day it was read: the phrasings the journal does
+not accept, each with what makes it acceptable (`unless`, a reason or a route), whether a
+persistent identifier is required, and the journal's own forms for an article with no data.
+G4 reads the statement against them and fails what the journal does not accept, from
+internal review. Two warnings follow wherever a profile records a policy: storage that is
+neither persistent nor archived, a shared drive or a repository on a code host linked bare
+(a release, a tag or a commit is a fixed version), and a dataset DOI that the reference list
+does not cite, since data a paper rests on are cited like any other source.
+
 ## Word counting is a stated rule
 
 A limit is only checkable if both sides agree what is counted, and journals rarely say. The
@@ -3105,6 +3120,27 @@ no-break space is shown as it is. Before 2026-10-15 it
 printed the comment on the same line as the tool's words, and a comment that read like an
 instruction read like the tool's.
 
+### Whether each skill fires when it should
+
+A skill helps only when it fires, and several border each other: `review-panel`,
+`reviewer-response` and `co-author-checking`; `manuscript-writing`, `methods-writer` and
+`results-binding`; `paper-audit` and `results-binding`. Each of these ends its description
+with what it is not for and which of ours to use instead. Such a line names only our own
+skills and claims no priority over anything else an agent has, and `tests/test_plugin.py`
+holds both. `evals/`, beside the plugin, holds the cases `claude plugin eval` runs by hand
+(docs/agent-tools.md):
+
+- routing, one for each skill, with a judged outcome;
+- a near-miss for each bordering pair;
+- requests no skill is for;
+- small requests that must not start a workflow.
+
+Run with and without the plugin, the routing cases show what each skill adds over the model
+alone; a skill that adds nothing measurable is cut, or folded into another's references. What
+a run cannot establish: that a skill fires for a user's own wording, which 28 prompts
+do not sample; that a judged outcome is right, since the judge is a model; and anything about a model
+other than the one run. No run is recorded yet: the model is the author's choice.
+
 ## Auditing existing papers, and saying what the audit is worth
 
 `check` works because manuscript source contains bindings: a results-derived number cannot
@@ -3629,6 +3665,20 @@ An input is declared restricted where the analysis declares it, in either emitte
 results record it. G1 fails while git tracks such a file (`restricted-input-tracked`), from
 the first stage: a pushed repository is a copy outside the custodian's hands. Git is asked
 with a time limit; where it cannot be asked, the finding is a warning.
+
+An input is declared synthetic the same way (`em.add_input(path, synthetic=True)`,
+`em$add_input(path, synthetic = TRUE)`): simulated data, a dummy extract, a test fixture, on
+which an analysis is often written while access to the real data is waited for. A binding
+proves where a number came from, not that the data it came from were real, and a number from
+such a run passed every gate. G1 now names, for each run that read a synthetic input, the
+results of it the manuscript binds (`synthetic-input-quoted`): a warning while the paper is
+written, a failure at submission, so that `submit` refuses. A run whose results nothing binds
+puts no number into the paper, and is not said. A paper that is a demonstration, a worked
+example or a teaching paper, says so in `paper.yaml` (`demonstration: true`): the finding is
+then information, and the submission pack's title page says that the data are synthetic. The
+example declares its simulated reports and is a demonstration. Nothing guesses that an input
+is synthetic from its name or its contents: a declaration is the author's, and a heuristic
+would be wrong both ways.
 
 ## What a change makes stale
 
@@ -8329,6 +8379,22 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A data statement is read by patterns, and only where the profile records a policy.** An
+  identifier is a DOI, an accession number of the archives listed in
+  `gates/data_statement.py` (GEO, SRA and its peers, BioProject, EGA, ArrayExpress, dbGaP),
+  a handle or an ARK, a Zenodo record, an OSF project, or a page archived by the Internet
+  Archive or Perma.cc; another archive's accession is found only where the profile lists it.
+  An identifier anywhere in the statement satisfies the rule, whatever it names, and so does
+  the DOI of a dataset the statement cites by its key: an entry of type `dataset` only, so a
+  `@misc` that holds a dataset and says nothing of it is not read as one. A forbidden
+  phrasing is matched as the profile writes it, without regard to case, and its `unless`
+  anywhere in the statement accepts it. The statement is the section under its heading, its subsections included, the
+  outermost where several headings match; a statement written as a paragraph with no heading
+  of its own is not read. A link to a repository with any path after its name, a branch's as
+  much as a release's, is taken for a fixed version, and a bare repository is warned of even
+  where the statement names its archive too. A dataset's DOI counts as cited when an entry of
+  `references.bib` holds it, whether the text cites that entry or not. A regular expression
+  in the profile that does not compile stops G4, as one in its required statements does.
 - **A placeholder is found by its kind, and only in the text the gate reads.** In the
   manuscript TODO and TBD count in any case, as they always did, so a Spanish "todo" quoted
   in the prose is one. A slot in brackets in a form the rules do not name, "[Name of the
@@ -8360,6 +8426,12 @@ Closed since, and why each mattered:
   unit) fails as one: emit it with its unit. A restricted input that git ignores but that a
   person copies elsewhere is not seen, and one that was committed and then removed stays in
   the history, which only a rewrite takes out.
+- **A synthetic input is followed to the results the text binds, and no further.** G1 names
+  a result of a run that read a synthetic input where the manuscript or the supplement binds
+  it as `results.` or `table.`. A figure drawn from such a run and placed with `figure.` is
+  not named, nor a result of a second script that reads the first one's results file as its
+  input: the declaration belongs to the run that made it. Declare the input again in the
+  second script. Nothing finds an input that is synthetic and not declared so.
 - **G9 cannot tell a refactor from a change of meaning.** Every edit to an analysis file
   prompts a re-read, including one that only moved a function. That is the safe direction,
   but it is friction. A step's digest leaves comments and layout out, but a variable renamed

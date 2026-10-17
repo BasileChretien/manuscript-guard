@@ -723,6 +723,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   state$values <- list()
   state$inputs <- as.character(inputs)
   state$restricted <- character()
+  state$synthetic <- character()
   state$tables <- list()
   state$code_lists <- list()
   state$variables <- list()
@@ -1140,10 +1141,14 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   }
 
   # `restricted` says the data custodian forbids the file leaving their hands: G1 then fails
-  # while git tracks it.
-  add_input <- function(path, restricted = FALSE) {
-    state$inputs <- c(state$inputs, path)
+  # while git tracks it. `synthetic` says it is not the real data, a simulation, a dummy
+  # extract or a test fixture: G1 then says so of every result the manuscript quotes from
+  # this run, and fails at submission.
+  add_input <- function(path, restricted = FALSE, synthetic = FALSE) {
+    # One path or several, as `list.files()` gives them; one already declared is not listed twice.
+    state$inputs <- c(state$inputs, setdiff(as.character(path), state$inputs))
     if (isTRUE(restricted)) state$restricted <- c(state$restricted, path)
+    if (isTRUE(synthetic)) state$synthetic <- c(state$synthetic, path)
     invisible(NULL)
   }
 
@@ -1157,6 +1162,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
         bytes = as.integer(file.info(full)$size)
       )
       if (path %in% state$restricted) record$restricted <- TRUE
+      if (path %in% state$synthetic) record$synthetic <- TRUE
       record
     })
 

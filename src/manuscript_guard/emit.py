@@ -1031,6 +1031,8 @@ class Emitter:
     _steps: dict[str, dict] = field(default_factory=dict, init=False)
     # The inputs declared restricted, as they were written to `add_input`.
     _restricted: set[str] = field(default_factory=set, init=False)
+    # The inputs declared synthetic: simulated data, a dummy extract, a test fixture.
+    _synthetic: set[str] = field(default_factory=set, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
@@ -1557,12 +1559,19 @@ class Emitter:
         self.table(key, list(columns), rows, caption=caption)
         self._code_lists[key] = structured
 
-    def add_input(self, path: str | Path, *, restricted: bool = False) -> None:
+    def add_input(
+        self, path: str | Path, *, restricted: bool = False, synthetic: bool = False
+    ) -> None:
         """Declare a data file the analysis read. `restricted` says the data custodian
-        forbids it leaving their hands: G1 then fails while git tracks it."""
-        self.inputs.append(path)
+        forbids it leaving their hands: G1 then fails while git tracks it. `synthetic` says it
+        is not the real data, a simulation, a dummy extract or a test fixture: G1 then says
+        so of every result the manuscript quotes from this run, and fails at submission."""
+        if str(path) not in {str(given) for given in self.inputs}:
+            self.inputs.append(path)
         if restricted:
             self._restricted.add(str(path))
+        if synthetic:
+            self._synthetic.add(str(path))
 
     def _provenance(self) -> dict:
         root = self.root
@@ -1580,6 +1589,7 @@ class Emitter:
                     "sha256": input_digest(path),
                     "bytes": path.stat().st_size,
                     **({"restricted": True} if str(raw) in self._restricted else {}),
+                    **({"synthetic": True} if str(raw) in self._synthetic else {}),
                 }
             )
 

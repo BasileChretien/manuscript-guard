@@ -39,7 +39,9 @@ def main() -> None:
     with DATA.open(encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
 
-    em = Emitter(__file__, inputs=[DATA])
+    em = Emitter(__file__)
+    # Simulated: the paper is a demonstration, and says so (paper.yaml, `demonstration`).
+    em.add_input(DATA, synthetic=True)
 
     # The choices the Methods state, declared where the code makes them and used from here.
     # The Methods bind them, so the alpha and the signal criterion they print are the ones

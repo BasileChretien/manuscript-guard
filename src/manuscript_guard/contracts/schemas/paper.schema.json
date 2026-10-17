@@ -9,6 +9,10 @@
     "schema": { "const": "manuscript-guard/paper/1" },
     "title": { "type": "string", "minLength": 1 },
     "short_title": { "type": "string" },
+    "demonstration": {
+      "type": "boolean",
+      "description": "The paper is a demonstration, a worked example or a teaching paper, whose data are synthetic: G1's finding of results quoted from a synthetic input is then information, and the submission pack's title page says the data are synthetic."
+    },
     "keywords": { "type": "array", "items": { "type": "string" } },
     "english_variant": {
       "enum": ["en-GB", "en-US"],

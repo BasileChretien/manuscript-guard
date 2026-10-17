@@ -74,6 +74,7 @@ from manuscript_guard.gates import (
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
+from manuscript_guard.gates.synthetic import check_synthetic_inputs
 from manuscript_guard.policy import (
     DESCRIPTIONS,
     STAGES,
@@ -149,6 +150,7 @@ def _run_gates(
         ("G8", lambda: check_consistency(results)),
         ("G2", lambda: check_small_cells(project, results)),
         ("G1", lambda: check_restricted_inputs(project, results)),
+        ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
         ("G8", lambda: check_reported(project, results)),
         ("G8", lambda: check_recomputed(project, namespace, results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),

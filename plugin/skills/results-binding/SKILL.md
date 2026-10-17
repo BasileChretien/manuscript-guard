@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed or duplicate-quantity.
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed or duplicate-quantity. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
 ---
 
 # Binding the numbers
@@ -57,6 +57,11 @@ What the emitter holds you to:
 - One namespace covers all scripts. A key published by two scripts is `duplicate-key`.
 - Inputs are declared, and their digests recorded. Change the data and G1 says which
   results are stale.
+- Data that are not the real data are declared so: `em.add_input("data/simulated.csv",
+  synthetic=True)` (`synthetic = TRUE` in R). G1 then names each result the manuscript
+  quotes from that run, and fails at submission. Only a worked example or a teaching paper
+  sets `demonstration: true` in `paper.yaml`, which the title page then states; never set it
+  to get a paper past the check.
 - Units are not rendered. Write `{{results.case.pct_serious}}%` in the text.
 - NumPy integers are refused; pass `int(x)`. Years and study periods are numbers like any
   other: emit them.

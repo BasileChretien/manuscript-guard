@@ -132,7 +132,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G4 | word counts, required sections and required statements match the target journal, and each rule of its profile is quoted from the journal's stored page, and the figure files meet its artwork rules, an SVG's or a PDF's smallest text and thinnest line at the width it prints and a PDF's fonts among them (warnings) |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason; a guideline its authors have replaced is pointed out |
 | G6 | model artefacts and unfilled placeholders, in the prose, the figures, the tables' captions and the cited references; AI phrasing; and unsupported appeals to authority |
-| G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote, with more than the value; each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there, and no work is cited under two keys |
+| G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote, with more than the value; each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there; from the records `lookup` keeps, no cited work is retracted and each DOI and PMID names the work cited, and no work is cited under two keys |
 | G8 | one quantity is not emitted twice under two names, and a number the abstract or a conclusion gives is one the paper reports; a P printed after a t, F, chi-squared or z follows from it, an estimate stands inside its confidence interval and a ratio at its middle on the log scale, and an interval and its P agree about the null (warnings) |
 | G9 | the analysis has not changed since the Methods were last read against it, and, step by step, neither a marked step nor the text pointing at it has |
 | G10 | every figure has a current review by someone who looked at it |
@@ -266,6 +266,7 @@ number in the file and the rule that classified it.
 | `transcribe` | build checklist profiles from those documents |
 | `checklist` | write the completion file for a checklist |
 | `sync-bib` | rewrite `references.bib` from Zotero |
+| `lookup` | look up each cited DOI and PMID once, and keep what the registries said in `literature/lookups/` |
 | `methods` | check or record that the Methods were read against the code; `--explain` lists each claim beside the step that backs it |
 | `models` | print each fitted model as its card, with what G15 says of it |
 | `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` files or seals a design round's reading of the plan |

@@ -2321,6 +2321,53 @@ def cmd_sync_bib(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_lookup(args: argparse.Namespace) -> int:
+    """Look up each cited reference's DOI and PMID, and write what came back."""
+    from manuscript_guard.lookup import run as lookup
+
+    project, _ = load_project(args.path)
+    empty = why_no_manuscript(project)
+    bib = project.path("literature") / lookup.BIB_FILE
+    if empty or not bib.is_file():
+        reason = empty or f"there is no {bib.relative_to(project.root).as_posix()}"
+        print(f"manuscript-guard: nothing to look up: {reason}", file=sys.stderr)
+        return 2
+    planned = lookup.plan(project, again=args.again)
+    due = [p for p in planned if not p.skipped]
+    for one in planned:
+        if one.skipped and one.skipped != "up to date":
+            print(f"@{one.citekey}: not looked up: {one.skipped}")
+    if not planned:
+        print("the manuscript cites nothing, so nothing was looked up")
+        return 0
+    if args.dry_run:
+        for one in due:
+            ids = ", ".join(f"{k} {v}" for k, v in (("DOI", one.doi), ("PMID", one.pmid)) if v)
+            print(f"@{one.citekey}: would look up {ids} ({one.again})")
+        print(f"{len(due)} to look up, {len(planned) - len(due)} not; nothing was sent")
+        return 0
+    written = lookup.run(
+        project, planned, credentials=lookup.Credentials.from_environment(project)
+    )
+    late = sum(
+        1
+        for _one, record, _path in written
+        if any(s["status"] == "unresolvable" for s in record["sources"].values())
+    )
+    up_to_date = sum(1 for p in planned if p.skipped == "up to date")
+    print(
+        f"{len(written)} looked up, {up_to_date} up to date; records in "
+        f"{(project.path('literature') / 'lookups').relative_to(project.root).as_posix()}/"
+    )
+    if late:
+        print(
+            f"{late} had an answer that did not come; `manuscript-guard lookup` asks again "
+            "for those"
+        )
+        return 1
+    return 0
+
+
 def cmd_checklist(args: argparse.Namespace) -> int:
     """Write or extend the completion file for a reporting guideline."""
     project, _ = load_project(args.path)
@@ -3239,6 +3286,18 @@ def build_parser() -> argparse.ArgumentParser:
     syncbib = sub.add_parser("sync-bib", help="rewrite references.bib from Zotero")
     syncbib.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     syncbib.set_defaults(func=cmd_sync_bib)
+
+    lookup = sub.add_parser(
+        "lookup", help="look up each cited DOI and PMID, and keep what the registries said"
+    )
+    lookup.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    lookup.add_argument(
+        "--again", action="store_true", help="look up every cited reference, recorded or not"
+    )
+    lookup.add_argument(
+        "--dry-run", action="store_true", help="say what would be looked up, and send nothing"
+    )
+    lookup.set_defaults(func=cmd_lookup)
 
     checklist = sub.add_parser("checklist", help="write the completion file for a checklist")
     checklist.add_argument("guideline", nargs="?", help="e.g. STROBE; defaults to paper.yaml")

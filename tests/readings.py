@@ -381,6 +381,17 @@ def _spelling() -> Reading:
     return spelling
 
 
+@reading("title held")
+def _title_held() -> Reading:
+    from manuscript_guard.gates.lookups import title_held
+
+    def held(given: dict[str, str]) -> float | None:
+        found = title_held(given["cited"], given["registered"])
+        return None if found is None else round(found, 6)
+
+    return held
+
+
 @reading("units after")
 def _units_after() -> Reading:
     """The unit written right after each results binding, which G2 holds to the unit the

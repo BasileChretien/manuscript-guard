@@ -110,6 +110,10 @@ BINDS_AT = {
     "citation-unresolved": DRAFTING,
     # Model artefacts are never acceptable in text anyone will read.
     "model-artefact": DRAFTING,
+    # A cited work that was retracted is not evidence, whatever stage the draft is at,
+    # and a record edited by hand may be hiding one.
+    "reference-retracted": DRAFTING,
+    "lookup-record-edited": DRAFTING,
     # -- internal review --------------------------------------------------------
     # The draft is finished; now it is held to the journal's rules and read properly.
     "figure-unreviewed": INTERNAL_REVIEW,
@@ -153,6 +157,17 @@ BINDS_AT = {
     # drafting, an entry can be a placeholder still to be filled in from Zotero.
     "identifier-malformed": INTERNAL_REVIEW,
     "reference-field-missing": INTERNAL_REVIEW,
+    # Whether each identifier names the work the entry describes: read from the lookup
+    # records, which a draft may not have yet.
+    "doi-unregistered": INTERNAL_REVIEW,
+    "reference-not-the-work": INTERNAL_REVIEW,
+    "reference-title-mismatch": INTERNAL_REVIEW,
+    "reference-year-mismatch": INTERNAL_REVIEW,
+    "pmid-names-another-work": INTERNAL_REVIEW,
+    "pmid-unknown": INTERNAL_REVIEW,
+    "lookup-date-future": INTERNAL_REVIEW,
+    "lookup-record-unreadable": INTERNAL_REVIEW,
+    "lookup-record-misfiled": INTERNAL_REVIEW,
     # One work cited under two keys is printed twice in the reference list.
     "reference-duplicate": INTERNAL_REVIEW,
     # -- submission -------------------------------------------------------------

@@ -129,11 +129,11 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since; a warning where a lockfile pinning its packages has |
 | G2 | every number is classified, every declared value is quoted, and every pointer to a table or figure placed by its binding names one the document places; a unit written after a binding is the one emitted |
 | G3 | numbers in a figure's output *and in its source* trace back to results, and a script that estimates, samples or draws at random while it plots says why (a warning) |
-| G4 | word counts, required sections and required statements match the target journal, and the figure files meet its artwork rules, an SVG's smallest text and thinnest line at the width it prints among them (warnings) |
+| G4 | word counts, required sections and required statements match the target journal, and each rule of its profile is quoted from the journal's stored page, and the figure files meet its artwork rules, an SVG's smallest text and thinnest line at the width it prints among them (warnings) |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason; a guideline its authors have replaced is pointed out |
 | G6 | model artefacts and unfilled placeholders, in the prose, the figures, the tables' captions and the cited references; AI phrasing; and unsupported appeals to authority |
 | G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote, with more than the value; each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there, and no work is cited under two keys |
-| G8 | one quantity is not emitted twice under two names; a P printed after a t, F, chi-squared or z follows from it, an estimate stands inside its confidence interval and a ratio at its middle on the log scale, and an interval and its P agree about the null (warnings) |
+| G8 | one quantity is not emitted twice under two names, and a number the abstract or a conclusion gives is one the paper reports; a P printed after a t, F, chi-squared or z follows from it, an estimate stands inside its confidence interval and a ratio at its middle on the log scale, and an interval and its P agree about the null (warnings) |
 | G9 | the analysis has not changed since the Methods were last read against it, and, step by step, neither a marked step nor the text pointing at it has |
 | G10 | every figure has a current review by someone who looked at it |
 | G11 | a recorded panel has reviewed the manuscript, its major findings are answered, and no reading was changed after it was sealed |

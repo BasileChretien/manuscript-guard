@@ -365,6 +365,29 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+#: The headings of the parts of a paper, each written more than one way, and bindings to
+#: put under them: what G8 reads to find a number a summary gives and the paper does not.
+SUMMARIES = (
+    "\n\n# Abstract\n\n", "\n\n# 1. Summary\n\n", "\n\n## Results\n\n", "\n\n# 3. Results\n\n",
+    "\n\nFindings\n========\n\n", "\n\n# **Results and discussion**\n\n", "\n\n# Conclusions\n\n",
+    "\n\n## 5.1 Concluding remarks\n\n", "\n\n# Discussion\n\n", "\n\n# Methods\n\n",
+    "\n\n# Introduction\n\n", "{{results.ror.point}}", "{{results.case.n_cases}}",
+    "{{ results.ror.ci_low }}", "{{lit.incidence}}", "{{results.ror.point}}",
+)  # fmt: skip
+
+
+def summaries() -> st.SearchStrategy[str]:
+    """A manuscript holding every heading and binding of `SUMMARIES`, in an order and among
+    pieces of the pool drawn each time: a rule broken for one way of writing a heading is
+    seen whatever the seed."""
+    between = _in_a_row(_pool(()), few=3, many=10)
+    return st.permutations(SUMMARIES).flatmap(
+        lambda order: st.tuples(*(between for _ in order)).map(
+            lambda gaps: "".join(gap + piece for gap, piece in zip(gaps, order, strict=True))
+        )
+    )
+
+
 #: Quotations as a sentence writes them, with the citation that says whose words they are.
 _OPEN, _CLOSE = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
 QUOTED = (
@@ -810,6 +833,12 @@ BOUND_UNITS = (
     "{{results.temp}} \N{DEGREE SIGN}C",
 )  # fmt: skip
 
+#: A journal's limit as its page may write it, and numbers and words it is not.
+QUOTED_LIMITS = (
+    "3500", "3,500", "3 500", "3500-word", "13500", "3500.5", "3,5000", "35000", "four",
+    "fourteen", "fourfold", "Four", "4", "14", "4.5",
+)  # fmt: skip
+
 NOTATED = (
     "P = 0.03", "p=0.04", "*P* < 0.001", "p-value", "n = 12", "n=3", "N= 40",
     "95% CI 1.2 to 3.4", "95% CI 1.2-3.4", "(95% CI {{results.low}} to {{results.high}})",
@@ -974,6 +1003,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "own words": texts(TERMS),
     "spans": texts(),
     "sections": texts(),
+    "summaries": st.fixed_dictionaries(
+        {"text": summaries(), "abstract title": st.sampled_from((None, "Summary"))}
+    ),
     "numbers": st.fixed_dictionaries(
         {
             "text": texts(POINTED),
@@ -1006,6 +1038,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),
     "units after": texts(BOUND_UNITS),
+    "limit stated": st.fixed_dictionaries(
+        {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}
+    ),
     "abbreviations": st.fixed_dictionaries(
         {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}
     ),

@@ -215,6 +215,22 @@ def _sections() -> Reading:
     return sections
 
 
+@reading("summaries")
+def _summaries() -> Reading:
+    """The results keys a file gives in its Abstract or a conclusion, and those it binds where
+    the paper reports them: G8's reading of the parts of a paper."""
+    from manuscript_guard.gates.reported import Walk
+
+    def summaries(given: dict[str, Any]) -> dict[str, Any]:
+        found, reported = Walk(given["abstract title"]).read(given["text"])
+        return {
+            "given": [[one.key, one.heading, one.line] for one in found],
+            "reported": sorted(reported),
+        }
+
+    return summaries
+
+
 # ----------------------------------------------------------------------------- numbers
 
 
@@ -375,6 +391,18 @@ def _units_after() -> Reading:
         return [[found.key, found.start, found.unit] for found in units_after(text)]
 
     return units
+
+
+@reading("limit stated")
+def _limit_stated() -> Reading:
+    """Whether the quote of a journal profile's limit states its number, which G4 fails
+    where it does not."""
+    from manuscript_guard.gates.journal_quotes import _states
+
+    def stated(given: dict[str, Any]) -> bool:
+        return _states(given["text"], given["value"])
+
+    return stated
 
 
 @reading("notation")

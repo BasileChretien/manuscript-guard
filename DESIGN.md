@@ -2865,16 +2865,19 @@ The data custodian authorises a model provider. Many data-use agreements forbid 
 data, or what is computed from them, anywhere the custodian has not agreed to, and a panel
 read by a model sends the manuscript, results and all, to whichever provider `review.models`
 names. Where `paper.yaml` says the custodian restricts that (`custodian: {restricts_sending:
-true}`), `review --run` sends to a provider on this machine, and to any other only once the
-data custodian `authors.yaml` names under `roles:` has authorised it, with `manuscript-guard
+true}`), `review --run` sends to the built-in Ollama on this machine, and to any other
+provider only once the data custodian `authors.yaml` names under `roles:` has authorised it,
+with `manuscript-guard
 sign --as <them> --finding G11/custodian/send-to/<provider>`. The sign-off is bound to the
 provider's name, its address, and whether a server on this machine passes its calls on, so a
 provider pointed elsewhere, or an Ollama cloud model where only local ones were authorised,
 wants it again. A run with a provider not authorised sends nothing, writes nothing, and says
 who authorises it; a dry run says that a run would send nothing, and writes the requests for
-the custodian to read all the same. A provider on this machine needs no authorisation unless
-its calls are known to be passed on. The design round sends the plan, and is held the same
-way.
+the custodian to read all the same. Only a built-in provider on this machine is taken at its
+address, for a model it is not known to pass on: a provider the author adds under
+`review.providers` is authorised whatever its address, because one at localhost may be a
+router or a tunnel that sends what it receives elsewhere, and was sent to unasked (round 1
+of #323). The design round sends the plan, and is held the same way.
 
 ## The plugin: skills for judgement, hooks for the moment of the mistake
 
@@ -6719,8 +6722,10 @@ Closed since, and why each mattered:
   a cloud model Ollama names some other way, a proxy, a tunnel, or a llama.cpp or vLLM
   server that forwards what it receives, none of which the address or the name shows. A
   local server's model whose own name happens to end in `-cloud` is warned of needlessly.
-  Where the data custodian restricts sending, such a server is sent to without their
-  authorisation, as any provider on this machine is.
+  Where the data custodian restricts sending, a provider the author adds is authorised
+  whatever its address, so a server they declare is covered; the built-in Ollama at
+  localhost is not, and an Ollama server set up to forward under other names is sent to
+  without the custodian's word.
 - **The size of a request is an estimate and no price is shown.** The statement before a
   run counts the calls and gives the bytes of the largest request at four characters a
   token. Tokenisers differ by model and prices change, so neither is built in; a model that

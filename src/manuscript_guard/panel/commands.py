@@ -174,11 +174,9 @@ def _not_authorised(plan, project) -> str:
     """Why the data custodian's restriction stops this plan, or "" where it does not: a
     provider off this machine that the custodian has not authorised as it now stands."""
     from manuscript_guard.panel.custodian import unauthorised
-    from manuscript_guard.panel.plan import passed_on_calls
-    from manuscript_guard.panel.run import providers_of
 
-    leaving = [p for p in providers_of(plan) if not p.local or passed_on_calls(plan, p)]
-    return " ".join(f"{f.message}; {f.hint}." for f in unauthorised(project, leaving))
+    called = [call.model for call in plan.calls]
+    return " ".join(f"{f.message}; {f.hint}." for f in unauthorised(project, called))
 
 
 def _still_waiting(waiting: Sequence[tuple[str, str]], *, design: bool = False) -> str:

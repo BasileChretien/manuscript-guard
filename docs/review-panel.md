@@ -52,8 +52,9 @@ custodian:
   restricts_sending: true
 ```
 
-`review --run` then sends to a model on this machine, and to any other provider only once
-the data custodian has authorised that provider. Name them in `authors.yaml` (`roles:
+`review --run` then sends to a model the built-in Ollama runs on this machine, and to any
+other provider only once the data custodian has authorised that provider: a provider you add
+under `review.providers` needs it even at `localhost`, since it may be a router or a tunnel. Name them in `authors.yaml` (`roles:
 data_custodian:`, an author or `name:` someone who is not), and they authorise each
 provider themselves: `manuscript-guard sign --as "<them>" --finding
 G11/custodian/send-to/<provider>`. The authorisation is of the provider at its address: a

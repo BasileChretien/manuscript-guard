@@ -131,7 +131,8 @@ files go to which host, and send only when they have said yes in so many words. 
 terms, not in this toolkit.
 
 Where `paper.yaml` says `custodian: {restricts_sending: true}`, a run sends to no provider
-off this machine that the data custodian has not authorised, and says so. The authorisation
+the data custodian has not authorised, and says so; only a model the built-in Ollama runs on
+this machine needs no authorisation. The authorisation
 is the custodian's own act: they run `manuscript-guard sign --as "<them>" --finding
 G11/custodian/send-to/<provider>`, after reading the dry run's requests. Never run it for
 them, and never take the restriction out of `paper.yaml` to get a run through.

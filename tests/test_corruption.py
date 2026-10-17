@@ -1167,6 +1167,25 @@ def test_a_model_on_this_machine_needs_no_authorisation_and_one_sent_on_from_it_
     assert "and on to Ollama's servers" in err and transport.requests == []
 
 
+def test_a_provider_the_author_adds_needs_authorisation_even_on_this_machine(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """Round 1 of #323: a router or a tunnel on this machine, added under review.providers,
+    passes on what it receives, and was sent to without the custodian's word because its
+    address is localhost. Only a built-in provider here is taken at its address."""
+    transport = _keeps_data(project, monkeypatch, "relay/model-m")
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["review"]["providers"]["relay"] = {"base_url": "http://localhost:4000/v1",
+                                                "key_env": "LAB_API_KEY"}  # fmt: skip
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 2
+    assert "localhost:4000" in capsys.readouterr().err and transport.requests == []
+    assert _authorise(project, "relay") == 0
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 0
+    assert len(transport.requests) == 4
+
+
 def test_with_no_custodian_named_the_refusal_says_to_name_one(
     project: Path, monkeypatch, capsys
 ) -> None:

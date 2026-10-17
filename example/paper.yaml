@@ -1,6 +1,8 @@
 schema: manuscript-guard/paper/1
 title: "Reporting of hepatic injury with example-drug: a disproportionality analysis of a synthetic spontaneous reporting database"
 short_title: "Hepatic injury with example-drug"
+# The data are simulated: G1 says so of every result quoted, and the title page says it.
+demonstration: true
 english_variant: en-GB
 
 keywords:

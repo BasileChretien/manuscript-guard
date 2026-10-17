@@ -1,6 +1,6 @@
 ---
 name: co-author-checking
-description: Send a co-author the numbers, quotes and references to confirm, and record what they answered. Use when a draft is ready for the question no gate can ask - does the source really say this - or when a co-author has sent back an answers file.
+description: Send a co-author the numbers, quotes and references to confirm, and record what they answered. Use when a draft is ready for the question no gate can ask - does the source really say this - or when a co-author has sent back an answers file. Not for a review panel (use review-panel), nor for a journal's reviewers (use reviewer-response).
 ---
 
 # Having a person check what no gate can

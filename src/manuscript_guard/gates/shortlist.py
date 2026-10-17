@@ -3,9 +3,9 @@
 `journals/shortlist.yaml` is held to its schema, and the journals its ranking and decision
 name are among those it considered. For the target journal, what `lookup --journals` heard
 is read offline: a journal not currently indexed for MEDLINE, and an open-access journal
-DOAJ does not list, are each a warning. A predatory journal is never in either, and a sound
-one can be outside them: the author can say why in the shortlist, and the warning is then a
-note that quotes them. All of it is a warning at most (decided 2026-10-15).
+DOAJ does not list, are each a warning. Being listed is evidence against a predatory journal,
+not proof, and a sound one can be outside them: the author can say why in the shortlist, and
+the warning is then a note that quotes them. All of it is a warning at most (decided 2026-10-15).
 """
 
 from __future__ import annotations
@@ -40,8 +40,24 @@ def check_shortlist(project: Project) -> Report:
         return Report(tuple(dataclasses.replace(f, severity=WARN) for f in checked.findings))
     report = _named_and_considered(document, path)
     candidate = _target(project, document)
+    slug = project.target_journal
     if candidate is not None:
-        report = report.merge(_legitimacy(project, candidate, path))
+        role = "the target journal" if slug else "the journal chosen"
+        report = report.merge(_legitimacy(project, candidate, path, role))
+    elif slug:
+        # Round 1 of #321: not found, it was said of nothing. The decision is not taken for the
+        # target, since it may name another journal.
+        report = report.merge(
+            _note(
+                "journal-target-not-shortlisted",
+                f"the target journal, {slug}, is none of the shortlist's candidates by its "
+                "profile or its name, so whether it is indexed for MEDLINE or listed in DOAJ "
+                "is not said",
+                f"give its candidate `profile: {slug}`, or add it to the candidates with its "
+                "ISSNs",
+                path,
+            )
+        )
     return report
 
 
@@ -86,7 +102,7 @@ def _target(project: Project, document: dict) -> dict | None:
     return next((c for c in candidates if chosen and _name(c["journal"]) == _name(chosen)), None)
 
 
-def _legitimacy(project: Project, candidate: dict, path) -> Report:
+def _legitimacy(project: Project, candidate: dict, path, role: str) -> Report:
     journal = candidate["journal"]
     issns = candidate.get("issn") or []
     if not issns:
@@ -133,6 +149,7 @@ def _legitimacy(project: Project, candidate: dict, path) -> Report:
             reason=candidate.get("outside_medline"),
             field="outside_medline",
             path=path,
+            role=role,
         )
     )
     if candidate.get("open_access") is True:
@@ -147,13 +164,14 @@ def _legitimacy(project: Project, candidate: dict, path) -> Report:
                 reason=candidate.get("outside_doaj"),
                 field="outside_doaj",
                 path=path,
+                role=role,
             )
         )
     return report
 
 
 def _registry(code, journal, answers: list[Any], *, indexed, missing, said, reason, field,
-              path) -> Report:  # fmt: skip
+              path, role) -> Report:  # fmt: skip
     """One registry's answers for the journal's ISSNs: known to it on any ISSN, and nothing
     is said; unknown on every ISSN it answered for, with none left unasked or unanswered,
     and it is a warning, or a note where the author recorded why."""
@@ -162,7 +180,7 @@ def _registry(code, journal, answers: list[Any], *, indexed, missing, said, reas
     if missing or not answers or any(a is None or a["status"] not in (FOUND, ABSENT)
                                      for a in answers):  # fmt: skip
         return Report()
-    message = f"{journal}, the journal chosen, {said}"
+    message = f"{journal}, {role}, {said}"
     if reason:
         return _note(code, f"{message}; the author recorded why: {reason}", "", path)
     return Report(
@@ -173,9 +191,9 @@ def _registry(code, journal, answers: list[Any], *, indexed, missing, said, reas
                 message,
                 severity=WARN,
                 path=path,
-                hint="a predatory journal is never in it, and a sound one can be outside it: "
-                "read the journal's standing before submitting, then choose another or say "
-                f"why in the candidate's `{field}:`",
+                hint="being listed is evidence against a predatory journal, not proof, and a "
+                "sound journal can be outside it: read the journal's standing before "
+                f"submitting, then choose another or say why in the candidate's `{field}:`",
             ),
         )
     )

@@ -534,15 +534,19 @@ command asks, the answers are kept dated, and `check` reads them offline.
 ESummary's `currentindexingstatus`) whether each ISSN's journal is currently indexed for
 MEDLINE, and DOAJ (its search API, version 4) whether it is listed. It sends an ISSN and
 nothing of the manuscript. Each answer is kept in `journals/lookups/<issn>.yaml` with the
-digest of what it says. G4 warns when the target journal, found by its profile, by the
-profile's name or else by the decision, is not currently indexed for MEDLINE on any of its
-ISSNs (`journal-not-in-medline`), and when it is open access and DOAJ lists it on none
-(`journal-not-in-doaj`). A predatory journal is in neither, and a sound one can be outside
-them; the author can say why in the candidate (`outside_medline`, `outside_doaj`), and the
-warning is then a note that quotes them. Neither ever fails (decided 2026-10-15). A record
-that is missing or edited, or an answer that did not come, is no evidence either way: a
-note (`journal-not-looked-up`). A journal ranked or chosen that is not among the candidates
-is a warning (`shortlist-unknown-journal`), and so is a shortlist that breaks its schema.
+digest of what it says. G4 warns when the target journal, found among the candidates by its
+profile or by the profile's name, is not currently indexed for MEDLINE on any of its ISSNs
+(`journal-not-in-medline`), and when it is open access and DOAJ lists it on none
+(`journal-not-in-doaj`). With no target journal set, the journal the decision chose is read.
+A target journal that is none of the candidates is said in a note
+(`journal-target-not-shortlisted`): the decision is not taken for it, since it may name
+another journal (round 1 of #321). Being listed is evidence against a predatory journal, not
+proof, and a sound one can be outside them; the author can say why in the candidate
+(`outside_medline`, `outside_doaj`), and the warning is then a note that quotes them. Neither
+ever fails (decided 2026-10-15). A record that is missing or edited, or an answer that did
+not come, is no evidence either way: a note (`journal-not-looked-up`). A journal ranked or
+chosen that is not among the candidates is a warning (`shortlist-unknown-journal`), and so is
+a shortlist that breaks its schema.
 
 Finding the journals that publish papers like this one is the skill's work, not the
 command's: a journal-name estimator that takes a title and an abstract, and PubMed. Both are

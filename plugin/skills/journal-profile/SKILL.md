@@ -92,10 +92,10 @@ decision: {journal: Journal of Examples, decided_by: A. Author, decided_on: 2026
 
 Then run `manuscript-guard lookup --journals`. It asks the NLM Catalog whether each ISSN's
 journal is currently indexed for MEDLINE, and DOAJ whether it is listed, and sends nothing
-of the manuscript. `check` then warns when the journal chosen is not indexed for MEDLINE
-(`journal-not-in-medline`), or is open access and not in DOAJ (`journal-not-in-doaj`). A
-predatory journal is in neither. A sound journal can be outside them, a new one or one
-outside medicine; then the author says why in the candidate's `outside_medline:` or
+of the manuscript. `check` then warns when the target journal is not indexed for MEDLINE
+(`journal-not-in-medline`), or is open access and not in DOAJ (`journal-not-in-doaj`).
+Being listed is evidence against a predatory journal, not proof. A sound journal can be
+outside them, a new one or one outside medicine; then the author says why in the candidate's `outside_medline:` or
 `outside_doaj:`, in their words, and the warning becomes a note. Never write that reason
 for them.
 

@@ -4845,6 +4845,32 @@ def test_the_target_journal_is_found_by_its_profile_its_name_or_the_decision(
     assert _target_said(project, no) == [("journal-not-in-medline", "warn")]
 
 
+def test_a_target_journal_none_of_the_candidates_is_said(project: Path) -> None:
+    """Round 1 of #321: a candidate named otherwise than the target's profile, with no
+    `profile:`, was not found, and G4 said nothing at all of whether the journal is indexed.
+    The decision is not taken for the target: it may name another journal."""
+    from test_journal_lookup import Table, esummary
+
+    said = _target_said(project, Table(esummary=esummary("N")), journal="J Demonstr Pharm",
+                        profile="another-profile")  # fmt: skip
+    assert said == [("shortlist-unknown-journal", "warn"),
+                    ("journal-target-not-shortlisted", "info")]  # fmt: skip
+
+
+def test_the_warning_says_what_a_listing_is_evidence_of(project: Path) -> None:
+    """Round 1 of #321: the hint said a predatory journal is never listed, which is not so,
+    and called the target "the journal chosen" where the decision chose another."""
+    from test_journal_lookup import Table, esummary
+
+    from manuscript_guard.gates.shortlist import check_shortlist
+
+    _target_said(project, Table(esummary=esummary("N")))
+    [found] = [f for f in check_shortlist(load_project(project)[0]).findings
+               if f.code == "journal-not-in-medline"]  # fmt: skip
+    assert "the target journal" in found.message and "chosen" not in found.message
+    assert "never" not in found.hint and "evidence" in found.hint
+
+
 #: What G4 says of the figure files.
 _ARTWORK_CODES = ("figure-format", "figure-resolution", "figure-height", "figure-file-size",
                   "figure-shrinks", "legend-words")  # fmt: skip

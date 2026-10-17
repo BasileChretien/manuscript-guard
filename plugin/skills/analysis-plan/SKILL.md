@@ -138,6 +138,18 @@ never the frozen copy; a plan changed after that with its Deviations section as 
 `None so far.` is a legitimate entry as long as it is true. Every deviation also belongs
 in the paper's Methods; the [methods-writer](../methods-writer/SKILL.md) skill covers that.
 
+## What the design needs
+
+Name the design in `paper.yaml` (`study_type`: cohort, case-control, self-controlled,
+disproportionality, trial, systematic-review or prediction-model). G12 then asks the plan for
+the sections that design needs beyond the seven, each from the guideline item it comes from:
+the estimand of a trial, time zero and the confounders of a cohort, the risk windows of a
+self-controlled design, the case definition and the comparator of a disproportionality
+analysis. [references/study-designs.md](references/study-designs.md) has, for each design,
+what each section has to answer and where that comes from. Whether the design can support
+the conclusion is the author's and the panel's to judge, not a gate's; the sections make the
+choices visible.
+
 ## If you are a model doing this
 
 Do not write the plan from the analysis code. A plan reconstructed after the fact is exactly

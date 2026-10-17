@@ -22,6 +22,10 @@
       "type": "string",
       "description": "Name of a profile under profiles/journals/. Absent means no journal chosen yet, which disables the journal gate rather than failing it."
     },
+    "study_type": {
+      "enum": ["cohort", "case-control", "self-controlled", "disproportionality", "trial", "systematic-review", "prediction-model"],
+      "description": "The study's design. G12 asks the analysis plan for the sections this design needs beyond the seven every plan has, and G5 says where none of the reporting guidelines for it is declared. Each design's sections cite the guideline item they come from (src/manuscript_guard/data/study_types.yaml). Absent, the plan is asked for the seven only."
+    },
     "reporting_guideline": {
       "type": "array",
       "description": "Names of checklists under profiles/reporting/. Commonly STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT, PRISMA, TRIPOD or ARRIVE, but deliberately not a closed list: guidelines are revised, extensions appear, and a schema that refuses CHEERS or SQUIRE would be wrong about the world rather than about the project.",

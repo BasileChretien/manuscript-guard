@@ -1296,7 +1296,26 @@ def _categories_are_held_to_their_column_alone(patch: pytest.MonkeyPatch) -> Non
     from manuscript_guard.stats import shares
 
     summed = shares._summed
-    patch.setattr(shares, "_summed", lambda rows: dict.fromkeys(summed(rows)))
+
+    def without_totals(rows: list) -> dict:
+        return {where: (None, members) for where, (_total, members) in summed(rows).items()}
+
+    patch.setattr(shares, "_summed", without_totals)
+
+
+def _a_label_row_with_its_p_value_is_a_header(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    patch.setattr(shares, "_P_ONLY", re.compile(r"\s*"))
+
+
+def _a_run_of_categories_takes_in_the_row_after_them(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import shares
+
+    def whole(matches: list) -> int:
+        return len(matches) if shares._about_100([m.group("percent") for m in matches]) else 0
+
+    patch.setattr(shares, "_categories", whole)
 
 
 def _a_label_naming_a_mean_is_read_as_shares(patch: pytest.MonkeyPatch) -> None:
@@ -4059,6 +4078,14 @@ BROKEN = {
     ),
     "a characteristic's categories are held to their column's n alone": (
         _categories_are_held_to_their_column_alone,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a characteristic's label row with its P value beside it is read as a header": (
+        _a_label_row_with_its_p_value_is_a_header,
+        test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a run of categories takes in the characteristic after them": (
+        _a_run_of_categories_takes_in_the_row_after_them,
         test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
     ),
     "categories whose shares add up to 100 are not read as shares": (

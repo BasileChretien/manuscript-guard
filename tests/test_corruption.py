@@ -3476,6 +3476,29 @@ def test_a_header_that_names_its_n_before_a_comma_gives_its_denominator(
     assert said.message.startswith("n (%) 300 (26.0): 300 of 1200 is 25.00%")
 
 
+@pytest.mark.parametrize(
+    ("written", "listed"),
+    [
+        # A characteristic's categories with its P value on its label row (round 2 of #314).
+        ("| | A (n = 1200) | B (n = 3400) | P |\n|---|---|---|---|\n| Sex | | | 0.12 |\n"
+         "| Male | 604 (53.3) | 1800 (52.9) | |\n| Female | 560 (46.7) | 1600 (47.1) | |\n",
+         "n (%) 604 (53.3): 604 of 1200 is 50.33%"),
+        # A yes/no characteristic whose label ends "(%)" (round 2 of #314).
+        ("| | A (n = 1200), n (%) |\n|---|---|\n| Male sex (%) | 640 (58.0%) |\n",
+         "n (%) 640 (58.0%): 640 of 1200 is 53.33%"),
+    ],
+)  # fmt: skip
+def test_an_n_percent_off_its_denominator_is_listed_in_a_shape_review_found(
+    tmp_path: Path, written: str, listed: str
+) -> None:
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(written, encoding="utf-8")
+    [said] = audit([paper], []).disagreements
+    assert said.message.startswith(listed)
+
+
 def _cell(text: str, *, span: int = 1) -> str:
     props = f'<w:tcPr><w:gridSpan w:val="{span}"/></w:tcPr>' if span > 1 else ""
     return f"<w:tc>{props}<w:p>{text}</w:p></w:tc>"
@@ -3544,6 +3567,16 @@ def test_an_n_percent_in_a_word_table_is_read_by_its_row_and_column(tmp_path: Pa
         # A unit in percent under a header that says n (%): a measure all the same.
         "| | A (n = 1200), n (%) |\n|---|---|\n| HbA1c (%) | 7 (1) |\n"
         "| Diabetes, n (%) | 300 (25.0) |\n",
+        # The subtypes again, the next characteristic straight after them (round 2).
+        "| | A (n = 1200), n (%) | B (n = 3400), n (%) |\n|---|---|---|\n"
+        "| Diabetes, n (%) | 300 (25.0) | 700 (20.6) |\n| Diabetes type | | |\n"
+        "| Type 1 | 30 (10.0) | 70 (10.0) |\n| Type 2 | 270 (90.0) | 630 (90.0) |\n"
+        "| Hypertension, n (%) | 500 (41.7) | 1400 (41.2) |\n",
+        # And with a P value beside their label (round 2).
+        "| | A (n = 1200) | B (n = 3400) | P |\n|---|---|---|---|\n"
+        "| Diabetes, n (%) | 300 (25.0) | 700 (20.6) | 0.01 |\n"
+        "| Diabetes type | | | 0.40 |\n| Type 1 | 30 (10.0) | 70 (10.0) | |\n"
+        "| Type 2 | 270 (90.0) | 630 (90.0) | |\n",
         # The subtypes of another row, shares of it and not of the column (round 1 of #314).
         "| | A (n = 1200) | B (n = 3400) |\n|---|---|---|\n"
         "| Diabetes, n (%) | 300 (25.0) | 700 (20.6) |\n| Diabetes type | | |\n"

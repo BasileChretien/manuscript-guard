@@ -15,10 +15,12 @@ its denominator against the share printed, within half a unit of its last printe
   header names one: mean (SD) and median (IQR) never fire. Of the rest, a cell is read where
   something says it is a share: a "%" in the cell; "n (%)", "No. (%)" or "n/N (%)" in the
   row's label, in the label of the rows it falls under or in its column's header; or, for
-  the categories of one characteristic, the rows under a label of their own, shares of its
-  column that add up to about 100. A "%" alone in a label is a unit, and a row whose label
-  ends on one, "Oxygen saturation, %", is a measure and never read (round 1 of #314: its
-  mean (SD) was read as a count and its share).
+  the categories of one characteristic, the rows under a label of their own (with its P
+  value beside it or nothing), shares of its column that add up to about 100 from the top.
+  A "%" alone in a label is a unit, and a row whose label ends on one, "Oxygen saturation,
+  %", is a measure: a cell of it with no "%" and a number no more than 100 is never read
+  (rounds 1 and 2 of #314: its mean (SD) was read as a count and its share, and then
+  "Male sex (%) | 640 (58.0%)" went unread).
 * **The denominator is the cell's own, or its column's**: the "n = N" of the column's header,
   the nearest above it in a row with no count in it. With neither, nothing is checked.
 * **A share of the row, or of the categories' own total, is not wrong.** Where a row's
@@ -61,6 +63,13 @@ _SAYS_SHARES = re.compile(
 #: A label that ends on a unit in percent, "Oxygen saturation, %" or "LVEF (%)": a measure,
 #: whose numbers are its mean and spread, unless "n" stands before the "%".
 _UNIT = re.compile(r"(?:,|\()\s*%\s*\)?\s*$")
+#: What else a characteristic's own label row may hold: nothing, its P value, or a dash
+#: (round 2 of #314: a P beside the label made it a header, and its categories no run).
+_P_ONLY = re.compile(
+    r"(?i)\s*(?:p\s*)?(?:[<>=\N{LESS-THAN OR EQUAL TO}\N{GREATER-THAN OR EQUAL TO}]=?\s*)?"
+    r"(?:\d*\.\d+(?:\s*[eE]-?\d+)?|[01]|[-\N{EN DASH}\N{EM DASH}])?"
+    r"\s*[*\N{DAGGER}\N{DOUBLE DAGGER}]*\s*"
+)
 #: A denominator a header or a label names: "n = 1200", "(N=1,200)".
 _N = re.compile(rf"(?<![A-Za-z])[nN]\s*=\s*(?P<n>{_COUNT})")
 #: What says a number in brackets is not a share. Read before a "%": a label that names a
@@ -137,19 +146,22 @@ def table_shares(table: Table) -> list[Share]:
     summed = _summed(rows)
     found: list[Share] = []
     for row in rows:
-        read = [
-            (column, cell, match) for column, cell, match in row.cells
-            if _a_share(row, column, cell, (row.run, column) in summed)
-        ]  # fmt: skip
-        total = _row_total([match for _column, _cell, match in read])
-        for column, cell, match in read:
+        read = []
+        for column, cell, match in row.cells:
+            # Its categories' total, where it is one of a characteristic's categories.
+            total, members = summed.get((row.run, column), (None, frozenset()))
+            among = id(match) in members
+            if _a_share(row, column, cell, match, among):
+                read.append((column, cell, match, total if among else None))
+        across = _row_total([match for _column, _cell, match, _total in read])
+        for column, cell, match, down in read:
             own = match.group("over")
             found.append(Share(
                 line=cell.line, printed=" ".join(cell.text.split()),
                 count=_whole(match.group("count")),
                 percent=match.group("percent"),
                 over=_whole(own) if own else row.over.get(column), own=bool(own),
-                row_total=total, run_total=summed.get((row.run, column)), label=row.label,
+                row_total=across, run_total=down, label=row.label,
                 uncertain=_uncertain(row, cell), context=row.context,
             ))  # fmt: skip
     return found
@@ -205,12 +217,14 @@ def _rows(table: Table) -> list[_Row]:
         )  # fmt: skip
         if not shaped:
             run, categories = run + 1, False
-            if any(cell.text.strip() for _column, cell in placed[1:]):
+            others = [cell.text for _column, cell in placed[1:]]
+            if label.strip() and all(_P_ONLY.fullmatch(text) for text in others):
+                # A characteristic's own label, with its P value or nothing beside it.
+                group, categories = label, True
+            elif any(text.strip() for text in others):
                 group = ""
                 for column, cell in placed[1:]:
                     _header(cell, column, over, said)
-            elif label.strip():
-                group, categories = label, True
             continue
         context = " | ".join(" ".join(cell.text.split()) for cell in row)
         if len(context) > _CONTEXT:
@@ -244,34 +258,60 @@ def _header(cell: TableCell, column: int, over: dict[int, int], said: dict[int, 
 
 def _barred(row: _Row, column: int) -> bool:
     """Whether the row's label, the label over it or the column's header names another
-    statistic, or the row's label a unit in percent: under a header that says n (%), the
-    mean (SD) of "Oxygen saturation, %" is printed beside the shares (round 1 of #314)."""
-    unit = bool(_UNIT.search(row.label)) and not _SAYS_SHARES.search(row.label)
-    return unit or bool(_NOT_A_SHARE.search(row.label) or _NOT_A_SHARE.search(row.group)) or \
+    statistic."""
+    return bool(_NOT_A_SHARE.search(row.label) or _NOT_A_SHARE.search(row.group)) or \
         row.said.get(column) is False  # fmt: skip
 
 
-def _a_share(row: _Row, column: int, cell: TableCell, summed: bool) -> bool:
-    if _barred(row, column):
+def _a_measure(row: _Row, cell: TableCell, match: re.Match[str]) -> bool:
+    """Whether a cell is a measure's mean and spread: its row's label ends on a unit in
+    percent, and the cell has no "%" and a number no more than 100. Under a header that says
+    n (%), the mean (SD) of "Oxygen saturation, %" is printed beside the shares (round 1 of
+    #314), and "Male sex (%) | 640 (58.0%)" is a share all the same (round 2)."""
+    return bool(_UNIT.search(row.label)) and not _SAYS_SHARES.search(row.label) and \
+        "%" not in cell.text and _whole(match.group("count")) <= 100  # fmt: skip
+
+
+def _a_share(row: _Row, column: int, cell: TableCell, match: re.Match[str], among: bool) -> bool:
+    if _barred(row, column) or _a_measure(row, cell, match):
         return False
     return "%" in cell.text or bool(_SAYS_SHARES.search(row.label)) or \
-        bool(_SAYS_SHARES.search(row.group)) or row.said.get(column) is True or summed  # fmt: skip
+        bool(_SAYS_SHARES.search(row.group)) or row.said.get(column) is True or among  # fmt: skip
 
 
-def _summed(rows: list[_Row]) -> dict[tuple[int, int], int]:
+def _summed(rows: list[_Row]) -> dict[tuple[int, int], tuple[int, frozenset[int]]]:
     """Each run of a characteristic's categories, the rows under a label of their own, and
-    each column in which their shares add up to about 100, with their counts summed: what
-    they are shares of, whether or not anything else says they are shares."""
+    each column in which their shares add up to about 100: their counts summed, which is
+    what they are shares of, and which cells they are (by `id` of their match), whether or
+    not anything else says they are shares."""
     printed: dict[tuple[int, int], list[re.Match[str]]] = {}
     for row in rows:
-        for column, _cell, match in row.cells if row.categories else ():
-            if not _barred(row, column):
+        for column, cell, match in row.cells if row.categories else ():
+            if not _barred(row, column) and not _a_measure(row, cell, match):
                 printed.setdefault((row.run, column), []).append(match)
-    return {
-        where: sum(_whole(match.group("count")) for match in matches)
-        for where, matches in printed.items()
-        if _about_100([match.group("percent") for match in matches])
-    }
+    found: dict[tuple[int, int], tuple[int, frozenset[int]]] = {}
+    for where, matches in printed.items():
+        kept = matches[: _categories(matches)]
+        if kept:
+            total = sum(_whole(match.group("count")) for match in kept)
+            found[where] = (total, frozenset(id(match) for match in kept))
+    return found
+
+
+def _categories(matches: list[re.Match[str]]) -> int:
+    """How many of a run's shares, from the top, are a characteristic's categories: the
+    most of them, two or more, that add up to about 100, or none. A row after them is
+    another characteristic, and does not join them (round 2 of #314: the subtypes of a row,
+    followed by the next row, were held to the column's n again)."""
+    total = slack = Fraction(0)
+    taken = 0
+    for at, match in enumerate(matches, start=1):
+        percent = match.group("percent")
+        total += Fraction(Decimal(percent))
+        slack += _half(percent)
+        if at >= 2 and abs(total - 100) <= slack:
+            taken = at
+    return taken
 
 
 def _row_total(matches: list[re.Match[str]]) -> int | None:

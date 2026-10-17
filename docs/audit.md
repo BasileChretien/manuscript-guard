@@ -48,8 +48,8 @@ that prints 300 (26.0) is listed, with the denominators 26.0% of 300 would fit. 
 in the share's last printed place is allowed. Only a column of shares is read: a "%" in the
 cell, or "n (%)" in the row's label, the label over its rows or the column's header, says
 so, or the shares of a characteristic's categories add up to 100. A row that names a mean,
-a median, an SD, an IQR or a range is never read, nor one whose label ends on a unit in
-percent ("Oxygen saturation, %"). A share of its row's own total, where the row's shares add
+a median, an SD, an IQR or a range is never read, nor a whole number up to 100 with no "%"
+in a row whose label ends on a unit in percent ("Oxygen saturation, %"). A share of its row's own total, where the row's shares add
 up to 100, and a share of its categories' own total, where they do, are not listed: a
 subtype of another row, or a share of those with data. A row whose label carries a footnote
 marker is listed as uncertain, since a note may give it another denominator. Pipe tables are

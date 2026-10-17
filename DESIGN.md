@@ -1622,13 +1622,17 @@ What is read is only a column of shares. A label that names a mean, a median, an
 IQR, a range or a CI, the row's or the one over its rows, or a header that does, bars it,
 "%" or not: "HbA1c, %, mean (SD)" holds two numbers that are not a count and its share. So
 does a row's label that ends on a unit in percent, "Oxygen saturation, %" or "LVEF (%)",
-with no "n" before the "%": a measure, whose mean (SD) is printed as whole numbers beside
-the shares. Of the rest, a cell is read where something says it is a share: a "%" in the
-cell, or "n (%)", "No. (%)" or "n/N (%)" in the row's label, in the label over its rows or
-in its column's header. A "%" alone in a label is a unit and says nothing; read as "these
-are shares", it listed a mean saturation of 96 (3) as 8% of its column (round 1 of #314).
-Or a cell is read where it is one of a characteristic's categories, the rows under a label
-of their own, and their shares in its column add up to about 100.
+with no "n" before the "%", for a cell with no "%" of its own and a number no more than 100:
+a measure, whose mean (SD) is printed as whole numbers beside the shares, and not "Male sex
+(%) | 640 (58.0%)" (rounds 1 and 2 of #314). Of the rest, a cell is read where something
+says it is a share: a "%" in the cell, or "n (%)", "No. (%)" or "n/N (%)" in the row's
+label, in the label over its rows or in its column's header. A "%" alone in a label is a
+unit and says nothing; read as "these are shares", it listed a mean saturation of 96 (3) as
+8% of its column (round 1 of #314). Or a cell is read where it is one of a characteristic's
+categories: the rows under a label of their own, which may have its P value beside it or a
+dash, taken from the top for as long as their shares in its column add up to about 100. The
+longest such run is the categories, and a row after them is the next characteristic (round
+2 of #314: a P beside the label made it a header, and a row after the subtypes joined them).
 
 A share is listed only where no reading of it gives the share printed: of its denominator;
 of its row's total, where the row's shares add up to 100 across it; or of its categories'
@@ -5504,8 +5508,13 @@ Added by the adversarial review, verified and **not** fixed:
   total in the same way. A group label's "n (%)" reaches every row with a count below it
   until a row without one, and a data row with no count in it is read as a header, so its
   "n = 980" becomes the denominator below it. A superscript unit in a label, kg/m^2^, reads as
-  a footnote marker and makes the row uncertain. A nested Word table is read as text in its
-  cell.
+  a footnote marker and makes the row uncertain. A group label that says only "%",
+  "Smoking status, %", says nothing, so its categories are read only where their shares add
+  up to 100, and one wrong among them leaves them all unread. A unit label with a footnote
+  marker after it, or with no comma before its "%" ("SpO2 %"), is not a measure.
+  Categories whose counts add up to an old denominator are let off as shares of it. "No. of
+  patients (%)" and "% (n)" are not read as saying shares. A nested Word table is read as
+  text in its cell.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did

@@ -16,9 +16,10 @@ rounds, and a manuscript round never answers the design.
 A reading of a plan that has changed since is stale. A major finding not answered, by a
 resolution or by an override with its reason, is a warning, and a failure at submission
 only: what an unanswered design objection means is the author's to weigh while there is
-still an analysis to change. A reading is sealed as a manuscript reading is
-(`review --seal <reviewer> --design --round <n>`), and one changed after its seal fails at
-submission.
+still an analysis to change. An override, an objection left standing, is the
+statistician's to accept, and is said until they sign it (`override_signables`). A reading
+is sealed as a manuscript reading is (`review --seal <reviewer> --design --round <n>`), and
+one changed after its seal fails at submission.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from manuscript_guard.contracts._schema import ContractError, read_structured, v
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 from manuscript_guard.gates.review import _answered, _check_seal, review_root
+from manuscript_guard.sign_offs import Signable, digest_of, settle
 
 GATE = "G12"
 DESIGN_DIR = "design"
@@ -134,10 +136,58 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
                 for f in read.findings
             ))  # fmt: skip
         report = report.merge(read)
+    for signable in override_signables(project):
+        report = report.with_findings(*settle(project, signable))
     return report.with_counts(
         design_rounds=len(found), design_rounds_current=current_rounds,
         design_open_major=open_major,
     )  # fmt: skip
+
+
+def override_signables(project: Project) -> list[Signable]:
+    """Each major finding of a design round that is overridden and not resolved: the
+    statistician signs the override, bound to the finding's words and to the reason given,
+    so that a reason rewritten after the signature wants it again. An objection to the design
+    left standing is a judgement of the design, and the author's reason alone does not settle
+    it."""
+    out: list[Signable] = []
+    for number, path in design_panels(project):
+        panel = _read(path)
+        if not validate(panel, "panel", path, gate=GATE).ok:
+            continue
+        for reviewer in panel["reviewers"]:
+            name = reviewer["id"]
+            record = design_record_path(project, number, name)
+            document = _read(record)
+            if not validate(document, "design-review", record, gate=GATE).ok:
+                continue
+            for finding in document.get("findings") or []:
+                reason = str(finding.get("overridden") or "").strip()
+                if finding.get("severity") != "major" or not reason or \
+                        str(finding.get("resolution") or "").strip():  # fmt: skip
+                    continue
+                key = f"{GATE}/design-override/{number}/{name}/{finding['id']}"
+                raised = _finding(
+                    "design-override-unsigned",
+                    # What was overridden, and why; who signs is the hint's, as `settle`
+                    # writes it (round 1 of #313: "nobody has signed" stayed once signed).
+                    f"design round {number}: {name} {finding['id']} is overridden "
+                    f"({reason if len(reason) <= 100 else reason[:99] + '…'})",
+                    record, severity=WARN,
+                )  # fmt: skip
+                digest = digest_of(key, finding.get("finding"), reason)
+                out.append(Signable("statistician", key, digest, (raised,)))
+    return out
+
+
+def _read(path: Path) -> dict:
+    """A panel or a reading as a mapping, or an empty one where it cannot be read: the
+    rounds' own check says why."""
+    try:
+        document = read_structured(path)
+    except ContractError:
+        return {}
+    return document if isinstance(document, dict) else {}
 
 
 def _reading(

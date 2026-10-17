@@ -2471,6 +2471,13 @@ project with no design round reads as it did before, counts included. For now a 
 round is read and filed by hand: `review --run` sends the manuscript, not the plan, and a
 reviewer's named readers are not read in a design round.
 
+An override of a design-round major, a reason given for leaving the objection standing, is
+the statistician's to accept, not the author's alone (`sign_offs`): G12 warns
+(`design-override-unsigned`) until the statistician `authors.yaml` names signs it, with
+`manuscript-guard sign --as <them> --finding G12/design-override/<round>/<reviewer>/<id>`.
+The sign-off is bound to the objection's words and the reason, so a reason rewritten after
+it wants it again. A finding with a resolution needs none: the plan changed to meet it.
+
 **The results the plan promised are reported.** G2 says when the analysis emits a value
 that nothing quotes (`unquoted-result`); nothing said when the plan promised a result the
 analysis never emitted. A plan may now hold a section headed "Planned results", not one of
@@ -5381,11 +5388,11 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
-- **A design round is read by hand, and its overrides are anyone's.** `review --run`
-  does not send the plan to the models yet, a design panel's named readers are not read,
-  and an override of a design-round major needs a reason but no named person's sign-off.
-  Nothing yet asks for a design round before the analysis stage: one that was never held
-  says nothing.
+- **A design round is read by hand.** `review --run` does not send the plan to the
+  models yet, and a design panel's named readers are not read. Nothing yet asks for a design
+  round before the analysis stage: one that was never held says nothing. An unsigned
+  override of a design-round major is a warning, at submission too, as a new warning
+  starts.
 - **A planned result is held to its key, not to what the paper says of it.** G12 checks
   that a key listed under Planned results is emitted and quoted, not that the sentence
   quoting it reports the result the plan described: a planned "adjusted ratio" listed as

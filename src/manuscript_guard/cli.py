@@ -2254,12 +2254,13 @@ def cmd_approve(args: argparse.Namespace) -> int:
 def cmd_sign(args: argparse.Namespace) -> int:
     """Record a named person's sign-off of a finding only they may close. Their own act."""
     from manuscript_guard.approvals import NoSuchAuthor
+    from manuscript_guard.gates.design_review import override_signables
     from manuscript_guard.gates.models import signables
     from manuscript_guard.sign_offs import ROLES, holder, is_holder, sign
 
     project, _ = load_project(args.path)
     _namespace, results, _literature, _loaded = load_namespace(project)
-    standing = signables(project, results)
+    standing = signables(project, results) + override_signables(project)
     found = [signable for signable in standing if signable.id == args.finding]
     if not found:
         ids = ", ".join(signable.id for signable in standing) or "none"

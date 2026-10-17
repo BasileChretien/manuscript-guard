@@ -20,6 +20,7 @@ from datetime import date
 from pathlib import Path
 
 from manuscript_guard import __version__
+from manuscript_guard.assurance import assurance, record_verified
 from manuscript_guard.build import (
     LIVE,
     OFFLINE,
@@ -55,7 +56,9 @@ from manuscript_guard.gates import (
     check_methods,
     check_models,
     check_numbers,
+    check_prose_quotations,
     check_recomputed,
+    check_reported,
     check_reporting,
     check_review,
     check_revision,
@@ -68,6 +71,7 @@ from manuscript_guard.gates import (
     source_files,
     sync_bib,
 )
+from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
 from manuscript_guard.policy import (
     DESCRIPTIONS,
@@ -134,12 +138,15 @@ def _run_gates(
         ("G10", lambda: check_figure_reviews(project, content_digest)),
         ("G7", lambda: check_citations(project, literature)),
         ("G7", lambda: check_literature_chain(project, literature)),
+        ("G7", lambda: check_prose_quotations(project)),
         ("G4", lambda: check_journal(project)),
         ("G8r", lambda: check_reporting(project)),
-        ("G6", lambda: check_writing(project)),
+        ("G6", lambda: check_writing(project, results)),
         ("G9", lambda: check_methods(project, namespace, results)),
-        ("G12", lambda: check_design(project, results, chosen)),
+        ("G12", lambda: check_design(project, results, chosen).merge(
+            check_design_rounds(project, submission=at_submission))),
         ("G8", lambda: check_consistency(results)),
+        ("G8", lambda: check_reported(project, results)),
         ("G8", lambda: check_recomputed(project, namespace, results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
         ("G14", lambda: check_language(project)),
@@ -300,6 +307,8 @@ def cmd_review(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    if args.design:
+        return _design_round(args)
     if args.providers:
         # Before the project is loaded: the list of providers is worth having without one.
         from manuscript_guard.panel.commands import list_providers
@@ -414,6 +423,48 @@ def cmd_review(args: argparse.Namespace) -> int:
             for line in _round_lines(summaries.get(number)):
                 print(f"    {line}")
     report = check_review(project, submission=args.submission)
+    print(report.render(project.root))
+    return 0 if report.ok else 1
+
+
+def _design_round(args: argparse.Namespace) -> int:
+    """`review --design`: file or seal a design round's reading, or say where they stand."""
+    from manuscript_guard.gates.design_review import check_design_rounds
+    from manuscript_guard.record import RecordError, seal_design_review, write_design_review
+
+    if args.run or args.dry_run or args.providers or args.record_figure or args.reading:
+        print(
+            "manuscript-guard: a design round is read and filed by hand for now: "
+            "`review --record <reviewer> --design --round <n> --verdict <verdict>`, then "
+            "`review --seal <reviewer> --design --round <n>`",
+            file=sys.stderr,
+        )
+        return 2
+    project, _ = load_project(args.path)
+    round_number = 1 if args.round is None else args.round
+    try:
+        if args.seal:
+            print(f"sealed {seal_design_review(project, args.seal, round_number=round_number)}")
+            return 0
+        if args.record:
+            if not args.verdict:
+                print("manuscript-guard: --verdict is required", file=sys.stderr)
+                return 2
+            written = write_design_review(
+                project, args.record, verdict=args.verdict, round_number=round_number,
+                reviewed_by=args.by, remit=args.remit or "", summary=args.summary or "",
+            )  # fmt: skip
+            print(f"panel: {written.panel}")
+            print(f"wrote {written.path}")
+            print(
+                "Add the findings there, then seal what the reader wrote: "
+                f"`manuscript-guard review --seal {args.record} --design --round {round_number}`"
+            )
+            return 0
+    except RecordError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    report = check_design_rounds(project, submission=args.submission)
     print(report.render(project.root))
     return 0 if report.ok else 1
 
@@ -1509,6 +1560,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(f"manuscript-guard {__version__} — {project.root}")
         print(f"stage: {stage} ({DESCRIPTIONS[stage]})")
         print(report.render(project.root))
+        print("\n" + "\n".join(assurance(report, project)))
         print(
             f"\n{len(report.failures)} failing, {len(report.warnings)} warning"
             f"{'' if len(report.warnings) == 1 else 's'}"
@@ -1665,6 +1717,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
         # everything.
         print("\nNothing was re-run, so nothing was verified.", file=sys.stderr)
         return 2
+    if not args.only:
+        # What `check` says of reproducibility: a run of every script, and only that.
+        record_verified(project, result)
     return 0 if result.ok else 1
 
 
@@ -2201,12 +2256,13 @@ def cmd_approve(args: argparse.Namespace) -> int:
 def cmd_sign(args: argparse.Namespace) -> int:
     """Record a named person's sign-off of a finding only they may close. Their own act."""
     from manuscript_guard.approvals import NoSuchAuthor
+    from manuscript_guard.gates.design_review import override_signables
     from manuscript_guard.gates.models import signables
     from manuscript_guard.sign_offs import ROLES, holder, is_holder, sign
 
     project, _ = load_project(args.path)
     _namespace, results, _literature, _loaded = load_namespace(project)
-    standing = signables(project, results)
+    standing = signables(project, results) + override_signables(project)
     found = [signable for signable in standing if signable.id == args.finding]
     if not found:
         ids = ", ".join(signable.id for signable in standing) or "none"
@@ -2942,6 +2998,13 @@ def build_parser() -> argparse.ArgumentParser:
         "findings are written: adds reading_sha256, a digest of what the reader wrote, and "
         "G11 reports reading-altered if that changes. Once only; `review --run` seals what "
         "it files",
+    )
+    review.add_argument(
+        "--design",
+        action="store_true",
+        help="a design round: with --record, write review/design/round-N/REVIEWER.yaml for "
+        "the analysis plan and the feasibility results as they now stand; with --seal, seal "
+        "it; alone, say where the design rounds stand (G12)",
     )
     review.add_argument(
         "--record-figure",

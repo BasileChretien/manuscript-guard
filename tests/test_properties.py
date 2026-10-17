@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -39,6 +40,9 @@ from generated import (
     FIXED_LINKS,
     HELD,
     INPUTS,
+    LOOKALIKES,
+    LOWERED,
+    PLACEHOLDERS,
     SOURCE_GAPS,
     SOURCE_WORDS,
     TEMPORARY_LINKS,
@@ -49,11 +53,13 @@ from generated import (
     generated,
     holds,
     lines,
+    planned_plans,
     quotations,
     signs,
     sources,
     texts,
     typed,
+    vector_figures,
     vocabularies,
 )
 from hypothesis import given, settings
@@ -68,10 +74,13 @@ from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
 from manuscript_guard.gates import bound_units as bound_units_gate
+from manuscript_guard.gates import journal_quotes as journal_quotes_gate
 from manuscript_guard.gates import language as language_gate
 from manuscript_guard.gates import methods as methods_gate
 from manuscript_guard.gates import models as models_gate
 from manuscript_guard.gates import numbers as numbers_gate
+from manuscript_guard.gates import quotations as quotations_gate
+from manuscript_guard.gates import reported as reported_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
 from manuscript_guard.gates.language import _file, _hidden
@@ -647,6 +656,24 @@ def test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not(
     assert deviations_said(plan) != deviations_said(longer), longer
 
 
+# ------------------------------------------------------------- the results a plan promises
+
+
+@holds(100, planned_plans())
+def test_a_planned_result_is_read_from_its_own_item_and_nowhere_else(
+    drawn: tuple[str, list[tuple[str, bool]]],
+) -> None:
+    """Item 37: each key the Planned results section lists, in the order it lists them, as
+    the plan writes it, binds it or groups it, its subsections included; and nothing from an
+    item with no key, code that is not a key, or prose after the list."""
+    from manuscript_guard.gates.design import planned_results
+
+    plan, listed = drawn
+    read = planned_results(plan)
+    assert read is not None, plan
+    assert [(found.key, found.group) for found in read] == listed, plan
+
+
 # ------------------------------------------------------------------------------ parameters
 
 #: What an analysis declares in the property below: a threshold, a count, a version, and a
@@ -957,6 +984,310 @@ def _a_power_of_ten_is_read_as_its_mantissa(patch: pytest.MonkeyPatch) -> None:
     )
 
 
+# ------------------------------------------------------ an estimate, its interval and its P
+
+#: Each way an estimate and its interval are written, the name first: its kind, and the
+#: level it states.
+_INTERVAL_FORMS = (
+    ("ratio", "OR {e} (95% CI {l} to {u})", "95"),
+    ("ratio", "odds ratio was {e} (95% CI, {l}-{u})", "95"),
+    ("ratio", "HR = {e}; 95% CI {l}\N{EN DASH}{u}", "95"),
+    ("ratio", "RR {e} [95% CI {l}, {u}]", "95"),
+    ("ratio", "hazard ratio was\n{e} (95% confidence interval {l} to {u})", "95"),
+    ("ratio", "aOR {e} (CI 95% {l}\N{EM DASH}{u})", "95"),
+    ("ratio", "risk ratio of {e}, 90% CI {l} to {u}", "90"),
+    ("difference", "MD {e} (95% CI {l} to {u})", "95"),
+    ("difference", "mean difference was {e} (95% CI {l}, {u})", "95"),
+    ("difference", "RD = {e}, 99% CI {l} to {u}", "99"),
+)
+#: The half-width of a Wald interval at each level, in standard errors.
+_Z = {"90": 1.6448536269514722, "95": 1.959963984540054, "99": 2.5758293035489004}
+#: How a P is written after its interval.
+_P_AFTER = (", P {sign} {p}", "; p {sign} {p}", ", *P* {sign} {p}", " (P {sign} {p})")
+#: A P far on the other side of the level: beside an interval that excludes its null, and
+#: beside one that includes it.
+_AGAINST = {
+    True: (("=", "0.40"), ("=", ".62"), (">", "0.20")),
+    False: (("<", "0.001"), ("=", "0.003")),
+}
+#: What a sentence says of an interval that is not the plain one, and of a P.
+_NOT_PLAIN_INTERVAL = (
+    "by profile likelihood, ", "with an exact interval, ", "by bootstrap, ",
+    "in a Bayesian model, ",
+)  # fmt: skip
+#: The word "difference" before a ratio's name: what a sentence says before the ratio, not
+#: of it.
+_DIFFERENCE_BEFORE = (
+    "there was no difference, ", "with no difference in mortality, ", "the difference: ",
+)  # fmt: skip
+_NOT_PLAIN_P = (
+    "after Bonferroni adjustment, ", "one-sided, ", "with P values adjusted for multiple testing, ",
+)  # fmt: skip
+
+
+@st.composite
+def _planted_intervals(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
+    """Every way of writing an estimate and its interval: at the middle of its interval
+    and away from it, with a P that agrees and one that does not, in a sentence that says
+    the interval or the P is not the plain one, and adjusted. A P after a second interval,
+    a P for interaction, and one in the next sentence; bounds joined by hyphens after a
+    negative one, and bounds the wrong way round. Each with the place it is found at and
+    what is said of it."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    def thousandths(low: int, high: int) -> float:
+        return draw(st.integers(low, high)) / 1000
+
+    def shown(x: float) -> str:
+        return f"{x:.2f}".replace("-", draw(st.sampled_from(("-", "\N{MINUS SIGN}"))))
+
+    def p_of(z: float) -> tuple[str, str]:
+        p = math.erfc(abs(z) / math.sqrt(2))
+        if p < 0.001:
+            return "<", "0.001"
+        printed = f"{p:.3f}"
+        return "=", draw(st.sampled_from((printed, printed.removeprefix("0"))))
+
+    def sign() -> int:
+        return draw(st.sampled_from((-1, 1)))
+
+    def ratio(plan: str, level: str) -> tuple[float, float, float, tuple[str, str] | None]:
+        """An estimate, its bounds and its P: a Wald interval on the log scale, one bound
+        moved toward the estimate, or one whose P is far on the other side."""
+        if plan == "level":
+            # At 90%, a P between 0.05 and 0.10 beside an interval that excludes 1.
+            h = thousandths(600, 1000)
+            log_e = sign() * thousandths(1700, 1900) * h / _Z[level]
+        elif plan in ("against", "adjusted", "quiet p"):
+            h = thousandths(300, 1000)
+            excludes = draw(st.booleans())
+            far = h + thousandths(100, 600) if excludes else thousandths(0, int(h * 1000) - 100)
+            log_e = sign() * far
+            low, high = math.exp(log_e - h), math.exp(log_e + h)
+            return math.exp(log_e), low, high, draw(st.sampled_from(_AGAINST[excludes]))
+        else:
+            h = thousandths(300, 1000)
+            log_e = thousandths(-700, 1600)
+        low, high = log_e - h, log_e + h
+        if plan in ("lopsided", "quiet interval"):
+            moved = thousandths(100, 300) * h
+            low, high = draw(st.sampled_from(((log_e - moved, high), (low, log_e + moved))))
+            return math.exp(log_e), math.exp(low), math.exp(high), None
+        return math.exp(log_e), math.exp(low), math.exp(high), p_of(log_e / (h / _Z[level]))
+
+    def difference(plan: str, level: str) -> tuple[float, float, float, tuple[str, str]]:
+        """An estimate, its bounds and its P. At the middle, an interval that excludes 0
+        and includes 1, so that a difference read against 1 is found."""
+        if plan == "symmetric":
+            e = thousandths(600, 900)
+            h = thousandths(int((1 - e) * 1000) + 50, int(e * 1000) - 50)
+            return e, e - h, e + h, p_of(e / (h / _Z[level]))
+        h = thousandths(200, 2000)
+        excludes = draw(st.booleans())
+        far = h + thousandths(100, 1000) if excludes else thousandths(0, int(h * 1000) - 100)
+        e = sign() * far
+        return e, e - h, e + h, draw(st.sampled_from(_AGAINST[excludes]))
+
+    plans: list[tuple[int, str]] = []
+    for index, (kind, _form, level) in enumerate(_INTERVAL_FORMS):
+        if kind == "difference":
+            plans += [(index, plan) for plan in ("symmetric", "against", "quiet p", "outside")]
+        else:
+            first = "level" if level == "90" else "symmetric"
+            plans += [
+                (index, plan)
+                for plan in (first, "lopsided", "against", "quiet interval", "quiet p", "adjusted",
+                             "outside")
+            ]  # fmt: skip
+    plans += [(0, plan) for plan in ("next interval", "interaction", "next sentence")]
+    plans += [(7, "hyphens"), (0, "reversed"), (0, "after difference")]
+    sentences: list[tuple[str, tuple[Any, ...] | None]] = []
+    for index, plan in draw(st.permutations(plans)):
+        kind, form, level = _INTERVAL_FORMS[index]
+        if kind == "ratio":
+            plain = plan in ("next interval", "outside", "after difference")
+            e, low, high, p = ratio("symmetric" if plain else plan, level)
+        else:
+            e, low, high, p = difference(plan if plan != "hyphens" else "against", level)
+        if plan == "outside":
+            # A bound transposed past its estimate: the estimate beyond its upper bound.
+            past = thousandths(150, 600)
+            e = high * (1 + past) if kind == "ratio" else high + past + 0.05
+            p = None
+        e_, low_, high_ = shown(e), shown(low), shown(high)
+        if plan == "hyphens":
+            magnitude = abs(high) + 0.1
+            low_, high_ = shown(-magnitude - abs(e)), f"{magnitude:.2f}"
+            sentences.append((f"MD {shown(-abs(e))} (95% CI {low_}--{high_})", None))
+            continue
+        if plan == "reversed":
+            sentences.append((form.format(e=e_, l=high_, u=low_), None))
+            continue
+        text = form.format(e=e_, l=low_, u=high_)
+        lead = {
+            "quiet interval": draw(st.sampled_from(_NOT_PLAIN_INTERVAL)),
+            "quiet p": draw(st.sampled_from(_NOT_PLAIN_P)),
+            "adjusted": "after adjustment for age and sex, ",
+            # A ratio named after the word "difference" is a ratio.
+            "after difference": draw(st.sampled_from(_DIFFERENCE_BEFORE)),
+        }.get(plan, "")
+        said = p
+        if plan == "next interval":
+            text += f" in men and {shown(e * 0.8)} (95% CI 0.80 to 1.50) in women, P = 0.40"
+            said = None
+        elif plan == "interaction":
+            text += ", P = 0.40 for interaction"
+            said = None
+        elif plan == "next sentence":
+            text += f". {words().capitalize()} P = 0.40"
+            said = None
+        elif p is not None:
+            text += draw(st.sampled_from(_P_AFTER)).format(sign=p[0], p=p[1])
+        shape = {"lopsided": "far", "quiet interval": None, "outside": None}.get(plan, "zero")
+        against = plan in ("against", "adjusted")
+        sentences.append(
+            (lead + text, (len(lead), kind, e_, low_, high_, level, said,
+                           shape if kind == "ratio" else None, against, plan == "outside"))
+        )  # fmt: skip
+
+    parts: list[str] = []
+    expected: list[tuple[Any, ...]] = []
+    for text, planted in sentences:
+        opening = words().capitalize() + " "
+        if planted is not None:
+            at = len("".join(parts)) + len(opening) + planted[0]
+            expected.append((at, *planted[1:]))
+        parts.append(f"{opening}{text} {words()}.{draw(st.sampled_from((' ', chr(10))))}")
+    return "".join(parts), expected
+
+
+@holds(100, _planted_intervals())
+def test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged(
+    planted: tuple[str, list[tuple[Any, ...]]],
+) -> None:
+    """Each estimate with its interval is found where it stands, its numbers, level and P
+    as they are printed, and nothing else is: not bounds whose signs or order cannot be
+    read, and not a P that is another one's. A ratio printed from a Wald interval stands at
+    the middle of its interval within its rounding, and one with a bound moved toward it
+    does not. A P that agrees with its interval about the null is not found, one far on the
+    other side of the level is, and neither is judged where the sentence says the interval
+    or the P is not the plain one; "adjusted" alone says neither."""
+    from manuscript_guard.stats.intervals import (
+        ASYMMETRY,
+        asymmetry,
+        outside_interval,
+        p_against,
+        reported_intervals,
+    )
+
+    text, expected = planted
+    found = reported_intervals(text)
+    assert [(r.start, r.kind, r.estimate, r.low, r.high, r.level, r.p) for r in found] == [
+        planted[:7] for planted in expected
+    ], text
+    for interval, (*_read, shape, against, outside) in zip(found, expected, strict=True):
+        assert outside_interval(interval) is outside, (interval, text)
+        share = asymmetry(interval)
+        if shape is None:
+            assert share is None, (interval, share)
+        elif shape == "zero":
+            assert share == 0.0, (interval, share)
+        else:
+            assert share is not None and share > ASYMMETRY, (interval, share)
+        assert (p_against(interval) is not None) is against, (interval, text)
+
+
+def _a_bound_is_read_at_its_printed_value(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    def printed(number: str) -> tuple[float, float] | None:
+        value = intervals._value(number)
+        return None if value is None else (float(value), float(value))
+
+    patch.setattr(intervals, "_box", printed)
+
+
+def _a_difference_is_held_to_1(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    patch.setattr(intervals, "NULL", {"ratio": 1, "difference": 1})
+
+
+def _every_interval_is_taken_as_95(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    patch.setattr(intervals, "alpha_of", lambda level: 0.05)
+
+
+def _never(patch: pytest.MonkeyPatch, *names: str) -> None:
+    from manuscript_guard.stats import intervals
+
+    for name in names:
+        patch.setattr(intervals, name, re.compile(r"(?!)"))
+
+
+def _a_p_is_looked_for_past_the_next_interval(patch: pytest.MonkeyPatch) -> None:
+    _never(patch, "_CI_WORD")
+
+
+def _a_p_for_interaction_is_the_estimate_s(patch: pytest.MonkeyPatch) -> None:
+    _never(patch, "_OTHER_P")
+
+
+def _an_interval_s_p_is_looked_for_past_its_sentence(patch: pytest.MonkeyPatch) -> None:
+    _never(patch, "_SENTENCE_END")
+
+
+def _an_interval_that_is_not_the_plain_one_is_judged(patch: pytest.MonkeyPatch) -> None:
+    _never(patch, "_INTERVAL_QUIET")
+
+
+def _a_p_that_is_not_the_plain_one_is_judged_against_its_interval(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    _never(patch, "_P_QUIET")
+
+
+def _adjusted_alone_quiets_an_interval(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    for name in ("_INTERVAL_QUIET", "_P_QUIET"):
+        pattern = getattr(intervals, name)
+        patch.setattr(intervals, name, re.compile(pattern.pattern + r"|adjust\w*", pattern.flags))
+
+
+def _an_estimate_outside_its_interval_is_not_said(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    patch.setattr(intervals, "outside_interval", lambda interval: False)
+
+
+def _a_name_s_words_run_across_another_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    assert intervals._NOT_A_NAME in intervals._INTERVAL.pattern
+    pattern = intervals._INTERVAL.pattern.replace(intervals._NOT_A_NAME, "")
+    patch.setattr(intervals, "_INTERVAL", re.compile(pattern))
+
+
+def _bounds_that_cannot_be_read_for_sure_are_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    patch.setattr(intervals, "_unsure", lambda match: False)
+
+
+def _an_interval_over_two_lines_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    """The line break a space may be is taken out of every place it may stand."""
+    from manuscript_guard.stats import intervals
+
+    wrap = "|" + chr(92) + "n(?![ " + chr(92) + "t]*" + chr(92) + "n)"
+    assert wrap in intervals._INTERVAL.pattern
+    pattern = intervals._INTERVAL.pattern.replace(wrap, "")
+    patch.setattr(intervals, "_INTERVAL", re.compile(pattern))
+
+
 # ------------------------------------------------------------ a section found by its heading
 
 #: What a paper calls its Methods, as G4 has always read a heading for them: with "methods"
@@ -975,10 +1306,10 @@ _ABSTRACT_TITLES = (None, "Summary", "Overview")
 _TITLE = "# Statistical methods for signal detection\n\n"
 
 
-def _under_a_title(text: str) -> str:
+def _under_a_title(text: str, title: str = _TITLE) -> str:
     """The paper with its title as a heading over it, every other heading one level down."""
     lowered = re.sub(r"(?m)^(#+) ", lambda found: "#" + found.group(1) + " ", text)
-    return _TITLE + lowered
+    return title + lowered
 
 
 @st.composite
@@ -1042,6 +1373,87 @@ def test_a_section_g4_counts_present_is_a_section_the_gates_read(
         counted = measure(text, named).abstract_words
         assert _present("Abstract", sections, named) == is_one, (text, named)
         assert (counted > 0) == is_one, (text, named, counted)
+
+
+# ------------------------------------------- a number a summary gives and the paper does not
+
+#: What a paper calls its Results, and what it may call a section that is not them.
+_THE_RESULTS = (
+    "Results", "3. Results", "**3. Results**", "III. Results", "Results and discussion",
+    "Findings", "Results {#sec-results}",
+)  # fmt: skip
+_NO_RESULTS = ("Comparison with earlier results", "Outcomes")
+#: What a paper calls a conclusion, the Lancet's "Summary" at the end of it among them.
+_CONCLUSIONS = (
+    "Conclusions", "Conclusion", "6. Conclusions", "Concluding remarks",
+    "Conclusions and relevance", "Summary and conclusions", "Summary",
+)  # fmt: skip
+#: A paper's title as a heading over the whole paper, holding the word for the Results.
+_RESULTS_TITLE = "# Results of a survey of reports\n\n"
+
+
+@st.composite
+def _papers_with_summaries(draw: st.DrawFn) -> list[tuple[str, str | None, set[str]]]:
+    """A paper for each way of writing the Results against each of the abstract, with the
+    keys each of them should leave unreported. A key given in the abstract alone (`a`), with
+    the Results (`b`), the Methods (`m`) or the Discussion (`d`); in a conclusion under the
+    Discussion alone (`c`) or with the Results (`e`); and in a "Summary" under the Results
+    (`s`). Every way of writing a conclusion, an abstract structured with headings of its
+    own and not, each title a profile may give the abstract, and both layouts, with and
+    without the paper's title over it, are in every example."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    conclusions = draw(st.permutations(_CONCLUSIONS))
+    papers = []
+    for row, results in enumerate((*_THE_RESULTS, *_NO_RESULTS)):
+        for column, abstract in enumerate(_THE_ABSTRACT):
+            conclusion = conclusions[(row + column) % len(conclusions)]
+            structured = draw(st.booleans()) != bool(column % 2)
+            given = "{{results.a}} {{results.d}}"
+            opening = f"\n\n## Results\n\n{given} " if structured else f"\n\n{given} "
+            text = (
+                f"# {abstract}{opening}{words()} {{{{results.b}}}} {{{{results.m}}}}.\n\n"
+                f"# Introduction\n\n{words()}.\n\n"
+                f"# Methods\n\n{words()} {{{{results.m}}}} {words()}.\n\n"
+                f"# {results}\n\n{words()} {{{{results.b}}}} {{{{results.e}}}}.\n\n"
+                f"## Summary\n\n{words()} {{{{results.s}}}}.\n\n"
+                f"# Discussion\n\n{words()} {{{{results.d}}}}.\n\n"
+                f"## {conclusion}\n\n{words()} {{{{results.c}}}} {{{{results.e}}}}.\n"
+            )
+            reports = results in _THE_RESULTS
+            for named in _ABSTRACT_TITLES:
+                summary = abstract in _THE_ABSTRACT[:4] or abstract == named
+                unreported = {"c"} | (set() if reports else {"e", "s"})
+                if summary:
+                    unreported |= {"a", "d"} | (set() if reports else {"b"})
+                for paper in (text, _under_a_title(text, _RESULTS_TITLE)):
+                    papers.append((paper, named, unreported))
+    return papers
+
+
+@holds(20, _papers_with_summaries())
+def test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called(
+    papers: list[tuple[str, str | None, set[str]]],
+) -> None:
+    """A key the Abstract or a conclusion binds, and the Methods and the Results do
+    not, is left unreported, and no other: whatever the parts are called, numbered or not,
+    an abstract with a "Results" of its own included, and a "Summary" under the Results not
+    taken for one, with the paper's title over it all or not."""
+    for text, named, unreported in papers:
+        given, reported = reported_gate.Walk(named).read(text)
+        found = {one.key for one in given if one.key not in reported}
+        assert found == unreported, (text, named)
+        # And as two files of one paper, the second opening inside the Results the first
+        # leaves open: the headings are carried from one file into the next, and what a
+        # section of the first was is not taken by one of the second (round 1 of #272).
+        cut = text.index("{{results.b}} {{results.e}}")
+        walk = reported_gate.Walk(named)
+        first, second = walk.read(text[:cut]), walk.read(text[cut:])
+        reported = first[1] | second[1]
+        found = {one.key for one in first[0] + second[0] if one.key not in reported}
+        assert found == unreported, (text[:cut], text[cut:], named)
 
 
 # --------------------------------------------------------------------------- models named
@@ -1110,6 +1522,81 @@ def test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_do
     text, expected = planted
     found = [(start, kind) for start, _end, kind in models_gate.named_in_methods(text)]
     assert found == expected, text
+
+
+# ---------------------------------------------------------------- a dictionary's release typed
+
+#: Coding dictionaries as the analysis declares them, each with the ways a sentence names
+#: it before its release.
+_DICTIONARIES = {
+    "meddra": ("26.1", ("MedDRA version ", "MedDRA ", "the medDRA, release ")),
+    "whodrug": ("Global B3 March 2025", ("WHODrug ", "the WHODrug dictionary, ")),
+    "icd_10": ("2019", ("ICD-10 ", "ICD 10 version ")),
+    "atc": ("2025", ("the ATC index of ", "ATC/DDD ")),
+}
+
+
+@st.composite
+def _typed_releases(draw: st.DrawFn) -> tuple[str, list[tuple[Value, ...]], list[tuple[int, str]]]:
+    """Each dictionary's release typed with its name before it, every way it is named,
+    and typed with no name before it, with the name inside a longer word ("matched" holds
+    "atc"), and with the name too far before it; a sentence to a line, in an order drawn
+    each time, with where each is found."""
+    declared = [
+        Value(key=f"dictionary.{name}", value=release, display=release, origin="results",
+              label=True, role="dictionary")
+        for name, (release, _named) in _DICTIONARIES.items()
+    ]  # fmt: skip
+
+    def words(low: int = 1, high: int = 4) -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=low, max_size=high)))
+
+    plans = []
+    for name, (release, named) in _DICTIONARIES.items():
+        plans += [(name, release, way, True) for way in named]
+        plans += [
+            (name, release, "", False),
+            (name, release, "m" + name + "ed ", False),
+            (name, release, named[0] + words(25, 25) + " ", False),
+        ]
+    parts: list[str] = []
+    expected: list[tuple[int, str]] = []
+    for name, release, before, found in draw(st.permutations(plans)):
+        parts.append(words().capitalize() + " " + before)
+        if found:
+            expected.append((len("".join(parts)), name))
+        parts.append(f"{release} {words()}.{chr(10)}")
+    return "".join(parts), declared, expected
+
+
+@holds(150, _typed_releases())
+def test_a_dictionary_release_is_found_typed_where_its_name_stands_before_it(
+    planted: tuple[str, list[Value], list[tuple[int, str]]],
+) -> None:
+    """A declared dictionary's release is found typed where the dictionary is named within
+    a few words before it on its line, every way it is named. Not where nothing names it,
+    where its name is only part of a longer word, or where the name is far before it."""
+    text, declared, expected = planted
+    found = [
+        (start, value.key.removeprefix("dictionary."))
+        for start, _end, value in numbers_gate.typed_releases(text, declared)
+    ]
+    assert found == expected, text
+
+
+def _a_release_is_typed_wherever_it_stands(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(numbers_gate, "_named_in", lambda words, name: True)
+
+
+def _a_dictionary_is_named_inside_a_longer_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(
+        numbers_gate, "_named_in",
+        lambda words, name: name in re.sub(r"[^a-z0-9]+", "_", words.lower()),
+    )  # fmt: skip
+
+
+def _a_dictionary_is_named_anywhere_before_on_its_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(numbers_gate, "NAMED_WITHIN", 10**6)
 
 
 # --------------------------------------------------------------------------- Methods claims
@@ -1320,6 +1807,65 @@ def test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document
     text, paragraphs, inside = planted
     assert _paragraphs_pandoc_reads(placeholders.substitute(text, {})) == paragraphs, text
     assert methods_gate.anchor_lines(text) == inside, text
+
+
+# ------------------------------------------------------- a quotation and the work it cites
+
+_OPEN, _CLOSE = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
+#: Each kind of sentence with a quotation, written with `{q}` for the quotation, `{k}` for
+#: its citation key and `{o}` `{c}` for curly marks, with whether G7 looks for the
+#: quotation: in straight or curly marks, across a line break, of two sentences, with two
+#: works cited or a narrative one, and not where it is short, where the citation is in the
+#: next sentence, or in a comment.
+_QUOTATION_KINDS = (
+    ('Reports said "{q}" [@{k}].', True, 1),
+    ("Reports said {o}{q}{c} [@{k}].", True, 1),
+    ("Reports said {o}{q}\nand more words here{c} [@{k}].", True, 1),
+    ("{o}It was low. {q}.{c} [@{k}]", True, 1),
+    ("Reports said {o}{q}{c} [@{k}; @{k}x].", True, 2),
+    ("As @{k} wrote, {o}{q}{c}.", True, 1),
+    ('Reports said "too short" [@{k}].', False, 1),
+    ('Reports said "{q}". Later work agreed [@{k}].', False, 1),
+    ('Reports said <!-- "{q}" [@{k}] -->.', False, 1),
+)
+
+
+@st.composite
+def _planted_quotations(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, tuple[str, ...]]]]:
+    """A paragraph of filler sentences around each kind of quotation, in an order drawn each
+    time, with the quotations G7 should look for, by the paragraph's line."""
+    paragraphs: list[str] = []
+    found: list[tuple[int, str, tuple[str, ...]]] = []
+    line = 1
+    for index, (kind, looked, keys) in enumerate(draw(st.permutations(_QUOTATION_KINDS))):
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=8))
+        quote = " ".join(words)
+        key = f"source{index}"
+        before = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+        sentence = kind.replace("{q}", quote).replace("{k}", key)
+        sentence = sentence.replace("{o}", _OPEN).replace("{c}", _CLOSE)
+        paragraph = f"{before.capitalize()}. {sentence}"
+        if looked:
+            written = quote + (" and more words here" if "and more" in kind else "")
+            if kind.startswith("{o}It was low."):
+                written = f"It was low. {quote}."
+            cited = (key, f"{key}x")[:keys]
+            found.append((line, written, cited))
+        paragraphs.append(paragraph)
+        line += paragraph.count("\n") + 2
+    return "\n\n".join(paragraphs), found
+
+
+@holds(150, _planted_quotations())
+def test_a_quotation_is_found_with_the_works_its_sentences_cite_and_no_other(
+    planted: tuple[str, list[tuple[int, str, tuple[str, ...]]]],
+) -> None:
+    """A quotation of four words or more, in straight or curly marks, is taken with
+    the works cited in the sentences it spans; not a short one, not one whose citation is in
+    the next sentence, and not one in a comment."""
+    text, expected = planted
+    found = [(q.line, q.quote, q.keys) for q in quotations_gate.quotations_in(text)]
+    assert found == expected, text
 
 
 # ------------------------------------------------------------ pointers to tables and figures
@@ -1842,6 +2388,46 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
     assert report.counts["spelling_other"] == sum(len(places) for places in stands.values())
 
 
+# ------------------------------------------------------------------------- placeholders
+
+
+@st.composite
+def _planted_placeholders(draw: st.DrawFn) -> tuple[str, str]:
+    """A text, and the same with a placeholder of every kind G6 reads, the words that are
+    one only in the manuscript, and what looks like one and is prose, each put in at a
+    place drawn. Every kind in every example."""
+    text = draw(texts())
+    pieces = text.split(" ")
+    for planted in [written for written, _ in PLACEHOLDERS + LOWERED] + list(LOOKALIKES):
+        pieces.insert(draw(st.integers(0, len(pieces))), planted)
+    return text, " ".join(pieces)
+
+
+@holds(200, _planted_placeholders())
+def test_every_placeholder_is_found_and_nothing_that_looks_like_one(
+    drawn: tuple[str, str],
+) -> None:
+    """Whatever the text, each placeholder put into it is found once, a word in lower case
+    only in the manuscript, and nothing that only looks like one is."""
+    from collections import Counter
+
+    from manuscript_guard.gates.writing import artefacts_in, load_rules
+
+    text, planted = drawn
+    rules = load_rules()
+    for manuscript, expected in ((True, PLACEHOLDERS + LOWERED), (False, PLACEHOLDERS)):
+
+        def found(written: str, manuscript: bool = manuscript) -> Counter[str]:
+            return Counter(
+                match.group(0)
+                for rule, match in artefacts_in(rules, written, manuscript=manuscript)
+                if rule["id"].startswith("placeholder")
+            )
+
+        added = Counter(match for _typed, match in expected)
+        assert found(planted) == found(text) + added, (manuscript, planted)
+
+
 # ------------------------------------------------------------------------- a rewording
 
 #: A fact as a finding names it. A number by its figures and the mark after them: its
@@ -2250,6 +2836,96 @@ def test_a_value_is_stated_whole_or_not_at_all(drawn: tuple[str, str]) -> None:
             assert contains(quote, value), (quote, value)
 
 
+# ------------------------------------------------------------- the text of a vector figure
+
+
+@holds(100, vector_figures())
+def test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn(
+    drawn: tuple[str, dict[str, float], list[float]],
+) -> None:
+    """G4 holds a vector figure's smallest text and thinnest line to a journal's, at the
+    width it prints: each text's height is its size, in units whatever unit it was set in,
+    through every transform around it, taken along its upright; and each line's width the
+    same, by the transforms' scale. A size not set is SVG's 16, an em or a percent is of
+    the size around it, and a text drawn through `<use>` is read where it is used."""
+    from manuscript_guard.gates.figure_svg import parse_svg
+
+    document, texts, lines = drawn
+    svg = parse_svg(document)
+    assert svg is not None, document
+    read = {mark.text: mark.units for mark in svg.texts}
+    assert read.keys() == texts.keys(), (read, texts)
+    for label, units in texts.items():
+        assert read[label] == pytest.approx(units, rel=1e-9), (label, read[label], document)
+    assert sorted(mark.units for mark in svg.lines) == pytest.approx(lines, rel=1e-9), document
+
+
+def _transforms_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_transform", lambda written: figure_svg.IDENTITY)
+
+
+def _transforms_are_composed_the_other_way(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    multiply = figure_svg._multiply
+    patch.setattr(figure_svg, "_multiply", lambda left, right: multiply(right, left))
+
+
+def _a_point_is_a_unit(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_UNITS", {**figure_svg._UNITS, "pt": 1.0})
+
+
+def _an_em_is_of_the_default_size(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    length = figure_svg._length
+    default = figure_svg.DEFAULT_FONT_UNITS
+    patch.setattr(figure_svg, "_length", lambda value, relative_to: length(value, default))
+
+
+def _a_use_is_not_followed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_use", lambda *drawn: None)
+
+
+def _a_text_is_as_tall_as_a_line_is_wide(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_height", figure_svg._widened)
+
+
+def _a_size_not_set_is_ten(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "DEFAULT_FONT_UNITS", 10.0)
+
+
+def _a_line_is_not_widened(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_widened", lambda matrix: 1.0)
+
+
+def _a_figure_s_stylesheet_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import svg_style
+
+    patch.setattr(svg_style.Sheet, "declared", lambda self, node: {})
+
+
+def _a_font_s_first_number_is_its_size(patch: pytest.MonkeyPatch) -> None:
+    """The reading before round 1 of #302: a weight, "700", read as the size."""
+    from manuscript_guard.gates import figure_svg
+
+    pattern = figure_svg._FONT_SIZE.pattern.replace("|rem|%)|", "|rem|%)?|")
+    assert pattern != figure_svg._FONT_SIZE.pattern
+    patch.setattr(figure_svg, "_FONT_SIZE", re.compile(pattern, re.IGNORECASE))
+
+
 # ------------------------------------------------------- a quote its source nearly holds
 
 #: The words a quote is drawn from: none of them is a word of the filler around it, so the
@@ -2493,6 +3169,59 @@ def test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is(
     text, expected = planted
     found = [(w.key, w.start, w.unit) for w in bound_units_gate.units_after(text)]
     assert found == expected, text
+
+
+# ------------------------------------------------------------ a journal's limit, in its quote
+
+#: Words that write a number up to twenty, as G4 reads them.
+_NUMBER_WORDS = journal_quotes_gate._WORDS
+
+
+@st.composite
+def _limits_quoted(draw: st.DrawFn) -> list[tuple[str, int, bool]]:
+    """A limit, and its number written into a quote each way a page writes it, and each way
+    a quote holds a number or a word that is not it: one of every kind in each example,
+    among words drawn each time."""
+    value = draw(st.integers(1, 99_999))
+    small = draw(st.integers(1, 9))
+    group = draw(st.integers(100, 999))
+
+    def among(written: str) -> str:
+        before = draw(st.lists(st.sampled_from(FILLER), max_size=3))
+        after = draw(st.lists(st.sampled_from(FILLER), max_size=3))
+        return " ".join([*before, written, *after])
+
+    cases = [
+        (among(str(value)), value, True),
+        (among(f"{value:,}"), value, True),
+        (among(f"{value:,}".replace(",", " ")), value, True),
+        (among(f"{value}-word"), value, True),
+        (among(_NUMBER_WORDS[small]), small, True),
+        (among(_NUMBER_WORDS[small].capitalize()), small, True),
+        (among(f"1{value}"), value, False),
+        (among(f"{value}0"), value, False),
+        (among(f"{value}.5"), value, False),
+        (among(f"{value},000"), value, False),
+        (among(f"{_NUMBER_WORDS[small]}fold"), small, False),
+        (among(f"{small + 10}"), small, False),
+        # The last group of a number written with spaces between its thousands, and a group of
+        # three after a number that cannot be one, as a limits table saved as text has it.
+        (among(f"{small} {group}"), group, False),
+        (among(f"{small}{small} {group}"), group, False),
+        (among(f"{value + 1000} {group}"), group, True),
+        (among(f"{group + 1} {group}"), group, True),
+    ]
+    return draw(st.permutations(cases))
+
+
+@holds(150, _limits_quoted())
+def test_a_limit_is_stated_by_its_number_and_by_no_longer_one(
+    cases: list[tuple[str, int, bool]],
+) -> None:
+    """A journal's limit is in its quote as digits, with or without a separator of
+    thousands, or as a word up to twenty; not inside a longer number or a longer word."""
+    for quote, value, stated in cases:
+        assert journal_quotes_gate._states(quote, value) is stated, (quote, value)
 
 
 # ---------------------------------------------------------------------- an ISBN's check digit
@@ -2949,6 +3678,34 @@ def _a_release_is_temporary(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(data_statement, "TEMPORARY", re.compile(loose, re.IGNORECASE))
 
 
+def _placeholder_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    artefacts = tuple(
+        {**rule, "pattern": change(rule["pattern"])} if rule["id"] == rule_id else rule
+        for rule in rules.artefacts
+    )
+    patch.setattr(writing, "load_rules", lambda: replace(rules, artefacts=artefacts))
+
+
+def _a_karyotype_is_a_placeholder(patch: pytest.MonkeyPatch) -> None:
+    _placeholder_rule(
+        patch, "placeholder-word", lambda p: p.replace("(?<!\\b4[5-9],)(?<!\\b4[5-9], )", "")
+    )
+
+
+def _a_word_in_lower_case_is_a_placeholder_anywhere(patch: pytest.MonkeyPatch) -> None:
+    _placeholder_rule(patch, "placeholder-word", lambda p: "(?i)" + p)
+
+
+def _a_links_text_is_a_slot(patch: pytest.MonkeyPatch) -> None:
+    # The lookahead that ends the rule, which keeps a link's text and its definition out.
+    _placeholder_rule(patch, "placeholder-slot", lambda p: p[: p.rindex("(?!")])
+
+
 def _a_deviation_is_read_with_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import design
 
@@ -2963,6 +3720,39 @@ def _a_deviation_is_read_with_its_line_breaks(patch: pytest.MonkeyPatch) -> None
         )
 
     patch.setattr(design, "deviations_said", as_typed)
+
+
+def _a_planned_item_runs_past_its_paragraph(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "_BLANK_LINE", re.compile(r"(?!)"))
+
+
+def _code_with_no_dot_is_a_planned_key(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    undotted = re.compile(r"(?:results\.)?([A-Za-z_][\w-]*(?:\.[\w-]+)*)")
+    patch.setattr(design, "_PLANNED_KEY", undotted)
+
+
+def _a_bound_key_keeps_its_namespace(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "_PLANNED_KEY", re.compile(r"([A-Za-z_][\w-]*(?:\.[\w-]+)+)"))
+
+
+def _a_bound_key_needs_a_dot(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood at b7235875: the prefix gave way to a key with no dot."""
+    from manuscript_guard.gates import design
+
+    dotted = re.compile(r"(?:results\.)?([A-Za-z_][\w-]*(?:\.[\w-]+)+)")
+    patch.setattr(design, "_PLANNED_KEY", dotted)
+
+
+def _the_planned_results_subsections_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "subsections", lambda sections, index: [sections[index]])
 
 
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
@@ -3232,6 +4022,54 @@ def _a_claim_keeps_the_words_of_a_comment(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "blank_comments", lambda text: text)
 
 
+def _a_numbered_results_heading_is_no_results(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate, "names_results", lambda title: title in ("Results", "Findings"))
+
+
+def _the_abstracts_results_report(patch: pytest.MonkeyPatch) -> None:
+    def place(self: reported_gate.Walk) -> object:
+        if any(id(section) in self.reports for section in self.chain):
+            return reported_gate.REPORTED
+        for section in self.chain:
+            if section.names_abstract(self.named) or id(section) in self.summaries:
+                return section.title
+        return None
+
+    patch.setattr(reported_gate.Walk, "_place", place)
+
+
+def _the_headings_of_a_file_are_not_carried_into_the_next(patch: pytest.MonkeyPatch) -> None:
+    real = reported_gate.Walk.read
+
+    def read(self: reported_gate.Walk, text: str) -> tuple[list, set[str]]:
+        self.chain.clear()
+        return real(self, text)
+
+    patch.setattr(reported_gate.Walk, "read", read)
+
+
+def _a_title_over_the_paper_is_its_results(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate.Walk, "_opens", lambda self, section, methods: False)
+
+
+def _the_methods_report_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate, "methods_sections", lambda sections, named=None: [])
+
+
+def _a_quotation_is_in_straight_marks_only(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(quotations_gate, "_QUOTED", re.compile(r'"([^"\n]+(?:\n[^"\n]+)*)"()'))
+
+
+def _a_quotation_takes_its_paragraphs_citations(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import produce
+
+    patch.setattr(produce, "_split", lambda flat: [flat])
+
+
+def _a_quotation_in_a_comment_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(quotations_gate, "blank_comments", lambda text: text)
+
+
 def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
 
@@ -3251,6 +4089,26 @@ def _a_slash_divides_by_symbols_only(patch: pytest.MonkeyPatch) -> None:
         r"/[^\W\d_]+", "/(?:" + bound_units_gate._SYMBOL + ")", 1
     )
     patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
+def _a_limit_is_read_inside_a_longer_number(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_DIGITS", "{}")
+
+
+def _a_limit_is_read_before_a_decimal(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_DIGITS", r"(?<![0-9.,]){}(?![0-9])")
+
+
+def _a_limit_has_no_separator_of_thousands(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_forms", lambda value: {str(value)})
+
+
+def _a_limit_s_word_is_read_inside_a_longer_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_WORD", "{}")
+
+
+def _a_limit_is_read_after_a_space_between_thousands(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_GROUP_BEFORE", re.compile(r"(?!)"))
 
 
 def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
@@ -3313,6 +4171,26 @@ BROKEN = {
         _a_wordless_piece_is_left_alone,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,
     ),
+    "a numbered Results heading is not the Results": (
+        _a_numbered_results_heading_is_no_results,
+        test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "the abstract's own Results report": (
+        _the_abstracts_results_report,
+        test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "the headings of one file are not carried into the next": (
+        _the_headings_of_a_file_are_not_carried_into_the_next,
+        test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "a paper's title over it all is its Results": (
+        _a_title_over_the_paper_is_its_results,
+        test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "the Methods report nothing": (
+        _the_methods_report_nothing,
+        test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
     "a statistic is read at its printed value, not over what its last digit allows": (
         _a_statistic_is_read_at_its_printed_value,
         test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
@@ -3349,6 +4227,58 @@ BROKEN = {
         _a_power_of_ten_is_read_as_its_mantissa,
         test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
     ),
+    "an interval's bounds are read at their printed values, not over their last digit": (
+        _a_bound_is_read_at_its_printed_value,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "a difference's interval is held to 1": (
+        _a_difference_is_held_to_1,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "every interval is taken as a 95% one": (
+        _every_interval_is_taken_as_95,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "an estimate's P is looked for past the next interval": (
+        _a_p_is_looked_for_past_the_next_interval,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "a P for interaction is taken as the estimate's own": (
+        _a_p_for_interaction_is_the_estimate_s,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "an estimate's P is looked for past the end of its sentence": (
+        _an_interval_s_p_is_looked_for_past_its_sentence,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "a profile, exact or bootstrap interval is judged as a Wald one": (
+        _an_interval_that_is_not_the_plain_one_is_judged,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "a P adjusted for multiplicity or one-sided is judged against its interval": (
+        _a_p_that_is_not_the_plain_one_is_judged_against_its_interval,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "an adjusted estimate is not judged": (
+        _adjusted_alone_quiets_an_interval,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "an estimate outside its own interval is not said": (
+        _an_estimate_outside_its_interval_is_not_said,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "the words between a name and its estimate run across another estimate's name": (
+        _a_name_s_words_run_across_another_name,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "bounds joined by hyphens after a negative one, or the wrong way round, are read": (
+        _bounds_that_cannot_be_read_for_sure_are_read,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "an interval wrapped onto a second line is not read": (
+        _an_interval_over_two_lines_is_not_read,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
     "a claim runs back to the start of its paragraph, past the anchor before it": (
         _a_claim_runs_back_to_its_paragraph,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
@@ -3365,6 +4295,18 @@ BROKEN = {
         _a_claim_keeps_the_words_of_a_comment,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
     ),
+    "a quotation is in straight marks only": (
+        _a_quotation_is_in_straight_marks_only,
+        test_a_quotation_is_found_with_the_works_its_sentences_cite_and_no_other,
+    ),
+    "a quotation takes its paragraph's citations": (
+        _a_quotation_takes_its_paragraphs_citations,
+        test_a_quotation_is_found_with_the_works_its_sentences_cite_and_no_other,
+    ),
+    "a quotation in a comment is read": (
+        _a_quotation_in_a_comment_is_read,
+        test_a_quotation_is_found_with_the_works_its_sentences_cite_and_no_other,
+    ),
     "a heading is part of the paragraph under it": (
         _a_heading_is_part_of_the_paragraph_under_it,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
@@ -3380,6 +4322,26 @@ BROKEN = {
     "a slash divides by the list's symbols only": (
         _a_slash_divides_by_symbols_only,
         test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
+    ),
+    "a limit is read inside a longer number": (
+        _a_limit_is_read_inside_a_longer_number,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a limit is read before a decimal": (
+        _a_limit_is_read_before_a_decimal,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a limit has no separator of thousands": (
+        _a_limit_has_no_separator_of_thousands,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a limit's word is read inside a longer word": (
+        _a_limit_s_word_is_read_inside_a_longer_word,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a limit is read after a space between thousands": (
+        _a_limit_is_read_after_a_space_between_thousands,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
     ),
     "a claim keeps its line breaks": (
         _a_claim_keeps_its_line_breaks,
@@ -3408,6 +4370,46 @@ BROKEN = {
     "the line directly below an anchor's own line counts, though it holds only anchors": (
         _each_anchors_line_is_its_own_run,
         test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document,
+    ),
+    "a vector figure's transforms are not read": (
+        _transforms_are_not_read,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a vector figure's transforms are composed the other way round": (
+        _transforms_are_composed_the_other_way,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a point in a vector figure is read as a unit": (
+        _a_point_is_a_unit,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "an em is taken of SVG's default size, not of the size around it": (
+        _an_em_is_of_the_default_size,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a text drawn through use is not read": (
+        _a_use_is_not_followed,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a text is as tall as a line under the same transforms is wide": (
+        _a_text_is_as_tall_as_a_line_is_wide,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a text's size not set is 10": (
+        _a_size_not_set_is_ten,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a line is not widened by the transforms around it": (
+        _a_line_is_not_widened,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "a vector figure's stylesheet is not read": (
+        _a_figure_s_stylesheet_is_not_read,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
+    ),
+    "the first number of a font shorthand is its size": (
+        _a_font_s_first_number_is_its_size,
+        test_a_vector_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn,
     ),
     "the words of a quote may never be apart": (
         _the_words_of_a_quote_are_never_apart,
@@ -3505,6 +4507,18 @@ BROKEN = {
         _a_new_paragraph_is_a_space_before_a_models_name,
         test_a_model_named_in_the_methods_is_found_where_it_stands_and_nowhere_it_does_not,
     ),
+    "a dictionary's release is typed wherever it stands, named or not": (
+        _a_release_is_typed_wherever_it_stands,
+        test_a_dictionary_release_is_found_typed_where_its_name_stands_before_it,
+    ),
+    "a dictionary is named by a longer word that holds its name": (
+        _a_dictionary_is_named_inside_a_longer_word,
+        test_a_dictionary_release_is_found_typed_where_its_name_stands_before_it,
+    ),
+    "a dictionary is named anywhere before its release on the line": (
+        _a_dictionary_is_named_anywhere_before_on_its_line,
+        test_a_dictionary_release_is_found_typed_where_its_name_stands_before_it,
+    ),
     "a parameter is matched by any convention": (
         _any_convention_is_a_threshold,
         test_a_typed_parameter_is_found_where_it_stands_and_nowhere_it_does_not,
@@ -3557,6 +4571,18 @@ BROKEN = {
         _a_release_is_temporary,
         test_each_identifier_names_data_and_each_temporary_link_is_found,
     ),
+    "a karyotype is read as a placeholder": (
+        _a_karyotype_is_a_placeholder,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a word in lower case is a placeholder outside the manuscript": (
+        _a_word_in_lower_case_is_a_placeholder_anywhere,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a link's text is read as a slot": (
+        _a_links_text_is_a_slot,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
     "an argument that turns a figure's estimate off is not read": (
         _an_argument_that_turns_an_estimate_off_is_not_read,
         test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
@@ -3576,6 +4602,26 @@ BROKEN = {
     "a deviation is read with its line breaks": (
         _a_deviation_is_read_with_its_line_breaks,
         test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not,
+    ),
+    "a planned item runs past its paragraph": (
+        _a_planned_item_runs_past_its_paragraph,
+        test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
+    ),
+    "code with no dot is a planned key": (
+        _code_with_no_dot_is_a_planned_key,
+        test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
+    ),
+    "a bound key keeps its namespace": (
+        _a_bound_key_keeps_its_namespace,
+        test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
+    ),
+    "a bound key needs a dot": (
+        _a_bound_key_needs_a_dot,
+        test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
+    ),
+    "the Planned results' subsections are not read": (
+        _the_planned_results_subsections_are_not_read,
+        test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
     ),
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,

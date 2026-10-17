@@ -365,6 +365,39 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+#: The headings of the parts of a paper, each written more than one way, and bindings to
+#: put under them: what G8 reads to find a number a summary gives and the paper does not.
+SUMMARIES = (
+    "\n\n# Abstract\n\n", "\n\n# 1. Summary\n\n", "\n\n## Results\n\n", "\n\n# 3. Results\n\n",
+    "\n\nFindings\n========\n\n", "\n\n# **Results and discussion**\n\n", "\n\n# Conclusions\n\n",
+    "\n\n## 5.1 Concluding remarks\n\n", "\n\n# Discussion\n\n", "\n\n# Methods\n\n",
+    "\n\n# Introduction\n\n", "{{results.ror.point}}", "{{results.case.n_cases}}",
+    "{{ results.ror.ci_low }}", "{{lit.incidence}}", "{{results.ror.point}}",
+)  # fmt: skip
+
+
+def summaries() -> st.SearchStrategy[str]:
+    """A manuscript holding every heading and binding of `SUMMARIES`, in an order and among
+    pieces of the pool drawn each time: a rule broken for one way of writing a heading is
+    seen whatever the seed."""
+    between = _in_a_row(_pool(()), few=3, many=10)
+    return st.permutations(SUMMARIES).flatmap(
+        lambda order: st.tuples(*(between for _ in order)).map(
+            lambda gaps: "".join(gap + piece for gap, piece in zip(gaps, order, strict=True))
+        )
+    )
+
+
+#: Quotations as a sentence writes them, with the citation that says whose words they are.
+_OPEN, _CLOSE = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
+QUOTED = (
+    _OPEN + "the risk was acceptable in all but the frailest" + _CLOSE + " [@agency2019]",
+    '"four words stand in here" [@a]',
+    _OPEN + "It was low. It was acceptable." + _CLOSE + " [@b; @c]",
+    '"so-called" [@d]',
+)
+
+
 def bindings() -> st.SearchStrategy[str]:
     """A manuscript with a binding where a line begins: after a line end, of Windows or
     not, and in some texts as the first thing in the file.
@@ -573,6 +606,172 @@ def quotations(draw: st.DrawFn) -> tuple[str, str]:
     return source, " ".join(words[first : last + 1])
 
 
+# ---------------------------------------------------------------------- a vector figure
+
+#: Each kind of text a vector figure holds: what G4 reads the size of.
+TEXT_KINDS = ("unset", "pt", "mm", "em", "tspan", "use", "turned", "weight", "class")
+
+
+def _composed(left: tuple[float, ...], right: tuple[float, ...]) -> tuple[float, ...]:
+    """Two linear maps, (a, b, c, d) as SVG writes a matrix's first four, one after the
+    other: the parent's, then the child's."""
+    a, b, c, d = left
+    e, f, g, h = right
+    return (a * e + c * f, b * e + d * f, a * g + c * h, b * g + d * h)
+
+
+@st.composite
+def _transforms(draw: st.DrawFn) -> tuple[str, tuple[float, ...]]:
+    """A transform as an SVG writes it, and its linear part."""
+    import math
+
+    kind = draw(st.sampled_from(("scale", "scale2", "rotate", "matrix", "translate")))
+    one, two = (draw(st.integers(250, 3000)) / 1000 for _ in range(2))
+    if kind == "scale":
+        return f"scale({one})", (one, 0.0, 0.0, one)
+    if kind == "scale2":
+        return f"scale({one} {two})", (one, 0.0, 0.0, two)
+    if kind == "rotate":
+        angle = draw(st.integers(-180, 180))
+        turn = math.radians(angle)
+        return f"rotate({angle} 5 5)", (math.cos(turn), math.sin(turn), -math.sin(turn),
+                                        math.cos(turn))  # fmt: skip
+    if kind == "matrix":
+        skew = draw(st.integers(-500, 500)) / 1000
+        return f"matrix({one} 0 {skew} {two} 3 4)", (one, 0.0, skew, two)
+    return f"translate({one} {two})", (1.0, 0.0, 0.0, 1.0)
+
+
+@st.composite
+def vector_figures(draw: st.DrawFn) -> tuple[str, dict[str, float], list[float]]:
+    """An SVG figure with a text of every kind in it, each under transforms drawn at random:
+    a size not set, in pt, in mm, in em of its group's, a tspan in percent of its text's,
+    a text drawn through `<use>`, and one turned inside a scale that is not the same both
+    ways; and a line beside each. With the height each text is drawn at in units, and the
+    width of each line, worked out from the matrices."""
+    import math
+
+    texts: dict[str, float] = {}
+    lines: list[float] = []
+    defs, body, rules = [], [], []
+    for number, kind in enumerate(draw(st.permutations(TEXT_KINDS))):
+        label = f"t{number}"
+        drawn = draw(st.lists(_transforms(), max_size=3))
+        linear = (1.0, 0.0, 0.0, 1.0)
+        for _written, part in drawn:
+            linear = _composed(linear, part)
+        size = draw(st.integers(4, 24))
+        inner = f'<text x="1" y="1" font-size="{size}">{label}</text>'
+        units = float(size)
+        # The transforms inside the drawn ones that the kind itself puts on its text.
+        own = (1.0, 0.0, 0.0, 1.0)
+        if kind == "unset":
+            inner, units = f'<text x="1" y="1">{label}</text>', 16.0
+        elif kind == "pt":
+            inner, units = f'<text x="1" y="1" font-size="{size}pt">{label}</text>', size * 4 / 3
+        elif kind == "mm":
+            inner = f'<text x="1" y="1" style="font-size: {size}mm">{label}</text>'
+            units = size * 96 / 25.4
+        elif kind == "em":
+            group, em = draw(st.integers(6, 20)), draw(st.integers(5, 20)) / 10
+            text = f'<text x="1" y="1" font-size="{em}em">{label}</text>'
+            inner, units = f'<g font-size="{group}">{text}</g>', group * em
+        elif kind == "tspan":
+            share = draw(st.integers(40, 90))
+            inner = (f'<text x="1" y="1" font-size="{size}">{label}'
+                     f'<tspan font-size="{share}%">s{number}</tspan></text>')  # fmt: skip
+            texts[f"s{number}"] = size * share / 100 * math.hypot(linear[2], linear[3])
+        elif kind == "use":
+            scale = draw(st.integers(250, 3000)) / 1000
+            defs.append(f'<text id="u{number}" x="1" y="1" font-size="{size}">{label}</text>')
+            inner = f'<use xlink:href="#u{number}" transform="scale({scale})"/>'
+            own = (scale, 0.0, 0.0, scale)
+        elif kind == "weight":
+            # A bold text, its weight before its size, as matplotlib writes it.
+            inner = f"<text x=\"1\" y=\"1\" style=\"font: 700 {size}px sans-serif\">{label}</text>"
+        elif kind == "class":
+            # A size set through a class, as Illustrator writes it, over the attribute.
+            rules.append(f".c{number} {{ font-size: {size}px }}")
+            inner = f'<text x="1" y="1" class="c{number}" font-size="99">{label}</text>'
+        elif kind == "turned":
+            inner = (f'<g transform="scale(2 0.5)"><g transform="rotate(90)">'
+                     f'<text x="1" y="1" font-size="{size}">{label}</text></g></g>')  # fmt: skip
+            # Turned a quarter inside it, the text stands along the scale's 2, not its 0.5.
+            own = _composed((2.0, 0.0, 0.0, 0.5), (0.0, 1.0, -1.0, 0.0))
+        width = draw(st.integers(1, 30)) / 10
+        line = f'<path d="M0 0L1 1" stroke="black" stroke-width="{width}"/>'
+        if kind == "class":
+            # A line stroked by the stylesheet alone, as svglite strokes a black one.
+            line = f'<path class="stroked" d="M0 0L1 1" style="stroke-width: {width}"/>'
+        whole = _composed(linear, own)
+        texts[label] = units * math.hypot(whole[2], whole[3])
+        lines.append(width * math.sqrt(abs(linear[0] * linear[3] - linear[1] * linear[2])))
+        for written, _part in reversed(drawn):
+            inner, line = (f'<g transform="{written}">{inner}</g>',
+                           f'<g transform="{written}">{line}</g>')  # fmt: skip
+        body += [inner, line]
+    document = (
+        '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+        'width="400pt" height="300pt" viewBox="0 0 400 300">'
+        f"<style>.stroked {{ stroke: #000000 }} {' '.join(rules)}</style>"
+        f"<defs>{''.join(defs)}</defs>{''.join(body)}</svg>"
+    )
+    return document, texts, sorted(lines)
+
+
+# -------------------------------------------------------------- the results a plan promises
+
+_STEMS = ("ror", "case", "cohort", "hr", "events")
+_LEAVES = ("point", "ci_low", "n", "pct_serious", "n-dropped")
+#: Code in a list item that is not a key: no dot in it.
+_CODE = ("glm", "R", "lme4", "n_cases")
+_MARKERS = ("- ", "* ", "+ ", "1. ")
+
+
+@st.composite
+def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
+    """A plan whose Planned results section lists results in each way an item holds one,
+    with the keys it lists, in order, as (key, whether it is a group).
+
+    Each example holds one item of every kind, in an order drawn each time: a key; a key as
+    the manuscript binds it; a key with no dot, bound; a group of keys; words and no code;
+    code that is not a key; a key nested under an item that has none; and an item with no
+    key followed, past a blank line, by prose that holds one. Then a subsection with a key of
+    its own. The section
+    comes before the drawn text, which an open fence would otherwise swallow it into."""
+    words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=6).map(" ".join)
+    marker = st.sampled_from(_MARKERS)
+
+    def key() -> str:
+        return f"{draw(st.sampled_from(_STEMS))}.{draw(st.sampled_from(_LEAVES))}"
+
+    def wrapped() -> str:
+        return draw(st.sampled_from((" ", "\n  "))).join((draw(words), draw(words)))
+
+    kinds: list[tuple[str, list[tuple[str, bool]]]] = []
+    plain, bound, stem = key(), key(), draw(st.sampled_from(_STEMS))
+    kinds.append((f"{draw(marker)}`{plain}`: {wrapped()}\n", [(plain, False)]))
+    kinds.append((f"{draw(marker)}`results.{bound}` {wrapped()}\n", [(bound, False)]))
+    undotted = draw(st.sampled_from(_STEMS))
+    kinds.append((f"{draw(marker)}`results.{undotted}`: {draw(words)}\n", [(undotted, False)]))
+    kinds.append((f"{draw(marker)}`{stem}.*`: {wrapped()}\n", [(stem, True)]))
+    kinds.append((f"{draw(marker)}{wrapped()}\n", []))
+    kinds.append((f"{draw(marker)}`{draw(st.sampled_from(_CODE))}` {draw(words)}\n", []))
+    nested = key()
+    kinds.append((f"- {draw(words)}\n\n  - `{nested}`: {draw(words)}\n", [(nested, False)]))
+    kinds.append((f"- {draw(words)}\n\n{draw(words)} `{key()}` {draw(words)}.\n", []))
+    order = draw(st.permutations(range(len(kinds))))
+    items = "\n".join(kinds[index][0] for index in order)
+    listed = [found for index in order for found in kinds[index][1]]
+    secondary = key()
+    plan = (
+        f"# Analysis plan\n\n## Planned results\n\n{items}\n"
+        f"### Secondary\n\n{draw(marker)}`{secondary}`: {draw(words)}\n\n"
+        f"## Outcome\n\n{draw(texts())}\n"
+    )
+    return plan, [*listed, (secondary, False)]
+
+
 #: What can stand in a stored source between two words of a quote taken from it: line
 #: numbers, figures, a column's or a header's words, a hyphen at the end of a line, a symbol.
 INTERRUPTIONS = (
@@ -621,6 +820,25 @@ FIXED_LINKS = (
 )
 
 
+#: A placeholder of each kind G6 reads, as it is typed and as the rule finds it; the words
+#: that are one in the manuscript only, in lower case; and what looks like one and is prose:
+#: a karyotype, a syndrome, a link, a title translated into English in brackets, a phrase
+#: that goes on, a kinase. What the placeholder reading must tell apart.
+PLACEHOLDERS = (
+    ("XXXX", "XXXX"), ("[TO BE COMPLETED]", "[TO BE COMPLETED]"),
+    ("[Repository]", "[Repository]"), ("[describe the cohort]", "[describe the cohort]"),
+    ("lorem ipsum", "lorem ipsum"), ("fill in later.", "fill in later"), ("TODO", "TODO"),
+    ("2025-XX-XX", "2025-XX"), ("INSERT_SOURCE_URL", "INSERT_SOURCE_URL"),
+    ("[insert the\nname]", "[insert the\nname]"), ("1,XXX", "XXX"),
+)  # fmt: skip
+LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
+LOOKALIKES = (
+    "47,XXX", "XXX syndrome", "[repository](https://example.org)",
+    "[Add-on therapy in epilepsy]", "replace later lines", "replace later\nlines",
+    "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]",
+)  # fmt: skip
+
+
 #: A statistic in each of the ways one is written, typed and bound, and a number with
 #: its unit: what the notation reading must count apart.
 #: Bindings with a unit written after them, each way a unit is written.
@@ -634,12 +852,27 @@ BOUND_UNITS = (
     "{{results.temp}} \N{DEGREE SIGN}C",
 )  # fmt: skip
 
+#: A journal's limit as its page may write it, and numbers and words it is not.
+QUOTED_LIMITS = (
+    "3500", "3,500", "3 500", "3500-word", "13500", "3500.5", "3,5000", "35000", "four",
+    "fourteen", "fourfold", "Four", "4", "14", "4.5",
+)  # fmt: skip
+
 NOTATED = (
     "P = 0.03", "p=0.04", "*P* < 0.001", "p-value", "n = 12", "n=3", "N= 40",
     "95% CI 1.2 to 3.4", "95% CI 1.2-3.4", "(95% CI {{results.low}} to {{results.high}})",
     "P = {{results.p}}", "5%", "5 %", "5mg", "5 mg", "{{results.dose}}mL",
     "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g", "(CI 95%-0.3 to 0.4)",
 )  # fmt: skip
+
+#: A coding dictionary's release typed beside its name and elsewhere, and its name inside a
+#: longer word: what G2 finds typed where it should be bound.
+RELEASED = (
+    "MedDRA version 26.1", "MedDRA 26.1", "26.1", "WHODrug Global B3 March 2025",
+    "Global B3 March 2025", "ICD-10 2019", "ICD 10 version 2019", "in 2019", "micd_10ed 2019",
+    "{{results.dictionary.meddra}}", "MedDRA" + chr(10) + "26.1",
+)  # fmt: skip
+
 
 #: A test statistic and its P in each of the ways a results sentence writes them, right and
 #: wrong, and what a sentence says of a test that is not the textbook one: what the reading
@@ -651,6 +884,19 @@ REPORTED = (
     "\N{GREEK SMALL LETTER CHI}^2^(3) = 0.5, *P* \\< 0.001", "chi-square(2) = 9.1, p = .011",
     "z = 4.10, P = 4.1e-5", "Z = 4.10, P = 4.1 x 10^-5^", "z = 1.2, p\n= .23", "one-sided",
     "Welch's", "after Bonferroni adjustment", "{{results.t}}", "p = {{results.p}}", "t(",
+)  # fmt: skip
+
+#: An estimate and its interval in each of the ways a results sentence writes them, right
+#: and wrong, with a P and without, and what a sentence says of an interval or a P that is
+#: not the plain one: what the reading of reported intervals finds and judges.
+ESTIMATES = (
+    "OR 2.6 (95% CI 2.1 to 3.2)", "OR 2.6 (95% CI 1.2-3.2)", "HR 0.80; 95% CI: 0.70, 0.91",
+    "the odds ratio was 1.9 (95% CI 1.2\N{EN DASH}3.0), P = 0.40", "aOR = 1.5 [CI 95% 1.1, 2.0]",
+    "MD \N{MINUS SIGN}0.4 (95% CI \N{MINUS SIGN}0.9 to 0.1), P = 0.01",
+    "mean difference 0.4 (95% CI -0.9--0.1)", "RR 1.50 (90% CI 1.05 to 2.14), P = 0.07",
+    "(95% profile-likelihood CI", "Bonferroni-adjusted P = 0.40", "P = 0.40 for interaction",
+    "and 1.1 (95% CI 0.8 to 1.5)", "hazard ratio\n2.1 (95% CI", "{{results.or}}",
+    "(95% CI {{results.lo}} to {{results.hi}})", "P = {{results.p}}", "CI 3.2 to 2.1",
 )  # fmt: skip
 
 
@@ -770,11 +1016,15 @@ def _quotation_asked(drawn: tuple[tuple[str, str], str, str]) -> dict[str, str]:
 #: What each reading of `tests/readings.py` is given, by the reading's name.
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
+    "prose quotations": texts(QUOTED),
     "mask": texts(TERMS),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),
     "sections": texts(),
+    "summaries": st.fixed_dictionaries(
+        {"text": summaries(), "abstract title": st.sampled_from((None, "Summary"))}
+    ),
     "numbers": st.fixed_dictionaries(
         {
             "text": texts(POINTED),
@@ -785,7 +1035,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "interval order": intervals(),
     "deviations": texts(),
+    "planned results": planned_plans().map(lambda drawn: drawn[0]),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
+    "vector figure": vector_figures().map(lambda drawn: drawn[0]),
     "quote words": st.fixed_dictionaries(
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
     ),
@@ -799,8 +1051,16 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "notation": texts(NOTATED),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
+    "placeholders": texts(
+        tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
+    ),
+    "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
+    "reported intervals": texts(ESTIMATES),
     "units after": texts(BOUND_UNITS),
+    "limit stated": st.fixed_dictionaries(
+        {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}
+    ),
     "abbreviations": st.fixed_dictionaries(
         {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}
     ),

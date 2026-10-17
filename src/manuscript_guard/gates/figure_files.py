@@ -25,8 +25,12 @@ in `manuscript/supplementary/` is held to the profile's `supplementary:` rules w
 them. Everything is a warning, and a note where the profile says the rules apply only once
 the paper is accepted.
 
+* `figure-text-small`, `figure-line-thin`: an SVG figure's smallest text or thinnest line,
+  carried through its transforms to the width it prints, is below the journal's least.
+* `figure-text-clipped`: a text in an SVG figure is anchored outside what it shows.
+
 The size of a raster is read from its own header, PNG, JPEG or TIFF, with the standard
-library; a vector figure's text and lines are another check.
+library; an SVG's text and lines are read from its elements (`gates/figure_svg.py`).
 """
 
 from __future__ import annotations
@@ -42,6 +46,7 @@ import yaml
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.gates.figure_svg import clipped, points_per_unit, read_svg
 from manuscript_guard.gates.numbers import is_supplementary, source_files
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import count_words
@@ -251,6 +256,8 @@ def _file(path: Path, rules: dict, side: dict, supplementary: bool, profile_path
                 "asks and no more",
             )
         )
+    if FORMATS[path.suffix.lower()] == "svg":
+        return findings + _vector(path, rules, side)
     if FORMATS[path.suffix.lower()] not in _RASTERS:
         return findings
     raster = raster_of(path)
@@ -315,6 +322,63 @@ def _file(path: Path, rules: dict, side: dict, supplementary: bool, profile_path
                     "print width) and raise the dpi instead",
                 )
             )
+    return findings
+
+
+def _vector(path: Path, rules: dict, side: dict) -> list[Finding]:
+    """An SVG figure's smallest text and thinnest line at the size it prints, and any text
+    anchored outside what it shows (`gates/figure_svg.py`)."""
+    svg = read_svg(path)
+    if svg is None:
+        return []
+    findings = [
+        _finding(
+            "figure-text-clipped",
+            f"{path.name}: the text '{mark.text[:40]}' is anchored at ({mark.at[0]:.0f}, "
+            f"{mark.at[1]:.0f}), outside what the figure shows (its viewBox, "
+            f"{' '.join(f'{v:g}' for v in svg.view or ())}), and is cut off where it prints",
+            path,
+            "move the text inside the figure, or draw the figure with room for it (in "
+            "matplotlib, savefig with bbox_inches='tight')",
+        )
+        for mark in clipped(svg)[:3]
+    ]
+    width_mm, said = _width(rules, side)
+    per_unit = points_per_unit(svg, width_mm)
+    if per_unit is None:
+        return findings
+    if width_mm is not None:
+        where = f"at {width_mm:g} mm wide{'' if said else ', the narrowest the journal prints at'}"
+    else:
+        where = f"at its own width, {svg.width_pt:.0f} pt" + (
+            "" if svg.width_unit else " (its width has no unit, and is read as pixels)"
+        )
+    for marks, limit, what, hint in (
+        (svg.texts, rules.get("min_text_pt"), "text",
+         "draw its text larger, or the figure at the width it prints (in matplotlib, figsize "
+         "in inches at the print width) with text at the journal's size"),
+        (svg.lines, rules.get("min_line_pt"), "line",
+         "draw its lines wider, or the figure at the width it prints"),
+    ):  # fmt: skip
+        if not marks or not isinstance(limit, (int, float)) or isinstance(limit, bool):
+            continue
+        below = [mark for mark in marks if mark.units * per_unit < limit]
+        if not below:
+            continue
+        least = min(below, key=lambda mark: mark.units)
+        printed = math.floor(least.units * per_unit * 100) / 100
+        named = f" '{least.text[:40]}'" if least.text else ""
+        many = f"; {len(below)} {what}s are below it" if len(below) > 1 else ""
+        findings.append(
+            _finding(
+                "figure-text-small" if what == "text" else "figure-line-thin",
+                f"{path.name}: its {'smallest' if what == 'text' else 'thinnest'} {what}{named} "
+                f"prints at {printed:.2f} pt {where}, and the journal's least is {limit:g} pt"
+                f"{many}",
+                path,
+                hint + f", or give its print width in {path.stem}.guard.yaml (print_width_mm)",
+            )
+        )
     return findings
 
 

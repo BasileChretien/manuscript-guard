@@ -21,6 +21,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.data_statement import check_data_statement
 from manuscript_guard.gates.figure_files import check_figure_files
+from manuscript_guard.gates.journal_quotes import check_quotes
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SHIPPED_JOURNALS
 from manuscript_guard.text.masking import without_front_matter
@@ -103,6 +104,7 @@ def check_journal(project: Project) -> Report:
         return report
 
     report = report.merge(_check_freshness(document, path))
+    report = report.merge(check_quotes(project, slug, document, path))
 
     # The main text only. A journal's word count, display-item count and required sections
     # are about the paper; a supplement counted against them turned a compliant submission

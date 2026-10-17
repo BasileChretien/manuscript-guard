@@ -133,6 +133,10 @@ BINDS_AT = {
     "missing-abstract": INTERNAL_REVIEW,
     "abstract-headings-missing": INTERNAL_REVIEW,
     "missing-required-statement": INTERNAL_REVIEW,
+    # What the journal's data policy, as its profile records it, does not accept: binding when
+    # the statement is, since a draft's statement is often written last.
+    "data-statement-forbidden": INTERNAL_REVIEW,
+    "data-identifier-missing": INTERNAL_REVIEW,
     "english-variant-mismatch": INTERNAL_REVIEW,
     "checklist-not-retrieved": INTERNAL_REVIEW,
     "checklist-not-started": INTERNAL_REVIEW,

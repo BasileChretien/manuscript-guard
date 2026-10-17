@@ -1,6 +1,6 @@
 ---
 name: reviewer-response
-description: Answer a journal's reviewers point by point, with every claimed revision checked against the manuscript as it was sent. Use when a decision letter with reviewer comments arrives, before revising anything, when check reports point-unanswered, response-claims-nothing, claimed-change-did-not-happen, claimed-change-missed-the-point or anchor-unrecorded, or before resubmitting.
+description: Answer a journal's reviewers point by point, with every claimed revision checked against the manuscript as it was sent. Use when a decision letter with reviewer comments arrives, before revising anything, when check reports point-unanswered, response-claims-nothing, claimed-change-did-not-happen, claimed-change-missed-the-point or anchor-unrecorded, or before resubmitting. Not for a panel before submission (use review-panel), nor for a co-author's check of the sources (use co-author-checking).
 ---
 
 # Answering the reviewers

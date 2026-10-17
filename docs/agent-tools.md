@@ -85,6 +85,34 @@ like any other, and the guard blocks on it. Outside a project they say nothing, 
 exception: the submission guard holds a command to a project the command names by a path,
 as `cd paper && manuscript-guard submit` does when it is sent from the folder above.
 
+### Whether each skill fires when it should
+
+`evals/`, beside the plugin rather than in it so that installing the plugin copies none of
+it, holds the cases `claude plugin eval` runs against the installed plugin.
+Each case is a prompt and its graders:
+
+- **routing:** a request each skill is for;
+- **near-miss:** a request that sounds like one skill's neighbour and is not;
+- **negative:** a request no skill of ours is for;
+- **proportionality:** a small request that must not start a skill's whole workflow.
+
+The routing cases also carry a judged outcome, so a run with and without the plugin shows
+what each skill adds over the model alone.
+
+The suite is run by hand, never by pytest or CI. Tests never call a provider, and an agent
+never decides pass or fail. It needs Claude Code 2.1.269 or later. The two proportionality
+cases grant Bash, which on Windows runs only under WSL2. From the repository's root:
+
+```bash
+claude plugin eval plugin --eval-dir evals --ablation with-without --runs 3 --model <model> --max-cost-usd <budget>
+```
+
+A run is paid, and is 156 runs at the size chosen (26 cases, 3 runs, 2 arms): run
+one case once first (`--eval-dir evals --case <name> --runs 1 --ablation none`) to measure its tokens. The
+report goes to `evals/results/`, which git ignores. Record each run's date, model and
+result in DESIGN.md, and run it again whenever a pull request changes a skill's name or
+description.
+
 ## Codex
 
 Codex installs the same plugin from this repository, with the same fifteen skills and the

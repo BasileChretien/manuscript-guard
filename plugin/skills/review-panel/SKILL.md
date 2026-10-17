@@ -1,6 +1,6 @@
 ---
 name: review-panel
-description: Assemble a review panel for a manuscript, have it read by an agent, by people or by models from several providers, and record the readings. Use before submission, when check reports no-review, review-missing, reading-missing, reading-altered or reading-unsealed, or when a round is complete and a second is due.
+description: Assemble a review panel for a manuscript, have it read by an agent, by people or by models from several providers, and record the readings. Use before submission, when check reports no-review, review-missing, reading-missing, reading-altered or reading-unsealed, or when a round is complete and a second is due. Not for answering a journal's reviewers (use reviewer-response), nor for a co-author's check of the sources (use co-author-checking).
 ---
 
 # Reviewing a manuscript before a journal does

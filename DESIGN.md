@@ -3078,6 +3078,27 @@ no-break space is shown as it is. Before 2026-10-15 it
 printed the comment on the same line as the tool's words, and a comment that read like an
 instruction read like the tool's.
 
+### Whether each skill fires when it should
+
+A skill helps only when it fires, and several border each other: `review-panel`,
+`reviewer-response` and `co-author-checking`; `manuscript-writing`, `methods-writer` and
+`results-binding`; `paper-audit` and `results-binding`. Each of these ends its description
+with what it is not for and which of ours to use instead. Such a line names only our own
+skills and claims no priority over anything else an agent has, and `tests/test_plugin.py`
+holds both. `evals/`, beside the plugin, holds the cases `claude plugin eval` runs by hand
+(docs/agent-tools.md):
+
+- routing, one for each skill, with a judged outcome;
+- a near-miss for each bordering pair;
+- requests no skill is for;
+- small requests that must not start a workflow.
+
+Run with and without the plugin, the routing cases show what each skill adds over the model
+alone; a skill that adds nothing measurable is cut, or folded into another's references. What
+a run cannot establish: that a skill fires for a user's own wording, which 28 prompts
+do not sample; that a judged outcome is right, since the judge is a model; and anything about a model
+other than the one run. No run is recorded yet: the model is the author's choice.
+
 ## Auditing existing papers, and saying what the audit is worth
 
 `check` works because manuscript source contains bindings: a results-derived number cannot

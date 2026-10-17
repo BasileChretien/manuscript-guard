@@ -424,6 +424,83 @@ def test_no_finding_code_is_answered_by_two_skills() -> None:
     assert not twice, twice
 
 
+#: The skills whose work borders another's: each says, last in its description, what it is
+#: not for and which of ours to use instead.
+OVERLAPPING = frozenset({
+    "review-panel", "reviewer-response", "co-author-checking", "manuscript-writing",
+    "methods-writer", "results-binding", "paper-audit",
+})  # fmt: skip
+#: Wording that would steer an agent away from the user's other tools.
+PRIORITY = re.compile(
+    r"\b(?:prefer\w*|in place of|instead of|rather than|always use|over (?:any|others?)"
+    r"|even when (?:the user|you) (?:does|do) not ask)\b",
+    re.IGNORECASE,
+)
+#: Where a description sends an agent instead: "(use review-panel)".
+USE = re.compile(r"\(use ([a-z][a-z0-9-]*)\)")
+
+
+def test_a_skill_says_which_of_ours_it_is_not_for_and_claims_no_priority() -> None:
+    """Item 52: the skills that overlap end their description with what they are not for and
+    which of our skills to use instead. Such a line names only our own skills, and no
+    description claims priority over the user's other tools."""
+    names = set(skill_names())
+    assert names >= OVERLAPPING
+    for name in sorted(names):
+        description = frontmatter(SKILLS / name / "SKILL.md").get("description") or ""
+        sent_to = USE.findall(description)
+        assert set(sent_to) <= names - {name}, (name, sent_to)
+        assert PRIORITY.search(description) is None, (name, description)
+        if name in OVERLAPPING:
+            # The last sentence (round 1 of #319: anywhere in the description passed).
+            last = re.split(r"(?<=\.)\s+(?=[A-Z])", description.strip())[-1]
+            assert last.startswith("Not for ") and USE.search(last), (name, last)
+
+
+#: The routing suite `claude plugin eval` runs by hand (item 52; docs/agent-tools.md). It
+#: lives beside the plugin, not in it: nothing in it is for a user's machine.
+EVALS = REPO / "evals"
+#: The keys a case's `prompt.md` and a grader may carry, as the eval documentation lists them.
+CASE_KEYS = frozenset({
+    "name", "description", "tags", "plugins", "runs", "expected_outcome", "model",
+    "max_turns", "timeout_seconds", "allowed_tools", "append_system_prompt", "env",
+})  # fmt: skip
+GRADER_KEYS = frozenset({
+    "type", "weight", "arm", "pattern", "flags", "match", "target", "tool", "input_match",
+    "min", "max", "before", "after", "path", "exists", "criteria", "focus", "baseline_file",
+})  # fmt: skip
+#: The skills a grader names: one, or several as `(?:a|b|c)`.
+NAMED_SKILL = re.compile(r'\(\?:\[\\w-\]\+:\)\?(?:\(\?:)?([a-z][a-z0-9|-]*)\)?"')
+
+
+def test_the_routing_cases_are_whole_and_name_only_our_skills() -> None:
+    """Item 52: every case has a prompt and a grader whose keys the eval reads, every skill
+    a grader names is one of ours, and every skill has a case that routes to it. The suite
+    is run by hand, never here: this holds only its shape."""
+    names = set(skill_names())
+    routed = set()
+    # A case is a folder with a prompt; a run writes `results/` beside them (round 1 of #319).
+    cases = sorted(path for path in EVALS.iterdir() if (path / "prompt.md").is_file())
+    assert len(cases) >= 25
+    for folder in cases:
+        front = frontmatter(folder / "prompt.md")
+        assert set(front) <= CASE_KEYS, (folder.name, set(front) - CASE_KEYS)
+        prompt = (folder / "prompt.md").read_text(encoding="utf-8").split("---", 2)[2]
+        assert prompt.strip(), folder.name
+        graders = sorted((folder / "graders").glob("*.md"))
+        assert graders, folder.name
+        for grader in graders:
+            keys = frontmatter(grader)
+            assert keys.get("type") and set(keys) <= GRADER_KEYS, (grader, keys)
+            text = grader.read_text(encoding="utf-8")
+            for listed in NAMED_SKILL.findall(text):
+                for named in listed.split("|"):
+                    assert named in names, (grader, named)
+                    if grader.stem == "skill-fired" and folder.name.startswith("route-"):
+                        routed.add(named)
+    assert routed == names, sorted(names - routed)
+
+
 def test_a_description_is_plain_text_and_a_name_is_the_project_s() -> None:
     for name in sorted(skill_names()):
         description = frontmatter(SKILLS / name / "SKILL.md").get("description") or ""

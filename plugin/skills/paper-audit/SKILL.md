@@ -1,6 +1,6 @@
 ---
 name: paper-audit
-description: Check the numbers in a paper that was not written with manuscript-guard against the analysis outputs, and report honestly what a match is worth. Use when handed an existing .docx or Markdown manuscript whose numbers were typed by hand, before resubmitting an old paper, or before moving one into a manuscript-guard project.
+description: Check the numbers in a paper that was not written with manuscript-guard against the analysis outputs, and report honestly what a match is worth. Use when handed an existing .docx or Markdown manuscript whose numbers were typed by hand, before resubmitting an old paper, or before moving one into a manuscript-guard project. Not for a manuscript-guard project, whose numbers are bound (use results-binding).
 ---
 
 # Auditing a paper that was written by hand

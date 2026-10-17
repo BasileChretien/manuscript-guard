@@ -21,7 +21,7 @@ from manuscript_guard.journal_style import (
     NotAStyle,
     Parsed,
     digest,
-    folder,
+    files_of,
     parse,
     write_record,
 )
@@ -122,7 +122,7 @@ def store(
         record["citation_format"] = found
     if parent is not None:
         record["parent"] = _entry(parent)
-    where = folder(project)
+    where = files_of(project, name)
     where.mkdir(parents=True, exist_ok=True)
     for fetched in (style, parent):
         if fetched is not None:

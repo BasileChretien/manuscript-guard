@@ -5250,7 +5250,7 @@ def test_a_kept_style_edited_since_is_said_and_not_used(project: Path) -> None:
     from manuscript_guard.journal_style import stored
 
     keep_style(project, DEPENDENT)
-    parent = project / "profiles" / "journals" / "styles" / f"{PARENT}.csl"
+    parent = project / "profiles" / "journals" / "styles" / DEPENDENT / f"{PARENT}.csl"
     parent.write_bytes(parent.read_bytes() + b"<!-- edited -->")
     assert _style_said(project) == [("journal-style-changed", "warn")]
     assert stored(load_project(project)[0], DEPENDENT) is None

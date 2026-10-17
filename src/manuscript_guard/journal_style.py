@@ -7,10 +7,13 @@ which is what CI and co-authors get, formatted in pandoc's default style unless 
 passed by hand. `style` fetches the file once and keeps it here, under
 `profiles/journals/styles/`:
 
-* `<name>.csl`, the style as the repository serves it;
+* `<name>/<name>.csl`, the style as the repository serves it;
 * for a dependent style, which only names the style it formats like
-  (`<link rel="independent-parent">`), that parent too, as `<parent>.csl` beside it: pandoc
-  looks for it by that name before it would fetch it, so an offline build never does;
+  (`<link rel="independent-parent">`), that parent too, as `<name>/<parent>.csl` beside it:
+  pandoc looks for it by that name before it would fetch it, so an offline build never does.
+  Each style keeps its own copy of its parent in its own folder, so that a second style of
+  the same parent, fetched after the parent changed upstream, does not write over the copy
+  the first one's record pinned (round 1 of #322);
 * `<name>.yaml`, the record: where each file came from, its digest, the day, the licence it
   names, and the style's citation format.
 
@@ -125,6 +128,11 @@ def parse(data: bytes, what: str) -> Parsed:
     return Parsed(title=title, parent=parent, citation_format=found, licence=licence)
 
 
+def files_of(project: Project, name: str) -> Path:
+    """The folder a kept style's files are in: its own, with its parent beside it."""
+    return folder(project) / name
+
+
 def record_path(project: Project, name: str) -> Path:
     return folder(project) / f"{name}.yaml"
 
@@ -159,7 +167,7 @@ def changed(project: Project, record: dict[str, Any]) -> list[str]:
     wrong = []
     entries = [record] + ([record["parent"]] if record.get("parent") else [])
     for entry in entries:
-        path = folder(project) / entry["file"]
+        path = files_of(project, record["style"]) / entry["file"]
         try:
             data = path.read_bytes()
         except OSError:
@@ -181,8 +189,8 @@ def stored(project: Project, named: str) -> Stored | None:
     parent = record.get("parent")
     return Stored(
         name=name,
-        path=folder(project) / record["file"],
-        parent=folder(project) / parent["file"] if parent else None,
+        path=files_of(project, name) / record["file"],
+        parent=files_of(project, name) / parent["file"] if parent else None,
         citation_format=record.get("citation_format"),
     )
 
@@ -196,6 +204,7 @@ __all__ = [
     "Stored",
     "changed",
     "digest",
+    "files_of",
     "folder",
     "parse",
     "profile_style",

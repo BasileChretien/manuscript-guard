@@ -122,7 +122,7 @@ def _stand_in(monkeypatch, table: Table) -> Table:
 
 def test_an_independent_style_is_kept_with_its_record(project: Path) -> None:
     record = keep_style(project, PARENT)
-    folder = project / "profiles" / "journals" / "styles"
+    folder = project / "profiles" / "journals" / "styles" / PARENT
     assert (folder / f"{PARENT}.csl").read_bytes() == PARENT_CSL
     assert record == {
         "schema": journal_style.SCHEMA,
@@ -152,11 +152,27 @@ def test_a_dependent_style_is_kept_with_the_style_it_depends_on(project: Path) -
     assert record["parent"]["style"] == PARENT
     assert record["parent"]["sha256"] == journal_style.digest(PARENT_CSL)
     folder = project / "profiles" / "journals" / "styles"
-    assert sorted(p.name for p in folder.iterdir()) == [
-        f"{DEPENDENT}.csl", f"{DEPENDENT}.yaml", f"{PARENT}.csl"
-    ]  # fmt: skip
+    assert sorted(p.name for p in folder.iterdir()) == [DEPENDENT, f"{DEPENDENT}.yaml"]
+    kept_files = sorted(p.name for p in (folder / DEPENDENT).iterdir())
+    assert kept_files == [f"{DEPENDENT}.csl", f"{PARENT}.csl"]
     kept = journal_style.stored(loaded, DEPENDENT)
-    assert kept is not None and kept.parent == folder / f"{PARENT}.csl"
+    assert kept is not None and kept.parent == folder / DEPENDENT / f"{PARENT}.csl"
+
+
+def test_two_styles_that_share_a_parent_each_keep_their_own(project: Path) -> None:
+    """Round 1 of #322: a second style of the same parent, fetched after the parent changed
+    upstream, wrote it over the file the first style's record had pinned, and the first was
+    `journal-style-changed` and not used, though nobody had edited anything."""
+    keep_style(project, DEPENDENT)
+    other = DEPENDENT_CSL.replace(b"mg-test-journal", b"mg-test-other")
+    changed = PARENT_CSL.replace(b"Test numbers", b"Test numbers, revised")
+    table = Table({"/dependent/mg-test-other.csl": (200, other), f"/{PARENT}.csl": (200, changed)})
+    loaded, _ = load_project(project)
+    styles.store(loaded, "mg-test-other", transport=table, base=REPOSITORY)
+    first = journal_style.stored(loaded, DEPENDENT)
+    second = journal_style.stored(loaded, "mg-test-other")
+    assert first is not None and second is not None
+    assert first.parent.read_bytes() == PARENT_CSL and second.parent.read_bytes() == changed
 
 
 @pytest.mark.parametrize(
@@ -225,7 +241,7 @@ def test_style_says_what_it_kept_and_asks_once(project: Path, monkeypatch, capsy
     assert main(["style", str(project), "--again"]) == 0
     assert len(table.sent) == 2 * asked
     # A kept file edited since is fetched again without being asked to.
-    kept = project / "profiles" / "journals" / "styles" / f"{PARENT}.csl"
+    kept = project / "profiles" / "journals" / "styles" / DEPENDENT / f"{PARENT}.csl"
     kept.write_bytes(PARENT_CSL.replace(b"[[", b"(("))
     assert main(["style", str(project)]) == 0
     assert kept.read_bytes() == PARENT_CSL
@@ -305,7 +321,7 @@ def test_an_offline_build_formats_with_the_kept_style_and_finds_its_parent_offli
     assert main(["build", str(project), "--offline"]) == 0, capsys.readouterr()
     assert "[[1]]" in _printed(project / "build" / "manuscript.docx")
     # A kept file that is not what was fetched is not used; G4 says so.
-    kept = project / "profiles" / "journals" / "styles" / f"{PARENT}.csl"
+    kept = project / "profiles" / "journals" / "styles" / DEPENDENT / f"{PARENT}.csl"
     kept.write_bytes(PARENT_CSL.replace(b"[[", b"(("))
     capsys.readouterr()
     assert main(["build", str(project), "--offline"]) == 0

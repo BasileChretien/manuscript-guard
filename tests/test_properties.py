@@ -1298,7 +1298,8 @@ def _categories_are_held_to_their_column_alone(patch: pytest.MonkeyPatch) -> Non
     summed = shares._summed
 
     def without_totals(rows: list) -> dict:
-        return {where: (None, members) for where, (_total, members) in summed(rows).items()}
+        return {where: (None, members, whole)
+                for where, (_total, members, whole) in summed(rows).items()}  # fmt: skip
 
     patch.setattr(shares, "_summed", without_totals)
 

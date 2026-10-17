@@ -1630,9 +1630,12 @@ label, in the label over its rows or in its column's header. A "%" alone in a la
 unit and says nothing; read as "these are shares", it listed a mean saturation of 96 (3) as
 8% of its column (round 1 of #314). Or a cell is read where it is one of a characteristic's
 categories: the rows under a label of their own, which may have its P value beside it or a
-dash, taken from the top for as long as their shares in its column add up to about 100. The
-longest such run is the categories, and a row after them is the next characteristic (round
-2 of #314: a P beside the label made it a header, and a row after the subtypes joined them).
+dash, all of whose shares in its column add up to about 100 (round 2 of #314: a P beside the
+label made it a header). Where the longest run of them from the top that adds up to about 100
+is shorter than all of them, it is still the categories for letting a share off as a share of
+their total, the row after them being the next characteristic (round 2: a row after the
+subtypes joined them); but it never says a cell is a share (round 3: a whole-number mean's
+running sum with the shares passed through 100, and the mean was listed).
 
 A share is listed only where no reading of it gives the share printed: of its denominator;
 of its row's total, where the row's shares add up to 100 across it; or of its categories'

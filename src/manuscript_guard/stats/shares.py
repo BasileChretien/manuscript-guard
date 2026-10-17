@@ -16,7 +16,7 @@ its denominator against the share printed, within half a unit of its last printe
   something says it is a share: a "%" in the cell; "n (%)", "No. (%)" or "n/N (%)" in the
   row's label, in the label of the rows it falls under or in its column's header; or, for
   the categories of one characteristic, the rows under a label of their own (with its P
-  value beside it or nothing), shares of its column that add up to about 100 from the top.
+  value beside it or nothing), shares of its column that add up to about 100, all of them.
   A "%" alone in a label is a unit, and a row whose label ends on one, "Oxygen saturation,
   %", is a measure: a cell of it with no "%" and a number no more than 100 is never read
   (rounds 1 and 2 of #314: its mean (SD) was read as a count and its share, and then
@@ -27,7 +27,10 @@ its denominator against the share printed, within half a unit of its last printe
   shares add up to about 100 across its columns, it is read as shares of the row's total as
   well; and where a characteristic's categories add up to about 100 down a column, as shares
   of their own total, which is what a subtype of another row, or a share of those with data,
-  is (round 1 of #314). A share is off only where no reading gives the share printed.
+  is (round 1 of #314). The categories are then the longest run from the top that does: the
+  row after them may be the next characteristic (round 2). That reading only lets a share
+  off; it never says a cell is one (round 3: a mean's running sum passed through 100). A
+  share is off only where no reading gives the share printed.
 * **A row whose label carries a footnote marker is uncertain**: a note under the table may
   give it another denominator, those with data, say. It is listed, and says so.
 
@@ -148,10 +151,11 @@ def table_shares(table: Table) -> list[Share]:
     for row in rows:
         read = []
         for column, cell, match in row.cells:
-            # Its categories' total, where it is one of a characteristic's categories.
-            total, members = summed.get((row.run, column), (None, frozenset()))
+            # Its categories' total, where it is one of a characteristic's categories, and
+            # whether they all add up to 100, which says they are shares.
+            total, members, whole = summed.get((row.run, column), (None, frozenset(), False))
             among = id(match) in members
-            if _a_share(row, column, cell, match, among):
+            if _a_share(row, column, cell, match, among and whole):
                 read.append((column, cell, match, total if among else None))
         across = _row_total([match for _column, _cell, match, _total in read])
         for column, cell, match, down in read:
@@ -279,22 +283,24 @@ def _a_share(row: _Row, column: int, cell: TableCell, match: re.Match[str], amon
         bool(_SAYS_SHARES.search(row.group)) or row.said.get(column) is True or among  # fmt: skip
 
 
-def _summed(rows: list[_Row]) -> dict[tuple[int, int], tuple[int, frozenset[int]]]:
+def _summed(rows: list[_Row]) -> dict[tuple[int, int], tuple[int, frozenset[int], bool]]:
     """Each run of a characteristic's categories, the rows under a label of their own, and
-    each column in which their shares add up to about 100: their counts summed, which is
-    what they are shares of, and which cells they are (by `id` of their match), whether or
-    not anything else says they are shares."""
+    each column in which their shares add up to about 100 from the top: their counts
+    summed, which is what they are shares of, which cells they are (by `id` of their
+    match), and whether they are the whole run. Only the whole run adding up to 100 says
+    its cells are shares; a shorter one only lets them off (round 3 of #314)."""
     printed: dict[tuple[int, int], list[re.Match[str]]] = {}
     for row in rows:
         for column, cell, match in row.cells if row.categories else ():
             if not _barred(row, column) and not _a_measure(row, cell, match):
                 printed.setdefault((row.run, column), []).append(match)
-    found: dict[tuple[int, int], tuple[int, frozenset[int]]] = {}
+    found: dict[tuple[int, int], tuple[int, frozenset[int], bool]] = {}
     for where, matches in printed.items():
         kept = matches[: _categories(matches)]
         if kept:
             total = sum(_whole(match.group("count")) for match in kept)
-            found[where] = (total, frozenset(id(match) for match in kept))
+            found[where] = (total, frozenset(id(match) for match in kept),
+                            len(kept) == len(matches))  # fmt: skip
     return found
 
 

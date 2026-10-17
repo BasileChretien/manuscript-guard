@@ -929,28 +929,28 @@ def share_tables(draw: st.DrawFn) -> tuple[str, list[Shared]]:
 
     def shares(label: str, counts: list[int], percents: list[str], overs: list[Any], *,
                wrong: int | None = None, sign: str = "", noted: bool = False,
-               own: bool = False) -> None:  # fmt: skip
-        """A row of shares, and what the reading finds in it."""
+               own: bool = False, read: tuple[int, ...] = (0, 1)) -> None:  # fmt: skip
+        """A row of shares, and what the reading finds in it, in the columns it reads."""
         drawn = list(zip(counts, percents, overs, strict=True))
         row(label, [f"{count(c)}/{count(d)} ({p}{sign})" if own else f"{count(c)} ({p}{sign})"
                     for c, p, d in drawn])  # fmt: skip
         expected.extend((len(lines), c, p, d, noted, column == wrong)
-                        for column, (c, p, d) in enumerate(drawn))  # fmt: skip
+                        for column, (c, p, d) in enumerate(drawn) if column in read)  # fmt: skip
 
     def counted(overs: list[int]) -> tuple[list[int], list[str]]:
         counts = [draw(st.integers(0, n)) for n in overs]
         return counts, [_printed(c, n, places) for c, n in zip(counts, overs, strict=True)]
 
-    def cut(totals: list[int]) -> None:
+    def cut(totals: list[int], read: tuple[int, ...] = (0, 1)) -> None:
         """Categories under a label of their own, each arm's total cut among them, so that
-        their shares of it add up to 100."""
+        their shares of it add up to 100, read in the columns `read` names."""
         parts = draw(st.integers(2, 4))
         edges = [[0, *sorted(draw(st.lists(st.integers(0, n), min_size=parts - 1,
                                            max_size=parts - 1))), n] for n in totals]
         for at, category in enumerate(CATEGORIES[:parts]):
             counts = [edge[at + 1] - edge[at] for edge in edges]
             percents = [_printed(c, n, places) for c, n in zip(counts, totals, strict=True)]
-            shares(category, counts, percents, sizes)
+            shares(category, counts, percents, sizes, read=read)
 
     # The first arm's header says its numbers are n (%), as a table that gives the other
     # statistics in its labels does; the second's says nothing, so that what else says a
@@ -997,7 +997,10 @@ def share_tables(draw: st.DrawFn) -> tuple[str, list[Shared]]:
             shares(f"{parent}, n (%)", within,
                    [_printed(c, n, places) for c, n in zip(within, sizes, strict=True)], sizes)
             row(f"{parent} type", ["", ""], draw(st.sampled_from(P_VALUES[1:])))
-            cut(within)
+            # The run with the row after them does not add up to 100, so nothing says the
+            # subtypes are shares where the header does not (round 3 of #314); where it does,
+            # they are let off as shares of their own total.
+            cut(within, read=(0,))
             # The next characteristic straight after them, with nothing in its label to say
             # it holds shares: read where its header says so, and not one of the subtypes
             # (round 2 of #314). A tenth of its arm or more, so that it cannot be.

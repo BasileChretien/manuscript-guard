@@ -3567,6 +3567,11 @@ def test_an_n_percent_in_a_word_table_is_read_by_its_row_and_column(tmp_path: Pa
         # A unit in percent under a header that says n (%): a measure all the same.
         "| | A (n = 1200), n (%) |\n|---|---|\n| HbA1c (%) | 7 (1) |\n"
         "| Diabetes, n (%) | 300 (25.0) |\n",
+        # A whole-number mean whose running sum with the shares passes through 100, under
+        # a section label and a header that does not say n (%) (round 3 of #314).
+        "| | Overall (n = 1200) |\n|---|---|\n| Baseline | |\n| Age, years | 62 (11) |\n"
+        "| Female sex | 540 (45.0) |\n| Hypertension | 528 (44.0) |\n"
+        "| Diabetes | 216 (18.0) |\n",
         # The subtypes again, the next characteristic straight after them (round 2).
         "| | A (n = 1200), n (%) | B (n = 3400), n (%) |\n|---|---|---|\n"
         "| Diabetes, n (%) | 300 (25.0) | 700 (20.6) |\n| Diabetes type | | |\n"

@@ -2,7 +2,8 @@ schema: manuscript-guard/ai-writing/1
 
 # Signs that prose was written by a language model, adapted for scientific manuscripts.
 #
-# Derived from the English Wikipedia essay "Signs of AI writing", read 2026-08-03:
+# Derived from the English Wikipedia essay "Signs of AI writing", read 2026-08-03, and read
+# again 2026-10-15 for the placeholders and the communication with the user of a chat:
 # https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing
 #
 # Three things had to change on the way from Wikipedia to a journal article.
@@ -37,9 +38,55 @@ artefacts:
   - id: writing-fence
     pattern: ':::writing'
     why: A model's internal fence left in the text
+  # The placeholders. Each is a kind of slot, not a list of spellings, and each is also read
+  # in the text of the figures, the tables' captions and the cited references (`elsewhere`),
+  # since a slot left there reaches the document as surely as one in the manuscript.
+  #
+  # A slot in brackets: an instruction to the writer, "[insert the date]", "[describe the
+  # cohort]", which a hard wrap may cut across one line end; a thing to be supplied,
+  # "[Repository]", "[DOI/accession]", "[citation needed]"; or capitals that say something is
+  # still to come, "[TO BE COMPLETED]", "[CLAIM NEEDS EVIDENCE]". Not capitals that say
+  # nothing of the kind: an abbreviation nested in parentheses, "[SJS/TEN]", or a title in
+  # capitals. A thing named is not a slot where it is a link's text, "[repository](https://...)",
+  # its definition, "[repository]: https://...", or a bracketed span, "[NB]{.smallcaps}"; an
+  # instruction is, wherever it stands, "[insert the date]{.mark}" as on main. The verb is
+  # followed by a space or the bracket, so a title translated into English in brackets,
+  # "[Add-on therapy in epilepsy]", is no slot. "[Your ...]" is one in the manuscript only:
+  # PubMed's translated titles open so, "[Your diagnosis?]".
   - id: placeholder
-    pattern: '(?i)\[(?:insert|add|your)\s[^\]]{0,40}\]|\bTODO\b|\bTBD\b|\bXXX\b|\[placeholder\]'
+    pattern: '(?i)\[(?:insert|add|describe|replace|fill|enter|specify)(?:\s(?:[^\]\n]|\n(?![ \t]*\n)){0,60})?\]'
     why: Unfilled placeholder text
+    elsewhere: true
+  - id: placeholder-your
+    pattern: '(?i)\[your(?:\s(?:[^\]\n]|\n(?![ \t]*\n)){0,60})?\]'
+    why: Unfilled placeholder text
+  - id: placeholder-slot
+    pattern: '(?i)\[(?:placeholder|accession(?:\s+(?:number|code|id))?|repository|doi(?:\s*/\s*accession)?|citation(?:\s+needed)?|reference|url|link)\](?![(\[{]|:[ \t]*<?[a-z][a-z0-9+.-]*://)'
+    why: Unfilled placeholder text
+    elsewhere: true
+  - id: placeholder-capitals
+    pattern: '\[(?=[A-Z \t/–-]*\b(?:TO[ \t]+(?:BE[ \t]+)?(?:COMPLETED?|ADDED|CONFIRMED|DETERMINED|DECIDED|FILLED|UPDATED|WRITTEN|CHECKED|VERIFIED|SUPPLIED|PROVIDED)|NEEDED|NEEDS|PLACEHOLDER|INSERT|TBD|TBC|TODO|VERIFY|PENDING|MISSING|FILL)\b)[A-Z][A-Z \t/–-]*\](?![(\[{]|:[ \t]*<?[a-z][a-z0-9+.-]*://)'
+    why: Unfilled placeholder text
+    elsewhere: true
+  # Text left to stand in for text, and instructions left for the writer. "Replace later" only
+  # where the phrase ends: at a stop, or at a line end before a blank line, a list item, a
+  # table row or the end of the file. So "drugs that replace later lines of therapy" is prose,
+  # hard-wrapped after "later" or not. "Discussion prompt" only as
+  # a label, since a paper on teaching ends its cases with discussion prompts.
+  - id: placeholder-filler
+    pattern: '(?i)\blorem\s+ipsum\b|\b(?:fill|replace)\s+(?:this\s+|it\s+)?(?:in\s+)?later(?=[ \t]*(?:[.)\]:;,]|\r?\n[ \t]*(?:\r?\n|\Z|[-*+][ \t]|\d+[.)][ \t]|\|)|\Z))|\bthis\s+section\s+is\s+a\s+template\b|\bdiscussion\s+prompts?[ \t]*:|\bdelete\s+this\s+(?:section|paragraph)\b|\badd\s+your\s+[^.\n]{1,40}?\s+here\b'
+    why: Unfilled placeholder text, or an instruction left for the writer
+    elsewhere: true
+  # The words that mark a gap: TODO, TBD, FIXME, a doubled TKTK (a single "TK" is a kinase in
+  # medicine), a run of X, "n = XXXX", a date of Xs, "2025-XX-XX", and a name in capitals
+  # joined by underscores, "INSERT_SOURCE_URL". A karyotype, 45 to 49 chromosomes and then the
+  # Xs, "47,XXX", and "XXX syndrome" are no gap; "1,XXX reports", a count of thousands, is. In the manuscript in any case, as they always were. Elsewhere in capitals only:
+  # "Todo" opens many a Spanish title.
+  - id: placeholder-word
+    pattern: '\b(?:TODO|TBD|FIXME|TKTK)\b|(?<!\b4[5-9],)(?<!\b4[5-9], )\bX{3,}\b(?!\s+syndrome)|\b\d{4}-XX\b|\b(?:INSERT|PASTE)_[A-Z0-9_]+\b'
+    why: Unfilled placeholder text
+    elsewhere: true
+    any_case_in_manuscript: true
   - id: knowledge-cutoff
     pattern: "(?i)\\b(?:as of my (?:last )?(?:knowledge|training)|my training data|I don't have access to)\\b"
     why: A model disclaiming its own limits, left in the manuscript
@@ -86,6 +133,33 @@ phrases:
   - id: ever-evolving
     pattern: '(?i)\b(?:ever[- ]evolving|rapidly evolving|fast[- ]paced)\b'
     why: Puffery
+  # Communication meant for the user of a chat, left in the text: the closers and offers of
+  # more the essay lists.
+  - id: chat-closer
+    pattern: '(?i)\bI\s+hope\s+(?:this|that|it)\s+helps\b|\blet\s+me\s+know\s+(?:if|whether)\b|\bwould\s+you\s+like\s+(?:me\s+)?to\b|\bis\s+there\s+anything\s+else\b|\byou(?:''re|\s+are)\s+absolutely\s+right\b'
+    why: Words addressed to the user of a chat, not to the reader of a paper
+  # A disclaimer about the sources a model was given, from the essay's list. Not "not widely
+  # available" or "not widely reported", which a paper says of a drug or an adverse event.
+  - id: source-disclaimer
+    pattern: '(?i)\bspecific\s+(?:details|information)\b[^.;:]{0,60}?\b(?:are|is)\s+(?:limited|scarce)\b|\bnot\s+extensively\s+documented\b|\b(?:in|from)\s+the\s+(?:provided|available)\s+(?:sources|search\s+results)\b|\bbased\s+on\s+(?:the\s+)?available\s+information\b'
+    why: A disclaimer about the sources a model was given; a paper cites what it rests on
+  # A hedge on a hedge, "could potentially": one of them says it.
+  - id: stacked-hedge
+    pattern: '(?i)\b(?:could|may|might)\s+(?:potentially|possibly|conceivably)\b'
+    why: Two hedges where one says it
+  # The upbeat close about the future and the lasting importance of the subject.
+  - id: upbeat-close
+    pattern: '(?i)\bthe\s+future\s+of\s+[^.;:]{1,60}?\s+lies\s+in\b|\bcontinues?\s+to\s+thrive\b|\benduring\s+(?:relevance|legacy|significance)\b'
+    why: A conclusion about the future that no result supports
+  # Text about the text: a section announcing what it will discuss.
+  - id: text-about-text
+    pattern: '(?i)\bthis\s+(?:section|article|chapter)\s*,?\s+(?:we\s+)?(?:will|would|shall)\s+(?:discuss|explore|examine|delve|speculate|outline)\b'
+    why: Says what the text will do instead of doing it
+  # An instruction to the user of the text, a draft's "the user should add ...". A warning:
+  # a paper about a tool can say what its user should do.
+  - id: user-should
+    pattern: '(?i)\b(?:the\s+)?user\s+should\s+(?:add|insert|replace|fill|describe|update|edit|tailor|adapt)\b'
+    why: An instruction to whoever fills in the text, left in it
 
 # Attribution with nothing behind it. Reported only when no citation appears nearby, which
 # is the difference between a manuscript and an encyclopedia: here the fix is a reference.

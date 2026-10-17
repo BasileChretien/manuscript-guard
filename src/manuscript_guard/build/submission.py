@@ -83,6 +83,10 @@ def title_page(project: Project) -> str:
     order = [a["id"] for a in authors["affiliations"]]
     paper = project.paper
     lines = [f"# {paper['title']}", ""]
+    if paper.get("demonstration") is True:
+        # The paper says what its numbers are not: results of real data (item 42).
+        lines += ["**A demonstration.** The data this paper analyses are synthetic; its "
+                  "results describe no real population.", ""]  # fmt: skip
 
     short = paper.get("short_title")
     if short:
@@ -647,6 +651,8 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
         shutil.copy2(document, target)
         files.append(target)
 
+    from manuscript_guard.gates.journal_quotes import journal_checklist
+
     generated = [
         ("title-page.md", title_page(project)),
         ("credit-statement.md", credit_statement(project)),
@@ -658,6 +664,8 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
         # For the portal's abstract box: pasted from the .docx it carries whatever Word
         # and the clipboard make of it; this is the checked numbers and nothing else.
         ("abstract.txt", abstract),
+        # The journal's rules no gate checks, for the corresponding author to tick and sign.
+        ("journal-checklist.md", journal_checklist(project)),
     ]
     for name, text in generated:
         if text is None:

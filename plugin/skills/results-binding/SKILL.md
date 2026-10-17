@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed or duplicate-quantity.
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed or duplicate-quantity. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
 ---
 
 # Binding the numbers
@@ -62,6 +62,11 @@ What the emitter holds you to:
 - One namespace covers all scripts. A key published by two scripts is `duplicate-key`.
 - Inputs are declared, and their digests recorded. Change the data and G1 says which
   results are stale.
+- Data that are not the real data are declared so: `em.add_input("data/simulated.csv",
+  synthetic=True)` (`synthetic = TRUE` in R). G1 then names each result the manuscript
+  quotes from that run, and fails at submission. Only a worked example or a teaching paper
+  sets `demonstration: true` in `paper.yaml`, which the title page then states; never set it
+  to get a paper past the check.
 - Units are not rendered. Write `{{results.case.pct_serious}}%` in the text.
 - NumPy integers are refused; pass `int(x)`. Years and study periods are numbers like any
   other: emit them.
@@ -200,7 +205,7 @@ checked like any other.
 | `unresolved-binding` | the key does not exist; the finding suggests the nearest one |
 | `value-splits-paragraph` | the value prints display maths, a LaTeX environment, an HTML block tag or a line break into its sentence, where it can break the paragraph in parts in Word. Write that part in the `.md`, as a block of its own, and bind only the numbers in it |
 | `unquoted-result` | a published value is quoted nowhere: quote it, or emit with `quoted=False` |
-| `typed-parameter`, `typed-software-version` | the analysis declares this threshold or version: bind `{{results.param.…}}` or `{{results.software.…}}` rather than typing it |
+| `typed-parameter`, `typed-software-version`, `typed-dictionary-release` | the analysis declares this threshold, version or dictionary release: bind `{{results.param.…}}`, `{{results.software.…}}` or `{{results.dictionary.…}}` rather than typing it |
 | `parameter-unread` | the script declares a parameter and never reads the value `parameter()` returns: use it in the step it stands for, or remove it |
 | `threshold-undeclared` | a warning: a threshold typed in the Methods that no declared parameter has. Declare it if the code applies it; if the code applies another value, the Methods are wrong |
 | `unplaced-table` | an emitted table is never placed with `{{table.key}}` |

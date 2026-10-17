@@ -2,14 +2,14 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "6e3b9d8d0499552f4c0c76bb782479900bae814fc1fc6dba2cb842685e3a0709",
-    "generated_at": "2026-10-15T08:28:05+00:00",
+    "generated_by_sha256": "e1ac1d1bd501f6b6aacfcec9e76f6e4da2e388b1edf3176a8e4e25f75ab34853",
+    "generated_at": "2026-10-17T10:00:52+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.438"
+      "version": "0.2.444"
     },
     "vcs": {
-      "sha": "7c83f03ccac0c9c411cb6e9981450f95618244d8",
+      "sha": "17cf564ae7c90601cb769c7c7e090230821078a7",
       "dirty": true,
       "branch": "feat/statistics-whole"
     },
@@ -17,9 +17,16 @@
       {
         "path": "data/reports.csv",
         "sha256": "55aa913a7f8cbc6c432e263e04fa12f3e148809dbd4ddc6fc8fd5b10c916886c",
-        "bytes": 172822
+        "bytes": 172822,
+        "synthetic": true
+      },
+      {
+        "path": "data/event_terms.txt",
+        "sha256": "11c7ea29eed993adde1c66775c033e5133bb180a6bfa6f24b7f1fa0609a00c7d",
+        "bytes": 50
       }
     ],
+    "environment": [],
     "session": {
       "language": "Python",
       "version": "3.12.3",
@@ -98,7 +105,8 @@
     },
     "cohort.n_years": {
       "value": 10,
-      "display": "10"
+      "display": "10",
+      "unit": "years"
     },
     "case.n_cases": {
       "value": 77,
@@ -168,6 +176,12 @@
       "value": 3380,
       "display": "3380",
       "quoted": false
+    },
+    "dictionary.generator_event_terms": {
+      "value": "1",
+      "display": "1",
+      "label": true,
+      "role": "dictionary"
     }
   },
   "tables": {
@@ -623,6 +637,8 @@
       "n_used": 4000,
       "n_dropped": 0,
       "converged": true,
+      "covariance": "nonrobust",
+      "rows_sha256": "bf613ab651f66e796c1818fdd686d4b3ab9c3b1a0f24980f0008e9c544555f92",
       "events": 271,
       "events_by_level": {
         "age_group": {
@@ -643,29 +659,29 @@
   "steps": {
     "ror": {
       "lines": [
-        54,
-        58
+        56,
+        60
       ],
       "digest": "43994ea0f861fd9c11dd95e974d11a8092dac8245846d047087c06a0e4464051"
     },
     "ci": {
       "lines": [
-        62,
-        67
+        64,
+        69
       ],
       "digest": "341304bd156666d20b98966338e40a99de96809c7d95a808720cc8043ee94978"
     },
     "signal": {
       "lines": [
-        79,
-        81
+        81,
+        83
       ],
       "digest": "d2537ffaa2c3277dcd94b7608b1cc89116a4e9ad3860b5712e804e73052db159"
     },
     "adjusted": {
       "lines": [
-        90,
-        118
+        92,
+        120
       ],
       "digest": "ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf"
     }

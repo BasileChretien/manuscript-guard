@@ -39,7 +39,9 @@ def main() -> None:
     with DATA.open(encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
 
-    em = Emitter(__file__, inputs=[DATA])
+    em = Emitter(__file__)
+    # Simulated: the paper is a demonstration, and says so (paper.yaml, `demonstration`).
+    em.add_input(DATA, synthetic=True)
 
     # The choices the Methods state, declared where the code makes them and used from here.
     # The Methods bind them, so the alpha and the signal criterion they print are the ones
@@ -121,7 +123,9 @@ def main() -> None:
     em.value("cohort.n_drug_reports", a + b)
     em.value("cohort.period_start", years[0], display=str(years[0]))
     em.value("cohort.period_end", years[-1], display=str(years[-1]))
-    em.value("cohort.n_years", years[-1] - years[0] + 1)
+    # A number that is no count of people is emitted with its unit: a custodian's minimum
+    # cell count is read against the counts, and a short period is not a small cell.
+    em.value("cohort.n_years", years[-1] - years[0] + 1, unit="years")
 
     em.value("case.n_cases", a)
     em.value("case.n_serious", serious)
@@ -182,6 +186,14 @@ def main() -> None:
         ],
         caption="Reports by drug group. Values are n (%) unless stated.",
     )
+
+    # The dictionary the events were coded with, and its release, quoted where the code
+    # lists are. A real study names MedDRA and its version (`release_file=` reads it from
+    # MedDRA's own `meddra_release.asc`); this one's events are the data generator's terms,
+    # whose release is the first line of the list the generator writes.
+    terms = "data/event_terms.txt"
+    release = (ROOT / terms).read_text(encoding="utf-8").splitlines()[0]
+    em.dictionary("Generator event terms", release, release_file=terms)
 
     # The code lists the analysis selected on, published as RECORD 6.1 requires and as
     # READUS-PV expects for a case definition. Handed over as lists rather than as a typed

@@ -12,6 +12,7 @@ Every test here names the escape it closes.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -1053,6 +1054,61 @@ def test_a_statistic_says_what_it_belongs_to(scratch: Path) -> None:
         em.correction("other", "none")
     with pytest.raises(ValueError, match="declared twice"):
         em.correction("secondary", "bonferroni")
+
+
+def _meddra(scratch: Path, first_line: str) -> Path:
+    """A MedDRA ASCII release's `meddra_release.asc`, as the analysis has it."""
+    folder = scratch / "data" / "MedAscii"
+    folder.mkdir(parents=True)
+    path = folder / "meddra_release.asc"
+    path.write_text(first_line + "\n", encoding="utf-8")
+    return path
+
+
+def test_a_dictionary_is_its_release_as_the_analysis_has_it(scratch: Path) -> None:
+    _meddra(scratch, "26.1$English$$$$")
+    em = emitter(scratch)
+    assert em.dictionary("MedDRA", release_file="data/MedAscii/meddra_release.asc") == "26.1"
+    assert em.dictionary("WHODrug", "Global  B3 March 2025") == "Global B3 March 2025"
+    assert em.dictionary("ICD-10", "2019") == "2019"
+    document = em.document()
+    values = document["values"]
+    assert values["dictionary.meddra"] == {
+        "value": "26.1", "display": "26.1", "label": True, "role": "dictionary",
+    }  # fmt: skip
+    assert values["dictionary.icd_10"]["role"] == "dictionary"
+    assert [i["path"] for i in document["provenance"]["inputs"]] == [
+        "data/MedAscii/meddra_release.asc"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("call", "says"),
+    [
+        (lambda em: em.dictionary("MedDRA", "27.0",
+                                  release_file="data/MedAscii/meddra_release.asc"),
+         "was given, and meddra_release.asc says '26.1'"),
+        (lambda em: em.dictionary("WHODrug"), "give its release"),
+        (lambda em: em.dictionary("2019", "2019"), "named by its name"),
+        (lambda em: em.dictionary("MedDRA", release_file="data/none.asc"), "no file"),
+        # Round 1 of #287: R printed 27.0 as "27", and a number has no digits of its own.
+        (lambda em: em.dictionary("MedDRA", 27.0), "give the release as text"),
+    ],
+    ids=["disagrees with its file", "no release", "no name", "no file", "a number"],
+)
+def test_a_dictionary_whose_release_cannot_be_had_is_refused(scratch, call, says) -> None:
+    _meddra(scratch, "26.1$English$$$$")
+    with pytest.raises((ValueError, FileNotFoundError), match=re.escape(says)):
+        call(emitter(scratch))
+
+
+@pytest.mark.parametrize("first_line", ["English$26.1$", "", "MedDRA 26.1"])
+def test_a_release_file_that_does_not_open_with_a_version_is_refused(
+    scratch: Path, first_line: str
+) -> None:
+    _meddra(scratch, first_line)
+    with pytest.raises(ValueError, match="does not open with a MedDRA version"):
+        emitter(scratch).dictionary("MedDRA", release_file="data/MedAscii/meddra_release.asc")
 
 
 def test_a_unit_missing_in_a_row_the_model_used_is_refused(scratch: Path) -> None:

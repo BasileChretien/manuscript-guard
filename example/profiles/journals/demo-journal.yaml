@@ -14,6 +14,8 @@ publisher: "Nobody"
 source_url: "https://example.invalid/demo-journal/instructions"
 retrieved_on: 2026-08-03
 retrieved_by: "invented for the manuscript-guard example"
+# The page as stored when the profile was filled: profiles/journals/sources/demo-journal.txt.
+page_sha256: aa948d6523f6ade30c4a791ac022f54759fdb93af70ea1a10f0ad6cc5f6c7731
 article_type: "Original research"
 english_variant: en-GB
 
@@ -48,6 +50,31 @@ references:
 
 reporting_guidelines:
   - DEMO-OBS
+
+# Each rule above, in the words of the stored page; G4 holds every quote to it.
+quotes:
+  english_variant: "Write in British English throughout."
+  limits.abstract_words: "Abstracts should not exceed 300 words."
+  limits.main_text_words: "should not exceed 3500 words"
+  limits.references: "Cite no more than 50 references."
+  limits.figures: "Include no more than four figures"
+  limits.tables: "no more than four tables"
+  structure.required_sections: >-
+    Organise the article under the headings Introduction, Methods, Results and Discussion.
+  required_statements.data-availability: >-
+    Every research article must include a data availability statement.
+  required_statements.funding: "Declare all sources of funding, including where there was none."
+  required_statements.competing-interests: "All authors must declare their competing interests."
+  references: >-
+    Cite in the Vancouver style, with references numbered in the order they are first cited.
+  reporting_guidelines: >-
+    Observational studies follow the DEMO-OBS checklist, completed and submitted with the
+    manuscript.
+
+# The page's rules that no gate checks, quoted so that none is dropped.
+manual:
+  - rule: cover letter
+    quote: "Send a cover letter of no more than one page with every submission."
 
 notes:
   - "Invented. Do not submit anything anywhere on the strength of this file."

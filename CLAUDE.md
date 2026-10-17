@@ -99,7 +99,9 @@ uploaded to the supplementary slot rather than pasted onto the end of the paper.
 
 CLI: `check` (all gates, exit 1 on failure, `--json` for machines), `build` (the .docx;
 live Zotero fields by default, `--offline` for citeproc), `sync-bib` (rewrite
-`references.bib` from Zotero), `explain` (how every number in a file was classified),
+`references.bib` from Zotero), `lookup` (each cited DOI and PMID asked of the registries
+once, the answers kept in `literature/lookups/`; `--dry-run` sends nothing; the tests answer
+from a loopback server), `explain` (how every number in a file was classified),
 `reworded` (an edit changed the wording and no binding, citation key or typed number:
 the manuscript against the last commit, `--since` another, or one file `--before` a copy),
 `render` (substitute bindings only), `init` (scaffold a project),

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Iterable
+from decimal import ROUND_HALF_UP, Decimal
 from functools import cache
 from typing import Any, TypeVar
 
@@ -365,6 +366,39 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+#: The headings of the parts of a paper, each written more than one way, and bindings to
+#: put under them: what G8 reads to find a number a summary gives and the paper does not.
+SUMMARIES = (
+    "\n\n# Abstract\n\n", "\n\n# 1. Summary\n\n", "\n\n## Results\n\n", "\n\n# 3. Results\n\n",
+    "\n\nFindings\n========\n\n", "\n\n# **Results and discussion**\n\n", "\n\n# Conclusions\n\n",
+    "\n\n## 5.1 Concluding remarks\n\n", "\n\n# Discussion\n\n", "\n\n# Methods\n\n",
+    "\n\n# Introduction\n\n", "{{results.ror.point}}", "{{results.case.n_cases}}",
+    "{{ results.ror.ci_low }}", "{{lit.incidence}}", "{{results.ror.point}}",
+)  # fmt: skip
+
+
+def summaries() -> st.SearchStrategy[str]:
+    """A manuscript holding every heading and binding of `SUMMARIES`, in an order and among
+    pieces of the pool drawn each time: a rule broken for one way of writing a heading is
+    seen whatever the seed."""
+    between = _in_a_row(_pool(()), few=3, many=10)
+    return st.permutations(SUMMARIES).flatmap(
+        lambda order: st.tuples(*(between for _ in order)).map(
+            lambda gaps: "".join(gap + piece for gap, piece in zip(gaps, order, strict=True))
+        )
+    )
+
+
+#: Quotations as a sentence writes them, with the citation that says whose words they are.
+_OPEN, _CLOSE = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
+QUOTED = (
+    _OPEN + "the risk was acceptable in all but the frailest" + _CLOSE + " [@agency2019]",
+    '"four words stand in here" [@a]',
+    _OPEN + "It was low. It was acceptable." + _CLOSE + " [@b; @c]",
+    '"so-called" [@d]',
+)
+
+
 def bindings() -> st.SearchStrategy[str]:
     """A manuscript with a binding where a line begins: after a line end, of Windows or
     not, and in some texts as the first thing in the file.
@@ -573,6 +607,319 @@ def quotations(draw: st.DrawFn) -> tuple[str, str]:
     return source, " ".join(words[first : last + 1])
 
 
+# ---------------------------------------------------------------------- a vector figure
+
+#: Each kind of text a vector figure holds: what G4 reads the size of.
+TEXT_KINDS = ("unset", "pt", "mm", "em", "tspan", "use", "turned", "weight", "class")
+
+
+def _composed(left: tuple[float, ...], right: tuple[float, ...]) -> tuple[float, ...]:
+    """Two linear maps, (a, b, c, d) as SVG writes a matrix's first four, one after the
+    other: the parent's, then the child's."""
+    a, b, c, d = left
+    e, f, g, h = right
+    return (a * e + c * f, b * e + d * f, a * g + c * h, b * g + d * h)
+
+
+@st.composite
+def _transforms(draw: st.DrawFn) -> tuple[str, tuple[float, ...]]:
+    """A transform as an SVG writes it, and its linear part."""
+    import math
+
+    kind = draw(st.sampled_from(("scale", "scale2", "rotate", "matrix", "translate")))
+    one, two = (draw(st.integers(250, 3000)) / 1000 for _ in range(2))
+    if kind == "scale":
+        return f"scale({one})", (one, 0.0, 0.0, one)
+    if kind == "scale2":
+        return f"scale({one} {two})", (one, 0.0, 0.0, two)
+    if kind == "rotate":
+        angle = draw(st.integers(-180, 180))
+        turn = math.radians(angle)
+        return f"rotate({angle} 5 5)", (math.cos(turn), math.sin(turn), -math.sin(turn),
+                                        math.cos(turn))  # fmt: skip
+    if kind == "matrix":
+        skew = draw(st.integers(-500, 500)) / 1000
+        return f"matrix({one} 0 {skew} {two} 3 4)", (one, 0.0, skew, two)
+    return f"translate({one} {two})", (1.0, 0.0, 0.0, 1.0)
+
+
+@st.composite
+def vector_figures(draw: st.DrawFn) -> tuple[str, dict[str, float], list[float]]:
+    """An SVG figure with a text of every kind in it, each under transforms drawn at random:
+    a size not set, in pt, in mm, in em of its group's, a tspan in percent of its text's,
+    a text drawn through `<use>`, and one turned inside a scale that is not the same both
+    ways; and a line beside each. With the height each text is drawn at in units, and the
+    width of each line, worked out from the matrices."""
+    import math
+
+    texts: dict[str, float] = {}
+    lines: list[float] = []
+    defs, body, rules = [], [], []
+    for number, kind in enumerate(draw(st.permutations(TEXT_KINDS))):
+        label = f"t{number}"
+        drawn = draw(st.lists(_transforms(), max_size=3))
+        linear = (1.0, 0.0, 0.0, 1.0)
+        for _written, part in drawn:
+            linear = _composed(linear, part)
+        size = draw(st.integers(4, 24))
+        inner = f'<text x="1" y="1" font-size="{size}">{label}</text>'
+        units = float(size)
+        # The transforms inside the drawn ones that the kind itself puts on its text.
+        own = (1.0, 0.0, 0.0, 1.0)
+        if kind == "unset":
+            inner, units = f'<text x="1" y="1">{label}</text>', 16.0
+        elif kind == "pt":
+            inner, units = f'<text x="1" y="1" font-size="{size}pt">{label}</text>', size * 4 / 3
+        elif kind == "mm":
+            inner = f'<text x="1" y="1" style="font-size: {size}mm">{label}</text>'
+            units = size * 96 / 25.4
+        elif kind == "em":
+            group, em = draw(st.integers(6, 20)), draw(st.integers(5, 20)) / 10
+            text = f'<text x="1" y="1" font-size="{em}em">{label}</text>'
+            inner, units = f'<g font-size="{group}">{text}</g>', group * em
+        elif kind == "tspan":
+            share = draw(st.integers(40, 90))
+            inner = (f'<text x="1" y="1" font-size="{size}">{label}'
+                     f'<tspan font-size="{share}%">s{number}</tspan></text>')  # fmt: skip
+            texts[f"s{number}"] = size * share / 100 * math.hypot(linear[2], linear[3])
+        elif kind == "use":
+            scale = draw(st.integers(250, 3000)) / 1000
+            defs.append(f'<text id="u{number}" x="1" y="1" font-size="{size}">{label}</text>')
+            inner = f'<use xlink:href="#u{number}" transform="scale({scale})"/>'
+            own = (scale, 0.0, 0.0, scale)
+        elif kind == "weight":
+            # A bold text, its weight before its size, as matplotlib writes it.
+            inner = f"<text x=\"1\" y=\"1\" style=\"font: 700 {size}px sans-serif\">{label}</text>"
+        elif kind == "class":
+            # A size set through a class, as Illustrator writes it, over the attribute.
+            rules.append(f".c{number} {{ font-size: {size}px }}")
+            inner = f'<text x="1" y="1" class="c{number}" font-size="99">{label}</text>'
+        elif kind == "turned":
+            inner = (f'<g transform="scale(2 0.5)"><g transform="rotate(90)">'
+                     f'<text x="1" y="1" font-size="{size}">{label}</text></g></g>')  # fmt: skip
+            # Turned a quarter inside it, the text stands along the scale's 2, not its 0.5.
+            own = _composed((2.0, 0.0, 0.0, 0.5), (0.0, 1.0, -1.0, 0.0))
+        width = draw(st.integers(1, 30)) / 10
+        line = f'<path d="M0 0L1 1" stroke="black" stroke-width="{width}"/>'
+        if kind == "class":
+            # A line stroked by the stylesheet alone, as svglite strokes a black one.
+            line = f'<path class="stroked" d="M0 0L1 1" style="stroke-width: {width}"/>'
+        whole = _composed(linear, own)
+        texts[label] = units * math.hypot(whole[2], whole[3])
+        lines.append(width * math.sqrt(abs(linear[0] * linear[3] - linear[1] * linear[2])))
+        for written, _part in reversed(drawn):
+            inner, line = (f'<g transform="{written}">{inner}</g>',
+                           f'<g transform="{written}">{line}</g>')  # fmt: skip
+        body += [inner, line]
+    document = (
+        '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+        'width="400pt" height="300pt" viewBox="0 0 400 300">'
+        f"<style>.stroked {{ stroke: #000000 }} {' '.join(rules)}</style>"
+        f"<defs>{''.join(defs)}</defs>{''.join(body)}</svg>"
+    )
+    return document, texts, sorted(lines)
+
+
+# --------------------------------------------------------------------------- a PDF figure
+
+
+def pdf_document(
+    content: bytes,
+    fonts: dict[str, bytes] | None = None,
+    forms: dict[str, tuple[bytes, str]] | None = None,
+    *,
+    width: float = 216,
+    compress: bool = True,
+    packed: bool = False,
+    split: bool = False,
+) -> bytes:
+    """A PDF of one page that draws `content`, with `fonts` (a name and the font's own
+    dictionary, which may refer to the objects after it as `{n}`) and `forms` (a name, and
+    the form's content and `/Matrix`). Its fonts are packed in an object stream where
+    `packed` is set, and its content in a stream for each line where `split` is. No
+    cross-reference table: what reads it reads its objects."""
+    fonts = fonts or {"F1": b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"}
+    forms = forms or {}
+    objects: list[bytes] = []
+
+    def add(body: bytes) -> int:
+        objects.append(body)
+        return len(objects)
+
+    def stream(data: bytes, extra: bytes = b"") -> bytes:
+        import zlib
+
+        if compress:
+            data = zlib.compress(data)
+            extra += b" /Filter /FlateDecode"
+        return b"<< /Length %d%s >>\nstream\n" % (len(data), extra) + data + b"\nendstream"
+
+    add(b"<< /Type /Catalog /Pages 2 0 R >>")
+    add(b"<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 %g 144] >>" % width)
+    add(b"")  # the page, once its resources are known
+    pieces = content.split(b"\n") if split else [content]
+    for piece in pieces:
+        add(stream(piece))
+    font_refs, packed_bodies = [], []
+    for name, body in fonts.items():
+        number = len(objects) + 1 if not packed else 100 + len(packed_bodies)
+        body = body.replace(b"{n}", b"%d" % (number + 1))
+        if packed:
+            packed_bodies.append((number, body))
+        else:
+            add(body)
+        font_refs.append(b"/%s %d 0 R" % (name.encode(), number))
+    if packed:
+        header = b" ".join(b"%d %d" % (n, sum(len(b) + 1 for _m, b in packed_bodies[:i]))
+                           for i, (n, _b) in enumerate(packed_bodies))  # fmt: skip
+        body = b"\n".join(b for _n, b in packed_bodies)
+        add(stream(header + b"\n" + body, b" /Type /ObjStm /N %d /First %d"
+                   % (len(packed_bodies), len(header) + 1)))  # fmt: skip
+    form_refs = []
+    for name, (data, matrix) in forms.items():
+        number = add(stream(data, b" /Type /XObject /Subtype /Form /BBox [0 0 216 144] "
+                                  b"/Matrix [" + matrix.encode() + b"]"))  # fmt: skip
+        form_refs.append(b"/%s %d 0 R" % (name.encode(), number))
+    contents = b"[" + b" ".join(b"%d 0 R" % (4 + i) for i in range(len(pieces))) + b"]"
+    objects[2] = (b"<< /Type /Page /Parent 2 0 R /Contents " + contents
+                  + b" /Resources << /Font << "
+                  + b" ".join(font_refs) + b" >> /XObject << " + b" ".join(form_refs)
+                  + b" >> >> >>")  # fmt: skip
+    out = b"%PDF-1.5\n"
+    for number, body in enumerate(objects, 1):
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    return out + b"%%EOF\n"
+
+
+def _row(left: tuple[float, ...], right: tuple[float, ...]) -> tuple[float, ...]:
+    """Two PDF matrices, (a, b, c, d, e, f), `left` then `right`, a point a row vector."""
+    a, b, c, d, e, f = left
+    g, h, i, j, k, m = right
+    return (a * g + b * i, a * h + b * j, c * g + d * i, c * h + d * j,
+            e * g + f * i + k, e * h + f * j + m)  # fmt: skip
+
+
+@st.composite
+def pdf_figures(draw: st.DrawFn) -> tuple[bytes, list[float], list[float]]:
+    """A PDF figure whose page draws texts and lines under transforms drawn at random:
+    `cm` inside `q` and `Q`, a text matrix set by `Tm` and moved by `Td`, and a form drawn
+    by `Do` under its own `/Matrix`; and a path that is filled, which is no line. With the
+    height of each text and the width of each line, worked out from the matrices."""
+    import math
+
+    def matrix() -> tuple[float, ...]:
+        kind = draw(st.sampled_from(("scale", "scale2", "turn", "skew", "move")))
+        one, two = (draw(st.integers(250, 3000)) / 1000 for _ in range(2))
+        if kind == "scale":
+            return (one, 0.0, 0.0, one, 3.0, 4.0)
+        if kind == "scale2":
+            return (one, 0.0, 0.0, two, 0.0, 0.0)
+        if kind == "turn":
+            return (0.0, one, -one, 0.0, 5.0, 5.0)
+        if kind == "skew":
+            return (one, 0.0, draw(st.integers(-500, 500)) / 1000, two, 0.0, 0.0)
+        return (1.0, 0.0, 0.0, 1.0, one, two)
+
+    def written(m: tuple[float, ...]) -> bytes:
+        return b" ".join(b"%g" % x for x in m)
+
+    def drawing(ctm: tuple[float, ...]) -> tuple[bytes, list[float], list[float]]:
+        """Some texts and lines, each under transforms of its own, inside q and Q."""
+        content, texts, lines = b"", [], []
+        for _ in range(draw(st.integers(1, 3))):
+            around = [matrix() for _ in range(draw(st.integers(0, 2)))]
+            inner = ctm
+            for m in around:
+                inner = _row(m, inner)
+            size = draw(st.integers(4, 24))
+            tm = matrix()
+            moved = (1.0, 0.0, 0.0, 1.0, *(draw(st.integers(-20, 20)) for _ in range(2)))
+            text = _row(_row(moved, tm), inner)
+            width = draw(st.integers(1, 30)) / 10
+            shows = draw(st.sampled_from((b"(t) Tj", b"[(t) -20 (u)] TJ", b"(t) '")))
+            # A line stroked at its width, and a path filled, which draws no line.
+            strokes = b" ET %g w 0 0 m 10 10 l S 2 w 0 0 m 5 5 l f Q\n" % width
+            content += (b"q " + b" ".join(written(m) + b" cm" for m in around)
+                        + b" BT /F1 %d Tf " % size + written(tm) + b" Tm %g %g Td " % moved[4:]
+                        + shows + strokes)  # fmt: skip
+            texts.append(size * math.hypot(text[2], text[3]))
+            lines.append(width * math.sqrt(abs(inner[0] * inner[3] - inner[1] * inner[2])))
+        return content, texts, lines
+
+    # The whole page under a transform that one content stream opens and another closes,
+    # as an editor wraps a page: the streams draw as one.
+    wrap = matrix()
+    content, texts, lines = drawing(wrap)
+    # A transform left open by a q that a Q closes: what follows is drawn without it.
+    content = b"q " + written(matrix()) + b" cm Q\n" + content
+    form_matrix, placed = matrix(), matrix()
+    # A form draws under its /Matrix, and that under the page's transform where `Do` is;
+    # and with the line width set before `Do`, until it sets one of its own.
+    inner = _row(form_matrix, _row(placed, wrap))
+    form_drawn, form_texts, form_lines = drawing(inner)
+    inherited = draw(st.integers(1, 30)) / 10
+    form_drawn = b"0 0 m 3 3 l S\n" + form_drawn
+    form_lines.append(inherited * math.sqrt(abs(inner[0] * inner[3] - inner[1] * inner[2])))
+    content += b"q " + written(placed) + b" cm %g w /X1 Do Q\n" % inherited
+    content = b"q " + written(wrap) + b" cm\n" + content.rstrip(b"\n").replace(b"\n", b" ") + b"\nQ"
+    document = pdf_document(content, forms={"X1": (form_drawn, written(form_matrix).decode())},
+                            split=True)  # fmt: skip
+    return document, sorted(texts + form_texts), sorted(lines + form_lines)
+
+
+# -------------------------------------------------------------- the results a plan promises
+
+_STEMS = ("ror", "case", "cohort", "hr", "events")
+_LEAVES = ("point", "ci_low", "n", "pct_serious", "n-dropped")
+#: Code in a list item that is not a key: no dot in it.
+_CODE = ("glm", "R", "lme4", "n_cases")
+_MARKERS = ("- ", "* ", "+ ", "1. ")
+
+
+@st.composite
+def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
+    """A plan whose Planned results section lists results in each way an item holds one,
+    with the keys it lists, in order, as (key, whether it is a group).
+
+    Each example holds one item of every kind, in an order drawn each time: a key; a key as
+    the manuscript binds it; a key with no dot, bound; a group of keys; words and no code;
+    code that is not a key; a key nested under an item that has none; and an item with no
+    key followed, past a blank line, by prose that holds one. Then a subsection with a key of
+    its own. The section
+    comes before the drawn text, which an open fence would otherwise swallow it into."""
+    words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=6).map(" ".join)
+    marker = st.sampled_from(_MARKERS)
+
+    def key() -> str:
+        return f"{draw(st.sampled_from(_STEMS))}.{draw(st.sampled_from(_LEAVES))}"
+
+    def wrapped() -> str:
+        return draw(st.sampled_from((" ", "\n  "))).join((draw(words), draw(words)))
+
+    kinds: list[tuple[str, list[tuple[str, bool]]]] = []
+    plain, bound, stem = key(), key(), draw(st.sampled_from(_STEMS))
+    kinds.append((f"{draw(marker)}`{plain}`: {wrapped()}\n", [(plain, False)]))
+    kinds.append((f"{draw(marker)}`results.{bound}` {wrapped()}\n", [(bound, False)]))
+    undotted = draw(st.sampled_from(_STEMS))
+    kinds.append((f"{draw(marker)}`results.{undotted}`: {draw(words)}\n", [(undotted, False)]))
+    kinds.append((f"{draw(marker)}`{stem}.*`: {wrapped()}\n", [(stem, True)]))
+    kinds.append((f"{draw(marker)}{wrapped()}\n", []))
+    kinds.append((f"{draw(marker)}`{draw(st.sampled_from(_CODE))}` {draw(words)}\n", []))
+    nested = key()
+    kinds.append((f"- {draw(words)}\n\n  - `{nested}`: {draw(words)}\n", [(nested, False)]))
+    kinds.append((f"- {draw(words)}\n\n{draw(words)} `{key()}` {draw(words)}.\n", []))
+    order = draw(st.permutations(range(len(kinds))))
+    items = "\n".join(kinds[index][0] for index in order)
+    listed = [found for index in order for found in kinds[index][1]]
+    secondary = key()
+    plan = (
+        f"# Analysis plan\n\n## Planned results\n\n{items}\n"
+        f"### Secondary\n\n{draw(marker)}`{secondary}`: {draw(words)}\n\n"
+        f"## Outcome\n\n{draw(texts())}\n"
+    )
+    return plan, [*listed, (secondary, False)]
+
+
 #: What can stand in a stored source between two words of a quote taken from it: line
 #: numbers, figures, a column's or a header's words, a hyphen at the end of a line, a symbol.
 INTERRUPTIONS = (
@@ -611,6 +958,25 @@ WHOLE = (
 )  # fmt: skip
 
 
+#: A placeholder of each kind G6 reads, as it is typed and as the rule finds it; the words
+#: that are one in the manuscript only, in lower case; and what looks like one and is prose:
+#: a karyotype, a syndrome, a link, a title translated into English in brackets, a phrase
+#: that goes on, a kinase. What the placeholder reading must tell apart.
+PLACEHOLDERS = (
+    ("XXXX", "XXXX"), ("[TO BE COMPLETED]", "[TO BE COMPLETED]"),
+    ("[Repository]", "[Repository]"), ("[describe the cohort]", "[describe the cohort]"),
+    ("lorem ipsum", "lorem ipsum"), ("fill in later.", "fill in later"), ("TODO", "TODO"),
+    ("2025-XX-XX", "2025-XX"), ("INSERT_SOURCE_URL", "INSERT_SOURCE_URL"),
+    ("[insert the\nname]", "[insert the\nname]"), ("1,XXX", "XXX"),
+)  # fmt: skip
+LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
+LOOKALIKES = (
+    "47,XXX", "XXX syndrome", "[repository](https://example.org)",
+    "[Add-on therapy in epilepsy]", "replace later lines", "replace later\nlines",
+    "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]",
+)  # fmt: skip
+
+
 #: A statistic in each of the ways one is written, typed and bound, and a number with
 #: its unit: what the notation reading must count apart.
 #: Bindings with a unit written after them, each way a unit is written.
@@ -624,12 +990,27 @@ BOUND_UNITS = (
     "{{results.temp}} \N{DEGREE SIGN}C",
 )  # fmt: skip
 
+#: A journal's limit as its page may write it, and numbers and words it is not.
+QUOTED_LIMITS = (
+    "3500", "3,500", "3 500", "3500-word", "13500", "3500.5", "3,5000", "35000", "four",
+    "fourteen", "fourfold", "Four", "4", "14", "4.5",
+)  # fmt: skip
+
 NOTATED = (
     "P = 0.03", "p=0.04", "*P* < 0.001", "p-value", "n = 12", "n=3", "N= 40",
     "95% CI 1.2 to 3.4", "95% CI 1.2-3.4", "(95% CI {{results.low}} to {{results.high}})",
     "P = {{results.p}}", "5%", "5 %", "5mg", "5 mg", "{{results.dose}}mL",
     "(95% CI 80%-93%; 12 studies)", "2500g", "16,000g", "(CI 95%-0.3 to 0.4)",
 )  # fmt: skip
+
+#: A coding dictionary's release typed beside its name and elsewhere, and its name inside a
+#: longer word: what G2 finds typed where it should be bound.
+RELEASED = (
+    "MedDRA version 26.1", "MedDRA 26.1", "26.1", "WHODrug Global B3 March 2025",
+    "Global B3 March 2025", "ICD-10 2019", "ICD 10 version 2019", "in 2019", "micd_10ed 2019",
+    "{{results.dictionary.meddra}}", "MedDRA" + chr(10) + "26.1",
+)  # fmt: skip
+
 
 #: A test statistic and its P in each of the ways a results sentence writes them, right and
 #: wrong, and what a sentence says of a test that is not the textbook one: what the reading
@@ -642,6 +1023,217 @@ REPORTED = (
     "z = 4.10, P = 4.1e-5", "Z = 4.10, P = 4.1 x 10^-5^", "z = 1.2, p\n= .23", "one-sided",
     "Welch's", "after Bonferroni adjustment", "{{results.t}}", "p = {{results.p}}", "t(",
 )  # fmt: skip
+
+#: An estimate and its interval in each of the ways a results sentence writes them, right
+#: and wrong, with a P and without, and what a sentence says of an interval or a P that is
+#: not the plain one: what the reading of reported intervals finds and judges.
+ESTIMATES = (
+    "OR 2.6 (95% CI 2.1 to 3.2)", "OR 2.6 (95% CI 1.2-3.2)", "HR 0.80; 95% CI: 0.70, 0.91",
+    "the odds ratio was 1.9 (95% CI 1.2\N{EN DASH}3.0), P = 0.40", "aOR = 1.5 [CI 95% 1.1, 2.0]",
+    "MD \N{MINUS SIGN}0.4 (95% CI \N{MINUS SIGN}0.9 to 0.1), P = 0.01",
+    "mean difference 0.4 (95% CI -0.9--0.1)", "RR 1.50 (90% CI 1.05 to 2.14), P = 0.07",
+    "(95% profile-likelihood CI", "Bonferroni-adjusted P = 0.40", "P = 0.40 for interaction",
+    "and 1.1 (95% CI 0.8 to 1.5)", "hazard ratio\n2.1 (95% CI", "{{results.or}}",
+    "(95% CI {{results.lo}} to {{results.hi}})", "P = {{results.p}}", "CI 3.2 to 2.1",
+)  # fmt: skip
+
+
+# ------------------------------------------------------------------------ a table's shares
+
+#: What the rows of a table of shares are about. None names a statistic, a note or an n.
+CHARACTERISTICS = (
+    "Diabetes", "Hypertension", "Female sex", "Current smoker", "Prior stroke",
+    "Heart failure", "Statin use", "Chronic kidney disease",
+)  # fmt: skip
+#: The categories of a characteristic, and the characteristics that have them.
+CATEGORIES = ("North", "South", "East", "West")
+SPLIT_BY = ("Region", "Education", "Season of entry")
+#: How a header names its column's denominator.
+HEADED = (
+    "{arm} (n = {n})", "{arm} (N={n})", "{arm}, n = {n}",
+    "{arm}\N{NO-BREAK SPACE}(n\N{NO-BREAK SPACE}=\N{NO-BREAK SPACE}{n})",
+)  # fmt: skip
+#: A footnote marker, and whether it ends the label rather than following its words.
+MARKERS = (
+    ("^a^", False), ("[^1]", False), ("\N{DAGGER}", False), ("\N{DOUBLE DAGGER}", False),
+    ("*", True), ("\N{SUPERSCRIPT ONE}", True),
+)  # fmt: skip
+#: Rows that name another statistic, which are never read as shares, although each says %.
+NOT_SHARES = ("HbA1c, %, mean (SD)", "Ejection fraction, %, median (IQR)",
+              "Adherence, %, median (range)")  # fmt: skip
+#: Rows whose label gives a unit, a "%", and whose mean (SD) is printed as whole numbers:
+#: never read as shares either (round 1 of #314).
+UNITS = ("Oxygen saturation, %", "LVEF, %", "Haematocrit, %")
+#: What a characteristic's own label row holds beside it: nothing, or its P value.
+P_VALUES = ("", "0.04", "<0.001", "P = 0.12", "0.81*")
+#: The kinds of row each table of `share_tables` holds one of.
+SHARE_ROWS = (
+    "right", "wrong", "mean", "unit", "noted", "group", "summed", "subtypes", "own",
+    "of the row",
+)  # fmt: skip
+
+#: A share as the reading finds it: its line, count, share as printed, denominator, whether
+#: it is uncertain, and whether it is off.
+Shared = tuple[int, int, str, "int | None", bool, bool]
+
+
+def _printed(count: int, over: int, places: int) -> str:
+    """`count` of `over` as a share, rounded half up to `places`."""
+    step = Decimal(1).scaleb(-places)
+    return str((Decimal(100 * count) / Decimal(over)).quantize(step, rounding=ROUND_HALF_UP))
+
+
+def _about_100(percents: list[str]) -> bool:
+    """Whether a row's shares could be shares of its total: they add up to 100 within what
+    their rounding allows."""
+    slack = sum(Decimal(5).scaleb(-len(p.partition(".")[2]) - 1) for p in percents)
+    return abs(sum(Decimal(p) for p in percents) - 100) <= slack
+
+
+def _wrong(draw: st.DrawFn, percents: list[str], which: int, places: int) -> list[str]:
+    """`percents` with the one at `which` put a few units off, and off far enough that the
+    row's shares do not add up to 100 either."""
+    step = Decimal(1).scaleb(-places)
+    units = draw(st.integers(3, 60)) * draw(st.sampled_from((1, -1)))
+    for tried in (units, -units, *(way * more for more in range(3, 200) for way in (1, -1))):
+        value = Decimal(percents[which]) + tried * step
+        moved = [*percents[:which], str(value.quantize(step)), *percents[which + 1 :]]
+        if 0 <= value <= 100 and not _about_100(moved):
+            return moved
+    raise AssertionError(f"no share off from {percents}")  # pragma: no cover
+
+
+@st.composite
+def share_tables(draw: st.DrawFn) -> tuple[str, list[Shared]]:
+    """A paper with a table of shares, a row of each kind of `SHARE_ROWS` in an order drawn:
+    shares right under a label that says n (%), and one wrong among cells that say %; a mean
+    (SD), under a label that names it, and under one whose "%" is a unit; a share wrong
+    under a label with a footnote marker; the categories of a characteristic under a label
+    that says n (%), and those of one under a label that says nothing, whose shares add up
+    to 100; a row and its subtypes, shares of that row's count; a count with its own
+    denominator, one right and one wrong; and a row of shares of its own total, which are
+    not their column's. Then a table
+    whose header names no denominator, the first table's wrong share in a fenced listing,
+    and a count and its share in a sentence, none of which is held to anything. With each
+    share the reading finds (`Shared`), in the order it finds them."""
+    places = draw(st.integers(0, 2))
+    grouped = draw(st.booleans())
+    sizes = [draw(st.integers(40, 5000)) for _arm in range(2)]
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
+    name = st.sampled_from(CHARACTERISTICS)
+    lines: list[str] = [draw(sentence).capitalize() + ".", ""]
+    expected: list[Shared] = []
+
+    def count(number: int) -> str:
+        return f"{number:,}" if grouped else str(number)
+
+    def row(label: str, cells: list[str], p: str = "") -> None:
+        """A row, with a P value in the last column or nothing."""
+        lines.append("| " + " | ".join([label, *cells, p]) + " |")
+
+    def shares(label: str, counts: list[int], percents: list[str], overs: list[Any], *,
+               wrong: int | None = None, sign: str = "", noted: bool = False,
+               own: bool = False, read: tuple[int, ...] = (0, 1)) -> None:  # fmt: skip
+        """A row of shares, and what the reading finds in it, in the columns it reads."""
+        drawn = list(zip(counts, percents, overs, strict=True))
+        row(label, [f"{count(c)}/{count(d)} ({p}{sign})" if own else f"{count(c)} ({p}{sign})"
+                    for c, p, d in drawn])  # fmt: skip
+        expected.extend((len(lines), c, p, d, noted, column == wrong)
+                        for column, (c, p, d) in enumerate(drawn) if column in read)  # fmt: skip
+
+    def counted(overs: list[int]) -> tuple[list[int], list[str]]:
+        counts = [draw(st.integers(0, n)) for n in overs]
+        return counts, [_printed(c, n, places) for c, n in zip(counts, overs, strict=True)]
+
+    def cut(totals: list[int], read: tuple[int, ...] = (0, 1)) -> None:
+        """Categories under a label of their own, each arm's total cut among them, so that
+        their shares of it add up to 100, read in the columns `read` names."""
+        parts = draw(st.integers(2, 4))
+        edges = [[0, *sorted(draw(st.lists(st.integers(0, n), min_size=parts - 1,
+                                           max_size=parts - 1))), n] for n in totals]
+        for at, category in enumerate(CATEGORIES[:parts]):
+            counts = [edge[at + 1] - edge[at] for edge in edges]
+            percents = [_printed(c, n, places) for c, n in zip(counts, totals, strict=True)]
+            shares(category, counts, percents, sizes, read=read)
+
+    # The first arm's header says its numbers are n (%), as a table that gives the other
+    # statistics in its labels does; the second's says nothing, so that what else says a
+    # cell is a share is drawn too.
+    headers = [draw(st.sampled_from(HEADED)).format(arm=arm, n=count(n))
+               for arm, n in zip(("Exposed", "Unexposed"), sizes, strict=True)]  # fmt: skip
+    row("Characteristic", [f"{headers[0]}, n (%)", headers[1]], "P")
+    lines.append("|---|---|---|---|")
+    fenced = ""
+    for kind in draw(st.permutations(SHARE_ROWS)):
+        if kind == "right":
+            shares(f"{draw(name)}, n (%)", *counted(sizes), sizes)
+        elif kind in ("wrong", "noted"):
+            counts, percents = counted(sizes)
+            which = draw(st.integers(0, 1))
+            percents = _wrong(draw, percents, which, places)
+            if kind == "wrong":
+                shares(draw(name), counts, percents, sizes, wrong=which, sign="%")
+                fenced = "\n".join([*lines[2:4], lines[-1]])
+            else:
+                marker, last = draw(st.sampled_from(MARKERS))
+                label = draw(name)
+                label = f"{label}, n (%){marker}" if last else f"{label}{marker}, n (%)"
+                shares(label, counts, percents, sizes, wrong=which, noted=True)
+        elif kind in ("mean", "unit"):
+            row(draw(st.sampled_from(NOT_SHARES if kind == "mean" else UNITS)),
+                [f"{draw(st.integers(1, 99))} ({draw(st.integers(1, 40))})" for _arm in sizes])
+        elif kind == "group":
+            label = f"{draw(st.sampled_from(SPLIT_BY))}, n (%)"
+            row(label, ["", ""], draw(st.sampled_from(P_VALUES)))
+            for category in CATEGORIES[: draw(st.integers(2, 4))]:
+                shares(category, *counted(sizes), sizes)
+            # The next characteristic straight after them, its label saying n (%).
+            shares(f"{draw(name)}, n (%)", *counted(sizes), sizes)
+        elif kind == "summed":
+            row(draw(st.sampled_from(SPLIT_BY)), ["", ""], draw(st.sampled_from(P_VALUES)))
+            cut(sizes)
+            row("Age, years", ["54.2 (12.1)", "55.0 (11.8)"])
+        elif kind == "subtypes":
+            # A row, and the subtypes of what it counts: shares of that count, which is at
+            # most half its arm's, so that the largest subtype is not its column's share.
+            parent = draw(name)
+            within = [draw(st.integers(10, n // 2)) for n in sizes]
+            shares(f"{parent}, n (%)", within,
+                   [_printed(c, n, places) for c, n in zip(within, sizes, strict=True)], sizes)
+            row(f"{parent} type", ["", ""], draw(st.sampled_from(P_VALUES[1:])))
+            # The run with the row after them does not add up to 100, so nothing says the
+            # subtypes are shares where the header does not (round 3 of #314); where it does,
+            # they are let off as shares of their own total.
+            cut(within, read=(0,))
+            # The next characteristic straight after them, with nothing in its label to say
+            # it holds shares: read where its header says so, and not one of the subtypes
+            # (round 2 of #314). A tenth of its arm or more, so that it cannot be.
+            counts = [draw(st.integers(n // 10, n)) for n in sizes]
+            percents = [_printed(c, n, places) for c, n in zip(counts, sizes, strict=True)]
+            row(draw(name), [f"{count(c)} ({p})" for c, p in zip(counts, percents, strict=True)])
+            expected.append((len(lines), counts[0], percents[0], sizes[0], False, False))
+        elif kind == "own":
+            owns = [draw(st.integers(10, 900)) for _arm in sizes]
+            counts, percents = counted(owns)
+            which = draw(st.integers(0, 1))
+            percents = _wrong(draw, percents, which, places)
+            shares(f"{draw(name)}, n/N (%)", counts, percents, owns, wrong=which, own=True)
+        else:
+            # Shares of the row's own total, which is at most half the smaller arm's, so
+            # that neither is its column's share.
+            total = draw(st.integers(10, min(sizes) // 2))
+            first = draw(st.integers(-(-total // 5), total * 4 // 5))
+            counts = [first, total - first]
+            shares(f"{draw(name)}, n (%)", counts,
+                   [_printed(c, total, places) for c in counts], sizes)
+    lines += ["", draw(sentence).capitalize() + ".", ""]
+    # A table whose header names no denominator: its shares are read, and held to nothing.
+    lines += ["| Outcome | Cases | Controls | P |", "|---|---|---|---|"]
+    shares(f"{draw(name)}, n (%)", *counted(sizes), [None, None])
+    lines += ["", "```", fenced, "```", ""]
+    shown = f"{count(sizes[0] // 3)} ({draw(st.integers(1, 99))}.0%)"
+    lines += [f"{draw(sentence).capitalize()} {shown} {draw(sentence)}.", ""]
+    return "\n".join(lines), expected
 
 
 # ---------------------------------------------------------------------- what an edit holds
@@ -760,11 +1352,15 @@ def _quotation_asked(drawn: tuple[tuple[str, str], str, str]) -> dict[str, str]:
 #: What each reading of `tests/readings.py` is given, by the reading's name.
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
+    "prose quotations": texts(QUOTED),
     "mask": texts(TERMS),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),
     "sections": texts(),
+    "summaries": st.fixed_dictionaries(
+        {"text": summaries(), "abstract title": st.sampled_from((None, "Summary"))}
+    ),
     "numbers": st.fixed_dictionaries(
         {
             "text": texts(POINTED),
@@ -776,7 +1372,11 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "interval order": intervals(),
     "quoted whole": texts(WHOLE),
     "deviations": texts(),
+    "planned results": planned_plans().map(lambda drawn: drawn[0]),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
+    "vector figure": vector_figures().map(lambda drawn: drawn[0]),
+    # As text, a byte a character, so that the bytes pass to a reader as they are.
+    "pdf figure": pdf_figures().map(lambda drawn: drawn[0].decode("latin-1")),
     "quote words": st.fixed_dictionaries(
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
     ),
@@ -789,13 +1389,23 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "placeholders": texts(
+        tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
+    ),
+    "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
+    "reported intervals": texts(ESTIMATES),
+    "table shares": share_tables().map(lambda drawn: drawn[0]),
     "units after": texts(BOUND_UNITS),
+    "limit stated": st.fixed_dictionaries(
+        {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}
+    ),
     "abbreviations": st.fixed_dictionaries(
         {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}
     ),
     "tex outside maths": lines(),
     "title": lines(),
+    "title held": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),
     "blind names": texts(NAMED),
     "quotation": st.tuples(
         quotations(),

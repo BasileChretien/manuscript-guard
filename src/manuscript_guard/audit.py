@@ -34,13 +34,26 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.stats.intervals import (
+    ASYMMETRY,
+    asymmetry,
+    described_against,
+    described_asymmetry,
+    described_outside,
+    outside_interval,
+    p_against,
+    reported_intervals,
+)
 from manuscript_guard.stats.reported import described, judge, reported_tests
+from manuscript_guard.stats.shares import described as described_share
+from manuscript_guard.stats.shares import off, table_shares
 from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, section_breaks
 from manuscript_guard.text.comments import unclear_comment_lines
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.fences import unclear_fence_lines
 from manuscript_guard.text.masking import front_matter_end, mask
 from manuscript_guard.text.sections import strip_attributes
+from manuscript_guard.text.tables import Table, markdown_tables
 from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
 
 PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown"}
@@ -94,7 +107,8 @@ class Candidate:
 
 @dataclass
 class Disagreement:
-    """A test statistic whose P, as the paper prints it, does not follow from it."""
+    """A test statistic whose P, as the paper prints it, does not follow from it, or an
+    estimate whose interval, or the P beside it, does not fit it."""
 
     source: Path
     line: int
@@ -561,8 +575,9 @@ def _blank(text: str, spans: list[tuple[int, int]]) -> str:
     return "\n".join(lines)
 
 
-def read_paper(path: Path) -> tuple[str, list[tuple[int, int]]]:
-    """The paper's text with its reference lists blanked, and which lines those were.
+def read_paper(path: Path) -> tuple[str, list[tuple[int, int]], list[Table]]:
+    """The paper's text with its reference lists blanked, which lines those were, and its
+    tables outside them as rows of cells (`text.tables`).
 
     A .docx's footnotes and endnotes follow its body, and are read after the cut rather than
     through it: they were being dropped along with the bibliography.
@@ -570,11 +585,17 @@ def read_paper(path: Path) -> tuple[str, list[tuple[int, int]]]:
     if not is_docx(path):
         text = read_text(path)
         spans = bibliography_spans(text)
-        return _blank(text, spans), spans
+        blanked = _blank(text, spans)
+        return blanked, spans, markdown_tables(blanked)
     document = read_docx_text(path)
     spans = bibliography_spans(document.body, document.headings, document.cells)
     body = _blank(document.body, spans)
-    return (f"{body}\n{document.notes}" if document.notes else body), spans
+    tables = [
+        table for table in document.tables
+        if not any(start < cell.line <= end for row in table for cell in row
+                   for start, end in spans)
+    ]  # fmt: skip
+    return (f"{body}\n{document.notes}" if document.notes else body), spans, tables
 
 
 def unread_shapes(path: Path, text: str) -> list[str]:
@@ -698,9 +719,10 @@ def audit(
     # anything. A .docx and a figure are read a paragraph or an element per line; Markdown
     # and plain text are read as pandoc reads them.
     sources: list[tuple[Path, str, bool, bool]] = []
+    tables: dict[Path, list[Table]] = {}
     for path in papers:
         try:
-            text, spans = read_paper(path)
+            text, spans, tables[path] = read_paper(path)
         except (NotADocx, OSError, UnreadableText) as exc:
             report.unreadable.append(str(exc))
             continue
@@ -742,7 +764,7 @@ def audit(
     )
 
     for path, text, by_shape, lines_are_blocks in sources:
-        report.disagreements += _disagreements(path, text)
+        report.disagreements += _disagreements(path, text, tables.get(path, []))
         scan = classifier.scan(text, lines_are_blocks=lines_are_blocks)
         source_scan = None
         intervals = _intervals(text)
@@ -789,8 +811,10 @@ def audit(
     return report
 
 
-def _disagreements(path: Path, text: str) -> list[Disagreement]:
-    """The tests in a paper whose P does not follow from the statistic beside it."""
+def _disagreements(path: Path, text: str, tables: list[Table]) -> list[Disagreement]:
+    """The tests in a paper whose P does not follow from the statistic beside it, the
+    estimates whose interval or P does not fit them, and the n (%) in its tables whose share
+    is not what the count gives of its denominator."""
     found = []
     hidden = mask(text)
     for test in reported_tests(hidden):
@@ -802,7 +826,24 @@ def _disagreements(path: Path, text: str) -> list[Disagreement]:
             Disagreement(path, hidden.count("\n", 0, test.start) + 1,
                          described(test, verdict), context)  # fmt: skip
         )
-    return found
+    # And each estimate whose interval, or whose P, does not fit it (`stats/intervals.py`).
+    for interval in reported_intervals(hidden):
+        context = " ".join(hidden[interval.start : interval.end].replace("\x00", " ").split())
+        line = hidden.count("\n", 0, interval.start) + 1
+        if outside_interval(interval):
+            found.append(Disagreement(path, line, described_outside(interval), context))
+        share = asymmetry(interval)
+        if share is not None and share > ASYMMETRY:
+            found.append(Disagreement(path, line, described_asymmetry(interval, share), context))
+        verdict = p_against(interval)
+        if verdict is not None:
+            found.append(Disagreement(path, line, described_against(interval, verdict), context))
+    # And each n (%) in a table against its denominator (`stats/shares.py`).
+    for table in tables:
+        for share in table_shares(table):
+            if off(share):
+                found.append(Disagreement(path, share.line, described_share(share), share.context))
+    return sorted(found, key=lambda d: d.line)
 
 
 def _ranges(numbers: list[int]) -> str:
@@ -922,8 +963,9 @@ def render(report: AuditReport, discrimination: Discrimination, root: Path | Non
     if report.disagreements:
         lines.append("")
         lines.append(
-            "P VALUES THAT DO NOT FOLLOW FROM THE STATISTIC BESIDE THEM, t and z read as "
-            "two-sided (not counted by --strict):"
+            "NUMBERS THAT DO NOT FIT THE ONES BESIDE THEM: a P and its statistic, t and z "
+            "read as two-sided; a ratio and its interval; an interval and its P; an n (%) "
+            "and its denominator (not counted by --strict):"
         )
         by_paper: dict[Path, list[Disagreement]] = {}
         for item in report.disagreements:

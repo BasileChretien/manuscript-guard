@@ -6237,6 +6237,18 @@ Closed since, and why each mattered:
 - **Retrieval is not automated.** The skill drives Chrome by hand; there is no DOI-to-PDF
   pipeline, deliberately, because publisher access varies and bulk fetching is not
   something this tool should make easy.
+- **A journal profile's quotes prove words are on the stored page, and no more.** The page is
+  what someone saved as text: that it is the journal's page, of the date recorded, rests on
+  them. A rule read from the right words in the wrong way (a limit for letters given to an
+  original article) passes. A limit's number is found as digits, with or without a separator
+  of thousands, or as a word up to twenty: "three hundred words" fails its limit's check
+  until the quote holds the digits. A limit of none or one is not held to its quote's number
+  at all, only its quote to the page: "may not include figures", "Figures: none" and "a
+  single table" were each read wrong by a rule that tried, one way or the other.
+- **A rule left out of a journal profile entirely is not seen.** Nothing yet reads the stored
+  page for rules that are neither a field nor under `manual:`, `submit` does not yet turn
+  `manual:` into a checklist a named person signs, and re-reading a page a year on does not
+  yet show what changed in it. A profile without quotes is warned of, not failed.
 - **No real journal profile is distributed**, and no transcribed checklist text. Recipes for
   thirteen checklists are, so a user needs only the official document. Journals get a
   different answer, and deliberately: an annotated template

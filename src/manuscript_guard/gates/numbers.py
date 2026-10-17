@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import re
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from pathlib import Path
 
 from manuscript_guard.classify import (
@@ -159,6 +159,7 @@ def check_numbers(
     # exempts half its numbers should not read exactly like one that exempts none.
     by_project: dict[str, int] = {}
     choices = [value for value in namespace.values() if value.role]
+    dictionaries = [value for value in choices if value.role == "dictionary"]
     chosen = chosen_rules(classifier)
     declares = any(value.role == "parameter" for value in choices)
 
@@ -229,8 +230,17 @@ def check_numbers(
         # One scan of this file per rule, reused by every atom in it. Matching each rule
         # against a window around each atom re-read the same characters once per number.
         scan = classifier.scan(text)
+        releases = typed_releases(text, dictionaries)
+        said: set[int] = set()
         for atom in find_atoms(text, mask(text)):
             totals["atoms"] += 1
+            release = _within(releases, atom)
+            if release is not None:
+                start, value = release
+                if start not in said:
+                    said.add(start)
+                    report = report.with_findings(_typed_finding(value, atom, path))
+                continue
             # Where the number sits decides what some rules mean. `p < 0.05` under Methods
             # is the threshold the author chose in advance; the same characters in Results
             # are a finding, and were passing as a convention.
@@ -655,17 +665,56 @@ def typed_choice(
     return None
 
 
+#: How far before a typed release, on its line, the dictionary's name is looked for.
+NAMED_WITHIN = 60
+
+
+def typed_releases(text: str, dictionaries: list[Value]) -> list[tuple[int, int, Value]]:
+    """Each place a declared dictionary's release is typed, with the dictionary named in
+    the words before it on its line: "coded with MedDRA version 26.1". The release alone is
+    not enough: "2019" is the release of ICD-10 and the year of many other things. The name
+    is the one the key carries, so "ICD-10" is found as `icd_10`."""
+    found = []
+    for value in dictionaries:
+        name = value.key.removeprefix("dictionary.")
+        pattern = re.compile(r"(?<![\w.])" + re.escape(value.display) + r"(?!\w|\.\d)")
+        for match in pattern.finditer(text):
+            line = text.rfind("\n", 0, match.start()) + 1
+            if _named_in(text[max(line, match.start() - NAMED_WITHIN) : match.start()], name):
+                found.append((match.start(), match.end(), value))
+    return sorted(found, key=lambda place: place[0])
+
+
+def _named_in(words: str, name: str) -> bool:
+    """Whether `words` name the dictionary whose key ends in `name`, as words of their own:
+    "ICD-10" names `icd_10`, and "matched" does not name `atc`."""
+    return f"_{name}_" in "_" + re.sub(r"[^a-z0-9]+", "_", words.lower()) + "_"
+
+
+def _within(releases: list[tuple[int, int, Value]], atom) -> tuple[int, Value] | None:
+    """The typed release an atom is part of, if it is part of one."""
+    index = bisect_right([start for start, _end, _value in releases], atom.start) - 1
+    if index >= 0 and atom.end <= releases[index][1]:
+        return releases[index][0], releases[index][2]
+    return None
+
+
 def _typed_finding(value: Value, atom, path: Path) -> Finding:
+    typed = atom.text
     if value.role == "software":
         code = "typed-software-version"
         what = f"the version of {value.key.removeprefix('software.')} this analysis ran with"
+    elif value.role == "dictionary":
+        code = "typed-dictionary-release"
+        what = f"the release of {value.key.removeprefix('dictionary.')} the analysis coded with"
+        typed = value.display
     else:
         code = "typed-parameter"
         what = f"the analysis parameter {value.key}"
     return Finding(
         gate=GATE,
         code=code,
-        message=f"{atom.text!r} is {what}, typed rather than bound",
+        message=f"{typed!r} is {what}, typed rather than bound",
         path=path,
         line=atom.line,
         col=atom.col,

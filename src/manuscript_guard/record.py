@@ -330,6 +330,104 @@ def write_review(
     return Written(path=path, panel=panel)
 
 
+def write_design_review(
+    project,
+    reviewer: str,
+    *,
+    verdict: str,
+    round_number: int = 1,
+    reviewed_by: str | None = None,
+    remit: str = "",
+    summary: str = "",
+    today: date | None = None,
+) -> Written:
+    """Record that `reviewer` has read the analysis plan, and the feasibility results, as
+    they now stand: a design round's reading, under `review/design/`, with the digest of
+    the plan it read. The panel is extended as `write_review` extends a manuscript round's,
+    and a reviewer new to the design rounds needs a remit."""
+    import re
+
+    from manuscript_guard.contracts._schema import read_structured
+    from manuscript_guard.gates.design_review import (
+        SCHEMA,
+        design_panel_path,
+        design_panels,
+        design_record_path,
+        plan_digest,
+    )
+
+    if not re.fullmatch(r"[a-z][a-z0-9-]*", reviewer):
+        raise RecordError(
+            f"{reviewer!r} names a file, so it must be lowercase letters, digits and hyphens"
+        )
+    if verdict not in VERDICTS:
+        raise RecordError(f"verdict must be one of {', '.join(VERDICTS)}")
+    if round_number < 1:
+        raise RecordError("rounds are numbered from 1")
+    today = today or date.today()
+    path = design_record_path(project, round_number, reviewer)
+    if path.exists():
+        raise RecordError(
+            f"{path.name} already exists in design round {round_number}. If the plan has "
+            "changed since, record the new reading as a further design round"
+        )
+
+    held = design_panel_path(project, round_number)
+    if not remit:
+        # A reviewer who was on an earlier design panel keeps their remit.
+        for _number, earlier in reversed(design_panels(project)):
+            for entry in (read_structured(earlier) or {}).get("reviewers") or []:
+                if entry.get("id") == reviewer and not remit:
+                    remit = str(entry.get("remit") or "")
+    refused = RecordError(
+        f"{reviewer!r} is on no design panel yet. Pass --remit to say what this reviewer is "
+        "to judge of the design: whether it supports the inference the plan intends, and "
+        "which of its risks"
+    )
+    if not remit and not held.exists():
+        raise refused  # before a folder is made for the lock
+    held.parent.mkdir(parents=True, exist_ok=True)
+    with panel_lock(held):
+        panel = (read_structured(held) or {}) if held.exists() else {}
+        reviewers = list(panel.get("reviewers") or [])
+        if not any(entry.get("id") == reviewer for entry in reviewers):
+            if not remit:
+                raise refused
+            reviewers.append({"id": reviewer, "remit": remit})
+            panel = panel or {
+                "schema": "manuscript-guard/panel/1",
+                "round": round_number,
+                "opened_on": today.isoformat(),
+            }
+            panel["reviewers"] = reviewers
+            held.write_text(_yaml_dump(panel), encoding="utf-8", newline="\n")
+
+    document = {
+        "schema": SCHEMA,
+        "round": round_number,
+        "reviewer": reviewer,
+        "reviewed_by": reviewed_by or reviewer,
+        "reviewed_on": today.isoformat(),
+        "plan_sha256": plan_digest(project),
+        "verdict": verdict,
+    }
+    if summary:
+        document["summary"] = summary
+    document["findings"] = []
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(path, "x", encoding="utf-8", newline="\n") as handle:
+            handle.write(
+                "# Findings go below, each with an id, a severity and the finding itself. "
+                "An empty\n"
+                "# list is a reviewer who found nothing, which is a claim in its own right.\n"
+                + _yaml_dump(document)
+            )
+    except FileExistsError:
+        raise RecordError(f"{path.name} already exists in design round {round_number}") from None
+    return Written(path=path, panel=held)
+
+
 def seal_review(
     project, reviewer: str, *, round_number: int = 1, reading: str | None = None
 ) -> Path:
@@ -344,25 +442,45 @@ def seal_review(
     reader's comments and wrapping stay as they were. The file is read again with the line
     added, and if it does not then say the same with the seal beside it, nothing is written.
     """
-    import yaml
-
-    from manuscript_guard.contracts._schema import ContractError, read_structured, validate
-    from manuscript_guard.gates.review import reading_digest, reading_path
+    from manuscript_guard.gates.review import reading_path
 
     if round_number < 1:
         raise RecordError("rounds are numbered from 1")
     path = reading_path(project, round_number, reviewer, reading)
     if not path.exists():
         raise RecordError(f"there is no {path.name} in round {round_number} to seal")
+    return _seal(path, "review")
+
+
+def seal_design_review(project, reviewer: str, *, round_number: int = 1) -> Path:
+    """Seal a design round's reading once its findings are written, as `seal_review` seals
+    a reading of the manuscript."""
+    from manuscript_guard.gates.design_review import design_record_path
+
+    if round_number < 1:
+        raise RecordError("rounds are numbered from 1")
+    path = design_record_path(project, round_number, reviewer)
+    if not path.exists():
+        raise RecordError(f"there is no {path.name} in design round {round_number} to seal")
+    return _seal(path, "design-review")
+
+
+def _seal(path: Path, schema: str) -> Path:
+    """Add `reading_sha256` to the reading at `path`, which fits `schema`."""
+    import yaml
+
+    from manuscript_guard.contracts._schema import ContractError, read_structured, validate
+    from manuscript_guard.gates.review import reading_digest
+
     try:
         document = read_structured(path)
     except ContractError as exc:
         raise RecordError(str(exc)) from None
-    report = validate(document, "review", path)
+    report = validate(document, schema, path)
     if not report.ok or not isinstance(document, dict):
         said = "; ".join(finding.message for finding in report.findings[:3])
         raise RecordError(
-            f"{path.name} does not fit the review schema ({said}); put it right first"
+            f"{path.name} does not fit the {schema} schema ({said}); put it right first"
         )
     if "reading_sha256" in document:
         raise RecordError(

@@ -647,6 +647,8 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
         shutil.copy2(document, target)
         files.append(target)
 
+    from manuscript_guard.gates.journal_quotes import journal_checklist
+
     generated = [
         ("title-page.md", title_page(project)),
         ("credit-statement.md", credit_statement(project)),
@@ -658,6 +660,8 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
         # For the portal's abstract box: pasted from the .docx it carries whatever Word
         # and the clipboard make of it; this is the checked numbers and nothing else.
         ("abstract.txt", abstract),
+        # The journal's rules no gate checks, for the corresponding author to tick and sign.
+        ("journal-checklist.md", journal_checklist(project)),
     ]
     for name, text in generated:
         if text is None:

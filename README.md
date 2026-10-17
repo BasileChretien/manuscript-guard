@@ -129,7 +129,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since; an input the data custodian keeps is not in git; a warning where a lockfile pinning its packages has |
 | G2 | every number is classified, every declared value is quoted, and every pointer to a table or figure placed by its binding names one the document places; a unit written after a binding is the one emitted; no count is printed below the data custodian's minimum |
 | G3 | numbers in a figure's output *and in its source* trace back to results, and a script that estimates, samples or draws at random while it plots says why (a warning) |
-| G4 | word counts, required sections and required statements match the target journal, and each rule of its profile is quoted from the journal's stored page, and the figure files meet its artwork rules, an SVG's or a PDF's smallest text and thinnest line at the width it prints and a PDF's fonts among them, and the journal chosen from `journals/shortlist.yaml` is indexed for MEDLINE and, if open access, listed in DOAJ, as `lookup --journals` recorded (warnings) |
+| G4 | word counts, required sections and required statements match the target journal, and each rule of its profile is quoted from the journal's stored page, its rules no gate checks signed off by the corresponding author, and the figure files meet its artwork rules, an SVG's or a PDF's smallest text and thinnest line at the width it prints and a PDF's fonts among them, and the journal chosen from `journals/shortlist.yaml` is indexed for MEDLINE and, if open access, listed in DOAJ, as `lookup --journals` recorded (warnings) |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason; a guideline its authors have replaced is pointed out |
 | G6 | model artefacts and unfilled placeholders, in the prose, the figures, the tables' captions and the cited references; AI phrasing; and unsupported appeals to authority |
 | G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote, with more than the value; each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there; from the records `lookup` keeps, no cited work is retracted and each DOI and PMID names the work cited, and no work is cited under two keys |
@@ -258,10 +258,10 @@ number in the file and the rule that classified it.
 | `verify` | re-run the analysis and check it still produces the recorded results |
 | `build` | produce the .docx; `--annotated` colours every number by what backs it |
 | `approve` | record an author's approval of the manuscript as it stands, which `submit` holds to the manuscript sent; the author's own act |
-| `sign` | record a named person's sign-off of a finding only they may close, a G15 warning for the statistician `authors.yaml` names; that person's own act |
+| `sign` | record a named person's sign-off of a finding only they may close, a G15 warning for the statistician `authors.yaml` names, the journal's rules no gate checks for the corresponding author; that person's own act |
 | `render` | substitute the bindings and stop there |
 | `stages` | what each stage means and what binds at it |
-| `journal` | list journal profiles, or start one from the annotated template |
+| `journal` | list journal profiles, start one from the annotated template, or read a journal's page again against the stored one (`--reread`) |
 | `fetch` | download a reporting guideline's own checklist document |
 | `transcribe` | build checklist profiles from those documents |
 | `checklist` | write the completion file for a checklist |
@@ -269,12 +269,12 @@ number in the file and the rule that classified it.
 | `lookup` | look up each cited DOI and PMID once, and keep what the registries said in `literature/lookups/`; `--journals` asks the NLM Catalog and DOAJ about each shortlisted journal's ISSN |
 | `methods` | check or record that the Methods were read against the code; `--explain` lists each claim beside the step that backs it |
 | `models` | print each fitted model as its card, with what G15 says of it |
-| `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` files or seals a design round's reading of the plan |
+| `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` does the same for a design round, which reads the plan |
 | `checker` | send a co-author one file of things to confirm, and record what they answered |
 | `import` | bring a co-author's Word edits back into the manuscript source |
 | `reworded` | check that an edit changed the wording and no binding, citation or typed number |
 | `respond` | open a revision round, or write the point-by-point response |
-| `submit` | assemble the submission pack |
+| `submit` | assemble the submission pack, with a checklist of the journal's rules no gate checks |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |
 | `install-skills` | copy the skills to a folder an agent tool reads; `--verify` checks the copy, `--remove` takes it away |
 

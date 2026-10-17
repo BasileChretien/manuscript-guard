@@ -149,7 +149,18 @@ so that none is dropped without a trace. `check` then:
 - warns of the rules with no quote (`journal-rule-unquoted`), and of a quote for a rule the
   profile does not state;
 - warns that the page is not stored, or is not the text the profile recorded, and prints the
-  digest to record as `page_sha256` once the profile has been read against it.
+  digest to record as `page_sha256` once the profile has been read against it;
+- warns of the rules under `manual:` until the corresponding author signs them off
+  (`journal-manual-unsigned`). `submit` puts them in the pack as `journal-checklist.md`. The
+  corresponding author checks the paper against each and runs `manuscript-guard sign`
+  themselves, as the warning's hint says; never run it for them.
+
+**A year on**, when `check` says the profile is old, save the journal's page as it now
+stands as text beside the stored one and run `manuscript-guard journal --reread <file>`. It
+shows what changed and names each rule whose quote the page no longer holds: read those
+again, correct their values and quotes, and look in the difference for rules the page added.
+Then save the new page over the stored one and record the digest it prints as
+`page_sha256`, with today's `retrieved_on`.
 
 The shape it ends up as:
 

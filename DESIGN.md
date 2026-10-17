@@ -2716,8 +2716,24 @@ a warning, and a failure at submission only, as the author decided: what an unan
 design objection means is the author's to weigh while there is still an analysis to change.
 A reading is sealed as a manuscript reading is (`review --seal <reviewer> --design`), and
 one changed after its seal is said (`design-reading-altered`), failing at submission. A
-project with no design round reads as it did before, counts included. For now a design
-round is read and filed by hand: `review --run` sends the manuscript, not the plan.
+project with no design round reads as it did before, counts included.
+
+A design round is read by the models as a manuscript round is: `review --design --run`
+plans it from `review/design/`, says what would be sent where, asks, and files each reply
+as a design reading, `round-<n>/<reviewer>.<model>.yaml`, sealed and carrying the digest of
+the plan it read (`plan_sha256`). What is sent is a list of its own (`prompt.gather_design`):
+the paper's facts from `paper.yaml`, `design/plan.md` without its front matter and comments
+and with its feasibility results printed into it, and the feasibility results, each under its
+key. Not the manuscript, and no result but a feasibility one: a binding in the plan to any
+other result, a value or a table, is sent as written, since a design round reads the plan
+before there are results (round 1 of #316: a table the plan bound was printed whole). Each
+reviewer is told it reads a plan before its analysis is run, and that a major finding is one
+the design cannot meet: the instructions are the manuscript round's, rewritten in ten places
+and naming no manuscript, so the reply asked for is the same. A
+first design round with no panel gets a starter one, a methodologist whose remit names the
+study type's risks and a statistician who reads the plan against the feasibility results;
+a later design round needs its panel written. The guard hook puts `review --design --run
+--yes` to the author as it puts `review --run --yes`, saying that the plan is what goes.
 
 A design remit read more than once, by several models or by a model and a person, is filed
 as a manuscript round's is: each reader the panel lists for the reviewer under `readers` has
@@ -2858,6 +2874,25 @@ the roles no longer name, and one copied to another finding count for nothing: t
 stands, and its hint names who signs it and the command. Unsigned, a warning stays a
 warning, as before. The record lives beside the authors' approvals, and the hooks put to the
 person an agent's `sign` and an agent's edit of the file, as they do an approval.
+
+The corresponding author signs one thing: the journal's rules that no gate checks. A
+journal profile keeps each rule of the page that no gate holds under `manual:`, with its
+quote (item 50), and until now nobody was asked to hold the paper to them. G4 now raises them
+as one warning, `journal-manual-unsigned`, naming the rules, which the corresponding author
+signs off once they have checked the paper against each, bound to the rules, their quotes
+and the page's digest: a rule added, a quote changed or the page read again wants a new
+signature. `submit` puts them in the pack as `journal-checklist.md`, each rule with the
+page's words and a box to tick, and says under them who signed them off and when, or who is
+to. The corresponding author is the one author `corresponding: true` marks; with none
+marked, or more than one, the hint says to mark one.
+
+A profile a year old is warned of (`journal-profile-stale`), and the page is read again:
+`manuscript-guard journal --reread <file>` takes the page as it now stands, as text, and
+prints its difference from the stored page and, for each rule of the profile, `manual:` ones
+among them, whether its quote is still on it. A rule whose words are gone is the one to read
+again; the difference shows the rest, a rule the page added among it. The command writes
+nothing and exits 1 where a rule's quote is gone: adopting the page, saving it over the
+stored one and recording its digest, which the command prints, is the author's.
 
 G15's warning about a model kind the Methods name and the analysis did not fit is not
 signed: it is about the prose, and its hint already says when there is nothing to do. The
@@ -5677,9 +5712,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
-- **A design round is read by hand.** `review --run` does not send the plan to the
-  models yet. Nothing yet asks for a design round before the analysis stage: one that was
-  never held says nothing. An unsigned
+- **Nothing asks for a design round before the analysis stage.** One that was never
+  held says nothing. A design round's request carries the plan and the feasibility results
+  only: the reporting guideline and the journal's profile are not sent, and a plan's
+  binding to a result that is not a feasibility one is sent as written. An unsigned
   override of a design-round major is a warning, at submission too, as a new warning
   starts.
 - **A planned result is held to its key, not to what the paper says of it.** G12 checks
@@ -6509,10 +6545,14 @@ Closed since, and why each mattered:
   until the quote holds the digits. A limit of none or one is not held to its quote's number
   at all, only its quote to the page: "may not include figures", "Figures: none" and "a
   single table" were each read wrong by a rule that tried, one way or the other.
-- **A rule left out of a journal profile entirely is not seen.** Nothing yet reads the stored
-  page for rules that are neither a field nor under `manual:`, `submit` does not yet turn
-  `manual:` into a checklist a named person signs, and re-reading a page a year on does not
-  yet show what changed in it. A profile without quotes is warned of, not failed.
+- **A rule left out of a journal profile entirely is not seen.** Nothing reads the stored
+  page for rules that are neither a field nor under `manual:`: which sentences of a page are
+  rules is the reader's judgement, and a heuristic that guessed it would warn of every
+  sentence it misread. `journal --reread` shows a rule the page added a year on only as a
+  line of the difference, for the author to read. A profile without quotes is warned of,
+  not failed. The checklist of `manual:` rules is signed as a whole: a sign-off says the
+  corresponding author checked every rule on it, not which. It is bound to the rules and the
+  page, not to the paper: a cover letter or a title page edited after it stays signed.
 - **No real journal profile is distributed**, and no transcribed checklist text. Recipes for
   thirteen checklists are, so a user needs only the official document. Journals get a
   different answer, and deliberately: an annotated template

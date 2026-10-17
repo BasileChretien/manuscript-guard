@@ -1201,6 +1201,67 @@ def test_both_emitters_record_an_input_declared_restricted(tmp_path: Path) -> No
 
 
 
+def _synthetic_said(root: Path, *, submission: bool = False) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.synthetic import check_synthetic_inputs
+
+    loaded, _ = load_project(root)
+    _, results, _, _ = load_namespace(loaded)
+    found = check_synthetic_inputs(loaded, results, submission=submission).findings
+    return [(f.severity, f.message) for f in found]
+
+
+def _not_a_demonstration(root: Path) -> None:
+    paper = root / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    assert "\ndemonstration: true\n" in text
+    paper.write_text(text.replace("\ndemonstration: true\n", "\n"), encoding="utf-8")
+
+
+def test_a_result_quoted_from_synthetic_data_fails_at_submission(project: Path) -> None:
+    """Item 42: a binding proved where a number came from, not that the data were real, and
+    a number from a simulated run passed every gate. G1 says so of each result quoted from
+    a run that read an input declared synthetic: a warning while the paper is written, a
+    failure at submission. The example declares its simulated data, and is a
+    demonstration."""
+    from manuscript_guard.cli import _run_gates
+
+    [(severity, message)] = _synthetic_said(project)
+    assert severity == "info" and message.endswith("; the paper is a demonstration")
+    assert "come from a run that read synthetic data (data/reports.csv)" in message
+    _not_a_demonstration(project)
+    [(severity, message)] = _synthetic_said(project)
+    assert severity == "warn" and "results.case.n_cases" in message
+    assert [s for s, _ in _synthetic_said(project, submission=True)] == ["fail"]
+    report, _project, _chosen, _deferred = _run_gates(project, submission=True)
+    assert "synthetic-input-quoted" in [f.code for f in report.failures]
+
+
+def test_a_synthetic_run_nothing_quotes_is_not_said(project: Path) -> None:
+    """Only what the manuscript quotes: a synthetic run whose results nothing binds has put
+    no number into the paper."""
+    _not_a_demonstration(project)
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    import re
+
+    main.write_text(re.sub(r"\{\{\s*(?:results|table)\.[^}]*\}\}", "[elided]", text),
+                    encoding="utf-8")  # fmt: skip
+    for other in (project / "manuscript").rglob("*.md"):
+        if other != main:
+            other.write_text(re.sub(r"\{\{\s*(?:results|table)\.[^}]*\}\}", "[elided]",
+                                    other.read_text(encoding="utf-8")), encoding="utf-8")
+    assert _synthetic_said(project) == []
+
+
+def test_a_demonstration_says_so_on_its_title_page(project: Path) -> None:
+    from manuscript_guard.build.submission import title_page
+
+    page = title_page(load_project(project)[0])
+    assert "**A demonstration.** The data this paper analyses are synthetic; its results" in page
+    _not_a_demonstration(project)
+    assert "A demonstration" not in title_page(load_project(project)[0])
+
+
 # ----------------------------------- a number a summary gives that the paper reports nowhere
 
 

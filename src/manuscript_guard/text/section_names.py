@@ -27,11 +27,38 @@ _NUMBER = re.compile(
     r"^\s*(?:\(\d+\)|\d+(?:\.\d+)*[.)]?|[IVXLC]+[.)]|[A-Z][.)])\s+", re.IGNORECASE
 )
 _ABSTRACT = re.compile(r"(?:structured\s+)?abstract\b", re.IGNORECASE)
+#: The Results by the word a title opens with: "Results", "3. Results and discussion",
+#: "**Findings**". Not anywhere in it: "Comparison with earlier results" is the Discussion's.
+_RESULTS = re.compile(r"(?:results?|findings)\b", re.IGNORECASE)
+#: A conclusion: "Conclusions", "5. Conclusion and implications", "Concluding remarks", and
+#: a "Summary" that is the whole title, as a paper's last section is often called.
+_CONCLUSION = re.compile(
+    r"conclu(?:sions?|ding\s+remarks)\b|summary(?:\s+and\s+conclusions?)?\W*$", re.IGNORECASE
+)
 
 
 def bare(title: str) -> str:
     """A heading's title without its number."""
     return _NUMBER.sub("", title, count=1).strip()
+
+
+def plain(title: str) -> str:
+    """A title as a reader of the built document sees it, without its number."""
+    from manuscript_guard.classify import _unmarked
+
+    return bare(_unmarked(title))
+
+
+def names_results(title: str) -> bool:
+    """Whether a heading's title opens with the word for the Results, numbered, marked or
+    not: "Results", "3. Results", "**Findings**", "Results and discussion"."""
+    return bool(_RESULTS.match(plain(title)))
+
+
+def names_conclusion(title: str) -> bool:
+    """Whether a heading names a conclusion: "Conclusions", "6. Conclusion and
+    implications", "Concluding remarks", "Summary and conclusions", or "Summary" alone."""
+    return bool(_CONCLUSION.match(plain(title)))
 
 
 def names_methods(title: str) -> bool:
@@ -89,4 +116,12 @@ def methods_sections(
     return sorted(found, key=lambda section: METHODS_SECTIONS.match(section.title) is None)
 
 
-__all__ = ["bare", "methods_sections", "names_abstract", "names_methods"]
+__all__ = [
+    "bare",
+    "methods_sections",
+    "names_abstract",
+    "names_conclusion",
+    "names_methods",
+    "names_results",
+    "plain",
+]

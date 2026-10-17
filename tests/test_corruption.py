@@ -11972,6 +11972,105 @@ def _override_said(root: Path) -> list[tuple[str, str, str]]:
             if f.code == "design-override-unsigned"]  # fmt: skip
 
 
+def _design_read_by(root: Path, reader: str, findings: str = "", round_: int = 1) -> Path:
+    """A named reading of the methodologist's design remit, filed as `--reading` files it."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.gates.review import reading_slug
+
+    assert main(["review", str(root), "--design", "--record", "methodologist", "--reading",
+                 reader, "--round", str(round_), "--verdict", "major-revision", "--remit",
+                 _DESIGN_REMIT]) == 0  # fmt: skip
+    record = (root / "review" / "design" / f"round-{round_}"
+              / f"methodologist.{reading_slug(reader)}.yaml")  # fmt: skip
+    if findings:
+        text = record.read_text(encoding="utf-8").replace("findings: []\n", findings)
+        record.write_text(text, encoding="utf-8")
+    return record
+
+
+def test_a_design_remit_read_by_two_readers_is_read_twice(project: Path) -> None:
+    """Item 46: a design panel's named readers were not read, so a remit read by two models
+    counted one reading, and the other's objections went unread. Each reader the panel
+    names is read from its own file now, as in a manuscript round."""
+    from manuscript_guard.cli import main
+
+    first = _design_read_by(project, "openai/gpt-x", _DESIGN_MAJOR)
+    _design_read_by(project, "Dr Tanaka")
+    panel = yaml.safe_load((project / "review" / "design" / "panel-1.yaml").read_text("utf-8"))
+    assert panel["reviewers"][0]["readers"] == ["openai/gpt-x", "Dr Tanaka"]
+    assert first.name == "methodologist.openai-gpt-x.yaml"
+    assert yaml.safe_load(first.read_text("utf-8"))["reader"] == "openai/gpt-x"
+    assert _design_said(project) == [("design-reading-unsealed", "warn"),
+                                     ("design-major-open", "warn")]  # fmt: skip
+    assert main(["review", str(project), "--design", "--seal", "methodologist", "--reading",
+                 "openai/gpt-x"]) == 0  # fmt: skip
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    [open_] = check_design_rounds(load_project(project)[0]).findings
+    assert open_.message.startswith("design round 1: methodologist (openai/gpt-x) d1:")
+
+
+def test_a_named_design_reader_who_has_not_read_is_said(project: Path) -> None:
+    _design_read_by(project, "openai/gpt-x")
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"][0]["readers"].append("Dr Tanaka")
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    [missing] = check_design_rounds(load_project(project)[0]).findings
+    assert (missing.code, missing.severity) == ("design-review-missing", "warn")
+    assert missing.message == "design round 1: methodologist (Dr Tanaka) has not read the plan"
+    assert '--reading "Dr Tanaka" --verdict' in missing.hint
+
+
+def test_a_design_reading_the_panel_names_no_reader_for_is_not_read(project: Path) -> None:
+    """As in a manuscript round: a file beside the record is read only when the panel names
+    its reader, and one it does not is said."""
+    record = _design_recorded(project)
+    beside = record.with_name("methodologist.old.yaml")
+    beside.write_text(record.read_text(encoding="utf-8").replace(
+        "findings: []\n", _DESIGN_MAJOR), encoding="utf-8")  # fmt: skip
+    assert _design_said(project) == [("design-reading-unnamed", "warn")]
+
+
+def test_a_named_design_reading_that_names_another_reader_is_not_counted(project: Path) -> None:
+    record = _design_read_by(project, "openai/gpt-x", _DESIGN_MAJOR)
+    record.write_text(record.read_text(encoding="utf-8").replace(
+        "reader: openai/gpt-x", "reader: mistral/m"), encoding="utf-8")  # fmt: skip
+    assert _design_said(project) == [("design-reading-misfiled", "warn")]
+    assert _design_said(project, submission=True) == [("design-reading-misfiled", "fail")]
+
+
+def test_a_stale_named_design_reading_is_superseded_by_its_own_reader_only(
+    project: Path,
+) -> None:
+    """Supersession is by reader: one model reading the changed plan again does not answer
+    for the person who read it before."""
+    _design_read_by(project, "openai/gpt-x")
+    _design_read_by(project, "Dr Tanaka")
+    _plan_edited(project, "## Outcome", "## Outcome\n\nA second outcome.\n")
+    _design_read_by(project, "openai/gpt-x", round_=2)
+    from manuscript_guard.gates.design_review import check_design_rounds
+
+    said = check_design_rounds(load_project(project)[0]).findings
+    assert sorted((f.code, f.message.split(" read ")[0]) for f in said) == [
+        ("design-review-stale", "design round 1: methodologist (Dr Tanaka)"),
+        ("design-review-superseded", "design round 1: methodologist (openai/gpt-x)"),
+    ]
+
+
+def test_a_named_reader_s_overridden_design_objection_is_signed_apart(project: Path) -> None:
+    """Each reading numbers its own findings, so two readers' d1 are two objections."""
+    from manuscript_guard.cli import main
+
+    _design_read_by(project, "openai/gpt-x", _DESIGN_MAJOR + _OVERRIDDEN)
+    assert main(["review", str(project), "--design", "--seal", "methodologist", "--reading",
+                 "openai/gpt-x"]) == 0  # fmt: skip
+    [(code, _severity, hint)] = _override_said(project)
+    assert "--finding G12/design-override/1/methodologist.openai-gpt-x/d1" in hint
+
+
 # --------------------------------------------------------------------------------------
 # TeX outside dollar signs in what the build prints of paper.yaml
 # --------------------------------------------------------------------------------------

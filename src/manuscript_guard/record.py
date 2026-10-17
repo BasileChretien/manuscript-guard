@@ -251,7 +251,6 @@ def write_review(
         manuscript_digest,
         panel_path,
         reading_path,
-        reading_slug,
     )
 
     if not re.fullmatch(r"[a-z][a-z0-9-]*", reviewer):
@@ -262,18 +261,7 @@ def write_review(
         raise RecordError(f"verdict must be one of {', '.join(VERDICTS)}")
     if round_number < 1:
         raise RecordError("rounds are numbered from 1")
-    if reading is not None:
-        reading = reading.strip()
-        if not reading_slug(reading):
-            raise RecordError(
-                "--reading names who made this reading and becomes part of the file's name, "
-                "so it needs a letter or a digit: openai/<model>, or a person's name"
-            )
-        if len(reading_slug(reading).encode("utf-8")) > MAX_READER_NAME:
-            raise RecordError(
-                f"--reading becomes part of the file's name, and this one is over "
-                f"{MAX_READER_NAME} bytes; name the reader more shortly"
-            )
+    reading = _reader_named(reading)
 
     today = today or date.today()
     path = reading_path(project, round_number, reviewer, reading)
@@ -330,6 +318,26 @@ def write_review(
     return Written(path=path, panel=panel)
 
 
+def _reader_named(reading: str | None) -> str | None:
+    """The reader `--reading` names, stripped, or a refusal where it cannot name a file."""
+    from manuscript_guard.gates.review import reading_slug
+
+    if reading is None:
+        return None
+    reading = reading.strip()
+    if not reading_slug(reading):
+        raise RecordError(
+            "--reading names who made this reading and becomes part of the file's name, "
+            "so it needs a letter or a digit: openai/<model>, or a person's name"
+        )
+    if len(reading_slug(reading).encode("utf-8")) > MAX_READER_NAME:
+        raise RecordError(
+            f"--reading becomes part of the file's name, and this one is over "
+            f"{MAX_READER_NAME} bytes; name the reader more shortly"
+        )
+    return reading
+
+
 def write_design_review(
     project,
     reviewer: str,
@@ -339,12 +347,14 @@ def write_design_review(
     reviewed_by: str | None = None,
     remit: str = "",
     summary: str = "",
+    reading: str | None = None,
     today: date | None = None,
 ) -> Written:
     """Record that `reviewer` has read the analysis plan, and the feasibility results, as
     they now stand: a design round's reading, under `review/design/`, with the digest of
     the plan it read. The panel is extended as `write_review` extends a manuscript round's,
-    and a reviewer new to the design rounds needs a remit."""
+    and a reviewer new to the design rounds needs a remit. `reading` names who made it, as
+    for a manuscript round, and the panel then lists that reader for the reviewer."""
     import re
 
     from manuscript_guard.contracts._schema import read_structured
@@ -364,8 +374,9 @@ def write_design_review(
         raise RecordError(f"verdict must be one of {', '.join(VERDICTS)}")
     if round_number < 1:
         raise RecordError("rounds are numbered from 1")
+    reading = _reader_named(reading)
     today = today or date.today()
-    path = design_record_path(project, round_number, reviewer)
+    path = design_record_path(project, round_number, reviewer, reading)
     if path.exists():
         raise RecordError(
             f"{path.name} already exists in design round {round_number}. If the plan has "
@@ -401,12 +412,15 @@ def write_design_review(
             }
             panel["reviewers"] = reviewers
             held.write_text(_yaml_dump(panel), encoding="utf-8", newline="\n")
+        if reading:
+            _name_reader(held, reviewer, reading)
 
     document = {
         "schema": SCHEMA,
         "round": round_number,
         "reviewer": reviewer,
-        "reviewed_by": reviewed_by or reviewer,
+        **({"reader": reading} if reading else {}),
+        "reviewed_by": reviewed_by or reading or reviewer,
         "reviewed_on": today.isoformat(),
         "plan_sha256": plan_digest(project),
         "verdict": verdict,
@@ -452,14 +466,16 @@ def seal_review(
     return _seal(path, "review")
 
 
-def seal_design_review(project, reviewer: str, *, round_number: int = 1) -> Path:
+def seal_design_review(
+    project, reviewer: str, *, round_number: int = 1, reading: str | None = None
+) -> Path:
     """Seal a design round's reading once its findings are written, as `seal_review` seals
     a reading of the manuscript."""
     from manuscript_guard.gates.design_review import design_record_path
 
     if round_number < 1:
         raise RecordError("rounds are numbered from 1")
-    path = design_record_path(project, round_number, reviewer)
+    path = design_record_path(project, round_number, reviewer, reading)
     if not path.exists():
         raise RecordError(f"there is no {path.name} in design round {round_number} to seal")
     return _seal(path, "design-review")

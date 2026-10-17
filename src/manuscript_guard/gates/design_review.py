@@ -11,7 +11,11 @@ It is kept apart from the manuscript's rounds, in `review/design/`: `panel-<n>.y
 the readers and their remits, and `round-<n>/<reviewer>.yaml` is a reading, written by
 `manuscript-guard review --record <reviewer> --design --round <n> --verdict <verdict>` with
 the digest of the plan it read. So a design round never counts toward the manuscript's
-rounds, and a manuscript round never answers the design.
+rounds, and a manuscript round never answers the design. A remit read more than once, by
+several models or by a model and a person, is filed as a manuscript round's is: each reader
+the panel lists for the reviewer under `readers` has a reading of its own,
+`round-<n>/<reviewer>.<reader>.yaml` (`--reading <reader>`), and nothing else beside the
+record is read.
 
 A reading of a plan that has changed since is stale. A major finding not answered, by a
 resolution or by an override with its reason, is a warning, and a failure at submission
@@ -32,7 +36,13 @@ from pathlib import Path
 from manuscript_guard.contracts._schema import ContractError, read_structured, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
-from manuscript_guard.gates.review import _answered, _check_seal, review_root
+from manuscript_guard.gates.review import (
+    _answered,
+    _check_seal,
+    files_beside,
+    reading_slug,
+    review_root,
+)
 from manuscript_guard.sign_offs import Signable, digest_of, settle
 
 GATE = "G12"
@@ -50,8 +60,13 @@ def design_panel_path(project: Project, round_number: int) -> Path:
     return design_root(project) / f"panel-{round_number}.yaml"
 
 
-def design_record_path(project: Project, round_number: int, reviewer: str) -> Path:
-    return design_root(project) / f"round-{round_number}" / f"{reviewer}.yaml"
+def design_record_path(
+    project: Project, round_number: int, reviewer: str, reader: str | None = None
+) -> Path:
+    """Where one reading of a design remit is filed: the reviewer's plain record, or a named
+    reader's beside it, as `gates.review.reading_path` files a manuscript round's."""
+    name = reviewer if reader is None else f"{reviewer}.{reading_slug(reader)}"
+    return design_root(project) / f"round-{round_number}" / f"{name}.yaml"
 
 
 def design_panels(project: Project) -> list[tuple[int, Path]]:
@@ -98,7 +113,7 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
     current = plan_digest(project)
     report = Report()
     open_major = 0
-    readings: list[tuple[int, str, Report, bool]] = []
+    readings: list[tuple[int, tuple[str, str], str, Report, bool]] = []
     current_rounds = 0
     for number, path in found:
         try:
@@ -112,26 +127,28 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
             continue
         fresh_round = True
         for reviewer in panel["reviewers"]:
-            read, fresh, opened = _reading(project, number, reviewer, current, severity)
-            readings.append((number, reviewer["id"], read, fresh))
-            fresh_round = fresh_round and fresh
-            open_major += opened
+            said, filed = _readings(project, number, reviewer, current, severity)
+            report = report.merge(said)
+            for who, label, read, fresh, opened in filed:
+                readings.append((number, who, label, read, fresh))
+                fresh_round = fresh_round and fresh
+                open_major += opened
         current_rounds += int(fresh_round)
     # A stale reading is superseded by a later reading of the plan as it stands by the same
-    # reviewer: rounds 1 and 2 of #308, the further round the stale hint asks for left it
-    # stale for good, and then a later round of one reviewer silenced the others' too. Its
-    # open majors still bind: a later reading does not answer them.
-    read_again: dict[str, int] = {}
-    for number, name, _read, fresh in readings:
+    # reader of the same remit: rounds 1 and 2 of #308, the further round the stale hint
+    # asks for left it stale for good, and then a later round of one reviewer silenced the
+    # others' too. Its open majors still bind: a later reading does not answer them.
+    read_again: dict[tuple[str, str], int] = {}
+    for number, who, _label, _read, fresh in readings:
         if fresh:
-            read_again[name] = max(read_again.get(name, 0), number)
-    for number, name, read, fresh in readings:
-        later = read_again.get(name, 0)
+            read_again[who] = max(read_again.get(who, 0), number)
+    for number, who, label, read, fresh in readings:
+        later = read_again.get(who, 0)
         if not fresh and later > number:
             read = Report(tuple(
                 replace(f, code="design-review-superseded", severity=INFO,
                         message=f"{f.message} [superseded by design round {later}]",
-                        hint=f"{name} read the plan as it stands in design round {later}")
+                        hint=f"{label} read the plan as it stands in design round {later}")
                 if f.code == "design-review-stale" else f
                 for f in read.findings
             ))  # fmt: skip
@@ -144,12 +161,72 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
     )  # fmt: skip
 
 
+def _asked(project: Project, number: int, reviewer: dict) -> tuple[list[str | None], Report]:
+    """Whose readings of one remit the round asks for: the reviewer's plain record, unless
+    the panel names readers and there is none, and each reader the panel names. And what is
+    wrong with the names: a reader whose name has no letter or digit, or two that would be
+    filed as one."""
+    name = reviewer["id"]
+    readers = [str(reader) for reader in reviewer.get("readers") or ()]
+    plain = design_record_path(project, number, name)
+    asked: list[str | None] = [None] if plain.is_file() or not readers else []
+    report = Report()
+    known: dict[str, str] = {}
+    for reader in readers:
+        slug = reading_slug(reader)
+        if slug and slug not in known:
+            known[slug] = reader
+            asked.append(reader)
+            continue
+        report = report.with_findings(_finding(
+            "design-reader-unnamed",
+            f"design round {number}: {name}'s reader {reader!r} "
+            + (f"would be filed as {known[slug]}'s reading" if slug else
+               "has no letter or digit to name its file"),
+            design_panel_path(project, number), severity=WARN,
+            hint="a reader is known by the letters and digits of its name; name each so "
+            "that they differ in those, and list each once",
+        ))  # fmt: skip
+    return asked, report
+
+
+def _readings(
+    project: Project, number: int, reviewer: dict, current: str, severity: str
+) -> tuple[Report, list[tuple[tuple[str, str], str, Report, bool, int]]]:
+    """What is wrong with one remit's names and the files beside it, and each reading the
+    round asks for: who made it, as (reviewer, reader's file name) and as it is shown, what
+    it says, whether it read the plan as it stands, and how many of its major findings are
+    open. A file beside the record that the panel names no reader for is said and not
+    read, as G11 leaves one."""
+    name = reviewer["id"]
+    asked, report = _asked(project, number, reviewer)
+    filed = []
+    for reader in asked:
+        label = name if reader is None else f"{name} ({reader})"
+        read, fresh, opened = _reading(project, number, name, reader, current, severity)
+        filed.append(((name, reading_slug(reader) if reader else ""), label, read, fresh, opened))
+    directory = design_record_path(project, number, name).parent
+    named = {reading_slug(reader) for reader in asked if reader is not None}
+    for slug, paths in files_beside(directory, name).items() if directory.is_dir() else ():
+        for path in paths if slug not in named else ():
+            report = report.with_findings(_finding(
+                "design-reading-unnamed",
+                f"design round {number}: {path.name} is not a reading the panel asks for, "
+                "so it is not read", path, severity=WARN,
+                hint=f"if it is a reading, add its reader to {name}'s `readers` in "
+                f"{design_panel_path(project, number).name}; if it is a copy or a note, keep "
+                "it outside the round",
+            ))  # fmt: skip
+    return report, filed
+
+
 def override_signables(project: Project) -> list[Signable]:
     """Each major finding of a design round that is overridden and not resolved: the
     statistician signs the override, bound to the finding's words and to the reason given,
     so that a reason rewritten after the signature wants it again. An objection to the design
     left standing is a judgement of the design, and the author's reason alone does not settle
-    it."""
+    it. A named reader's findings are signed apart from the plain record's: their ids are
+    numbered by each reading."""
     out: list[Signable] = []
     for number, path in design_panels(project):
         panel = _read(path)
@@ -157,26 +234,34 @@ def override_signables(project: Project) -> list[Signable]:
             continue
         for reviewer in panel["reviewers"]:
             name = reviewer["id"]
-            record = design_record_path(project, number, name)
-            document = _read(record)
-            if not validate(document, "design-review", record, gate=GATE).ok:
-                continue
-            for finding in document.get("findings") or []:
-                reason = str(finding.get("overridden") or "").strip()
-                if finding.get("severity") != "major" or not reason or \
-                        str(finding.get("resolution") or "").strip():  # fmt: skip
+            for reader in _asked(project, number, reviewer)[0]:
+                record = design_record_path(project, number, name, reader)
+                document = _read(record)
+                if not validate(document, "design-review", record, gate=GATE).ok:
                     continue
-                key = f"{GATE}/design-override/{number}/{name}/{finding['id']}"
-                raised = _finding(
-                    "design-override-unsigned",
-                    # What was overridden, and why; who signs is the hint's, as `settle`
-                    # writes it (round 1 of #313: "nobody has signed" stayed once signed).
-                    f"design round {number}: {name} {finding['id']} is overridden "
-                    f"({reason if len(reason) <= 100 else reason[:99] + '…'})",
-                    record, severity=WARN,
-                )  # fmt: skip
-                digest = digest_of(key, finding.get("finding"), reason)
-                out.append(Signable("statistician", key, digest, (raised,)))
+                who = name if reader is None else f"{name}.{reading_slug(reader)}"
+                out += _overridden(number, who, document, record)
+    return out
+
+
+def _overridden(number: int, who: str, document: dict, record: Path) -> list[Signable]:
+    out = []
+    for finding in document.get("findings") or []:
+        reason = str(finding.get("overridden") or "").strip()
+        if finding.get("severity") != "major" or not reason or \
+                str(finding.get("resolution") or "").strip():  # fmt: skip
+            continue
+        key = f"{GATE}/design-override/{number}/{who}/{finding['id']}"
+        raised = _finding(
+            "design-override-unsigned",
+            # What was overridden, and why; who signs is the hint's, as `settle` writes it
+            # (round 1 of #313: "nobody has signed" stayed once signed).
+            f"design round {number}: {who} {finding['id']} is overridden "
+            f"({reason if len(reason) <= 100 else reason[:99] + '…'})",
+            record, severity=WARN,
+        )  # fmt: skip
+        digest = digest_of(key, finding.get("finding"), reason)
+        out.append(Signable("statistician", key, digest, (raised,)))
     return out
 
 
@@ -191,26 +276,20 @@ def _read(path: Path) -> dict:
 
 
 def _reading(
-    project: Project, number: int, reviewer: dict, current: str, severity: str
+    project: Project, number: int, name: str, reader: str | None, current: str, severity: str
 ) -> tuple[Report, bool, int]:
-    """What one reviewer's reading says: the report, whether it read the plan as it stands,
-    and how many of its major findings are open."""
-    name = reviewer["id"]
-    path = design_record_path(project, number, name)
+    """What one reading says: the report, whether it read the plan as it stands, and how
+    many of its major findings are open."""
+    path = design_record_path(project, number, name, reader)
+    label = name if reader is None else f"{name} ({reader})"
+    named = "" if reader is None else f" --reading {_quoted(reader)}"
     report = Report()
-    if reviewer.get("readers"):
-        report = report.with_findings(_finding(
-            "design-readers-unread",
-            f"design round {number}: {name} names readers, and a design round reads the "
-            "reviewer's own record only", path, severity=WARN,
-            hint="file the reading as the reviewer's record, without --reading",
-        ))  # fmt: skip
     if not path.is_file():
         return report.with_findings(_finding(
-            "design-review-missing", f"design round {number}: {name} has not read the plan",
+            "design-review-missing", f"design round {number}: {label} has not read the plan",
             path, severity=WARN,
             hint=f"once they have, `manuscript-guard review --record {name} --design --round "
-            f"{number} --verdict <verdict>`",
+            f"{number}{named} --verdict <verdict>`",
         )), False, 0  # fmt: skip
     try:
         document = read_structured(path)
@@ -220,22 +299,31 @@ def _reading(
     checked = validate(document, "design-review", path, gate=GATE)
     if not checked.ok or not isinstance(document, dict):
         return report.merge(checked), False, 0
+    misfiled = _misfiled(document, number, name, reader)
+    if misfiled is not None:
+        return report.with_findings(_finding(
+            "design-reading-misfiled", f"design round {number}: {path.name} {misfiled}",
+            path, severity=severity,
+            hint="a reading is filed under its reviewer and its reader, and says the same "
+            "inside; it is not counted until it does",
+        )), False, 0  # fmt: skip
     fresh = document["plan_sha256"] == current
     if not fresh:
         report = report.with_findings(_finding(
             "design-review-stale",
-            f"design round {number}: {name} read a plan that has changed since", path,
+            f"design round {number}: {label} read a plan that has changed since", path,
             severity=WARN, context=f"read {document['reviewed_on']} by "
             f"{document['reviewed_by']}",
             hint="the plan or the feasibility results changed after the reading; record a "
             "further design round that reads the plan as it stands",
         ))  # fmt: skip
-    sealed = _check_seal(path, document, number, name, severity)
+    sealed = _check_seal(path, document, number, label, severity)
     report = report.with_findings(*(
         replace(f, gate=GATE, code=f"design-{f.code}", message=f"design {f.message}",
-                hint=(f.hint or "").replace("review --seal <reviewer> --round <n>",
-                                            "review --seal <reviewer> --design --round <n>")
-                .replace(", with `--reading <reader>` for a named reading", ""))
+                hint=(f.hint or "").replace(
+                    "review --seal <reviewer> --round <n>`, with `--reading <reader>` for a "
+                    "named reading",
+                    f"review --seal {name} --design --round {number}{named}`"))
         for f in sealed.findings
     ))  # fmt: skip
     opened = 0
@@ -244,13 +332,33 @@ def _reading(
             opened += 1
             report = report.with_findings(_finding(
                 "design-major-open",
-                f"design round {number}: {name} {finding.get('id')}: "
+                f"design round {number}: {label} {finding.get('id')}: "
                 f"{str(finding.get('finding', ''))[:120]}", path, severity=severity,
                 hint="answer it in `resolution` with what the plan now does, or in "
                 "`overridden` with why it stands; a design objection answered before the "
                 "analysis is one the analysis can still meet",
             ))  # fmt: skip
     return report, fresh, opened
+
+
+def _misfiled(document: dict, number: int, name: str, reader: str | None) -> str | None:
+    """Why a named reading is not the one its file name says, or None. The reviewer's plain
+    record is read as it stands, as G11 reads a manuscript round's."""
+    if reader is None:
+        return None
+    said = document.get("reader")
+    if reading_slug(str(said or "")) != reading_slug(reader):
+        return f"is {reader}'s reading and says its reader is {said or 'nobody'}"
+    if document["reviewer"] != name:
+        return f"says it is {document['reviewer']}'s remit"
+    if document["round"] != number:
+        return f"says it is of design round {document['round']}"
+    return None
+
+
+def _quoted(reader: str) -> str:
+    """A reader's name as it is typed after `--reading`: in quotes where it has a space."""
+    return f'"{reader}"' if any(char.isspace() for char in reader) else reader
 
 
 def _finding(

@@ -430,10 +430,11 @@ def _design_round(args: argparse.Namespace) -> int:
     from manuscript_guard.gates.design_review import check_design_rounds
     from manuscript_guard.record import RecordError, seal_design_review, write_design_review
 
-    if args.run or args.dry_run or args.providers or args.record_figure or args.reading:
+    if args.run or args.dry_run or args.providers or args.record_figure:
         print(
             "manuscript-guard: a design round is read and filed by hand for now: "
-            "`review --record <reviewer> --design --round <n> --verdict <verdict>`, then "
+            "`review --record <reviewer> --design --round <n> --verdict <verdict>`, with "
+            "`--reading <reader>` for a named reading, then "
             "`review --seal <reviewer> --design --round <n>`",
             file=sys.stderr,
         )
@@ -442,7 +443,10 @@ def _design_round(args: argparse.Namespace) -> int:
     round_number = 1 if args.round is None else args.round
     try:
         if args.seal:
-            print(f"sealed {seal_design_review(project, args.seal, round_number=round_number)}")
+            sealed = seal_design_review(
+                project, args.seal, round_number=round_number, reading=args.reading
+            )
+            print(f"sealed {sealed}")
             return 0
         if args.record:
             if not args.verdict:
@@ -451,12 +455,15 @@ def _design_round(args: argparse.Namespace) -> int:
             written = write_design_review(
                 project, args.record, verdict=args.verdict, round_number=round_number,
                 reviewed_by=args.by, remit=args.remit or "", summary=args.summary or "",
+                reading=args.reading,
             )  # fmt: skip
             print(f"panel: {written.panel}")
             print(f"wrote {written.path}")
+            named = f' --reading "{args.reading.strip()}"' if args.reading else ""
             print(
                 "Add the findings there, then seal what the reader wrote: "
-                f"`manuscript-guard review --seal {args.record} --design --round {round_number}`"
+                f"`manuscript-guard review --seal {args.record} --design --round {round_number}"
+                f"{named}`"
             )
             return 0
     except RecordError as exc:
@@ -2986,8 +2993,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="with --record or --seal: who made this reading, where a remit is read more "
         "than once "
         "(openai/<model>, or a person's name). Written as review/round-N/REVIEWER.READER.yaml "
-        "beside the reviewer's plain record, so neither replaces the other, and listed among "
-        "the reviewer's readers in the panel, which is what makes the gate read it",
+        "beside the reviewer's plain record (under review/design/ with --design), so neither "
+        "replaces the other, and listed among the reviewer's readers in the panel, which is "
+        "what makes the gate read it",
     )
     review.add_argument(
         "--seal",

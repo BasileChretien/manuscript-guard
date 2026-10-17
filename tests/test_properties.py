@@ -2954,6 +2954,54 @@ def test_a_value_is_stated_whole_or_not_at_all(drawn: tuple[str, str]) -> None:
             assert contains(quote, value), (quote, value)
 
 
+# ------------------------------------------------------------- scripts the gates do not read
+
+#: Characters of each script the gates do not read, from the blocks of Unicode that hold it,
+#: its first and last code points among them.
+_FOREIGN = {
+    "Han": ("\N{CJK UNIFIED IDEOGRAPH-7ED3}", "\N{CJK UNIFIED IDEOGRAPH-3400}",
+            chr(0x9FFF), "\N{CJK COMPATIBILITY IDEOGRAPH-F900}"),
+    "Hiragana": ("\N{HIRAGANA LETTER A}", "\N{HIRAGANA LETTER SMALL A}",
+                 "\N{HIRAGANA DIGRAPH YORI}"),
+    "Katakana": ("\N{KATAKANA LETTER A}", "\N{KATAKANA LETTER SMALL KU}",
+                 "\N{HALFWIDTH KATAKANA LETTER A}"),
+    "Hangul": ("\N{HANGUL SYLLABLE GA}", "\N{HANGUL CHOSEONG KIYEOK}",
+               "\N{HANGUL LETTER KIYEOK}"),
+}  # fmt: skip
+
+
+@st.composite
+def _planted_scripts(draw: st.DrawFn) -> tuple[str, str, dict[str, int]]:
+    """A text, the same with runs of every script the gates do not read put into it at
+    places drawn, and how many characters of each went in. Every script in every example."""
+    from collections import Counter
+
+    text = draw(texts())
+    planted: Counter[str] = Counter()
+    runs = []
+    for script, characters in _FOREIGN.items():
+        run = "".join(draw(st.lists(st.sampled_from(characters), min_size=1, max_size=6)))
+        planted[script] += len(run)
+        runs.append(run)
+    pieces = text.split(" ")
+    for run in runs:
+        pieces.insert(draw(st.integers(0, len(pieces))), run)
+    return text, " ".join(pieces), dict(planted)
+
+
+@holds(200, _planted_scripts())
+def test_every_character_of_a_script_the_gates_do_not_read_is_counted(
+    planted: tuple[str, str, dict[str, int]],
+) -> None:
+    """Whatever the text, a run of Han, Hiragana, Katakana or Hangul put into it adds as many
+    characters of that script as it holds, and no other."""
+    from manuscript_guard.gates.scripts import scripts_in
+
+    text, with_them, expected = planted
+    before, after = scripts_in(text), scripts_in(with_them)
+    assert {name: after[name] - before[name] for name in _FOREIGN} == expected, with_them
+
+
 # ------------------------------------------------------------- the text of a vector figure
 
 
@@ -3916,6 +3964,28 @@ def _a_name_is_a_threshold_like_the_figure_beside_it(patch: pytest.MonkeyPatch) 
 
 def _a_nought_is_trimmed_off_a_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(tokens, "_TRAIL", tokens._TRAIL + "0")
+
+
+def _katakana_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import scripts
+
+    left = {name: span for name, span in scripts.SCRIPTS.items() if name != "Katakana"}
+    patch.setattr(scripts, "_ANY", re.compile("[" + "".join(left.values()) + "]"))
+
+
+def _a_character_of_two_scripts_is_counted_twice(patch: pytest.MonkeyPatch) -> None:
+    from collections import Counter
+
+    from manuscript_guard.gates import scripts
+
+    def counted(text: str) -> Counter[str]:
+        found: Counter[str] = Counter()
+        for character in scripts._ANY.findall(text):
+            found.update(name for name, one in scripts._EACH.items() if one.match(character))
+        found["Han"] += 1 if found else 0
+        return found
+
+    patch.setattr(scripts, "scripts_in", counted)
 
 
 def _short_words_are_dropped_from_a_title(patch: pytest.MonkeyPatch) -> None:
@@ -4965,6 +5035,14 @@ BROKEN = {
     "a nought is trimmed off a number": (
         _a_nought_is_trimmed_off_a_number,
         test_a_number_is_seen_where_it_stands_and_judged_one_way,
+    ),
+    "Katakana is taken for a script the gates read": (
+        _katakana_is_read,
+        test_every_character_of_a_script_the_gates_do_not_read_is_counted,
+    ),
+    "a character is counted more than once": (
+        _a_character_of_two_scripts_is_counted_twice,
+        test_every_character_of_a_script_the_gates_do_not_read_is_counted,
     ),
     "an ISBN-13 is weighed as an ISBN-10": (
         _an_isbn_13_is_weighed_as_an_isbn_10,

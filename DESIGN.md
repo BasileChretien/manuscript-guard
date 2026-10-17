@@ -6598,6 +6598,29 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
+- **The gates read English text.** Measured 2026-10-14 on a copy of the example with its
+  scripts run, `check` clean before the edit:
+  - G2: Chinese puts no space between words, so in
+    "结果见表1，比值比为{{results.ror.point}}（95%置信区间…）。" the tokens "结果见表1，比值比为" and
+    "（95%置信区间" are read whole and match no rule, and the sentence fails with every result
+    bound; in English it passes. Numbers written in Chinese numerals, "共纳入四千份报告，
+    其中一百二十三份为肝损伤，比值比约为三点四", are not read as numbers, and nothing is
+    found in that sentence. Full-width digits in English prose ("Of ４０００ reports") are
+    read as digits and caught.
+  - G4: words are counted between spaces, so six short Chinese paragraphs added 18 to
+    `main_text_words`. A journal that publishes in Chinese counts characters, and the limits
+    mean nothing for Chinese text.
+  - G6 and G14: the phrasing, the abbreviations, the declared terms and the spelling are
+    lists and rules of English.
+  - `reworded`: a number in numerals is no fact, so one changed passes.
+
+  Japanese and Korean fare the same where they are written without spaces or in numerals.
+  Each manuscript file whose prose holds Han, Hiragana, Katakana or Hangul is said
+  (`script-not-read`, a warning and never a failure, since an English paper may quote a
+  title or a name in another script), with how many characters of each and what was not
+  checked in them. Reading those languages is weeks of work, for word splitting, their
+  conventions and numerals, and counting characters against a limit, and waits until
+  somebody writing in one of them asks.
 - **A pointer is held to the number of a placement, not to its key, and only where every
   placement is a binding.** "Table 2" passes wherever the main text places two tables,
   whichever two they are: the check sees the numbering, not which table a sentence means.

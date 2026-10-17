@@ -2527,8 +2527,20 @@ design objection means is the author's to weigh while there is still an analysis
 A reading is sealed as a manuscript reading is (`review --seal <reviewer> --design`), and
 one changed after its seal is said (`design-reading-altered`), failing at submission. A
 project with no design round reads as it did before, counts included. For now a design
-round is read and filed by hand: `review --run` sends the manuscript, not the plan, and a
-reviewer's named readers are not read in a design round.
+round is read and filed by hand: `review --run` sends the manuscript, not the plan.
+
+A design remit read more than once, by several models or by a model and a person, is filed
+as a manuscript round's is: each reader the panel lists for the reviewer under `readers` has
+a reading of its own, `round-<n>/<reviewer>.<reader>.yaml`, written by `review --record
+<reviewer> --design --reading <reader>`, which also lists the reader in the panel. Each is
+read and judged on its own: stale, superseded by a later reading of the same remit by the
+same reader, sealed, its majors open or answered, and an override of one signed by the
+statistician under a key that names the reader. A reader the panel names who has not read is
+`design-review-missing`; a named reading that says another reader inside is
+`design-reading-misfiled` and not counted; and a file beside the record whose reader the
+panel does not name is said (`design-reading-unnamed`) and not read. Until this, a design
+panel's named readers were not read at all, and a remit read by two models counted one
+reading.
 
 An override of a design-round major, a reason given for leaving the objection standing, is
 the statistician's to accept, not the author's alone (`sign_offs`): G12 warns
@@ -5457,8 +5469,8 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
 - **A design round is read by hand.** `review --run` does not send the plan to the
-  models yet, and a design panel's named readers are not read. Nothing yet asks for a design
-  round before the analysis stage: one that was never held says nothing. An unsigned
+  models yet. Nothing yet asks for a design round before the analysis stage: one that was
+  never held says nothing. An unsigned
   override of a design-round major is a warning, at submission too, as a new warning
   starts.
 - **A planned result is held to its key, not to what the paper says of it.** G12 checks

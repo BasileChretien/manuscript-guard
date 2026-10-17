@@ -317,6 +317,20 @@ def _quoted_whole() -> Reading:
     return read
 
 
+@reading("data statement")
+def _data_statement() -> Reading:
+    from manuscript_guard.gates.data_statement import judge_statement
+
+    policy = {"identifier_required": True, "no_data": [r"(?i)\bdoes not report data\b"]}
+
+    def read(text: str) -> dict[str, Any]:
+        """What G4 says of a Data availability statement under a policy that requires an
+        identifier, with nothing cited."""
+        return _told(judge_statement(text, policy, set(), MAIN))
+
+    return read
+
+
 def whole_namespace() -> dict[str, Any]:
     """Results that say what they belong to: two p values of one estimate, its interval, and
     two shares of one denominator."""

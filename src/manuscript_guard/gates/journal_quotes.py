@@ -16,17 +16,29 @@ quote. A rule no gate checks goes under `manual:` with its quote, rather than no
 * `journal-quote-names-no-rule` (warning): a quote for a rule the profile does not have.
 * `journal-page-not-stored` (warning): the page is not there to hold the quotes to.
 * `journal-page-changed` (warning): the page is not the text the profile recorded.
+* `journal-manual-unsigned` (warning): the rules under `manual:`, which no gate checks, until
+  the corresponding author signs them off (`manual_signable`). `submit` puts them in the pack
+  as a checklist, `journal-checklist.md` (`journal_checklist`), with their quotes and the
+  sign-off, so that a rule no gate holds is still held by a named person.
+
+A profile a year old is read against the page again (`reread`, `journal --reread <file>`):
+what changed between the stored page and the new one, and which rules' quotes are no longer
+on it, which are the rules to read again.
 """
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
+from manuscript_guard.contracts._schema import ContractError, read_structured
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.findings import FAIL, WARN, Finding, Report
+from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 from manuscript_guard.literature.sources import normalise
+from manuscript_guard.sign_offs import CORRESPONDING, Signable, digest_of, settle
 
 GATE = "G4"
 #: Where the page is stored where the profile does not say: beside the project's profiles.
@@ -181,6 +193,129 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
                 )
             )
     return Report(tuple(findings))
+
+
+def manual_signable(slug: str, document: dict, path: Path) -> Signable | None:
+    """The profile's `manual:` rules, which no gate checks, as one finding the corresponding
+    author signs off, bound to the rules, their quotes and the page they were read from: a
+    rule added, a quote changed or the page read again wants it signed again."""
+    manual = [entry for entry in document.get("manual") or () if isinstance(entry, dict)]
+    if not manual:
+        return None
+    key = f"{GATE}/journal-manual/{slug}"
+    rules = [str(entry.get("rule")) for entry in manual]
+    raised = _finding(
+        "journal-manual-unsigned", WARN,
+        f"{len(rules)} rule(s) of the {slug} profile are checked by no gate: "
+        f"{'; '.join(rules)}", path,
+        "each is in the submission pack's journal-checklist.md (`manuscript-guard submit`); "
+        "the corresponding author checks them against the paper and signs them off",
+    )  # fmt: skip
+    rules_and_quotes = [[entry.get("rule"), entry.get("quote")] for entry in manual]
+    digest = digest_of(key, rules_and_quotes, document.get("page_sha256"))
+    return Signable(CORRESPONDING, key, digest, (raised,))
+
+
+def _target_profile(project: Project) -> tuple[str, dict, Path] | None:
+    """The target journal's profile, read, or None where there is none to read: the gate
+    says why."""
+    from manuscript_guard.gates.journal import profile_path
+
+    slug = project.target_journal
+    path = profile_path(project, slug) if slug else None
+    if path is None:
+        return None
+    try:
+        document = read_structured(path)
+    except ContractError:
+        return None
+    return (slug, document, path) if isinstance(document, dict) else None
+
+
+def manual_signables(project: Project) -> list[Signable]:
+    """What `manuscript-guard sign` may sign of the journal's rules."""
+    found = _target_profile(project)
+    signable = manual_signable(*found) if found else None
+    return [signable] if signable else []
+
+
+def journal_checklist(project: Project) -> str | None:
+    """The pack's checklist of the journal's rules no gate checks, each with the words of
+    the page it was read from, and who signed them off; None where the profile has none."""
+    found = _target_profile(project)
+    signable = manual_signable(*found) if found else None
+    if found is None or signable is None:
+        return None
+    slug, document, _path = found
+    source = document.get("source_url") or "the journal's instructions page"
+    read_on = document.get("retrieved_on")
+    lines = [
+        "# The journal's rules that no check holds",
+        "",
+        f"From the {slug} profile, read from {source}"
+        + (f" on {read_on}" if read_on else "")
+        + ". Each is checked by hand against the paper before it is submitted.",
+        "",
+        "| Checked | Rule | The journal's words |",
+        "|---|---|---|",
+    ]
+    for entry in document.get("manual") or ():
+        if isinstance(entry, dict):
+            cells = [str(entry.get("rule", "")), str(entry.get("quote", ""))]
+            lines.append("| [ ] | " + " | ".join(_cell(cell) for cell in cells) + " |")
+    [said] = settle(project, signable)
+    signed = said.message.split("; ", 1)[-1]
+    lines += [
+        "",
+        f"{signed[:1].upper()}{signed[1:]}." if said.severity == INFO
+        else f"Not signed off: {said.hint}.",
+    ]  # fmt: skip
+    return "\n".join(lines) + "\n"
+
+
+#: How many lines of the difference `journal --reread` prints at the most.
+DIFF_LINES = 200
+
+
+@dataclass(frozen=True)
+class Reread:
+    """The stored page against the page read again."""
+
+    stored: Path
+    #: The difference, line by line, unified.
+    diff: tuple[str, ...]
+    #: Each rule, `manual:` ones as "manual: <rule>", and whether its quote is on the new page.
+    rules: tuple[tuple[str, bool], ...]
+    digest: str
+
+
+def reread(project: Project, new_text: str) -> Reread | None:
+    """The target journal's stored page against `new_text`, the page read again; None where
+    the project has no profile to read it for. A rule whose quote is not on the new page is
+    one the page may have changed, and is read again; the rest of the difference is for the
+    author to read, a rule the page added among it."""
+    found = _target_profile(project)
+    if found is None:
+        return None
+    slug, document, _path = found
+    stored = page_path(project, slug, document)
+    try:
+        old = stored.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        old = ""
+    diff = tuple(difflib.unified_diff(
+        old.splitlines(), new_text.splitlines(), "stored page", "page read again", n=1,
+        lineterm="",
+    ))  # fmt: skip
+    said = list((document.get("quotes") or {}).items())
+    said += [(f"manual: {entry.get('rule')}", str(entry.get("quote", "")))
+             for entry in document.get("manual") or () if isinstance(entry, dict)]  # fmt: skip
+    rules = tuple((str(key), _on_page(new_text, str(quote))) for key, quote in said)
+    return Reread(stored, diff, rules, page_digest(new_text))
+
+
+def _cell(text: str) -> str:
+    return " ".join(text.split()).replace("|", "\\|")
 
 
 def _where(page: Path, project: Project) -> str:

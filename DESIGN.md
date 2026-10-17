@@ -2657,6 +2657,25 @@ stands, and its hint names who signs it and the command. Unsigned, a warning sta
 warning, as before. The record lives beside the authors' approvals, and the hooks put to the
 person an agent's `sign` and an agent's edit of the file, as they do an approval.
 
+The corresponding author signs one thing: the journal's rules that no gate checks. A
+journal profile keeps each rule of the page that no gate holds under `manual:`, with its
+quote (item 50), and until now nobody was asked to hold the paper to them. G4 now raises them
+as one warning, `journal-manual-unsigned`, naming the rules, which the corresponding author
+signs off once they have checked the paper against each, bound to the rules, their quotes
+and the page's digest: a rule added, a quote changed or the page read again wants a new
+signature. `submit` puts them in the pack as `journal-checklist.md`, each rule with the
+page's words and a box to tick, and says under them who signed them off and when, or who is
+to. The corresponding author is the one author `corresponding: true` marks; with none
+marked, or more than one, the hint says to mark one.
+
+A profile a year old is warned of (`journal-profile-stale`), and the page is read again:
+`manuscript-guard journal --reread <file>` takes the page as it now stands, as text, and
+prints its difference from the stored page and, for each rule of the profile, `manual:` ones
+among them, whether its quote is still on it. A rule whose words are gone is the one to read
+again; the difference shows the rest, a rule the page added among it. The command writes
+nothing and exits 1 where a rule's quote is gone: adopting the page, saving it over the
+stored one and recording its digest, which the command prints, is the author's.
+
 G15's warning about a model kind the Methods name and the analysis did not fit is not
 signed: it is about the prose, and its hint already says when there is nothing to do. The
 data custodian and the ethics lead sign nothing yet. The small-cell exception, the
@@ -6256,10 +6275,13 @@ Closed since, and why each mattered:
   until the quote holds the digits. A limit of none or one is not held to its quote's number
   at all, only its quote to the page: "may not include figures", "Figures: none" and "a
   single table" were each read wrong by a rule that tried, one way or the other.
-- **A rule left out of a journal profile entirely is not seen.** Nothing yet reads the stored
-  page for rules that are neither a field nor under `manual:`, `submit` does not yet turn
-  `manual:` into a checklist a named person signs, and re-reading a page a year on does not
-  yet show what changed in it. A profile without quotes is warned of, not failed.
+- **A rule left out of a journal profile entirely is not seen.** Nothing reads the stored
+  page for rules that are neither a field nor under `manual:`: which sentences of a page are
+  rules is the reader's judgement, and a heuristic that guessed it would warn of every
+  sentence it misread. `journal --reread` shows a rule the page added a year on only as a
+  line of the difference, for the author to read. A profile without quotes is warned of,
+  not failed. The checklist of `manual:` rules is signed as a whole: a sign-off says the
+  corresponding author checked every rule on it, not which.
 - **No real journal profile is distributed**, and no transcribed checklist text. Recipes for
   thirteen checklists are, so a user needs only the official document. Journals get a
   different answer, and deliberately: an annotated template

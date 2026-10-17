@@ -13,7 +13,7 @@
       "minLength": 1,
       "description": "The id the finding's hint names, such as G15/model-few-events/adjusted."
     },
-    "role": { "enum": ["statistician", "data_custodian", "ethics_lead"] },
+    "role": { "enum": ["statistician", "data_custodian", "ethics_lead", "corresponding_author"] },
     "person": {
       "type": "string",
       "minLength": 1,

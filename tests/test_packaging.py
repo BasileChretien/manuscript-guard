@@ -193,7 +193,7 @@ def never_asked(version: str) -> bool:
 
 def test_a_push_that_raises_the_version_to_one_pypi_lacks_is_a_release():
     decision = load_release_decision()
-    publish, why = decision.decide("0.2.431", "0.2.430", lambda version: False)
+    publish, why = decision.decide("0.2.431", "0.2.430", lambda version: False, ci="success")
     assert publish and "0.2.430 to 0.2.431" in why
 
 
@@ -201,13 +201,13 @@ def test_a_push_that_leaves_the_version_alone_releases_nothing_and_asks_nobody()
     """The code between a merge and its bump carries the old number: it is not that release,
     whether or not the number reached PyPI."""
     decision = load_release_decision()
-    publish, why = decision.decide("0.2.430", "0.2.430", never_asked)
+    publish, why = decision.decide("0.2.430", "0.2.430", never_asked, ci="success")
     assert not publish and "left the version at 0.2.430" in why
 
 
 def test_a_version_pypi_already_has_is_not_released_again():
     decision = load_release_decision()
-    publish, why = decision.decide("0.2.431", "0.2.430", lambda version: True)
+    publish, why = decision.decide("0.2.431", "0.2.430", lambda version: True, ci="success")
     assert not publish and "already on PyPI" in why
 
 
@@ -217,7 +217,7 @@ def test_a_push_whose_commit_before_cannot_be_read_releases_nothing_and_fails():
     of that. So PyPI is not asked, and the run fails, where somebody sees it."""
     decision = load_release_decision()
     with pytest.raises(SystemExit, match="cannot be read"):
-        decision.decide("0.2.431", None, never_asked)
+        decision.decide("0.2.431", None, never_asked, ci="success")
 
 
 @pytest.mark.parametrize(
@@ -234,15 +234,85 @@ def test_a_version_that_did_not_rise_is_not_released_and_pypi_is_not_asked(now: 
     """A number that went down is one PyPI lacks only by chance, or has already: before the
     first release every number was one it lacked, so a bump taken back was a release."""
     decision = load_release_decision()
-    publish, why = decision.decide(now, before, never_asked)
+    publish, why = decision.decide(now, before, never_asked, ci="success")
     assert not publish and "not above" in why
 
 
 def test_a_version_is_compared_as_numbers():
     decision = load_release_decision()
-    assert decision.decide("0.2.10", "0.2.9", lambda version: False)[0]
-    assert decision.decide("0.3", "0.2.999", lambda version: False)[0]
-    assert decision.decide("1.0.0", "0.99", lambda version: False)[0]
+    assert decision.decide("0.2.10", "0.2.9", lambda version: False, ci="success")[0]
+    assert decision.decide("0.3", "0.2.999", lambda version: False, ci="success")[0]
+    assert decision.decide("1.0.0", "0.99", lambda version: False, ci="success")[0]
+
+
+@pytest.mark.parametrize("ci", ["failure", "cancelled", "timed_out", "action_required", ""])
+def test_a_release_whose_ci_did_not_pass_is_not_made_and_the_run_fails(ci: str):
+    """The commit released is the one CI tested, and it has to have passed. Failing, rather
+    than releasing nothing quietly, is what tells somebody that a number is waiting: a re-run
+    of CI's failed jobs that passes starts the release again."""
+    decision = load_release_decision()
+    with pytest.raises(SystemExit, match="0.2.431 is not released"):
+        decision.decide("0.2.431", "0.2.430", lambda version: False, ci=ci)
+
+
+@pytest.mark.parametrize(
+    ("now", "before", "published"),
+    [
+        ("0.2.430", "0.2.430", never_asked),  # the number left alone
+        ("0.2.430", "0.2.431", never_asked),  # a bump taken back
+        ("0.2.431", "0.2.430", lambda version: True),  # a number PyPI has
+    ],
+)
+def test_a_push_that_releases_nothing_ends_quietly_whatever_ci_said(now, before, published):
+    """Every CI run on main starts the release workflow. One on a commit that releases
+    nothing is not a release that failed, whatever CI concluded."""
+    decision = load_release_decision()
+    assert not decision.decide(now, before, published, ci="failure")[0]
+
+
+AFTER = "a" * 40
+
+
+def test_the_commit_a_push_replaced_is_read_from_github_s_record_of_pushes():
+    decision = load_release_decision()
+    pushes = [
+        {"before": "c" * 40, "after": "d" * 40, "activity_type": "push"},
+        {"before": "b" * 40, "after": AFTER, "activity_type": "pr_merge"},
+    ]
+    assert decision.replaced_by(AFTER, pushes) == "b" * 40
+    # The same push seen twice is still one push.
+    assert decision.replaced_by(AFTER, pushes + pushes[1:]) == "b" * 40
+
+
+@pytest.mark.parametrize(
+    "pushes",
+    [
+        [],
+        [{"before": "c" * 40, "after": "d" * 40}],
+        # Main left at this commit twice, from two different ones: which push CI tested,
+        # and whether it raised the number, is not known.
+        [{"before": "b" * 40, "after": AFTER}, {"before": "c" * 40, "after": AFTER}],
+    ],
+)
+def test_no_single_push_leaving_main_at_the_commit_releases_nothing_and_fails(pushes):
+    decision = load_release_decision()
+    with pytest.raises(SystemExit, match="nothing is published"):
+        decision.replaced_by(AFTER, pushes)
+
+
+def test_a_forced_push_read_from_the_record_is_one_whose_commit_before_cannot_be_read():
+    """The record gives a forced push the commit it replaced, which no branch holds, so it is
+    not in the checkout: the run stops, as it did when the push itself named that commit."""
+    decision = load_release_decision()
+    pushes = [{"before": "f" * 40, "after": AFTER, "activity_type": "force_push"}]
+    assert decision.version_at(decision.replaced_by(AFTER, pushes), REPO) is None
+
+
+@pytest.mark.parametrize("repository", ["", "owner", "owner/name/extra", "a b/c", "o/n?x=1"])
+def test_github_is_not_asked_about_anything_but_a_repository(repository: str):
+    decision = load_release_decision()
+    with pytest.raises(SystemExit, match="is not a repository"):
+        decision.pushes_to_main(repository, "token")
 
 
 @pytest.mark.parametrize(("code", "there"), [(200, True), (404, False)])
@@ -297,11 +367,42 @@ def test_the_script_prints_the_two_lines_the_workflow_reads(monkeypatch, capsys)
     decision = load_release_decision()
     monkeypatch.setattr(decision, "on_pypi", lambda version: False)
     monkeypatch.setattr(decision, "version_at", lambda commit, checkout: "0.0.1")
-    assert decision.main(["release_decision.py", "--before", "abc", "--checkout", str(REPO)]) == 0
+    argv = ["release_decision.py", "--before", "abc", "--ci", "success", "--checkout", str(REPO)]
+    assert decision.main(argv) == 0
     printed = capsys.readouterr()
     version = decision.version_in((REPO / "pyproject.toml").read_text(encoding="utf-8"))
     assert printed.out.splitlines() == ["publish=true", f"version={version}"]
     assert "releasing it" in printed.err
+
+
+def test_the_script_reads_the_push_from_github_for_the_commit_checked_out(monkeypatch, capsys):
+    decision = load_release_decision()
+    asked = []
+
+    def pushes_to_main(repository: str, token: str) -> list[dict]:
+        asked.append(repository)
+        return [{"before": "b" * 40, "after": AFTER}]
+
+    monkeypatch.setattr(decision, "head_of", lambda checkout: AFTER)
+    monkeypatch.setattr(decision, "pushes_to_main", pushes_to_main)
+    monkeypatch.setattr(decision, "version_at", lambda commit, checkout: "0.0.1")
+    monkeypatch.setattr(decision, "on_pypi", lambda version: False)
+    argv = ["release_decision.py", "--pushed", AFTER, "--ci", "success", "--checkout", str(REPO)]
+    assert decision.main([*argv, "--repository", "owner/name"]) == 0
+    assert asked == ["owner/name"]
+    assert capsys.readouterr().out.splitlines()[0] == "publish=true"
+
+
+@pytest.mark.parametrize(("pushed", "head"), [(AFTER, "b" * 40), ("HEAD", "HEAD"), ("", "")])
+def test_the_script_refuses_a_commit_it_has_not_checked_out(monkeypatch, capsys, pushed, head):
+    """The version is read from the checkout, so a checkout of anything but the commit CI
+    tested would release a number from one commit under the tests of another."""
+    decision = load_release_decision()
+    monkeypatch.setattr(decision, "head_of", lambda checkout: head)
+    monkeypatch.setattr(decision, "pushes_to_main", lambda repository, token: never_asked(""))
+    with pytest.raises(SystemExit):
+        decision.main(["release_decision.py", "--pushed", pushed, "--ci", "success"])
+    assert capsys.readouterr().out == ""
 
 
 def test_with_no_commit_before_the_script_prints_nothing_for_the_workflow(monkeypatch, capsys):
@@ -310,7 +411,9 @@ def test_with_no_commit_before_the_script_prints_nothing_for_the_workflow(monkey
     decision = load_release_decision()
     monkeypatch.setattr(decision, "on_pypi", never_asked)
     with pytest.raises(SystemExit) as stopped:
-        decision.main(["release_decision.py", "--before", "", "--checkout", str(REPO)])
+        decision.main(
+            ["release_decision.py", "--before", "", "--ci", "success", "--checkout", str(REPO)]
+        )
     assert stopped.value.code not in (0, None)
     assert capsys.readouterr().out == ""
 
@@ -329,28 +432,68 @@ def release_workflow() -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def test_the_release_starts_on_a_push_to_main_of_this_repository_and_on_nothing_else():
+def test_the_release_starts_after_ci_on_a_push_to_main_of_this_repository_and_nothing_else():
     """Not by hand: a run by hand builds whatever main holds at that moment. Not in a fork:
     one with Actions on would tag itself and make its own release before PyPI, which trusts
-    this repository alone, refused the upload."""
+    this repository alone, refused the upload. Not after CI on a pull request: one from a
+    fork whose branch is called main has its run on a branch called main."""
     import re
+
+    import yaml
 
     workflow = release_workflow()
     # YAML 1.1 reads the key `on` as true.
-    assert workflow[True] == {"push": {"branches": ["main"], "paths": ["pyproject.toml"]}}
+    assert workflow[True] == {
+        "workflow_run": {"workflows": ["CI"], "types": ["completed"], "branches": ["main"]}
+    }
+    # The workflow is named by its name, so a CI renamed would never start a release.
+    ci = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    assert ci["name"] == "CI"
+    assert ci[True]["push"] == {"branches": ["main"]}, "every push to main is tested"
 
     pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
     here = re.search(r'^Homepage = "https://github\.com/([^"]+)"$', pyproject, re.MULTILINE)
     first = workflow["jobs"]["decide"]
     assert f"github.repository == '{here.group(1)}'" in first["if"]
-    assert "github.ref == 'refs/heads/main'" in first["if"]
-    assert "||" not in first["if"], "either condition alone would let a run start"
+    assert "github.event.workflow_run.event == 'push'" in first["if"]
+    assert "github.event.workflow_run.head_branch == 'main'" in first["if"]
+    assert (
+        "github.event.workflow_run.head_repository.full_name == github.repository" in first["if"]
+    )
+    assert "||" not in first["if"], "any one condition alone would let a run start"
 
     # Every other job waits for the one that decides, so none starts where it did not.
     for name, job in workflow["jobs"].items():
         needs = job.get("needs", [])
         needs = [needs] if isinstance(needs, str) else needs
         assert name == "decide" or "decide" in needs, name
+
+
+def test_every_job_builds_the_commit_ci_tested_and_none_cancels_another():
+    """A run started by another workflow's has main as it stands for its own commit
+    (GITHUB_SHA), which may be past the commit CI tested: every checkout names that one, and
+    the tag is put on it."""
+    workflow = release_workflow()
+    tested = "${{ github.event.workflow_run.head_sha }}"
+    for name, job in workflow["jobs"].items():
+        for step in job["steps"]:
+            if "actions/checkout" in step.get("uses", ""):
+                assert step["with"]["ref"] == tested, name
+            assert "GITHUB_SHA" not in step.get("run", ""), name
+            assert "github.sha" not in str(step), name
+    assert workflow["jobs"]["decide"]["steps"][-1]["env"]["PUSHED"] == tested
+    assert workflow["jobs"]["release"]["steps"][-1]["env"]["COMMIT"] == tested
+
+    # A run per commit, and the tag made one run at a time: no group mixes runs that
+    # release with runs that do not, so a release waiting its turn is never cancelled by one
+    # with nothing to release.
+    assert workflow["concurrency"] == {
+        "group": f"publish-to-pypi-{tested}",
+        "cancel-in-progress": False,
+    }
+    jobs = workflow["jobs"].items()
+    grouped = {name: job["concurrency"] for name, job in jobs if "concurrency" in job}
+    assert grouped == {"release": {"group": "publish-to-pypi", "cancel-in-progress": False}}
 
 
 def test_only_the_upload_asks_for_an_identity_and_only_the_release_job_may_write():

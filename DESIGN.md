@@ -527,6 +527,37 @@ wide and printed at 89 mm prints the 10 pt text a plotting library draws at 5.4 
 its resolution passes. The size of a raster is read from its own header, PNG, JPEG or TIFF,
 with the standard library.
 
+An SVG figure is scaled to the width it prints at, and its text and lines with it, so its
+smallest text and its thinnest line are held to the journal's least at that width
+(`figure-text-small`, `figure-line-thin`), and a text anchored outside what it shows, its
+`viewBox`, is said to be cut off (`figure-text-clipped`). Each text's size and each line's
+width is read from the SVG (`gates/figure_svg.py`): set on the element, by the figure's own
+stylesheet (svglite strokes every black line there, Illustrator sets sizes through
+classes) or inherited, in units whatever unit it is written in, SVG's 16 where none is
+set, an em or a percentage of the size around it. It is carried through every transform around the element, a `<use>`
+read where it is used and nothing in `<defs>` where it is defined, and a `<tspan>` is a text
+of its own, as a sub- or superscript is drawn. A text's size is its height through the
+transforms, the length its upright takes: under `scale(2, 0.5)` a text is half its size,
+turned a quarter it is twice it. A line is widened by the square root of the transforms'
+determinant. The printed size is that, times the printed width over the `viewBox`'s; where
+no width is given, at the figure's own width, a width with no unit read as pixels.
+
+A PDF figure is held the same way, read with the standard library (`gates/figure_pdf.py`):
+its objects where they stand and inside object streams, its streams where they are
+Flate-compressed, which is how plotting libraries write them. A text's size is the size
+`Tf` sets, through the text matrix (`Tm`, `Td`), every `cm` around it and a form's
+`/Matrix`, as the height that takes on the page; a line's width is the `w` it is stroked
+at, through the same, and a path only filled is no line. A form draws with the line width
+and the font size of what draws it, as matplotlib's markers do, and a page's content
+streams draw as one. The printed size is that times the printed width over the page's: its
+CropBox where it has one, else its MediaBox, its height where `/Rotate` turns it a quarter.
+A text in a composite (Type 0) font is measured and not quoted, since its bytes may be
+glyph numbers. And each font the page uses is said where it is Type 3
+(`figure-font-type3`), which matplotlib writes unless `pdf.fonttype` is 42 (its
+`rcParamsDefault` says 3, read on 3.9.0), or where its file is not in the PDF
+(`figure-font-not-embedded`), as R's `pdf()` leaves Helvetica: a printer then sets the text
+in a font of its own.
+
 A figure's print width and kind are in its `<name>.guard.yaml` (`print_width_mm`, `kind`).
 Without them the narrowest width the journal prints at is taken, so that a resolution found
 too low is too low at any width, and the kind is halftone. A figure placed only in the
@@ -805,6 +836,116 @@ volume. Two cited entries with the same title of four words or more and no ident
 common are a warning (`reference-title-duplicate`): they may be one work, or a correction
 and the paper it corrects.
 
+## A reference is looked up once, and the answer is kept
+
+Whether a cited work exists, is the work the entry describes, and still stands is a question
+for the registries, and `check` must give the same answer offline in CI. So the question is
+asked by a command of its own, `manuscript-guard lookup`, and the answer is written down:
+one file per cited reference, `literature/lookups/<citekey>.yaml`, committed with the
+paper. It holds the identifiers looked up, the digest of the `references.bib` entry they
+came from, what each registry said, and the day it was asked. The pattern is the journal
+profile's: retrieved, dated, and read as data. The gates read the record and never ask
+anyone; `lookup` asks again only for a reference with no record, an entry changed since,
+or an answer that did not come, and `--again` asks for all of them. `--dry-run` says what
+would be asked and sends nothing.
+
+A DOI is asked of Crossref, for the work's title, type, years (print, online, issued,
+posted), container, volume, pages and article number, the notices that update it
+(`updated-by`: retractions, corrections, expressions of concern, from the publisher and from
+the Retraction Watch data Crossref carries), the notice it is (`update-to`), and the
+published version a preprint became (`is-preprint-of`). It is asked of OpenAlex for its
+`is_retracted`. Where Crossref does not know it, DataCite is asked, since a dataset's DOI is
+registered there and not at Crossref; where neither knows it, the handle API of doi.org,
+which every agency's DOIs pass through and which says only whether the DOI is registered. A
+Crossref 404 alone proves nothing: JaLC, mEDRA and KISTI register DOIs Crossref never sees.
+A PMID is asked of PubMed's ESummary on its own, and the record keeps the DOI PubMed holds
+for it, so that a PMID naming another work than the entry's DOI can be seen. The DOI is
+looked up as G7 reads it, undressed and in lower case.
+
+Each answer ends `found`, `absent` or `unresolvable`. Only an answer in the shape the
+service documents is either of the first two; a 429, a 500, a timeout, a redirect, or a 200
+whose body is an error (`{"error": ...}` from the E-utilities, `"status": "failed"` from
+Crossref) is unresolvable, with the reason, and never read as "not retracted". A 429's
+`Retry-After` is obeyed once when it is 30 seconds or less. Requests to one host are at
+least 0.2 s apart, and to NCBI 0.34 s, its limit without a key.
+
+The shapes were checked on 2026-10-15 against each service's documentation and against live
+answers: Crossref `/works/{doi}` (`status`, `message-type: work`, a 404 with a plain-text
+body for an unknown DOI, `updated-by` and `update-to` entries holding `DOI`, `type`,
+`source`, `updated`, a preprint's `relation.is-preprint-of`; a single record may be asked
+5 times a second, 10 with a contact address, the limits Crossref's notice of 2026-07-21
+kept from its change of 2025-12-01); OpenAlex
+`/works/doi:{doi}` (`id`, `is_retracted`, `publication_year`, a 404 for an unknown DOI; a
+key raises its daily allowance and is optional); DataCite `/dois/{doi}`
+(`data.attributes.titles[].title`, `types.resourceTypeGeneral`, `publicationYear` as a
+number, a 404); the doi.org handle API (`responseCode` 1 with HTTP 200, 100 with HTTP 404
+for a handle that does not exist, 200 for a handle with no values); and ESummary in JSON
+(`result.uids`, each PMID's `title`, `sortpubdate`, `pubtype`, `articleids`, and
+`{"error": "cannot get document summary"}` under a PMID it does not know, with HTTP 200).
+Crossref updates of the Retraction Watch kind write `expression-of-concern`, Crossmark's
+own write `expression_of_concern`; the record reads both as one kind. Zotero flags retracted
+items itself, from the same data, but Better BibTeX's JSON-RPC does not return the flag:
+`item.search` gives CSL-JSON with no field for it (Better BibTeX 9.0.71, Zotero 9.0.6,
+2026-10-15), so the lookup asks the registries and not Zotero.
+
+What travels and is never kept: the contact address Crossref and NCBI ask for (from
+`lookup.contact` in `paper.yaml`, or `MANUSCRIPT_GUARD_CONTACT`), NCBI's key
+(`NCBI_API_KEY`) and OpenAlex's (`OPENALEX_API_KEY`), all in the query string, where the
+services ask for them. The record holds no URL, and a record that would hold one of those
+values is refused before it is written. Redirects are not followed, so a key goes to the
+host it was meant for or nowhere, and nothing is sent unencrypted off this machine.
+
+**G7 reads the records, and asks nobody.** For each cited reference with a DOI or a PMID
+(`gates/lookups.py`):
+
+- *Retracted* fails from drafting (`reference-retracted`): a retraction, withdrawal or
+  removal among the notices Crossref holds for the DOI, OpenAlex's `is_retracted`, or
+  PubMed's "Retracted Publication". A paper that discusses the retracted work, or cites
+  its notice, says why under `lookup.cited_as_retracted` in `paper.yaml`, and G7 then
+  notes it. An expression of concern or a partial retraction is a warning; a correction
+  is kept in the record and not reported.
+- *Not the work cited* fails from internal-review, since a draft may not have its records
+  yet. A DOI that no registry has: Crossref, DataCite and doi.org all said so, and one
+  that did not answer proves nothing (`doi-unregistered`), and a PMID PubMed does not know
+  (`pmid-unknown`). A DOI that is a notice (Crossref's `update-to` of a retraction,
+  correction, erratum or the like; a new version or a new edition of a work is the work), a
+  journal, a series, a component, or a whole issue or volume for an entry that does not
+  cite one, and a PMID PubMed types as a notice (`reference-not-the-work`). A registered title that holds less than 85% of the cited
+  title's words (`reference-title-mismatch`): the cited title is held to the registered
+  one with its subtitle and to its original-language title, so a subtitle the entry left
+  out costs nothing; markup, TeX, case, accents and punctuation are folded (a tag or a
+  command is part of the word it marks, `PM<sub>2.5</sub>` and `PM\textsubscript{2.5}`
+  being "PM2.5", and an accent command keeps its letter), British
+  spellings are read as American through G14's list, and no word is dropped for being
+  short, since "CT" and "MRI" are the difference between two papers. A title mostly in
+  another script than Latin is not compared. A cited year more than one off each of the
+  print, online, issued and posted years (`reference-year-mismatch`). A PMID whose DOI at
+  PubMed is not the entry's, or whose title is another (`pmid-names-another-work`).
+  Authors are not compared: initials against full names defeat a comparison of words.
+- *Warnings*: a preprint published since or withdrawn, a volume or first page or article
+  number that differs from Crossref's (`reference-details-differ`), pages that are a
+  placeholder ("e000", "in press"), an entry changed since its lookup, the references with
+  an identifier that were never looked up (one finding for all of them), and those looked
+  up longer ago than `lookup.max_age_days` (365 by default). An answer that did not come is
+  a note, and a lookup in which none came is a warning: nothing is known of that
+  reference, retracted or not.
+- *The record itself*: one whose `answers_sha256` no longer matches what it says fails from
+  drafting (`lookup-record-edited`), since an edit by hand can take a retraction out; one
+  dated in the future, one that is not a record, or one filed under another citekey fails
+  from internal-review.
+
+## A quotation in the prose is in its source
+
+G7 checks the ledger's quotes against the stored sources. A quotation written into a sentence
+of the manuscript was checked against nothing, and a misremembered one reads as checked. Now
+each quotation of four words or more, in straight or curly double marks, is looked for in the
+stored source of every work cited in the sentences it spans, with the ledger's `contains()`:
+a quotation of two sentences ends in the one that cites. The sentences are cut as the
+co-author's items are. Where it is in none of those sources, G7 warns
+(`quotation-not-in-source`); where none of the cited works has a source that can be read, a
+note says it could not be checked (`quotation-unchecked`). Page numbers are not compared: a
+PDF's page index is not the page printed on it.
+
 ## Only a person can sign an attestation
 
 `attested.yaml` exists to record that **a named human read something the toolkit could not
@@ -949,6 +1090,21 @@ Two smaller decisions fell out of this:
 - **"n/a" is rejected as a reason.** A checklist item excluded needs a reason a reviewer
   could read — "no interventions were assigned" — because a reviewer does read this file.
 
+**What the Data availability statement says is the journal's rule, not the tool's.** G4 found
+the statement's heading and read nothing under it. Publishers differ on what it must hold:
+Springer Nature asks that data which cannot be shared openly say why, PLOS accepts "on
+request" only for data that cannot be public and holds a paper until its identifiers come
+(both pages read 2026-10-15), and this toolkit's own example names no identifier at all. A
+universal rule would be wrong for most of them. So a profile records its journal's policy in
+`data_availability`, with the page and the day it was read: the phrasings the journal does
+not accept, each with what makes it acceptable (`unless`, a reason or a route), whether a
+persistent identifier is required, and the journal's own forms for an article with no data.
+G4 reads the statement against them and fails what the journal does not accept, from
+internal review. Two warnings follow wherever a profile records a policy: storage that is
+neither persistent nor archived, a shared drive or a repository on a code host linked bare
+(a release, a tag or a commit is a fixed version), and a dataset DOI that the reference list
+does not cite, since data a paper rests on are cited like any other source.
+
 ## Word counting is a stated rule
 
 A limit is only checkable if both sides agree what is counted, and journals rarely say. The
@@ -1014,6 +1170,41 @@ and its finding was put on the blank line above the paragraph.
 **Vague attribution gets the one check an encyclopedia cannot use.** "Studies have shown" is
 reported only when no citation sits within 240 characters, because in a manuscript the fix
 is a reference rather than a rewrite.
+
+**A placeholder is a kind of slot, looked for wherever the document's text comes from.** The
+rules name kinds, not spellings:
+- an instruction to the writer in brackets, "[describe the cohort]", even where a hard wrap
+  cuts it;
+- a thing to be supplied, "[Repository]", "[DOI/accession]", "[citation needed]";
+- capitals in brackets that say something is still to come, "[TO BE COMPLETED]", "[CLAIM
+  NEEDS EVIDENCE]". Capitals alone say nothing of the kind: an abbreviation nested in
+  parentheses, "[SJS/TEN]", is in brackets and capitals;
+- filler, and instructions left for the writer: "lorem ipsum", "fill in later.", "this
+  section is a template";
+- the words that mark a gap: TODO, TBD, FIXME, a doubled TKTK, a run of three X or more, a
+  date of Xs and a name such as INSERT_SOURCE_URL.
+
+"XXX" was matched only whole, so "n = XXXX patients" passed, and G2 does not see it, since
+it holds no digit. What is no slot: a link's text, a bracketed span, a title translated into
+English in brackets as PubMed gives it ("[Add-on therapy in epilepsy]"; outside the
+manuscript "[Your ...]" is no slot either, since its quiz titles open so, "[Your
+diagnosis?]"), a karyotype ("47,XXX", 45 to 49 chromosomes before the comma, so that "1,XXX
+reports" is a gap), "XXX syndrome", and a single "TK", which in medicine is a kinase. What two rules find in one place is said once. The same rules
+read the text of each figure G3 reads, the caption of each table in the results, and the
+printed fields of each cited entry of `references.bib`: a "TBD" drawn in a figure, or a
+"TODO" in a reference's note, reaches the document as surely as one in the prose. There the
+words count in capitals only, since "Todo" opens many a Spanish title; in the manuscript
+they count in any case, as they always did. Each is a failure from drafting, as the other
+artefacts are.
+
+The phrasing rules gained what the essay, read again on 2026-10-15, lists as communication
+with the user of a chat ("I hope this helps", "let me know if"), disclaimers about the
+sources a model was given ("while specific details are limited", "in the provided search
+results"), a hedge on a hedge ("could potentially"), the upbeat close about the future ("the
+future of ... lies in"), text about the text ("In this section, we will discuss") and an
+instruction to whoever fills the text in ("the user should add"). Each is a warning. Not
+"not widely available" or "not widely reported", which a paper says of a drug or an adverse
+event.
 
 ## Abbreviations are checked against the manuscript, not against a style guide
 
@@ -1501,6 +1692,19 @@ A threshold is not a measurement, so a float parameter is written as typed (fift
 significant digits, in both languages) unless `digits` or `display` says otherwise: 0.025
 rounded to two places is 0.03, a different test.
 
+**A coding dictionary is declared like a version.** "Events were coded with MedDRA version
+26.1 and drugs with WHODrug Global B3 2025" passed `26.1` as a software version tied to
+nothing, and failed `B3` and `2025` with no declared way to bind them. In a
+pharmacovigilance paper the release of MedDRA decides which preferred terms exist. So
+`em.dictionary("MedDRA", release_file=...)` records `dictionary.meddra` with the role
+`dictionary`, in both emitters, and digests the file it names as an input, so that a new
+release is a change G1 sees. MedDRA's ASCII release states its version in
+`meddra_release.asc`, the first `$`-separated field of its first line, and the emitter reads
+it from there; another dictionary's release is given, and checked against nothing. G2 fails a
+declared release typed where the dictionary is named within a few words before it on its
+line (`typed-dictionary-release`), and only there: "2019" is the release of ICD-10 and the
+year of many other things.
+
 ## A P follows from its statistic
 
 A paper's own results are bound, and their arithmetic is the analysis's. Three kinds of
@@ -1531,6 +1735,82 @@ beyond the standard library, the regularized incomplete beta and gamma functions
 written from their definitions in the NIST Digital Library of Mathematical Functions,
 chapter 8, whose equations `stats/special.py` names, and they are tested against values
 SciPy computed once, outside the package. The two agree to a relative 1e-10.
+
+An estimate printed with its confidence interval is held to it the same way, on the same
+three surfaces (`stats/intervals.py`). An estimate outside its own interval over every value
+the printed digits allow, a bound transposed past it or an estimate from another analysis,
+is `interval-excludes-estimate`, whatever kind of interval it is. And two identities hold
+for a Wald interval:
+
+- **A ratio's interval is symmetric on the log scale.** The arm from the lower bound up to
+  the estimate equals the arm from the estimate up to the upper bound. A bound misprinted,
+  or the crude estimate printed with the adjusted interval, makes them unequal.
+  `ratio-interval-asymmetric` is said where they differ by more than 30% of the
+  half-width at the least, over every value the three numbers' printed digits allow.
+  "ROR 2.6, 95% CI 2.1-3.2" differs by 2.8% as printed and by nothing within its rounding.
+- **The interval excludes the null exactly when P is below one less its level.** The null
+  is 1 for an odds, risk, hazard, rate or reporting ratio and 0 for a difference; a 90%
+  interval goes with 0.10. `p-against-interval` is said where the whole rounding box of a
+  bound is past the null and P is on the wrong side of the level as printed, or the reverse.
+
+The 30% was set against the intervals that are not Wald ones and whose sentence may not say
+so. A profile-likelihood interval (R's `confint()` on a logistic model) and an exact
+conditional one were worked out for 2-by-2 tables, once and outside the package. Their arms
+differ by 2 to 7% with tens of events in each group, 11 to 20% with three to five in the
+smaller, 23 to 25% with two, and 42% with one. So 30% leaves both alone except at one or two
+events, and still finds most misprinted bounds; a crude estimate beside an adjusted
+interval, which differ by less, is found only when they differ by a fair share of the
+half-width.
+
+A sentence that calls its interval profile-likelihood, exact, bootstrap, permutation,
+simulated, Bayesian or credible is read and judged on neither identity. One that calls its
+P one-sided, or adjusted or corrected for multiplicity, is not judged on the second.
+"Adjusted" alone stands nothing down: it is said of estimates far more often than of P
+values, and an adjusted odds ratio's interval is as symmetric as a crude one's. A P is taken
+as the estimate's own only where no other interval stands between them and nothing near it
+says it is a P for interaction, trend or heterogeneity. The words between a name and its
+estimate do not run across another estimate's name: "No difference in mortality, HR 0.83"
+names a hazard ratio, held to 1. Bounds whose signs cannot be read
+for sure are not read: "-0.9--0.1" is an en dash in Markdown or a hyphen and a minus.
+
+An n (%) in a table of a paper given to `audit` is held to its denominator
+(`stats/shares.py`): the count's own, "640/1200 (53.3)", or the "n = 1200" of its column's
+header, the nearest above it in a row with no count. The count over the denominator has to
+give the share printed within half a unit of its last place. The table is read as rows of
+cells (`text/tables.py`): a Markdown pipe table from the masked text, so that one in a
+fenced listing is not a table, and a .docx table as Word lays it out, from marks the reader
+puts on the first line of each cell and takes out again, so the text the rest of the audit
+reads is unchanged. A cell spanning columns counts as each.
+
+What is read is only a column of shares. A label that names a mean, a median, an SD, an
+IQR, a range or a CI, the row's or the one over its rows, or a header that does, bars it,
+"%" or not: "HbA1c, %, mean (SD)" holds two numbers that are not a count and its share. So
+does a row's label that ends on a unit in percent, "Oxygen saturation, %" or "LVEF (%)",
+with no "n" before the "%", for a cell with no "%" of its own and a number no more than 100:
+a measure, whose mean (SD) is printed as whole numbers beside the shares, and not "Male sex
+(%) | 640 (58.0%)" (rounds 1 and 2 of #314). Of the rest, a cell is read where something
+says it is a share: a "%" in the cell, or "n (%)", "No. (%)" or "n/N (%)" in the row's
+label, in the label over its rows or in its column's header. A "%" alone in a label is a
+unit and says nothing; read as "these are shares", it listed a mean saturation of 96 (3) as
+8% of its column (round 1 of #314). Or a cell is read where it is one of a characteristic's
+categories: the rows under a label of their own, which may have its P value beside it or a
+dash, all of whose shares in its column add up to about 100 (round 2 of #314: a P beside the
+label made it a header). Where the longest run of them from the top that adds up to about 100
+is shorter than all of them, it is still the categories for letting a share off as a share of
+their total, the row after them being the next characteristic (round 2: a row after the
+subtypes joined them); but it never says a cell is a share (round 3: a whole-number mean's
+running sum with the shares passed through 100, and the mean was listed).
+
+A share is listed only where no reading of it gives the share printed: of its denominator;
+of its row's total, where the row's shares add up to 100 across it; or of its categories'
+total, where their shares add up to 100 down the column. The last is what the subtypes of
+another row are, "Type 1" and "Type 2" as shares of those with diabetes, and what a
+characteristic counted among those with data is (round 1 of #314: both were listed as
+errors). A row whose label carries a footnote marker, a superscript, a footnote's reference,
+a dagger, or which names an n of its own, is listed as uncertain: a note under the table may
+give it the patients with data as its denominator. A share that is off says which
+denominators it would fit, which is what a share of those with data looks like. Listed with
+the other disagreements, and not counted by `--strict`.
 
 ## A model is read from its fit, and each variable says what it is
 
@@ -2347,6 +2627,30 @@ The covering letter is deliberately not generated. It is the one part addressed 
 particular editor about a particular paper at a particular moment, and a generated one reads
 exactly like a generated one.
 
+## A number a summary gives is one the paper reports
+
+An abstract summarises the paper, and a conclusion what it found: neither introduces data.
+Nothing held that. G2 holds a binding to the analysis wherever it stands, so a key bound in
+the Abstract and nowhere else passed, and G8 compared the results only with themselves. G8
+now warns (`summary-not-reported`) of a results key the Abstract or a conclusion binds that
+the paper reports nowhere: not bound in the Methods or the Results, not declared the same
+quantity as a key that is (`same_as`, either way), not bound in the supplement, and not
+printed in a table or drawn in a figure the manuscript places.
+
+The Methods count as reporting because an abstract's own Methods restate them: the example
+gives its study period there, and the Methods are where it is reported. The Discussion and
+the Introduction do not. A section is found by the one reading of headings the gates share
+(`text/section_names.py`): the Methods as G4, G9 and G14 find them, the abstract by its
+heading or the title the journal's profile gives it, the Results by a title that opens with
+"Results" or "Findings", numbered or marked, and a conclusion by "Conclusion", "Concluding
+remarks" or a title that is "Summary" alone. The outermost heading that names a part decides,
+so the abstract's own "Results" summarise and a "Summary" under the Results is theirs. A
+heading over the Introduction or the Methods is the paper's title written as a heading, and
+names no part. The headings are carried from one file of the paper into the next, as G14
+carries them.
+
+It is a warning: a new rule starts as one, until what it says of real papers is known.
+
 ## The design gate warns and never blocks
 
 Writing down what you intended before you did it is the strongest single thing available for
@@ -2371,6 +2675,63 @@ analysis section says something and no result is emitted under `feasibility.`. I
 warning, as the rest of this gate is: an author may know the data from a registry's own
 report. Once the analysis runs, its results say what the data hold, and the question is not
 asked again.
+
+**A panel reads the plan before there are results.** A review panel reads the manuscript,
+which exists once the analysis has run; by then the design is spent, and a reviewer who says
+the comparison cannot answer the question says it too late. A design round is a panel that
+reads `design/plan.md` and the feasibility results at the `design` stage. It is kept apart
+from the manuscript's rounds, in `review/design/` (`panel-<n>.yaml`, and
+`round-<n>/<reviewer>.yaml` for a reading), so it never counts toward `rounds_required`
+and no manuscript round answers it. `manuscript-guard review --record <reviewer> --design
+--round <n> --verdict <verdict>` files a reading with the digest of what it read: the
+plan's bytes and each `feasibility.*` result's value and display. G12 then says a reading of
+a plan that has changed since, or of data counted again, is stale (`design-review-stale`),
+until the same reviewer reads the plan as it stands in a later round, which supersedes it
+(`design-review-superseded`, information; its open majors still bind);
+a reviewer on the panel who has not read (`design-review-missing`); and a major finding not
+answered by a resolution or an override with its reason (`design-major-open`). The last is
+a warning, and a failure at submission only, as the author decided: what an unanswered
+design objection means is the author's to weigh while there is still an analysis to change.
+A reading is sealed as a manuscript reading is (`review --seal <reviewer> --design`), and
+one changed after its seal is said (`design-reading-altered`), failing at submission. A
+project with no design round reads as it did before, counts included.
+
+A design round is read by the models as a manuscript round is: `review --design --run`
+plans it from `review/design/`, says what would be sent where, asks, and files each reply
+as a design reading, `round-<n>/<reviewer>.<model>.yaml`, sealed and carrying the digest of
+the plan it read (`plan_sha256`). What is sent is a list of its own (`prompt.gather_design`):
+the paper's facts from `paper.yaml`, `design/plan.md` without its front matter and comments
+and with its feasibility results printed into it, and the feasibility results, each under its
+key. Not the manuscript, and no result but a feasibility one: a binding in the plan to any
+other result, a value or a table, is sent as written, since a design round reads the plan
+before there are results (round 1 of #316: a table the plan bound was printed whole). Each
+reviewer is told it reads a plan before its analysis is run, and that a major finding is one
+the design cannot meet: the instructions are the manuscript round's, rewritten in ten places
+and naming no manuscript, so the reply asked for is the same. A
+first design round with no panel gets a starter one, a methodologist whose remit names the
+study type's risks and a statistician who reads the plan against the feasibility results;
+a later design round needs its panel written. The guard hook puts `review --design --run
+--yes` to the author as it puts `review --run --yes`, saying that the plan is what goes.
+
+A design remit read more than once, by several models or by a model and a person, is filed
+as a manuscript round's is: each reader the panel lists for the reviewer under `readers` has
+a reading of its own, `round-<n>/<reviewer>.<reader>.yaml`, written by `review --record
+<reviewer> --design --reading <reader>`, which also lists the reader in the panel. Each is
+read and judged on its own: stale, superseded by a later reading of the same remit by the
+same reader, sealed, its majors open or answered, and an override of one signed by the
+statistician under a key that names the reader. A reader the panel names who has not read is
+`design-review-missing`; a named reading that says another reader inside is
+`design-reading-misfiled` and not counted; and a file beside the record whose reader the
+panel does not name is said (`design-reading-unnamed`) and not read. Until this, a design
+panel's named readers were not read at all, and a remit read by two models counted one
+reading.
+
+An override of a design-round major, a reason given for leaving the objection standing, is
+the statistician's to accept, not the author's alone (`sign_offs`): G12 warns
+(`design-override-unsigned`) until the statistician `authors.yaml` names signs it, with
+`manuscript-guard sign --as <them> --finding G12/design-override/<round>/<reviewer>/<id>`.
+The sign-off is bound to the objection's words and the reason, so a reason rewritten after
+it wants it again. A finding with a resolution needs none: the plan changed to meet it.
 
 **The results the plan promised are reported.** G2 says when the analysis emits a value
 that nothing quotes (`unquoted-result`); nothing said when the plan promised a result the
@@ -2449,6 +2810,30 @@ The effect is that `manuscript-guard init` followed by a first analysis script n
 zero failures at `design` and `analysis`, with the outstanding work listed as not yet due,
 and the same items fail from `drafting` onwards.
 
+## `check` says what it rests on, dimension by dimension
+
+A run with no failure read as "the paper is right", and it says much less. So `check` ends
+with what was checked, grouped by what it is about (`assurance.py`): computational
+reproducibility (G1), numerical provenance (G2, G3, G7, G8), reporting completeness (G4, G5,
+G13), methodological validity (G9, G12, G15), the literature (G7), the review (G10, G11), and
+the language and writing (G6, G14), the last added so that every gate is under one. For each
+it prints three kinds of line, which are the three kinds of evidence the toolkit has:
+`checked`, the gates that ran and what they found, with any that did not run or read
+nothing; `recorded`, what somebody recorded, by whom and when (the last run of `verify`, the
+panel's last round and its readers, the figure reviews, the values attested by a person);
+and `not checked`, in words, what no gate decides, such as whether the design supports the
+conclusion. A dimension with nothing recorded where a record is expected says so: "no review
+of the design", "no run of `verify` in this checkout". There is no score and no percentage,
+since a single number would be read as the verdict this is not, and the exit code is the
+findings' at the project's stage, as before. It is printed text only: `check --json` is
+unchanged.
+
+`verify` now records its last full run in the build folder (`build/verify.json`): when, how
+many values it reproduced of how many, and a digest of the results fragments it re-ran.
+`check` says that run, and says the results have changed since where they have. A run of
+some scripts only (`--only`) is not recorded, since it did not re-run the analysis. The
+folder is not committed, so a fresh checkout says `verify` has not run in it, which is true.
+
 ## An approval is bound to what the author read
 
 "All authors approved the final manuscript" was a sentence of the covering letter, typed.
@@ -2482,6 +2867,25 @@ the roles no longer name, and one copied to another finding count for nothing: t
 stands, and its hint names who signs it and the command. Unsigned, a warning stays a
 warning, as before. The record lives beside the authors' approvals, and the hooks put to the
 person an agent's `sign` and an agent's edit of the file, as they do an approval.
+
+The corresponding author signs one thing: the journal's rules that no gate checks. A
+journal profile keeps each rule of the page that no gate holds under `manual:`, with its
+quote (item 50), and until now nobody was asked to hold the paper to them. G4 now raises them
+as one warning, `journal-manual-unsigned`, naming the rules, which the corresponding author
+signs off once they have checked the paper against each, bound to the rules, their quotes
+and the page's digest: a rule added, a quote changed or the page read again wants a new
+signature. `submit` puts them in the pack as `journal-checklist.md`, each rule with the
+page's words and a box to tick, and says under them who signed them off and when, or who is
+to. The corresponding author is the one author `corresponding: true` marks; with none
+marked, or more than one, the hint says to mark one.
+
+A profile a year old is warned of (`journal-profile-stale`), and the page is read again:
+`manuscript-guard journal --reread <file>` takes the page as it now stands, as text, and
+prints its difference from the stored page and, for each rule of the profile, `manual:` ones
+among them, whether its quote is still on it. A rule whose words are gone is the one to read
+again; the difference shows the rest, a rule the page added among it. The command writes
+nothing and exits 1 where a rule's quote is gone: adopting the page, saving it over the
+stored one and recording its digest, which the command prints, is the author's.
 
 G15's warning about a model kind the Methods name and the analysis did not fit is not
 signed: it is about the prose, and its hint already says when there is nothing to do. The
@@ -2703,6 +3107,27 @@ characters, with every control character and bidirectional control shown as `?`;
 no-break space is shown as it is. Before 2026-10-15 it
 printed the comment on the same line as the tool's words, and a comment that read like an
 instruction read like the tool's.
+
+### Whether each skill fires when it should
+
+A skill helps only when it fires, and several border each other: `review-panel`,
+`reviewer-response` and `co-author-checking`; `manuscript-writing`, `methods-writer` and
+`results-binding`; `paper-audit` and `results-binding`. Each of these ends its description
+with what it is not for and which of ours to use instead. Such a line names only our own
+skills and claims no priority over anything else an agent has, and `tests/test_plugin.py`
+holds both. `evals/`, beside the plugin, holds the cases `claude plugin eval` runs by hand
+(docs/agent-tools.md):
+
+- routing, one for each skill, with a judged outcome;
+- a near-miss for each bordering pair;
+- requests no skill is for;
+- small requests that must not start a workflow.
+
+Run with and without the plugin, the routing cases show what each skill adds over the model
+alone; a skill that adds nothing measurable is cut, or folded into another's references. What
+a run cannot establish: that a skill fires for a user's own wording, which 28 prompts
+do not sample; that a judged outcome is right, since the judge is a model; and anything about a model
+other than the one run. No run is recorded yet: the model is the author's choice.
 
 ## Auditing existing papers, and saying what the audit is worth
 
@@ -3209,6 +3634,39 @@ The annotated copy is deliberately **not stamped**. The source stamp is what G1 
 decide whether the document a co-author opens is current, and there must be exactly one such
 document. This one is named so it cannot be mailed to a journal by accident, for the same
 reason `manuscript.UNCHECKED.docx` is.
+
+## What a data custodian forbids is declared
+
+Many custodians of health data, pharmacovigilance and claims databases among them, forbid
+publishing a count below a minimum, since a cell of two patients in a rare category can name
+them, and forbid the data leaving their hands. Neither was written anywhere a gate could
+read. `paper.yaml` now says the custodian's minimum (`custodian: {minimum_cell_count: 5}`),
+and G2 fails each count the manuscript or the supplement binds that is at least one and
+below it (`count-below-minimum`), naming the key, from the `internal-review` stage: a team
+reads its own small counts while it drafts, and a panel sent to a model provider is already
+outside it. A count is a whole number the analysis emitted with no unit, that is neither a
+parameter, a software version nor a label; "3 years" is emitted with its unit and is no
+count of people, and nought is no small cell.
+
+An input is declared restricted where the analysis declares it, in either emitter
+(`em.add_input(path, restricted=True)`, `em$add_input(path, restricted = TRUE)`), and the
+results record it. G1 fails while git tracks such a file (`restricted-input-tracked`), from
+the first stage: a pushed repository is a copy outside the custodian's hands. Git is asked
+with a time limit; where it cannot be asked, the finding is a warning.
+
+An input is declared synthetic the same way (`em.add_input(path, synthetic=True)`,
+`em$add_input(path, synthetic = TRUE)`): simulated data, a dummy extract, a test fixture, on
+which an analysis is often written while access to the real data is waited for. A binding
+proves where a number came from, not that the data it came from were real, and a number from
+such a run passed every gate. G1 now names, for each run that read a synthetic input, the
+results of it the manuscript binds (`synthetic-input-quoted`): a warning while the paper is
+written, a failure at submission, so that `submit` refuses. A run whose results nothing binds
+puts no number into the paper, and is not said. A paper that is a demonstration, a worked
+example or a teaching paper, says so in `paper.yaml` (`demonstration: true`): the finding is
+then information, and the submission pack's title page says that the data are synthetic. The
+example declares its simulated reports and is a demonstration. Nothing guesses that an input
+is synthetic from its name or its contents: a declaration is the author's, and a heuristic
+would be wrong both ways.
 
 ## What a change makes stale
 
@@ -5151,6 +5609,15 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   Nothing reads it afterwards and the next build makes its own, so the cost is a stray file in
   a cache. Sweeping the directory instead would mean one build deleting a file another build
   is reading, which is the failure this naming exists to prevent.
+- **A number a summary gives is looked for by its key, and in a table or figure by its
+  display.** A key printed in a table or drawn in a figure the paper places counts as
+  reported when its display stands there as a number of its own, so a coincidence keeps the
+  warning back: the example's figure draws a tick at 10, and a key whose display is 10 is
+  reported by it. A figure with no text layer, a PNG alone, reports nothing, and neither
+  does a table's caption. A section whose title names the Results in other words
+  ("Outcomes", "Main results") is not read as the Results, and a conclusion written as a
+  bold paragraph rather than a heading is not read as one. Literature values (`lit.`) are
+  not looked for: an abstract may give the background it rests on.
 - **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and
@@ -5273,6 +5740,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
+- **Nothing asks for a design round before the analysis stage.** One that was never
+  held says nothing. A design round's request carries the plan and the feasibility results
+  only: the reporting guideline and the journal's profile are not sent, and a plan's
+  binding to a result that is not a feasibility one is sent as written. An unsigned
+  override of a design-round major is a warning, at submission too, as a new warning
+  starts.
 - **A planned result is held to its key, not to what the paper says of it.** G12 checks
   that a key listed under Planned results is emitted and quoted, not that the sentence
   quoting it reports the result the plan described: a planned "adjusted ratio" listed as
@@ -5335,6 +5808,43 @@ Added by the adversarial review, verified and **not** fixed:
   P moves one way with each. A t or a z is read as two-sided unless its sentence says
   otherwise, so a one-sided test the sentence does not call one is reported. A ledger quote
   and an audited paper are judged at 0.05; only `check` reads `param.alpha`.
+- **An estimate is held to its interval only where a name for it stands before it.** OR,
+  RR, HR, IRR, ROR, PRR and their names in words are ratios; MD, RD, SMD and "difference"
+  are differences. "It was 2.6 (95% CI 2.1 to 3.2)" is not read, and neither is a second
+  interval with no name of its own, "and 1.1 (95% CI 0.8 to 1.5) in women". A ratio's
+  interval that is not a Wald one and does not say so, a profile-likelihood interval with
+  one or two events in a group, is reported as lopsided. An interval and a P from different
+  methods, a Wald interval beside a log-rank or chi-squared P, can fall on either side of
+  the level near it, and are reported unless the sentence calls the test exact or
+  likelihood-based, or the P adjusted for multiplicity. A word that stands an interval or
+  its P down does so wherever it is in the sentence, as for the tests. A P given before its
+  interval, or in a table column of its own, is not read.
+- **An n (%) is held to its denominator only where the table writes both, in one cell, in
+  a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
+  count and its share in columns of their own, nor a share whose denominator only a caption
+  or a note under the table states ("Values are n (%)", "of those with data"). A share of
+  those with data, under a header that gives everyone, is listed: as uncertain where the
+  row's label carries a footnote marker, as plainly off where it does not. A row whose
+  shares add up to 100 across it is let off if they are shares of its total, so a wrong
+  share in a row of two that happens to add up to 100 with the other, and fits the row's
+  total, is not listed; and a row-percentage table with a Total column, whose shares add up
+  to 200, is listed whole. Categories with nothing but their sum to say they are shares are
+  read only where every row of their run adds up to 100: followed in the same run by the
+  next characteristic, they are not read, and a wrong count among them is not listed
+  (`test_categories_run_on_into_the_next_characteristic_are_not_read`); a whole-number mean
+  in a run that adds up to 100 with it is read and listed. Both are the price of not letting
+  a running sum say what is a share (round 3 of #314). Categories that add up to 100 are let
+  off as shares of their own
+  total in the same way. A group label's "n (%)" reaches every row with a count below it
+  until a row without one, and a data row with no count in it is read as a header, so its
+  "n = 980" becomes the denominator below it. A superscript unit in a label, kg/m^2^, reads as
+  a footnote marker and makes the row uncertain. A group label that says only "%",
+  "Smoking status, %", says nothing, so its categories are read only where their shares add
+  up to 100, and one wrong among them leaves them all unread. A unit label with a footnote
+  marker after it, or with no comma before its "%" ("SpO2 %"), is not a measure.
+  Categories whose counts add up to an old denominator are let off as shares of it. "No. of
+  patients (%)" and "% (n)" are not read as saying shares. A nested Word table is read as
+  text in its cell.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did
@@ -5421,19 +5931,44 @@ Added by the adversarial review, verified and **not** fixed:
   are counted under it together, as two whose patterns begin alike are. Before the review
   of #153 the second one's matches replaced the first's, under either kind of shared name,
   and a number the first was written for failed as unbound.
-- **A figure file is read for its pixels only where it is a PNG, JPEG or TIFF.** The text
-  size and line width of a vector figure, SVG, PDF or EPS, and the fonts a PDF embeds, are
-  not read yet, nor is a raster inside an EPS or PDF. `min_line_pt` is in the profile and
-  checked against nothing. A figure the build places is the first of its files in the
+- **A figure file is read for its pixels only where it is a PNG, JPEG or TIFF.** An EPS
+  figure's text, lines and fonts are not read, nor is a raster inside an EPS, a PDF or an
+  SVG's `<image>`. A figure the build places is the first of its files in the
   build's order, PNG first, and every file of it is held to the rules, so a figure kept as
   PNG and TIFF is held to the journal's limits twice. A JPEG whose JFIF header records no
   resolution, or a PNG with no `pHYs` chunk, is not said to shrink: how large it was drawn
   is unknown. A legend is the paragraph straight after the figure that opens with "Figure"
   and its number; a legend written above it, or in the figure, is not counted. A megabyte
   is 1,048,576 bytes, the larger of the two a journal may mean.
+- **A PDF figure is read for its first page, and as far as its operators say.** A stream
+  under a filter other than Flate is not read, nor is an encrypted PDF. A Type 3 font's
+  `/FontMatrix` is not applied, so one drawn in other than a thousand units to the em is
+  read at the size `Tf` gives; a text's rise and horizontal scaling are not read, nor are
+  the lines a Type 3 glyph draws. A font is said where the page's or a form's resources name
+  it, whether any text uses it or not.
+- **An SVG's text and lines are read from its elements, not drawn.** A `<style>` rule is
+  read where its selector is made of types, classes and ids joined as descendants or
+  children; one with a pseudo-class, an attribute or a sibling is not, and `!important`
+  wins nothing. A text is cut off only where its anchor is outside the `viewBox`; one that
+  starts inside and runs past the edge, or is hidden by a `clipPath`, is not said. A line
+  with `vector-effect: non-scaling-stroke` is widened all the same, a `<marker>` is not read,
+  a `stroke-width` in percent is taken of the font size and not of the figure, and a text's
+  `dx`, `dy` and `text-anchor` do not move its anchor. A `<use>` that refers to itself is
+  followed sixteen deep.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
+- **A coding dictionary's release is read from a file only for MedDRA, and found typed only
+  beside its name.** That `meddra_release.asc` opens with the version, as the first of its
+  `$`-separated fields, is taken from published descriptions of the ASCII release; the
+  format document itself comes with a MedDRA licence and was not read. A file that does not
+  open with a version is refused, not guessed at. Every other dictionary's release is what
+  the script says. G2 finds a release typed only where the dictionary's name, as its key
+  writes it, stands within 60 characters before it on the same line: "coded with MedDRA
+  version" wrapped onto the next line, a name written another way ("the Medical Dictionary
+  for Regulatory Activities"), or the release written otherwise than declared ("B3 2025" for
+  "Global B3 March 2025") is not found. `verify` reports a release that differs on a re-run
+  as a difference, not as the environment: the dictionary is data.
 - **G3 checks a number drawn in a figure for set membership, not identity.** A text node in
   an SVG is accepted if it equals *any* results display, not the one that belongs at that
   position — so a forest plot labelled with the right value against the wrong outcome passes.
@@ -6039,6 +6574,22 @@ Closed since, and why each mattered:
 - **Retrieval is not automated.** The skill drives Chrome by hand; there is no DOI-to-PDF
   pipeline, deliberately, because publisher access varies and bulk fetching is not
   something this tool should make easy.
+- **A journal profile's quotes prove words are on the stored page, and no more.** The page is
+  what someone saved as text: that it is the journal's page, of the date recorded, rests on
+  them. A rule read from the right words in the wrong way (a limit for letters given to an
+  original article) passes. A limit's number is found as digits, with or without a separator
+  of thousands, or as a word up to twenty: "three hundred words" fails its limit's check
+  until the quote holds the digits. A limit of none or one is not held to its quote's number
+  at all, only its quote to the page: "may not include figures", "Figures: none" and "a
+  single table" were each read wrong by a rule that tried, one way or the other.
+- **A rule left out of a journal profile entirely is not seen.** Nothing reads the stored
+  page for rules that are neither a field nor under `manual:`: which sentences of a page are
+  rules is the reader's judgement, and a heuristic that guessed it would warn of every
+  sentence it misread. `journal --reread` shows a rule the page added a year on only as a
+  line of the difference, for the author to read. A profile without quotes is warned of,
+  not failed. The checklist of `manual:` rules is signed as a whole: a sign-off says the
+  corresponding author checked every rule on it, not which. It is bound to the rules and the
+  page, not to the paper: a cover letter or a title page edited after it stays signed.
 - **No real journal profile is distributed**, and no transcribed checklist text. Recipes for
   thirteen checklists are, so a user needs only the official document. Journals get a
   different answer, and deliberately: an annotated template
@@ -6108,6 +6659,20 @@ Closed since, and why each mattered:
   at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
   input is missing by mistake rather than by design is caught only where another finding
   depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
+- **A lookup record is kept beside what it describes, so it catches an edit, not a
+  forger.** `answers_sha256` is in the record it digests: an answer edited by hand is
+  reported, and one edited by someone who computes the digest again is not. A reference
+  with no DOI and no PMID is not looked up and not checked, and `lookup` says so of each.
+  The registries can be wrong, and late: a retraction Crossref and OpenAlex do not yet
+  carry is not in the record, and the record is as old as the day it was asked. Requests
+  are paced at fixed intervals rather than by the limits each answer states in its
+  headers.
+- **The title comparison is one-sided and by words.** A registered title that holds every
+  cited word and many more passes, and so does one whose words are the same in another
+  order. A notice a publisher deposited as a journal article, with no `update-to`, is read
+  as the work, and a DOI only doi.org knows has no title to compare. Volumes, pages and
+  article numbers are compared with Crossref's only. A title in another script than Latin,
+  and the authors of every reference, are not compared.
 - **No test reads a skill for the user's language or for a reference added to the paper.**
   A skill that tells the agent which language to speak to the user in, or to add a
   reference to the paper itself, is caught by whoever reviews the skill, not by
@@ -7579,6 +8144,11 @@ Closed since, and why each mattered:
   strictly, so `# **Methods**` is not Methods. In a .docx a heading style is what makes a
   heading, so a styled paragraph typed as `References {-}` starts a list, although Word
   prints the braces.
+- **A quotation in the prose is found by its marks.** Single marks, a block quotation with no
+  marks, and a quotation in a language whose marks differ (« », „ “) are not read. A
+  quotation of something that is not the cited work, a questionnaire's item in a sentence
+  that cites the instrument's paper, is looked for in that paper all the same, and warned of.
+  A quotation with emphasis inside it is compared with the emphasis marks in it.
 - **`impact` follows the edges the gates record, as loosely as they record them.** A figure
   script counts as reading the results when G3's heuristic says so, and then depends on
   every results file, not on the keys it reads. A sentence is named by its line, not its
@@ -7596,6 +8166,11 @@ Closed since, and why each mattered:
   further into an item: an indented one, one under a later item's own underline, or
   `- # Results` on the item's own line. The same goes for a definition list. The old scan
   saw none of these either.
+- **What `check` says was recorded is what the records say.** A panel's reader is named as
+  the record names it, a model or a person, and a figure review the same; nothing checks who
+  they are. The design review is said not recorded until a panel can read the plan before
+  there are results. `verify`'s record is the build folder's, so it says what was run in this
+  checkout and nothing of anyone else's.
 - **A sign-off says who ran `sign`, not who judged the finding.** As with an approval, a
   co-author who runs it for the statistician, or an agent the person lets through, writes a
   sign-off nobody gave. A statistician who is not an author is matched by the name, e-mail
@@ -7791,6 +8366,37 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A data statement is read by patterns, and only where the profile records a policy.** An
+  identifier is a DOI, an accession number of the archives listed in
+  `gates/data_statement.py` (GEO, SRA and its peers, BioProject, EGA, ArrayExpress, dbGaP),
+  a handle or an ARK, a Zenodo record, an OSF project, or a page archived by the Internet
+  Archive or Perma.cc; another archive's accession is found only where the profile lists it.
+  An identifier anywhere in the statement satisfies the rule, whatever it names, and so does
+  the DOI of a dataset the statement cites by its key: an entry of type `dataset` only, so a
+  `@misc` that holds a dataset and says nothing of it is not read as one. A forbidden
+  phrasing is matched as the profile writes it, without regard to case, and its `unless`
+  anywhere in the statement accepts it. The statement is the section under its heading, its subsections included, the
+  outermost where several headings match; a statement written as a paragraph with no heading
+  of its own is not read. A link to a repository with any path after its name, a branch's as
+  much as a release's, is taken for a fixed version, and a bare repository is warned of even
+  where the statement names its archive too. A dataset's DOI counts as cited when an entry of
+  `references.bib` holds it, whether the text cites that entry or not. A regular expression
+  in the profile that does not compile stops G4, as one in its required statements does.
+- **A placeholder is found by its kind, and only in the text the gate reads.** In the
+  manuscript TODO and TBD count in any case, as they always did, so a Spanish "todo" quoted
+  in the prose is one. A slot in brackets in a form the rules do not name, "[Name of the
+  hospital]", is not found, nor capitals that name what is missing without saying it is to
+  come, "[ETHICS COMMITTEE]", nor a lone "XX" or a single "TK". Outside the manuscript the
+  gate reads the text of an SVG or a PDF figure (not a raster one, which G3 reports), a
+  table's caption and not its cells, and the fields of a cited entry that a reference list
+  can print; an abstract, a file or keywords are not read, nor an entry nothing cites, so
+  under `nocite: '@*'`, which prints every entry, the uncited ones are not read. Every
+  figure file and every table in the results is read, whether the manuscript places it or
+  not, so a "TODO" in the caption of a table nothing prints fails. A run of X in a cited
+  title that is a karyotype written otherwise than "47,XXX", as in "XXY and XXX girls", is
+  read as a placeholder. The essay as read on 2026-10-15 gives none of "holds great promise", "the future looks
+  bright" or "may possibly"; the hedge rule takes "may possibly" as a form of the essay's
+  "could potentially", and the other two are not read.
 - **A frozen plan holds the plan of the first run, whenever that was.** A plan written after
   results already existed is frozen as it stood on the next run, and cannot be told from one
   written first; nor can a plan changed between writing the analysis and running it. Any
@@ -7800,6 +8406,19 @@ Closed since, and why each mattered:
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
   by running the lint against this project's own prose, not by calibrating against a corpus
   of human and machine writing. They are a starting point.
+- **A small count is found where it is bound, by its value.** A count printed in an emitted
+  table, a percentage that gives a small count away with its denominator, and a count typed
+  rather than bound are not read; G2 fails a typed count for being typed. A whole number
+  with no unit that is no count of people (a number of sites, of years written without the
+  unit) fails as one: emit it with its unit. A restricted input that git ignores but that a
+  person copies elsewhere is not seen, and one that was committed and then removed stays in
+  the history, which only a rewrite takes out.
+- **A synthetic input is followed to the results the text binds, and no further.** G1 names
+  a result of a run that read a synthetic input where the manuscript or the supplement binds
+  it as `results.` or `table.`. A figure drawn from such a run and placed with `figure.` is
+  not named, nor a result of a second script that reads the first one's results file as its
+  input: the declaration belongs to the run that made it. Declare the input again in the
+  second script. Nothing finds an input that is synthetic and not declared so.
 - **G9 cannot tell a refactor from a change of meaning.** Every edit to an analysis file
   prompts a re-read, including one that only moved a function. That is the safe direction,
   but it is friction. A step's digest leaves comments and layout out, but a variable renamed

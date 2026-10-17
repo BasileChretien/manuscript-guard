@@ -655,6 +655,22 @@ mg_read_fit <- function(fit, unit = NULL) {
   card
 }
 
+# The MedDRA version `meddra_release.asc` states: the first `$`-separated field of its
+# first line that is not blank, mirroring the Python `_meddra_release`. A file that does
+# not open with a version is refused rather than read as one.
+mg_meddra_release <- function(path) {
+  lines <- readLines(path, warn = FALSE, encoding = "UTF-8")
+  lines <- sub("^\ufeff", "", lines)
+  line <- lines[nzchar(trimws(lines))][1]
+  if (is.na(line)) line <- ""
+  version <- trimws(strsplit(line, "$", fixed = TRUE)[[1]][1])
+  if (is.na(version) || !grepl("^[0-9]+(\\.[0-9]+)?$", version)) {
+    stop(basename(path), ": its first line, ", substr(line, 1, 40),
+         ", does not open with a MedDRA version", call. = FALSE)
+  }
+  version
+}
+
 # Keep the plan as it stands the first time the analysis writes results, and never again,
 # mirroring the Python emitter's `freeze_plan`: design/plan.frozen.yaml holds the plan's
 # text, its digest, the day and the script, written as JSON, which is YAML too.
@@ -706,6 +722,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   state <- new.env(parent = emptyenv())
   state$values <- list()
   state$inputs <- as.character(inputs)
+  state$restricted <- character()
+  state$synthetic <- character()
   state$tables <- list()
   state$code_lists <- list()
   state$variables <- list()
@@ -823,6 +841,50 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     }
     state$values[[key]] <- list(value = version, display = version, label = TRUE,
                                 role = "software")
+    invisible(version)
+  }
+
+  # A coding dictionary the analysis coded with, and its release, mirroring the Python
+  # `dictionary()`. A file named is digested as an input; MedDRA's `meddra_release.asc`
+  # states its version as the first `$`-separated field of its first line, and is read.
+  dictionary <- function(name, release = NULL, release_file = NULL) {
+    if (!grepl("[A-Za-z]", name)) {
+      stop("dictionary ", name, ": a dictionary is named by its name", call. = FALSE)
+    }
+    if (!is.null(release) && !is.character(release)) {
+      # A number has no digits of its own: 27.0 is "27" here and "27.0" in Python.
+      stop("dictionary ", name, ": give the release as text, as the dictionary writes it ",
+           "(\"27.0\", not 27.0)", call. = FALSE)
+    }
+    read <- NULL
+    if (!is.null(release_file)) {
+      full <- if (file.exists(release_file)) release_file else file.path(project_root, release_file)
+      if (!file.exists(full) || dir.exists(full)) {
+        stop("dictionary ", name, ": no file ", release_file, call. = FALSE)
+      }
+      if (identical(tolower(basename(full)), "meddra_release.asc")) {
+        read <- mg_meddra_release(full)
+      }
+      add_input(release_file)
+    }
+    given <- NULL
+    if (!is.null(release)) {
+      given <- trimws(gsub("[[:space:]]+", " ", as.character(release)))
+    }
+    if (!is.null(given) && !is.null(read) && !identical(given, read)) {
+      stop("dictionary ", name, ": release ", given, " was given, and ", basename(full),
+           " says ", read, call. = FALSE)
+    }
+    version <- if (!is.null(read)) read else given
+    if (is.null(version) || !nzchar(version)) {
+      stop("dictionary ", name, ": give its release, or the file that states it", call. = FALSE)
+    }
+    key <- paste0("dictionary.", gsub("[^a-z0-9_]", "_", tolower(name)))
+    if (!is.null(state$values[[key]])) {
+      stop(key, " emitted twice by ", script_path, call. = FALSE)
+    }
+    state$values[[key]] <- list(value = version, display = version, label = TRUE,
+                                role = "dictionary")
     invisible(version)
   }
 
@@ -1078,8 +1140,15 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     invisible(NULL)
   }
 
-  add_input <- function(path) {
-    state$inputs <- c(state$inputs, path)
+  # `restricted` says the data custodian forbids the file leaving their hands: G1 then fails
+  # while git tracks it. `synthetic` says it is not the real data, a simulation, a dummy
+  # extract or a test fixture: G1 then says so of every result the manuscript quotes from
+  # this run, and fails at submission.
+  add_input <- function(path, restricted = FALSE, synthetic = FALSE) {
+    # One path or several, as `list.files()` gives them; one already declared is not listed twice.
+    state$inputs <- c(state$inputs, setdiff(as.character(path), state$inputs))
+    if (isTRUE(restricted)) state$restricted <- c(state$restricted, path)
+    if (isTRUE(synthetic)) state$synthetic <- c(state$synthetic, path)
     invisible(NULL)
   }
 
@@ -1087,11 +1156,14 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     input_records <- lapply(state$inputs, function(path) {
       full <- if (file.exists(path)) path else file.path(project_root, path)
       if (!file.exists(full)) stop("declared input does not exist: ", full, call. = FALSE)
-      list(
+      record <- list(
         path = relative(full),
         sha256 = mg_input_digest(full),
         bytes = as.integer(file.info(full)$size)
       )
+      if (path %in% state$restricted) record$restricted <- TRUE
+      if (path %in% state$synthetic) record$synthetic <- TRUE
+      record
     })
 
     sha <- mg_git(project_root, c("rev-parse", "HEAD"))
@@ -1200,6 +1272,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     value = value,
     parameter = parameter,
     software = software,
+    dictionary = dictionary,
     variable = variable,
     model = model,
     step = step,

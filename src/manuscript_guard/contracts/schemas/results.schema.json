@@ -190,8 +190,8 @@
           "description": "Which interval this bound belongs to, when one estimate carries more than one - \"90%\" beside a 95% CI, or \"95% CrI\" beside a frequentist one. Bounds are compared within a level and never across: a 90% interval nested inside a 95% one is correct, not a contradiction. Absent means the estimate's only interval."
         },
         "role": {
-          "enum": ["parameter", "software"],
-          "description": "What the value is, when it is neither a measurement nor a label. `parameter` is a choice the analysis made and used (`em.parameter`), `software` the version of a piece of software the run imported (`em.software`). G2 fails one of these typed in the text where it should be bound, because a threshold typed in the Methods passes as a convention and stays one after the code has changed."
+          "enum": ["parameter", "software", "dictionary"],
+          "description": "What the value is, when it is neither a measurement nor a label. `parameter` is a choice the analysis made and used (`em.parameter`), `software` the version of a piece of software the run imported (`em.software`), `dictionary` the release of a coding dictionary the analysis coded with (`em.dictionary`). G2 fails one of these typed in the text where it should be bound, because a threshold typed in the Methods passes as a convention and stays one after the code has changed."
         },
         "read": {
           "type": "boolean",
@@ -488,7 +488,15 @@
             "properties": {
               "path": { "type": "string" },
               "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-              "bytes": { "type": "integer", "minimum": 0 }
+              "bytes": { "type": "integer", "minimum": 0 },
+              "restricted": {
+                "type": "boolean",
+                "description": "The data custodian forbids the file leaving their hands; G1 fails while git tracks it."
+              },
+              "synthetic": {
+                "type": "boolean",
+                "description": "Not the real data: a simulation, a dummy extract or a test fixture. G1 says so of every result the manuscript quotes from the run, and fails at submission unless paper.yaml declares the paper a demonstration."
+              }
             }
           }
         },

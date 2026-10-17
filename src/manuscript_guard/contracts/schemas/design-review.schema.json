@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/design-review/1",
+  "title": "manuscript-guard design review",
+  "description": "One reader's reading of the analysis plan in a design round: a panel that reads design/plan.md, and the feasibility results, before there are results to fit the plan to. Written by `manuscript-guard review --record <reviewer> --design --round <n> --verdict <verdict>`, under review/design/round-<n>/, and checked by G12: a major finding not answered is a warning until submission, and a reading of a plan that has changed since is stale.",
+  "type": "object",
+  "required": [
+    "schema",
+    "round",
+    "reviewer",
+    "reviewed_by",
+    "reviewed_on",
+    "plan_sha256",
+    "verdict"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "manuscript-guard/design-review/1"
+    },
+    "round": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "reviewer": {
+      "type": "string",
+      "description": "The id from the panel file."
+    },
+    "reader": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Who made this reading, where a remit is read more than once: provider/model for a model, any name for a person. A named reading is filed beside the reviewer's plain record as <reviewer>.<reader>.yaml, the reader's name lower-cased with every run of characters that are not letters, digits or their marks as one hyphen, and it is read only if the panel lists this reader for this reviewer. `manuscript-guard review --record <reviewer> --design --reading <reader>` writes both. Omit it in the reviewer's plain record, which is how every record written before readings had names is read."
+    },
+    "reviewed_by": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Model identifier or person's name. A review is attributable or it is not a review."
+    },
+    "reviewed_on": {
+      "type": "string",
+      "format": "date"
+    },
+    "plan_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "What was read: design/plan.md and the feasibility results (feasibility.*), as G12 digests them. A plan changed since makes the reading stale."
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "minor-revision",
+        "major-revision",
+        "reject"
+      ],
+      "description": "The reviewer's overall judgement, in the vocabulary a journal uses."
+    },
+    "summary": {
+      "type": "string",
+      "description": "What the paper claims and whether the evidence supports it, in the reviewer's own words."
+    },
+    "reading_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The seal: SHA-256 of what the reader wrote, which is the verdict, the summary, the rejection tests, and each finding's id, severity, where and finding. The answers (resolution, resolved_on, overridden) are not in it. Written by `review --run` when it files a reading, and by `review --seal` for one filed by hand once its findings are written. G11 recomputes it, and a reading whose words no longer match is reading-altered."
+    },
+    "rejection_tests": {
+      "type": "array",
+      "description": "What the reader decided would have to be true, within the remit, to recommend rejection, and what the manuscript showed for each. Kept so that a reading which attacked nothing shows. The gate does not read it.",
+      "items": {
+        "type": "object",
+        "required": [
+          "test",
+          "holds",
+          "evidence"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "test": {
+            "type": "string",
+            "minLength": 1
+          },
+          "holds": {
+            "type": "boolean"
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "How a reading made by a model through a provider's API can be traced. Written by the tool, never by the model. It holds no key, no header and no prompt text: the prompt is identified by the digest of the request body, which never carries the key. The gate does not read it.",
+      "required": [
+        "provider",
+        "model",
+        "prompt_sha256",
+        "tool_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The model as it was asked for."
+        },
+        "model_reported": {
+          "type": "string",
+          "description": "The model as the provider named it in its answer, which may be a dated version of the one asked for."
+        },
+        "host": {
+          "type": "string",
+          "description": "The host the request was sent to."
+        },
+        "prompt_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 of the request body exactly as it was sent."
+        },
+        "response_id": {
+          "type": "string",
+          "description": "The provider's identifier for the response, where it gives one."
+        },
+        "finish": {
+          "type": "string",
+          "description": "How the provider said the reply ended. Only a finished reply is filed."
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tool_version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The manuscript-guard version that built the prompt."
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "severity",
+          "finding"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "major",
+              "minor",
+              "comment"
+            ],
+            "description": "major blocks a submission build until it is resolved or overridden."
+          },
+          "where": {
+            "type": "string"
+          },
+          "ask": {
+            "enum": [
+              "disclosure",
+              "computation",
+              "new-data"
+            ],
+            "description": "What the finding asks the authors to do, where it asks something: report what they already have (disclosure), compute a new number (computation), or collect new data (new-data). A computation is a new emitted result and a new reconciliation of the Methods with the code, so it is said."
+          },
+          "finding": {
+            "type": "string",
+            "minLength": 1
+          },
+          "resolution": {
+            "type": "string",
+            "description": "What was done. An empty resolution on a major finding is an open finding."
+          },
+          "resolved_on": {
+            "type": "string",
+            "format": "date"
+          },
+          "overridden": {
+            "type": "string",
+            "description": "Why this finding is being left unaddressed. A reason, recorded, is a legitimate answer to a reviewer; silence is not."
+          },
+          "overridden_by": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Who decided to leave it: a person, by name. The submission manifest lists each override with it, or with \"not recorded\" where it is missing."
+          }
+        }
+      }
+    }
+  }
+}

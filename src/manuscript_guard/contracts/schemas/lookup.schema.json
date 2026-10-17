@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/lookup/1",
+  "title": "manuscript-guard lookup record",
+  "description": "What the registries said of one cited reference's DOI and PMID, on one day. `manuscript-guard lookup` writes it to literature/lookups/<citekey>.yaml; G7 reads it offline. It holds what was answered, never the requests: no URL, no key, no contact address.",
+  "type": "object",
+  "required": ["schema", "citekey", "looked_up_on", "entry_sha256", "identifiers", "sources", "answers_sha256"],
+  "additionalProperties": false,
+  "$defs": {
+    "status": { "enum": ["found", "absent", "unresolvable"] },
+    "year": { "type": "integer", "minimum": 1000, "maximum": 9999 },
+    "text": { "type": "string", "minLength": 1 },
+    "notice": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "$ref": "#/$defs/text" },
+        "doi": { "$ref": "#/$defs/text" },
+        "date": { "type": "string", "pattern": "^\\d{4}(-\\d{2}){0,2}$" },
+        "source": { "$ref": "#/$defs/text" }
+      }
+    },
+    "unresolvable": {
+      "if": { "properties": { "status": { "const": "unresolvable" } } },
+      "then": { "required": ["why"] }
+    }
+  },
+  "properties": {
+    "schema": { "const": "manuscript-guard/lookup/1" },
+    "citekey": { "$ref": "#/$defs/text" },
+    "looked_up_on": { "type": "string", "format": "date" },
+    "entry_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The digest of the references.bib entry that was looked up, its fields as the file writes them. An entry edited since was not the one looked up."
+    },
+    "answers_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The digest of everything else in the record, written by `lookup`. An answer edited by hand without it changes is reported; one edited by someone who computes it again is not."
+    },
+    "identifiers": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "doi": { "$ref": "#/$defs/text" },
+        "pmid": { "type": "string", "pattern": "^\\d{1,9}$" }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "crossref": {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "allOf": [{ "$ref": "#/$defs/unresolvable" }],
+          "properties": {
+            "status": { "$ref": "#/$defs/status" },
+            "why": { "$ref": "#/$defs/text" },
+            "doi": { "$ref": "#/$defs/text" },
+            "type": { "$ref": "#/$defs/text" },
+            "subtype": { "$ref": "#/$defs/text" },
+            "title": { "$ref": "#/$defs/text" },
+            "subtitle": { "$ref": "#/$defs/text" },
+            "original_title": { "$ref": "#/$defs/text" },
+            "container": { "$ref": "#/$defs/text" },
+            "years": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "print": { "$ref": "#/$defs/year" },
+                "online": { "$ref": "#/$defs/year" },
+                "issued": { "$ref": "#/$defs/year" },
+                "posted": { "$ref": "#/$defs/year" }
+              }
+            },
+            "volume": { "$ref": "#/$defs/text" },
+            "page": { "$ref": "#/$defs/text" },
+            "article_number": { "$ref": "#/$defs/text" },
+            "updated_by": { "type": "array", "items": { "$ref": "#/$defs/notice" } },
+            "update_to": { "type": "array", "items": { "$ref": "#/$defs/notice" } },
+            "preprint_of": { "type": "array", "items": { "$ref": "#/$defs/text" } }
+          }
+        },
+        "openalex": {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "allOf": [{ "$ref": "#/$defs/unresolvable" }],
+          "properties": {
+            "status": { "$ref": "#/$defs/status" },
+            "why": { "$ref": "#/$defs/text" },
+            "is_retracted": { "type": "boolean" },
+            "title": { "$ref": "#/$defs/text" },
+            "type": { "$ref": "#/$defs/text" },
+            "year": { "$ref": "#/$defs/year" }
+          }
+        },
+        "datacite": {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "allOf": [{ "$ref": "#/$defs/unresolvable" }],
+          "properties": {
+            "status": { "$ref": "#/$defs/status" },
+            "why": { "$ref": "#/$defs/text" },
+            "title": { "$ref": "#/$defs/text" },
+            "type": { "$ref": "#/$defs/text" },
+            "year": { "$ref": "#/$defs/year" }
+          }
+        },
+        "doi_org": {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "allOf": [{ "$ref": "#/$defs/unresolvable" }],
+          "properties": {
+            "status": { "$ref": "#/$defs/status" },
+            "why": { "$ref": "#/$defs/text" }
+          }
+        },
+        "pubmed": {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "allOf": [{ "$ref": "#/$defs/unresolvable" }],
+          "properties": {
+            "status": { "$ref": "#/$defs/status" },
+            "why": { "$ref": "#/$defs/text" },
+            "title": { "$ref": "#/$defs/text" },
+            "year": { "$ref": "#/$defs/year" },
+            "doi": { "$ref": "#/$defs/text" },
+            "pubtypes": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+            "volume": { "$ref": "#/$defs/text" },
+            "pages": { "$ref": "#/$defs/text" },
+            "elocation": { "$ref": "#/$defs/text" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -9,6 +9,10 @@
     "schema": { "const": "manuscript-guard/paper/1" },
     "title": { "type": "string", "minLength": 1 },
     "short_title": { "type": "string" },
+    "demonstration": {
+      "type": "boolean",
+      "description": "The paper is a demonstration, a worked example or a teaching paper, whose data are synthetic: G1's finding of results quoted from a synthetic input is then information, and the submission pack's title page says the data are synthetic."
+    },
     "keywords": { "type": "array", "items": { "type": "string" } },
     "english_variant": {
       "enum": ["en-GB", "en-US"],
@@ -26,6 +30,18 @@
       "type": "array",
       "description": "Names of checklists under profiles/reporting/. Commonly STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT, PRISMA, TRIPOD or ARRIVE, but deliberately not a closed list: guidelines are revised, extensions appear, and a schema that refuses CHEERS or SQUIRE would be wrong about the world rather than about the project.",
       "items": { "type": "string", "minLength": 1 }
+    },
+    "custodian": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What the custodian of the data forbids, as the data-use agreement says.",
+      "properties": {
+        "minimum_cell_count": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "The smallest count that may be published. A count the manuscript binds that is at least one and below it fails G2 from the internal-review stage."
+        }
+      }
     },
     "stage": {
       "enum": ["design", "analysis", "drafting", "internal-review", "submission"],
@@ -118,6 +134,30 @@
       "type": "array",
       "description": "Project-specific tokens that contain digits but are names, not claims: CYP3A4, SARS-CoV-2, HbA1c.",
       "items": { "type": "string" }
+    },
+    "lookup": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How `manuscript-guard lookup` asks the registries for each cited reference's DOI and PMID. Keys are never written here: NCBI's is read from NCBI_API_KEY and OpenAlex's from OPENALEX_API_KEY.",
+      "properties": {
+        "contact": {
+          "type": "string",
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+          "description": "The address Crossref and NCBI ask a tool to give, so that they can write before they block it. MANUSCRIPT_GUARD_CONTACT in the environment is used in its place where set. It is sent with each request and never kept in a record."
+        },
+        "max_age_days": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 365,
+          "description": "How old a lookup record may be before G7 says so (`lookup-stale`, a warning): a work can be retracted after it is cited."
+        },
+        "cited_as_retracted": {
+          "type": "object",
+          "description": "References the paper cites knowing they are retracted, or that are themselves a retraction notice, each with the reason: a paper that discusses the retracted work, or cites the notice. G7 then notes them rather than failing.",
+          "propertyNames": { "minLength": 1 },
+          "additionalProperties": { "type": "string", "pattern": "\\S" }
+        }
+      }
     },
     "displays": {
       "type": "object",

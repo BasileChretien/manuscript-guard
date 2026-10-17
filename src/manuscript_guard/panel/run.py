@@ -38,7 +38,7 @@ import yaml
 from manuscript_guard import __version__
 from manuscript_guard.contracts._schema import validate
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.gates.review import reading_digest, reading_path, reading_slug, round_dir
+from manuscript_guard.gates.review import reading_digest, reading_slug
 from manuscript_guard.panel import client
 from manuscript_guard.panel.client import CallFailed, Reply, Transport
 from manuscript_guard.panel.plan import Call, Plan
@@ -60,6 +60,12 @@ STARTER_RATIONALE = (
     "Starter panel, written by manuscript-guard because this round had none. It assumes "
     "nothing about the paper: the remits are those any empirical paper needs somebody to "
     "hold. Edit the reviewers to fit this paper and this journal, and say why here."
+)
+STARTER_DESIGN_RATIONALE = (
+    "Starter design panel, written by manuscript-guard because this design round had none. "
+    "It assumes nothing about the study: a methodologist and a statistician read the plan "
+    "before its analysis is run. Edit the reviewers to fit this study's design and its "
+    "risks, and say why here."
 )
 
 
@@ -194,17 +200,18 @@ def _write_panel(project: Project, plan: Plan, today: date) -> Path:
         "schema": "manuscript-guard/panel/1",
         "round": plan.round,
         "opened_on": today.isoformat(),
-        "manuscript_sha256": plan.material.manuscript_sha256,
+        # A design round reads the plan; what it read is in each reading's digest.
+        **({} if plan.design else {"manuscript_sha256": plan.material.manuscript_sha256}),
         # A model's request carries nothing from an earlier round: it is built from a fixed
         # list of inputs, and the records are not on it.
         "blinded": plan.round > 1,
-        "rationale": STARTER_RATIONALE,
+        "rationale": STARTER_DESIGN_RATIONALE if plan.design else STARTER_RATIONALE,
         "reviewers": [
             {**reviewer, "readers": asked[reviewer["id"]]} for reviewer in plan.reviewers
         ],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    round_dir(project, plan.round).mkdir(parents=True, exist_ok=True)
+    plan.round_dir(project).mkdir(parents=True, exist_ok=True)
     _write_new(path, _dump(document))
     return path
 
@@ -278,20 +285,29 @@ def _record(
         "output_tokens": reply.output_tokens,
         "tool_version": __version__,
     }
+    # What was read: the manuscript's files, or in a design round the plan and the
+    # feasibility results, by the digest G12 holds a reading to.
+    read = (
+        {"plan_sha256": plan.material.plan_sha256}
+        if plan.design
+        else {
+            "manuscript_sha256": plan.material.manuscript_sha256,
+            "file_sha256": dict(sorted(plan.material.file_sha256.items())),
+        }
+    )
     record = {
-        "schema": "manuscript-guard/review/1",
+        "schema": f"manuscript-guard/{plan.schema}/1",
         "round": plan.round,
         "reviewer": call.reviewer,
         "reader": call.model.reader,
         "reviewed_by": call.model.reader,
         "reviewed_on": today.isoformat(),
-        "manuscript_sha256": plan.material.manuscript_sha256,
-        "file_sha256": dict(sorted(plan.material.file_sha256.items())),
+        **read,
         "verdict": parsed["verdict"],
         "summary": parsed["summary"],
         "rejection_tests": parsed["rejection_tests"],
         "findings": [
-            {"id": f"r{plan.round}-{index:02d}", **finding}
+            {"id": f"{'d' if plan.design else 'r'}{plan.round}-{index:02d}", **finding}
             for index, finding in enumerate(parsed["findings"], start=1)
         ],
     }
@@ -323,9 +339,9 @@ def file_reading(
     """Write the record for one validated reply. Raises `ReplyRefused` rather than file a
     record the review schema does not accept or one that repeats a key, and
     `FileExistsError` rather than replace one."""
-    path = reading_path(project, plan.round, call.reviewer, call.model.reader)
+    path = plan.reading_path(project, call.reviewer, call.model.reader)
     document = _record(plan, call, reply, parsed, today, keys)
-    report = validate(document, "review", path)
+    report = validate(document, plan.schema, path)
     if not report.ok:
         said = "; ".join(finding.message for finding in report.findings[:3])
         raise ReplyRefused(f"the record built from the reply does not fit the schema: {said}")
@@ -373,15 +389,15 @@ def unfileable(project: Project, plan: Plan, today: date | None = None) -> str |
         text="", response_id=None, model=None, finish="stop", input_tokens=None, output_tokens=None
     )
     for call in plan.calls:
-        path = reading_path(project, plan.round, call.reviewer, call.model.reader)
-        report = validate(_record(plan, call, empty, _NOTHING_SAID, today), "review", path)
+        path = plan.reading_path(project, call.reviewer, call.model.reader)
+        report = validate(_record(plan, call, empty, _NOTHING_SAID, today), plan.schema, path)
         if not report.ok:
             return "; ".join(finding.message for finding in report.findings[:3])
     return None
 
 
 def refused_path(project: Project, plan: Plan, call: Call) -> Path:
-    return round_dir(project, plan.round) / REFUSED_DIR / f"{call.filename}.txt"
+    return plan.round_dir(project) / REFUSED_DIR / f"{call.filename}.txt"
 
 
 #: Held while the `refused/` folder is written to or tidied away. Providers are asked side
@@ -397,7 +413,7 @@ def _keep(project: Project, plan: Plan, call: Call, why: str, text: str, today: 
     path = refused_path(project, plan, call)
     note = (
         f"This is not a review record. It is the reply {call.model.reader} gave when asked "
-        f"to read {call.reviewer}'s remit\nin round {plan.round} on {today.isoformat()}, "
+        f"to read {call.reviewer}'s remit\nin {plan.name} on {today.isoformat()}, "
         f"kept so that it can be read. It was not filed: {why}\n"
         "Nothing here is counted by any check. Delete it when you have read it.\n"
         f"{'-' * 72}\n{text}\n"
@@ -468,7 +484,7 @@ def _one(
     except ReplyRefused as exc:
         why = str(exc)
     except FileExistsError:
-        name = reading_path(project, plan.round, call.reviewer, call.model.reader).name
+        name = plan.reading_path(project, call.reviewer, call.model.reader).name
         why = f"{name} already exists, and a record is not replaced; the reply was not filed"
     except Exception as exc:  # noqa: BLE001 - one reading failing must not lose the others
         why = f"{type(exc).__name__}: {exc}"

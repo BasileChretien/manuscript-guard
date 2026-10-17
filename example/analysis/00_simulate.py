@@ -13,6 +13,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "data" / "reports.csv"
+#: The generator's own list of event terms, written beside the data with its release on the
+#: first line, as a coding dictionary carries its version: the analysis declares the list
+#: from this file, so the release the supplement prints is the list's own.
+TERMS = ROOT / "data" / "event_terms.txt"
+TERMS_RELEASE = "1"
 
 DRUGS = ["example-drug", "comparator-a", "comparator-b", "comparator-c"]
 EVENTS = ["hepatic injury", "nausea", "rash", "headache", "neutropenia"]
@@ -47,6 +52,7 @@ def main() -> None:
             }
         )
 
+    TERMS.write_text("\n".join([TERMS_RELEASE, *EVENTS]) + "\n", encoding="utf-8", newline="\n")
     with OUT.open("w", encoding="utf-8", newline="\n") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]), lineterminator="\n")
         writer.writeheader()

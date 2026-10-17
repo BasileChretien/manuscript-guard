@@ -221,6 +221,16 @@ manuscript-guard review --record methodologist --design --round 1 --verdict majo
 manuscript-guard review --seal methodologist --design --round 1   # once the findings are in
 ```
 
+A remit read by more than one reader, a person and a model or two models, takes a reading
+from each: `--reading <reader>` on both commands files it as
+`review/design/round-1/methodologist.<reader>.yaml` and lists the reader in the panel. Each
+reading's majors are answered on their own.
+
+```bash
+manuscript-guard review --record methodologist --design --round 1 --reading "Dr Tanaka" \
+  --verdict minor-revision
+```
+
 G12 says a major finding not answered (a warning until submission), and a reading of a plan
 that has changed since. Answer a finding with what the plan now does, in `resolution:`. An
 objection left standing, `overridden:` with a reason, is the statistician's to accept: they

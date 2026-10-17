@@ -911,14 +911,15 @@ def _sends_without_asking(command: str, payload: dict) -> str | None:
         rest = joined[found.end() :]
         end = _INVOCATION_END.search(rest)
         arguments = rest[: end.start() if end else len(rest)]
-        flags = set(re.findall(r"(?<![\w-])--(run|yes|dry-run)\b", arguments))
+        flags = set(re.findall(r"(?<![\w-])--(run|yes|dry-run|design)\b", arguments))
         if {"run", "yes"} <= flags and "dry-run" not in flags:
-            return _what_is_sent(payload)
+            return _what_is_sent(payload, design="design" in flags)
     return None
 
 
-def _what_is_sent(payload: dict) -> str:
-    """The reason the author is asked: the manuscript goes to the models the project names."""
+def _what_is_sent(payload: dict, *, design: bool = False) -> str:
+    """The reason the author is asked: the manuscript goes to the models the project names,
+    or in a design round the analysis plan does."""
     models: list[str] = []
     root = _project_root(payload)
     if root is not None:
@@ -931,6 +932,13 @@ def _what_is_sent(payload: dict) -> str:
         except (ContractError, ValueError, OSError):
             models = []
     to = ", ".join(models) if models else "the models in paper.yaml's review.models"
+    if design:
+        return (
+            f"`review --design --run --yes` sends the design round's panel, with the analysis "
+            f"plan and the feasibility results, to {to}, without asking. Sending the plan away "
+            "is the author's decision: `review --design --run --dry-run` shows which files "
+            "would go to which host."
+        )
     return (
         f"`review --run --yes` sends the round's panel, with the manuscript's text, to {to}, "
         f"without asking. Sending the manuscript away is the author's decision: `review --run "

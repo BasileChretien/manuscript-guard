@@ -52,6 +52,18 @@ Not `authors.yaml`, the results files, the figures, or any earlier round: a seco
 blinded because the first round's records are never part of a request. Names written into
 the manuscript itself, in the acknowledgements or the funding statement, go with it.
 
+**A design round is read the same way, before there are results.** `manuscript-guard
+review --design --run` sends each reviewer of `review/design/panel-<n>.yaml`, or of a starter
+design panel in the first design round, the paper's facts, `design/plan.md` as the build
+would print it, and the feasibility results. Not the manuscript, and no result but a
+feasibility one. Each reply is filed under `review/design/round-<n>/`, and G12 reads it:
+
+```bash
+manuscript-guard review --design --run --dry-run   # what would be sent where; sends nothing
+manuscript-guard review --design --run             # the same statement, then asks, then sends
+manuscript-guard review --design                   # where the design rounds stand
+```
+
 Two warnings follow from that. G11 says when every reading of a round came from one provider
 (`round-one-provider`), since one provider's models share their blind spots, and when a model
 passed a remit that covers the figures it was never sent (`figures-not-seen`). A finding may

@@ -19,6 +19,12 @@ cannot check a number. What the build leaves out is left out here too: a file's 
 and every HTML comment, which is where authors keep their notes. Figures are pictures and
 are not sent; the place of each is marked.
 
+**A design round is sent the plan instead** (`gather_design`): the facts about the paper,
+`design/plan.md` as the build would print it, and the feasibility results, each under its
+key. Not the manuscript, and no result but a feasibility one: a binding in the plan to any
+other result is sent as written. Its reviewers are told they read a plan before its analysis
+is run (`system_text(..., design=True)`); the reply asked of them is the same.
+
 **The failure of a model reviewer is agreeableness.** A panel of personas that all approve
 has told the author nothing. So each reviewer is told to decide first what would have to be
 true, within its remit, for it to recommend rejection, and to check each of those against
@@ -57,6 +63,16 @@ NOT_SENT = (
     "earlier review rounds",
     "the response to reviewers",
 )
+#: The same, for a design round, which is sent the plan and the feasibility results.
+NOT_SENT_DESIGN = (
+    "the manuscript",
+    "results other than feasibility.*",
+    "authors.yaml",
+    "figures",
+    "literature/",
+    "earlier review rounds",
+    "the response to reviewers",
+)
 
 
 class PromptError(Exception):
@@ -82,6 +98,9 @@ class Material:
     manuscript_sha256: str
     #: Bindings that have no value yet. They are sent as written.
     unrendered: int
+    #: For a design round: the digest of the plan and the feasibility results as G12 takes
+    #: it (`gates.design_review.plan_digest`), which the readings carry.
+    plan_sha256: str = ""
 
 
 SYSTEM = """\
@@ -149,15 +168,63 @@ nothing. Add no other keys. An answer that is not exactly this object is discard
 """
 
 
-def system_text(reviewer: dict) -> str:
-    """The instructions for one reviewer. Its panel entry is the only thing that varies."""
+#: What a design round's reviewer is told instead: the same instructions, about a plan read
+#: before its analysis is run. Rewritten from `SYSTEM`, so the two cannot drift apart in
+#: what they ask for.
+_DESIGN_CHANGES = (
+    ("reviewing a scientific manuscript before its authors submit it to a journal. The "
+     "manuscript is unpublished.",
+     "reviewing the analysis plan of a study before its analysis is run. There are no "
+     "results yet: the plan, and what a first count of the data found, are what there is to "
+     "judge, while the design can still change."),
+    ("Before you judge the paper, decide what would have to be true, within your remit, for "
+     "you to recommend rejecting it.",
+     "Before you judge the plan, decide what would have to be true, within your remit, for "
+     "you to recommend that the study not go ahead as planned."),
+    ("Then check each one against the manuscript", "Then check each one against the plan"),
+    ("major: the paper's claim does not follow, a method is wrong or not reported, or a "
+     "number cannot be reconstructed. The authors must answer it before they submit.",
+     "major: the design cannot support the inference the plan intends, a risk of the study "
+     "type (confounding, selection, immortal time, missing data, multiplicity, leakage) is "
+     "not met, or the data cannot answer what is asked. The authors must answer it before "
+     "the analysis is run."),
+    ("Give one verdict on the paper as seen", "Give one verdict on the plan as seen"),
+    ("The next message holds facts about the paper, the target journal's requirements and "
+     "the reporting guideline where the authors have recorded them, and every file of the "
+     "manuscript. Numbers and tables that the authors take from their analysis are shown as "
+     "a reader will see them. Figures are not included; a note marks where each one goes.",
+     "The next message holds facts about the paper, the analysis plan, and the feasibility "
+     "results: what the authors' own code counted in the data before any analysis, each "
+     "under its key. Numbers the plan takes from those results are shown as they are "
+     "printed."),
+    ("what the paper claims and whether the evidence supports it, as far as your remit "
+     "reaches",
+     "what the plan intends to show and whether the design can support it, as far as your "
+     "remit reaches"),
+)
+
+
+def _rewritten(text: str, changes: tuple[tuple[str, str], ...]) -> str:
+    for old, new in changes:
+        if text.count(old) != 1:
+            raise AssertionError(f"the instructions no longer say {old[:60]!r} once")
+        text = text.replace(old, new)
+    return text
+
+
+DESIGN_SYSTEM = _rewritten(SYSTEM, _DESIGN_CHANGES)
+
+
+def system_text(reviewer: dict, *, design: bool = False) -> str:
+    """The instructions for one reviewer. Its panel entry is the only thing that varies,
+    and whether it reads the manuscript or, in a design round, the plan."""
     lines = []
     if str(reviewer.get("role") or "").strip():
         lines.append(f"Your role: {reviewer['role'].strip()}")
     lines.append(f"Your remit: {str(reviewer['remit']).strip()}")
     if str(reviewer.get("why") or "").strip():
         lines.append(f"Why you were asked: {reviewer['why'].strip()}")
-    return SYSTEM.format(who="\n".join(lines))
+    return (DESIGN_SYSTEM if design else SYSTEM).format(who="\n".join(lines))
 
 
 def _block(label: str, text: str) -> str:
@@ -370,4 +437,55 @@ def gather(project: Project) -> Material:
     )
 
 
-__all__ = ["FROM_PAPER", "NOT_SENT", "Material", "PromptError", "Sent", "gather", "system_text"]
+def gather_design(project: Project) -> Material:
+    """Read what every reviewer of a design round is sent: the facts about the paper, the
+    plan as the build would print it, and the feasibility results. Nothing else.
+
+    Only a feasibility result is printed into the plan: a binding to any other result is
+    sent as written and counted, since a design round reads the plan before there are
+    results, and one already emitted is not the reviewers' to see.
+    """
+    from manuscript_guard.gates.design import plan_path
+    from manuscript_guard.gates.design_review import FEASIBILITY, plan_digest
+
+    plan = plan_path(project)
+    if not plan.is_file():
+        raise PromptError(
+            f"there is no {_label(project, plan)} to review: a design round reads the plan"
+        )
+    label = _label(project, plan)
+    if any(_inside(plan, private) for private in _kept_out(project)):
+        raise PromptError(f"{label} resolves to a file of the review's, which is not sent")
+    namespace, results, _literature, _report = load_namespace(project)
+    counted = {key: value for key, value in results.values.items() if key.startswith(FEASIBILITY)}
+    printable = {f"results.{key}": value for key, value in counted.items()}
+    data, text = _read(plan, label)
+    shown, unrendered = _as_read(text, printable, results)
+    parts = ["# The paper", _about(project), "# The analysis plan", _block(label, shown)]
+    sent = [Sent(label, "as the build would print it")]
+    if counted:
+        listed = "\n".join(f"{key}: {value.display}" for key, value in sorted(counted.items()))
+        parts += ["# The feasibility results", _block("results: feasibility.*", listed)]
+        sent.append(Sent("results: feasibility.*", f"{len(counted)} values, each with its key"))
+    return Material(
+        user="\n\n".join(parts) + "\n",
+        sent=tuple(sent),
+        file_sha256={label: hashlib.sha256(data).hexdigest()},
+        manuscript_sha256="",
+        unrendered=unrendered,
+        plan_sha256=plan_digest(project),
+    )
+
+
+__all__ = [
+    "DESIGN_SYSTEM",
+    "FROM_PAPER",
+    "NOT_SENT",
+    "NOT_SENT_DESIGN",
+    "Material",
+    "PromptError",
+    "Sent",
+    "gather",
+    "gather_design",
+    "system_text",
+]

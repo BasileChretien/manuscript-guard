@@ -582,6 +582,45 @@ def test_r_and_python_record_an_input_declared_restricted_alike(tmp_path: Path) 
     ] == [("data/kept.csv", True), ("data/open.csv", None)]
 
 
+SYNTHETIC_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s", inputs = "data/real.csv")
+em$add_input("data/simulated.csv", synthetic = TRUE)
+em$add_input("data/real.csv")
+em$value("n", 412L)
+em$write()
+"""
+
+
+def test_r_and_python_record_an_input_declared_synthetic_alike(tmp_path: Path) -> None:
+    """Item 42: an input that is not the real data is written into the provenance by either
+    language, and declaring one already given does not list it twice."""
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    (root / "data").mkdir()
+    for name in ("simulated.csv", "real.csv"):
+        (root / "data" / name).write_text("a,b\n1,2\n", encoding="utf-8")
+    script = root / "analysis" / "synthetic.R"
+    script.write_text(SYNTHETIC_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    fragment = next((root / "results").glob("*.json"))
+    from_r = json.loads(fragment.read_text(encoding="utf-8"))["provenance"]["inputs"]
+    em = Emitter(script, root=root, inputs=["data/real.csv"])
+    em.add_input("data/simulated.csv", synthetic=True)
+    em.add_input("data/real.csv")
+    em.value("n", 412)
+    from_python = json.loads(em.write().read_text(encoding="utf-8"))["provenance"]["inputs"]
+    assert [(i["path"], i.get("synthetic")) for i in from_r] == [
+        (i["path"], i.get("synthetic")) for i in from_python
+    ] == [("data/real.csv", None), ("data/simulated.csv", True)]
+
+
 def test_r_and_python_declare_and_read_parameters_alike(tmp_path: Path) -> None:
     """One meaning in two languages: the same calls give the same keys, values, displays,
     and the same answer to whether the script reads what it declared."""

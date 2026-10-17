@@ -83,6 +83,10 @@ def title_page(project: Project) -> str:
     order = [a["id"] for a in authors["affiliations"]]
     paper = project.paper
     lines = [f"# {paper['title']}", ""]
+    if paper.get("demonstration") is True:
+        # The paper says what its numbers are not: results of real data (item 42).
+        lines += ["**A demonstration.** The data this paper reports are synthetic; its "
+                  "numbers describe no real population.", ""]  # fmt: skip
 
     short = paper.get("short_title")
     if short:

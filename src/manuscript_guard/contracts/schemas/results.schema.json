@@ -492,6 +492,10 @@
               "restricted": {
                 "type": "boolean",
                 "description": "The data custodian forbids the file leaving their hands; G1 fails while git tracks it."
+              },
+              "synthetic": {
+                "type": "boolean",
+                "description": "Not the real data: a simulation, a dummy extract or a test fixture. G1 says so of every result the manuscript quotes from the run, and fails at submission unless paper.yaml declares the paper a demonstration."
               }
             }
           }

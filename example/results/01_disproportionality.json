@@ -2,22 +2,23 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "c6b0368e9f89d86be85afff143fb52c923a223595e91249bdfa9442889376ff8",
-    "generated_at": "2026-10-17T03:31:51+00:00",
+    "generated_by_sha256": "e53c51ef88faf606141616026778cd7422461ef608f56a8b9a3a7f246aa5c7c4",
+    "generated_at": "2026-10-17T06:40:42+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.443"
+      "version": "0.2.444"
     },
     "vcs": {
-      "sha": "9fef3b41c31036ec21f4901ea4a784f165d4351a",
+      "sha": "ed4272bfb3a593201bfe300e4de9ce70d9881546",
       "dirty": true,
-      "branch": "feat/small-cells"
+      "branch": "feat/synthetic-inputs"
     },
     "inputs": [
       {
         "path": "data/reports.csv",
         "sha256": "55aa913a7f8cbc6c432e263e04fa12f3e148809dbd4ddc6fc8fd5b10c916886c",
-        "bytes": 172822
+        "bytes": 172822,
+        "synthetic": true
       },
       {
         "path": "data/event_terms.txt",
@@ -658,29 +659,29 @@
   "steps": {
     "ror": {
       "lines": [
-        54,
-        58
+        56,
+        60
       ],
       "digest": "43994ea0f861fd9c11dd95e974d11a8092dac8245846d047087c06a0e4464051"
     },
     "ci": {
       "lines": [
-        62,
-        67
+        64,
+        69
       ],
       "digest": "341304bd156666d20b98966338e40a99de96809c7d95a808720cc8043ee94978"
     },
     "signal": {
       "lines": [
-        79,
-        81
+        81,
+        83
       ],
       "digest": "d2537ffaa2c3277dcd94b7608b1cc89116a4e9ad3860b5712e804e73052db159"
     },
     "adjusted": {
       "lines": [
-        90,
-        118
+        92,
+        120
       ],
       "digest": "ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf"
     }

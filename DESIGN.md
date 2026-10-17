@@ -3470,6 +3470,20 @@ results record it. G1 fails while git tracks such a file (`restricted-input-trac
 the first stage: a pushed repository is a copy outside the custodian's hands. Git is asked
 with a time limit; where it cannot be asked, the finding is a warning.
 
+An input is declared synthetic the same way (`em.add_input(path, synthetic=True)`,
+`em$add_input(path, synthetic = TRUE)`): simulated data, a dummy extract, a test fixture, on
+which an analysis is often written while access to the real data is waited for. A binding
+proves where a number came from, not that the data it came from were real, and a number from
+such a run passed every gate. G1 now names, for each run that read a synthetic input, the
+results of it the manuscript binds (`synthetic-input-quoted`): a warning while the paper is
+written, a failure at submission, so that `submit` refuses. A run whose results nothing binds
+puts no number into the paper, and is not said. A paper that is a demonstration, a worked
+example or a teaching paper, says so in `paper.yaml` (`demonstration: true`): the finding is
+then information, and the submission pack's title page says that the data are synthetic. The
+example declares its simulated reports and is a demonstration. Nothing guesses that an input
+is synthetic from its name or its contents: a declaration is the author's, and a heuristic
+would be wrong both ways.
+
 ## What a change makes stale
 
 The digests the gates record already form a graph, and each gate reads one edge of it: G1 an

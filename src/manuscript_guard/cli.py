@@ -140,7 +140,7 @@ def _run_gates(
         ("G7", lambda: check_prose_quotations(project)),
         ("G4", lambda: check_journal(project)),
         ("G8r", lambda: check_reporting(project)),
-        ("G6", lambda: check_writing(project)),
+        ("G6", lambda: check_writing(project, results)),
         ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project, results, chosen).merge(
             check_design_rounds(project, submission=at_submission))),

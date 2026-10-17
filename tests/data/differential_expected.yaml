@@ -37,10 +37,8 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G8 works out the P each t, F, chi-squared or z statistic in the manuscript gives, and
-      counts them, `p_values_recomputed`; and it reads each named estimate printed with a
-      confidence interval, held to its interval and its P, and counts them,
-      `printed_intervals_read`
+      G6 also reads the text of the figures, the tables' captions and the cited references
+      for a placeholder, and counts what it read, `writing_texts_elsewhere`
   - reading: numbers
     why: >-
       a step, a panel or a box takes a number up to 20 and an item up to 99, so a count

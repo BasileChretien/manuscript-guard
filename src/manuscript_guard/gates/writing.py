@@ -20,11 +20,18 @@ Three severities, and the split is what makes it usable:
 Vague attribution gets the one check an encyclopedia cannot use: "studies have shown" is
 reported only when no citation appears nearby, because in a manuscript the fix is a
 reference rather than a rewrite.
+
+A placeholder reaches the document from more than the manuscript: a "TBD" drawn in a figure,
+a "TODO" in a table's caption written by the analysis, or in the note of a cited reference.
+So the rules marked `elsewhere` also read the text of each figure G3 reads, the caption of
+each table in the results, and the fields of each cited entry of `references.bib` that a
+reference list can print.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -33,10 +40,14 @@ import yaml
 
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
+from manuscript_guard.contracts.results import Results
 from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.gates.figures import TEXT_FORMATS, _extract_text
 from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.literature.bibfile import read_entries
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import count_words
+from manuscript_guard.zotero import find_citations
 from manuscript_guard.zotero.citations import NARRATIVE, bracketed
 
 GATE = "G6"
@@ -44,6 +55,12 @@ DATA = Path(__file__).parent.parent / "data" / "ai_writing.yaml"
 
 # How far either side of a claim a supporting citation may sit.
 CITATION_WINDOW = 240
+BIB_FILE = "references.bib"
+#: Fields of a reference that no reference list prints, or that are the type of the entry.
+UNPRINTED = frozenset(
+    {"abstract", "annotation", "annote", "comment", "file", "keywords", "langid", "language",
+     "mendeley-tags", "type", "urldate"}
+)  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -69,7 +86,7 @@ def load_rules() -> Rules:
     )
 
 
-def check_writing(project: Project) -> Report:
+def check_writing(project: Project, results: Results | None = None) -> Report:
     rules = load_rules()
     report = Report()
     totals = {"words": 0, "artefacts": 0, "phrases": 0, "vague": 0}
@@ -88,12 +105,16 @@ def check_writing(project: Project) -> Report:
         report = report.merge(_vague(rules, path, text, prose, totals))
 
     report = report.merge(_density(rules, corpus, totals["words"]))
+    elsewhere = _elsewhere(project, results, [text for _path, text, _prose in corpus])
+    for where in elsewhere:
+        report = report.merge(_artefacts_elsewhere(rules, where, totals))
 
     return report.with_counts(
         prose_words=totals["words"],
         writing_artefacts=totals["artefacts"],
         writing_phrases=totals["phrases"],
         writing_vague=totals["vague"],
+        writing_texts_elsewhere=len(elsewhere),
     )
 
 
@@ -116,22 +137,113 @@ def _context(text: str, start: int, end: int) -> str:
     return re.sub(r"\s+", " ", text[left : end + 40]).strip()
 
 
+def artefacts_in(
+    rules: Rules, text: str, *, manuscript: bool
+) -> Iterator[tuple[dict, re.Match[str]]]:
+    """Each artefact in `text`, with the rule that found it. In the manuscript every rule,
+    and a word marked `any_case_in_manuscript` in any case; elsewhere only the rules marked
+    `elsewhere`, as they are written. What two rules find in one place is one artefact,
+    "[CITATION NEEDED]" a slot and capitals both, and is said once."""
+    taken: list[tuple[int, int]] = []
+    for rule in rules.artefacts:
+        if not manuscript and not rule.get("elsewhere"):
+            continue
+        any_case = manuscript and rule.get("any_case_in_manuscript")
+        flags = re.MULTILINE | (re.IGNORECASE if any_case else 0)
+        for match in re.finditer(rule["pattern"], text, flags):
+            if any(start < match.end() and match.start() < end for start, end in taken):
+                continue
+            taken.append(match.span())
+            yield rule, match
+
+
 def _artefacts(rules: Rules, path: Path, text: str, totals: dict) -> Report:
     report = Report()
-    for rule in rules.artefacts:
-        for match in re.finditer(rule["pattern"], text, re.MULTILINE):
-            totals["artefacts"] += 1
-            report = report.with_findings(
-                Finding(
-                    gate=GATE,
-                    code="model-artefact",
-                    message=f"{match.group(0)[:60]!r} — {rule['why']}",
-                    path=path,
-                    line=_line_of(text, match),
-                    context=_context(text, match.start(), match.end()),
-                    hint="remove it; this cannot appear in a submitted manuscript",
-                )
+    for rule, match in artefacts_in(rules, text, manuscript=True):
+        totals["artefacts"] += 1
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="model-artefact",
+                message=f"{match.group(0)[:60]!r} — {rule['why']}",
+                path=path,
+                line=_line_of(text, match),
+                context=_context(text, match.start(), match.end()),
+                hint="remove it; this cannot appear in a submitted manuscript",
             )
+        )
+    return report
+
+
+@dataclass(frozen=True)
+class Elsewhere:
+    """A text outside the manuscript that reaches the document: where it is, and how to
+    name it in a finding."""
+
+    path: Path
+    text: str
+    named: str
+    line: int | None = None
+
+
+def _elsewhere(project: Project, results: Results | None, sources: list[str]) -> list[Elsewhere]:
+    """The text of every figure, the caption of every table, and the printed fields of every
+    cited reference, each as one text."""
+    found: list[Elsewhere] = []
+    figures = project.path("figures")
+    if figures.is_dir():
+        for path in sorted(figures.rglob("*")):
+            if path.is_file() and path.suffix.lower() in TEXT_FORMATS:
+                text = _extract_text(path)
+                if text:
+                    found.append(Elsewhere(path, text, f"the text of {path.name}"))
+    for key, table in sorted((results.tables if results else {}).items()):
+        if table.caption:
+            found.append(Elsewhere(table.source, table.caption, f"the caption of table {key!r}"))
+    return found + _cited_fields(project, sources)
+
+
+def _cited_fields(project: Project, sources: list[str]) -> list[Elsewhere]:
+    path = project.path("literature") / BIB_FILE
+    if not path.is_file():
+        return []
+    cited = {use.citekey for text in sources for use in find_citations(text, path)}
+    written = path.read_text(encoding="utf-8", errors="replace")
+    found = []
+    for key, fields in read_entries(path).items():
+        if key not in cited:
+            continue
+        opens = re.search(r"^@\w+\s*\{\s*" + re.escape(key) + r"\s*,", written, re.MULTILINE)
+        at = opens.start() if opens else 0
+        for name, value in fields.items():
+            if name in UNPRINTED or not value:
+                continue
+            # The field where it is written: on a line of its own, or after the key or another
+            # field on the entry's line.
+            field = re.compile(r"(?:^|[{,])[ \t]*" + re.escape(name) + r"[ \t]*=", re.M | re.I)
+            seen = field.search(written, at)
+            line = written.count("\n", 0, seen.end() if seen else at) + 1
+            found.append(Elsewhere(path, value, f"the {name} of @{key}", line))
+    return found
+
+
+def _artefacts_elsewhere(rules: Rules, where: Elsewhere, totals: dict) -> Report:
+    """The rules marked `elsewhere`: a word that counts in any case in the manuscript counts
+    here in capitals only."""
+    report = Report()
+    for rule, match in artefacts_in(rules, where.text, manuscript=False):
+        totals["artefacts"] += 1
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="model-artefact",
+                message=f"{match.group(0)[:60]!r} in {where.named} — {rule['why']}",
+                path=where.path,
+                line=where.line,
+                context=_context(where.text, match.start(), match.end()),
+                hint="remove it; this cannot appear in a submitted manuscript",
+            )
+        )
     return report
 
 

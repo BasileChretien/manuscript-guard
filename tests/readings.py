@@ -547,6 +547,28 @@ def _quotation() -> Reading:
     return quotation
 
 
+# --------------------------------------------------------------------------- placeholders
+
+
+@reading("placeholders")
+def _placeholders() -> Reading:
+    from manuscript_guard.gates.writing import artefacts_in, load_rules
+
+    def placeholders(text: str) -> dict[str, Any]:
+        """What G6's artefact rules find in a text, read as the manuscript and as the text
+        of a figure, a caption or a reference: each rule, where, and what it matched."""
+        rules = load_rules()
+        return {
+            side: [
+                [rule["id"], match.start(), match.group(0)]
+                for rule, match in artefacts_in(rules, text, manuscript=side == "manuscript")
+            ]
+            for side in ("manuscript", "elsewhere")
+        }
+
+    return placeholders
+
+
 @reading("vector figure")
 def _vector_figure() -> Reading:
     """The texts and lines of an SVG figure as G4 reads them: each text's height and each

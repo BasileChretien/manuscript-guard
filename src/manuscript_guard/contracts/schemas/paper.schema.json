@@ -35,7 +35,7 @@
         },
         "restricts_sending": {
           "type": "boolean",
-          "description": "The custodian forbids sending the manuscript or its results anywhere they have not agreed to: `review --run` sends to a provider on this machine, and to any other only once the data custodian named in authors.yaml has authorised it with `manuscript-guard sign`."
+          "description": "The custodian forbids sending the manuscript or its results anywhere they have not agreed to: `review --run` sends to a model the built-in Ollama runs on this machine, and to any other provider, one added at localhost included, only once the data custodian named in authors.yaml has authorised it with `manuscript-guard sign`."
         }
       }
     },

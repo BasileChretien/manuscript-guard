@@ -115,6 +115,8 @@ COMMANDS = {
     "sign": Zero("the findings a named person may sign off", exits=2,
                  argv=("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
     "stages": Zero("nothing: it prints the stages", why="it reads the policy table only"),
+    "style": Zero("the citation style the journal's profile names", exits=2,
+                  argv=("style", "{project}")),
     "submit": Zero("every gate at the submission stage, then the build", exits=1,
                    argv=("submit", "{project}")),
     "sync-bib": Zero("the citations in the manuscript", exits=2, argv=("sync-bib", "{project}")),

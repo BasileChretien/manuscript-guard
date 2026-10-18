@@ -89,6 +89,28 @@ class Planned:
 _EMPTY = re.compile(r"^\s*(?:tbd|todo|n/?a|-+|\.+|see below)?\s*$", re.IGNORECASE)
 
 
+DESIGNS = Path(__file__).parent.parent / "data" / "study_types.yaml"
+
+
+def study_types() -> dict:
+    """Each study design, the plan sections it needs beyond the seven, and its guidelines."""
+    import yaml
+
+    return yaml.safe_load(DESIGNS.read_text(encoding="utf-8"))["types"]
+
+
+def required_for(study_type: str | None) -> tuple[tuple[str, str, str], ...]:
+    """The sections a plan for this design is asked for: the seven, and the design's own,
+    each with where it comes from in its hint."""
+    if study_type is None or study_type not in study_types():
+        return REQUIRED
+    own = tuple(
+        (section["id"], section["heading"], f"{section['says']} ({section['source']})")
+        for section in study_types()[study_type]["sections"]
+    )
+    return REQUIRED + own
+
+
 def plan_path(project: Project) -> Path:
     return project.root / PLAN
 
@@ -402,7 +424,8 @@ def check_design(
     covered = 0
     said: set[str] = set()
 
-    for name, pattern, purpose in REQUIRED:
+    required = required_for(project.study_type)
+    for name, pattern, purpose in required:
         matching = [i for i, s in enumerate(sections) if re.search(pattern, s.title)]
         if not matching:
             report = report.with_findings(
@@ -432,7 +455,7 @@ def check_design(
         covered += 1
         said.add(name)
 
-    if covered == len(REQUIRED):
+    if covered == len(required):
         report = report.with_findings(
             Finding(
                 gate=GATE,
@@ -459,7 +482,7 @@ def check_design(
             )
         )
 
-    return report.with_counts(design_sections=covered, design_expected=len(REQUIRED))
+    return report.with_counts(design_sections=covered, design_expected=len(required))
 
 
 def _feasibility_unknown(results: Results | None, stage: str | None) -> bool:

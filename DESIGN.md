@@ -3810,6 +3810,37 @@ example declares its simulated reports and is a demonstration. Nothing guesses t
 is synthetic from its name or its contents: a declaration is the author's, and a heuristic
 would be wrong both ways.
 
+## An input can stay out of the repository
+
+A custodian who forbids the data leaving their hands leaves a project two ways to keep them
+beside the code without committing them: Git LFS and git-annex (which DataLad uses). Both
+commit a pointer that names the content, and in a clone where the data are not fetched,
+which is what CI and a co-author have, the pointer is what sits at the input's path. G1
+hashed it, and said `input-changed` of an input nobody had touched, or `input-missing` of an
+annexed one, whose link points at nothing: a project on restricted data failed G1 in CI
+from the analysis stage. Neither the design nor the docs said so.
+
+Both emitters now record each input's SHA-256 over its bytes as they are (`raw_sha256`),
+beside the digest that ignores line endings, since that is what a pointer names the content
+by. G1 reads a pointer at an input's path before it hashes anything (`pointers.py`):
+
+* a Git LFS pointer, as the tool's specification writes it: `version
+  https://git-lfs.github.com/spec/v1`, then `oid sha256:<hex>` and `size <bytes>`, under 1024
+  bytes;
+* a git-annex key, `<BACKEND>-s<bytes>[-<field>...]--<name>`: the target of a link that
+  points at nothing, or a small file holding `/annex/objects/<key>` (an unlocked file) or the
+  link's target (a link checked out where links are not made). SHA256E, git-annex's default,
+  names the content by its SHA-256 and its extension, SHA256 by the SHA-256 alone; DataLad's
+  default is MD5E (`datalad.repo.backend`, read in DataLad's source).
+
+A pointer whose SHA-256 and size are those the emitter recorded is the input as it was, and
+G1 says so in a note (`input-by-pointer`) without the data. One that names another size or
+another SHA-256 is `input-changed`, now truthfully. One that cannot be compared, by MD5, an
+LFS pointer with an extension (whose oid is of the content after it), or results written
+before `raw_sha256`, is a warning that the input is not fetched (`input-not-fetched`), where
+`input-missing` had failed. A file over 1024 bytes, or one that reads as neither, is the
+data, hashed as before.
+
 ## What a change makes stale
 
 The digests the gates record already form a graph, and each gate reads one edge of it: G1 an
@@ -6873,6 +6904,13 @@ Closed since, and why each mattered:
   at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
   input is missing by mistake rather than by design is caught only where another finding
   depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
+- **A pointer is believed about what it names.** G1 compares the SHA-256 and the size a Git
+  LFS pointer or a git-annex key gives with those the emitter recorded, and does not fetch
+  the content to see that it is so; a pointer written by hand to name the recorded digest
+  passes. An MD5E key, DataLad's default, is compared by its size only, and is otherwise a
+  warning. A git-annex key in a chunked form (`-S`, `-C`) names a part, and its size is not
+  compared. On Windows, a link to annexed content is read only where it was checked out as a
+  link or as the text of its target.
 - **A stored citation style is held to its digest, and trusted beyond that.** `style`
   takes what the CSL style repository serves on its default branch, and the record's
   digests catch a file edited since, not a style that was wrong when fetched. A dependent

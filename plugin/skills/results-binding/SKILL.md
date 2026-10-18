@@ -256,6 +256,7 @@ checked like any other.
 | `hand-authored-table` | emit the table |
 | `script-newer`, `input-changed` | re-run the script that wrote the results |
 | `input-missing` | restore the input, or stop declaring it, then re-run |
+| `input-not-fetched` | a warning: the input is a Git LFS or git-annex pointer that cannot be compared with the results (an MD5 key, an LFS extension, or results written before the emitter recorded `raw_sha256`). Fetch it to check it, or re-run where it is fetched |
 | `results-edited`, `no-digest` | re-run through the emitter; never edit the fragment |
 | `duplicate-quantity` | a warning: two quoted keys hold the same value. One quantity? Publish it once. A coincidence? Nothing to do |
 | `divergent-display` | the same value is displayed two ways; pick one display |

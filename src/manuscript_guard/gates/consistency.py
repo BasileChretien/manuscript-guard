@@ -71,7 +71,40 @@ def check_consistency(results: Results) -> Report:
         )
 
     report = report.merge(_check_declared_pairs(results))
+    report = report.merge(_families(results))
     return report.with_counts(value_collisions=collisions)
+
+
+def _families(results: Results) -> Report:
+    """A family of more than one p value is corrected for multiple comparisons, or says why
+    not.
+
+    Families are declared, never guessed: a p value says which it is one of (`family`), and
+    the analysis declares the correction (`correction()`), "none" with its reason. A family
+    with more than one p value and no declaration is a warning: the paper reports several
+    tests and does not say how their chance findings are accounted for.
+    """
+    report = Report()
+    members: dict[str, list[str]] = defaultdict(list)
+    for key, value in results.values.items():
+        if value.family and value.of and not value.over:
+            members[value.family].append(key)
+    for family, keys in sorted(members.items()):
+        if len(keys) < 2 or family in results.corrections:
+            continue
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="family-uncorrected",
+                severity=WARN,
+                message=f"the {family!r} family holds {len(keys)} p values and the analysis "
+                f"declares no correction for it: {', '.join(sorted(keys))}",
+                path=results.values[keys[0]].source,
+                hint=f'declare it: em.correction("{family}", "holm"), or "none" with the '
+                "reason",
+            )
+        )
+    return report
 
 
 def _check_declared_pairs(results: Results) -> Report:

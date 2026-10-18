@@ -1074,6 +1074,142 @@ def _custodian(root: Path, minimum: int) -> None:
     paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
 
 
+def _run_cli(argv: list[str]) -> int:
+    from manuscript_guard.cli import main
+
+    return main(argv)
+
+
+def _keeps_data(root: Path, monkeypatch, *models: str, custodian: bool = True):
+    """The example, unreviewed and read by these models through a transport that answers
+    every call, where the custodian restricts sending and authors.yaml names them."""
+    from test_review_run import KEY_A, KEY_B, Providers, configure
+
+    from manuscript_guard.panel import client
+
+    transport = Providers()
+    monkeypatch.setattr(client, "default_transport", transport)
+    monkeypatch.setenv("OPENAI_API_KEY", KEY_A)
+    monkeypatch.setenv("MISTRAL_API_KEY", KEY_B)
+    monkeypatch.setenv("LAB_API_KEY", "lab-key-0123456789SECRETC")
+    shutil.rmtree(root / "review")
+    configure(root, *models)
+    paper = root / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["custodian"] = {"restricts_sending": True}
+    document["review"]["providers"] = {
+        "lab": {"base_url": "https://llm.lab.invalid/v1", "key_env": "LAB_API_KEY"}
+    }
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    if custodian:
+        authors = root / "authors.yaml"
+        authors.write_text(authors.read_text(encoding="utf-8").replace(
+            "roles:\n  statistician: Sample\n",
+            "roles:\n  statistician: Sample\n  data_custodian:\n    name: Cora Keeper\n",
+        ), encoding="utf-8")  # fmt: skip
+    return transport
+
+
+def _authorise(root: Path, provider: str) -> int:
+    return _run_cli(["sign", str(root), "--as", "Cora Keeper",
+                 "--finding", f"G11/custodian/send-to/{provider}"])  # fmt: skip
+
+
+def test_a_restricted_manuscript_goes_to_no_provider_the_custodian_has_not_authorised(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """Item 29: the data custodian decides whether the manuscript may go to a model
+    provider. Before, `review --run` sent it to every provider review.models named."""
+    from test_review_run import MODEL_A, MODEL_B
+
+    transport = _keeps_data(project, monkeypatch, MODEL_A, MODEL_B)
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 2
+    err = " ".join(capsys.readouterr().err.split())
+    assert "nothing was sent" in err and "restricts where the manuscript" in err, err
+    assert '`manuscript-guard sign --as "Cora Keeper" --finding G11/custodian/send-to/openai`' \
+        in err, err  # fmt: skip
+    assert "send-to/mistral" in err and transport.requests == []
+    assert not (project / "review" / "round-1").exists()
+    # One provider authorised: nothing is sent, for the other.
+    assert _authorise(project, "openai") == 0
+    capsys.readouterr()
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 2
+    err = capsys.readouterr().err
+    assert "send-to/mistral" in err and "send-to/openai" not in err and transport.requests == []
+    assert _authorise(project, "mistral") == 0
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 0
+    assert len(transport.requests) == 8
+
+
+def test_an_authorisation_is_of_the_address_it_was_given_for(
+    project: Path, monkeypatch, capsys
+) -> None:
+    transport = _keeps_data(project, monkeypatch, "lab/model-c")
+    assert _authorise(project, "lab") == 0
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8").replace(
+        "llm.lab.invalid", "elsewhere.invalid"), encoding="utf-8")  # fmt: skip
+    capsys.readouterr()
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 2
+    assert "changed since" in capsys.readouterr().err and transport.requests == []
+
+
+def test_a_model_on_this_machine_needs_no_authorisation_and_one_sent_on_from_it_does(
+    project: Path, monkeypatch, capsys
+) -> None:
+    transport = _keeps_data(project, monkeypatch, "ollama/model-l")
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 0
+    assert len(transport.requests) == 4
+    transport = _keeps_data(project, monkeypatch, "ollama/gpt-oss:120b-cloud")
+    capsys.readouterr()
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 2
+    err = " ".join(capsys.readouterr().err.split())
+    assert "and on to Ollama's servers" in err and transport.requests == []
+
+
+def test_a_provider_the_author_adds_needs_authorisation_even_on_this_machine(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """Round 1 of #323: a router or a tunnel on this machine, added under review.providers,
+    passes on what it receives, and was sent to without the custodian's word because its
+    address is localhost. Only a built-in provider here is taken at its address."""
+    transport = _keeps_data(project, monkeypatch, "relay/model-m")
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["review"]["providers"]["relay"] = {"base_url": "http://localhost:4000/v1",
+                                                "key_env": "LAB_API_KEY"}  # fmt: skip
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 2
+    assert "localhost:4000" in capsys.readouterr().err and transport.requests == []
+    assert _authorise(project, "relay") == 0
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 0
+    assert len(transport.requests) == 4
+
+
+def test_with_no_custodian_named_the_refusal_says_to_name_one(
+    project: Path, monkeypatch, capsys
+) -> None:
+    from test_review_run import MODEL_A
+
+    transport = _keeps_data(project, monkeypatch, MODEL_A, custodian=False)
+    assert _run_cli(["review", str(project), "--run", "--yes"]) == 2
+    assert "name the data custodian under `roles:`" in capsys.readouterr().err
+    assert transport.requests == []
+    assert _authorise(project, "openai") == 2
+
+
+def test_a_dry_run_of_a_restricted_manuscript_says_a_run_would_send_nothing(
+    project: Path, monkeypatch, capsys
+) -> None:
+    from test_review_run import MODEL_A
+
+    transport = _keeps_data(project, monkeypatch, MODEL_A)
+    assert _run_cli(["review", str(project), "--run", "--dry-run"]) == 0
+    out = " ".join(capsys.readouterr().out.split())
+    assert "A run would send nothing" in out and "Dry run: nothing was sent" in out
+    assert transport.requests == []
+
+
 def _value_has(root: Path, key: str, **fields) -> None:
     """The results file with `fields` set on `key`, one set to None taken out, and its
     digest written again."""
@@ -1795,6 +1931,45 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
     assert "unemitted-table-number" in codes
 
 
+# ------------------------------------------------- a statistic reported whole
+
+
+#: A fragment declaring a p value of an estimate, a second p value of its family, a share
+#: of two counts, and the estimate's interval.
+_WHOLE = {
+    "or.point": {"value": 2.5, "display": "2.50"},
+    "or.ci_low": {"value": 1.4, "display": "1.40", "bounds": "or.point", "bound": "low"},
+    "or.ci_high": {"value": 3.8, "display": "3.80", "bounds": "or.point", "bound": "high"},
+    "or.p": {"value": 0.012, "display": "0.012", "of": "or.point", "family": "secondary"},
+    "hr.p": {"value": 0.043, "display": "0.043", "of": "or.point", "family": "secondary"},
+    "female.pct": {"value": 52.1, "display": "52.1", "of": "female.n", "over": "cohort.n"},
+    "female.n": {"value": 521, "display": "521"},
+    "cohort.n": {"value": 1000, "display": "1000"},
+}
+
+
+def _with_whole(root: Path, paragraph: str, corrections: dict | None = None) -> None:
+    document = {
+        "schema": "manuscript-guard/results/1",
+        "provenance": {
+            "generated_by": "analysis/01_disproportionality.py",
+            "generated_at": "2026-10-15T00:00:00+00:00",
+        },
+        "values": {f"whole.{key}": dict(spec) for key, spec in _WHOLE.items()},
+    }
+    for spec in document["values"].values():
+        for field in ("bounds", "of", "over"):
+            if field in spec:
+                spec[field] = f"whole.{spec[field]}"
+    if corrections is not None:
+        document["corrections"] = corrections
+    fragment = root / "results" / "02_whole.json"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    path = main_md(root)
+    path.write_text(path.read_text(encoding="utf-8") + f"\n\n{paragraph}\n", encoding="utf-8")
+
+
 # ------------------------------------------------- what the data statement says
 
 
@@ -1976,6 +2151,69 @@ def _placeholders(report) -> list[tuple[str, str]]:
 def _with_paragraph(root: Path, paragraph: str) -> None:
     path = main_md(root)
     path.write_text(path.read_text(encoding="utf-8") + f"\n\n{paragraph}\n", encoding="utf-8")
+
+
+def _whole_said(root: Path) -> list[tuple[str, str]]:
+    codes_ = ("quoted-alone", "interval-not-quoted-whole", "family-uncorrected")
+    return [(f.code, f.severity) for f in gate_report(root).findings if f.code in codes_]
+
+
+_ESTIMATE = "{{results.whole.or.point}} (95% CI {{results.whole.or.ci_low}} to " \
+    "{{results.whole.or.ci_high}})"
+
+
+@pytest.mark.parametrize(
+    ("paragraph", "said"),
+    [
+        # A p value in the sentence after its estimate.
+        (f"The ratio was {_ESTIMATE}. P was {{{{results.whole.or.p}}}}.", ["quoted-alone"]),
+        # A share with neither count.
+        (f"The ratio was {_ESTIMATE}. Women were {{{{results.whole.female.pct}}}}%.",
+         ["quoted-alone"]),
+        # An estimate quoted, and its interval never whole.
+        ("The ratio was {{results.whole.or.point}}, below {{results.whole.or.ci_high}}.",
+         ["interval-not-quoted-whole"]),
+    ],
+)  # fmt: skip
+def test_a_statistic_quoted_without_what_it_belongs_to_is_a_warning(
+    project: Path, paragraph: str, said: list[str]
+) -> None:
+    """Item 13: nothing tied a p value to its estimate, a share to its counts, or asked that
+    an interval's two bounds be quoted together anywhere."""
+    _with_whole(project, paragraph, {"secondary": {"method": "holm"}})
+    assert _whole_said(project) == [(code, "warn") for code in said]
+
+
+@pytest.mark.parametrize(
+    "paragraph",
+    [
+        f"The ratio was {_ESTIMATE} (P = {{{{results.whole.or.p}}}}).",
+        f"The ratio was {_ESTIMATE}. Of {{{{results.whole.cohort.n}}}} patients, "
+        "{{results.whole.female.n}} ({{results.whole.female.pct}}%) were women.",
+        f"The ratio was {_ESTIMATE}. It was {{{{results.whole.or.point}}}} again.",
+    ],
+)
+def test_a_statistic_quoted_with_what_it_belongs_to_passes(project: Path, paragraph: str) -> None:
+    _with_whole(project, paragraph, {"secondary": {"method": "holm"}})
+    assert _whole_said(project) == []
+
+
+def test_a_family_of_p_values_with_no_correction_is_a_warning(project: Path) -> None:
+    _with_whole(project, f"The ratio was {_ESTIMATE}.")
+    assert _whole_said(project) == [("family-uncorrected", "warn")]
+
+
+def test_none_is_a_correction_with_its_reason(project: Path) -> None:
+    from manuscript_guard.contracts import load_namespace
+
+    _with_whole(project, f"The ratio was {_ESTIMATE}.", {"secondary": {"method": "none"}})
+    projekt, _ = load_project(project)
+    _namespace, _results, _literature, report = load_namespace(projekt)
+    assert any(f.path and f.path.name == "02_whole.json" for f in report.failures)
+    _with_whole(
+        project, "", {"secondary": {"method": "none", "reason": "exploratory, as stated"}}
+    )
+    assert _whole_said(project) == []
 
 
 @pytest.mark.parametrize(
@@ -4746,6 +4984,129 @@ def _journal(root: Path):
 
     project, _ = load_project(root)
     return check_journal(project)
+
+
+# ---------------------------------------------------- the journal shortlist (item 49)
+
+
+def _shortlist_said(root: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.shortlist import check_shortlist
+
+    project, _ = load_project(root)
+    return [(f.code, f.severity) for f in check_shortlist(project).findings]
+
+
+def _target_said(root: Path, table=None, **candidate) -> list[tuple[str, str]]:
+    """G4 of the example's journal, shortlisted with these fields and looked up."""
+    from test_journal_lookup import look_up_journals, write_shortlist
+
+    write_shortlist(root, **candidate)
+    look_up_journals(root, table)
+    return _shortlist_said(root)
+
+
+def test_a_shortlist_is_held_to_its_schema_as_a_warning(project: Path) -> None:
+    from test_journal_lookup import write_shortlist
+
+    assert _shortlist_said(project) == []
+    write_shortlist(project, issn=["1111-111"])
+    assert _shortlist_said(project) == [("shortlist-schema", "warn")]
+
+
+def test_a_journal_chosen_from_outside_the_shortlist_is_said(project: Path) -> None:
+    from test_journal_lookup import write_shortlist
+
+    write_shortlist(project)
+    path = project / "journals" / "shortlist.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["decision"]["journal"] = "A Journal Nobody Considered"
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert ("shortlist-unknown-journal", "warn") in _shortlist_said(project)
+
+
+def test_a_target_journal_not_indexed_for_medline_is_said(project: Path) -> None:
+    """Item 49: a predatory journal is in neither MEDLINE nor DOAJ. The shortlist chose the
+    example's journal, and the NLM Catalog said it is not currently indexed."""
+    from test_journal_lookup import Table, esearch, esummary
+
+    assert _target_said(project) == []
+    assert _target_said(project, Table(esummary=esummary("N"))) == [
+        ("journal-not-in-medline", "warn")
+    ]
+    assert _target_said(project, Table(esearch=esearch())) == [("journal-not-in-medline", "warn")]
+    # The author's reason makes it a note that quotes them.
+    said = _target_said(project, Table(esummary=esummary("N")),
+                        outside_medline="A society journal of the field, indexed in Embase.")
+    assert said == [("journal-not-in-medline", "info")]
+
+
+def test_an_open_access_target_journal_not_in_doaj_is_said(project: Path) -> None:
+    from test_journal_lookup import Table, listed
+
+    assert _target_said(project, Table(doaj=listed(total=0))) == []
+    assert _target_said(project, Table(doaj=listed(total=0)), open_access=True) == [
+        ("journal-not-in-doaj", "warn")
+    ]
+    assert _target_said(project, open_access=True) == []
+
+
+def test_what_is_not_known_of_the_target_journal_is_a_note(project: Path) -> None:
+    """An answer that did not come, or a record missing or edited, is no evidence that the
+    journal is outside MEDLINE: a note, and no warning."""
+    from test_journal_lookup import ONLINE, Table, _json, esummary, write_shortlist
+
+    said = _target_said(project, Table(esearch=_json(500, {})), open_access=True)
+    assert said == [("journal-not-looked-up", "info")]
+    write_shortlist(project)
+    for record in (project / "journals" / "lookups").glob("*.yaml"):
+        record.unlink()
+    assert _shortlist_said(project) == [("journal-not-looked-up", "info")]
+    _target_said(project, Table(esummary=esummary("N")))
+    edited = project / "journals" / "lookups" / f"{ONLINE}.yaml"
+    edited.write_text(edited.read_text(encoding="utf-8").replace("2026-10-17", "2026-10-18"),
+                      encoding="utf-8")  # fmt: skip
+    assert _shortlist_said(project) == [("journal-not-looked-up", "info")]
+
+
+def test_the_target_journal_is_found_by_its_profile_its_name_or_the_decision(
+    project: Path,
+) -> None:
+    from test_journal_lookup import Table, esummary
+
+    no = Table(esummary=esummary("N"))
+    assert _target_said(project, no, profile="another-profile") == [
+        ("journal-not-in-medline", "warn")
+    ]  # by the profile's name, "Journal of Demonstrative Pharmacoepidemiology"
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8").replace("target_journal: demo-journal\n",
+                                                               ""), encoding="utf-8")  # fmt: skip
+    assert _target_said(project, no) == [("journal-not-in-medline", "warn")]
+
+
+def test_a_target_journal_none_of_the_candidates_is_said(project: Path) -> None:
+    """Round 1 of #321: a candidate named otherwise than the target's profile, with no
+    `profile:`, was not found, and G4 said nothing at all of whether the journal is indexed.
+    The decision is not taken for the target: it may name another journal."""
+    from test_journal_lookup import Table, esummary
+
+    said = _target_said(project, Table(esummary=esummary("N")), journal="J Demonstr Pharm",
+                        profile="another-profile")  # fmt: skip
+    assert said == [("shortlist-unknown-journal", "warn"),
+                    ("journal-target-not-shortlisted", "info")]  # fmt: skip
+
+
+def test_the_warning_says_what_a_listing_is_evidence_of(project: Path) -> None:
+    """Round 1 of #321: the hint said a predatory journal is never listed, which is not so,
+    and called the target "the journal chosen" where the decision chose another."""
+    from test_journal_lookup import Table, esummary
+
+    from manuscript_guard.gates.shortlist import check_shortlist
+
+    _target_said(project, Table(esummary=esummary("N")))
+    [found] = [f for f in check_shortlist(load_project(project)[0]).findings
+               if f.code == "journal-not-in-medline"]  # fmt: skip
+    assert "the target journal" in found.message and "chosen" not in found.message
+    assert "never" not in found.hint and "evidence" in found.hint
 
 
 #: What G4 says of the figure files.
@@ -13724,6 +14085,49 @@ def spelling_findings(root: Path) -> list[tuple[str, int | None, str]]:
 def test_the_example_is_spelt_as_it_declares(project: Path) -> None:
     """The baseline for what follows."""
     assert spelling_findings(project) == []
+
+
+# Prose in a script the gates do not read. A Chinese sentence with every result bound still
+# failed G2, and one that wrote its numbers in Chinese numerals had nothing found in it: the
+# gates read English, and nothing said so.
+
+_CHINESE = (
+    "结果见表1，比值比为{{results.ror.point}}（95%置信区间{{results.ror.ci_low}}～"
+    "{{results.ror.ci_high}}）。\n\n共纳入四千份报告，其中一百二十三份为肝损伤，比值比约为三点四。\n"
+)
+
+
+def _script_findings(root: Path) -> list:
+    from manuscript_guard.gates import check_language
+
+    report = check_language(load_project(root)[0])
+    return [f for f in report.findings if f.code == "script-not-read"]
+
+
+def test_prose_in_a_script_the_gates_do_not_read_is_said(project: Path) -> None:
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\n" + _CHINESE, encoding="utf-8")
+    (found,) = _script_findings(project)
+    assert found.severity == "warn"
+    assert "characters of prose" in found.message and "Han (" in found.message
+    assert "numbers written in it" in found.message
+
+
+def test_a_title_quoted_in_another_script_warns_and_fails_nothing(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace(
+        "Several limitations follow from the design.",
+        "Several limitations follow from the design, as the agency's own report, "
+        "「医薬品安全性情報」, says.",
+        1,
+    )
+    main.write_text(text, encoding="utf-8")
+    (found,) = _script_findings(project)
+    assert "Han" in found.message and "Hiragana" not in found.message
+    report, *_ = _run_gates(project, stage="submission")
+    assert "script-not-read" not in codes(report)
 
 
 def test_a_co_author_s_sentence_in_the_other_spelling_is_caught(project: Path) -> None:

@@ -154,6 +154,9 @@ def check_numbers(
     totals = dict.fromkeys(
         ("files", "atoms", "placeholders", "term", "structural", "convention", "project"), 0
     )
+    # Each file's bindings, with the sentence each stands in, for the checks that a
+    # statistic is quoted with what it belongs to and an interval is quoted whole.
+    sentenced: list[tuple[Path, str, list]] = []
     # What the project's own allowlist accounted for, and which entries did it. Reported
     # every run: `conventions:` and `terms:` are self-service on purpose, but a project that
     # exempts half its numbers should not read exactly like one that exempts none.
@@ -226,6 +229,7 @@ def check_numbers(
                 )
 
         report = report.merge(_interval_order(placeholders, namespace, path, text))
+        sentenced.append((path, text, in_sentences(placeholders, text)))
 
         # One scan of this file per rule, reused by every atom in it. Matching each rule
         # against a window around each atom re-read the same characters once per number.
@@ -303,6 +307,7 @@ def check_numbers(
 
         report = report.merge(_fenced_code(path, text, classifier, headings))
 
+    report = report.merge(quoted_whole(sentenced, namespace))
     report = report.merge(_paper_yaml_prose(project, classifier))
     report = report.merge(_emitted_tables(results, classifier))
     report = report.merge(_declared_intervals(namespace))
@@ -594,6 +599,102 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
                 )
             )
     return report
+
+
+def in_sentences(placeholders, text: str) -> list:
+    """Each value binding of a file, with the sentence it stands in, as `_interval_order`
+    reads sentences: each HTML comment blanked, and a line break no end of one."""
+    read = blank_comments(text) if "<!--" in text else text
+    ends = [match.start() for match in _SENTENCE_END.finditer(read)]
+    return [
+        (placeholder, _sentence(read, ends, placeholder.start))
+        for placeholder in placeholders
+        if placeholder.is_value
+    ]
+
+
+def _intervals(namespace: dict[str, Value]) -> dict[tuple[str, str], dict[str, str]]:
+    """Each interval the results declare, whole: (estimate, level) to the binding of each end."""
+    found: dict[tuple[str, str], dict[str, str]] = {}
+    for value in namespace.values():
+        if value.bounds and value.bound in ("low", "high"):
+            estimate = f"{value.namespace}.{value.bounds}"
+            ends = found.setdefault((estimate, value.level or ""), {})
+            ends[value.bound] = f"{value.namespace}.{value.key}"
+    return {interval: ends for interval, ends in found.items() if len(ends) == 2}
+
+
+def quoted_whole(files: list[tuple[Path, str, list]], namespace: dict[str, Value]) -> Report:
+    """A statistic quoted with what it belongs to, and an interval quoted whole somewhere.
+
+    Which bindings sit together in a sentence, and nothing else: the text is not read for
+    what it says. A p value that names its estimate (`of`) is quoted in a sentence that
+    binds the estimate; a share that names its counts (`of`, `over`) in one that binds
+    either count, "n/N (%)" and not a percentage alone. And an estimate emitted with an
+    interval is quoted with both its bounds in one sentence at least once. Warnings: a
+    sentence may rightly give a p value again a line after its estimate.
+    """
+    report = Report()
+    intervals = _intervals(namespace)
+    whole: set[tuple[str, str]] = set()
+    first: dict[tuple[str, str], tuple[Path, int]] = {}
+    for path, text, located in files:
+        by_sentence: dict[int, set[str]] = {}
+        for placeholder, sentence in located:
+            by_sentence.setdefault(sentence, set()).add(placeholder.ref)
+        for placeholder, sentence in located:
+            value = namespace.get(placeholder.ref)
+            line = text.count("\n", 0, placeholder.start) + 1
+            for interval, ends in intervals.items():
+                if placeholder.ref in (interval[0], *ends.values()):
+                    first.setdefault(interval, (path, line))
+            if value is None or not value.of:
+                continue
+            belongs = [f"{value.namespace}.{name}" for name in (value.of, value.over) if name]
+            if set(belongs) & by_sentence[sentence]:
+                continue
+            report = report.with_findings(_alone(value, belongs, path, line))
+        for interval, ends in intervals.items():
+            if any(set(ends.values()) <= refs for refs in by_sentence.values()):
+                whole.add(interval)
+    for (estimate, level), (path, line) in sorted(first.items()):
+        if (estimate, level) in whole:
+            continue
+        named = f"its {level} interval" if level else "its interval"
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="interval-not-quoted-whole",
+                severity=WARN,
+                message=f"{estimate} is quoted, and no sentence quotes both bounds of {named}",
+                path=path,
+                line=line,
+                hint="quote the estimate with both bounds in one sentence at least once: "
+                "{{results.<key>.point}} (95% CI {{results.<key>.ci_low}} to "
+                "{{results.<key>.ci_high}})",
+            )
+        )
+    return report
+
+
+def _alone(value: Value, belongs: list[str], path: Path, line: int) -> Finding:
+    """A statistic quoted in a sentence that binds nothing it belongs to."""
+    if value.over:
+        said = f"the share {value.namespace}.{value.key} is quoted with neither of its counts"
+        hint = "quote the counts beside it, n/N (%), each bound"
+    else:
+        said = f"{value.namespace}.{value.key} is quoted without {belongs[0]}, which it tests"
+        hint = "quote the estimate in the same sentence, bound"
+    return Finding(
+        gate=GATE,
+        code="quoted-alone",
+        severity=WARN,
+        message=said,
+        path=path,
+        line=line,
+        context=", ".join(belongs),
+        hint=hint,
+    )
 
 
 # A figure in an atom, to its last digit: `P<0.05` is one atom, and `.05` has no nought.

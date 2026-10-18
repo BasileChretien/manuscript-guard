@@ -30,7 +30,8 @@ definitions and is otherwise held to its own.
 The gate has three more readings: of the terms the paper keeps to, in
 `gates/vocabulary.py`, of its spelling, in `gates/spelling.py`, and of its notation, in
 `gates/notation.py`. They take the files read here, so the manuscript is masked once,
-and `check_language` gives all four.
+and `check_language` gives all four, and says where the prose is in a script none of
+them reads (`gates/scripts.py`).
 """
 
 from __future__ import annotations
@@ -49,6 +50,7 @@ from manuscript_guard.contracts.project import PAPER_FILE, Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.notation import judge_notation
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
+from manuscript_guard.gates.scripts import judge_scripts
 from manuscript_guard.gates.spelling import judge_spelling
 from manuscript_guard.gates.vocabulary import (
     Passage,
@@ -854,7 +856,7 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
 
 def check_language(project: Project) -> Report:
     """The four readings of the manuscript: its abbreviations, the terms it keeps to,
-    its spelling and its notation."""
+    its spelling and its notation; and where its prose is in a script none of them reads."""
     files = _read(project)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
     # A contributions statement names its roles as CRediT spells them and a funding
@@ -870,4 +872,6 @@ def check_language(project: Project) -> Report:
         )
         # A P value in an acknowledgement is the author's, so this one reads them all.
         .merge(judge_notation(passages))
+        # And where the prose is in a script none of the readings is written for.
+        .merge(judge_scripts(passages))
     )

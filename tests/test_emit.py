@@ -1030,6 +1030,32 @@ def test_software_that_is_not_installed_is_refused(scratch: Path) -> None:
         emitter(scratch).software("no-such-distribution-anywhere")
 
 
+def test_a_statistic_says_what_it_belongs_to(scratch: Path) -> None:
+    """Item 13: a p value names its estimate and family, a share its counts, and a family
+    its correction; what makes no sense is refused at the emitter."""
+    em = emitter(scratch)
+    em.value("or.p", 0.012, digits=3, of="or.point", family="secondary")
+    em.value("female.pct", 52.1, digits=1, of="female.n", over="cohort.n")
+    em.correction("secondary", "holm")
+    em.correction("exploratory", "none", reason="hypothesis-generating")
+    document = em.document()
+    assert document["values"]["or.p"]["of"] == "or.point"
+    assert document["values"]["or.p"]["family"] == "secondary"
+    assert document["values"]["female.pct"]["over"] == "cohort.n"
+    assert document["corrections"] == {
+        "secondary": {"method": "holm"},
+        "exploratory": {"method": "none", "reason": "hypothesis-generating"},
+    }
+    with pytest.raises(ValueError, match="numerator"):
+        em.value("x.pct", 1, over="cohort.n")
+    with pytest.raises(ValueError, match="family is of p values"):
+        em.value("y.pct", 1, of="a", over="b", family="secondary")
+    with pytest.raises(ValueError, match="needs its reason"):
+        em.correction("other", "none")
+    with pytest.raises(ValueError, match="declared twice"):
+        em.correction("secondary", "bonferroni")
+
+
 def _meddra(scratch: Path, first_line: str) -> Path:
     """A MedDRA ASCII release's `meddra_release.asc`, as the analysis has it."""
     folder = scratch / "data" / "MedAscii"

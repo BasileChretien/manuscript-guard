@@ -24,7 +24,12 @@ write it to a file with the file tools and give the command the file.
 
 ## 1. Choose the journal with the author, not for them
 
-Do this before reading any guidelines, and do it as a conversation. Propose a shortlist —
+Do this before reading any guidelines, and do it as a conversation. First ask the author
+for their criteria and write them down: the article type, whether open access is required
+(a funder's mandate, such as Plan S) and the APC budget, how fast a decision is needed, the
+indexing required (MEDLINE), the audience, and how strong they judge the contribution to
+be. That last one is their statement; do not grade novelty or importance yourself. Then
+propose a shortlist —
 typically three to five — and for each one give the author what they actually need to
 decide:
 
@@ -47,10 +52,52 @@ implying a price either way; getting this wrong costs real money.
 The same applies to waivers for authors in low- and middle-income countries, which several
 publishers offer automatically and many authors do not know about.
 
+Base the fit on evidence, not impressions. A journal finder that matches a title and an
+abstract against PubMed lists the journals that publish papers like this one; ask the
+author before you paste their unpublished abstract into any such service. Each candidate's
+recent similar papers, found in PubMed, are what justify it.
+
 Rank them and say which you would send first and why. Then let the author choose: they know
 things you do not — a reviewer conflict, a grant reporting requirement, a co-author's
-history with an editor. Record the shortlist and the decision in the project, because the
-second choice matters again after a rejection.
+history with an editor. Record the shortlist and the decision in `journals/shortlist.yaml`,
+because the second choice matters again after a rejection:
+
+```yaml
+schema: manuscript-guard/shortlist/1
+criteria:
+  stated_by: A. Author              # who stated them, and when
+  stated_on: 2026-10-17
+  article_type: Original research
+  open_access: preferred            # required | preferred | not required
+  apc_budget: {amount: 2500, currency: EUR}
+  indexing: [MEDLINE]
+  audience: clinical pharmacologists
+  contribution: a confirmation in a larger database   # the author's words
+candidates:
+  - journal: Journal of Examples
+    issn: [1234-5678]
+    profile: journal-of-examples    # once its profile is written
+    open_access: true               # as the journal's own page says
+    claims:                         # every claim, with where and when it was read
+      - claim: APC 2,000 EUR, waived for authors in ...
+        source_url: https://www.journal-of-examples.org/charges
+        read_on: 2026-10-17
+    similar:                        # recent papers like this one, from PubMed
+      - {title: "...", pmid: "12345678", why: "same design, same outcome"}
+    risk: a reach on novelty
+ranking:
+  - {journal: Journal of Examples, why: ...}
+decision: {journal: Journal of Examples, decided_by: A. Author, decided_on: 2026-10-17}
+```
+
+Then run `manuscript-guard lookup --journals`. It asks the NLM Catalog whether each ISSN's
+journal is currently indexed for MEDLINE, and DOAJ whether it is listed, and sends nothing
+of the manuscript. `check` then warns when the target journal is not indexed for MEDLINE
+(`journal-not-in-medline`), or is open access and not in DOAJ (`journal-not-in-doaj`).
+Being listed is evidence against a predatory journal, not proof. A sound journal can be
+outside them, a new one or one outside medicine; then the author says why in the candidate's `outside_medline:` or
+`outside_doaj:`, in their words, and the warning becomes a note. Never write that reason
+for them.
 
 Search the journal's current pages rather than relying on memory. Scope statements, charges
 and turnaround times all move, and a recommendation built on a stale impression wastes the
@@ -223,6 +270,9 @@ journal's page again to know which of the two is wrong.
 
 ## Changing journals after a rejection
 
-Write the second profile, switch `target_journal`, and run the check. The differences
+Read `journals/shortlist.yaml` again first. Add the rejection to its `history:` (the
+journal, the outcome, the date), and go through the ranking with the author: the criteria
+may have changed, and the claims are as old as the dates beside them. Record the new
+decision. Then write the second profile, switch `target_journal`, and run the check. The differences
 appear as a list of failures, which is the reformatting job, itemised. Keep the old profile:
 you may go back, and the record of what each journal wanted is worth having.

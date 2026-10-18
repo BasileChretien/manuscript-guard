@@ -88,6 +88,13 @@ Then confirm the chain holds:
 manuscript-guard check
 ```
 
+Where the value is a mean of whole numbers the source says it is, answers on a Likert-type
+scale or a count, add `mean_of_whole_numbers: {n: 28}` with the n the source gives (and
+`items: 3` where it is the mean of each person's mean over 3 items). `check` then says
+`quote-mean-not-possible` where no whole total over n prints as that mean: a misprint in
+the source, or a mean of fewer people than n. Add it only where the source says what the
+numbers are; do not guess it from a label.
+
 `quote-not-in-source` means the quote was retyped rather than copied, or the stored file is
 not the one it was taken from. `value-not-in-quote` means the sentence quoted does not
 actually state the number it is offered as evidence for — usually the quote is the sentence

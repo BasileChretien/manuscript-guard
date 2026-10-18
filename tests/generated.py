@@ -35,9 +35,11 @@ wants to look harder at a change.
 
 from __future__ import annotations
 
+import math
 import os
 from collections.abc import Callable, Iterable
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
+from fractions import Fraction
 from functools import cache
 from typing import Any, TypeVar
 
@@ -1255,6 +1257,155 @@ def share_tables(draw: st.DrawFn) -> tuple[str, list[Shared]]:
     return "\n".join(lines), expected
 
 
+# ------------------------------------------------------- a table's means of whole numbers
+
+#: Rows of means of whole numbers, as an auditor names them: a scale's score, a count.
+WHOLE_LABELS = (
+    "Pain score", "Number of visits", "Days in hospital", "Items endorsed",
+    "Satisfaction rating", "Falls in the year",
+)  # fmt: skip
+#: Rows of means that are not of whole numbers, which nobody names.
+MEASURES = ("Age, years", "Body mass index, kg/m2", "Systolic pressure, mmHg")
+#: The kinds of row each table of `mean_tables` holds one of.
+MEAN_ROWS = ("right", "wrong", "noted", "own", "zero", "change", "unnamed", "inside")
+
+#: A mean as the reading finds it: its line, the mean as printed with an ASCII minus, its
+#: n, whether it can be the mean of n whole numbers (None where n is too large to tell),
+#: and whether it is uncertain.
+Meant = tuple[int, str, int, "bool | None", bool]
+
+
+def _a_mean(total: int, count: int, places: int, rounding: str = ROUND_HALF_UP) -> str:
+    """`total` over `count`, rounded to `places`."""
+    step = Decimal(1).scaleb(-places)
+    return str((Decimal(total) / Decimal(count)).quantize(step, rounding=rounding))
+
+
+def _fits(printed: str, count: int) -> bool:
+    """Whether some whole total over `count` is within half a unit of `printed`'s last
+    place, tried total by total."""
+    value = Fraction(Decimal(printed))
+    half = Fraction(1, 2 * 10 ** len(printed.partition(".")[2]))
+    first = math.floor((value - half) * count) - 1
+    return any(abs(Fraction(total, count) - value) <= half
+               for total in range(first, first + int(2 * half * count) + 4))  # fmt: skip
+
+
+def _no_mean(draw: st.DrawFn, count: int, places: int) -> str:
+    """A mean printed to `places` that no whole total over `count` gives, near one that
+    some total does. `count` is under 10 to the power of `places`, so there is one."""
+    step = Decimal(1).scaleb(-places)
+    start = Decimal(_a_mean(draw(st.integers(count, 6 * count)), count, places))
+    way = draw(st.sampled_from((1, -1)))
+    for moved in range(1, 10**places):
+        printed = str((start + way * moved * step).quantize(step))
+        if not printed.startswith("-") and not _fits(printed, count):
+            return printed
+    raise AssertionError(f"every mean fits {count}")  # pragma: no cover
+
+
+@st.composite
+def mean_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Meant]]:
+    """A paper with a table of means, whose header names each arm's n, the first under 100
+    and the second 100 or more, a row of each kind of `MEAN_ROWS` in an order drawn: means
+    of whole numbers that a total gives, and one that none does, with a plus-minus sign; a
+    row whose label carries a footnote marker, and one whose label names an n of its own;
+    means printed to two places that end in a nought; a change, negative, with a minus
+    sign; a row of means of a measure that nobody names, one of which no total gives; and a
+    row whose label holds a named one inside a word. Then a table of two arms of a multiple
+    of 8 each, whose means are half a unit from a total, one rounded down and one up; a
+    table whose header names no n; the wrong row in a fenced listing; and a mean in a
+    sentence, none of which is held to anything but the first. With the labels an auditor
+    names, as they would type them, and each mean the reading finds (`Meant`), in order."""
+    sizes = [draw(st.integers(10, 99)), draw(st.integers(100, 999))]
+    labels = list(draw(st.permutations(WHOLE_LABELS)))
+    kinds = ("right", "wrong", "noted", "own", "zero", "change")
+    named = dict(zip(kinds, labels, strict=True))
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
+    lines: list[str] = [draw(sentence).capitalize() + ".", ""]
+    expected: list[Meant] = []
+
+    def spread() -> str:
+        return f"{draw(st.integers(0, 9))}.{draw(st.integers(0, 9))}"
+
+    def row(label: str, cells: list[str]) -> None:
+        lines.append("| " + " | ".join([label, *cells]) + " |")
+
+    def found(means: list[str], counts: list[int], *, uncertain: bool = False,
+              wrong: int | None = None) -> None:  # fmt: skip
+        """What the reading finds in the row just written."""
+        for at, (mean, count) in enumerate(zip(means, counts, strict=True)):
+            places = len(mean.partition(".")[2])
+            verdict = None if count >= 10**places else at != wrong
+            expected.append((len(lines), mean.replace("\N{MINUS SIGN}", "-"), count,
+                             verdict, uncertain))  # fmt: skip
+
+    def right(counts: list[int], places: int) -> list[str]:
+        return [_a_mean(draw(st.integers(0, 6 * n)), n, places) for n in counts]
+
+    headers = [draw(st.sampled_from(HEADED)).format(arm=arm, n=n)
+               for arm, n in zip(("Treated", "Control"), sizes, strict=True)]  # fmt: skip
+    row("Characteristic", headers)
+    lines.append("|---|---|---|")
+    fenced = ""
+    for kind in draw(st.permutations(MEAN_ROWS)):
+        places = draw(st.integers(1, 3))
+        if kind == "right":
+            means = right(sizes, places)
+            row(f"{named[kind]}, mean (SD)", [f"{m} ({spread()})" for m in means])
+            found(means, sizes)
+        elif kind == "wrong":
+            means = [_no_mean(draw, sizes[0], max(places, 2)), right(sizes[1:], places)[0]]
+            row(named[kind], [f"{m} \N{PLUS-MINUS SIGN} {spread()}" for m in means])
+            found(means, sizes, wrong=0)
+            fenced = "\n".join([*lines[2:4], lines[-1]])
+        elif kind == "noted":
+            marker, last = draw(st.sampled_from(MARKERS))
+            label = f"{named[kind]}, mean{marker}" if last else f"{named[kind]}{marker}, mean"
+            means = right(sizes, places)
+            row(label, means)
+            found(means, sizes, uncertain=True)
+        elif kind == "own":
+            means = right(sizes, 2)
+            row(f"{named[kind]} (n = {draw(st.integers(5, 90))})",
+                [f"{m} ({spread()})" for m in means])  # fmt: skip
+            found(means, sizes, uncertain=True)
+        elif kind == "zero":
+            # Two places, the second a nought: 2.50 is two places, not one.
+            n = sizes[0]
+            totals = [t for t in range(n, 6 * n) if _a_mean(t, n, 2).endswith("0")]
+            means = [_a_mean(draw(st.sampled_from(totals)), n, 2), right(sizes[1:], 2)[0]]
+            row(named[kind], [f"{m} [{spread()}]" for m in means])
+            found(means, sizes)
+        elif kind == "change":
+            means = [_a_mean(-draw(st.integers(1, 3 * n)), n, max(places, 2)) for n in sizes]
+            row(f"Change in {named[kind].lower()}",
+                [f"{m.replace('-', chr(0x2212))} ({spread()})" for m in means])  # fmt: skip
+            found(means, sizes)
+        elif kind == "unnamed":
+            cells = [f"{_no_mean(draw, sizes[0], 2)} ({spread()})", right(sizes[1:], 1)[0]]
+            row(draw(st.sampled_from(MEASURES)), cells)
+        else:
+            row(f"Re{labels[0].lower()}", [f"{m} ({spread()})" for m in right(sizes, 2)])
+    lines += ["", draw(sentence).capitalize() + ".", ""]
+    # Two arms of a multiple of 8, whose means are half a unit from a total: odd/8 is a
+    # third place of 5. Printed rounded down in the first and up in the second.
+    eighths = 8 * draw(st.integers(1, 12))
+    odd = [eighths // 8 * (2 * draw(st.integers(0, 20)) + 1) for _arm in range(2)]
+    lines += [f"| Subgroup | First (n = {eighths}) | Second (n = {eighths}) |", "|---|---|---|"]
+    means = [_a_mean(odd[0], eighths, 2, ROUND_HALF_DOWN), _a_mean(odd[1], eighths, 2)]
+    row(labels[1], means)
+    found(means, [eighths, eighths])
+    # A table whose header names no n: its means are held to nothing.
+    lines += ["", "| Outcome | Cases | Controls |", "|---|---|---|"]
+    row(labels[0], right(sizes, 2))
+    lines += ["", "```", fenced, "```", ""]
+    lines += [f"{draw(sentence).capitalize()} {_no_mean(draw, sizes[0], 2)} {draw(sentence)}.", ""]
+    # The labels as an auditor would type them: in lower case, one of them the label of
+    # the rows inside whose words it stands.
+    return "\n".join(lines), [label.lower() for label in labels], expected
+
+
 # ---------------------------------------------------------------------- what an edit holds
 
 #: A binding, a citation and a number in each of the ways one is written: what `reworded`
@@ -1418,6 +1569,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),
     "table shares": share_tables().map(lambda drawn: drawn[0]),
+    "whole-number means": mean_tables().map(
+        lambda drawn: {"text": drawn[0], "labels": drawn[1]}
+    ),
     "units after": texts(BOUND_UNITS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}

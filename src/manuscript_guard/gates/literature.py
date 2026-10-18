@@ -34,6 +34,8 @@ from manuscript_guard.literature.sources import (
     states_value,
     words_beside,
 )
+from manuscript_guard.stats.granularity import as_mean, places, possible
+from manuscript_guard.stats.granularity import described as described_mean
 from manuscript_guard.stats.intervals import (
     ASYMMETRY,
     asymmetry,
@@ -151,6 +153,7 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
 
         verified += 1
         report = report.merge(_tests_in_quote(key, value, quote))
+        report = report.merge(_whole_number_mean(key, value, detail))
         beside = words_beside(quote, value.display)
         if len(beside) < WORDS_BESIDE:
             report = report.with_findings(
@@ -230,6 +233,52 @@ def _tests_in_quote(key: str, value, quote: str) -> Report:
             for code, message in said
         ]
     return Report(tuple(findings))
+
+
+def _whole_number_mean(key: str, value, detail: dict) -> Report:
+    """A value the ledger says is a mean of whole numbers, held to the n it gives: a mean
+    no whole total over n gives is a misprint in the source, or n is not what it says
+    (`stats/granularity.py`)."""
+    declared = detail.get("mean_of_whole_numbers")
+    if not isinstance(declared, dict):
+        return Report()
+    n, items = declared["n"], declared.get("items", 1)
+    mean = as_mean(value.display)
+    verdict = None if mean is None else possible(mean, n, items)
+    if verdict is True:
+        return Report()
+    if verdict is False:
+        return Report((
+            Finding(
+                gate=GATE,
+                code="quote-mean-not-possible",
+                severity=WARN,
+                message=f"{key}: in the source, {described_mean(mean, n, items)}",
+                path=value.source,
+                context=str(detail.get("quote", ""))[:140],
+                hint="the source may carry a misprint, or the mean may be of fewer people "
+                "than its n (those with data); read its tables before citing it",
+            ),
+        ))  # fmt: skip
+    if mean is None:
+        why = f"{value.display!r} is not printed as a decimal number"
+    else:
+        shown = places(mean)
+        why = (
+            f"any mean printed to {shown} place{'' if shown == 1 else 's'} can be one of "
+            f"{n * items} whole numbers, as of any {10**shown} or more"
+        )
+    return Report((
+        Finding(
+            gate=GATE,
+            code="quote-mean-not-assessable",
+            severity=INFO,
+            message=f"{key}: whether it can be a mean of whole numbers is not assessable: {why}",
+            path=value.source,
+            hint="nothing to do; the test has power only for fewer numbers than 10 to the "
+            "power of the places printed",
+        ),
+    ))  # fmt: skip
 
 
 def _check_attestation(key: str, value, detail: dict) -> Report:

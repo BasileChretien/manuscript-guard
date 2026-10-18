@@ -48,6 +48,12 @@ reported missing from the paper.
 Keep it narrow. A directory is read recursively, READMEs and notes included, and every
 extra number raises the chance of a coincidental match.
 
+Where a table reports means of whole numbers, a Likert-type scale or a count, ask the user
+which rows they are and name them with `--whole-numbers "pain score" visits`: each mean in
+those rows is held to its column's n, and one no whole total gives is listed. Never name a
+row the paper does not describe as whole numbers; a mean of a continuous measure would be
+listed as a misprint.
+
 ## 2. Run it
 
 ```bash

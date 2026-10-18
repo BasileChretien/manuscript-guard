@@ -53,7 +53,25 @@
           "description": "Verbatim text containing the value. This is the evidence; a ledger entry without it is an assertion."
         },
         "verified_on": { "type": "string", "format": "date" },
-        "note": { "type": "string" }
+        "note": { "type": "string" },
+        "mean_of_whole_numbers": {
+          "type": "object",
+          "required": ["n"],
+          "additionalProperties": false,
+          "description": "The value is a mean of whole numbers, answers on a Likert-type scale or counts, as the source says. G7 then checks that the value as printed can be such a mean: a whole total over n times items, rounded to its places (the granularity test).",
+          "properties": {
+            "n": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "How many people, or units, the mean is of, as the source gives it."
+            },
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Where the mean is of each person's mean over several items, how many items each answered. One where absent."
+            }
+          }
+        }
       }
     }
   }

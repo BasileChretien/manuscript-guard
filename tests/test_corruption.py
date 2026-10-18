@@ -5096,6 +5096,135 @@ def test_categories_run_on_into_the_next_characteristic_are_not_read(tmp_path: P
     assert [d.line for d in audit([paper], []).disagreements] == [4]
 
 
+def _ledger_mean(project: Path, printed: str, declared: dict | None) -> None:
+    """A third ledger entry, a mean of answers as the source prints it, with what the
+    ledger says it is a mean of."""
+    said = f"The 28 patients interviewed rated their pain {printed} on average."
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text(source.read_text(encoding="utf-8") + "\n" + said + "\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    entry = {
+        "key": "background.pain_mean", "value": float(printed), "display": printed,
+        "citekey": "fictionalHepaticCohort2021", "depth": "full-text",
+        "source_file": "sources/fictionalHepaticCohort2021.txt", "locator": "Results",
+        "quote": said,
+    }  # fmt: skip
+    if declared is not None:
+        entry["mean_of_whole_numbers"] = declared
+    document["entries"].append(entry)
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("printed", "declared", "said"),
+    [
+        # 3.47 is no whole total over 28: 97 and 98 give 3.46 and 3.50.
+        ("3.47", {"n": 28}, ["quote-mean-not-possible"]),
+        ("3.46", {"n": 28}, []),
+        # 2.17 is no total over 3, and 13 over 6 when each of 3 answered 2 items.
+        ("2.17", {"n": 3}, ["quote-mean-not-possible"]),
+        ("2.17", {"n": 3, "items": 2}, []),
+        # Any mean printed to two places is possible for 100 or more.
+        ("3.47", {"n": 150}, ["quote-mean-not-assessable"]),
+        ("3.47", None, []),
+    ],
+)  # fmt: skip
+def test_a_ledger_mean_of_whole_numbers_is_held_to_its_n(
+    project: Path, printed: str, declared: dict | None, said: list[str]
+) -> None:
+    """Item 19.5: a value the ledger says is a mean of whole numbers, of n people answering
+    a number of items each, can be printed only as a whole total over their product. One
+    that cannot is a warning, and a mean whose n is too large to tell is a note."""
+    _ledger_mean(project, printed, declared)
+    report = _literature_report(project)
+    codes = [f.code for f in report.findings if f.code.startswith("quote-mean")]
+    assert codes == said
+    assert report.counts["literature_verified"] == 3
+    if said == ["quote-mean-not-possible"] and declared == {"n": 28}:
+        [finding] = [f for f in report.findings if f.code == "quote-mean-not-possible"]
+        assert finding.severity == "warn"
+        assert finding.message == (
+            "background.pain_mean: in the source, 3.47 cannot be the mean of 28 whole "
+            "numbers: the totals either side, 97 and 98 over 28, give 3.46 and 3.50; it can "
+            "be the mean of 19 or 30 whole numbers"
+        )
+
+
+def test_a_ledger_mean_of_whole_numbers_needs_a_count(project: Path) -> None:
+    """An n of none is refused by the schema, not read as a mean of nothing."""
+    _ledger_mean(project, "3.47", {"n": 0})
+    assert "schema-violation" in [f.code for f in _literature_report(project).findings]
+
+
+_WHOLE_NUMBERS = (
+    "# Results\n\n"
+    "| Characteristic | Treated (n = 28) | Control (n = 140) |\n"
+    "|---|---|---|\n"
+    "| Pain score, mean (SD) | 3.47 (1.20) | 3.46 (1.10) |\n"
+    "| Days in hospital^a^ | 2.50 \N{PLUS-MINUS SIGN} 1.1 | 4.1 |\n"
+    "| Visits, mean | 1.75 | 2.13 |\n"
+    "| Age, years | 45.37 (12.1) | 44.2 (11.0) |\n"
+)
+
+
+def test_an_audited_mean_of_whole_numbers_is_held_to_its_column_s_n(tmp_path: Path) -> None:
+    """Item 19.5: `audit --whole-numbers` names the rows whose cells are means of whole
+    numbers, and each is held to its column header's n. A mean no whole total over n gives
+    is listed with the numbers that do not fit; a mean whose n is too large for its places
+    is listed apart, as not assessable; a row not named is not read, though its mean of 28
+    would not fit; and a label that names no row is said."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_WHOLE_NUMBERS, encoding="utf-8")
+    named = ("pain score", "Days in hospital", "visits", "PHQ-9")
+    report = audit([paper], [], whole_numbers=named)
+    assert [(d.line, d.message) for d in report.disagreements] == [
+        (5, "3.47 cannot be the mean of 28 whole numbers: the totals either side, 97 and 98 "
+            "over 28, give 3.46 and 3.50; it can be the mean of 19 or 30 whole numbers"),
+    ]  # fmt: skip
+    assert report.means_read == 6
+    assert [(d.line, d.message) for d in report.means_not_assessable] == [
+        (5, "3.46 (1.10) of n = 140"),
+        (6, "4.1 of n = 140 (uncertain: the row's label carries a footnote marker, and a "
+            "note may give it another n)"),
+        (7, "2.13 of n = 140"),
+    ]  # fmt: skip
+    assert report.whole_numbers_unfound == ["PHQ-9"]
+    shown = render(report, measure_discrimination(set()))
+    assert "a mean of whole numbers and its n" in shown
+    assert "Means of whole numbers (--whole-numbers): 6 read in the rows named, 3 not " in shown
+    assert "--whole-numbers 'PHQ-9': no table row's label holds it" in shown
+
+
+def test_an_audit_without_whole_numbers_reads_no_mean(tmp_path: Path) -> None:
+    """No row is taken for means of whole numbers unless the auditor names it: 3.47 of 28 is
+    not listed, and the report says nothing of means."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_WHOLE_NUMBERS, encoding="utf-8")
+    report = audit([paper], [])
+    assert report.disagreements == [] and report.means_read == 0
+    assert "Means of whole numbers" not in render(report, measure_discrimination(set()))
+
+
+def test_audit_whole_numbers_on_the_command_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(_WHOLE_NUMBERS, encoding="utf-8")
+    outputs = tmp_path / "outputs.json"
+    outputs.write_text('{"n": 28}', encoding="utf-8")
+    main(["audit", str(paper), "--against", str(outputs), "--whole-numbers", "pain score"])
+    shown = capsys.readouterr().out
+    assert "line 5: 3.47 cannot be the mean of 28 whole numbers" in shown
+    assert "2 read in the rows named" in shown
+
+
 def _cell(text: str, *, span: int = 1) -> str:
     props = f'<w:tcPr><w:gridSpan w:val="{span}"/></w:tcPr>' if span > 1 else ""
     return f"<w:tc>{props}<w:p>{text}</w:p></w:tc>"

@@ -1676,7 +1676,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
         print("--against is required: point it at the analysis outputs", file=sys.stderr)
         return 2
 
-    report = audit(papers, args.against, figures=figures)
+    report = audit(papers, args.against, figures=figures,
+                   whole_numbers=tuple(args.whole_numbers))  # fmt: skip
     if not report.backing_files:
         print("--against gave the audit nothing it can read:", file=sys.stderr)
         for item in report.skipped:
@@ -3190,6 +3191,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audit.add_argument(
         "--figures", nargs="+", type=Path, help="SVG or PDF figures to audit as well"
+    )
+    audit.add_argument(
+        "--whole-numbers",
+        nargs="+",
+        default=[],
+        metavar="LABEL",
+        help="the table rows, by a word or words of their label, whose cells are means of "
+        "whole numbers (a Likert-type scale, a count): each is held to its column's n",
     )
     audit.add_argument(
         "--strict",

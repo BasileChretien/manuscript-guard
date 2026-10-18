@@ -34,6 +34,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.stats.granularity import described as described_mean
+from manuscript_guard.stats.granularity import names, possible, table_means
 from manuscript_guard.stats.intervals import (
     ASYMMETRY,
     asymmetry,
@@ -136,6 +138,13 @@ class AuditReport:
     #: Each test whose P does not follow from its statistic. No backing set is needed for
     #: these, and they are listed apart: --strict does not count them.
     disagreements: list[Disagreement] = field(default_factory=list)
+    #: The rows --whole-numbers named, and how many means were read in them.
+    whole_numbers: tuple[str, ...] = ()
+    means_read: int = 0
+    #: Each mean of whole numbers whose n is too large for the places it is printed to.
+    means_not_assessable: list[Disagreement] = field(default_factory=list)
+    #: Each label --whole-numbers gave that no table row's label holds.
+    whole_numbers_unfound: list[str] = field(default_factory=list)
 
     @property
     def examined(self) -> int:
@@ -705,12 +714,18 @@ def audit(
     *,
     figures: list[Path] | None = None,
     classifier: Classifier | None = None,
+    whole_numbers: tuple[str, ...] = (),
 ) -> AuditReport:
+    """`whole_numbers` names the rows of the papers' tables whose cells are means of whole
+    numbers, which are held to their column's n (`stats/granularity.py`)."""
     # `rendered=True`: an existing paper has been through citeproc, so its citations are
     # "(Smith 2019)" rather than [@key]. That is the one place the audit-only rules apply.
     classifier = classifier or Classifier.load(rendered=True)
     values, used, skipped = load_backing(backing)
-    report = AuditReport(backing_values=values, backing_files=tuple(used), skipped=skipped)
+    report = AuditReport(
+        backing_values=values, backing_files=tuple(used), skipped=skipped,
+        whole_numbers=whole_numbers,
+    )  # fmt: skip
 
     # Each source, whether a line may be taken for a reference entry by its shape, and
     # whether each of its lines is a block of its own. The shape only counts where no
@@ -764,7 +779,11 @@ def audit(
     )
 
     for path, text, by_shape, lines_are_blocks in sources:
-        report.disagreements += _disagreements(path, text, tables.get(path, []))
+        found = _disagreements(path, text, tables.get(path, []))
+        if whole_numbers:
+            found = sorted(found + _whole_number_means(report, path, tables.get(path, [])),
+                           key=lambda d: d.line)  # fmt: skip
+        report.disagreements += found
         scan = classifier.scan(text, lines_are_blocks=lines_are_blocks)
         source_scan = None
         intervals = _intervals(text)
@@ -808,7 +827,34 @@ def audit(
             else:
                 report.unmatched.append(candidate)
 
+    if whole_numbers:
+        held = [row[0].text for path in report.papers for table in tables.get(path, [])
+                for row in table if row]  # fmt: skip
+        report.whole_numbers_unfound = [
+            label for label in whole_numbers if not any(names(label, text) for text in held)
+        ]
     return report
+
+
+def _whole_number_means(report: AuditReport, path: Path, tables: list[Table]) -> list[Disagreement]:
+    """Each mean in a row --whole-numbers named, held to its column's n: returned where no
+    whole total gives it, and listed apart where its n is too large to tell."""
+    found = []
+    for table in tables:
+        for mean in table_means(table, report.whole_numbers):
+            report.means_read += 1
+            verdict = possible(mean.mean, mean.n)
+            if verdict is True:
+                continue
+            uncertain = f" (uncertain: {mean.uncertain})" if mean.uncertain else ""
+            if verdict is None:
+                report.means_not_assessable.append(Disagreement(
+                    path, mean.line, f"{mean.printed} of n = {mean.n}{uncertain}", mean.context,
+                ))  # fmt: skip
+                continue
+            said = f"{described_mean(mean.mean, mean.n)}{uncertain}"
+            found.append(Disagreement(path, mean.line, said, mean.context))
+    return found
 
 
 def _disagreements(path: Path, text: str, tables: list[Table]) -> list[Disagreement]:
@@ -965,7 +1011,8 @@ def render(report: AuditReport, discrimination: Discrimination, root: Path | Non
         lines.append(
             "NUMBERS THAT DO NOT FIT THE ONES BESIDE THEM: a P and its statistic, t and z "
             "read as two-sided; a ratio and its interval; an interval and its P; an n (%) "
-            "and its denominator (not counted by --strict):"
+            "and its denominator; a mean of whole numbers and its n (not counted by "
+            "--strict):"
         )
         by_paper: dict[Path, list[Disagreement]] = {}
         for item in report.disagreements:
@@ -975,6 +1022,26 @@ def render(report: AuditReport, discrimination: Discrimination, root: Path | Non
             for item in items:
                 lines.append(f"    line {item.line}: {item.message}")
                 lines.append(f"      {item.context}")
+
+    if report.whole_numbers:
+        lines.append("")
+        lines.append(
+            f"Means of whole numbers (--whole-numbers): {report.means_read} read in the rows "
+            f"named, {len(report.means_not_assessable)} not assessable, their n too large for "
+            f"the places they are printed to (any 10 to the power of the places or more)."
+        )
+        apart: dict[Path, list[Disagreement]] = {}
+        for item in report.means_not_assessable:
+            apart.setdefault(item.source, []).append(item)
+        for source, items in apart.items():
+            lines.append(f"  {show(source)}")
+            lines += [f"    line {item.line}: {item.message}" for item in items[:40]]
+            if len(items) > 40:
+                lines.append(f"    (+{len(items) - 40} more)")
+        lines += [
+            f"  --whole-numbers {label!r}: no table row's label holds it, so nothing was read"
+            for label in report.whole_numbers_unfound
+        ]
 
     lines.append("")
     lines.append("What a match is worth here:")

@@ -1931,6 +1931,36 @@ give it the patients with data as its denominator. A share that is off says whic
 denominators it would fit, which is what a share of those with data looks like. Listed with
 the other disagreements, and not counted by `--strict`.
 
+A mean of whole numbers is held to its n (`stats/granularity.py`), which is the granularity
+test of Brown and Heathers (*Social Psychological and Personality Science* 2017;8:363-9):
+the mean of N whole numbers is a whole total over N, so 3.47 is no mean of 28 answers, whose
+totals 97 and 98 give 3.46 and 3.50. A mean is possible where some whole total over N is
+within half a unit of its last printed place, both ends taken, so that a mean rounded half
+up and one rounded half to even are both read as printed. N is the sample size times the
+number of items each person answered, where the mean is of their item means. Where N is 10
+to the power of the places printed or more, the interval of totals is a unit wide or more
+and holds one whatever the mean, so the mean is not assessable and said to be so, not
+passed. Trailing noughts are places: 2.50 is printed to two.
+
+Nothing reads a mean as one of whole numbers on its own. A paper does not say so, and a
+guess from a label, "number of" or "score", would read a mean of rates or of a continuous
+scale as a misprint. So the author says it. In the literature ledger an entry takes
+`mean_of_whole_numbers: {n, items}`, and G7 holds the value, as its quote prints it, to
+them: `quote-mean-not-possible` (a warning) where no total gives it,
+`quote-mean-not-assessable` (a note) where N is too large or the value is not a decimal. In
+`audit`,
+`--whole-numbers` names the rows of a table that hold such means, by words of their labels,
+matched at word edges in any case. Each cell of such a row shaped as a mean, alone, "3.47
+(1.20)", "3.47 [1.20]" or "3.47 ± 1.20", a minus sign read as one, is held to its column's n,
+read from the header cells as the shares read theirs. A mean that does not fit is listed
+with the disagreements, with the totals either side and the nearest sample sizes it fits,
+below and above, since a mean of those with data has a smaller n than its column; one not
+assessable is listed apart, and a label that names no row is said. A row whose label
+carries a footnote marker or names an n of its own is uncertain. The row's own n is not
+taken for its means: with two columns it would name one of them. The rows are held over
+generated tables (`mean_tables` in `tests/generated.py`), with a row of every kind in each
+and a pair of means half a unit from a total.
+
 ## A model is read from its fit, and each variable says what it is
 
 A parameter is one number. A model is a set of decisions: which outcome, which kind of
@@ -6036,6 +6066,16 @@ Added by the adversarial review, verified and **not** fixed:
   Categories whose counts add up to an old denominator are let off as shares of it. "No. of
   patients (%)" and "% (n)" are not read as saying shares. A nested Word table is read as
   text in its cell.
+- **A mean of whole numbers is checked only where the author says it is one, and only
+  as a mean.** `audit` reads only the table rows `--whole-numbers` names, and in them only a
+  cell shaped as a mean, with its SD or not; a mean in a sentence is not read, nor a median,
+  nor a mean whose thousands are grouped. Its n is its column header's, so a mean over those
+  with data is listed as not fitting where its n is smaller; the message gives the nearest n
+  it fits, and the reader decides. A mean of several items per person is read in `audit` as
+  a mean of one number each, which can pass a mean that does not fit its items; the ledger
+  takes `items`. Whether an SD is possible for whole numbers with that mean and n is not
+  checked. In the ledger, n is what the author records from the source; nothing reads it from
+  the quote.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound
   number.** G2 cuts an atom at the punctuation round it, so `CO~2~` was `CO~2`, which no
   term matched: `HbA1c` is a built-in term and `HbA~1c~` was reported, a declared `CO2` did

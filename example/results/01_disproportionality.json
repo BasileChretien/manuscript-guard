@@ -2,14 +2,14 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "70ca058f435de767ab1f3d74dd0b0c65569e06ea81525a89d072a31e1574b3e3",
-    "generated_at": "2026-10-15T20:15:55+00:00",
+    "generated_by_sha256": "a45edc88fa3784b716efe56a4038659199a0c63ed927589e799341c19e69b2bf",
+    "generated_at": "2026-10-18T02:44:40+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.439"
+      "version": "0.2.445"
     },
     "vcs": {
-      "sha": "062f2ab339f9f135b9111fe3b26bdac0f2279ffa",
+      "sha": "4442dc227e93e7dc3ba2cbdce95028844c41f1dd",
       "dirty": true,
       "branch": "feat/declared-relations"
     },
@@ -17,9 +17,16 @@
       {
         "path": "data/reports.csv",
         "sha256": "55aa913a7f8cbc6c432e263e04fa12f3e148809dbd4ddc6fc8fd5b10c916886c",
-        "bytes": 172822
+        "bytes": 172822,
+        "synthetic": true
+      },
+      {
+        "path": "data/event_terms.txt",
+        "sha256": "11c7ea29eed993adde1c66775c033e5133bb180a6bfa6f24b7f1fa0609a00c7d",
+        "bytes": 50
       }
     ],
+    "environment": [],
     "session": {
       "language": "Python",
       "version": "3.12.3",
@@ -98,7 +105,8 @@
     },
     "cohort.n_years": {
       "value": 10,
-      "display": "10"
+      "display": "10",
+      "unit": "years"
     },
     "case.n_cases": {
       "value": 77,
@@ -183,6 +191,12 @@
       "value": 3574,
       "display": "3574",
       "quoted": false
+    },
+    "dictionary.generator_event_terms": {
+      "value": "1",
+      "display": "1",
+      "label": true,
+      "role": "dictionary"
     }
   },
   "tables": {
@@ -639,6 +653,7 @@
       "n_dropped": 0,
       "converged": true,
       "covariance": "nonrobust",
+      "rows_sha256": "bf613ab651f66e796c1818fdd686d4b3ab9c3b1a0f24980f0008e9c544555f92",
       "events": 271,
       "events_by_level": {
         "age_group": {
@@ -659,29 +674,29 @@
   "steps": {
     "ror": {
       "lines": [
-        54,
-        58
+        56,
+        60
       ],
       "digest": "43994ea0f861fd9c11dd95e974d11a8092dac8245846d047087c06a0e4464051"
     },
     "ci": {
       "lines": [
-        62,
-        67
+        64,
+        69
       ],
       "digest": "341304bd156666d20b98966338e40a99de96809c7d95a808720cc8043ee94978"
     },
     "signal": {
       "lines": [
-        79,
-        81
+        81,
+        83
       ],
       "digest": "d2537ffaa2c3277dcd94b7608b1cc89116a4e9ad3860b5712e804e73052db159"
     },
     "adjusted": {
       "lines": [
-        90,
-        118
+        92,
+        120
       ],
       "digest": "ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf"
     }
@@ -731,6 +746,12 @@
         ]
       ],
       "overlapping": false
+    }
+  },
+  "corrections": {
+    "primary": {
+      "method": "none",
+      "reason": "one prespecified estimate, the reporting odds ratio"
     }
   }
 }

@@ -38,6 +38,7 @@ from xml.etree import ElementTree as ET
 
 from manuscript_guard.docxtext import W16SE, extended_symbol, runs_on
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
+from manuscript_guard.text.tables import Table, TableCell
 from manuscript_guard.wordfonts import Fonts, symbol
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -51,6 +52,21 @@ BODY, NOTES = PARTS[0], PARTS[1:]
 # so no document text contains them.
 _HEADING_MARK = "\x1e"
 _CELL_MARK = "\x1f"
+# And after the cell mark, on the first line of each cell of a table that is not inside
+# another: a table opens here, a row does, and a cell does, once for each column it spans.
+# Inside a cell's line, around the text of a run raised as superscript, and in place of a
+# footnote's or an endnote's reference mark: what a row's label points to a note with.
+# Taken out with the others, so that the body reads as it did without them.
+_TABLE_MARK = "\x1b"
+_ROW_MARK = "\x1d"
+_COLUMN_MARK = "\x1c"
+_RAISED = "\x1a"
+_NOTE_REFERENCE = "\x19"
+_MARKS = (_HEADING_MARK, _CELL_MARK, _TABLE_MARK, _ROW_MARK, _COLUMN_MARK, _RAISED,
+          _NOTE_REFERENCE)  # fmt: skip
+_STRUCTURE = re.compile(f"{_CELL_MARK}({_TABLE_MARK}?)({_ROW_MARK}?)({_COLUMN_MARK}*)")
+_RAISED_TEXT = re.compile(f"{_RAISED}([^{_RAISED}]*){_RAISED}")
+_NOTE_REFERENCES = {W + "footnoteReference", W + "endnoteReference"}
 _HEADING_NAME = re.compile(r"heading\s*[1-9]", re.IGNORECASE)
 
 
@@ -70,6 +86,9 @@ class DocxText:
     #: 0-based indexes of the lines of `body` inside a table cell, where "References" is a
     #: column header rather than the start of a bibliography.
     cells: frozenset[int] = frozenset()
+    #: Each table that is not inside another, as rows of cells: what `audit` reads an n (%)
+    #: in. A superscript is written `^a^`, as Markdown writes one.
+    tables: tuple[Table, ...] = ()
 
     @property
     def text(self) -> str:
@@ -264,7 +283,9 @@ def _joins(root: ET.Element, parents: dict, hidden: frozenset) -> dict[ET.Elemen
     return joins
 
 
-def _line_start(paragraph: ET.Element, joins: dict, parents: dict, headings: frozenset) -> str:
+def _line_start(
+    paragraph: ET.Element, joins: dict, parents: dict, headings: frozenset, opens: _Opens
+) -> str:
     """The break and the marks a paragraph's line starts with.
 
     A joined line has the last paragraph's style, because its mark is the one left: Word 16
@@ -275,8 +296,40 @@ def _line_start(paragraph: ET.Element, joins: dict, parents: dict, headings: fro
     while last in joins:
         last = joins[last]
     heading = _HEADING_MARK if _is_heading(last, headings) else ""
-    cell = _CELL_MARK if _inside(paragraph, parents, W + "tc") else ""
-    return "\n" + heading + cell
+    if not _inside(paragraph, parents, W + "tc"):
+        return "\n" + heading
+    return "\n" + heading + _CELL_MARK + opens.take()
+
+
+class _Opens:
+    """What the next line in a cell opens: a table, a row, a cell. Set by the table, the row
+    and the cell elements of a table that is not inside another, and taken by the first
+    paragraph after them, which is the cell's, or the first of a table inside it."""
+
+    def __init__(self) -> None:
+        self.table, self.row, self.columns = False, False, 0
+
+    def take(self) -> str:
+        marks = (_TABLE_MARK if self.table else "") + (_ROW_MARK if self.row else "") + \
+            _COLUMN_MARK * self.columns  # fmt: skip
+        self.table, self.row, self.columns = False, False, 0
+        return marks
+
+
+def _span(cell: ET.Element) -> int:
+    """How many grid columns a cell spans."""
+    span = cell.find(f"{W}tcPr/{W}gridSpan")
+    value = span.get(W + "val", "1") if span is not None else "1"
+    return int(value) if value.isascii() and value.isdigit() and int(value) > 0 else 1
+
+
+def _raised(node: ET.Element, parents: dict) -> bool:
+    """Whether a run's text is raised as superscript, as a footnote marker typed is."""
+    run = parents.get(node)
+    if run is None or run.tag != W + "r":
+        return False
+    align = run.find(f"{W}rPr/{W}vertAlign")
+    return align is not None and align.get(W + "val") == "superscript"
 
 
 def _part_text(
@@ -291,6 +344,7 @@ def _part_text(
     # where the box is anchored, they split that paragraph in two.
     lines: dict[ET.Element, list[str]] = {}
     pieces: list[str | list[str]] = []
+    opens = _Opens()
 
     for node in root.iter():
         if node.tag in _BREAKS and not _seen(node, parents, hidden):
@@ -301,11 +355,18 @@ def _part_text(
         if node.tag == W + "tc":
             # Cell boundary. Without this, adjacent cells concatenate into one number.
             pieces.append(" | ")
+            if not _inside(node, parents, W + "tc"):
+                opens.columns += _span(node)
         elif node.tag == W + "tr":
             pieces.append("\n")
+            if not _inside(node, parents, W + "tc"):
+                opens.row, opens.columns = True, 0
+        elif node.tag == W + "tbl":
+            if not _inside(node, parents, W + "tc") and _seen(node, parents, hidden):
+                opens.table, opens.row, opens.columns = True, False, 0
         elif node.tag == W + "p":
             if node not in lines:
-                lines[node] = [_line_start(node, joins, parents, headings)]
+                lines[node] = [_line_start(node, joins, parents, headings, opens)]
                 pieces.append(lines[node])
             if node in joins:
                 lines[joins[node]] = lines[node]
@@ -313,7 +374,15 @@ def _part_text(
             owner, seen = _placed(node, parents, hidden)
             if seen:
                 shown = _shown(node, fonts, parents, owner)
+                if shown and owner is not None and _raised(node, parents) and \
+                        _inside(owner, parents, W + "tc"):  # fmt: skip
+                    shown = _RAISED + shown + _RAISED
                 (lines[owner] if owner is not None else pieces).append(shown)
+        elif node.tag in _NOTE_REFERENCES:
+            owner, seen = _placed(node, parents, hidden)
+            if seen and owner is not None and owner in lines and \
+                    _inside(owner, parents, W + "tc"):  # fmt: skip
+                lines[owner].append(_NOTE_REFERENCE)
 
     return "".join(piece if isinstance(piece, str) else "".join(piece) for piece in pieces)
 
@@ -357,9 +426,61 @@ def read_docx_text(path: Path) -> DocxText:
     lines = marked.split("\n")
     headings = frozenset(i for i, line in enumerate(lines) if line.startswith(_HEADING_MARK))
     cells = frozenset(i for i, line in enumerate(lines) if _CELL_MARK in line[:2])
-    notes = _tidy("\n".join(text_of(part) for part in NOTES if part in names))
-    body = marked.replace(_HEADING_MARK, "").replace(_CELL_MARK, "")
-    return DocxText(body=body, notes=notes, headings=headings, cells=cells)
+    # The notes keep what they always had, the cell mark of a table in a note among it; the
+    # marks the tables are read by go from both.
+    notes = _unmarked(_tidy("\n".join(text_of(part) for part in NOTES if part in names)),
+                      _MARKS[2:])  # fmt: skip
+    body = _unmarked(marked, _MARKS)
+    return DocxText(body=body, notes=notes, headings=headings, cells=cells,
+                    tables=_tables(lines))  # fmt: skip
+
+
+def _unmarked(text: str, marks: tuple[str, ...]) -> str:
+    """`text` without `marks`. One inside a line, a raised run's, can stand between two
+    spaces that `_tidy` then left apart, so they are made one again: where there was no
+    such mark, there are no two spaces to make one."""
+    for mark in marks:
+        text = text.replace(mark, "")
+    return re.sub(r"[ \t]+", " ", text)
+
+
+def _tables(lines: list[str]) -> tuple[Table, ...]:
+    """The tables the marks lay out (`_TABLE_MARK`), each cell's text from its lines, each
+    line without the cell boundary the next cell put at its end."""
+    tables: list[list[list[tuple[list[str], int, int]]]] = []
+    cell: tuple[list[str], int, int] | None = None
+    for number, line in enumerate(lines):
+        start = line.find(_CELL_MARK, 0, 2)
+        if start < 0:
+            continue
+        opened = _STRUCTURE.match(line, start)
+        assert opened is not None
+        table, row, columns = opened.group(1), opened.group(2), len(opened.group(3))
+        if table or (columns and not tables):
+            tables.append([])
+        if columns and (row or not tables[-1]):
+            tables[-1].append([])
+        if columns:
+            cell = ([], number + 1, columns)
+            tables[-1][-1].append(cell)
+        if cell is not None:
+            text = line[opened.end() :].rstrip()
+            cell[0].append(text[:-1] if text.endswith("|") else text)
+    return tuple(
+        tuple(tuple(TableCell(_cell_text(texts), line, span) for texts, line, span in row)
+              for row in table)
+        for table in tables
+    )  # fmt: skip
+
+
+def _cell_text(texts: list[str]) -> str:
+    """A cell's lines as one, a raised run written `^a^` and a note's reference `^*^`."""
+    joined = " ".join(texts).replace(_RAISED * 2, "")
+    joined = _RAISED_TEXT.sub(
+        lambda raised: f"^{raised.group(1).strip()}^" if raised.group(1).strip() else " ",
+        joined,
+    )
+    return " ".join(joined.replace(_NOTE_REFERENCE, "^*^").split())
 
 
 def read_docx(path: Path) -> str:

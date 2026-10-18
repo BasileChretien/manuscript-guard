@@ -111,6 +111,8 @@ class Results:
     # with the fragment that declared it; G8 holds the values to them.
     relations: tuple[dict, ...] = ()
     flows: dict[str, dict] = field(default_factory=dict)
+    # How each family of p values is corrected for multiple comparisons, by family.
+    corrections: dict[str, dict] = field(default_factory=dict)
 
     def get(self, key: str) -> Value | None:
         return self.values.get(key)
@@ -165,6 +167,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
     steps: dict[str, Step] = {}
     relations: list[dict] = []
     flows: dict[str, dict] = {}
+    corrections: dict[str, dict] = {}
 
     for path in paths:
         document = read_structured(path)
@@ -188,6 +191,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 ),
             )
         )
+        corrections.update(document.get("corrections") or {})
 
         for key, spec in document["values"].items():
             if key in owner:
@@ -231,6 +235,9 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 level=spec.get("level"),
                 role=spec.get("role"),
                 read=spec.get("read"),
+                of=spec.get("of"),
+                over=spec.get("over"),
+                family=spec.get("family"),
             )
 
         for key, spec in document.get("tables", {}).items():
@@ -278,8 +285,10 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
         results_values=len(values),
         results_tables=len(tables),
     )
-    results = Results(values, tuple(fragments), tables, code_lists, variables, models, steps,
-                      tuple(relations), flows)  # fmt: skip
+    results = Results(
+        values, tuple(fragments), tables, code_lists, variables, models, steps,
+        tuple(relations), flows, corrections,
+    )
     return results, merged
 
 

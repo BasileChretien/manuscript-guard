@@ -53,12 +53,19 @@ class Value:
     # one is correct rather than a contradiction.
     level: str | None = None
     # "parameter" for a choice the analysis made (`em.parameter`), "software" for the
-    # version of what it ran on (`em.software`). Either is a thing the text states and
+    # version of what it ran on (`em.software`), "dictionary" for the release of a coding
+    # dictionary it coded with (`em.dictionary`). Each is a thing the text states and
     # would otherwise type, and G2 fails it typed where it should be bound.
     role: str | None = None
     # For a parameter, whether the script reads the value handed back; None when the
     # emitter could not tell. Declared is not used, and G2 fails one never read.
     read: bool | None = None
+    # What a statistic that means nothing alone belongs to: a p value's estimate (`of`), a
+    # share's numerator and denominator (`of`, `over`), and the family of tests a p value is
+    # one of. Keys in the same namespace. G2 warns on a sentence that quotes it without them.
+    of: str | None = None
+    over: str | None = None
+    family: str | None = None
 
     @property
     def namespace(self) -> str:

@@ -82,6 +82,9 @@ BINDS_AT = {
     "manuscript-empty": DRAFTING,
     "authors-incomplete": DRAFTING,
     "unclassified-number": DRAFTING,
+    # A count the custodian forbids may be read inside the team; not outside it, which a
+    # panel sent to a model provider already is.
+    "count-below-minimum": INTERNAL_REVIEW,
     "code-block-text-number": DRAFTING,
     "raw-block": DRAFTING,
     # TeX in the text that the Word writer leaves out. Pandoc is asked for it, and what it
@@ -93,6 +96,7 @@ BINDS_AT = {
     "unquoted-result": DRAFTING,
     "typed-parameter": DRAFTING,
     "typed-software-version": DRAFTING,
+    "typed-dictionary-release": DRAFTING,
     "typed-model-kind": DRAFTING,
     "unplaced-table": DRAFTING,
     "divergent-display": DRAFTING,
@@ -111,6 +115,10 @@ BINDS_AT = {
     "citation-unresolved": DRAFTING,
     # Model artefacts are never acceptable in text anyone will read.
     "model-artefact": DRAFTING,
+    # A cited work that was retracted is not evidence, whatever stage the draft is at,
+    # and a record edited by hand may be hiding one.
+    "reference-retracted": DRAFTING,
+    "lookup-record-edited": DRAFTING,
     # -- internal review --------------------------------------------------------
     # The draft is finished; now it is held to the journal's rules and read properly.
     "figure-unreviewed": INTERNAL_REVIEW,
@@ -123,10 +131,17 @@ BINDS_AT = {
     # How many rows a model lost to missing values is for the finished draft to say.
     "model-rows-dropped": INTERNAL_REVIEW,
     "over-journal-limit": INTERNAL_REVIEW,
+    # A rule of the profile read wrong, or never on the journal's page.
+    "journal-quote-not-on-page": INTERNAL_REVIEW,
+    "journal-limit-not-in-quote": INTERNAL_REVIEW,
     "missing-required-section": INTERNAL_REVIEW,
     "missing-abstract": INTERNAL_REVIEW,
     "abstract-headings-missing": INTERNAL_REVIEW,
     "missing-required-statement": INTERNAL_REVIEW,
+    # What the journal's data policy, as its profile records it, does not accept: binding when
+    # the statement is, since a draft's statement is often written last.
+    "data-statement-forbidden": INTERNAL_REVIEW,
+    "data-identifier-missing": INTERNAL_REVIEW,
     "english-variant-mismatch": INTERNAL_REVIEW,
     "checklist-not-retrieved": INTERNAL_REVIEW,
     "checklist-not-started": INTERNAL_REVIEW,
@@ -151,6 +166,17 @@ BINDS_AT = {
     # drafting, an entry can be a placeholder still to be filled in from Zotero.
     "identifier-malformed": INTERNAL_REVIEW,
     "reference-field-missing": INTERNAL_REVIEW,
+    # Whether each identifier names the work the entry describes: read from the lookup
+    # records, which a draft may not have yet.
+    "doi-unregistered": INTERNAL_REVIEW,
+    "reference-not-the-work": INTERNAL_REVIEW,
+    "reference-title-mismatch": INTERNAL_REVIEW,
+    "reference-year-mismatch": INTERNAL_REVIEW,
+    "pmid-names-another-work": INTERNAL_REVIEW,
+    "pmid-unknown": INTERNAL_REVIEW,
+    "lookup-date-future": INTERNAL_REVIEW,
+    "lookup-record-unreadable": INTERNAL_REVIEW,
+    "lookup-record-misfiled": INTERNAL_REVIEW,
     # One work cited under two keys is printed twice in the reference list.
     "reference-duplicate": INTERNAL_REVIEW,
     # -- submission -------------------------------------------------------------

@@ -1,6 +1,6 @@
 ---
 name: manuscript-writing
-description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit), or when revising text that was drafted quickly.
+description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit), or when revising text that was drafted quickly. Not for the Methods against the code (use methods-writer), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing prose that reads as written

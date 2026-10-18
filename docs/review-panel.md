@@ -45,12 +45,41 @@ that forwards what it receives. The address is `localhost` either way, so check 
 model's name, and what any server at that address does with a request, before you rely
 on it.
 
+**Where the data custodian restricts where the manuscript may go,** say so in `paper.yaml`:
+
+```yaml
+custodian:
+  restricts_sending: true
+```
+
+`review --run` then sends to a model the built-in Ollama runs on this machine, and to any
+other provider only once the data custodian has authorised that provider: a provider you add
+under `review.providers` needs it even at `localhost`, since it may be a router or a tunnel. Name them in `authors.yaml` (`roles:
+data_custodian:`, an author or `name:` someone who is not), and they authorise each
+provider themselves: `manuscript-guard sign --as "<them>" --finding
+G11/custodian/send-to/<provider>`. The authorisation is of the provider at its address: a
+provider pointed somewhere else, or an Ollama cloud model, wants it again. Until then a run
+sends nothing and says who authorises what; a dry run writes the requests, for the
+custodian to read before deciding.
+
 What each model receives is the paper's title, short title, keywords, journal, guideline
 and English variant, the journal profile and the reporting checklist where the project has
 them, the manuscript as the build prints it, and one reviewer's role, remit and reason.
 Not `authors.yaml`, the results files, the figures, or any earlier round: a second round is
 blinded because the first round's records are never part of a request. Names written into
 the manuscript itself, in the acknowledgements or the funding statement, go with it.
+
+**A design round is read the same way, before there are results.** `manuscript-guard
+review --design --run` sends each reviewer of `review/design/panel-<n>.yaml`, or of a starter
+design panel in the first design round, the paper's facts, `design/plan.md` without its
+comments and with its feasibility results printed into it, and the feasibility results. Not the manuscript, and no result but a
+feasibility one. Each reply is filed under `review/design/round-<n>/`, and G12 reads it:
+
+```bash
+manuscript-guard review --design --run --dry-run   # what would be sent where; sends nothing
+manuscript-guard review --design --run             # the same statement, then asks, then sends
+manuscript-guard review --design                   # where the design rounds stand
+```
 
 Two warnings follow from that. G11 says when every reading of a round came from one provider
 (`round-one-provider`), since one provider's models share their blind spots, and when a model

@@ -45,6 +45,23 @@ that forwards what it receives. The address is `localhost` either way, so check 
 model's name, and what any server at that address does with a request, before you rely
 on it.
 
+**Where the data custodian restricts where the manuscript may go,** say so in `paper.yaml`:
+
+```yaml
+custodian:
+  restricts_sending: true
+```
+
+`review --run` then sends to a model the built-in Ollama runs on this machine, and to any
+other provider only once the data custodian has authorised that provider: a provider you add
+under `review.providers` needs it even at `localhost`, since it may be a router or a tunnel. Name them in `authors.yaml` (`roles:
+data_custodian:`, an author or `name:` someone who is not), and they authorise each
+provider themselves: `manuscript-guard sign --as "<them>" --finding
+G11/custodian/send-to/<provider>`. The authorisation is of the provider at its address: a
+provider pointed somewhere else, or an Ollama cloud model, wants it again. Until then a run
+sends nothing and says who authorises what; a dry run writes the requests, for the
+custodian to read before deciding.
+
 What each model receives is the paper's title, short title, keywords, journal, guideline
 and English variant, the journal profile and the reporting checklist where the project has
 them, the manuscript as the build prints it, and one reviewer's role, remit and reason.

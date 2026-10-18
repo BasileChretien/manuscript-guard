@@ -51,7 +51,8 @@ GATES = {
     "G12": "there was an analysis plan before there was an analysis",
     "G13": "the response to the reviewers answers every point, and its claims hold",
     "G14": "abbreviations are defined once, one term is kept for one thing, the "
-    "spelling is one English and the notation is one",
+    "spelling is one English and the notation is one; prose in a script the gates do not "
+    "read is said",
     "G15": "each model is the model its variables call for, and the Methods name the model "
     "fitted",
 }

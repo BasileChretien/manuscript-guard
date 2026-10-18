@@ -60,6 +60,12 @@ class Value:
     # For a parameter, whether the script reads the value handed back; None when the
     # emitter could not tell. Declared is not used, and G2 fails one never read.
     read: bool | None = None
+    # What a statistic that means nothing alone belongs to: a p value's estimate (`of`), a
+    # share's numerator and denominator (`of`, `over`), and the family of tests a p value is
+    # one of. Keys in the same namespace. G2 warns on a sentence that quotes it without them.
+    of: str | None = None
+    over: str | None = None
+    family: str | None = None
 
     @property
     def namespace(self) -> str:

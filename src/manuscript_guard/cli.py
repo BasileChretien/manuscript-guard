@@ -74,6 +74,7 @@ from manuscript_guard.gates import (
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
+from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
 from manuscript_guard.policy import (
     DESCRIPTIONS,
@@ -142,6 +143,7 @@ def _run_gates(
         ("G7", lambda: check_literature_chain(project, literature)),
         ("G7", lambda: check_prose_quotations(project)),
         ("G4", lambda: check_journal(project)),
+        ("G4", lambda: check_shortlist(project)),
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project, results)),
         ("G9", lambda: check_methods(project, namespace, results)),
@@ -2328,12 +2330,13 @@ def cmd_sign(args: argparse.Namespace) -> int:
     from manuscript_guard.gates.design_review import override_signables
     from manuscript_guard.gates.journal_quotes import manual_signables
     from manuscript_guard.gates.models import signables
+    from manuscript_guard.panel.custodian import send_signables
     from manuscript_guard.sign_offs import CORRESPONDING, ROLES, holder, is_holder, sign
 
     project, _ = load_project(args.path)
     _namespace, results, _literature, _loaded = load_namespace(project)
     standing = signables(project, results) + override_signables(project) + \
-        manual_signables(project)  # fmt: skip
+        manual_signables(project) + send_signables(project)  # fmt: skip
     found = [signable for signable in standing if signable.id == args.finding]
     if not found:
         ids = ", ".join(signable.id for signable in standing) or "none"
@@ -2391,6 +2394,8 @@ def cmd_lookup(args: argparse.Namespace) -> int:
     from manuscript_guard.lookup import run as lookup
 
     project, _ = load_project(args.path)
+    if args.journals:
+        return _lookup_journals(project, args)
     empty = why_no_manuscript(project)
     bib = project.path("literature") / lookup.BIB_FILE
     if empty or not bib.is_file():
@@ -2429,6 +2434,48 @@ def cmd_lookup(args: argparse.Namespace) -> int:
             f"{late} had an answer that did not come; `manuscript-guard lookup` asks again "
             "for those"
         )
+        return 1
+    return 0
+
+
+def _lookup_journals(project, args: argparse.Namespace) -> int:
+    """`lookup --journals`: each ISSN of the shortlist asked of the NLM Catalog and DOAJ."""
+    from manuscript_guard.contracts._schema import read_structured, validate
+    from manuscript_guard.lookup import journals
+    from manuscript_guard.lookup.run import Credentials
+    from manuscript_guard.shortlist import issns, shortlist_path
+
+    path = shortlist_path(project)
+    document = read_structured(path)
+    where = path.relative_to(project.root).as_posix()
+    if document is None:
+        print(f"manuscript-guard: nothing to look up: there is no {where}", file=sys.stderr)
+        return 2
+    checked = validate(document, "shortlist", path)
+    if not checked.ok:
+        print(checked.render(project.root), file=sys.stderr)
+        print(f"manuscript-guard: {where} is not valid; nothing was looked up", file=sys.stderr)
+        return 2
+    wanted = issns(document)
+    if not wanted:
+        print(f"{where} gives no ISSN, so nothing was looked up")
+        return 0
+    due = journals.due(project, wanted, again=args.again)
+    if args.dry_run:
+        for issn in due:
+            print(f"ISSN {issn}: would ask the NLM Catalog and DOAJ")
+        print(f"{len(due)} to look up, {len(wanted) - len(due)} not; nothing was sent")
+        return 0
+    written = journals.run(project, due, credentials=Credentials.from_environment(project))
+    late = sum(
+        1
+        for record, _path in written
+        if any(s["status"] == "unresolvable" for s in record["sources"].values())
+    )
+    up_to_date = len(wanted) - len(due)
+    print(f"{len(written)} looked up, {up_to_date} up to date; records in journals/lookups/")
+    if late:
+        print(f"{late} had an answer that did not come; `lookup --journals` asks again for those")
         return 1
     return 0
 
@@ -3369,6 +3416,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     lookup.add_argument(
         "--dry-run", action="store_true", help="say what would be looked up, and send nothing"
+    )
+    lookup.add_argument(
+        "--journals",
+        action="store_true",
+        help="ask the NLM Catalog and DOAJ about each journal of journals/shortlist.yaml instead",
     )
     lookup.set_defaults(func=cmd_lookup)
 

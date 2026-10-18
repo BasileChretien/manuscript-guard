@@ -705,6 +705,11 @@
               "path": { "type": "string" },
               "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
               "bytes": { "type": "integer", "minimum": 0 },
+              "raw_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+                "description": "The SHA-256 of the file's bytes as they are, line endings and all: what a Git LFS or git-annex pointer names the content by. G1 compares it with the pointer where the input is not fetched."
+              },
               "restricted": {
                 "type": "boolean",
                 "description": "The data custodian forbids the file leaving their hands; G1 fails while git tracks it."

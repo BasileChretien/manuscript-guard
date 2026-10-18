@@ -1812,6 +1812,9 @@ class Emitter:
                 {
                     "path": str(path.relative_to(root)).replace("\\", "/"),
                     "sha256": input_digest(path),
+                    # The bytes as they are, which a Git LFS or git-annex pointer names the
+                    # content by, so G1 can tell an input that is not fetched (item 35).
+                    "raw_sha256": sha256_of(path),
                     "bytes": path.stat().st_size,
                     **({"restricted": True} if str(raw) in self._restricted else {}),
                     **({"synthetic": True} if str(raw) in self._synthetic else {}),

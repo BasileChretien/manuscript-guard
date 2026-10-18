@@ -663,6 +663,43 @@ def test_r_and_python_record_a_level_and_a_spread_alike(tmp_path: Path) -> None:
     assert from_r["ror.ci_low"]["level"] == "95%" and from_r["age.sd"]["spread"] == "sd"
 
 
+RAW_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s", inputs = "data/crlf.csv")
+em$value("n", 1L)
+em$write()
+"""
+
+
+def test_r_and_python_record_an_inputs_raw_digest_alike(tmp_path: Path) -> None:
+    """Item 35: the bytes as they are, line endings and all, which a Git LFS or git-annex
+    pointer names the content by, beside the digest that ignores line endings."""
+    import hashlib
+
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    (root / "data").mkdir()
+    data = root / "data" / "crlf.csv"
+    data.write_bytes(b"a,b\r\n1,2\r\n")
+    script = root / "analysis" / "raw.R"
+    script.write_text(RAW_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    fragment = next((root / "results").glob("*.json"))
+    [from_r] = json.loads(fragment.read_text(encoding="utf-8"))["provenance"]["inputs"]
+    em = Emitter(script, root=root, inputs=["data/crlf.csv"])
+    em.value("n", 1)
+    [from_python] = json.loads(em.write().read_text(encoding="utf-8"))["provenance"]["inputs"]
+    raw = hashlib.sha256(b"a,b\r\n1,2\r\n").hexdigest()
+    assert from_r["raw_sha256"] == from_python["raw_sha256"] == raw
+    assert from_r["sha256"] == from_python["sha256"] != raw
+
+
 def test_r_and_python_declare_and_read_parameters_alike(tmp_path: Path) -> None:
     """One meaning in two languages: the same calls give the same keys, values, displays,
     and the same answer to whether the script reads what it declared."""

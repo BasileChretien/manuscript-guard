@@ -207,6 +207,103 @@ def test_deleted_input_data_is_caught(project: Path) -> None:
     assert "input-missing" in codes(gate_report(project))
 
 
+# An input kept out of the repository by Git LFS or git-annex, as a clone has it where the
+# data are not fetched: the pointer at its path, and not the data (item 35).
+
+_LFS_V1 = "version https://git-lfs.github.com/spec/v1\n"
+
+
+def _reports_record(root: Path) -> dict:
+    fragment = next((root / "results").glob("*.json"))
+    inputs = json.loads(fragment.read_text(encoding="utf-8"))["provenance"]["inputs"]
+    return next(i for i in inputs if i["path"] == "data/reports.csv")
+
+
+def _not_fetched(root: Path, pointer: str) -> list[tuple[str, str]]:
+    """G1's findings about inputs with the example's reports replaced by this pointer."""
+    (root / "data" / "reports.csv").write_bytes(pointer.encode("utf-8"))
+    return [(f.code, f.severity) for f in gate_report(root).findings
+            if f.code.startswith("input")]  # fmt: skip
+
+
+def _lfs(sha: str, size: int, *extra: str) -> str:
+    return _LFS_V1 + "".join(extra) + f"oid sha256:{sha}\nsize {size}\n"
+
+
+def test_an_input_git_lfs_keeps_is_judged_by_its_pointer(project: Path) -> None:
+    """A clone without the data held a pointer where the reports were, and G1 hashed the
+    pointer: `input-changed` for an input nobody touched, failing CI from the analysis
+    stage. The pointer names the content by its SHA-256 and its size."""
+    record = _reports_record(project)
+    sha, size = record["raw_sha256"], record["bytes"]
+    assert _not_fetched(project, _lfs(sha, size)) == [("input-by-pointer", "info")]
+    other = "0" * 64
+    assert _not_fetched(project, _lfs(other, size)) == [("input-changed", "fail")]
+    assert _not_fetched(project, _lfs(sha, size + 1)) == [("input-changed", "fail")]
+    # With an extension the oid is of the content after it: nothing can be compared.
+    extended = _lfs(sha, size, f"ext-0-crypt sha256:{sha}\n")
+    assert _not_fetched(project, extended) == [("input-not-fetched", "warn")]
+
+
+@pytest.mark.parametrize(
+    ("pointer", "said"),
+    [
+        ("/annex/objects/SHA256E-s{size}--{sha}.csv\n", "input-by-pointer"),
+        ("/annex/objects/SHA256-s{size}--{sha}", "input-by-pointer"),
+        # A locked file checked out where links are not made holds the link's target.
+        ("../.git/annex/objects/Gq/Xv/SHA256E-s{size}--{sha}.csv/SHA256E-s{size}--{sha}.csv",
+         "input-by-pointer"),
+        ("/annex/objects/SHA256E-s{size}--{other}.csv\n", "input-changed"),
+        # DataLad's default backend names the content by MD5: the size alone is compared.
+        ("/annex/objects/MD5E-s{size}--0123456789abcdef0123456789abcdef.csv\n",
+         "input-not-fetched"),
+        ("/annex/objects/MD5E-s1--0123456789abcdef0123456789abcdef.csv\n", "input-changed"),
+    ],
+)
+def test_an_input_git_annex_keeps_is_judged_by_its_key(project: Path, pointer, said) -> None:
+    record = _reports_record(project)
+    text = pointer.format(size=record["bytes"], sha=record["raw_sha256"], other="1" * 64)
+    [(code, _severity)] = _not_fetched(project, text)
+    assert code == said
+
+
+def test_an_annexed_input_locked_is_a_link_to_nothing(project: Path) -> None:
+    """Before, a link whose target is not fetched did not exist, and G1 said
+    `input-missing`."""
+    record = _reports_record(project)
+    data = project / "data" / "reports.csv"
+    data.unlink()
+    key = f"SHA256E-s{record['bytes']}--{record['raw_sha256']}.csv"
+    try:
+        os.symlink(f"../.git/annex/objects/Gq/Xv/{key}/{key}", data)
+    except OSError as exc:  # pragma: no cover - Windows without the right to make links
+        pytest.skip(f"cannot make a symbolic link here: {exc}")
+    found = [(f.code, f.severity) for f in gate_report(project).findings
+             if f.code.startswith("input")]  # fmt: skip
+    assert found == [("input-by-pointer", "info")]
+
+
+def test_results_that_record_no_raw_digest_say_a_pointer_cannot_be_compared(
+    project: Path,
+) -> None:
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    record = next(i for i in document["provenance"]["inputs"] if i["path"] == "data/reports.csv")
+    sha, size = record.pop("raw_sha256"), record["bytes"]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _not_fetched(project, _lfs(sha, size)) == [("input-not-fetched", "warn")]
+
+
+def test_a_small_input_that_is_the_data_is_hashed_as_before(project: Path) -> None:
+    """The example's event terms are 50 bytes, as small as a pointer, and are the data."""
+    terms = project / "data" / "event_terms.txt"
+    assert terms.stat().st_size < 1024
+    assert [f.code for f in gate_report(project).findings if f.code.startswith("input")] == []
+    terms.write_bytes(terms.read_bytes() + b"x")
+    assert "input-changed" in codes(gate_report(project))
+
+
 def test_modified_analysis_script_is_caught(project: Path) -> None:
     """By content, not by clock.
 

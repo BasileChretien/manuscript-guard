@@ -27,8 +27,9 @@ from manuscript_guard.emit import (
     sha256_of,
     source_digest_matches,
 )
-from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.paths import SOURCE_SUFFIXES, lockfiles
+from manuscript_guard.pointers import Pointer, pointer_at
 
 GATE = "G1"
 
@@ -47,6 +48,12 @@ def check_freshness(project: Project, results: Results) -> Report:
         for declared in fragment.inputs:
             checked_inputs += 1
             input_path = project.root / declared["path"]
+            # Before the file is read: a Git LFS or git-annex pointer stands where the data
+            # is not fetched, and its own bytes are no evidence of a change (item 35).
+            pointer = pointer_at(input_path)
+            if pointer is not None:
+                report = report.merge(_pointed(declared, pointer, fragment))
+                continue
             if not input_path.exists():
                 report = report.with_findings(
                     Finding(
@@ -148,6 +155,52 @@ def check_freshness(project: Project, results: Results) -> Report:
     return report.with_counts(
         fragments_checked=len(results.fragments), inputs_checked=checked_inputs
     )
+
+
+def _pointed(declared: dict, pointer: Pointer, fragment) -> Report:
+    """An input whose content is not here, only the pointer to it. The pointer names the
+    content by its SHA-256 and its size, or by a size and another digest: what it names is
+    compared with the raw-byte digest and the size the emitter recorded. The same content is
+    accepted as unchanged without the data, a different size or digest is a change, and a
+    pointer that cannot be compared is a warning, since nothing says either way."""
+    name = declared["path"]
+    raw, size = declared.get("raw_sha256"), declared.get("bytes")
+    by_size = pointer.size is not None and size is not None and pointer.size != size
+    by_digest = pointer.sha256 is not None and raw is not None and pointer.sha256 != raw
+    if by_size or by_digest:
+        return Report((Finding(
+            gate=GATE,
+            code="input-changed",
+            message=f"input {name} is a {pointer.tool} pointer to other content than these "
+            "results were written from",
+            path=fragment.path,
+            context=f"written {fragment.generated_at} by {fragment.generated_by}",
+            hint=f"fetch it and re-run {fragment.generated_by}",
+        ),))  # fmt: skip
+    if pointer.sha256 is not None and raw is not None:
+        return Report((Finding(
+            gate=GATE,
+            code="input-by-pointer",
+            severity=INFO,
+            message=f"input {name} is not fetched; its {pointer.tool} pointer names the "
+            "content these results were written from",
+            path=fragment.path,
+        ),))  # fmt: skip
+    why = (
+        "these results were written before the emitter recorded the digest a pointer is "
+        "compared with" if raw is None
+        else f"the pointer names its content by {pointer.named_by}, not by its SHA-256"
+    )  # fmt: skip
+    return Report((Finding(
+        gate=GATE,
+        code="input-not-fetched",
+        severity=WARN,
+        message=f"input {name} is not fetched, only its {pointer.tool} pointer, and whether it "
+        f"is what these results were written from is not known: {why}",
+        path=fragment.path,
+        hint=f"fetch it to check it, or re-run {fragment.generated_by} where it is fetched, so "
+        "that the results record the digest its pointer names",
+    ),))  # fmt: skip
 
 
 def _check_environment(project: Project, fragment) -> Report:

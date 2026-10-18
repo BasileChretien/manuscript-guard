@@ -58,6 +58,11 @@ BINDS_AT = {
     "no-digest": ANALYSIS,
     # A parameter the analysis declares and never reads is wrong as soon as it is written.
     "parameter-unread": ANALYSIS,
+    # So is arithmetic the analysis declares and its own numbers break. A relation naming a
+    # key may wait for the other script to run, as a binding waits for its key.
+    "relation-broken": ANALYSIS,
+    "flow-broken": ANALYSIS,
+    "relation-unresolved": DRAFTING,
     # A model that is the wrong model is wrong as soon as it is fitted.
     "model-variable-undeclared": ANALYSIS,
     "model-outcome-kind": ANALYSIS,

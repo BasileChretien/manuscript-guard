@@ -37,8 +37,8 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      the paper.yaml that init writes has five more lines, a commented study_type, so a
-      setting typed below them that cannot be parsed is reported five lines lower
+      G8 counts the relations and flows the analysis declared, `relations_checked`, which
+      is 0 in a project that declares none
   - reading: numbers
     why: >-
       a step, a panel or a box takes a number up to 20 and an item up to 99, so a count

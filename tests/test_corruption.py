@@ -36,6 +36,7 @@ from manuscript_guard.gates import (
     check_freshness,
     check_models,
     check_numbers,
+    check_relations,
 )
 
 
@@ -50,6 +51,7 @@ def gate_report(root: Path):
             check_numbers(project, namespace, results, literature),
             check_figures(project, results),
             check_consistency(results),
+            check_relations(results),
             check_models(project, results),
         ]
     )
@@ -446,6 +448,75 @@ def test_a_display_edited_away_from_its_value_is_caught(project: Path) -> None:
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)
     assert "no-display" in codes(gate_report(project))
+
+
+MARGINS = [
+    {"kind": "sum", "key": "cohort.n_reports",
+     "of": ["table2x2.a", "table2x2.b", "table2x2.c", "table2x2.d"]},
+    {"kind": "sum", "key": "cohort.n_drug_reports", "of": ["table2x2.a", "table2x2.b"]},
+    {"kind": "in_order", "key": "cohort.period_start", "of": ["cohort.period_end"]},
+]  # fmt: skip
+
+
+def _declare_relations(project: Path, relations: list[dict], flows: dict | None = None,
+                       values: dict | None = None) -> dict:  # fmt: skip
+    """What `em.relation` and `em.flow` would have written, put in the example's fragment."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["relations"] = relations
+    if flows:
+        document["flows"] = flows
+    for key, value in (values or {}).items():
+        document["values"][key] = {"value": value, "display": str(value), "quoted": False}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    return document
+
+
+def _edit_value(project: Path, key: str, value: int) -> None:
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"][key].update(value=value, display=str(value))
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def test_a_cell_that_no_longer_sums_to_its_margin_is_caught(project: Path) -> None:
+    """The four cells of the 2x2 table and its margins: each bound, each passing on its own,
+    and nothing held them to each other until the analysis declared it."""
+    _declare_relations(project, MARGINS)
+    clean = gate_report(project)
+    assert not {f.code for f in clean.findings} & {"relation-broken", "relation-unresolved"}
+    # The three relations declared here, and the flow the example itself records.
+    assert clean.counts["relations_checked"] == 3 + 1
+    _edit_value(project, "table2x2.d", 3381)
+    assert "relation-broken" in codes(gate_report(project))
+
+
+def test_a_period_that_ends_before_it_starts_is_caught(project: Path) -> None:
+    _declare_relations(project, MARGINS)
+    _edit_value(project, "cohort.period_start", 2025)
+    assert "relation-broken" in codes(gate_report(project))
+
+
+def test_a_relation_naming_a_key_nothing_emits_is_caught(project: Path) -> None:
+    _declare_relations(project, [{"kind": "sum", "key": "cohort.n_reports",
+                                  "of": ["table2x2.a", "table2x2.e"]}])  # fmt: skip
+    assert "relation-unresolved" in codes(gate_report(project))
+
+
+def test_a_flow_stage_that_its_exclusions_do_not_reach_is_caught(project: Path) -> None:
+    """A flow diagram's counts, typed by hand, were the one place no check looked."""
+    counts = {"flow.screening.stage.1": 4000, "flow.screening.stage.2": 426,
+              "flow.screening.excluded.1.1": 3574}  # fmt: skip
+    record = {"stages": [{"label": "Reports", "key": "flow.screening.stage.1"},
+                         {"label": "Reports of the drug", "key": "flow.screening.stage.2"}],
+              "exclusions": [[{"reason": "Another drug", "key": "flow.screening.excluded.1.1"}]],
+              "overlapping": False}  # fmt: skip
+    _declare_relations(project, [], flows={"screening": record}, values=counts)
+    assert not {f.code for f in gate_report(project).findings} & {"flow-broken"}
+    _edit_value(project, "flow.screening.excluded.1.1", 3575)
+    assert "flow-broken" in codes(gate_report(project))
 
 
 @pytest.mark.parametrize(

@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "e1ac1d1bd501f6b6aacfcec9e76f6e4da2e388b1edf3176a8e4e25f75ab34853",
-    "generated_at": "2026-10-17T10:00:52+00:00",
+    "generated_by_sha256": "a45edc88fa3784b716efe56a4038659199a0c63ed927589e799341c19e69b2bf",
+    "generated_at": "2026-10-18T02:44:40+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.444"
+      "version": "0.2.445"
     },
     "vcs": {
-      "sha": "17cf564ae7c90601cb769c7c7e090230821078a7",
+      "sha": "4442dc227e93e7dc3ba2cbdce95028844c41f1dd",
       "dirty": true,
-      "branch": "feat/statistics-whole"
+      "branch": "feat/declared-relations"
     },
     "inputs": [
       {
@@ -175,6 +175,21 @@
     "table2x2.d": {
       "value": 3380,
       "display": "3380",
+      "quoted": false
+    },
+    "flow.reports.stage.1": {
+      "value": 4000,
+      "display": "4000",
+      "quoted": false
+    },
+    "flow.reports.stage.2": {
+      "value": 426,
+      "display": "426",
+      "quoted": false
+    },
+    "flow.reports.excluded.1.1": {
+      "value": 3574,
+      "display": "3574",
       "quoted": false
     },
     "dictionary.generator_event_terms": {
@@ -684,6 +699,53 @@
         120
       ],
       "digest": "ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf"
+    }
+  },
+  "relations": [
+    {
+      "kind": "at_most",
+      "key": "case.n_cases",
+      "of": [
+        "cohort.n_drug_reports"
+      ]
+    },
+    {
+      "kind": "in_order",
+      "key": "cohort.period_start",
+      "of": [
+        "cohort.period_end"
+      ]
+    },
+    {
+      "kind": "sum",
+      "key": "cohort.n_drug_reports",
+      "of": [
+        "table2x2.a",
+        "table2x2.b"
+      ]
+    }
+  ],
+  "flows": {
+    "reports": {
+      "stages": [
+        {
+          "label": "Reports in the database",
+          "key": "flow.reports.stage.1"
+        },
+        {
+          "label": "Reports of the drug",
+          "key": "flow.reports.stage.2"
+        }
+      ],
+      "exclusions": [
+        [
+          {
+            "reason": "Reports of other drugs",
+            "key": "flow.reports.excluded.1.1"
+          }
+        ]
+      ],
+      "overlapping": false
     }
   },
   "corrections": {

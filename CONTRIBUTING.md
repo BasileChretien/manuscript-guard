@@ -31,6 +31,11 @@ request against an interface that will change.
   what a gate reports says so in `tests/data/differential_expected.yaml`.
 - **Known limits are documented.** A gate whose limits are undocumented gets trusted beyond
   them, so DESIGN.md's "Known gaps" is corrected in the same commit as the code.
+- **A claim says what it rests on.** A statement in the docs or a pull request rests on a
+  deterministic test green in CI, a measurement on real inputs (dated, negative results
+  included), the author's use on a real manuscript, or someone else's, and says which.
+  Tested, committed, reviewed, merged and released are different statements. DESIGN.md,
+  "What a claim rests on", has the rest.
 - **No absolute paths, no author-specific configuration**, and no assumption that Claude
   Code is present.
 

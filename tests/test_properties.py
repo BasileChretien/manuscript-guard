@@ -54,6 +54,7 @@ from generated import (
     generated,
     holds,
     lines,
+    mean_tables,
     pdf_figures,
     planned_plans,
     quotations,
@@ -1516,6 +1517,138 @@ def _a_table_in_a_fenced_listing_is_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import tables
 
     patch.setattr(tables, "mask", lambda text: text)
+
+
+# ------------------------------------------------------- a table's means of whole numbers
+
+
+@holds(100, mean_tables())
+def test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n(
+    drawn: tuple[str, list[str], list[tuple[Any, ...]]],
+) -> None:
+    """Item 19.5: in a row whose label holds one the auditor names, at word edges and in any
+    case, each mean is found with its column header's n, alone, with its SD in brackets or
+    after a plus-minus sign, negative with a minus sign. It can be the mean of n whole
+    numbers where some total over n is within half a unit of its last place, either end,
+    two places for 2.50; it is not assessable where n is 10 to the power of its places or
+    more; and it is uncertain where its row's label carries a footnote marker or an n. A row
+    not named, a table whose header names no n, a fenced listing and a sentence are not
+    read."""
+    from manuscript_guard.stats.granularity import possible, table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    text, labels, expected = drawn
+    found = [m for table in markdown_tables(text) for m in table_means(table, tuple(labels))]
+    assert [
+        (m.line, m.mean, m.n, possible(m.mean, m.n), m.uncertain is not None) for m in found
+    ] == expected, text
+
+
+def _a_mean_is_held_to_exactly_its_printed_value(patch: pytest.MonkeyPatch) -> None:
+    from fractions import Fraction
+
+    from manuscript_guard.stats import granularity
+
+    def exact(mean: str, count: int) -> tuple[int, int]:
+        total = Fraction(granularity.Decimal(mean)) * count
+        return (total.numerator, total.numerator) if total.denominator == 1 else (1, 0)
+
+    patch.setattr(granularity, "_totals", exact)
+
+
+def _a_mean_half_a_unit_from_a_total_is_not_one(patch: pytest.MonkeyPatch) -> None:
+    """Neither end of the half unit: a mean rounded either way from a tie is not taken."""
+    import math
+    from fractions import Fraction
+
+    from manuscript_guard.stats import granularity
+
+    def open_ended(mean: str, count: int) -> tuple[int, int]:
+        printed = Fraction(granularity.Decimal(mean))
+        half = Fraction(1, 2 * 10 ** granularity.places(mean))
+        return math.floor((printed - half) * count) + 1, math.ceil((printed + half) * count) - 1
+
+    patch.setattr(granularity, "_totals", open_ended)
+
+
+def _a_nought_at_the_end_is_no_place(patch: pytest.MonkeyPatch) -> None:
+    from decimal import Decimal
+
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "places",
+                  lambda mean: max(0, -Decimal(mean).normalize().as_tuple().exponent))  # fmt: skip
+
+
+def _every_mean_is_assessable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "assessable", lambda mean, n, items=1: True)
+
+
+def _a_named_label_is_matched_in_its_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "names", lambda label, text: label in text)
+
+
+def _a_named_label_is_matched_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "names", lambda label, text: label.lower() in text.lower())
+
+
+def _a_mean_s_footnote_marker_is_not_seen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "_NOTE", re.compile(r"(?!)"))
+
+
+def _a_mean_with_a_minus_sign_or_a_plus_minus_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "_MEAN", re.compile(
+        r"(?P<mean>-?\d+(?:\.\d+)?)(?:\s*[(\[]\s*\d+(?:\.\d+)?\s*[)\]])?"
+    ))  # fmt: skip
+
+
+def _a_named_row_s_own_n_is_taken(patch: pytest.MonkeyPatch) -> None:
+    """A named row's own n is taken for its means: "Pain score (n = 25)" is held to 25."""
+    from dataclasses import replace
+
+    from manuscript_guard.stats import granularity
+
+    read = granularity.table_means
+
+    def own(table: Any, labels: tuple[str, ...]) -> list[Any]:
+        found = []
+        for mean in read(table, labels):
+            named = granularity._N.search(mean.label)
+            found.append(replace(mean, n=granularity._whole(named.group("n"))) if named else mean)
+        return found
+
+    patch.setattr(granularity, "table_means", own)
+
+
+def _a_named_row_is_never_read_for_its_n(patch: pytest.MonkeyPatch) -> None:
+    """The cells of a row a label names are never read for the n they name, so a header
+    whose first cell is the scale's name gives none (round 1 of #331)."""
+    from dataclasses import replace
+
+    from manuscript_guard.stats import granularity
+
+    read = granularity.table_means
+
+    def blind(table: Any, labels: tuple[str, ...]) -> list[Any]:
+        rows = tuple(
+            (row[0], *(replace(cell, text=granularity._N.sub("", cell.text)) for cell in row[1:]))
+            if row and any(granularity.names(wanted, row[0].text) for wanted in labels)
+            else row
+            for row in table
+        )
+        return read(rows, labels)
+
+    patch.setattr(granularity, "table_means", blind)
 
 
 # ------------------------------------------------------------ a section found by its heading
@@ -4940,6 +5073,46 @@ BROKEN = {
     "an interval wrapped onto a second line is not read": (
         _an_interval_over_two_lines_is_not_read,
         test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "a mean is held to its printed value, not half a unit either side": (
+        _a_mean_is_held_to_exactly_its_printed_value,
+        test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a mean half a unit from a total is not one, rounded either way": (
+        _a_mean_half_a_unit_from_a_total_is_not_one,
+        test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a nought at the end of a mean is not a place": (
+        _a_nought_at_the_end_is_no_place,
+        test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "every mean is assessable, whatever its n": (
+        _every_mean_is_assessable,
+        test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a named label is matched in the case the auditor typed": (
+        _a_named_label_is_matched_in_its_case,
+        test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a named label is matched inside a word": (
+        _a_named_label_is_matched_inside_a_word,
+        test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a footnote marker on a row of means is not seen": (
+        _a_mean_s_footnote_marker_is_not_seen,
+        test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a mean with a minus sign or a plus-minus sign is not read": (
+        _a_mean_with_a_minus_sign_or_a_plus_minus_is_not_read,
+        test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a named row's own n is taken for its means": (
+        _a_named_row_s_own_n_is_taken,
+        test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a row a label names is never read for its n, though it is the header": (
+        _a_named_row_is_never_read_for_its_n,
+        test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
     ),
     "a share is held to its printed value, not half a unit either side": (
         _a_share_is_held_to_its_printed_value,

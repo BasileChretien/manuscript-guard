@@ -600,6 +600,24 @@ def _table_shares() -> Reading:
     return read
 
 
+@reading("whole-number means")
+def _whole_number_means() -> Reading:
+    """Each mean in a pipe table's rows the auditor names, as it is printed, with its
+    column's n, whether it is uncertain, and whether it can be the mean of n whole
+    numbers."""
+    from manuscript_guard.stats.granularity import possible, table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    def read(given: dict[str, Any]) -> list[list[Any]]:
+        labels = tuple(given["labels"])
+        return [
+            [m.line, m.printed, m.mean, m.n, m.label, m.uncertain, possible(m.mean, m.n)]
+            for table in markdown_tables(given["text"]) for m in table_means(table, labels)
+        ]  # fmt: skip
+
+    return read
+
+
 @reading("abbreviations")
 def _abbreviations() -> Reading:
     from manuscript_guard.gates.language import _judge, _Known, _shipped

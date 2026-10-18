@@ -55,6 +55,23 @@ subtype of another row, or a share of those with data. A row whose label carries
 marker is listed as uncertain, since a note may give it another denominator. Pipe tables are
 read in Markdown, and every table in a .docx.
 
+A mean of whole numbers, answers on a Likert-type scale or a count, is a whole total over
+its n, so not every mean can be printed for it: 28 answers average 3.46 or 3.50, never 3.47
+(the granularity test of Brown and Heathers, 2017). Nothing in a paper says its numbers are
+whole, so this is read only in the rows you name. `--whole-numbers "pain score" visits`
+reads each table row whose label holds one of those, at word edges and in any case, and
+holds each mean in it (alone, with its SD in brackets, or with ± and its SD) to the n of
+its column's header. A mean that no whole total over n gives is listed with the other
+disagreements, with the totals either side and the n it would fit, since a mean of those
+with data has a smaller n than its column. A mean for whose n every mean printed to its
+places is possible is listed apart as not assessable: so for 100 numbers or more at two
+places, and for 80 and 96. A label under which no mean was read is said. A row whose label
+carries a footnote marker or an n of its own is uncertain. Means in sentences are not read.
+A mean of several items per person is read as a mean of one number each, so a mean that is
+right for its items can be listed: name only rows of one number per person, or quote the
+value in the literature ledger, which takes both (`mean_of_whole_numbers: {n: 28, items:
+3}`).
+
 For a paper still being written, bind the numbers instead — then a stale one is impossible
 rather than merely searched for.
 

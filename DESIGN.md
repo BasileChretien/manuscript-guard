@@ -1,8 +1,9 @@
 # manuscript-guard — design
 
 Status: design agreed 2026-08-03. All eight phases are built, and what has been added since
-is described where it belongs. Each statement here rests on one of the kinds of evidence
-below, which say different things. What remains is listed under Known gaps.
+is described where it belongs. A statement written from now on says which kind of evidence
+below it rests on; much already here does not, and some of it is judgement or the author's
+decision, which is neither. What remains is listed under Known gaps.
 
 That list is load-bearing and has to be kept true. It drifted once — it went on claiming
 five guideline licences were unconfirmed after they had been read, and went on describing
@@ -11,16 +12,18 @@ level down. Correct it in the same commit as the code, or it becomes a rumour.
 
 ## What a claim rests on
 
-A statement about the toolkit rests on one of four kinds of evidence, and says which:
+A statement about the toolkit rests on one of four kinds of evidence, and says which; a
+choice or a judgement is neither, and says so:
 
 1. **A deterministic test is green in CI.** Most of what this document says of a gate rests
    on this: its corruption cases, the generated inputs and their broken rules, the
    differential readings. It proves the gate does what the test holds on the inputs the
    test has, and no more.
 2. **A measurement on real inputs**, with its date, the inputs, and what it found, negative
-   results included. The first two are planned and not run: the review panel read against
-   defects already known in real papers, and how often G6 fires on clean text written by
-   people.
+   results included. Some are recorded where they belong (`audit` on a submitted paper; a
+   clone of the project whose input digests failed). Two that would measure the toolkit as
+   a whole are proposed and not run: the review panel read against defects already known in
+   real papers, and how often G6 fires on clean text written by people.
 3. **The author used it on a real manuscript.**
 4. **Someone else did.**
 
@@ -29,14 +32,14 @@ of a pull request is no test; a release on PyPI is no use.
 
 The test of the whole toolkit is a measurement, not a claim: on real projects, are critical
 problems found before submission, by the tool or by the person it sends the author to? It
-has not been measured. The two measurements above are the first steps, and real users the
+has not been measured. The two proposed above would be first steps, and real users the
 next.
 
 **Defaults taken, not decided by the author.** Where the author was asked to choose and did
 not, and a default was taken, it is recorded here with its date, in those words, so that a
-default is never read as a decision. None stands at the time of writing: every choice put to
-the author in the work of October 2026 was answered, and the paid evaluation runs it asked
-about wait, unrun, for the author's choice of model.
+default is never read as a decision. None has been taken. Two choices put to the author are
+open: the model for the paid evaluation runs, which wait unrun, and which gates and
+commands have run on the author's real manuscript, for the README's "Status".
 
 ## What this is
 

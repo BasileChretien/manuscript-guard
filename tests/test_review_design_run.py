@@ -84,6 +84,29 @@ def test_a_design_dry_run_sends_the_plan_and_the_feasibility_results(
     assert not (planned / "review" / "design").exists()
 
 
+def test_a_design_round_asks_what_the_declared_study_design_needs(
+    planned: Path, capsys
+) -> None:
+    """Item 46: the remits name the risks of the study type. The design's own sections
+    (`data/study_types.yaml`) are sent with their sources where paper.yaml declares one, and
+    nothing of them where it declares none."""
+    folder = planned / "build" / "review" / "design" / "round-1" / "dry-run"
+    assert design_run(planned, "--dry-run") == 0
+    capsys.readouterr()
+    assert "What this study design needs" not in (folder / "as-text.txt").read_text("utf-8")
+    paper = planned / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + "\nstudy_type: cohort\n",
+                     encoding="utf-8")  # fmt: skip
+    assert design_run(planned, "--dry-run") == 0
+    out = capsys.readouterr().out
+    assert "study type: cohort" in out, out
+    text = (folder / "as-text.txt").read_text(encoding="utf-8")
+    assert "# What this study design needs" in text
+    assert "The plan is for a cohort study (study_type: cohort)" in text
+    for section in ("time zero and follow-up", "confounding", "missing data"):
+        assert f"- {section}: " in text, section
+
+
 def test_a_table_the_plan_binds_is_sent_as_written(planned: Path, capsys) -> None:
     """Round 1 of #316: a value binding was printed only for a feasibility result, and a
     table binding for any table the analysis had emitted. No table is a feasibility one."""

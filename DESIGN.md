@@ -2764,7 +2764,14 @@ the paper's facts from `paper.yaml`, `design/plan.md` without its front matter a
 and with its feasibility results printed into it, and the feasibility results, each under its
 key. Not the manuscript, and no result but a feasibility one: a binding in the plan to any
 other result, a value or a table, is sent as written, since a design round reads the plan
-before there are results (round 1 of #316: a table the plan bound was printed whole). Each
+before there are results (round 1 of #316: a table the plan bound was printed whole).
+Where `paper.yaml` declares a study design (`study_type`), what a plan for that design has
+to settle is sent too, under "What this study design needs": each section
+`data/study_types.yaml` gives the design, what it says and the guideline item it comes from,
+for the reviewer to ask of the plan as far as their remit goes. So a cohort's plan is asked
+about its time zero and follow-up, its confounding and its missing data, and a trial's
+about its estimand, its randomisation and its interim analyses: the risks of the study type
+item 46 asks the remits to name, from one table that G12 and G5 read too. Each
 reviewer is told it reads a plan before its analysis is run, and that a major finding is one
 the design cannot meet: the instructions are the manuscript round's, rewritten in ten places
 and naming no manuscript, so the reply asked for is the same. A

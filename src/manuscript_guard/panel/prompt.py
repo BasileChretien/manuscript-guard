@@ -477,6 +477,10 @@ def gather_design(project: Project) -> Material:
         listed = "\n".join(f"{key}: {value.display}" for key, value in sorted(counted.items()))
         parts += ["# The feasibility results", _block("results: feasibility.*", listed)]
         sent.append(Sent("results: feasibility.*", f"{len(counted)} values, each with its key"))
+    needs = _design_needs(project)
+    if needs:
+        parts += ["# What this study design needs", needs[0]]
+        sent.append(needs[1])
     return Material(
         user="\n\n".join(parts) + "\n",
         sent=tuple(sent),
@@ -485,6 +489,28 @@ def gather_design(project: Project) -> Material:
         unrendered=unrendered,
         plan_sha256=plan_digest(project),
     )
+
+
+def _design_needs(project: Project) -> tuple[str, Sent] | None:
+    """What a plan for the study design `paper.yaml` declares has to settle, for a design
+    round to ask of it (item 46): each section the design's guidelines ask of a plan, with
+    what it says and where it comes from (`data/study_types.yaml`). None where no design is
+    declared, or one the table does not know."""
+    from manuscript_guard.gates.design import study_types
+
+    design = project.study_type
+    known = study_types().get(design) if design else None
+    if not known:
+        return None
+    sections = known["sections"]
+    listed = "\n".join(f"- {s['id']}: {s['says']} ({s['source']})" for s in sections)
+    text = (
+        f"The plan is for a {known['label']} (study_type: {design}). Ask, as far as your "
+        "remit goes, whether it settles each of these, which the guidelines of the design "
+        f"ask of its plan:\n{listed}"
+    )
+    return text, Sent(f"study type: {design}", f"what a plan for a {known['label']} settles, "
+                      f"{len(sections)} items, each with its source")  # fmt: skip
 
 
 __all__ = [

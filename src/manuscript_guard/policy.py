@@ -58,6 +58,11 @@ BINDS_AT = {
     "no-digest": ANALYSIS,
     # A parameter the analysis declares and never reads is wrong as soon as it is written.
     "parameter-unread": ANALYSIS,
+    # So is arithmetic the analysis declares and its own numbers break. A relation naming a
+    # key may wait for the other script to run, as a binding waits for its key.
+    "relation-broken": ANALYSIS,
+    "flow-broken": ANALYSIS,
+    "relation-unresolved": DRAFTING,
     # A model that is the wrong model is wrong as soon as it is fitted.
     "model-variable-undeclared": ANALYSIS,
     "model-outcome-kind": ANALYSIS,
@@ -182,6 +187,9 @@ BINDS_AT = {
     "review-missing": SUBMISSION,
     "reading-missing": SUBMISSION,
     "point-unanswered": SUBMISSION,
+    # A number typed into a reply to the reviewers: the letter is written while the
+    # analysis is still being run again, and goes to the journal only at resubmission.
+    "reply-unbound-number": SUBMISSION,
     "response-claims-nothing": SUBMISSION,
     "claimed-change-did-not-happen": SUBMISSION,
             "review-stale": SUBMISSION,

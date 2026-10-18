@@ -36,6 +36,7 @@ from manuscript_guard.gates import (
     check_freshness,
     check_models,
     check_numbers,
+    check_relations,
 )
 
 
@@ -50,6 +51,7 @@ def gate_report(root: Path):
             check_numbers(project, namespace, results, literature),
             check_figures(project, results),
             check_consistency(results),
+            check_relations(results),
             check_models(project, results),
         ]
     )
@@ -446,6 +448,75 @@ def test_a_display_edited_away_from_its_value_is_caught(project: Path) -> None:
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)
     assert "no-display" in codes(gate_report(project))
+
+
+MARGINS = [
+    {"kind": "sum", "key": "cohort.n_reports",
+     "of": ["table2x2.a", "table2x2.b", "table2x2.c", "table2x2.d"]},
+    {"kind": "sum", "key": "cohort.n_drug_reports", "of": ["table2x2.a", "table2x2.b"]},
+    {"kind": "in_order", "key": "cohort.period_start", "of": ["cohort.period_end"]},
+]  # fmt: skip
+
+
+def _declare_relations(project: Path, relations: list[dict], flows: dict | None = None,
+                       values: dict | None = None) -> dict:  # fmt: skip
+    """What `em.relation` and `em.flow` would have written, put in the example's fragment."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["relations"] = relations
+    if flows:
+        document["flows"] = flows
+    for key, value in (values or {}).items():
+        document["values"][key] = {"value": value, "display": str(value), "quoted": False}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    return document
+
+
+def _edit_value(project: Path, key: str, value: int) -> None:
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"][key].update(value=value, display=str(value))
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def test_a_cell_that_no_longer_sums_to_its_margin_is_caught(project: Path) -> None:
+    """The four cells of the 2x2 table and its margins: each bound, each passing on its own,
+    and nothing held them to each other until the analysis declared it."""
+    _declare_relations(project, MARGINS)
+    clean = gate_report(project)
+    assert not {f.code for f in clean.findings} & {"relation-broken", "relation-unresolved"}
+    # The three relations declared here, and the flow the example itself records.
+    assert clean.counts["relations_checked"] == 3 + 1
+    _edit_value(project, "table2x2.d", 3381)
+    assert "relation-broken" in codes(gate_report(project))
+
+
+def test_a_period_that_ends_before_it_starts_is_caught(project: Path) -> None:
+    _declare_relations(project, MARGINS)
+    _edit_value(project, "cohort.period_start", 2025)
+    assert "relation-broken" in codes(gate_report(project))
+
+
+def test_a_relation_naming_a_key_nothing_emits_is_caught(project: Path) -> None:
+    _declare_relations(project, [{"kind": "sum", "key": "cohort.n_reports",
+                                  "of": ["table2x2.a", "table2x2.e"]}])  # fmt: skip
+    assert "relation-unresolved" in codes(gate_report(project))
+
+
+def test_a_flow_stage_that_its_exclusions_do_not_reach_is_caught(project: Path) -> None:
+    """A flow diagram's counts, typed by hand, were the one place no check looked."""
+    counts = {"flow.screening.stage.1": 4000, "flow.screening.stage.2": 426,
+              "flow.screening.excluded.1.1": 3574}  # fmt: skip
+    record = {"stages": [{"label": "Reports", "key": "flow.screening.stage.1"},
+                         {"label": "Reports of the drug", "key": "flow.screening.stage.2"}],
+              "exclusions": [[{"reason": "Another drug", "key": "flow.screening.excluded.1.1"}]],
+              "overlapping": False}  # fmt: skip
+    _declare_relations(project, [], flows={"screening": record}, values=counts)
+    assert not {f.code for f in gate_report(project).findings} & {"flow-broken"}
+    _edit_value(project, "flow.screening.excluded.1.1", 3575)
+    assert "flow-broken" in codes(gate_report(project))
 
 
 @pytest.mark.parametrize(
@@ -1929,6 +2000,228 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
 
     codes = {f.code for f in gate_report(project).findings}
     assert "unemitted-table-number" in codes
+
+
+# ------------------------------------------------- the response to the reviewers
+
+
+def _round_with(root: Path, points: list[dict]) -> Path:
+    """Round 1, opened as `respond --open` opens it, with these points."""
+    from manuscript_guard.cli import main
+
+    assert main(["respond", str(root), "--open"]) == 0
+    path = root / "revision" / "round-1.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["reviewers"] = [{"id": "reviewer-1", "points": points}]
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True), "utf-8")
+    return path
+
+
+def _point(**fields) -> dict:
+    return {"id": "1.1", "comment": "Report the adjusted ratio.", **fields}
+
+
+def _g13(root: Path, *, submission: bool = True):
+    from manuscript_guard.gates import check_revision
+
+    project, _ = load_project(root)
+    return check_revision(project, submission=submission)
+
+
+def _said(report, *codes: str) -> list[tuple[str, str]]:
+    return [(f.code, f.severity) for f in report.findings if f.code in codes]
+
+
+def _in_the_discussion(root: Path, sentence: str) -> None:
+    path = main_md(root)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("# Data availability", f"{sentence}\n\n# Data availability", 1),
+                    encoding="utf-8")  # fmt: skip
+
+
+def _reply_numbers(root: Path) -> list[str]:
+    return [
+        f.message
+        for f in gate_report(root).findings
+        if f.code in ("unclassified-number", "reply-unbound-number")
+        and f.path and f.path.name == "round-1.yaml"
+    ]
+
+
+def test_a_result_typed_into_a_reply_fails(project: Path) -> None:
+    """Item 11: the letter prints a reply word for word, and G2 read only the manuscript."""
+    _round_with(project, [_point(
+        response="The adjusted ROR is now 2.31 (95% CI 1.40 to 3.80).",
+        rebutted="We kept 412 reports.",
+    )])  # fmt: skip
+    said = _reply_numbers(project)
+    assert any("2.31" in m and "`response`" in m for m in said), said
+    assert any("412" in m and "`rebutted`" in m for m in said), said
+    assert not any("95" in m for m in said), "a convention is not a result"
+
+
+def test_a_reply_names_places_by_number_and_types_no_threshold(project: Path) -> None:
+    """Round 1 of #266: a line, a reviewer, a comment and a page are places, and a threshold
+    typed in a reply is a result: the Methods' conventions are not the reply's."""
+    _round_with(project, [_point(
+        response="The changes are on lines 120-125 of the revised manuscript, as Reviewer 2 "
+        "asked (see our response to comment 1.3, page 4).",
+        rebutted="The interaction is now significant (p < 0.001).",
+    )])  # fmt: skip
+    said = _reply_numbers(project)
+    assert [m for m in said if "`response`" in m] == [], said
+    assert any("0.001" in m for m in said), said
+
+
+@pytest.mark.parametrize(
+    ("reply", "typed"),
+    [
+        # Round 2 of #266: a comma after a place does not run on to the count after it.
+        ("As suggested by Reviewer 1, 312 controls were added.", "312"),
+        ("In response to comment 1.3, 41 reports were reclassified.", "41"),
+        # A place word at the end of a paragraph names nothing in the next.
+        ("We thank the reviewers\n\n41 cases were excluded.", "41"),
+    ],
+)
+def test_a_count_after_a_place_is_still_a_count(project: Path, reply: str, typed: str) -> None:
+    _round_with(project, [_point(response=reply, rebutted="x")])
+    assert any(f"{typed!r}" in m for m in _reply_numbers(project)), _reply_numbers(project)
+
+
+def test_a_number_typed_in_a_reply_fails_at_submission_only(project: Path) -> None:
+    from manuscript_guard.policy import DRAFTING, SUBMISSION, apply_stage
+
+    _round_with(project, [_point(response="The ROR is now 2.31.", rebutted="x")])
+    report = gate_report(project)
+    drafting, _ = apply_stage(report, DRAFTING)
+    assert "reply-unbound-number" not in {f.code for f in drafting.failures}
+    submission, _ = apply_stage(report, SUBMISSION)
+    assert "reply-unbound-number" in {f.code for f in submission.failures}
+
+
+def test_a_result_bound_in_a_reply_passes_and_is_printed(project: Path) -> None:
+    from manuscript_guard.build.submission import response_letter
+    from manuscript_guard.contracts import load_namespace
+
+    _round_with(project, [_point(
+        response="The ROR is now {{results.ror.point}} (95% CI {{results.ror.ci_low}} to "
+        "{{results.ror.ci_high}}).",
+        changed=[{"kind": "results", "name": "ror.point"}],
+    )])  # fmt: skip
+    assert _reply_numbers(project) == []
+    projekt, _ = load_project(project)
+    point = load_namespace(projekt)[0]["results.ror.point"].display
+    letter = response_letter(projekt)
+    assert f"The ROR is now {point}" in letter and "{{" not in letter
+
+
+def test_a_binding_in_a_reply_that_names_nothing_fails(project: Path) -> None:
+    _round_with(project, [_point(response="Now {{results.no_such_key}}.", rebutted="x")])
+    said = [f for f in gate_report(project).findings if f.code == "unresolved-binding"]
+    assert any("round 1" in f.message for f in said), said
+
+
+def test_a_quoted_revision_that_is_in_the_paper_and_new_passes(project: Path) -> None:
+    _round_with(project, [_point(
+        response="We now say so.",
+        changed=[{"kind": "text", "quote": "The adjusted ratio was {{results.ror.point}}.",
+                  "section": "Discussion"}],
+    )])  # fmt: skip
+    _in_the_discussion(project, "The *adjusted* ratio was\n{{results.ror.point}}.")
+    assert _said(_g13(project), "quoted-text-absent", "quoted-text-not-new",
+                 "quoted-text-elsewhere", "quoted-text-unchecked") == []  # fmt: skip
+
+
+def test_a_quoted_revision_the_paper_does_not_hold_fails(project: Path) -> None:
+    _round_with(project, [_point(
+        response="We now say so.",
+        changed=[{"kind": "text", "quote": "The adjusted ratio was reported."}],
+    )])  # fmt: skip
+    assert _said(_g13(project), "quoted-text-absent") == [("quoted-text-absent", "fail")]
+    assert _said(_g13(project, submission=False), "quoted-text-absent") == [
+        ("quoted-text-absent", "warn")
+    ]
+
+
+def test_a_quoted_revision_the_journal_already_read_fails(project: Path) -> None:
+    _in_the_discussion(project, "A sentence the journal has read.")
+    _round_with(project, [_point(
+        response="We now say so.",
+        changed=[{"kind": "text", "quote": "A sentence the journal has read."}],
+    )])  # fmt: skip
+    assert _said(_g13(project), "quoted-text-not-new") == [("quoted-text-not-new", "fail")]
+
+
+def test_a_quoted_revision_in_another_section_fails(project: Path) -> None:
+    _round_with(project, [_point(
+        response="We now say so in the Abstract.",
+        changed=[{"kind": "text", "quote": "A new sentence.", "section": "Abstract"}],
+    )])  # fmt: skip
+    _in_the_discussion(project, "A new sentence.")
+    assert _said(_g13(project), "quoted-text-elsewhere") == [("quoted-text-elsewhere", "fail")]
+
+
+def test_a_quoted_revision_in_a_round_without_a_copy_is_a_note(project: Path) -> None:
+    import shutil
+
+    _round_with(project, [_point(
+        response="We now say so.", changed=[{"kind": "text", "quote": "A new sentence."}]
+    )])  # fmt: skip
+    shutil.rmtree(project / "revision" / "round-1")
+    _in_the_discussion(project, "A new sentence.")
+    assert _said(_g13(project), "quoted-text-unchecked") == [("quoted-text-unchecked", "info")]
+
+
+@pytest.mark.parametrize(
+    ("reply", "code"),
+    [
+        ("As manuscript-guard reported, the count changed.", "response-leak"),
+        ("G13: point-unanswered was resolved.", "response-leak"),
+        ("See main.md:120 for the new text.", "response-leak"),
+        ("We add the count [AUTHOR: give the new count].", "response-placeholder"),
+        ("TODO: answer this.", "response-artefact"),
+        ("We revised it oaicite here.", "response-artefact"),
+    ],
+)
+def test_what_must_not_reach_a_journal_in_a_reply_fails(
+    project: Path, reply: str, code: str
+) -> None:
+    _round_with(project, [_point(response=reply, rebutted="No change was needed.")])
+    assert _said(_g13(project), code) == [(code, "fail")]
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Certainly, we have revised the Methods.",
+        "Cells arrested in G2/M were excluded, as the reviewer asked.",
+        # Round 1 of #266: a tumour's grade, with what it means in brackets.
+        "Most tumours were G1 (well-differentiated).",
+        "The changes are on line 120 of the revised manuscript.",
+    ],
+)
+def test_what_a_reply_may_say_passes(project: Path, reply: str) -> None:
+    _round_with(project, [_point(response=reply, rebutted="No change was needed.")])
+    report = _g13(project)
+    assert _said(report, "response-leak", "response-placeholder", "response-artefact") == []
+
+
+def test_the_templates_words_left_for_the_reviewers_fail(project: Path) -> None:
+    from manuscript_guard.gates.revision import TEMPLATE_COMMENT
+
+    _round_with(project, [{"id": "1.1", "comment": TEMPLATE_COMMENT,
+                           "response": "Done.", "rebutted": "Nothing to change."}])  # fmt: skip
+    assert _said(_g13(project), "response-placeholder") == [("response-placeholder", "fail")]
+
+
+def test_opening_a_round_keeps_the_manuscript_as_it_renders(project: Path) -> None:
+    from manuscript_guard.contracts import load_namespace
+
+    _round_with(project, [_point(response="x", rebutted="y")])
+    kept = (project / "revision" / "round-1" / "submitted" / "main.md").read_text("utf-8")
+    projekt, _ = load_project(project)
+    point = load_namespace(projekt)[0]["results.ror.point"].display
+    assert point in kept and "{{results.ror.point}}" not in kept
 
 
 # ------------------------------------------------- a statistic reported whole
@@ -5651,6 +5944,69 @@ def test_a_structured_abstract_heading_in_a_comment_is_missing(project: Path) ->
     )
     main.write_text(text, encoding="utf-8")
     assert "abstract-headings-missing" in codes(_journal(project))
+
+
+# ------------------------------------------------- the journal's citation style (item 51)
+
+
+def _style_said(root: Path) -> list[tuple[str, str]]:
+    return [(f.code, f.severity) for f in _journal(root).findings
+            if f.code.startswith("journal-style")]  # fmt: skip
+
+
+def test_a_journal_style_the_project_does_not_keep_is_said(project: Path) -> None:
+    """The offline build formatted in pandoc's default style, whatever the profile named, and
+    nothing said so."""
+    from test_style import DEPENDENT, keep_style, name_style
+
+    assert _style_said(project) == []
+    name_style(project, DEPENDENT)
+    assert _style_said(project) == [("journal-style-not-stored", "warn")]
+    name_style(project, "https://example.org/styles/elsewhere")
+    assert _style_said(project) == [("journal-style-not-stored", "warn")]
+    keep_style(project, DEPENDENT)
+    assert _style_said(project) == []
+
+
+def test_a_kept_style_edited_since_is_said_and_not_used(project: Path) -> None:
+    from test_style import DEPENDENT, PARENT, keep_style
+
+    from manuscript_guard.journal_style import stored
+
+    keep_style(project, DEPENDENT)
+    parent = project / "profiles" / "journals" / "styles" / DEPENDENT / f"{PARENT}.csl"
+    parent.write_bytes(parent.read_bytes() + b"<!-- edited -->")
+    assert _style_said(project) == [("journal-style-changed", "warn")]
+    assert stored(load_project(project)[0], DEPENDENT) is None
+    parent.unlink()
+    [said] = [f for f in _journal(project).findings if f.code == "journal-style-changed"]
+    assert f"{PARENT}.csl (missing)" in said.message
+
+
+@pytest.mark.parametrize(
+    ("found", "numbered", "said"),
+    [
+        ("numeric", True, []),
+        ("numeric", False, [("journal-style-format", "warn")]),
+        ("author-date", True, [("journal-style-format", "warn")]),
+        ("author-date", False, []),
+        ("note", True, [("journal-style-format", "warn")]),
+    ],
+)
+def test_a_style_that_numbers_otherwise_than_the_profile_is_said(
+    project: Path, found: str, numbered: bool, said: list
+) -> None:
+    """The style's own citation format against the profile's `numbered:`: one of the two
+    was read wrong from the journal's page."""
+    from test_style import DEPENDENT, keep_style, name_style
+
+    keep_style(project, DEPENDENT)
+    record = project / "profiles" / "journals" / "styles" / f"{DEPENDENT}.yaml"
+    document = yaml.safe_load(record.read_text(encoding="utf-8"))
+    record.write_text(yaml.safe_dump({**document, "citation_format": found}, sort_keys=False),
+                      encoding="utf-8")  # fmt: skip
+    name_style(project, DEPENDENT, numbered=numbered)
+    assert _style_said(project) == said
 
 
 # ------------------------------------------------------------- what the build prints
@@ -13933,6 +14289,143 @@ def test_import_takes_back_a_document_built_before_tex_in_the_text_was_refused(
 
     assert main(["import", str(sent), str(project)]) == 0
     assert "nothing came back" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------------------
+# What a plan for each study design says, and the guideline its paper follows
+# --------------------------------------------------------------------------------------
+
+
+def _paper_has(root: Path, **settings) -> None:
+    paper = root / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document.update(settings)
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _plan_asked(root: Path) -> list[str]:
+    """The sections G12 says the plan does not have."""
+    from manuscript_guard.gates import check_design
+
+    project, report = load_project(root)
+    assert report.ok, report.render()
+    return sorted(f.message.removeprefix("the plan says nothing about ")
+                  for f in check_design(project).findings
+                  if f.code == "plan-section-missing")  # fmt: skip
+
+
+def test_a_plan_is_asked_for_what_its_design_needs(project: Path) -> None:
+    """Item 45: G12 asked every plan for the same seven sections, so a disproportionality
+    analysis with no case definition or comparator, or a trial with no estimand, passed."""
+    assert _plan_asked(project) == []
+    _paper_has(project, study_type="disproportionality")
+    # The example's plan has "Sensitivity analyses", and none of the others.
+    assert _plan_asked(project) == ["case definition", "comparator", "deduplication", "measure"]
+    _paper_has(project, study_type="trial")
+    assert _plan_asked(project) == ["estimand", "interim analyses", "missing data",
+                                    "randomisation"]  # fmt: skip
+
+
+def test_a_section_the_design_needs_says_where_it_comes_from(project: Path) -> None:
+    from manuscript_guard.gates import check_design
+
+    _paper_has(project, study_type="trial")
+    project_, _ = load_project(project)
+    hints = {f.message: f.hint for f in check_design(project_).findings}
+    assert "ICH E9(R1)" in hints["the plan says nothing about estimand"]
+
+
+@pytest.mark.parametrize(
+    ("design", "renamed", "still_asked"),
+    [
+        # Round 1 of #292: "Case-control" holds "case" and "control" as words of their own.
+        ("case-control", "## Case-control design", ["cases", "controls"]),
+        # Round 2: and so does any other joiner, the en dash of a typeset protocol first.
+        ("case-control", "## Case\N{EN DASH}control design", ["cases", "controls"]),
+        ("case-control", "## Case control design", ["cases", "controls"]),
+        ("case-control", "## Case/control design", ["cases", "controls"]),
+        ("disproportionality", "## Background\n\nWhy this.\n\n## Disproportionality analysis",
+         ["comparator", "measure"]),
+        ("disproportionality", "## Outcome measures", ["comparator", "measure"]),
+        # A further round: any "measures" heading the plan has for something else.
+        ("disproportionality", "## Data quality measures\n\nDuplicates removed.",
+         ["comparator", "measure"]),
+        ("disproportionality", "## 4. Bias mitigation measures", ["comparator", "measure"]),
+    ],
+)
+def test_a_heading_every_plan_has_is_not_a_design_s_section(
+    project: Path, design: str, renamed: str, still_asked: list[str]
+) -> None:
+    _paper_has(project, study_type=design)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8").replace("## Design", renamed, 1),
+                    encoding="utf-8")  # fmt: skip
+    asked = _plan_asked(project)
+    assert all(name in asked for name in still_asked), asked
+
+
+def test_a_design_s_section_written_is_found(project: Path) -> None:
+    _paper_has(project, study_type="disproportionality")
+    plan = project / "design" / "plan.md"
+    plan.write_text(
+        plan.read_text(encoding="utf-8")
+        + "\n## Deduplication\n\nReports sharing a case identifier are kept once.\n"
+        + "\n## Case definition\n\nHepatic injury by its MedDRA terms, as coded.\n"
+        + "\n## Comparator\n\nEvery other report in the database.\n"
+        + "\n## Measure\n\nThe reporting odds ratio, a signal where its lower bound is above 1.\n",
+        encoding="utf-8",
+    )
+    assert _plan_asked(project) == []
+
+
+@pytest.mark.parametrize(
+    "heading",
+    ["## 3. Disproportionality measures", "## 2.4 Measure", "## Choice of measure",
+     "## Primary disproportionality measure", "## Measures of disproportionality"],
+)  # fmt: skip
+def test_a_measure_s_section_numbered_or_qualified_is_found(project: Path, heading: str) -> None:
+    """Round 2 of #292: a section number, or a word before "measure", hid the section."""
+    _paper_has(project, study_type="disproportionality")
+    plan = project / "design" / "plan.md"
+    plan.write_text(
+        plan.read_text(encoding="utf-8")
+        + "\n## Deduplication\n\nReports sharing a case identifier are kept once.\n"
+        + "\n## Case definition\n\nHepatic injury by its MedDRA terms, as coded.\n"
+        + "\n## Comparator\n\nEvery other report in the database.\n"
+        + f"\n{heading}\n\nThe reporting odds ratio, a signal where its lower bound is above 1.\n",
+        encoding="utf-8",
+    )
+    assert _plan_asked(project) == []
+
+
+def _guideline_said(root: Path) -> list[str]:
+    from manuscript_guard.gates import check_reporting
+
+    project, _ = load_project(root)
+    return [f.message for f in check_reporting(project).findings
+            if f.code == "reporting-guideline-for-design"]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("design", "guidelines", "said"),
+    [
+        ("cohort", ["STROBE"], False),
+        ("cohort", ["RECORD-PE"], False),
+        ("cohort", [], True),
+        ("cohort", ["CONSORT"], True),
+        ("prediction-model", ["TRIPOD+AI"], False),
+        ("disproportionality", ["READUS-PV"], False),
+        (None, [], False),
+    ],
+)
+def test_a_paper_whose_design_has_none_of_its_guidelines_is_told(
+    project: Path, design: str | None, guidelines: list[str], said: bool
+) -> None:
+    """The same table names the guidelines a design is reported with."""
+    if design:
+        _paper_has(project, study_type=design)
+    _paper_has(project, reporting_guideline=guidelines)
+    assert bool(_guideline_said(project)) is said
 
 
 # --------------------------------------------------------------------------------------

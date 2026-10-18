@@ -466,6 +466,47 @@ _PARAMETER_KEY = re.compile(r"[a-z0-9_]+(?:\.[a-z0-9_]+)*")
 
 #: A model's key names its values and its table, and a table key takes no dots.
 _TABLE_SAFE_KEY = re.compile(r"[a-z][a-z0-9_]*")
+#: The relations an analysis can declare, and how many keys each is of (0: one or more).
+RELATIONS = {"sum": 0, "difference": 2, "ratio": 2, "at_most": 1, "in_order": 1}
+
+
+def flow_problem(
+    stages: list[int], exclusions: list[list[int]], arms: list[int], overlapping: bool | list
+) -> str | None:
+    """What is wrong with a flow's arithmetic, or None. Shared with G8, which reads the
+    counts back from the results. `overlapping` is True for every step, or the numbers of
+    the steps whose reasons overlap: step n goes from stage n to stage n + 1."""
+    steps = zip(stages, stages[1:], exclusions, strict=False)
+    for n, (here, there, reasons) in enumerate(steps, 1):
+        excluded = here - there
+        if excluded < 0:
+            return f"stage {n + 1} ({there}) is larger than stage {n} ({here})"
+        if overlapping is True or (isinstance(overlapping, list) and n in overlapping):
+            if sum(reasons) < excluded or max(reasons, default=0) > excluded:
+                return (f"the reasons after stage {n} ({', '.join(map(str, reasons))}) cannot "
+                        f"account for the {excluded} excluded, even overlapping")  # fmt: skip
+        elif sum(reasons) != excluded:
+            return (f"stage {n} ({here}) less its exclusions ({sum(reasons)}) is "
+                    f"{here - sum(reasons)}, and stage {n + 1} is {there}")  # fmt: skip
+    if arms and sum(arms) != stages[-1]:
+        return f"the arms sum to {sum(arms)}, and the last stage is {stages[-1]}"
+    return None
+
+
+def _overlapping(key: str, overlapping: object, steps: int) -> bool | list[int]:
+    """True, False, or the step numbers in order, each once; anything else is refused."""
+    if isinstance(overlapping, bool):
+        return overlapping
+    numbers = list(overlapping) if isinstance(overlapping, (list, tuple, set, frozenset)) else []
+    if not numbers or any(
+        isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= steps for n in numbers
+    ):
+        raise ValueError(
+            f"flow {key!r}: overlapping is True, False, or the numbers of the steps whose "
+            f"reasons overlap, from 1 to {steps}"
+        )
+    return sorted(set(numbers))
+
 
 #: What a variable can be meant to be. The data hold numbers and strings, and cannot say
 #: whether 1 to 4 is a grade, a code or a count.
@@ -1056,6 +1097,10 @@ class Emitter:
     _models: dict[str, dict] = field(default_factory=dict, init=False)
     # The steps of the analysis that ran, each with where its code is and a digest of it.
     _steps: dict[str, dict] = field(default_factory=dict, init=False)
+    # Arithmetic the analysis declares between its results, and its flow records: G8 holds
+    # the values to both, and their displays to agreeing within their rounding.
+    _relations: list[dict] = field(default_factory=list, init=False)
+    _flows: dict[str, dict] = field(default_factory=dict, init=False)
     _corrections: dict[str, dict] = field(default_factory=dict, init=False)
     # The inputs declared restricted, as they were written to `add_input`.
     _restricted: set[str] = field(default_factory=set, init=False)
@@ -1640,6 +1685,105 @@ class Emitter:
         self.table(key, list(columns), rows, caption=caption)
         self._code_lists[key] = structured
 
+    def relation(self, kind: str, key: str, of: list[str], *, scale: float | None = None) -> None:
+        """Declare arithmetic between results, which G8 then holds them to.
+
+            em.relation("sum", "cohort.n", ["cohort.n_men", "cohort.n_women"])
+            em.relation("difference", "risk.difference", ["risk.treated", "risk.control"])
+            em.relation("ratio", "rate.per_1000", ["events.n", "person_years"], scale=1000)
+            em.relation("at_most", "case.n_cases", ["cohort.n_reports"])
+            em.relation("in_order", "cohort.period_start", ["cohort.period_end"])
+
+        A sum is the key equal to the sum of the others; a difference the first less the
+        second; a ratio the first over the second, times `scale`; `at_most` the key no more
+        than the other; `in_order` the key not after the other, dates or numbers. The keys may
+        be another script's: G8 reads every fragment together. A relation the values break
+        fails; one their displays break by more than their rounding allows is a warning.
+        """
+        if kind not in RELATIONS:
+            raise ValueError(f"relation {key!r}: the kinds are {', '.join(RELATIONS)}")
+        expected = RELATIONS[kind]
+        if expected and len(of) != expected:
+            raise ValueError(f"relation {key!r}: a {kind} is of {expected} key(s), not {len(of)}")
+        if not of:
+            raise ValueError(f"relation {key!r}: a {kind} is of at least one key")
+        if scale is not None and kind != "ratio":
+            raise ValueError(f"relation {key!r}: only a ratio has a scale")
+        if scale is not None and (
+            isinstance(scale, bool)
+            or not isinstance(scale, (int, float))
+            or not 0 < scale < float("inf")
+        ):
+            raise ValueError(f"relation {key!r}: a ratio's scale is a positive number")
+        entry: dict = {"kind": kind, "key": key, "of": [str(k) for k in of]}
+        if scale is not None:
+            entry["scale"] = scale
+        self._relations.append(entry)
+
+    def flow(
+        self,
+        key: str,
+        stages: dict[str, int],
+        exclusions: list[dict[str, int]],
+        *,
+        arms: dict[str, int] | None = None,
+        overlapping: bool | list[int] = False,
+        quoted: bool = True,
+    ) -> None:
+        """Record a flow of participants or records, every count a result of its own.
+
+            em.flow("consort",
+                    stages={"Assessed for eligibility": 412, "Randomised": 300},
+                    exclusions=[{"Not meeting criteria": 87, "Declined": 25}],
+                    arms={"Drug": 151, "Placebo": 149})
+
+        `exclusions` holds, for each step from one stage to the next, the reasons and their
+        counts. Each stage less its exclusions is the next stage, and the arms sum to the
+        last stage. Where one record can be excluded for several reasons, `overlapping`
+        names the steps where that happens, `[3]` for the step from stage 3 to stage 4, or
+        is True for every step: their reasons may then sum to more than the step removed,
+        and the stages must still agree. `quoted=False` writes every count as an
+        intermediate, drawn by a figure and not quoted, as `value` does. The counts are written as
+        `flow.<key>.stage.<n>`, `flow.<key>.excluded.<n>.<m>` and `flow.<key>.arm.<n>`, to be
+        bound in the text and drawn by a figure script from the results; a count that breaks
+        the arithmetic is refused here, as G8 refuses it on disk.
+        """
+        if not _TABLE_SAFE_KEY.fullmatch(key):
+            raise ValueError(f"flow {key!r}: a key is lowercase letters, digits and underscores")
+        if key in self._flows:
+            raise ValueError(f"flow {key!r} recorded twice by {self.script}")
+        if len(stages) < 2 or len(exclusions) != len(stages) - 1:
+            raise ValueError(
+                f"flow {key!r}: {len(stages)} stage(s) need {max(len(stages) - 1, 1)} set(s) of "
+                f"exclusions, one for each step, and there are {len(exclusions)}"
+            )
+        counts = [*stages.values(), *(n for step in exclusions for n in step.values()),
+                  *(arms or {}).values()]  # fmt: skip
+        if any(isinstance(n, bool) or not isinstance(n, int) or n < 0 for n in counts):
+            raise ValueError(f"flow {key!r}: every count is a whole number, none below 0")
+        overlapping = _overlapping(key, overlapping, len(stages) - 1)
+        problem = flow_problem(list(stages.values()),
+                               [list(step.values()) for step in exclusions],
+                               list((arms or {}).values()), overlapping)  # fmt: skip
+        if problem:
+            raise ValueError(f"flow {key!r}: {problem}")
+        record: dict = {"stages": [], "exclusions": [], "overlapping": overlapping}
+        for n, (label, count) in enumerate(stages.items(), 1):
+            self.value(f"flow.{key}.stage.{n}", count, quoted=quoted)
+            record["stages"].append({"label": label, "key": f"flow.{key}.stage.{n}"})
+        for n, step in enumerate(exclusions, 1):
+            reasons = []
+            for m, (reason, count) in enumerate(step.items(), 1):
+                self.value(f"flow.{key}.excluded.{n}.{m}", count, quoted=quoted)
+                reasons.append({"reason": reason, "key": f"flow.{key}.excluded.{n}.{m}"})
+            record["exclusions"].append(reasons)
+        if arms:
+            record["arms"] = []
+            for n, (label, count) in enumerate(arms.items(), 1):
+                self.value(f"flow.{key}.arm.{n}", count, quoted=quoted)
+                record["arms"].append({"label": label, "key": f"flow.{key}.arm.{n}"})
+        self._flows[key] = record
+
     def add_input(
         self, path: str | Path, *, restricted: bool = False, synthetic: bool = False
     ) -> None:
@@ -1735,6 +1879,10 @@ class Emitter:
             document["models"] = dict(self._models)
         if self._steps:
             document["steps"] = dict(self._steps)
+        if self._relations:
+            document["relations"] = list(self._relations)
+        if self._flows:
+            document["flows"] = dict(self._flows)
         if self._corrections:
             document["corrections"] = dict(self._corrections)
         return document

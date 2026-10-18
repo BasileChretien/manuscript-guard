@@ -1420,6 +1420,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "notation": texts(NOTATED),
+    "reply numbers": texts(NOTATED),
+    "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
     "placeholders": texts(
         tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES

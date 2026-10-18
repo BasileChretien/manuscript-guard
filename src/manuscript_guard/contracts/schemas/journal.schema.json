@@ -321,7 +321,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "csl": { "type": "string", "description": "Zotero style name or URL, applied by a live build. An offline build uses --csl instead." },
+        "csl": { "type": "string", "description": "The style's name in the CSL style repository, as Zotero names it (the-lancet), or its zotero.org/styles URL. A live build hands it to Zotero; `manuscript-guard style` keeps the file in the project, and an offline build then formats with it unless --csl names another." },
         "style_name": { "type": "string" },
         "numbered": { "type": "boolean" }
       }

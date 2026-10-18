@@ -220,7 +220,9 @@ The panel above reads the manuscript, once there are results. A design round rea
 plan, `design/plan.md`, and the feasibility results, while the analysis can still change.
 Give it one or two reviewers whose remits ask whether the design supports the inference the
 plan intends, naming the risks of the study type: confounding, selection, immortal time,
-missing data, multiplicity, leakage. The models in `review.models` can read it, as they
+missing data, multiplicity, leakage. Where `paper.yaml` declares the `study_type`, each
+reviewer is also sent what a plan for that design has to settle, with its sources; declare
+it before the round. The models in `review.models` can read it, as they
 read the manuscript: `manuscript-guard review --design --run --dry-run` shows what would be
 sent (the plan and the feasibility results, never the manuscript), and the author runs
 `review --design --run` and answers yes. Never add `--yes` for them. Or file each reading by

@@ -37,8 +37,8 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G14 counts the characters of prose in a script the gates do not read,
-      `prose_not_read`, and says so for each file that has any
+      G8 counts the relations and flows the analysis declared, `relations_checked`, which
+      is 0 in a project that declares none
   - reading: numbers
     why: >-
       a step, a panel or a box takes a number up to 20 and an item up to 99, so a count

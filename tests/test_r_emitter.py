@@ -931,6 +931,127 @@ def test_r_refuses_what_python_refuses(tmp_path: Path, call: str, refusal: str) 
     assert out.returncode != 0 and refusal in out.stderr, out.stderr
 
 
+FLOWS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$flow("consort",
+        stages = c("Assessed for eligibility" = 412, "Randomised" = 300),
+        exclusions = list(c("Not meeting criteria" = 87, "Declined" = 25)),
+        arms = c(Drug = 151, Placebo = 149))
+em$flow("prisma",
+        stages = c("Records" = 120, "Screened" = 100, "Included" = 12),
+        exclusions = list(c("Duplicates" = 20), c("Not relevant" = 70, "No outcome" = 30)),
+        overlapping = 2, quoted = FALSE)
+em$value("cohort.n", 300L)
+# sapply names what it returns: a named `of` is still an array of keys.
+em$relation("sum", "cohort.n", sapply(1:2, function(n) paste0("flow.consort.arm.", n)))
+em$relation("ratio", "cohort.n", c("flow.consort.stage.2", "flow.consort.stage.1"), scale = 412)
+em$relation("at_most", "flow.prisma.stage.3", "flow.prisma.stage.2")
+em$write()
+"""
+
+FLOWS_PY = """
+from manuscript_guard.emit import Emitter
+em = Emitter(__file__)
+em.flow("consort",
+        stages={"Assessed for eligibility": 412, "Randomised": 300},
+        exclusions=[{"Not meeting criteria": 87, "Declined": 25}],
+        arms={"Drug": 151, "Placebo": 149})
+em.flow("prisma",
+        stages={"Records": 120, "Screened": 100, "Included": 12},
+        exclusions=[{"Duplicates": 20}, {"Not relevant": 70, "No outcome": 30}],
+        overlapping=[2], quoted=False)
+em.value("cohort.n", 300)
+em.relation("sum", "cohort.n", ["flow.consort.arm.1", "flow.consort.arm.2"])
+em.relation("ratio", "cohort.n", ["flow.consort.stage.2", "flow.consort.stage.1"], scale=412)
+em.relation("at_most", "flow.prisma.stage.3", ["flow.prisma.stage.2"])
+em.write()
+"""
+
+
+def test_r_and_python_write_the_same_flows_and_relations(tmp_path: Path) -> None:
+    """A flow is its counts as values and its record of labels and keys; a relation is its
+    kind and keys. The same calls in either language write the same of each, and G8 reads
+    either the same way."""
+    import runpy
+
+    from manuscript_guard.contracts import load_results
+    from manuscript_guard.gates import check_relations
+
+    root = _parameter_project(tmp_path)
+    r_script = root / "analysis" / "flows.R"
+    r_script.write_text(
+        FLOWS_R % {"emit": EMIT_R.as_posix(), "script": r_script.as_posix()}, encoding="utf-8"
+    )
+    out = _run_r(r_script, root)
+    assert out.returncode == 0, f"{out.stdout}\n{out.stderr}"
+    path = root / "results" / "flows.json"
+
+    def written() -> dict:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        assert validate(document, "results", path).ok
+        return document
+
+    from_r = written()
+    results, report = load_results(root / "results")
+    assert report.ok, report.findings
+    assert check_relations(results).findings == ()
+    (root / "analysis" / "flows.py").write_text(FLOWS_PY, encoding="utf-8")
+    runpy.run_path(str(root / "analysis" / "flows.py"), run_name="__main__")
+    from_python = written()
+    assert from_r["relations"] == from_python["relations"]
+    assert from_r["flows"] == from_python["flows"]
+    assert from_python["flows"]["prisma"]["overlapping"] == [2]
+    assert from_python["relations"][0]["of"] == ["flow.consort.arm.1", "flow.consort.arm.2"]
+    assert from_python["flows"]["prisma"]["exclusions"][0] == [
+        {"reason": "Duplicates", "key": "flow.prisma.excluded.1.1"}
+    ]
+    counts = {k: v for k, v in from_python["values"].items() if k.startswith("flow.")}
+    assert {k: v for k, v in from_r["values"].items() if k.startswith("flow.")} == counts
+    assert counts["flow.consort.excluded.1.2"] == {"value": 25, "display": "25"}
+    # A flow drawn and not quoted writes every count as an intermediate (round 2's CI of
+    # #293: the example's flow repeats counts it already quotes).
+    assert counts["flow.prisma.stage.1"] == {"value": 120, "display": "120", "quoted": False}
+
+
+@pytest.mark.parametrize(
+    ("call", "refusal"),
+    [
+        ('em$flow("c", stages = c(A = 412, B = 301), exclusions = list(c(X = 87, Y = 25)))',
+         "less its exclusions"),
+        ('em$flow("c", stages = c(A = 412, B = 300), exclusions = list(c(X = 87, Y = 25)), '
+         'arms = c(D = 151, P = 150))', "the arms sum to 301"),
+        ('em$flow("c", stages = c(A = 412, B = 300), exclusions = list())', "need 1 set(s)"),
+        ('em$flow("c", stages = c(A = 412.5, B = 300), exclusions = list(c(X = 112.5)))',
+         "whole number"),
+        ('em$flow("c", stages = c(412, 300), exclusions = list(c(X = 112)))', "by its label"),
+        ('em$flow("c", stages = c(A = 412, B = 300), exclusions = list(c(X = 60, Y = 40)), '
+         'overlapping = TRUE)', "cannot account for the 112 excluded"),
+        ('em$flow("c", stages = c(A = 412, B = 300), exclusions = list(c(X = 112)), '
+         'overlapping = 2)', "from 1 to 1"),
+        ('em$flow("c", stages = c(A = 3, B = 2, C = 1), exclusions = list(c(X = 1, Y = 1), '
+         'c(Z = 2)), overlapping = 1)', "stage 2 (2) less its exclusions (2)"),
+        ('em$relation("mean", "a", "b")', "the kinds are"),
+        ('em$relation("difference", "a", "b")', "is of 2 key"),
+        ('em$relation("ratio", "a", c("b", "c"), scale = 0)', "positive number"),
+    ],
+)  # fmt: skip
+def test_r_refuses_the_flows_and_relations_python_refuses(
+    tmp_path: Path, call: str, refusal: str
+) -> None:
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "refused.R"
+    script.write_text(
+        f'source("{EMIT_R.as_posix()}")\nem <- mg_emitter("{script.as_posix()}")\n{call}\n',
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode != 0 and refusal in out.stderr, out.stderr
+
+
 DICTIONARIES = {
     "R": """
 if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {

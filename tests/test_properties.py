@@ -644,6 +644,10 @@ _LABELLED_RIGHT = (
     "Weight {{results.age.mean}} \N{PLUS-MINUS SIGN} {{results.age.se}} (standard error).",
     # Round 1 of #327: the stop of "s.d." ended a sentence, so its binding stood alone.
     "Height was {{results.age.mean}} (s.d. {{results.age.sd}}) cm.",
+    # Round 2 of #327: where "s.d." ends a sentence, the next one is not labelled by it.
+    "Values are summarised as mean and s.d. Uncertainty of the slope was "
+    "{{results.age.se}}.",
+    "Spread is given as mean \N{PLUS-MINUS SIGN} s.e.m.\n\nAge varied by {{results.age.sd}} years.",
 )
 #: Sentences whose labels are not those emitted, and what G2 says of each.
 _LABELLED_WRONG = (
@@ -4204,6 +4208,12 @@ def _a_label_after_a_spread_is_not_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(labels, "_after", lambda *_args: "")
 
 
+def _an_abbreviations_stop_never_ends_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import labels
+
+    patch.setattr(labels, "_GOES_ON", re.compile(r""))
+
+
 def _an_abbreviations_stop_ends_a_sentence(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import labels
 
@@ -5260,6 +5270,10 @@ BROKEN = {
     ),
     "a label after a spread is not read": (
         _a_label_after_a_spread_is_not_read,
+        test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
+    ),
+    "an abbreviation's stop never ends a sentence": (
+        _an_abbreviations_stop_never_ends_a_sentence,
         test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
     ),
     "an abbreviation's stop ends a sentence": (

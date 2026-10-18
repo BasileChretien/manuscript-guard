@@ -10,7 +10,9 @@ What is read is the label nearest a binding, in its own sentence and on its own 
 any other binding: the text from the binding before it in the sentence, or the sentence's
 start, to the binding, and for a spread the few characters after it as well ("12.3 (SD)").
 A sentence ends as G2's do, at a stop and a space, except at the stop of "s.d.", "s.e." or
-"s.e.m.", which ends none: "(s.d. {{...}})" is one sentence (round 1 of #327).
+"s.e.m." where the sentence goes on, before a binding, a number, a sign, a bracket or a word
+in lower case on the same paragraph: "(s.d. {{...}})" is one sentence (round 1 of #327), and
+"mean and s.d. Uncertainty ..." two (round 2).
 The label read there is compared with the one recorded, and a difference is a warning. A
 bound of an interval with no level recorded at all is said once, where the interval is
 first quoted, as a warning that asks for it. Nothing is said where no label is written.
@@ -51,6 +53,9 @@ _STOPS = ".!?"
 _SENTENCE_END = re.compile(rf"[{re.escape(_STOPS)}](?:\s|$)")
 #: The stop of an abbreviation of a dispersion, which ends no sentence: "s.d. 12.3".
 _ABBREVIATED = re.compile(r"(?<![\w.])(?:s\.d|s\.e|s\.e\.m)\.\Z")
+#: What goes on with a sentence after an abbreviation's stop, on the same paragraph.
+_GOES_ON = re.compile(r"[^\S\n]*\n?[^\S\n]*(?:\{\{|[\d+\-(\["
+                      r"\N{PLUS-MINUS SIGN}\N{MINUS SIGN}]|[a-z])")
 
 
 def labelled(files: list[tuple[Path, str, list]], namespace: dict[str, Value]) -> Report:
@@ -89,12 +94,14 @@ def labelled(files: list[tuple[Path, str, list]], namespace: dict[str, Value]) -
 
 
 def _stops(read: str) -> list[int]:
-    """Where the sentences of `read` end: each stop and a space, but an abbreviation's."""
+    """Where the sentences of `read` end: each stop and a space, but an abbreviation's where
+    the sentence goes on."""
     return [
         match.start()
         for match in _SENTENCE_END.finditer(read)
-        if not _ABBREVIATED.search(read, 0, match.start() + 1)
-    ]
+        if not (_ABBREVIATED.search(read, max(0, match.start() - 8), match.start() + 1)
+                and _GOES_ON.match(read, match.start() + 1))
+    ]  # fmt: skip
 
 
 def _before(read: str, stops: list[int], bindings: list, index: int) -> str:

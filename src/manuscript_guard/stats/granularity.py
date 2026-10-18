@@ -112,12 +112,17 @@ def nearest(mean: str, n: int, items: int = 1) -> tuple[str, str]:
 
 
 def fitting(mean: str, n: int, items: int = 1) -> tuple[int | None, int | None]:
-    """The nearest sample sizes below and above `n` for which `mean` is possible, each None
-    where there is none short of 1 or of the size at which every mean is."""
+    """The nearest sample sizes below and above `n` for which `mean` is a whole total over
+    them, each None where there is none short of 1 or of 10 to the power of its places. A
+    size at which every mean is possible, 96 at two places, is one (round 2 of #331)."""
     limit = min(math.ceil(Fraction(10 ** places(mean), items)), n + _SEARCH)
-    below = next((m for m in range(n - 1, max(n - _SEARCH, 0), -1)
-                  if possible(mean, m, items)), None)  # fmt: skip
-    above = next((m for m in range(n + 1, limit) if possible(mean, m, items)), None)
+
+    def fits(size: int) -> bool:
+        low, high = _totals(mean, size * items)
+        return low <= high
+
+    below = next((m for m in range(n - 1, max(n - _SEARCH, 0), -1) if fits(m)), None)
+    above = next((m for m in range(n + 1, limit) if fits(m)), None)
     return below, above
 
 

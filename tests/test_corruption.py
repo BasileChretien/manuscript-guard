@@ -5154,6 +5154,14 @@ def test_a_ledger_mean_of_whole_numbers_is_held_to_its_n(
         )
 
 
+def test_the_n_a_mean_fits_counts_one_at_which_every_mean_does() -> None:
+    """Round 2 of #331: 3.50 is no mean of 97 whole numbers but is 336 over 96, at which
+    every mean printed to two places is possible; the message skipped 96 and named 94."""
+    from manuscript_guard.stats.granularity import described
+
+    assert described("3.50", 97).endswith("it can be the mean of 96 or 98 whole numbers")
+
+
 def test_a_ledger_mean_of_whole_numbers_needs_a_count(project: Path) -> None:
     """An n of none is refused by the schema, not read as a mean of nothing."""
     _ledger_mean(project, "3.47", {"n": 0})

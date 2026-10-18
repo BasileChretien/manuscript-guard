@@ -2,7 +2,8 @@
 
 **The inputs are a fixed list.** A request is built from `paper.yaml`'s description of the
 paper, the target journal's profile, the reporting guideline, the manuscript's own files, and
-the one reviewer's entry in the panel. Nothing else is sent. That is how the second panel
+the one reviewer's entry in the panel, and for a design round the plan and what its
+study design needs. Nothing else is sent. That is how the second panel
 stays blinded when models run it: the earlier rounds' records, the other panels and the
 response to a journal's reviewers are not on the list, so no request can carry them. It is
 also why the authors' names, the results files and the literature sources stay on the
@@ -21,7 +22,8 @@ are not sent; the place of each is marked.
 
 **A design round is sent the plan instead** (`gather_design`): the facts about the paper,
 `design/plan.md` without its front matter and comments and with its feasibility results
-printed into it, and the feasibility results, each under its key. Not the manuscript, and no
+printed into it, the feasibility results, each under its key, and where `paper.yaml`
+declares a `study_type`, what a plan for that design has to settle. Not the manuscript, and no
 result but a feasibility one: a binding in the plan to any other result, a value or a table,
 is sent as written. Its reviewers are told they read a plan before its analysis
 is run (`system_text(..., design=True)`); the reply asked of them is the same.
@@ -65,7 +67,8 @@ NOT_SENT = (
     "earlier review rounds",
     "the response to reviewers",
 )
-#: The same, for a design round, which is sent the plan and the feasibility results.
+#: The same, for a design round, which is sent the plan, the feasibility results and what
+#: the declared study design needs.
 NOT_SENT_DESIGN = (
     "the manuscript",
     "results other than feasibility.*",
@@ -202,7 +205,9 @@ _DESIGN_CHANGES = (
      "The next message holds facts about the paper, the analysis plan, and the feasibility "
      "results: what the authors' own code counted in the data before any analysis, each "
      "under its key. Numbers the plan takes from those results are shown as they are "
-     "printed."),
+     "printed. Where the authors declare the study's design, it also holds what the "
+     "guidelines of that design ask a plan to settle: judge the plan against each item, as "
+     "far as your remit reaches."),
     ("what the paper claims and whether the evidence supports it, as far as your remit "
      "reaches",
      "what the plan intends to show and whether the design can support it, as far as your "
@@ -446,7 +451,8 @@ def gather(project: Project) -> Material:
 def gather_design(project: Project) -> Material:
     """Read what every reviewer of a design round is sent: the facts about the paper, the
     plan without its front matter and comments, its feasibility results printed into it, and
-    the feasibility results. Nothing else.
+    the feasibility results, and what a plan for the declared study design has to settle.
+    Nothing else.
 
     Only a feasibility result is printed into the plan: a binding to any other result is
     sent as written and counted, since a design round reads the plan before there are
@@ -504,10 +510,10 @@ def _design_needs(project: Project) -> tuple[str, Sent] | None:
         return None
     sections = known["sections"]
     listed = "\n".join(f"- {s['id']}: {s['says']} ({s['source']})" for s in sections)
-    text = (
-        f"The plan is for a {known['label']} (study_type: {design}). Ask, as far as your "
-        "remit goes, whether it settles each of these, which the guidelines of the design "
-        f"ask of its plan:\n{listed}"
+    text = _block(
+        f"study type: {design}",
+        f"The plan is for a {known['label']}. What the guidelines of this design ask a plan "
+        f"to settle:\n{listed}",
     )
     return text, Sent(f"study type: {design}", f"what a plan for a {known['label']} settles, "
                       f"{len(sections)} items, each with its source")  # fmt: skip

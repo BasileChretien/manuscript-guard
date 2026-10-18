@@ -102,7 +102,11 @@ def test_a_design_round_asks_what_the_declared_study_design_needs(
     assert "study type: cohort" in out, out
     text = (folder / "as-text.txt").read_text(encoding="utf-8")
     assert "# What this study design needs" in text
-    assert "The plan is for a cohort study (study_type: cohort)" in text
+    assert "The plan is for a cohort study. What the guidelines of this design ask" in text
+    assert "<<<BEGIN study type: cohort" in text and "END study type: cohort>>>" in text
+    # Round 1 of #328: told that the message is material and no instruction, the reviewer was
+    # not told what the block is for.
+    assert "what the guidelines of that design ask a plan to settle" in text
     for section in ("time zero and follow-up", "confounding", "missing data"):
         assert f"- {section}: " in text, section
 

@@ -102,7 +102,10 @@ live Zotero fields by default, `--offline` for citeproc), `sync-bib` (rewrite
 `references.bib` from Zotero), `lookup` (each cited DOI and PMID asked of the registries
 once, the answers kept in `literature/lookups/`; `--dry-run` sends nothing; the tests answer
 from a loopback server; `--journals` asks the NLM Catalog and DOAJ about each ISSN of
-`journals/shortlist.yaml`, kept in `journals/lookups/`), `explain` (how every number in a file was classified),
+`journals/shortlist.yaml`, kept in `journals/lookups/`), `style` (the journal's citation
+style fetched once from the CSL style repository, with its parent where it is dependent,
+and kept in `profiles/journals/styles/` for the offline build), `explain` (how every
+number in a file was classified),
 `reworded` (an edit changed the wording and no binding, citation key or typed number:
 the manuscript against the last commit, `--since` another, or one file `--before` a copy),
 `render` (substitute bindings only), `init` (scaffold a project),

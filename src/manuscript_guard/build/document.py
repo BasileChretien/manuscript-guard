@@ -640,6 +640,11 @@ def build_document(
             command += ["--citeproc", f"--bibliography={relative_to_root(project, bib)}"]
             if csl is not None:
                 command += [f"--csl={relative_to_root(project, csl.resolve())}"]
+                # A dependent style names its parent, and pandoc looks for `<parent>.csl` on
+                # the resource path before it would fetch it: `style` keeps the parent beside
+                # the style. The working directory stays first, as it is by default.
+                folder = relative_to_root(project, csl.resolve().parent)
+                command += [f"--resource-path=.{os.pathsep}{folder}"]
 
         finished = subprocess.run(command, capture_output=True, text=True, cwd=root)
     if finished.returncode != 0:

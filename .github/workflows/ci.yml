@@ -3,7 +3,12 @@ name: CI
 on:
   push:
     branches: [main]
+  # A draft is work its author has not finished, and its runs were cancelled by the next push
+  # after the runners had spent minutes on them: a draft runs nothing (the `if` on each job
+  # that waits for no other), and marking it ready starts the run. The first three types are
+  # the ones GitHub runs on when none are named.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # A push to a pull request makes the run for its last head moot, and each run is fifteen
 # jobs: with a dozen pull requests open, runs for heads already replaced held the runners
@@ -25,14 +30,52 @@ env:
   MANUSCRIPT_GUARD_REQUIRE_PANDOC: "3.9.0.2"
 
 jobs:
+  first:
+    # One job of the test matrix below, run before the rest of it: the lint and the whole
+    # suite on Ubuntu and Python 3.13, which finishes in about a third of the time Windows
+    # takes. A change that fails either fails here, and the jobs that wait for this one are
+    # skipped, so it never holds a Windows or macOS runner, of which the account has few, nor
+    # does a head replaced while this runs. A change that passes is then tested everywhere
+    # as before, so a green run has run every job it always did; it is only longer, by this
+    # job. Not 3.14, quicker still: the newest Python fails for reasons of its own, and its
+    # failure should not keep the other platforms from saying whether they pass.
+    name: test (ubuntu-latest, 3.13)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    # The slowest healthy run of this job took 30 minutes.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      # pip keeps what it downloads between runs, as every job here does, and starts afresh
+      # when pyproject.toml, which names the dependencies, changes.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - uses: r-lib/actions/setup-pandoc@v2
+        with:
+          pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
+      - run: pandoc --version
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests
+      # -rs names each test that still skips, and why.
+      - run: pytest -q -rs
+
   test:
     # The gates must hold on the platforms other scientists actually use, and only Windows
     # is available to the author, so the other two are covered here rather than assumed.
+    needs: first
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python: ["3.10", "3.13"]
+        # Run by the job `first`, before these.
+        exclude:
+          - os: ubuntu-latest
+            python: "3.13"
         # The newest Python, on one platform: it finds what a new release breaks, and
         # Windows, the slowest runner, is kept to two jobs.
         include:
@@ -47,6 +90,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
       - uses: r-lib/actions/setup-pandoc@v2
         with:
           pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
@@ -75,6 +120,7 @@ jobs:
     # does not move it when the base branch moves, so it named a main older than the one
     # merged into, and everything merged since counted as this pull request's change. For a
     # push to main the base is main as it was before the push.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     # About two minutes when the source changed and seconds when it did not; a reading
     # that never answers is stopped by the test itself long before this.
@@ -92,6 +138,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
       # Every pytest run here is held to the same requirement, and where pandoc is on the
       # path `check` has it read each document, in the base's process as in this one's.
       - uses: r-lib/actions/setup-pandoc@v2
@@ -110,7 +158,10 @@ jobs:
       fail-fast: false
       matrix:
         claude: ["2.1.119", "latest"]
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    # Healthy, it takes seconds: 18 at the most, in the 28 runs measured in October 2026.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -131,7 +182,11 @@ jobs:
       fail-fast: false
       matrix:
         codex: ["0.160.0", "latest"]
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    # Healthy, it takes under a minute: two at the most, in the 27 runs measured in October
+    # 2026.
+    timeout-minutes: 5
     env:
       MANUSCRIPT_GUARD_REQUIRE_CODEX: "1"
     steps:
@@ -144,6 +199,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
       # These tests call no pandoc, but every pytest run here is held to the same requirement.
       - uses: r-lib/actions/setup-pandoc@v2
         with:
@@ -153,12 +210,18 @@ jobs:
 
   r-interop:
     # The results contract is only a contract if a second language can honour it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    # Healthy, it takes two and a half minutes: under three, in the 28 runs measured in October
+    # 2026.
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
       - uses: r-lib/actions/setup-r@v2
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
@@ -182,12 +245,19 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+    # Two of its three jobs take a Windows or a macOS runner: they wait, as the tests do.
+    needs: first
     runs-on: ${{ matrix.os }}
+    # Healthy, it takes a minute or less: on Windows, the slowest, under a minute and a half in
+    # the 29 runs measured in October 2026.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
       - uses: r-lib/actions/setup-pandoc@v2
         with:
           pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}

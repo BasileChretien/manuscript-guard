@@ -107,6 +107,8 @@ class Results:
     models: dict[str, Model] = field(default_factory=dict)
     # The steps that ran, which the Methods point at; G9 holds each to its claim.
     steps: dict[str, Step] = field(default_factory=dict)
+    # How each family of p values is corrected for multiple comparisons, by family.
+    corrections: dict[str, dict] = field(default_factory=dict)
 
     def get(self, key: str) -> Value | None:
         return self.values.get(key)
@@ -159,6 +161,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
     variables: dict[str, Variable] = {}
     models: dict[str, Model] = {}
     steps: dict[str, Step] = {}
+    corrections: dict[str, dict] = {}
 
     for path in paths:
         document = read_structured(path)
@@ -182,6 +185,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 ),
             )
         )
+        corrections.update(document.get("corrections") or {})
 
         for key, spec in document["values"].items():
             if key in owner:
@@ -225,6 +229,9 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 level=spec.get("level"),
                 role=spec.get("role"),
                 read=spec.get("read"),
+                of=spec.get("of"),
+                over=spec.get("over"),
+                family=spec.get("family"),
             )
 
         for key, spec in document.get("tables", {}).items():
@@ -269,7 +276,9 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
         results_values=len(values),
         results_tables=len(tables),
     )
-    results = Results(values, tuple(fragments), tables, code_lists, variables, models, steps)
+    results = Results(
+        values, tuple(fragments), tables, code_lists, variables, models, steps, corrections
+    )
     return results, merged
 
 

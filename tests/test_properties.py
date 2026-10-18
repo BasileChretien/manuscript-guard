@@ -588,6 +588,46 @@ def _seen_and_judged(text: str) -> None:
             assert with_scan.kind in (TERM, STRUCTURAL, CONVENTION, UNCLASSIFIED)
 
 
+# -------------------------------------------------------------- a statistic quoted whole
+
+#: A sentence that quotes each statistic with what it belongs to, and the interval whole.
+_TOGETHER = (
+    "The ratio was {{results.or.point}} (95% CI {{results.or.ci_low}} to "
+    "{{results.or.ci_high}}; P = {{results.or.p}}), and {{results.female.n}} of "
+    "{{results.cohort.n}} ({{results.female.pct}}%) were women."
+)
+#: Each kind of statistic in a sentence of its own, without what it belongs to.
+_APART = ("Then P was {{results.hr.p}}.", "Men were {{results.male.pct}}%.")
+
+
+@st.composite
+def _quoted_apart(draw: st.DrawFn) -> str:
+    """A text that quotes each kind of statistic with what it belongs to, and each again in
+    a sentence without it: the planted sentences first, in an order drawn, so that nothing
+    drawn after them can put them in a comment it left open."""
+    planted = draw(st.permutations([_TOGETHER, *_APART]))
+    gaps = [draw(st.sampled_from((" ", "\n", "\n\n"))) for _ in planted[1:]]
+    after = zip(gaps, planted[1:], strict=True)
+    return planted[0] + "".join(gap + sentence for gap, sentence in after) + "\n\n" + draw(texts())
+
+
+@holds(200, _quoted_apart())
+def test_a_statistic_is_alone_only_in_a_sentence_without_what_it_belongs_to(text: str) -> None:
+    """Whatever the sentences around them, a p value and a share are said to be quoted alone
+    in the sentence that lacks their estimate or their counts, and in no other, and the
+    interval quoted whole once is not reported."""
+    from readings import whole_namespace
+
+    from manuscript_guard.gates.numbers import in_sentences, quoted_whole
+    from manuscript_guard.text.placeholders import parse
+
+    placeholders, _malformed = parse(text)
+    said = quoted_whole([(Path("main.md"), text, in_sentences(placeholders, text))],
+                        whole_namespace())  # fmt: skip
+    alone = sorted(f.message.split(" is quoted")[0] for f in said.findings)
+    assert alone == ["results.hr.p", "the share results.male.pct"], (alone, text)
+
+
 # ------------------------------------------------------------------- a data statement
 
 
@@ -3996,6 +4036,24 @@ def _an_isbn_13_is_weighed_as_an_isbn_10(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(identifiers, "isbn_valid", valid)
 
 
+def _every_stop_is_in_one_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import numbers
+
+    patch.setattr(numbers, "_SENTENCE_END", re.compile(r"(?!)"))
+
+
+def _a_share_is_held_to_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import numbers
+
+    original = numbers.quoted_whole
+
+    def lax(files, namespace):
+        said = original(files, namespace)
+        return numbers.Report(tuple(f for f in said.findings if "share" not in f.message))
+
+    patch.setattr(numbers, "quoted_whole", lax)
+
+
 def _an_accession_number_is_no_identifier(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import data_statement
 
@@ -4997,6 +5055,14 @@ BROKEN = {
     "an ISBN's groups are read as ISBNs": (
         _an_isbn_s_groups_are_read_as_isbns,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "every stop is read in one sentence": (
+        _every_stop_is_in_one_sentence,
+        test_a_statistic_is_alone_only_in_a_sentence_without_what_it_belongs_to,
+    ),
+    "a share is held to nothing": (
+        _a_share_is_held_to_nothing,
+        test_a_statistic_is_alone_only_in_a_sentence_without_what_it_belongs_to,
     ),
     "an accession number is no identifier": (
         _an_accession_number_is_no_identifier,

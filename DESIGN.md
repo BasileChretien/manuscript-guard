@@ -1676,6 +1676,25 @@ warning): the limit was checked against nothing and the abstract counted as main
 the headings inside the abstract are the abstract's. A structured abstract's "Methods" and
 "Results" answered the journal's required sections in a paper whose body had neither.
 
+## A statistic is reported with what it belongs to
+
+A p value means nothing without the estimate it tests, a percentage without the counts it
+is a share of, and an estimate without its interval. Bound one by one, each passed G2 alone:
+"P = 0.012" in a sentence of its own, "52.1% were women" with no n/N, an odds ratio quoted
+everywhere with its upper bound only.
+
+So a statistic says what it belongs to when it is emitted, in both emitters: `of` names a p
+value's estimate or a share's numerator, `over` a share's denominator, and `family` the tests
+a p value is one of. G2 reads which bindings sit together in a sentence, and nothing of what
+the sentence says: a p value quoted in a sentence that binds no estimate of it, or a share in
+one that binds neither of its counts, is `quoted-alone`; an estimate emitted with an
+interval and quoted in no sentence with both its bounds is `interval-not-quoted-whole`. Both
+are warnings: a paper may rightly give a p value again a line after its estimate.
+
+Multiple comparisons are declared, never guessed. `correction("secondary", "holm")` says how
+a family is corrected, and "none" is a declaration too, with its reason. G8 warns on a
+family of more than one p value with no correction declared (`family-uncorrected`).
+
 ## A choice the code makes is declared, bound and read
 
 The ledger records that someone looked. Some of what they look for needs no reading: the
@@ -8412,6 +8431,14 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A statistic is held to what it declares it belongs to, and only by sentence.** A p
+  value or a share emitted without `of` is held to nothing, and nothing guesses that a key
+  named `.p` is a p value. A sentence is read as the interval check reads one, so a binding
+  of the estimate in the same sentence passes whatever the sentence says of it, and a
+  sentence that ends at an abbreviation's stop parts a p value from its estimate. An
+  estimate quoted only in a table, or a percentage in a table cell, is not read. A family
+  is counted across the whole results, and a correction declared twice for one family in two
+  fragments keeps the last read.
 - **A data statement is read by patterns, and only where the profile records a policy.** An
   identifier is a DOI, an accession number of the archives listed in
   `gates/data_statement.py` (GEO, SRA and its peers, BioProject, EGA, ArrayExpress, dbGaP),

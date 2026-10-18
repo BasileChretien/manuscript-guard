@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "e53c51ef88faf606141616026778cd7422461ef608f56a8b9a3a7f246aa5c7c4",
-    "generated_at": "2026-10-17T06:40:42+00:00",
+    "generated_by_sha256": "e1ac1d1bd501f6b6aacfcec9e76f6e4da2e388b1edf3176a8e4e25f75ab34853",
+    "generated_at": "2026-10-17T10:00:52+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.2.444"
     },
     "vcs": {
-      "sha": "ed4272bfb3a593201bfe300e4de9ce70d9881546",
+      "sha": "17cf564ae7c90601cb769c7c7e090230821078a7",
       "dirty": true,
-      "branch": "feat/synthetic-inputs"
+      "branch": "feat/statistics-whole"
     },
     "inputs": [
       {
@@ -684,6 +684,12 @@
         120
       ],
       "digest": "ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf"
+    }
+  },
+  "corrections": {
+    "primary": {
+      "method": "none",
+      "reason": "one prespecified estimate, the reporting odds ratio"
     }
   }
 }

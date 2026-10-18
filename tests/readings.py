@@ -301,6 +301,60 @@ INTERVALS = (
 )
 
 
+@reading("quoted whole")
+def _quoted_whole() -> Reading:
+    # The gate's function first: where the source has none, the reading is newer than it.
+    from manuscript_guard.gates.numbers import in_sentences, quoted_whole
+    from manuscript_guard.text.placeholders import parse
+
+    namespace = whole_namespace()
+
+    def read(text: str) -> dict[str, Any]:
+        """What G2 says of the statistics a text quotes, and the intervals."""
+        placeholders, _malformed = parse(text)
+        return _told(quoted_whole([(MAIN, text, in_sentences(placeholders, text))], namespace))
+
+    return read
+
+
+@reading("data statement")
+def _data_statement() -> Reading:
+    from manuscript_guard.gates.data_statement import judge_statement
+
+    policy = {"identifier_required": True, "no_data": [r"(?i)\bdoes not report data\b"]}
+
+    def read(text: str) -> dict[str, Any]:
+        """What G4 says of a Data availability statement under a policy that requires an
+        identifier, with nothing cited."""
+        return _told(judge_statement(text, policy, set(), MAIN))
+
+    return read
+
+
+def whole_namespace() -> dict[str, Any]:
+    """Results that say what they belong to: two p values of one estimate, its interval, and
+    two shares of one denominator."""
+    from manuscript_guard.contracts.values import RESULTS, Value
+
+    def value(key: str, **said: Any) -> tuple[str, Any]:
+        return f"results.{key}", Value(key=key, value=1, display="1", origin=RESULTS, **said)
+
+    return dict(
+        [
+            value("or.point"),
+            value("or.ci_low", bounds="or.point", bound="low"),
+            value("or.ci_high", bounds="or.point", bound="high"),
+            value("or.p", of="or.point", family="secondary"),
+            value("hr.p", of="or.point", family="secondary"),
+            value("female.pct", of="female.n", over="cohort.n"),
+            value("male.pct", of="male.n", over="cohort.n"),
+            value("female.n"),
+            value("male.n"),
+            value("cohort.n"),
+        ]
+    )
+
+
 @reading("deviations")
 def _deviations() -> Reading:
     from manuscript_guard.gates.design import deviations_said

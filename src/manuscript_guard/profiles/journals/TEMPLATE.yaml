@@ -183,6 +183,30 @@ required_statements:
   #   author contributions (CRediT), patient consent, clinical trial registration number,
   #   reporting-guideline statement, use of AI in writing, data sharing plan.
 
+# ── What the Data availability statement says ────────────────────────────────────────────
+#
+# The heading above only says a statement exists. Where the journal's data policy says what
+# it must hold, record that here, read from the journal's own policy page and dated, and G4
+# reads the statement against it. Publishers differ: one accepts data "on request" when the
+# statement says why they cannot be public and how to ask, another accepts no such statement
+# for data that could be public, another lets a statement promise deposit at acceptance and
+# holds the paper until the identifier comes. So nothing is assumed: delete the block when
+# the journal's page says nothing, and copy no rule from another journal's.
+#
+#   data_availability:
+#     source: https://REPLACE-with-the-journal's-data-policy-page
+#     retrieved_on: 2026-10-15
+#     forbidden:
+#       # Data "on request" with no reason they cannot be public, and no route to them.
+#       - pattern: '(?i)\b(?:available|provided)\b[^.]{0,60}\bon (?:reasonable )?request\b'
+#         unless: '(?i)\b(?:because|owing to|due to|privacy|consent|licen[cs]e|committee)\b'
+#         why: say why the data cannot be shared openly, and how and from whom to ask
+#     # true when the statement must name a DOI, an accession number or an archived URL.
+#     identifier_required: true
+#     # The journal's own words for an article with no data, which need no identifier.
+#     no_data:
+#       - '(?i)\bdoes not (?:report|include) (?:any )?data\b'
+
 # ── References ───────────────────────────────────────────────────────────────────────────
 
 references:

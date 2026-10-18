@@ -512,6 +512,47 @@ manuscript said Figure 1 showed the estimate "against the comparators" and the f
 one row. Every other gate passed it, because every number in the figure was correct. The
 sentence was what was wrong.
 
+## The journal shortlist is a record
+
+The journal-profile skill had the agent propose three to five journals and the author
+choose, and said to record the shortlist and the decision in the project without naming a
+file or a shape. `journals/shortlist.yaml` is that record, held to a schema
+(`contracts/schemas/shortlist.schema.json`):
+
+* the author's criteria, asked for first and written down with who stated them and when:
+  the article type, open access and a funder's mandate, the APC budget, speed, the indexing
+  required, the audience, and how strong the author judges the contribution, which is their
+  statement and never an agent's grade;
+* the candidates, each claim made of one with its source URL and the date it was read, the
+  recent papers like this one that justify the fit, and the honest risk;
+* the ranking and its reasons, the decision and who made it, and the history of earlier
+  choices, which is what the skill reads again after a rejection.
+
+Whether a journal is one the registries know follows the pattern of `lookup`: an opt-in
+command asks, the answers are kept dated, and `check` reads them offline.
+`lookup --journals` asks the NLM Catalog (through E-utilities: ESearch on `<issn>[IS]`,
+ESummary's `currentindexingstatus`) whether each ISSN's journal is currently indexed for
+MEDLINE, and DOAJ (its search API, version 4) whether it is listed. It sends an ISSN and
+nothing of the manuscript. Each answer is kept in `journals/lookups/<issn>.yaml` with the
+digest of what it says. G4 warns when the target journal, found among the candidates by its
+profile or by the profile's name, is not currently indexed for MEDLINE on any of its ISSNs
+(`journal-not-in-medline`), and when it is open access and DOAJ lists it on none
+(`journal-not-in-doaj`). With no target journal set, the journal the decision chose is read.
+A target journal that is none of the candidates is said in a note
+(`journal-target-not-shortlisted`): the decision is not taken for it, since it may name
+another journal (round 1 of #321). Being listed is evidence against a predatory journal, not
+proof, and a sound one can be outside them; the author can say why in the candidate
+(`outside_medline`, `outside_doaj`), and the warning is then a note that quotes them. Neither
+ever fails (decided 2026-10-15). A record that is missing or edited, or an answer that did
+not come, is no evidence either way: a note (`journal-not-looked-up`). A journal ranked or
+chosen that is not among the candidates is a warning (`shortlist-unknown-journal`), and so is
+a shortlist that breaks its schema.
+
+Finding the journals that publish papers like this one is the skill's work, not the
+command's: a journal-name estimator that takes a title and an abstract, and PubMed. Both are
+asked by the agent, with the author's knowledge, and each claim is recorded with its source
+and date. The command never sends the manuscript's text anywhere.
+
 ## A figure file meets the journal's artwork guide
 
 A journal states the formats it takes, the resolution each kind of figure needs at the width
@@ -1090,6 +1131,21 @@ Two smaller decisions fell out of this:
 - **"n/a" is rejected as a reason.** A checklist item excluded needs a reason a reviewer
   could read — "no interventions were assigned" — because a reviewer does read this file.
 
+**What the Data availability statement says is the journal's rule, not the tool's.** G4 found
+the statement's heading and read nothing under it. Publishers differ on what it must hold:
+Springer Nature asks that data which cannot be shared openly say why, PLOS accepts "on
+request" only for data that cannot be public and holds a paper until its identifiers come
+(both pages read 2026-10-15), and this toolkit's own example names no identifier at all. A
+universal rule would be wrong for most of them. So a profile records its journal's policy in
+`data_availability`, with the page and the day it was read: the phrasings the journal does
+not accept, each with what makes it acceptable (`unless`, a reason or a route), whether a
+persistent identifier is required, and the journal's own forms for an article with no data.
+G4 reads the statement against them and fails what the journal does not accept, from
+internal review. Two warnings follow wherever a profile records a policy: storage that is
+neither persistent nor archived, a shared drive or a repository on a code host linked bare
+(a release, a tag or a commit is a fixed version), and a dataset DOI that the reference list
+does not cite, since data a paper rests on are cited like any other source.
+
 ## Word counting is a stated rule
 
 A limit is only checkable if both sides agree what is counted, and journals rarely say. The
@@ -1619,6 +1675,25 @@ limit on the abstract and no heading naming one, G4 says so (`abstract-not-found
 warning): the limit was checked against nothing and the abstract counted as main text. And
 the headings inside the abstract are the abstract's. A structured abstract's "Methods" and
 "Results" answered the journal's required sections in a paper whose body had neither.
+
+## A statistic is reported with what it belongs to
+
+A p value means nothing without the estimate it tests, a percentage without the counts it
+is a share of, and an estimate without its interval. Bound one by one, each passed G2 alone:
+"P = 0.012" in a sentence of its own, "52.1% were women" with no n/N, an odds ratio quoted
+everywhere with its upper bound only.
+
+So a statistic says what it belongs to when it is emitted, in both emitters: `of` names a p
+value's estimate or a share's numerator, `over` a share's denominator, and `family` the tests
+a p value is one of. G2 reads which bindings sit together in a sentence, and nothing of what
+the sentence says: a p value quoted in a sentence that binds no estimate of it, or a share in
+one that binds neither of its counts, is `quoted-alone`; an estimate emitted with an
+interval and quoted in no sentence with both its bounds is `interval-not-quoted-whole`. Both
+are warnings: a paper may rightly give a p value again a line after its estimate.
+
+Multiple comparisons are declared, never guessed. `correction("secondary", "holm")` says how
+a family is corrected, and "none" is a declaration too, with its reason. G8 warns on a
+family of more than one p value with no correction declared (`family-uncorrected`).
 
 ## A choice the code makes is declared, bound and read
 
@@ -2859,9 +2934,25 @@ stored one and recording its digest, which the command prints, is the author's.
 
 G15's warning about a model kind the Methods name and the analysis did not fit is not
 signed: it is about the prose, and its hint already says when there is nothing to do. The
-data custodian and the ethics lead sign nothing yet. The small-cell exception, the
-custodian's authorisation of a model provider and the override of a design-round major
-finding will each be a signable finding when they are built.
+ethics lead signs nothing yet, and the small-cell exception is not a signable finding.
+
+The data custodian authorises a model provider. Many data-use agreements forbid sending the
+data, or what is computed from them, anywhere the custodian has not agreed to, and a panel
+read by a model sends the manuscript, results and all, to whichever provider `review.models`
+names. Where `paper.yaml` says the custodian restricts that (`custodian: {restricts_sending:
+true}`), `review --run` sends to the built-in Ollama on this machine, and to any other
+provider only once the data custodian `authors.yaml` names under `roles:` has authorised it,
+with `manuscript-guard
+sign --as <them> --finding G11/custodian/send-to/<provider>`. The sign-off is bound to the
+provider's name, its address, and whether a server on this machine passes its calls on, so a
+provider pointed elsewhere, or an Ollama cloud model where only local ones were authorised,
+wants it again. A run with a provider not authorised sends nothing, writes nothing, and says
+who authorises it; a dry run says that a run would send nothing, and writes the requests for
+the custodian to read all the same. Only a built-in provider on this machine is taken at its
+address, for a model it is not known to pass on: a provider the author adds under
+`review.providers` is authorised whatever its address, because one at localhost may be a
+router or a tunnel that sends what it receives elsewhere, and was sent to unasked (round 1
+of #323). The design round sends the plan, and is held the same way.
 
 ## The plugin: skills for judgement, hooks for the moment of the mistake
 
@@ -6598,6 +6689,29 @@ Closed since, and why each mattered:
   CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
   is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
   which quotes the operative sentence for each.
+- **The gates read English text.** Measured 2026-10-14 on a copy of the example with its
+  scripts run, `check` clean before the edit:
+  - G2: Chinese puts no space between words, so in
+    "结果见表1，比值比为{{results.ror.point}}（95%置信区间…）。" the tokens "结果见表1，比值比为" and
+    "（95%置信区间" are read whole and match no rule, and the sentence fails with every result
+    bound; in English it passes. Numbers written in Chinese numerals, "共纳入四千份报告，
+    其中一百二十三份为肝损伤，比值比约为三点四", are not read as numbers, and nothing is
+    found in that sentence. Full-width digits in English prose ("Of ４０００ reports") are
+    read as digits and caught.
+  - G4: words are counted between spaces, so six short Chinese paragraphs added 18 to
+    `main_text_words`. A journal that publishes in Chinese counts characters, and the limits
+    mean nothing for Chinese text.
+  - G6 and G14: the phrasing, the abbreviations, the declared terms and the spelling are
+    lists and rules of English.
+  - `reworded`: a number in numerals is no fact, so one changed passes.
+
+  Japanese and Korean fare the same where they are written without spaces or in numerals.
+  Each manuscript file whose prose holds Han, Hiragana, Katakana or Hangul is said
+  (`script-not-read`, a warning and never a failure, since an English paper may quote a
+  title or a name in another script), with how many characters of each and what was not
+  checked in them. Reading those languages is weeks of work, for word splitting, their
+  conventions and numerals, and counting characters against a limit, and waits until
+  somebody writing in one of them asks.
 - **A pointer is held to the number of a placement, not to its key, and only where every
   placement is a binding.** "Table 2" passes wherever the main text places two tables,
   whichever two they are: the check sees the numbering, not which table a sentence means.
@@ -6658,6 +6772,15 @@ Closed since, and why each mattered:
   warning. A git-annex key in a chunked form (`-S`, `-C`) names a part, and its size is not
   compared. On Windows, a link to annexed content is read only where it was checked out as a
   link or as the text of its target.
+- **A journal is looked up by its ISSN, and judged by two registries.** A shortlist entry
+  with no ISSN is not looked up, and an ISSN mistyped as another journal's is looked up as
+  that journal. Being currently indexed for MEDLINE and listed in DOAJ is evidence against a
+  predatory journal, not proof of a sound one, and a journal can leave either after it was
+  asked; the record is as old as the day it was asked. A journal's being open access is the
+  shortlist's word (`open_access: true`), not read from DOAJ. The target journal is matched
+  to the shortlist by its profile's slug or its name, so a candidate named otherwise than
+  its profile is not found. The record's digest catches an edit, not someone who computes it
+  again.
 - **A lookup record is kept beside what it describes, so it catches an edit, not a
   forger.** `answers_sha256` is in the record it digests: an answer edited by hand is
   reported, and one edited by someone who computes the digest again is not. A reference
@@ -6779,6 +6902,10 @@ Closed since, and why each mattered:
   a cloud model Ollama names some other way, a proxy, a tunnel, or a llama.cpp or vLLM
   server that forwards what it receives, none of which the address or the name shows. A
   local server's model whose own name happens to end in `-cloud` is warned of needlessly.
+  Where the data custodian restricts sending, a provider the author adds is authorised
+  whatever its address, so a server they declare is covered; the built-in Ollama at
+  localhost is not, and an Ollama server set up to forward under other names is sent to
+  without the custodian's word.
 - **The size of a request is an estimate and no price is shown.** The statement before a
   run counts the calls and gives the bytes of the largest request at four characters a
   token. Tokenisers differ by model and prices change, so neither is built in; a model that
@@ -8365,6 +8492,30 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A statistic is held to what it declares it belongs to, and only by sentence.** A p
+  value or a share emitted without `of` is held to nothing, and nothing guesses that a key
+  named `.p` is a p value. A sentence is read as the interval check reads one, so a binding
+  of the estimate in the same sentence passes whatever the sentence says of it, and a
+  sentence that ends at an abbreviation's stop parts a p value from its estimate. An
+  estimate quoted only in a table, or a percentage in a table cell, is not read. A family
+  is counted across the whole results, and a correction declared twice for one family in two
+  fragments keeps the last read.
+- **A data statement is read by patterns, and only where the profile records a policy.** An
+  identifier is a DOI, an accession number of the archives listed in
+  `gates/data_statement.py` (GEO, SRA and its peers, BioProject, EGA, ArrayExpress, dbGaP),
+  a handle or an ARK, a Zenodo record, an OSF project, or a page archived by the Internet
+  Archive or Perma.cc; another archive's accession is found only where the profile lists it.
+  An identifier anywhere in the statement satisfies the rule, whatever it names, and so does
+  the DOI of a dataset the statement cites by its key: an entry of type `dataset` only, so a
+  `@misc` that holds a dataset and says nothing of it is not read as one. A forbidden
+  phrasing is matched as the profile writes it, without regard to case, and its `unless`
+  anywhere in the statement accepts it. The statement is the section under its heading, its subsections included, the
+  outermost where several headings match; a statement written as a paragraph with no heading
+  of its own is not read. A link to a repository with any path after its name, a branch's as
+  much as a release's, is taken for a fixed version, and a bare repository is warned of even
+  where the statement names its archive too. A dataset's DOI counts as cited when an entry of
+  `references.bib` holds it, whether the text cites that entry or not. A regular expression
+  in the profile that does not compile stops G4, as one in its required statements does.
 - **A placeholder is found by its kind, and only in the text the gate reads.** In the
   manuscript TODO and TBD count in any case, as they always did, so a Spanish "todo" quoted
   in the prose is one. A slot in brackets in a form the rules do not name, "[Name of the

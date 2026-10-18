@@ -35,7 +35,9 @@ from typing import Any
 import pytest
 from generated import (
     AGREED,
+    DATA_IDENTIFIERS,
     FILLER,
+    FIXED_LINKS,
     HELD,
     INPUTS,
     LOOKALIKES,
@@ -43,6 +45,7 @@ from generated import (
     PLACEHOLDERS,
     SOURCE_GAPS,
     SOURCE_WORDS,
+    TEMPORARY_LINKS,
     TERMS,
     TYPOGRAPHY,
     bindings,
@@ -583,6 +586,80 @@ def _seen_and_judged(text: str) -> None:
             with_scan = CLASSIFIER.classify(atom, chain, scan)
             assert with_scan == CLASSIFIER.classify(atom, chain), (text, atom.text)
             assert with_scan.kind in (TERM, STRUCTURAL, CONVENTION, UNCLASSIFIED)
+
+
+# -------------------------------------------------------------- a statistic quoted whole
+
+#: A sentence that quotes each statistic with what it belongs to, and the interval whole.
+_TOGETHER = (
+    "The ratio was {{results.or.point}} (95% CI {{results.or.ci_low}} to "
+    "{{results.or.ci_high}}; P = {{results.or.p}}), and {{results.female.n}} of "
+    "{{results.cohort.n}} ({{results.female.pct}}%) were women."
+)
+#: Each kind of statistic in a sentence of its own, without what it belongs to.
+_APART = ("Then P was {{results.hr.p}}.", "Men were {{results.male.pct}}%.")
+
+
+@st.composite
+def _quoted_apart(draw: st.DrawFn) -> str:
+    """A text that quotes each kind of statistic with what it belongs to, and each again in
+    a sentence without it: the planted sentences first, in an order drawn, so that nothing
+    drawn after them can put them in a comment it left open."""
+    planted = draw(st.permutations([_TOGETHER, *_APART]))
+    gaps = [draw(st.sampled_from((" ", "\n", "\n\n"))) for _ in planted[1:]]
+    after = zip(gaps, planted[1:], strict=True)
+    return planted[0] + "".join(gap + sentence for gap, sentence in after) + "\n\n" + draw(texts())
+
+
+@holds(200, _quoted_apart())
+def test_a_statistic_is_alone_only_in_a_sentence_without_what_it_belongs_to(text: str) -> None:
+    """Whatever the sentences around them, a p value and a share are said to be quoted alone
+    in the sentence that lacks their estimate or their counts, and in no other, and the
+    interval quoted whole once is not reported."""
+    from readings import whole_namespace
+
+    from manuscript_guard.gates.numbers import in_sentences, quoted_whole
+    from manuscript_guard.text.placeholders import parse
+
+    placeholders, _malformed = parse(text)
+    said = quoted_whole([(Path("main.md"), text, in_sentences(placeholders, text))],
+                        whole_namespace())  # fmt: skip
+    alone = sorted(f.message.split(" is quoted")[0] for f in said.findings)
+    assert alone == ["results.hr.p", "the share results.male.pct"], (alone, text)
+
+
+# ------------------------------------------------------------------- a data statement
+
+
+@st.composite
+def _statements(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """Drawn words, and the same with every kind of link put in at places drawn: each
+    temporary one, and each link to a fixed version of a repository."""
+    text = draw(texts())
+    pieces = text.split(" ")
+    for link in TEMPORARY_LINKS + FIXED_LINKS:
+        pieces.insert(draw(st.integers(0, len(pieces))), link)
+    return text, " ".join(pieces)
+
+
+@holds(100, _statements())
+def test_each_identifier_names_data_and_each_temporary_link_is_found(
+    drawn: tuple[str, str],
+) -> None:
+    """Whatever the words around it, each kind of identifier satisfies a journal that asks
+    for one, and each temporary link is found, and no link to a fixed version."""
+    from manuscript_guard.gates.data_statement import judge_statement
+
+    text, linked = drawn
+    policy = {"identifier_required": True}
+    for identifier in DATA_IDENTIFIERS:
+        said = judge_statement(f"{text} {identifier} {text}", policy, set(), Path("x"))
+        assert "data-identifier-missing" not in {f.code for f in said.findings}, identifier
+    found = judge_statement(linked, {}, set(), Path("x")).findings
+    temporary = sorted(f.message.split("'")[1] for f in found if f.code == "data-link-temporary")
+    before = judge_statement(text, {}, set(), Path("x")).findings
+    drawn_links = sorted(f.message.split("'")[1] for f in before if f.code == "data-link-temporary")
+    assert temporary == sorted(drawn_links + list(TEMPORARY_LINKS)), (temporary, linked)
 
 
 # ------------------------------------------------------------- what the plan's deviations say
@@ -2917,6 +2994,54 @@ def test_a_value_is_stated_whole_or_not_at_all(drawn: tuple[str, str]) -> None:
             assert contains(quote, value), (quote, value)
 
 
+# ------------------------------------------------------------- scripts the gates do not read
+
+#: Characters of each script the gates do not read, from the blocks of Unicode that hold it,
+#: its first and last code points among them.
+_FOREIGN = {
+    "Han": ("\N{CJK UNIFIED IDEOGRAPH-7ED3}", "\N{CJK UNIFIED IDEOGRAPH-3400}",
+            chr(0x9FFF), "\N{CJK COMPATIBILITY IDEOGRAPH-F900}"),
+    "Hiragana": ("\N{HIRAGANA LETTER A}", "\N{HIRAGANA LETTER SMALL A}",
+                 "\N{HIRAGANA DIGRAPH YORI}"),
+    "Katakana": ("\N{KATAKANA LETTER A}", "\N{KATAKANA LETTER SMALL KU}",
+                 "\N{HALFWIDTH KATAKANA LETTER A}"),
+    "Hangul": ("\N{HANGUL SYLLABLE GA}", "\N{HANGUL CHOSEONG KIYEOK}",
+               "\N{HANGUL LETTER KIYEOK}"),
+}  # fmt: skip
+
+
+@st.composite
+def _planted_scripts(draw: st.DrawFn) -> tuple[str, str, dict[str, int]]:
+    """A text, the same with runs of every script the gates do not read put into it at
+    places drawn, and how many characters of each went in. Every script in every example."""
+    from collections import Counter
+
+    text = draw(texts())
+    planted: Counter[str] = Counter()
+    runs = []
+    for script, characters in _FOREIGN.items():
+        run = "".join(draw(st.lists(st.sampled_from(characters), min_size=1, max_size=6)))
+        planted[script] += len(run)
+        runs.append(run)
+    pieces = text.split(" ")
+    for run in runs:
+        pieces.insert(draw(st.integers(0, len(pieces))), run)
+    return text, " ".join(pieces), dict(planted)
+
+
+@holds(200, _planted_scripts())
+def test_every_character_of_a_script_the_gates_do_not_read_is_counted(
+    planted: tuple[str, str, dict[str, int]],
+) -> None:
+    """Whatever the text, a run of Han, Hiragana, Katakana or Hangul put into it adds as many
+    characters of that script as it holds, and no other."""
+    from manuscript_guard.gates.scripts import scripts_in
+
+    text, with_them, expected = planted
+    before, after = scripts_in(text), scripts_in(with_them)
+    assert {name: after[name] - before[name] for name in _FOREIGN} == expected, with_them
+
+
 # ------------------------------------------------------------- the text of a vector figure
 
 
@@ -3881,6 +4006,28 @@ def _a_nought_is_trimmed_off_a_number(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(tokens, "_TRAIL", tokens._TRAIL + "0")
 
 
+def _katakana_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import scripts
+
+    left = {name: span for name, span in scripts.SCRIPTS.items() if name != "Katakana"}
+    patch.setattr(scripts, "_ANY", re.compile("[" + "".join(left.values()) + "]"))
+
+
+def _a_character_of_two_scripts_is_counted_twice(patch: pytest.MonkeyPatch) -> None:
+    from collections import Counter
+
+    from manuscript_guard.gates import scripts
+
+    def counted(text: str) -> Counter[str]:
+        found: Counter[str] = Counter()
+        for character in scripts._ANY.findall(text):
+            found.update(name for name, one in scripts._EACH.items() if one.match(character))
+        found["Han"] += 1 if found else 0
+        return found
+
+    patch.setattr(scripts, "scripts_in", counted)
+
+
 def _short_words_are_dropped_from_a_title(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import lookups
 
@@ -3957,6 +4104,37 @@ def _an_isbn_13_is_weighed_as_an_isbn_10(patch: pytest.MonkeyPatch) -> None:
         return total % 11 == 0
 
     patch.setattr(identifiers, "isbn_valid", valid)
+
+
+def _every_stop_is_in_one_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import numbers
+
+    patch.setattr(numbers, "_SENTENCE_END", re.compile(r"(?!)"))
+
+
+def _a_share_is_held_to_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import numbers
+
+    original = numbers.quoted_whole
+
+    def lax(files, namespace):
+        said = original(files, namespace)
+        return numbers.Report(tuple(f for f in said.findings if "share" not in f.message))
+
+    patch.setattr(numbers, "quoted_whole", lax)
+
+
+def _an_accession_number_is_no_identifier(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_statement
+
+    patch.setattr(data_statement, "IDENTIFIERS", data_statement.IDENTIFIERS[:1])
+
+
+def _a_release_is_temporary(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_statement
+
+    loose = data_statement.TEMPORARY.pattern.replace("/?(?![\\w/-])", "")
+    patch.setattr(data_statement, "TEMPORARY", re.compile(loose, re.IGNORECASE))
 
 
 def _placeholder_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
@@ -4916,6 +5094,14 @@ BROKEN = {
         _a_nought_is_trimmed_off_a_number,
         test_a_number_is_seen_where_it_stands_and_judged_one_way,
     ),
+    "Katakana is taken for a script the gates read": (
+        _katakana_is_read,
+        test_every_character_of_a_script_the_gates_do_not_read_is_counted,
+    ),
+    "a character is counted more than once": (
+        _a_character_of_two_scripts_is_counted_twice,
+        test_every_character_of_a_script_the_gates_do_not_read_is_counted,
+    ),
     "an ISBN-13 is weighed as an ISBN-10": (
         _an_isbn_13_is_weighed_as_an_isbn_10,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
@@ -4947,6 +5133,22 @@ BROKEN = {
     "an ISBN's groups are read as ISBNs": (
         _an_isbn_s_groups_are_read_as_isbns,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "every stop is read in one sentence": (
+        _every_stop_is_in_one_sentence,
+        test_a_statistic_is_alone_only_in_a_sentence_without_what_it_belongs_to,
+    ),
+    "a share is held to nothing": (
+        _a_share_is_held_to_nothing,
+        test_a_statistic_is_alone_only_in_a_sentence_without_what_it_belongs_to,
+    ),
+    "an accession number is no identifier": (
+        _an_accession_number_is_no_identifier,
+        test_each_identifier_names_data_and_each_temporary_link_is_found,
+    ),
+    "a link to a release is temporary": (
+        _a_release_is_temporary,
+        test_each_identifier_names_data_and_each_temporary_link_is_found,
     ),
     "a karyotype is read as a placeholder": (
         _a_karyotype_is_a_placeholder,

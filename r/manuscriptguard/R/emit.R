@@ -729,6 +729,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   state$variables <- list()
   state$models <- list()
   state$steps <- list()
+  state$corrections <- list()
   # Which cells this emitter produced from numbers, per table, in the shape the fragment
   # publishes. G2 reads it and applies the same rule to a fragment from either language;
   # without it, a composed cell and a typed one are the same characters on disk.
@@ -740,14 +741,29 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     if (startsWith(full, prefix)) substring(full, nchar(prefix) + 1L) else full
   }
 
+  # `of`, `over` and `family` say what a statistic that means nothing alone belongs to,
+  # mirroring the Python `value()`: a p value names its estimate with `of` and its family of
+  # tests with `family`; a share names its numerator with `of` and its denominator with
+  # `over`. G2 warns on a sentence that quotes it without them.
   value <- function(key, value, display = NULL, digits = NULL, unit = NULL,
                     quoted = TRUE, note = NULL, bounds = NULL, bound = NULL,
-                    level = NULL) {
+                    level = NULL, of = NULL, over = NULL, family = NULL) {
     if (!is.null(state$values[[key]])) {
       stop(key, " emitted twice by ", script_path, call. = FALSE)
     }
     if (is.null(bounds) && !is.null(level)) {
       stop(key, " declares a level without being a bound of anything", call. = FALSE)
+    }
+    if (identical(of, key) || identical(over, key)) {
+      stop(key, " declares itself as what it belongs to", call. = FALSE)
+    }
+    if (!is.null(over) && is.null(of)) {
+      stop(key, ": a share names its numerator with `of` beside its denominator `over`",
+           call. = FALSE)
+    }
+    if (!is.null(family) && (is.null(of) || !is.null(over))) {
+      stop(key, ": a family is of p values, each naming its estimate with `of` and no `over`",
+           call. = FALSE)
     }
     shown <- mg_display(key, value, display, digits)
     entry <- list(value = value, display = shown)
@@ -758,7 +774,29 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     if (!is.null(bounds)) entry$bounds <- bounds
     if (!is.null(bound)) entry$bound <- match.arg(bound, c("low", "high"))
     if (!is.null(level)) entry$level <- level
+    if (!is.null(of)) entry$of <- of
+    if (!is.null(over)) entry$over <- over
+    if (!is.null(family)) entry$family <- family
     state$values[[key]] <- entry
+    invisible(NULL)
+  }
+
+  # Declare how a family of p values is corrected for multiple comparisons, mirroring the
+  # Python `correction()`. "none" is a declaration too, and needs its reason.
+  correction <- function(family, method, reason = NULL) {
+    if (!nzchar(family) || !nzchar(method)) {
+      stop("correction: a family and a method, both named", call. = FALSE)
+    }
+    if (!is.null(state$corrections[[family]])) {
+      stop("correction for ", family, " declared twice by ", script_path, call. = FALSE)
+    }
+    if (tolower(trimws(method)) == "none" && (is.null(reason) || !nzchar(reason))) {
+      stop("correction for ", family, ": 'none' is a decision, and needs its reason",
+           call. = FALSE)
+    }
+    entry <- list(method = method)
+    if (!is.null(reason)) entry$reason <- reason
+    state$corrections[[family]] <- entry
     invisible(NULL)
   }
 
@@ -1260,6 +1298,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     if (length(state$variables) > 0) document$variables <- state$variables
     if (length(state$models) > 0) document$models <- state$models
     if (length(state$steps) > 0) document$steps <- state$steps
+    if (length(state$corrections) > 0) document$corrections <- state$corrections
     json <- jsonlite::toJSON(document, auto_unbox = TRUE, pretty = 2, digits = NA, null = "null")
     mg_write_lf(as.character(json), path)
 
@@ -1273,6 +1312,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
 
   list(
     value = value,
+    correction = correction,
     parameter = parameter,
     software = software,
     dictionary = dictionary,

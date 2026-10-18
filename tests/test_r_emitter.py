@@ -699,6 +699,60 @@ def test_r_and_python_declare_and_read_parameters_alike(tmp_path: Path) -> None:
     ]
 
 
+BELONGS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$value("or.point", 2.5, digits = 2)
+em$value("or.p", 0.012, digits = 3, of = "or.point", family = "secondary")
+em$value("female.pct", 52.1, digits = 1, of = "female.n", over = "cohort.n")
+em$correction("secondary", "holm")
+em$correction("exploratory", "none", reason = "hypothesis-generating")
+em$write()
+"""
+
+BELONGS_PY = """
+from manuscript_guard.emit import Emitter
+
+em = Emitter(__file__)
+em.value("or.point", 2.5, digits=2)
+em.value("or.p", 0.012, digits=3, of="or.point", family="secondary")
+em.value("female.pct", 52.1, digits=1, of="female.n", over="cohort.n")
+em.correction("secondary", "holm")
+em.correction("exploratory", "none", reason="hypothesis-generating")
+em.write()
+"""
+
+
+def test_r_and_python_say_alike_what_a_statistic_belongs_to(tmp_path: Path) -> None:
+    """Item 13: `of`, `over`, `family` and the corrections, the same from either language."""
+    import runpy
+
+    root = _parameter_project(tmp_path)
+    r_script = root / "analysis" / "belongs.R"
+    r_script.write_text(
+        BELONGS_R % {"emit": EMIT_R.as_posix(), "script": r_script.as_posix()},
+        encoding="utf-8",
+    )
+    out = _run_r(r_script, root)
+    assert out.returncode == 0, f"{out.stdout}\n{out.stderr}"
+    py_script = root / "analysis" / "belongs.py"
+    py_script.write_text(BELONGS_PY, encoding="utf-8")
+
+    def written() -> dict:
+        path = root / "results" / "belongs.json"
+        document = json.loads(path.read_text(encoding="utf-8"))
+        validate(document, "results", path)
+        return {"values": document["values"], "corrections": document["corrections"]}
+
+    from_r = written()
+    runpy.run_path(str(py_script), run_name="__main__")
+    assert written() == from_r
+    assert from_r["values"]["female.pct"]["over"] == "cohort.n"
+
+
 FROZEN_R = """
 if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
   cat("MISSING_DEPS\\n"); quit(status = 3)

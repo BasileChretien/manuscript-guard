@@ -41,6 +41,11 @@ stage: design
 # Set once you have chosen a journal; enables the journal gate.
 # target_journal: journal-of-examples
 
+# The study's design: the analysis plan is then asked for the sections it needs, each from
+# the guideline item it comes from. One of cohort, case-control, self-controlled,
+# disproportionality, trial, systematic-review, prediction-model.
+# study_type: cohort
+
 reporting_guideline: []
 
 # Numbers that are writing conventions rather than findings. Every addition needs a

@@ -1,13 +1,45 @@
 # manuscript-guard — design
 
-Status: design agreed 2026-08-03. **All eight phases built and tested.** 564 tests pass,
-including the corruption harness described below and the regression tests from two
-adversarial rounds. What remains is listed under Known gaps.
+Status: design agreed 2026-08-03. All eight phases are built, and what has been added since
+is described where it belongs. A statement written from now on says which kind of evidence
+below it rests on; much already here does not, and some of it is judgement or the author's
+decision, which is neither. What remains is listed under Known gaps.
 
 That list is load-bearing and has to be kept true. It drifted once — it went on claiming
 five guideline licences were unconfirmed after they had been read, and went on describing
 two defects that had been fixed — which is the same failure the toolkit exists to catch one
 level down. Correct it in the same commit as the code, or it becomes a rumour.
+
+## What a claim rests on
+
+A statement about the toolkit rests on one of four kinds of evidence, and says which; a
+choice or a judgement is neither, and says so:
+
+1. **A deterministic test is green in CI.** Most of what this document says of a gate rests
+   on this: its corruption cases, the generated inputs and their broken rules, the
+   differential readings. It proves the gate does what the test holds on the inputs the
+   test has, and no more.
+2. **A measurement on real inputs**, with its date, the inputs, and what it found, negative
+   results included. Some are recorded where they belong (`audit` on a submitted paper; a
+   clone of the project whose input digests failed). Two that would measure the toolkit as
+   a whole are proposed and not run: the review panel read against defects already known in
+   real papers, and how often G6 fires on clean text written by people.
+3. **The author used it on a real manuscript.**
+4. **Someone else did.**
+
+Tested, committed, reviewed, merged and released are different statements as well. A review
+of a pull request is no test; a release on PyPI is no use.
+
+The test of the whole toolkit is a measurement, not a claim: on real projects, are critical
+problems found before submission, by the tool or by the person it sends the author to? It
+has not been measured. The two proposed above would be first steps, and real users the
+next.
+
+**Defaults taken, not decided by the author.** Where the author was asked to choose and did
+not, and a default was taken, it is recorded here with its date, in those words, so that a
+default is never read as a decision. None has been taken. Two choices put to the author are
+open: the model for the paid evaluation runs, which wait unrun, and which gates and
+commands have run on the author's real manuscript, for the README's "Status".
 
 ## What this is
 
@@ -605,6 +637,33 @@ too low is too low at any width, and the kind is halftone. A figure placed only 
 supplement is held to the profile's `supplementary:` rules where it has them. All of it is a
 warning, and a note where the journal applies the rules only once the paper is accepted
 (`applies_from: acceptance`).
+
+## The journal's citation style is used by every build
+
+A profile names the journal's citation style as the CSL style repository and Zotero name it
+(`references: {csl: the-lancet}`). Only the live build used it, by handing the name to
+Zotero. The offline build, which is what CI and a co-author without Zotero get, formatted in
+pandoc's default style unless `--csl` named a file. `manuscript-guard style` now fetches the
+style once from the repository's own files and keeps it in the project, under
+`profiles/journals/styles/`. A name is asked for at the repository's root, where its
+independent styles are, and then under `dependent/`. A dependent style holds no formatting of
+its own and names the style it formats like (`<link rel="independent-parent">`), so that
+style is fetched from the root and kept beside it. A record, `<name>.yaml`, holds each
+file's address, the SHA-256 of its bytes, the licence it names, the day, and the style's
+citation format.
+
+An offline build without `--csl` formats with the stored style, and `--csl` still wins. The
+folder of whatever style the build is given is put on pandoc's resource path after the
+working directory, because pandoc looks there for a dependent style's parent, by its name,
+before it would fetch it: an offline build of a stored dependent style opens no connection.
+A live build hands the same name to Zotero, as before, so both format alike where Zotero
+has the style installed. G4 warns where the profile names a style and the project holds no
+copy (`journal-style-not-stored`); where a stored file is not what was fetched
+(`journal-style-changed`), which the build then does not use; and where the style's
+citation format, the dependent style's own or else its parent's, disagrees with the
+profile's `numbered:` (`journal-style-format`). The styles are the CSL project's, under
+CC BY-SA 3.0, and live in the author's project: nothing of them is in this package, and the
+tests write their own.
 
 ## The build
 
@@ -2764,7 +2823,14 @@ the paper's facts from `paper.yaml`, `design/plan.md` without its front matter a
 and with its feasibility results printed into it, and the feasibility results, each under its
 key. Not the manuscript, and no result but a feasibility one: a binding in the plan to any
 other result, a value or a table, is sent as written, since a design round reads the plan
-before there are results (round 1 of #316: a table the plan bound was printed whole). Each
+before there are results (round 1 of #316: a table the plan bound was printed whole).
+Where `paper.yaml` declares a study design (`study_type`), what a plan for that design has
+to settle is sent too, under "What this study design needs": each section
+`data/study_types.yaml` gives the design, what it says and the guideline item it comes from,
+for the reviewer to ask of the plan as far as their remit goes. So a cohort's plan is asked
+about its time zero and follow-up, its confounding and its missing data, and a trial's
+about its estimand, its randomisation and its interim analyses: the risks of the study type
+item 46 asks the remits to name, from one table that G12 and G5 read too. Each
 reviewer is told it reads a plan before its analysis is run, and that a major finding is one
 the design cannot meet: the instructions are the manuscript round's, rewritten in ten places
 and naming no manuscript, so the reply asked for is the same. A
@@ -2819,6 +2885,21 @@ no package to write it. G12 warns (`plan-changed-after-results`) when the plan's
 from the copy's and its Deviations section says what it said then: changed with nothing said.
 A plan re-wrapped without a word changed is unchanged. Results with no copy, written before
 the emitters kept one, are a note.
+
+**A plan says what its design needs.** The seven sections are the same for every plan, so a
+disproportionality analysis with no case definition or comparator, or a trial with no
+estimand, passed. A project names its design in `paper.yaml` (`study_type`: cohort,
+case-control, self-controlled, disproportionality, trial, systematic-review,
+prediction-model), and G12 then asks the plan for the sections that design needs as well:
+the estimand of a trial (ICH E9(R1)), the time zero and the confounders of a cohort
+(STROBE, TARGET), the risk windows of a self-controlled design, the deduplication, case
+definition, comparator and measure of a disproportionality analysis (READUS-PV). Each
+section in `data/study_types.yaml` names the guideline item it comes from and the date that
+item was read, and the finding's hint carries it. The same table gives the guidelines the
+paper follows, so G5 says (`reporting-guideline-for-design`) when the design is named and
+none of them is declared; the reporting-checklist skill shows the table, and a test holds
+the two to one another. A project that names no design is asked for the seven, as before.
+What the sections say is the author's and the panel's to judge, never a gate's.
 
 ## Stages: not every gate binds on day one
 
@@ -4492,6 +4573,35 @@ response document prints it in the author's own words rather than inventing agre
 Severity follows the internal panel: an author part-way through a revision must still be
 able to build something to read, so ordinary work warns and a resubmission fails.
 
+**The letter is checked like the manuscript.** It goes to the journal with the paper, and
+`response` and `rebutted` were printed in it word for word: "the adjusted OR is now 2.31
+(95% CI 1.40 to 3.80)" typed into a reply went out unchecked, the core rule with a hole in a
+document we send. G2 now reads the authors' own words in each round as it reads prose, in a
+section of their own, so the Methods' conventions, an alpha among them, do not pass a
+reply's "p < 0.001". A reply binds its results with `{{results.<key>}}` and `{{lit.<key>}}`,
+which the letter fills in; a typed one is `reply-unbound-number`, which fails at submission,
+since the letter is written while the analysis is run again. A number after a word that names
+a place, "lines 120-125", "Reviewer 2", "comment 1.3", "page 4", is that place, and no binding
+could give it. The reviewer's `comment` is the reviewer's, and is not read.
+
+A reply that says the text "now reads" something names it as a `text` entry in `changed`,
+with the `quote` and, where the reply says where, the `section`. Parsing "now reads" out of
+the prose was the alternative, and it would have missed every other wording. The quote is
+looked for in the manuscript as it renders now; in the section named, found by its heading;
+and not in the copy of the manuscript as the journal received it, which `respond --open`
+writes beside the round, rendered, in `revision/round-<N>/submitted/`. Digests could not
+say whether a sentence was already there. A copy, not the commit: CI clones one commit
+deep, and a round may be opened from a tree with changes not yet committed. A quote is
+compared as a sentence, not as Markdown: comments, the marks of emphasis and code, and the
+wrapping of lines are left out on both sides, and a binding in the quote is filled in.
+
+What else must not reach a journal in a reply: G6's artefacts (all but the assistant's
+register, since "Certainly, we have revised the Methods" opens many a reply); the tool's
+name; a gate with one of its finding codes; a place in the source files, `main.md:120`,
+which the journal never sees; the marker `[AUTHOR: ...]` that the `reviewer-response` skill
+writes where the author still has to supply something; and the template's own text in a
+`comment`. Each warns during the revision and fails at submission, as the rest of G13.
+
 ## Round five, and what it says about the last two days
 
 Four reviewers, all able to run their reproductions this time. The revision cycle and the
@@ -5714,6 +5824,26 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
   once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and
   "%", "years" and "y"), is no longer reported as written two ways.
+- **G8 holds only the arithmetic an analysis declares.** `em.relation` and `em.flow` say
+  which results are a sum, a difference, a ratio or an order of which, and G8 checks those.
+  A subgroup total nobody declared is not checked, and nothing searches the prose for numbers
+  that might add up. That is the price of checking nothing by guesswork.
+- **A relation between values is exact, so a value emitted rounded fails it.** Whole numbers
+  are compared exactly and floats to their last bits (a relative 1e-9). A script that emits
+  `round(rate, 1)` instead of the rate breaks a ratio that holds, and is told to emit the
+  value unrounded and let the display round it.
+- **The printed arithmetic reads the first number of each display.** A display that is not a
+  rounding of its own value ("<0.001", a rate printed per 1,000 of a value held per person,
+  "1.2 × 10⁻³") is left out of it, and the relation is then held to the values alone. A
+  share held as a fraction and printed as a percentage is read as a percentage. The warning
+  is meant to fire routinely: percentages rounded one by one often miss 100, and the text
+  may say so rather than change a number.
+- **A flow's record is checked step by step, and nothing more.** "One study, several
+  reports" (PRISMA 2020) is not a subtraction, so a flow stops at the reports and the studies
+  are an `at_most` of them. Where one record can be excluded for several reasons, the step is
+  named in `overlapping`, which waives the sum of that step's reasons but not its total; the
+  reasons are still each at most what the step removed, and together at least that. The flow diagram is not yet
+  drawn from the record: a figure script reads the counts from the results like any other.
 - **A UTF-16 input without a BOM is normalised as if it were 8-bit text.** Its 0x0D and 0x0A
   bytes can belong to ordinary characters, so an edit that swaps one such character for
   another (U+4E0D for U+4E0A) can leave the digest unchanged and pass G1. Exports that write
@@ -6111,6 +6241,15 @@ Added by the adversarial review, verified and **not** fixed:
   splice that item over the whole block (see "The round trip carries prose"). Comparing
   them needs an identifier per item and a merge that puts the list marker back, and neither
   exists.
+- **A design's sections are found by the words of their headings.** "Comparator" is any
+  heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
+  has the section, and one that answers the question under a heading of its own words has
+  not. Seven designs are named; a design outside them (a cross-sectional study, a
+  diagnostic accuracy study, a target trial emulation as a design of its own) names none and
+  keeps the seven sections. The self-controlled designs have no reporting guideline, and
+  their sections come from the methods literature. G5 holds the paper's guidelines to the
+  design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
+  its name, so a name that begins as another does ("STROBE-anything").
 - **Which blocks are paragraphs is decided by pattern, not by pandoc.** `tag` runs where
   pandoc may be absent, so it reproduces pandoc's rules — two spaces after "C." before it is
   a list, the inline HTML tags a paragraph may open with, what can interrupt a paragraph —
@@ -6772,6 +6911,16 @@ Closed since, and why each mattered:
   warning. A git-annex key in a chunked form (`-S`, `-C`) names a part, and its size is not
   compared. On Windows, a link to annexed content is read only where it was checked out as a
   link or as the text of its target.
+- **A stored citation style is held to its digest, and trusted beyond that.** `style`
+  takes what the CSL style repository serves on its default branch, and the record's
+  digests catch a file edited since, not a style that was wrong when fetched. A dependent
+  style whose parent is itself dependent is refused. A style the
+  profile names by another site's URL is not fetched; `--csl` is then the way. G4 compares
+  the citation format with `numbered:` only, so a numeric style whose numbers sit in
+  brackets, for a journal that wants them superscript, passes. A style named in the profile
+  but always given by hand with `--csl` is warned of all the same, since `check` does not
+  know what the build is passed. The document records the digest of the style it was given,
+  so `import` notices a changed dependent style, and not a changed parent beside it.
 - **A journal is looked up by its ISSN, and judged by two registries.** A shortlist entry
   with no ISSN is not looked up, and an ISSN mistyped as another journal's is looked up as
   that journal. Being currently indexed for MEDLINE and listed in DOAJ is evidence against a
@@ -8492,6 +8641,20 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A reply is checked for what it holds, not for what it claims in prose.** A reply that
+  says the Abstract "now reads" a sentence without a `text` entry is not checked. A quote
+  is compared without Markdown's marks of emphasis and code and without its line breaks,
+  but with its punctuation and quotation marks as typed. A section is found by the words of
+  its heading, so "Discussion" is a section named "Discussion and conclusions" too, and a
+  quote in a subsection counts as in the section above it. A round opened before the copy
+  was kept says that a quote cannot be checked for being new. A place in the source files
+  is caught only as a file name with a line, `main.md:120` or `main.md line 120`; "line
+  120" alone may be the revised manuscript's, which journals ask for. A gate is caught
+  only as `G13: point-unanswered`, with a colon and one of the codes that fail after it,
+  since "G2/M" is a phase of the cell cycle and "G1 (well-differentiated)" a tumour's
+  grade; a warning's code after a gate is not caught. A number after a word that names a
+  place is not read, so "line 3.2" or "Reviewer 2 found 41 cases" types its second number
+  past G2 only where a place word stands before it.
 - **A statistic is held to what it declares it belongs to, and only by sentence.** A p
   value or a share emitted without `of` is held to nothing, and nothing guesses that a key
   named `.p` is a p value. A sentence is read as the interval check reads one, so a binding

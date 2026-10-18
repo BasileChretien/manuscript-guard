@@ -100,6 +100,10 @@ class Project:
         return self.paper.get("target_journal")
 
     @property
+    def study_type(self) -> str | None:
+        return self.setting("study_type")
+
+    @property
     def reporting_guidelines(self) -> tuple[str, ...]:
         return tuple(self.setting("reporting_guideline") or ())
 

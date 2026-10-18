@@ -39,6 +39,7 @@ Reading = Callable[[Any], Any]
 READINGS: dict[str, Callable[[], Reading]] = {}
 
 MAIN = Path("manuscript") / "main.md"
+ROUND = Path("revision") / "round-1.yaml"
 PAPER = Path("paper.yaml")
 
 #: The authors a blind review is not to see, as `authors.yaml` holds them: a given name of
@@ -641,6 +642,28 @@ def _title() -> Reading:
     from manuscript_guard.contracts.project import outside_maths
 
     return lambda line: [outside_maths(line), outside_maths(line, keyword=True)]
+
+
+@reading("reply numbers")
+def _reply_numbers() -> Reading:
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.numbers import reply_numbers
+
+    classifier = Classifier.load([], [])
+    where = "round 1, reviewer-1 point 1.1, `response`"
+
+    def read(text: str) -> dict[str, Any]:
+        """What G2 says of a reply to a reviewer, with no result to bind to."""
+        return _told(reply_numbers(text, ROUND, where, classifier, {}))
+
+    return read
+
+
+@reading("quoted")
+def _as_quoted() -> Reading:
+    from manuscript_guard.gates.revision import as_quoted
+
+    return as_quoted
 
 
 @reading("quotation")

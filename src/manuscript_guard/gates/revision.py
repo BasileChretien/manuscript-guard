@@ -18,6 +18,17 @@ recorded rebuttal is unanswered.
 Severity follows the same rule as the internal panel: an author mid-revision must be able to
 build a document to read, so ordinary work warns. Resubmitting with an unanswered point, or
 with a claimed revision that did not happen, fails.
+
+A response that says the text "now reads" something names it in `changed`, as a `text` entry
+with the `quote`, and the section where it stands if the response names one. The quote is
+looked for in the manuscript as it renders now, and in the copy of the manuscript as the
+journal received it, which `respond --open` writes beside the round: in the first, or the
+response quotes text the paper does not hold; not in the second, or nothing changed.
+
+And the letter is a document that goes to the journal, so what the authors wrote in it is
+read as such: G6's artefacts, the tool's own words and codes, a binding left unfilled, a
+place in the source files, the marker the `reviewer-response` skill leaves where the author
+still has to write, and the template's own text.
 """
 
 from __future__ import annotations
@@ -27,12 +38,18 @@ from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_structured, read_text, validate
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.findings import FAIL, WARN, Finding, Report
+from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 from manuscript_guard.gates.review import file_digests
 from manuscript_guard.roundtrip import _INLINE_HTML
 
 GATE = "G13"
 REVISION_DIR = "revision"
+#: Where `respond --open` writes the manuscript as the journal received it, rendered.
+SUBMITTED_DIR = "submitted"
+#: What the `reviewer-response` skill writes where the author still has to supply something.
+MARKER = re.compile(r"\[AUTHOR:[^\]\n]*\]")
+#: The text `respond --open` puts in a new round for the reviewer's words.
+TEMPLATE_COMMENT = "Quote the reviewer here, in their words."
 
 
 def rounds(project: Project) -> list[tuple[int, Path]]:
@@ -81,6 +98,9 @@ def check_revision(project: Project, *, submission: bool = False) -> Report:
                     severity, paragraphs, seen,
                 )
                 answered += int(ok)
+                report = report.merge(
+                    _reply(path, number, reviewer["id"], point, severity)
+                )
 
     return report.with_counts(
         revision_rounds=len(found),
@@ -175,6 +195,10 @@ def _check_point(
         )
 
     for entry in changed:
+        if entry["kind"] == "text":
+            report, quoted = _quoted(report, project, number, where, entry, severity, seen)
+            ok = ok and quoted
+            continue
         problem = _unverified(project, entry, submitted, current)
         if problem is None:
             continue
@@ -285,6 +309,211 @@ def _passages(project: Project) -> set[str]:
                     run.append(line)
             keep(run)
     return found
+
+
+def displays(project: Project) -> dict[str, str]:
+    """What each binding prints, as the build fills it in."""
+    from manuscript_guard.contracts import load_namespace
+
+    return {ref: value.display for ref, value in load_namespace(project)[0].items()}
+
+
+def rendered_manuscript(project: Project, rendered: dict[str, str] | None = None) -> str:
+    """The manuscript's files, joined in order, with every binding filled in: the text a
+    quote of it is looked for in, and what `respond --open` keeps as submitted."""
+    from manuscript_guard.gates.numbers import source_files
+    from manuscript_guard.text.placeholders import substitute
+
+    rendered = displays(project) if rendered is None else rendered
+    return "\n\n".join(
+        substitute(read_text(path), rendered)
+        for path in source_files(project.path("manuscript"))
+    )
+
+
+def submitted_copy(project: Project, number: int) -> str | None:
+    """The manuscript as the journal received it in round `number`, or None where the round
+    was opened without a copy."""
+    folder = project.root / REVISION_DIR / f"round-{number}" / SUBMITTED_DIR
+    if not folder.is_dir():
+        return None
+    return "\n\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(folder.rglob("*.md"))
+    )
+
+
+#: What a quote is compared without: comments, the marks of emphasis and code, and how the
+#: lines are wrapped. A response quotes the sentence, not its Markdown.
+_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def as_quoted(text: str) -> str:
+    """Text as a quote of it is compared: no comments, no `*` or backtick, and every run of
+    space, line ends included, one space."""
+    text = _COMMENT.sub(" ", text).replace("*", "").replace("`", "")
+    return " ".join(text.split())
+
+
+def _in_section(text: str, quote: str, section: str) -> bool:
+    """Whether `quote` stands in a section whose title holds the words of `section`."""
+    from manuscript_guard.text.sections import split_sections
+
+    wanted = re.findall(r"\w+", section.casefold())
+    for found in split_sections(text):
+        words = re.findall(r"\w+", found.title.casefold())
+        held = any(words[at : at + len(wanted)] == wanted for at in range(len(words)))
+        if held and quote in as_quoted(found.enclosed):
+            return True
+    return False
+
+
+def _quoted(
+    report: Report,
+    project: Project,
+    number: int,
+    where: str,
+    entry: dict,
+    severity: str,
+    seen: dict,
+) -> tuple[Report, bool]:
+    """A claim that the text now reads a quote: in the manuscript now, not in what the
+    journal received, and in the section the response names."""
+    from manuscript_guard.text.placeholders import substitute
+
+    if "rendered" not in seen:
+        seen["displays"] = displays(project)
+        seen["rendered"] = rendered_manuscript(project, seen["displays"])
+    # A quote may hold a binding, as the sentence it quotes does: it is read filled in.
+    quote = as_quoted(substitute(str(entry.get("quote", "")), seen["displays"]))
+    now = seen["rendered"]
+    problem = None
+    if quote not in as_quoted(now):
+        problem = ("quoted-text-absent", "the manuscript does not now read it")
+    elif entry.get("section") and not _in_section(now, quote, str(entry["section"])):
+        problem = ("quoted-text-elsewhere", f"it is not in the {entry['section']}")
+    if problem is not None:
+        code, said = problem
+        return (
+            report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code=code,
+                    severity=severity,
+                    message=f"{where}: the response says the text now reads this, and {said}",
+                    context=quote[:140],
+                    hint="quote the sentence as the paper now prints it, or make the change",
+                )
+            ),
+            False,
+        )
+    before = submitted_copy(project, number)
+    if before is None:
+        return (
+            report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="quoted-text-unchecked",
+                    severity=INFO,
+                    message=f"{where}: whether the quoted text is new cannot be told: round "
+                    f"{number} was opened without a copy of the manuscript as submitted",
+                    context=quote[:140],
+                    hint="a round opened with this version of `respond --open` keeps one",
+                )
+            ),
+            True,
+        )
+    if quote in as_quoted(before):
+        return (
+            report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="quoted-text-not-new",
+                    severity=severity,
+                    message=f"{where}: the response offers this as a change, and the "
+                    f"manuscript the journal received already read it",
+                    context=quote[:140],
+                    hint="make the change, or say in `rebutted` that the text already said "
+                    "this, and where",
+                )
+            ),
+            False,
+        )
+    return report, True
+
+
+#: What must never reach a journal in a letter: the tool's name, a gate with a finding code
+#: of the tool's, and a place in the source files the journal never sees.
+_TOOL_NAME = re.compile(r"\b(?:manuscript[-_]guard|mguard)\b", re.IGNORECASE)
+#: A gate is said only with one of the tool's own finding codes after a colon, "G13:
+#: point-unanswered": "G1 (well-differentiated)" is a tumour's grade and "G2/M" a phase of the
+#: cell cycle.
+def _gate_code() -> re.Pattern[str]:
+    from manuscript_guard.policy import BINDS_AT
+
+    codes = "|".join(sorted((re.escape(code) for code in BINDS_AT), key=len, reverse=True))
+    return re.compile(rf"\bG(?:1[0-5]|[1-9])r?[ \t]*:[ \t]*(?:{codes})\b")
+
+
+_SOURCE_PLACE = re.compile(r"\b[\w./-]+\.md(?::\d+|,?[ \t]+lines?[ \t]+\d+)", re.IGNORECASE)
+
+
+def _reply(path: Path, number: int, reviewer: str, point: dict, severity: str) -> Report:
+    """What the authors wrote in this point, read as text that goes to the journal."""
+    from manuscript_guard.gates.writing import load_rules
+
+    where = f"round {number}, {reviewer} point {point['id']}"
+    report = Report()
+    if str(point.get("comment", "")).strip() == TEMPLATE_COMMENT:
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="response-placeholder",
+                severity=severity,
+                message=f"{where} still holds the template's text where the reviewer's words go",
+                path=path,
+                hint="quote the reviewer, in their words",
+            )
+        )
+    rules = load_rules()
+    for field in ("response", "rebutted"):
+        text = str(point.get(field, "") or "")
+        found: list[tuple[str, str, str]] = [
+            ("response-placeholder", m.group(0), "a place the author still has to write")
+            for m in MARKER.finditer(text)
+        ]
+        for rule in rules.artefacts:
+            # "Certainly, we have revised the Methods" opens many a reply to a reviewer: in a
+            # letter the assistant's register is the authors' own.
+            if rule["id"] == "assistant-voice":
+                continue
+            flags = re.MULTILINE | (re.IGNORECASE if rule.get("any_case_in_manuscript") else 0)
+            found += [
+                ("response-artefact", m.group(0), rule["why"])
+                for m in re.finditer(rule["pattern"], text, flags)
+            ]
+        found += [
+            ("response-leak", m.group(0), why)
+            for pattern, why in (
+                (_TOOL_NAME, "the name of the tool that checked it"),
+                (_gate_code(), "a gate of the tool that checked it"),
+                (_SOURCE_PLACE, "a place in the source files, which the journal never sees"),
+            )
+            for m in pattern.finditer(text)
+        ]
+        for code, shown, why in found:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code=code,
+                    severity=severity,
+                    message=f"{where}, `{field}`: {shown[:60]!r} - {why}",
+                    path=path,
+                    context=text[:140],
+                    hint="the letter goes to the journal as written; take it out or "
+                    "write what it stands for",
+                )
+            )
+    return report
 
 
 def _unverified(project: Project, entry: dict, submitted: dict, current: dict) -> str | None:

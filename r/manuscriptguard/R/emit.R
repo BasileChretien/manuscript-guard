@@ -729,6 +729,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   state$variables <- list()
   state$models <- list()
   state$steps <- list()
+  state$relations <- list()
+  state$flows <- list()
   state$corrections <- list()
   # Which cells this emitter produced from numbers, per table, in the shape the fragment
   # publishes. G2 reads it and applies the same rule to a fragment from either language;
@@ -1178,6 +1180,129 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     invisible(NULL)
   }
 
+  # Declare arithmetic between results, which G8 then holds them to, mirroring the Python
+  # `relation()`:
+  #
+  #   em$relation("sum", "cohort.n", c("cohort.n_men", "cohort.n_women"))
+  #   em$relation("ratio", "rate.per_1000", c("events.n", "person_years"), scale = 1000)
+  #
+  # A sum is the key equal to the sum of the others; a difference the first less the
+  # second; a ratio the first over the second, times `scale`; `at_most` the key no more than
+  # the other; `in_order` the key not after the other. The keys may be another script's.
+  relation <- function(kind, key, of, scale = NULL) {
+    arity <- c(sum = 0L, difference = 2L, ratio = 2L, at_most = 1L, in_order = 1L)
+    if (!is.character(kind) || length(kind) != 1L || !kind %in% names(arity)) {
+      stop("relation '", key, "': the kinds are ", paste(names(arity), collapse = ", "),
+           call. = FALSE)
+    }
+    of <- as.character(of)
+    expected <- arity[[kind]]
+    if (expected > 0L && length(of) != expected) {
+      stop("relation '", key, "': a ", kind, " is of ", expected, " key(s), not ", length(of),
+           call. = FALSE)
+    }
+    if (length(of) == 0L) {
+      stop("relation '", key, "': a ", kind, " is of at least one key", call. = FALSE)
+    }
+    if (!is.null(scale) && kind != "ratio") {
+      stop("relation '", key, "': only a ratio has a scale", call. = FALSE)
+    }
+    if (!is.null(scale) && !(is.numeric(scale) && length(scale) == 1L && is.finite(scale) &&
+                             scale > 0)) {
+      stop("relation '", key, "': a ratio's scale is a positive number", call. = FALSE)
+    }
+    # unname: a named vector, as sapply returns, would be written as a JSON object.
+    entry <- list(kind = kind, key = key, of = as.list(unname(of)))
+    if (!is.null(scale)) entry$scale <- scale
+    state$relations[[length(state$relations) + 1L]] <- entry
+    invisible(NULL)
+  }
+
+  # Record a flow of participants or records, every count a result of its own, mirroring
+  # the Python `flow()`. Stages, each step's reasons and the arms are named vectors, the
+  # names their labels:
+  #
+  #   em$flow("consort",
+  #           stages = c("Assessed for eligibility" = 412, "Randomised" = 300),
+  #           exclusions = list(c("Not meeting criteria" = 87, "Declined" = 25)),
+  #           arms = c(Drug = 151, Placebo = 149))
+  #
+  # Each stage less its exclusions is the next stage, and the arms sum to the last stage.
+  # `overlapping` names the steps whose reasons overlap, `3` for the step from stage 3 to
+  # stage 4, or is TRUE for every step: their reasons may then sum to more than the step
+  # removed, and the stages must still agree.
+  flow <- function(key, stages, exclusions, arms = NULL, overlapping = FALSE,
+                   quoted = TRUE) {
+    if (!is.character(key) || length(key) != 1L || !grepl("^[a-z][a-z0-9_]*$", key)) {
+      stop("flow '", key, "': a key is lowercase letters, digits and underscores",
+           call. = FALSE)
+    }
+    if (!is.null(state$flows[[key]])) {
+      stop("flow '", key, "' recorded twice by ", script_path, call. = FALSE)
+    }
+    if (!is.list(exclusions)) exclusions <- list(exclusions)
+    if (length(stages) < 2L || length(exclusions) != length(stages) - 1L) {
+      stop(sprintf(paste0("flow '%s': %d stage(s) need %d set(s) of exclusions, one for each ",
+                          "step, and there are %d"),
+                   key, length(stages), max(length(stages) - 1L, 1L), length(exclusions)),
+           call. = FALSE)
+    }
+    groups <- c(list(stages), exclusions, if (length(arms) > 0) list(arms))
+    for (counts in groups) {
+      if (length(counts) == 0L) next
+      if (!is.numeric(counts) || any(!is.finite(counts)) || any(counts != round(counts)) ||
+          any(counts < 0)) {
+        stop("flow '", key, "': every count is a whole number, none below 0", call. = FALSE)
+      }
+      labels <- names(counts)
+      if (is.null(labels) || any(is.na(labels) | !nzchar(labels))) {
+        stop("flow '", key, "': every count is named by its label", call. = FALSE)
+      }
+    }
+    steps <- length(stages) - 1L
+    if (is.logical(overlapping) && length(overlapping) == 1L && !is.na(overlapping)) {
+      overlapping <- isTRUE(overlapping)
+    } else if (is.numeric(overlapping) && length(overlapping) > 0L &&
+               all(is.finite(overlapping)) && all(overlapping == round(overlapping)) &&
+               all(overlapping >= 1) && all(overlapping <= steps)) {
+      overlapping <- as.list(sort(unique(as.integer(unname(overlapping)))))
+    } else {
+      stop("flow '", key, "': overlapping is TRUE, FALSE, or the numbers of the steps whose ",
+           "reasons overlap, from 1 to ", steps, call. = FALSE)
+    }
+    whole <- function(counts) if (length(counts) == 0L) integer() else as.integer(counts)
+    problem <- mg_flow_problem(whole(stages), lapply(exclusions, whole), whole(arms),
+                               overlapping)
+    if (!is.null(problem)) stop("flow '", key, "': ", problem, call. = FALSE)
+
+    record <- list(stages = list(), exclusions = list(), overlapping = overlapping)
+    for (n in seq_along(stages)) {
+      name <- sprintf("flow.%s.stage.%d", key, n)
+      value(name, as.integer(stages[[n]]), quoted = quoted)
+      record$stages[[n]] <- list(label = names(stages)[[n]], key = name)
+    }
+    for (n in seq_along(exclusions)) {
+      step <- exclusions[[n]]
+      reasons <- list()
+      for (m in seq_along(step)) {
+        name <- sprintf("flow.%s.excluded.%d.%d", key, n, m)
+        value(name, as.integer(step[[m]]), quoted = quoted)
+        reasons[[m]] <- list(reason = names(step)[[m]], key = name)
+      }
+      record$exclusions[[n]] <- reasons
+    }
+    if (length(arms) > 0) {
+      record$arms <- list()
+      for (n in seq_along(arms)) {
+        name <- sprintf("flow.%s.arm.%d", key, n)
+        value(name, as.integer(arms[[n]]), quoted = quoted)
+        record$arms[[n]] <- list(label = names(arms)[[n]], key = name)
+      }
+    }
+    state$flows[[key]] <- record
+    invisible(NULL)
+  }
+
   # `restricted` says the data custodian forbids the file leaving their hands: G1 then fails
   # while git tracks it. `synthetic` says it is not the real data, a simulation, a dummy
   # extract or a test fixture: G1 then says so of every result the manuscript quotes from
@@ -1298,6 +1423,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     if (length(state$variables) > 0) document$variables <- state$variables
     if (length(state$models) > 0) document$models <- state$models
     if (length(state$steps) > 0) document$steps <- state$steps
+    if (length(state$relations) > 0) document$relations <- state$relations
+    if (length(state$flows) > 0) document$flows <- state$flows
     if (length(state$corrections) > 0) document$corrections <- state$corrections
     json <- jsonlite::toJSON(document, auto_unbox = TRUE, pretty = 2, digits = NA, null = "null")
     mg_write_lf(as.character(json), path)
@@ -1323,7 +1450,40 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     cell = mg_cell,
     table = table_,
     code_list = code_list,
+    relation = relation,
+    flow = flow,
     add_input = add_input,
     write = write
   )
+}
+
+# What is wrong with a flow's arithmetic, or NULL: the Python `flow_problem`, word for word,
+# which G8 also runs on the counts read back from the results. `overlapping` is TRUE, FALSE
+# or a list of the step numbers whose reasons overlap.
+mg_flow_problem <- function(stages, exclusions, arms, overlapping) {
+  for (n in seq_len(length(stages) - 1L)) {
+    here <- stages[[n]]
+    there <- stages[[n + 1L]]
+    reasons <- exclusions[[n]]
+    excluded <- here - there
+    if (excluded < 0L) {
+      return(sprintf("stage %d (%d) is larger than stage %d (%d)", n + 1L, there, n, here))
+    }
+    if (isTRUE(overlapping) || (is.list(overlapping) && n %in% unlist(overlapping))) {
+      if (sum(reasons) < excluded || max(c(reasons, 0L)) > excluded) {
+        return(sprintf(
+          "the reasons after stage %d (%s) cannot account for the %d excluded, even overlapping",
+          n, paste(reasons, collapse = ", "), excluded
+        ))
+      }
+    } else if (sum(reasons) != excluded) {
+      return(sprintf("stage %d (%d) less its exclusions (%d) is %d, and stage %d is %d",
+                     n, here, sum(reasons), here - sum(reasons), n + 1L, there))
+    }
+  }
+  if (length(arms) > 0L && sum(arms) != stages[[length(stages)]]) {
+    return(sprintf("the arms sum to %d, and the last stage is %d", sum(arms),
+                   stages[[length(stages)]]))
+  }
+  NULL
 }

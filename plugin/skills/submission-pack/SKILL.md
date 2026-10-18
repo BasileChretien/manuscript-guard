@@ -73,8 +73,9 @@ Do not summarise the abstract. The editor has it.
 - Read the pack, not the source. It is a different document once it is assembled.
 - Open the .docx and confirm the citations resolved and the figures are where you expect
   them, at the resolution the journal wants. `--offline` formats citations from
-  `references.bib`, in the style given with `--csl` or else the default; without it, and
-  with Zotero open, the document carries live Zotero fields.
+  `references.bib`, in the style given with `--csl`, or else the journal's style where
+  `manuscript-guard style` keeps it, or else the default; without `--offline`, and with
+  Zotero open, the document carries live Zotero fields.
 - Check the journal profile's `notes` field. That is where the requirements no build can
   check were recorded — suggested reviewers, portal quirks, figure formats — and it exists
   because otherwise you rediscover them at 23:00 on the deadline.

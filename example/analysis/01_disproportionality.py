@@ -151,6 +151,20 @@ def main() -> None:
     em.value("table2x2.c", c, quoted=False)
     em.value("table2x2.d", d, quoted=False)
 
+    # What the results owe one another, declared so that G8 holds them to it: the cases are
+    # some of the drug's reports, the period runs forward, and the 2x2 table adds up.
+    em.relation("at_most", "case.n_cases", ["cohort.n_drug_reports"])
+    em.relation("in_order", "cohort.period_start", ["cohort.period_end"])
+    em.relation("sum", "cohort.n_drug_reports", ["table2x2.a", "table2x2.b"])
+    # And the reports from all of them to those of the drug, for a flow diagram to draw.
+    # Its counts are the cohort's above, so they are intermediates here, not quoted again.
+    em.flow(
+        "reports",
+        stages={"Reports in the database": len(rows), "Reports of the drug": a + b},
+        exclusions=[{"Reports of other drugs": c + d}],
+        quoted=False,
+    )
+
     # The table is emitted, not written into the manuscript. A hand-typed table is the
     # most reliable place for a stale number to survive: long, dull to re-read, never
     # diffed.

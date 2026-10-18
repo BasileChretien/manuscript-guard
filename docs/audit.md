@@ -37,7 +37,23 @@ One check needs no outputs. Each t, F, chi-squared or z statistic with a P after
 its sentence is held to that P: the P the statistic gives is worked out over every value
 their printed digits allow, and a P that does not follow is listed apart, with whether it
 falls on the other side of 0.05. A one-sided, adjusted or exact test the sentence names
-is not judged, and `--strict` does not count these.
+is not judged, and `--strict` does not count these. Each named estimate with a confidence
+interval after it is held to it the same way: an estimate outside its own interval, a
+ratio whose interval is lopsided on the log scale, and an interval that excludes its null beside a P above one less its level, or
+includes it beside one below, are listed with them.
+
+A table's n (%) is held to the denominator the table names for it, the count's own
+("12/40 (30.0)") or the "n = 1200" of its column's header: 300 of 1200 is 25.0%, and a table
+that prints 300 (26.0) is listed, with the denominators 26.0% of 300 would fit. Half a unit
+in the share's last printed place is allowed. Only a column of shares is read: a "%" in the
+cell, or "n (%)" in the row's label, the label over its rows or the column's header, says
+so, or the shares of a characteristic's categories add up to 100. A row that names a mean,
+a median, an SD, an IQR or a range is never read, nor a whole number up to 100 with no "%"
+in a row whose label ends on a unit in percent ("Oxygen saturation, %"). A share of its row's own total, where the row's shares add
+up to 100, and a share of its categories' own total, where they do, are not listed: a
+subtype of another row, or a share of those with data. A row whose label carries a footnote
+marker is listed as uncertain, since a note may give it another denominator. Pipe tables are
+read in Markdown, and every table in a .docx.
 
 For a paper still being written, bind the numbers instead — then a stale one is impossible
 rather than merely searched for.

@@ -41,6 +41,21 @@
         "$ref": "#/$defs/model"
       }
     },
+    "corrections": {
+      "type": "object",
+      "description": "How each family of p values is corrected for multiple comparisons, declared with `correction()`. A family is the name p values give with `family`; G8 warns on a family of more than one p value with no correction declared. \"none\" is a declaration, with its reason.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["method"],
+        "additionalProperties": false,
+        "properties": {
+          "method": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        },
+        "if": { "properties": { "method": { "pattern": "^\\s*[Nn][Oo][Nn][Ee]\\s*$" } } },
+        "then": { "required": ["reason"] }
+      }
+    },
     "steps": {
       "type": "object",
       "description": "The steps of the analysis that ran, each marked in the code with `step()` and pointed at from the Methods by {{method.<name>}}. Each records where its code is and a digest of that code with comments and layout left out, and of the functions of the script it calls. G9 compares the digest with the one recorded when a person last read the step against the Methods text that points at it.",
@@ -185,13 +200,25 @@
           "enum": ["low", "high"],
           "description": "Which end of the interval. With `bounds`, this is what lets G2 read the order the bounds are quoted in and refuse an interval printed backwards."
         },
+        "of": {
+          "type": "string",
+          "description": "What this statistic belongs to: the estimate a p value tests, or the numerator of a share. A key of the same namespace. G2 warns on a sentence that quotes this value without it."
+        },
+        "over": {
+          "type": "string",
+          "description": "The denominator of a share, beside its numerator in `of`. G2 warns on a sentence that quotes the share with neither count."
+        },
+        "family": {
+          "type": "string",
+          "description": "The family of tests a p value is one of. G8 warns on a family of more than one p value with no correction declared in `corrections`."
+        },
         "level": {
           "type": "string",
           "description": "Which interval this bound belongs to, when one estimate carries more than one - \"90%\" beside a 95% CI, or \"95% CrI\" beside a frequentist one. Bounds are compared within a level and never across: a 90% interval nested inside a 95% one is correct, not a contradiction. Absent means the estimate's only interval."
         },
         "role": {
-          "enum": ["parameter", "software"],
-          "description": "What the value is, when it is neither a measurement nor a label. `parameter` is a choice the analysis made and used (`em.parameter`), `software` the version of a piece of software the run imported (`em.software`). G2 fails one of these typed in the text where it should be bound, because a threshold typed in the Methods passes as a convention and stays one after the code has changed."
+          "enum": ["parameter", "software", "dictionary"],
+          "description": "What the value is, when it is neither a measurement nor a label. `parameter` is a choice the analysis made and used (`em.parameter`), `software` the version of a piece of software the run imported (`em.software`), `dictionary` the release of a coding dictionary the analysis coded with (`em.dictionary`). G2 fails one of these typed in the text where it should be bound, because a threshold typed in the Methods passes as a convention and stays one after the code has changed."
         },
         "read": {
           "type": "boolean",
@@ -488,7 +515,15 @@
             "properties": {
               "path": { "type": "string" },
               "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-              "bytes": { "type": "integer", "minimum": 0 }
+              "bytes": { "type": "integer", "minimum": 0 },
+              "restricted": {
+                "type": "boolean",
+                "description": "The data custodian forbids the file leaving their hands; G1 fails while git tracks it."
+              },
+              "synthetic": {
+                "type": "boolean",
+                "description": "Not the real data: a simulation, a dummy extract or a test fixture. G1 says so of every result the manuscript quotes from the run, and fails at submission unless paper.yaml declares the paper a demonstration."
+              }
             }
           }
         },

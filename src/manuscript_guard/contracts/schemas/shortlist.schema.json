@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/shortlist/1",
+  "title": "manuscript-guard journal shortlist",
+  "description": "journals/shortlist.yaml: the author's criteria for choosing a journal, the journals considered with the evidence for each claim made of them, the ranking, the decision and who made it, and what happened to earlier choices. It is used again after a rejection.",
+  "type": "object",
+  "required": ["schema", "criteria", "candidates"],
+  "additionalProperties": false,
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 },
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "url": { "type": "string", "pattern": "^https?://\\S+$" },
+    "issn": { "type": "string", "pattern": "^\\d{4}-\\d{3}[\\dX]$" },
+    "claim": {
+      "type": "object",
+      "description": "One thing said of the journal, and where and when it was read.",
+      "required": ["claim", "source_url", "read_on"],
+      "additionalProperties": false,
+      "properties": {
+        "claim": { "$ref": "#/$defs/text" },
+        "source_url": { "$ref": "#/$defs/url" },
+        "read_on": { "$ref": "#/$defs/date" }
+      }
+    },
+    "similar": {
+      "type": "object",
+      "description": "A recent paper of the journal like this one, which justifies the fit.",
+      "required": ["title"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "$ref": "#/$defs/text" },
+        "pmid": { "type": "string", "pattern": "^[1-9]\\d{0,8}$" },
+        "doi": { "type": "string", "pattern": "^10\\.\\S+/\\S+$" },
+        "year": { "type": "integer", "minimum": 1000, "maximum": 9999 },
+        "why": { "$ref": "#/$defs/text" }
+      }
+    }
+  },
+  "properties": {
+    "schema": { "const": "manuscript-guard/shortlist/1" },
+    "criteria": {
+      "type": "object",
+      "description": "Asked of the author first, and written down before any journal is proposed. Novelty and importance are the author's statement, never graded by an agent.",
+      "required": ["stated_by", "stated_on"],
+      "additionalProperties": false,
+      "properties": {
+        "stated_by": { "$ref": "#/$defs/text" },
+        "stated_on": { "$ref": "#/$defs/date" },
+        "article_type": { "$ref": "#/$defs/text" },
+        "open_access": { "enum": ["required", "preferred", "not required"] },
+        "funder_mandate": { "$ref": "#/$defs/text", "description": "A funder's open-access policy that applies, such as Plan S." },
+        "apc_budget": {
+          "type": "object",
+          "required": ["amount", "currency"],
+          "additionalProperties": false,
+          "properties": {
+            "amount": { "type": "number", "minimum": 0 },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+          }
+        },
+        "speed": { "$ref": "#/$defs/text" },
+        "indexing": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "audience": { "$ref": "#/$defs/text" },
+        "contribution": { "$ref": "#/$defs/text", "description": "How strong the author judges the contribution to be, in their words." }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["journal"],
+        "additionalProperties": false,
+        "properties": {
+          "journal": { "$ref": "#/$defs/text" },
+          "issn": { "type": "array", "items": { "$ref": "#/$defs/issn" }, "uniqueItems": true },
+          "profile": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$", "description": "The journal's profile, profiles/journals/<profile>.yaml, once one is written." },
+          "open_access": { "type": "boolean", "description": "Every article is open access, as the journal's page says." },
+          "claims": { "type": "array", "items": { "$ref": "#/$defs/claim" } },
+          "similar": { "type": "array", "items": { "$ref": "#/$defs/similar" } },
+          "risk": { "$ref": "#/$defs/text" },
+          "outside_medline": { "$ref": "#/$defs/text", "description": "Why the author chose a journal that is not indexed for MEDLINE, in their words." },
+          "outside_doaj": { "$ref": "#/$defs/text", "description": "Why the author chose an open-access journal that is not in DOAJ, in their words." }
+        }
+      }
+    },
+    "ranking": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["journal", "why"],
+        "additionalProperties": false,
+        "properties": {
+          "journal": { "$ref": "#/$defs/text" },
+          "why": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["journal", "decided_by", "decided_on"],
+      "additionalProperties": false,
+      "properties": {
+        "journal": { "$ref": "#/$defs/text" },
+        "decided_by": { "$ref": "#/$defs/text" },
+        "decided_on": { "$ref": "#/$defs/date" },
+        "why": { "$ref": "#/$defs/text" }
+      }
+    },
+    "history": {
+      "type": "array",
+      "description": "Earlier choices and what came of them, newest last.",
+      "items": {
+        "type": "object",
+        "required": ["journal", "outcome", "on"],
+        "additionalProperties": false,
+        "properties": {
+          "journal": { "$ref": "#/$defs/text" },
+          "outcome": { "$ref": "#/$defs/text" },
+          "on": { "$ref": "#/$defs/date" }
+        }
+      }
+    }
+  }
+}

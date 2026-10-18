@@ -16,6 +16,35 @@
     },
     "retrieved_on": { "type": "string", "format": "date" },
     "retrieved_by": { "type": "string" },
+    "page_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Where the instructions page is stored as text, from the project's root. Without it, profiles/journals/sources/<name>.txt."
+    },
+    "page_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The digest of the stored page's text, line endings as LF, as G4 prints it: the text the quotes were read from."
+    },
+    "quotes": {
+      "type": "object",
+      "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, reporting_guidelines. G4 holds each to the stored page, and a limit's number to its quote.",
+      "propertyNames": { "type": "string", "minLength": 1 },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "manual": {
+      "type": "array",
+      "description": "The rules of the page no gate checks (a running title, the cover letter's contents, the order of the title page), each with its quote, so that none is dropped without a trace.",
+      "items": {
+        "type": "object",
+        "required": ["rule", "quote"],
+        "additionalProperties": false,
+        "properties": {
+          "rule": { "type": "string", "minLength": 1 },
+          "quote": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "article_type": {
       "type": "string",
       "description": "Limits usually differ by type; one profile describes one type."
@@ -258,6 +287,34 @@
           "pattern": { "type": "string", "description": "Python regular expression." },
           "why": { "type": "string" }
         }
+      }
+    },
+    "data_availability": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The journal's policy on what the Data availability statement says, read from its own page and dated. Nothing is checked of the statement where this is absent.",
+      "required": ["source", "retrieved_on"],
+      "properties": {
+        "source": { "type": "string", "pattern": "^https?://", "description": "The page the rules below are read from." },
+        "retrieved_on": { "type": "string", "format": "date", "description": "The day the page was read." },
+        "heading": { "type": "string", "description": "Python regular expression matched against section titles to find the statement. Default: data availability, availability of data, data sharing." },
+        "forbidden": {
+          "type": "array",
+          "description": "Phrasings the journal does not accept as they stand.",
+          "items": {
+            "type": "object",
+            "required": ["pattern"],
+            "additionalProperties": false,
+            "properties": {
+              "pattern": { "type": "string", "description": "Python regular expression." },
+              "unless": { "type": "string", "description": "Python regular expression: the phrasing is accepted where the statement also matches this, a reason or a route." },
+              "why": { "type": "string" }
+            }
+          }
+        },
+        "identifier_required": { "type": "boolean", "description": "The statement must name a persistent identifier (a DOI, an accession number, an archived URL), or be one of `no_data`." },
+        "identifier_patterns": { "type": "array", "items": { "type": "string" }, "description": "Python regular expressions for identifiers of the journal's own repositories, beside the ones built in." },
+        "no_data": { "type": "array", "items": { "type": "string" }, "description": "Python regular expressions for the journal's own forms for an article with no data." }
       }
     },
     "references": {

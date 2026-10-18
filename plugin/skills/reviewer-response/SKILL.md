@@ -1,6 +1,6 @@
 ---
 name: reviewer-response
-description: Answer a journal's reviewers point by point, with every claimed revision checked against the manuscript as it was sent. Use when a decision letter with reviewer comments arrives, before revising anything, when check reports point-unanswered, response-claims-nothing, claimed-change-did-not-happen, claimed-change-missed-the-point, anchor-unrecorded, quoted-text-absent, quoted-text-not-new, quoted-text-elsewhere, response-placeholder, response-artefact, response-leak or reply-unbound-number, or before resubmitting.
+description: Answer a journal's reviewers point by point, with every claimed revision checked against the manuscript as it was sent. Use when a decision letter with reviewer comments arrives, before revising anything, when check reports point-unanswered, response-claims-nothing, claimed-change-did-not-happen, claimed-change-missed-the-point, anchor-unrecorded, quoted-text-absent, quoted-text-not-new, quoted-text-elsewhere, response-placeholder, response-artefact, response-leak or reply-unbound-number, or before resubmitting. Not for a panel before submission (use review-panel), nor for a co-author's check of the sources (use co-author-checking).
 ---
 
 # Answering the reviewers

@@ -19,7 +19,9 @@ from manuscript_guard.gates.literature import check_literature_chain
 from manuscript_guard.gates.methods import check_methods, reconcile
 from manuscript_guard.gates.models import check_models
 from manuscript_guard.gates.numbers import check_numbers, source_files
+from manuscript_guard.gates.quotations import check_prose_quotations
 from manuscript_guard.gates.recomputed import check_recomputed
+from manuscript_guard.gates.reported import check_reported
 from manuscript_guard.gates.reporting import (
     available_checklists,
     check_reporting,
@@ -49,7 +51,8 @@ GATES = {
     "G12": "there was an analysis plan before there was an analysis",
     "G13": "the response to the reviewers answers every point, and its claims hold",
     "G14": "abbreviations are defined once, one term is kept for one thing, the "
-    "spelling is one English and the notation is one",
+    "spelling is one English and the notation is one; prose in a script the gates do not "
+    "read is said",
     "G15": "each model is the model its variables call for, and the Methods name the model "
     "fitted",
 }
@@ -62,7 +65,9 @@ __all__ = [
     "GATES",
     "check_bound_units",
     "check_citations",
+    "check_prose_quotations",
     "check_consistency",
+    "check_reported",
     "check_design",
     "check_figure_reviews",
     "check_figure_source",

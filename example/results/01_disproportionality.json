@@ -2,28 +2,35 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "de6e2e0b647fe0ce0ed61ec58ae46a7a646ae0825b91bcd746ced177600fefd0",
-    "generated_at": "2026-10-09T08:39:29+00:00",
+    "generated_by_sha256": "e1ac1d1bd501f6b6aacfcec9e76f6e4da2e388b1edf3176a8e4e25f75ab34853",
+    "generated_at": "2026-10-17T10:00:52+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.435"
+      "version": "0.2.444"
     },
     "vcs": {
-      "sha": "878e6e58ade2f97ac400a9e47077de57e2dc505b",
+      "sha": "17cf564ae7c90601cb769c7c7e090230821078a7",
       "dirty": true,
-      "branch": "claude/ecstatic-shannon-ja5omd-example"
+      "branch": "feat/statistics-whole"
     },
     "inputs": [
       {
         "path": "data/reports.csv",
         "sha256": "55aa913a7f8cbc6c432e263e04fa12f3e148809dbd4ddc6fc8fd5b10c916886c",
-        "bytes": 172822
+        "bytes": 172822,
+        "synthetic": true
+      },
+      {
+        "path": "data/event_terms.txt",
+        "sha256": "11c7ea29eed993adde1c66775c033e5133bb180a6bfa6f24b7f1fa0609a00c7d",
+        "bytes": 50
       }
     ],
+    "environment": [],
     "session": {
       "language": "Python",
-      "version": "3.13.16",
-      "platform": "Linux-6.18.44-fc-v80-x86_64-with-glibc2.39"
+      "version": "3.12.3",
+      "platform": "Windows-11-10.0.26300-SP0"
     }
   },
   "values": {
@@ -50,31 +57,31 @@
       "label": true
     },
     "software.python": {
-      "value": "3.13.16",
-      "display": "3.13.16",
+      "value": "3.12.3",
+      "display": "3.12.3",
       "label": true,
       "role": "software"
     },
     "software.statsmodels": {
-      "value": "0.15.0",
-      "display": "0.15.0",
+      "value": "0.14.2",
+      "display": "0.14.2",
       "label": true,
       "role": "software"
     },
     "ror_adjusted.point": {
-      "value": 3.844764571464015,
+      "value": 3.844764571463996,
       "display": "3.845",
       "digits": 3
     },
     "ror_adjusted.ci_low": {
-      "value": 2.8852237873895215,
+      "value": 2.885223787389507,
       "display": "2.885",
       "digits": 3,
       "bounds": "ror_adjusted.point",
       "bound": "low"
     },
     "ror_adjusted.ci_high": {
-      "value": 5.123420469009598,
+      "value": 5.123420469009574,
       "display": "5.123",
       "digits": 3,
       "bounds": "ror_adjusted.point",
@@ -98,7 +105,8 @@
     },
     "cohort.n_years": {
       "value": 10,
-      "display": "10"
+      "display": "10",
+      "unit": "years"
     },
     "case.n_cases": {
       "value": 77,
@@ -168,6 +176,12 @@
       "value": 3380,
       "display": "3380",
       "quoted": false
+    },
+    "dictionary.generator_event_terms": {
+      "value": "1",
+      "display": "1",
+      "label": true,
+      "role": "dictionary"
     }
   },
   "tables": {
@@ -623,6 +637,8 @@
       "n_used": 4000,
       "n_dropped": 0,
       "converged": true,
+      "covariance": "nonrobust",
+      "rows_sha256": "bf613ab651f66e796c1818fdd686d4b3ab9c3b1a0f24980f0008e9c544555f92",
       "events": 271,
       "events_by_level": {
         "age_group": {
@@ -643,31 +659,37 @@
   "steps": {
     "ror": {
       "lines": [
-        54,
-        58
+        56,
+        60
       ],
       "digest": "43994ea0f861fd9c11dd95e974d11a8092dac8245846d047087c06a0e4464051"
     },
     "ci": {
       "lines": [
-        62,
-        67
+        64,
+        69
       ],
       "digest": "341304bd156666d20b98966338e40a99de96809c7d95a808720cc8043ee94978"
     },
     "signal": {
       "lines": [
-        79,
-        81
+        81,
+        83
       ],
       "digest": "d2537ffaa2c3277dcd94b7608b1cc89116a4e9ad3860b5712e804e73052db159"
     },
     "adjusted": {
       "lines": [
-        90,
-        118
+        92,
+        120
       ],
       "digest": "ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf"
+    }
+  },
+  "corrections": {
+    "primary": {
+      "method": "none",
+      "reason": "one prespecified estimate, the reporting odds ratio"
     }
   }
 }

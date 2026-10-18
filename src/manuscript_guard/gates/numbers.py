@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import re
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from pathlib import Path
 
 from manuscript_guard.classify import (
@@ -154,11 +154,15 @@ def check_numbers(
     totals = dict.fromkeys(
         ("files", "atoms", "placeholders", "term", "structural", "convention", "project"), 0
     )
+    # Each file's bindings, with the sentence each stands in, for the checks that a
+    # statistic is quoted with what it belongs to and an interval is quoted whole.
+    sentenced: list[tuple[Path, str, list]] = []
     # What the project's own allowlist accounted for, and which entries did it. Reported
     # every run: `conventions:` and `terms:` are self-service on purpose, but a project that
     # exempts half its numbers should not read exactly like one that exempts none.
     by_project: dict[str, int] = {}
     choices = [value for value in namespace.values() if value.role]
+    dictionaries = [value for value in choices if value.role == "dictionary"]
     chosen = chosen_rules(classifier)
     declares = any(value.role == "parameter" for value in choices)
 
@@ -225,12 +229,22 @@ def check_numbers(
                 )
 
         report = report.merge(_interval_order(placeholders, namespace, path, text))
+        sentenced.append((path, text, in_sentences(placeholders, text)))
 
         # One scan of this file per rule, reused by every atom in it. Matching each rule
         # against a window around each atom re-read the same characters once per number.
         scan = classifier.scan(text)
+        releases = typed_releases(text, dictionaries)
+        said: set[int] = set()
         for atom in find_atoms(text, mask(text)):
             totals["atoms"] += 1
+            release = _within(releases, atom)
+            if release is not None:
+                start, value = release
+                if start not in said:
+                    said.add(start)
+                    report = report.with_findings(_typed_finding(value, atom, path))
+                continue
             # Where the number sits decides what some rules mean. `p < 0.05` under Methods
             # is the threshold the author chose in advance; the same characters in Results
             # are a finding, and were passing as a convention.
@@ -293,6 +307,7 @@ def check_numbers(
 
         report = report.merge(_fenced_code(path, text, classifier, headings))
 
+    report = report.merge(quoted_whole(sentenced, namespace))
     report = report.merge(_paper_yaml_prose(project, classifier))
     report = report.merge(_replies(project, classifier, namespace))
     report = report.merge(_emitted_tables(results, classifier))
@@ -692,6 +707,102 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
     return report
 
 
+def in_sentences(placeholders, text: str) -> list:
+    """Each value binding of a file, with the sentence it stands in, as `_interval_order`
+    reads sentences: each HTML comment blanked, and a line break no end of one."""
+    read = blank_comments(text) if "<!--" in text else text
+    ends = [match.start() for match in _SENTENCE_END.finditer(read)]
+    return [
+        (placeholder, _sentence(read, ends, placeholder.start))
+        for placeholder in placeholders
+        if placeholder.is_value
+    ]
+
+
+def _intervals(namespace: dict[str, Value]) -> dict[tuple[str, str], dict[str, str]]:
+    """Each interval the results declare, whole: (estimate, level) to the binding of each end."""
+    found: dict[tuple[str, str], dict[str, str]] = {}
+    for value in namespace.values():
+        if value.bounds and value.bound in ("low", "high"):
+            estimate = f"{value.namespace}.{value.bounds}"
+            ends = found.setdefault((estimate, value.level or ""), {})
+            ends[value.bound] = f"{value.namespace}.{value.key}"
+    return {interval: ends for interval, ends in found.items() if len(ends) == 2}
+
+
+def quoted_whole(files: list[tuple[Path, str, list]], namespace: dict[str, Value]) -> Report:
+    """A statistic quoted with what it belongs to, and an interval quoted whole somewhere.
+
+    Which bindings sit together in a sentence, and nothing else: the text is not read for
+    what it says. A p value that names its estimate (`of`) is quoted in a sentence that
+    binds the estimate; a share that names its counts (`of`, `over`) in one that binds
+    either count, "n/N (%)" and not a percentage alone. And an estimate emitted with an
+    interval is quoted with both its bounds in one sentence at least once. Warnings: a
+    sentence may rightly give a p value again a line after its estimate.
+    """
+    report = Report()
+    intervals = _intervals(namespace)
+    whole: set[tuple[str, str]] = set()
+    first: dict[tuple[str, str], tuple[Path, int]] = {}
+    for path, text, located in files:
+        by_sentence: dict[int, set[str]] = {}
+        for placeholder, sentence in located:
+            by_sentence.setdefault(sentence, set()).add(placeholder.ref)
+        for placeholder, sentence in located:
+            value = namespace.get(placeholder.ref)
+            line = text.count("\n", 0, placeholder.start) + 1
+            for interval, ends in intervals.items():
+                if placeholder.ref in (interval[0], *ends.values()):
+                    first.setdefault(interval, (path, line))
+            if value is None or not value.of:
+                continue
+            belongs = [f"{value.namespace}.{name}" for name in (value.of, value.over) if name]
+            if set(belongs) & by_sentence[sentence]:
+                continue
+            report = report.with_findings(_alone(value, belongs, path, line))
+        for interval, ends in intervals.items():
+            if any(set(ends.values()) <= refs for refs in by_sentence.values()):
+                whole.add(interval)
+    for (estimate, level), (path, line) in sorted(first.items()):
+        if (estimate, level) in whole:
+            continue
+        named = f"its {level} interval" if level else "its interval"
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="interval-not-quoted-whole",
+                severity=WARN,
+                message=f"{estimate} is quoted, and no sentence quotes both bounds of {named}",
+                path=path,
+                line=line,
+                hint="quote the estimate with both bounds in one sentence at least once: "
+                "{{results.<key>.point}} (95% CI {{results.<key>.ci_low}} to "
+                "{{results.<key>.ci_high}})",
+            )
+        )
+    return report
+
+
+def _alone(value: Value, belongs: list[str], path: Path, line: int) -> Finding:
+    """A statistic quoted in a sentence that binds nothing it belongs to."""
+    if value.over:
+        said = f"the share {value.namespace}.{value.key} is quoted with neither of its counts"
+        hint = "quote the counts beside it, n/N (%), each bound"
+    else:
+        said = f"{value.namespace}.{value.key} is quoted without {belongs[0]}, which it tests"
+        hint = "quote the estimate in the same sentence, bound"
+    return Finding(
+        gate=GATE,
+        code="quoted-alone",
+        severity=WARN,
+        message=said,
+        path=path,
+        line=line,
+        context=", ".join(belongs),
+        hint=hint,
+    )
+
+
 # A figure in an atom, to its last digit: `P<0.05` is one atom, and `.05` has no nought.
 _FIGURE = re.compile(r"\d[\d.,]*|\.\d+")
 
@@ -761,17 +872,56 @@ def typed_choice(
     return None
 
 
+#: How far before a typed release, on its line, the dictionary's name is looked for.
+NAMED_WITHIN = 60
+
+
+def typed_releases(text: str, dictionaries: list[Value]) -> list[tuple[int, int, Value]]:
+    """Each place a declared dictionary's release is typed, with the dictionary named in
+    the words before it on its line: "coded with MedDRA version 26.1". The release alone is
+    not enough: "2019" is the release of ICD-10 and the year of many other things. The name
+    is the one the key carries, so "ICD-10" is found as `icd_10`."""
+    found = []
+    for value in dictionaries:
+        name = value.key.removeprefix("dictionary.")
+        pattern = re.compile(r"(?<![\w.])" + re.escape(value.display) + r"(?!\w|\.\d)")
+        for match in pattern.finditer(text):
+            line = text.rfind("\n", 0, match.start()) + 1
+            if _named_in(text[max(line, match.start() - NAMED_WITHIN) : match.start()], name):
+                found.append((match.start(), match.end(), value))
+    return sorted(found, key=lambda place: place[0])
+
+
+def _named_in(words: str, name: str) -> bool:
+    """Whether `words` name the dictionary whose key ends in `name`, as words of their own:
+    "ICD-10" names `icd_10`, and "matched" does not name `atc`."""
+    return f"_{name}_" in "_" + re.sub(r"[^a-z0-9]+", "_", words.lower()) + "_"
+
+
+def _within(releases: list[tuple[int, int, Value]], atom) -> tuple[int, Value] | None:
+    """The typed release an atom is part of, if it is part of one."""
+    index = bisect_right([start for start, _end, _value in releases], atom.start) - 1
+    if index >= 0 and atom.end <= releases[index][1]:
+        return releases[index][0], releases[index][2]
+    return None
+
+
 def _typed_finding(value: Value, atom, path: Path) -> Finding:
+    typed = atom.text
     if value.role == "software":
         code = "typed-software-version"
         what = f"the version of {value.key.removeprefix('software.')} this analysis ran with"
+    elif value.role == "dictionary":
+        code = "typed-dictionary-release"
+        what = f"the release of {value.key.removeprefix('dictionary.')} the analysis coded with"
+        typed = value.display
     else:
         code = "typed-parameter"
         what = f"the analysis parameter {value.key}"
     return Finding(
         gate=GATE,
         code=code,
-        message=f"{atom.text!r} is {what}, typed rather than bound",
+        message=f"{typed!r} is {what}, typed rather than bound",
         path=path,
         line=atom.line,
         col=atom.col,

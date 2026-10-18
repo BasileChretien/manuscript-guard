@@ -25,8 +25,15 @@ in `manuscript/supplementary/` is held to the profile's `supplementary:` rules w
 them. Everything is a warning, and a note where the profile says the rules apply only once
 the paper is accepted.
 
+* `figure-text-small`, `figure-line-thin`: an SVG figure's smallest text or thinnest line,
+  carried through its transforms to the width it prints, is below the journal's least.
+* `figure-text-clipped`: a text in an SVG figure is anchored outside what it shows.
+* `figure-font-type3`, `figure-font-not-embedded`: a PDF figure uses a Type 3 font, or one
+  whose file is not in it; its text and lines are held as an SVG's are.
+
 The size of a raster is read from its own header, PNG, JPEG or TIFF, with the standard
-library; a vector figure's text and lines are another check.
+library; an SVG's text and lines are read from its elements (`gates/figure_svg.py`), a
+PDF's from its content streams (`gates/figure_pdf.py`).
 """
 
 from __future__ import annotations
@@ -42,6 +49,8 @@ import yaml
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.gates.figure_pdf import read_pdf
+from manuscript_guard.gates.figure_svg import clipped, points_per_unit, read_svg
 from manuscript_guard.gates.numbers import is_supplementary, source_files
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import count_words
@@ -251,6 +260,10 @@ def _file(path: Path, rules: dict, side: dict, supplementary: bool, profile_path
                 "asks and no more",
             )
         )
+    if FORMATS[path.suffix.lower()] == "svg":
+        return findings + _vector(path, rules, side)
+    if FORMATS[path.suffix.lower()] == "pdf":
+        return findings + _pdf(path, rules, side)
     if FORMATS[path.suffix.lower()] not in _RASTERS:
         return findings
     raster = raster_of(path)
@@ -315,6 +328,121 @@ def _file(path: Path, rules: dict, side: dict, supplementary: bool, profile_path
                     "print width) and raise the dpi instead",
                 )
             )
+    return findings
+
+
+def _vector(path: Path, rules: dict, side: dict) -> list[Finding]:
+    """An SVG figure's smallest text and thinnest line at the size it prints, and any text
+    anchored outside what it shows (`gates/figure_svg.py`)."""
+    svg = read_svg(path)
+    if svg is None:
+        return []
+    findings = [
+        _finding(
+            "figure-text-clipped",
+            f"{path.name}: the text '{mark.text[:40]}' is anchored at ({mark.at[0]:.0f}, "
+            f"{mark.at[1]:.0f}), outside what the figure shows (its viewBox, "
+            f"{' '.join(f'{v:g}' for v in svg.view or ())}), and is cut off where it prints",
+            path,
+            "move the text inside the figure, or draw the figure with room for it (in "
+            "matplotlib, savefig with bbox_inches='tight')",
+        )
+        for mark in clipped(svg)[:3]
+    ]
+    width_mm, said = _width(rules, side)
+    per_unit = points_per_unit(svg, width_mm)
+    if per_unit is None:
+        return findings
+    if width_mm is not None:
+        where = f"at {width_mm:g} mm wide{'' if said else ', the narrowest the journal prints at'}"
+    else:
+        where = f"at its own width, {svg.width_pt:.0f} pt" + (
+            "" if svg.width_unit else " (its width has no unit, and is read as pixels)"
+        )
+    texts = [(mark.text, mark.units) for mark in svg.texts]
+    return findings + _too_small(path, texts, [m.units for m in svg.lines], per_unit, where, rules)
+
+
+def _pdf(path: Path, rules: dict, side: dict) -> list[Finding]:
+    """A PDF figure's fonts, and its smallest text and thinnest line at the size it prints
+    (`gates/figure_pdf.py`)."""
+    figure = read_pdf(path)
+    if figure is None:
+        return []
+    findings = []
+    for font in figure.fonts:
+        # A subset's name carries six letters and a plus sign before the font's own.
+        name = re.sub(r"^[A-Z]{6}\+", "", font.name)
+        if font.subtype == "Type3":
+            findings.append(
+                _finding(
+                    "figure-font-type3",
+                    f"{path.name}: its font {name} is a Type 3 font, which some journals' "
+                    "production refuses, and whose text does not search or edit as text",
+                    path,
+                    "in matplotlib, set rcParams['pdf.fonttype'] = 42 before saving, which "
+                    "embeds the font whole",
+                )
+            )
+        elif not font.embedded:
+            findings.append(
+                _finding(
+                    "figure-font-not-embedded",
+                    f"{path.name}: its font {name} is not in the PDF, so a printer sets its "
+                    "text in a font of its own",
+                    path,
+                    "save it with its fonts embedded (in R, cairo_pdf() or embedFonts(); in "
+                    "matplotlib, pdf.fonttype 42)",
+                )
+            )
+    if figure.width_pt is None or figure.width_pt <= 0:
+        return findings
+    width_mm, said = _width(rules, side)
+    if width_mm is None:
+        per_point, where = 1.0, f"at its own width, {figure.width_pt:.0f} pt"
+    else:
+        per_point = width_mm / MM_PER_INCH * 72 / figure.width_pt
+        where = f"at {width_mm:g} mm wide{'' if said else ', the narrowest the journal prints at'}"
+    return findings + _too_small(path, figure.texts, figure.lines, per_point, where, rules)
+
+
+def _too_small(
+    path: Path,
+    texts: list[tuple[str, float]],
+    lines: list[float],
+    per_unit: float,
+    where: str,
+    rules: dict,
+) -> list[Finding]:
+    """A vector figure's smallest text and thinnest line, each in its own units, against the
+    journal's least once printed: each times the points one unit prints at."""
+    findings = []
+    for marks, limit, what, hint in (
+        (texts, rules.get("min_text_pt"), "text",
+         "draw its text larger, or the figure at the width it prints (in matplotlib, figsize "
+         "in inches at the print width) with text at the journal's size"),
+        ([("", width) for width in lines], rules.get("min_line_pt"), "line",
+         "draw its lines wider, or the figure at the width it prints"),
+    ):  # fmt: skip
+        if not marks or not isinstance(limit, (int, float)) or isinstance(limit, bool):
+            continue
+        below = [(text, units) for text, units in marks if units * per_unit < limit]
+        if not below:
+            continue
+        text, units = min(below, key=lambda mark: mark[1])
+        printed = math.floor(units * per_unit * 100) / 100
+        named = f" '{text[:40]}'" if text else ""
+        many = f"; {len(below)} {what}s are below it" if len(below) > 1 else ""
+        findings.append(
+            _finding(
+                "figure-text-small" if what == "text" else "figure-line-thin",
+                f"{path.name}: its {'smallest' if what == 'text' else 'thinnest'} {what}{named} "
+                f"prints at {printed:.2f} pt {where}, and the journal's least is {limit:g} pt"
+                f"{many}",
+                path,
+                hint + f", or give its print width in {path.stem}.guard.yaml (print_width_mm)",
+            )
+        )
     return findings
 
 

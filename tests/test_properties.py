@@ -1559,6 +1559,27 @@ def _a_named_row_s_own_n_is_taken(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(granularity, "table_means", own)
 
 
+def _a_named_row_is_never_read_for_its_n(patch: pytest.MonkeyPatch) -> None:
+    """The cells of a row a label names are never read for the n they name, so a header
+    whose first cell is the scale's name gives none (round 1 of #331)."""
+    from dataclasses import replace
+
+    from manuscript_guard.stats import granularity
+
+    read = granularity.table_means
+
+    def blind(table: Any, labels: tuple[str, ...]) -> list[Any]:
+        rows = tuple(
+            (row[0], *(replace(cell, text=granularity._N.sub("", cell.text)) for cell in row[1:]))
+            if row and any(granularity.names(wanted, row[0].text) for wanted in labels)
+            else row
+            for row in table
+        )
+        return read(rows, labels)
+
+    patch.setattr(granularity, "table_means", blind)
+
+
 # ------------------------------------------------------------ a section found by its heading
 
 #: What a paper calls its Methods, as G4 has always read a heading for them: with "methods"
@@ -4965,6 +4986,10 @@ BROKEN = {
     ),
     "a named row's own n is taken for its means": (
         _a_named_row_s_own_n_is_taken,
+        test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a row a label names is never read for its n, though it is the header": (
+        _a_named_row_is_never_read_for_its_n,
         test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
     ),
     "a share is held to its printed value, not half a unit either side": (

@@ -143,7 +143,8 @@ class AuditReport:
     means_read: int = 0
     #: Each mean of whole numbers whose n is too large for the places it is printed to.
     means_not_assessable: list[Disagreement] = field(default_factory=list)
-    #: Each label --whole-numbers gave that no table row's label holds.
+    #: Each label --whole-numbers gave under which no mean was read: no table row's label
+    #: holds it, or no cell of those rows is a mean under a column that names its n.
     whole_numbers_unfound: list[str] = field(default_factory=list)
 
     @property
@@ -724,7 +725,7 @@ def audit(
     values, used, skipped = load_backing(backing)
     report = AuditReport(
         backing_values=values, backing_files=tuple(used), skipped=skipped,
-        whole_numbers=whole_numbers,
+        whole_numbers=whole_numbers, whole_numbers_unfound=list(whole_numbers),
     )  # fmt: skip
 
     # Each source, whether a line may be taken for a reference entry by its shape, and
@@ -827,22 +828,20 @@ def audit(
             else:
                 report.unmatched.append(candidate)
 
-    if whole_numbers:
-        held = [row[0].text for path in report.papers for table in tables.get(path, [])
-                for row in table if row]  # fmt: skip
-        report.whole_numbers_unfound = [
-            label for label in whole_numbers if not any(names(label, text) for text in held)
-        ]
     return report
 
 
 def _whole_number_means(report: AuditReport, path: Path, tables: list[Table]) -> list[Disagreement]:
     """Each mean in a row --whole-numbers named, held to its column's n: returned where no
-    whole total gives it, and listed apart where its n is too large to tell."""
+    whole total gives it, and listed apart where its n is too large to tell. A label under
+    which a mean is read is taken off the labels that read nothing."""
     found = []
     for table in tables:
         for mean in table_means(table, report.whole_numbers):
             report.means_read += 1
+            report.whole_numbers_unfound = [
+                label for label in report.whole_numbers_unfound if not names(label, mean.label)
+            ]
             verdict = possible(mean.mean, mean.n)
             if verdict is True:
                 continue
@@ -1027,8 +1026,9 @@ def render(report: AuditReport, discrimination: Discrimination, root: Path | Non
         lines.append("")
         lines.append(
             f"Means of whole numbers (--whole-numbers): {report.means_read} read in the rows "
-            f"named, {len(report.means_not_assessable)} not assessable, their n too large for "
-            f"the places they are printed to (any 10 to the power of the places or more)."
+            f"named, {len(report.means_not_assessable)} not assessable, every mean printed "
+            f"to their places being possible for their n (any n of 10 to the power of the "
+            f"places or more, and a few just under)."
         )
         apart: dict[Path, list[Disagreement]] = {}
         for item in report.means_not_assessable:
@@ -1039,7 +1039,7 @@ def render(report: AuditReport, discrimination: Discrimination, root: Path | Non
             if len(items) > 40:
                 lines.append(f"    (+{len(items) - 40} more)")
         lines += [
-            f"  --whole-numbers {label!r}: no table row's label holds it, so nothing was read"
+            f"  --whole-numbers {label!r}: no mean was read in a row whose label holds it"
             for label in report.whole_numbers_unfound
         ]
 

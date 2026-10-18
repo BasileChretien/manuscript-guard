@@ -5125,8 +5125,11 @@ def _ledger_mean(project: Path, printed: str, declared: dict | None) -> None:
         # 2.17 is no total over 3, and 13 over 6 when each of 3 answered 2 items.
         ("2.17", {"n": 3}, ["quote-mean-not-possible"]),
         ("2.17", {"n": 3, "items": 2}, []),
-        # Any mean printed to two places is possible for 100 or more.
+        # Any mean printed to two places is possible for 100 or more, and for 96, whose
+        # totals and the ties between them print every one (round 1 of #331).
         ("3.47", {"n": 150}, ["quote-mean-not-assessable"]),
+        ("3.47", {"n": 96}, ["quote-mean-not-assessable"]),
+        ("3.47", {"n": 95}, []),
         ("3.47", None, []),
     ],
 )  # fmt: skip
@@ -5195,7 +5198,40 @@ def test_an_audited_mean_of_whole_numbers_is_held_to_its_column_s_n(tmp_path: Pa
     shown = render(report, measure_discrimination(set()))
     assert "a mean of whole numbers and its n" in shown
     assert "Means of whole numbers (--whole-numbers): 6 read in the rows named, 3 not " in shown
-    assert "--whole-numbers 'PHQ-9': no table row's label holds it" in shown
+    assert "--whole-numbers 'PHQ-9': no mean was read in a row whose label holds it" in shown
+
+
+def test_a_header_whose_first_cell_holds_a_named_label_still_gives_its_n(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #331: a table about one scale headed by its name read the header as a row
+    of means, never read its n, and read no mean under it, saying nothing."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("| Pain score | Treated (n = 28) | Control (n = 30) |\n|---|---|---|\n"
+                     "| Pain score at baseline | 3.47 (1.2) | 3.50 (1.1) |\n",
+                     encoding="utf-8")  # fmt: skip
+    report = audit([paper], [], whole_numbers=("pain score",))
+    assert report.means_read == 2
+    assert [d.line for d in report.disagreements] == [3]
+    assert report.whole_numbers_unfound == []
+
+
+def test_a_named_label_under_which_no_mean_is_read_is_said(tmp_path: Path) -> None:
+    """Round 1 of #331: a label that names rows, none of whose means is read (their header
+    names no n), is said, as one that names no row is."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    paper = tmp_path / "paper.md"
+    paper.write_text("| Outcome | Cases | Controls |\n|---|---|---|\n"
+                     "| Visits, mean | 3.47 | 3.50 |\n", encoding="utf-8")  # fmt: skip
+    report = audit([paper], [], whole_numbers=("visits",))
+    assert report.means_read == 0
+    assert report.whole_numbers_unfound == ["visits"]
+    assert "--whole-numbers 'visits': no mean was read in a row whose label holds it" in render(
+        report, measure_discrimination(set())
+    )
 
 
 def test_an_audit_without_whole_numbers_reads_no_mean(tmp_path: Path) -> None:

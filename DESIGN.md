@@ -1940,7 +1940,11 @@ up and one rounded half to even are both read as printed. N is the sample size t
 number of items each person answered, where the mean is of their item means. Where N is 10
 to the power of the places printed or more, the interval of totals is a unit wide or more
 and holds one whatever the mean, so the mean is not assessable and said to be so, not
-passed. Trailing noughts are places: 2.50 is printed to two.
+passed. So it is for a few N just under, whose totals and the ties between them, each read
+both ways, print every mean: 8 at one place, 80 and 96 at two, 800, 960 and 992 at three
+(round 1 of #331, where the generated tables found 96). Each mean of one unit is tried for
+N from half the power up; under half, each total prints at most two means, so some mean is
+none. Trailing noughts are places: 2.50 is printed to two.
 
 Nothing reads a mean as one of whole numbers on its own. A paper does not say so, and a
 guess from a label, "number of" or "score", would read a mean of rates or of a continuous
@@ -1955,8 +1959,11 @@ matched at word edges in any case. Each cell of such a row shaped as a mean, alo
 read from the header cells as the shares read theirs. A mean that does not fit is listed
 with the disagreements, with the totals either side and the nearest sample sizes it fits,
 below and above, since a mean of those with data has a smaller n than its column; one not
-assessable is listed apart, and a label that names no row is said. A row whose label
-carries a footnote marker or names an n of its own is uncertain. The row's own n is not
+assessable is listed apart, and a label under which no mean was read is said. A row whose
+label carries a footnote marker or names an n of its own is uncertain. Every cell that is
+not a mean is read for the n it names, in a named row too: a header whose first cell is the
+scale's name, "Pain score | Treated (n = 28)", is still a header (round 1 of #331, where
+it was read as a row of means and nothing under it was read). The row's own n is not
 taken for its means: with two columns it would name one of them. The rows are held over
 generated tables (`mean_tables` in `tests/generated.py`), with a row of every kind in each
 and a pair of means half a unit from a total.
@@ -6072,8 +6079,9 @@ Added by the adversarial review, verified and **not** fixed:
   nor a mean whose thousands are grouped. Its n is its column header's, so a mean over those
   with data is listed as not fitting where its n is smaller; the message gives the nearest n
   it fits, and the reader decides. A mean of several items per person is read in `audit` as
-  a mean of one number each, which can pass a mean that does not fit its items; the ledger
-  takes `items`. Whether an SD is possible for whole numbers with that mean and n is not
+  a mean of one number each: every mean possible for n is possible for n times the items, so
+  this passes nothing wrong, but lists a mean that is right for its items (round 1 of #331,
+  where this entry said the reverse). The ledger takes `items`. Whether an SD is possible for whole numbers with that mean and n is not
   checked. In the ledger, n is what the author records from the source; nothing reads it from
   the quote.
 - **A name or a unit typed with pandoc's subscript and superscript signs was an unbound

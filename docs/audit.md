@@ -63,12 +63,14 @@ reads each table row whose label holds one of those, at word edges and in any ca
 holds each mean in it (alone, with its SD in brackets, or with ± and its SD) to the n of
 its column's header. A mean that no whole total over n gives is listed with the other
 disagreements, with the totals either side and the n it would fit, since a mean of those
-with data has a smaller n than its column. A mean whose n is 10 to the power of its places
-or more is listed apart as not assessable: every mean printed to two places is possible
-for 100 numbers or more. A label that names no row is said. A row whose label carries a
-footnote marker or an n of its own is uncertain. Means in sentences are not read, and a
-mean of several items per person is read as a mean of one number each; a value quoted in
-the literature ledger can say both (`mean_of_whole_numbers: {n: 28, items: 3}`).
+with data has a smaller n than its column. A mean for whose n every mean printed to its
+places is possible is listed apart as not assessable: so for 100 numbers or more at two
+places, and for 80 and 96. A label under which no mean was read is said. A row whose label
+carries a footnote marker or an n of its own is uncertain. Means in sentences are not read.
+A mean of several items per person is read as a mean of one number each, so a mean that is
+right for its items can be listed: name only rows of one number per person, or quote the
+value in the literature ledger, which takes both (`mean_of_whole_numbers: {n: 28, items:
+3}`).
 
 For a paper still being written, bind the numbers instead — then a stale one is impossible
 rather than merely searched for.

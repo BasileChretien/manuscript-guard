@@ -52,7 +52,8 @@ Where a table reports means of whole numbers, a Likert-type scale or a count, as
 which rows they are and name them with `--whole-numbers "pain score" visits`: each mean in
 those rows is held to its column's n, and one no whole total gives is listed. Never name a
 row the paper does not describe as whole numbers; a mean of a continuous measure would be
-listed as a misprint.
+listed as a misprint. A row whose means are of several items per person is read as one
+number each, and a right mean can be listed: check those by hand against n times the items.
 
 ## 2. Run it
 

@@ -12,9 +12,11 @@ and the number of items.
   3.46 rounded half to even, and both are taken.
 * **N is the sample size times the number of items** each person answered, where the mean
   is of their item means: 28 people answering 3 items give means in steps of 1/84.
-* **Where N is 10 to the power of the places printed or more**, every mean that can be
-  printed is possible, and the test says nothing: the mean is not assessable. Two places
-  test samples under 100, one place under 10.
+* **Where every mean that can be printed is possible for N**, the test says nothing: the
+  mean is not assessable. That is so where N is 10 to the power of the places printed or
+  more, so two places test samples under 100 and one place under 10. It is also so for a
+  few N just under, whose totals and the ties between them, each read both ways, print
+  every mean: 8 at one place, 80 and 96 at two, 800, 960 and 992 at three.
 
 What the paper prints is not known to be whole numbers. Nothing here guesses it: the ledger
 says so of a value it holds (`mean_of_whole_numbers`), and `audit --whole-numbers` names the
@@ -29,9 +31,10 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
+from functools import cache
 
 from manuscript_guard.stats.shares import _N, _NOTE, _clean, _columns, _whole
-from manuscript_guard.text.tables import Table
+from manuscript_guard.text.tables import Table, TableCell
 
 #: A mean as a table cell prints it: alone, with its SD in brackets, or with a plus-minus
 #: sign and its SD. A minus sign may stand before it.
@@ -70,8 +73,23 @@ def places(mean: str) -> int:
 
 def assessable(mean: str, n: int, items: int = 1) -> bool:
     """Whether a mean printed as `mean` can be told possible or not for `n` people answering
-    `items` items each: fewer numbers than 10 to the power of its places."""
-    return n * items < 10 ** places(mean)
+    `items` items each: some mean printed to its places is no whole total over them."""
+    return _some_mean_is_none(n * items, places(mean))
+
+
+@cache
+def _some_mean_is_none(count: int, places_: int) -> bool:
+    """Whether some mean printed to `places_` is no whole total over `count`. Never for 10 to
+    the power of the places or more; always for fewer than half that, since each total
+    prints at most two means; between, each mean of one unit is tried, which is enough,
+    since a mean a unit up is a total `count` up."""
+    scale = 10**places_
+    if count >= scale:
+        return False
+    if 2 * count < scale:
+        return True
+    return any(low > high for low, high in
+               (_span(Fraction(k, scale), places_, count) for k in range(scale)))  # fmt: skip
 
 
 def possible(mean: str, n: int, items: int = 1) -> bool | None:
@@ -148,27 +166,25 @@ def names(label: str, text: str) -> bool:
 
 def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
     """Each cell shaped as a mean in a row whose label holds one of `labels`, under a column
-    whose header names its n, in reading order. A row named by none is read for the n each
-    of its cells names, which then holds for the columns under it."""
+    whose header names its n, in reading order. Every other cell, in a row named or not, is
+    read for the n it names, which then holds for the column under it: a header whose first
+    cell is the scale's name is still a header (round 1 of #331)."""
     found: list[Mean] = []
     over: dict[int, int] = {}
     for row in table:
         placed = list(_columns(row))
         label = row[0].text if row else ""
-        if not any(names(wanted, label) for wanted in labels):
-            for column, cell in placed[1:]:
-                named = {_whole(match.group("n")) for match in _N.finditer(cell.text)}
-                for each in range(column, column + max(cell.span, 1)):
-                    if len(named) == 1:
-                        over[each] = next(iter(named))
-            continue
+        named = any(names(wanted, label) for wanted in labels)
         context = " | ".join(" ".join(cell.text.split()) for cell in row)
         if len(context) > _CONTEXT:
             context = context[: _CONTEXT - 1] + "\N{HORIZONTAL ELLIPSIS}"
         for column, cell in placed[1:]:
             text, noted = _clean(cell.text)
-            shaped = _MEAN.fullmatch(text)
-            if shaped is None or column not in over:
+            shaped = _MEAN.fullmatch(text) if named else None
+            if shaped is None:
+                _header(cell, column, over)
+                continue
+            if column not in over:
                 continue
             found.append(Mean(
                 line=cell.line, printed=" ".join(cell.text.split()),
@@ -176,6 +192,14 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
                 label=label, uncertain=_uncertain(label, noted), context=context,
             ))  # fmt: skip
     return found
+
+
+def _header(cell: TableCell, column: int, over: dict[int, int]) -> None:
+    """The n a cell names, where it names one, for each column it spans."""
+    named = {_whole(match.group("n")) for match in _N.finditer(cell.text)}
+    if len(named) == 1:
+        for each in range(column, column + max(cell.span, 1)):
+            over[each] = next(iter(named))
 
 
 def _uncertain(label: str, noted: bool) -> str | None:
@@ -194,8 +218,11 @@ def _uncertain(label: str, noted: bool) -> str | None:
 def _totals(mean: str, count: int) -> tuple[int, int]:
     """The least and the greatest whole total over `count` within half a unit of `mean`'s
     last place; the first above the second where there is none."""
-    printed = Fraction(Decimal(mean))
-    half = Fraction(1, 2 * 10 ** places(mean))
+    return _span(Fraction(Decimal(mean)), places(mean), count)
+
+
+def _span(printed: Fraction, places_: int, count: int) -> tuple[int, int]:
+    half = Fraction(1, 2 * 10**places_)
     return math.ceil((printed - half) * count), math.floor((printed + half) * count)
 
 

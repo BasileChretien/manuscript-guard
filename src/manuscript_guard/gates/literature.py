@@ -266,7 +266,7 @@ def _whole_number_mean(key: str, value, detail: dict) -> Report:
         shown = places(mean)
         why = (
             f"any mean printed to {shown} place{'' if shown == 1 else 's'} can be one of "
-            f"{n * items} whole numbers, as of any {10**shown} or more"
+            f"{n * items} whole numbers"
         )
     return Report((
         Finding(
@@ -275,8 +275,9 @@ def _whole_number_mean(key: str, value, detail: dict) -> Report:
             severity=INFO,
             message=f"{key}: whether it can be a mean of whole numbers is not assessable: {why}",
             path=value.source,
-            hint="nothing to do; the test has power only for fewer numbers than 10 to the "
-            "power of the places printed",
+            hint="nothing to do; the test has power only where some mean printed to those "
+            "places is no whole total over n, which needs fewer numbers than 10 to the power "
+            "of the places",
         ),
     ))  # fmt: skip
 

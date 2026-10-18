@@ -25,7 +25,7 @@ pip package, with tests.
 
 ```bash
 pip install -e ".[dev]"      # from the repo root
-pytest -q                    # ~1500 tests, 18-28 min on Windows (R, Zotero, Claude Code, Codex, pandoc tests skip if absent)
+pytest -q                    # the whole suite (R, Zotero, Claude Code, Codex, pandoc tests skip if absent)
 ruff check src tests
 claude plugin validate .     # the marketplace manifest; `plugin` validates the plugin itself
 ```

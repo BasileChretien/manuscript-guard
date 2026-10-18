@@ -1,13 +1,42 @@
 # manuscript-guard — design
 
-Status: design agreed 2026-08-03. **All eight phases built and tested.** 564 tests pass,
-including the corruption harness described below and the regression tests from two
-adversarial rounds. What remains is listed under Known gaps.
+Status: design agreed 2026-08-03. All eight phases are built, and what has been added since
+is described where it belongs. Each statement here rests on one of the kinds of evidence
+below, which say different things. What remains is listed under Known gaps.
 
 That list is load-bearing and has to be kept true. It drifted once — it went on claiming
 five guideline licences were unconfirmed after they had been read, and went on describing
 two defects that had been fixed — which is the same failure the toolkit exists to catch one
 level down. Correct it in the same commit as the code, or it becomes a rumour.
+
+## What a claim rests on
+
+A statement about the toolkit rests on one of four kinds of evidence, and says which:
+
+1. **A deterministic test is green in CI.** Most of what this document says of a gate rests
+   on this: its corruption cases, the generated inputs and their broken rules, the
+   differential readings. It proves the gate does what the test holds on the inputs the
+   test has, and no more.
+2. **A measurement on real inputs**, with its date, the inputs, and what it found, negative
+   results included. The first two are planned and not run: the review panel read against
+   defects already known in real papers, and how often G6 fires on clean text written by
+   people.
+3. **The author used it on a real manuscript.**
+4. **Someone else did.**
+
+Tested, committed, reviewed, merged and released are different statements as well. A review
+of a pull request is no test; a release on PyPI is no use.
+
+The test of the whole toolkit is a measurement, not a claim: on real projects, are critical
+problems found before submission, by the tool or by the person it sends the author to? It
+has not been measured. The two measurements above are the first steps, and real users the
+next.
+
+**Defaults taken, not decided by the author.** Where the author was asked to choose and did
+not, and a default was taken, it is recorded here with its date, in those words, so that a
+default is never read as a decision. None stands at the time of writing: every choice put to
+the author in the work of October 2026 was answered, and the paid evaluation runs it asked
+about wait, unrun, for the author's choice of model.
 
 ## What this is
 

@@ -965,7 +965,7 @@ LABELLED = (
     "{{results.or.ci90_low}}", "{{results.or.ci90_high}}", "{{results.hr.ci_low}}",
     "{{results.hr.ci_high}}", "{{results.age.mean}}", "{{results.age.sd}}",
     "{{results.age.se}}", "95% CI", "90% CI", "95.0% CI", "CI 95%", "SD", "SE", "SEM",
-    "standard error", "standard deviation", "(SD)", "±",
+    "standard error", "standard deviation", "(SD)", "±", "s.d.", "s.e.", "(s.d.)",
 )  # fmt: skip
 
 

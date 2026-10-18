@@ -642,6 +642,8 @@ _LABELLED_RIGHT = (
     "Age was {{results.age.mean}} (SD {{results.age.sd}}) years.",
     "The SE was small. Mean {{results.age.mean}} (\N{PLUS-MINUS SIGN}{{results.age.sd}}).",
     "Weight {{results.age.mean}} \N{PLUS-MINUS SIGN} {{results.age.se}} (standard error).",
+    # Round 1 of #327: the stop of "s.d." ended a sentence, so its binding stood alone.
+    "Height was {{results.age.mean}} (s.d. {{results.age.sd}}) cm.",
 )
 #: Sentences whose labels are not those emitted, and what G2 says of each.
 _LABELLED_WRONG = (
@@ -653,6 +655,9 @@ _LABELLED_WRONG = (
     ("Height {{results.age.mean}} \N{PLUS-MINUS SIGN} {{results.age.se}} (SD).",
      "results.age.se is a standard"),
     ("HR was {{results.hr.ci_low}} to {{results.hr.ci_high}}.", "the interval of results.hr"),
+    ("Its mean {{results.age.mean}} (s.e. {{results.age.sd}}) mg.", "results.age.sd is a standard"),
+    ("Then {{results.age.mean}} \N{PLUS-MINUS SIGN} {{results.age.se}} (s.d.).",
+     "results.age.se is a standard"),
 )  # fmt: skip
 
 
@@ -4196,7 +4201,13 @@ def _levels_are_compared_as_written(patch: pytest.MonkeyPatch) -> None:
 def _a_label_after_a_spread_is_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import labels
 
-    patch.setattr(labels, "_after", lambda read, bindings, index, end: "")
+    patch.setattr(labels, "_after", lambda *_args: "")
+
+
+def _an_abbreviations_stop_ends_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import labels
+
+    patch.setattr(labels, "_ABBREVIATED", re.compile(r"(?!)"))
 
 
 def _a_level_after_the_letters_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -5249,6 +5260,10 @@ BROKEN = {
     ),
     "a label after a spread is not read": (
         _a_label_after_a_spread_is_not_read,
+        test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
+    ),
+    "an abbreviation's stop ends a sentence": (
+        _an_abbreviations_stop_ends_a_sentence,
         test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
     ),
     "a level after the letters is not read": (

@@ -9,6 +9,8 @@ deviation or a standard error. Nothing compared either with the text: "(90% CI
 What is read is the label nearest a binding, in its own sentence and on its own side of
 any other binding: the text from the binding before it in the sentence, or the sentence's
 start, to the binding, and for a spread the few characters after it as well ("12.3 (SD)").
+A sentence ends as G2's do, at a stop and a space, except at the stop of "s.d.", "s.e." or
+"s.e.m.", which ends none: "(s.d. {{...}})" is one sentence (round 1 of #327).
 The label read there is compared with the one recorded, and a difference is a warning. A
 bound of an interval with no level recorded at all is said once, where the interval is
 first quoted, as a warning that asks for it. Nothing is said where no label is written.
@@ -17,6 +19,7 @@ first quoted, as a warning that asks for it. Nothing is said where no label is w
 from __future__ import annotations
 
 import re
+from bisect import bisect_left
 from pathlib import Path
 
 from manuscript_guard.contracts.values import Value
@@ -46,6 +49,8 @@ _NAMES = {"sd": "a standard deviation", "se": "a standard error"}
 _AFTER = 12
 _STOPS = ".!?"
 _SENTENCE_END = re.compile(rf"[{re.escape(_STOPS)}](?:\s|$)")
+#: The stop of an abbreviation of a dispersion, which ends no sentence: "s.d. 12.3".
+_ABBREVIATED = re.compile(r"(?<![\w.])(?:s\.d|s\.e|s\.e\.m)\.\Z")
 
 
 def labelled(files: list[tuple[Path, str, list]], namespace: dict[str, Value]) -> Report:
@@ -55,7 +60,7 @@ def labelled(files: list[tuple[Path, str, list]], namespace: dict[str, Value]) -
     asked: set[str] = set()
     for path, text, located in files:
         read = blank_comments(text) if "<!--" in text else text
-        stops = [match.start() for match in _SENTENCE_END.finditer(read)]
+        stops = _stops(read)
         bindings = sorted(((p.start, p.end, p.ref, s) for p, s in located), key=lambda b: b[0])
         for index, (start, end, ref, _sentence) in enumerate(bindings):
             value = namespace.get(ref)
@@ -76,31 +81,38 @@ def labelled(files: list[tuple[Path, str, list]], namespace: dict[str, Value]) -
                         _level_differs(value, estimate, stated, path, line)
                     )
             if value.spread in _SPREADS:
-                after = _after(read, bindings, index, end)
+                after = _after(read, stops, bindings, index, end)
                 said = _stated_spread(before, after)
                 if said is not None and said != value.spread:
                     report = report.with_findings(_spread_differs(value, said, path, line))
     return report
 
 
+def _stops(read: str) -> list[int]:
+    """Where the sentences of `read` end: each stop and a space, but an abbreviation's."""
+    return [
+        match.start()
+        for match in _SENTENCE_END.finditer(read)
+        if not _ABBREVIATED.search(read, 0, match.start() + 1)
+    ]
+
+
 def _before(read: str, stops: list[int], bindings: list, index: int) -> str:
     """The text a binding's label stands in, before it: from the binding before it in the
-    same sentence, or from the sentence's start. Sentences are G2's own (`in_sentences`):
-    the one numbered `n` opens after the stop that ends the one before it."""
-    start, _end, _ref, sentence = bindings[index]
-    previous = [b for b in bindings[:index] if b[3] == sentence]
-    if previous:
-        return read[previous[-1][1] : start]
-    opens = stops[sentence - 1] + 1 if 0 < sentence <= len(stops) else 0
-    return read[opens:start] if opens <= start else ""
+    same sentence, or from the sentence's start."""
+    start = bindings[index][0]
+    count = bisect_left(stops, start)
+    opens = stops[count - 1] + 1 if count else 0
+    previous = [binding[1] for binding in bindings[:index] if binding[1] <= start]
+    return read[max([opens, *previous]) : start]
 
 
-def _after(read: str, bindings: list, index: int, end: int) -> str:
+def _after(read: str, stops: list[int], bindings: list, index: int, end: int) -> str:
     """The few characters after a binding, up to the next binding or the sentence's end."""
     following = bindings[index + 1][0] if index + 1 < len(bindings) else len(read)
-    window = read[end : min(following, end + _AFTER)]
-    stop = _SENTENCE_END.search(window)
-    return window[: stop.start()] if stop else window
+    reach = min(following, end + _AFTER)
+    ending = next((stop for stop in stops if end <= stop < reach), reach)
+    return read[end:ending]
 
 
 def _stated_level(before: str) -> str | None:

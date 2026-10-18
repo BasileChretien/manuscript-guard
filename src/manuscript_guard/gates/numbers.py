@@ -650,7 +650,9 @@ def quoted_whole(files: list[tuple[Path, str, list]], namespace: dict[str, Value
             for interval, ends in intervals.items():
                 if placeholder.ref in (interval[0], *ends.values()):
                     first.setdefault(interval, (path, line))
-            if value is None or not value.of:
+            # A spread names what it is of too, and is no p value: its label is read by
+            # `labels`, and an SD in a sentence of its own is not quoted alone (#327).
+            if value is None or not value.of or value.spread:
                 continue
             belongs = [f"{value.namespace}.{name}" for name in (value.of, value.over) if name]
             if set(belongs) & by_sentence[sentence]:

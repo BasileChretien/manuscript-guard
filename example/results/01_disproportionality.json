@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "a45edc88fa3784b716efe56a4038659199a0c63ed927589e799341c19e69b2bf",
-    "generated_at": "2026-10-18T13:15:11+00:00",
+    "generated_by_sha256": "f5ea07ef309c3fb12dded6d5c6f4164bc8ee42c219a601b5bd30080ac7de760a",
+    "generated_at": "2026-10-18T16:45:38+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.446"
+      "version": "0.2.447"
     },
     "vcs": {
-      "sha": "636d1b3177243d1fd7735f8fe94f7749d5fbd693",
+      "sha": "f47d0f43a1d0f48b13e84e42ac71e42b1884e0e1",
       "dirty": true,
-      "branch": "feat/input-pointers"
+      "branch": "feat/interval-labels"
     },
     "inputs": [
       {
@@ -80,14 +80,16 @@
       "display": "2.885",
       "digits": 3,
       "bounds": "ror_adjusted.point",
-      "bound": "low"
+      "bound": "low",
+      "level": "95%"
     },
     "ror_adjusted.ci_high": {
       "value": 5.123420469009574,
       "display": "5.123",
       "digits": 3,
       "bounds": "ror_adjusted.point",
-      "bound": "high"
+      "bound": "high",
+      "level": "95%"
     },
     "cohort.n_reports": {
       "value": 4000,
@@ -134,14 +136,16 @@
       "display": "2.89",
       "digits": 2,
       "bounds": "ror.point",
-      "bound": "low"
+      "bound": "low",
+      "level": "95%"
     },
     "ror.ci_high": {
       "value": 5.117049374666756,
       "display": "5.12",
       "digits": 2,
       "bounds": "ror.point",
-      "bound": "high"
+      "bound": "high",
+      "level": "95%"
     },
     "ror.ci90_low": {
       "value": 3.023486029492708,

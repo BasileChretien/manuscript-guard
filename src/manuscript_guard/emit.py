@@ -100,6 +100,12 @@ class _Verbatim:
     text: str
 
 
+#: A level of an interval, as `ci_level` takes it: a percentage.
+_LEVEL = re.compile(r"\d{1,2}(?:\.\d+)?%")
+#: What a dispersion can be: a standard deviation or a standard error.
+SPREADS = ("sd", "se")
+
+
 def _level_slug(level: str) -> str:
     """The key fragment naming a second interval: "90%" -> "90", "95% CrI" -> "95cri".
 
@@ -1055,6 +1061,11 @@ class Emitter:
     script: str | Path
     inputs: list[str | Path] = field(default_factory=list)
     root: Path | None = None
+    # The level of every interval this script emits without one of its own, "95%" mostly:
+    # recorded on its bounds, so that G2 can hold the label the text writes beside them to
+    # it (item 33). Said once here, since `interval(level=...)` names a second interval's
+    # keys, and giving the first interval its level that way would rename its bounds.
+    ci_level: str | None = None
     _values: dict[str, dict] = field(default_factory=dict, init=False)
     _tables: dict[str, dict] = field(default_factory=dict, init=False)
     # Display strings this emitter formatted itself, inside a Composed cell. They are
@@ -1099,6 +1110,10 @@ class Emitter:
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
         self.root = Path(self.root).resolve() if self.root else find_root(self.script.parent)
+        if self.ci_level is not None and not _LEVEL.fullmatch(self.ci_level):
+            raise ValueError(
+                f"ci_level {self.ci_level!r}: a level is a percentage, \"95%\" or \"90%\""
+            )
 
     @staticmethod
     def cell(template: str, *parts: object) -> Composed:
@@ -1135,6 +1150,7 @@ class Emitter:
         of: str | None = None,
         over: str | None = None,
         family: str | None = None,
+        spread: str | None = None,
     ) -> None:
         """Record one value. Raises immediately on a duplicate key or unformattable float.
 
@@ -1154,6 +1170,12 @@ class Emitter:
         `family`; `correction()` says how the family is corrected, and G8 warns on a family
         of more than one with none declared. A share names its numerator with `of` and its
         denominator with `over`: "n/N (%)", not a percentage alone.
+
+        A dispersion says which it is, a standard deviation or a standard error, and of what:
+
+            em.value("age.sd", 12.3, digits=1, spread="sd", of="age.mean")
+
+        G2 warns where the text labels it the other ("SE" beside a standard deviation).
         """
         if key in self._values:
             raise ValueError(f"{key!r} emitted twice by {self.script}")
@@ -1188,6 +1210,12 @@ class Emitter:
         elif level is not None:
             raise ValueError(f"{key!r} declares a level without being a bound of anything")
         spec.update(_belongs(key, of, over, family))
+        if spread is not None:
+            if spread not in SPREADS:
+                raise ValueError(f"{key!r}: spread is one of {', '.join(SPREADS)}, not {spread!r}")
+            if over is not None or family is not None:
+                raise ValueError(f"{key!r}: a spread names the estimate it is of with `of` alone")
+            spec["spread"] = spread
         self._values[key] = spec
 
     def correction(self, family: str, method: str, *, reason: str | None = None) -> None:
@@ -1500,7 +1528,9 @@ class Emitter:
             em.interval("ror", 3.8439, 2.1032, 7.0210, digits=2)
             em.interval("ror", low=2.5104, high=5.8722, level="90%", digits=2)
 
-        which writes `ror.ci90_low` and `ror.ci90_high` and leaves `ror.point` alone. Omit
+        which writes `ror.ci90_low` and `ror.ci90_high` and leaves `ror.point` alone. The
+        first interval's level is the emitter's `ci_level`, recorded on its bounds without
+        naming them. Omit
         `point` and it must already exist: re-emitting the estimate under a second key is
         what `same_as` is for, and two keys holding one number is the thing G8 is watching
         for. The bounds of each level are checked against the estimate and against each
@@ -1531,7 +1561,7 @@ class Emitter:
         for end, bound in ((low, "low"), (high, "high")):
             self.value(
                 f"{key}.{stem}_{bound}", end, digits=digits, unit=unit, quoted=quoted,
-                bounds=point_key, bound=bound, level=level,
+                bounds=point_key, bound=bound, level=level or self.ci_level,
             )
 
     def table(

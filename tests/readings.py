@@ -356,6 +356,49 @@ def whole_namespace() -> dict[str, Any]:
     )
 
 
+@reading("labels")
+def _labels() -> Reading:
+    # The gate's function first: where the source has none, the reading is newer than it.
+    from manuscript_guard.gates.labels import labelled
+    from manuscript_guard.gates.numbers import in_sentences
+    from manuscript_guard.text.placeholders import parse
+
+    namespace = labels_namespace()
+
+    def read(text: str) -> dict[str, Any]:
+        """What G2 says of the labels a text writes beside intervals and spreads."""
+        placeholders, _malformed = parse(text)
+        return _told(labelled([(MAIN, text, in_sentences(placeholders, text))], namespace))
+
+    return read
+
+
+def labels_namespace() -> dict[str, Any]:
+    """Results that record their labels: an estimate with its 95% and its 90% interval, one
+    with an interval of no level, and a mean with a standard deviation and a standard
+    error."""
+    from manuscript_guard.contracts.values import RESULTS, Value
+
+    def value(key: str, **said: Any) -> tuple[str, Any]:
+        return f"results.{key}", Value(key=key, value=1, display="1", origin=RESULTS, **said)
+
+    return dict(
+        [
+            value("or.point"),
+            value("or.ci_low", bounds="or.point", bound="low", level="95%"),
+            value("or.ci_high", bounds="or.point", bound="high", level="95%"),
+            value("or.ci90_low", bounds="or.point", bound="low", level="90%"),
+            value("or.ci90_high", bounds="or.point", bound="high", level="90%"),
+            value("hr.point"),
+            value("hr.ci_low", bounds="hr.point", bound="low"),
+            value("hr.ci_high", bounds="hr.point", bound="high"),
+            value("age.mean"),
+            value("age.sd", spread="sd", of="age.mean"),
+            value("age.se", spread="se", of="age.mean"),
+        ]
+    )
+
+
 @reading("deviations")
 def _deviations() -> Reading:
     from manuscript_guard.gates.design import deviations_said

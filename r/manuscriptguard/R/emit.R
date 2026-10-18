@@ -716,8 +716,14 @@ mg_freeze_plan <- function(project_root, script) {
 #' em$write()
 #' }
 #' @export
-mg_emitter <- function(script, inputs = character(), root = NULL) {
+mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NULL) {
   script_path <- normalizePath(script, winslash = "/", mustWork = TRUE)
+  # The level of every interval emitted without one of its own, as `ci_level` in Python:
+  # recorded on its bounds, so that G2 can hold the text's label to it (item 33).
+  if (!is.null(ci_level) && !grepl("^[0-9]{1,2}(\\.[0-9]+)?%$", ci_level)) {
+    stop("ci_level '", ci_level, "': a level is a percentage, \"95%\" or \"90%\"",
+         call. = FALSE)
+  }
   project_root <- if (is.null(root)) mg_find_root(dirname(script_path)) else normalizePath(root, winslash = "/")
   state <- new.env(parent = emptyenv())
   state$values <- list()
@@ -749,7 +755,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   # `over`. G2 warns on a sentence that quotes it without them.
   value <- function(key, value, display = NULL, digits = NULL, unit = NULL,
                     quoted = TRUE, note = NULL, bounds = NULL, bound = NULL,
-                    level = NULL, of = NULL, over = NULL, family = NULL) {
+                    level = NULL, of = NULL, over = NULL, family = NULL,
+                    spread = NULL) {
     if (!is.null(state$values[[key]])) {
       stop(key, " emitted twice by ", script_path, call. = FALSE)
     }
@@ -779,6 +786,15 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     if (!is.null(of)) entry$of <- of
     if (!is.null(over)) entry$over <- over
     if (!is.null(family)) entry$family <- family
+    if (!is.null(spread)) {
+      if (!(spread %in% c("sd", "se"))) {
+        stop(key, ": spread is one of sd, se, not ", spread, call. = FALSE)
+      }
+      if (!is.null(over) || !is.null(family)) {
+        stop(key, ": a spread names the estimate it is of with `of` alone", call. = FALSE)
+      }
+      entry$spread <- spread
+    }
     state$values[[key]] <- entry
     invisible(NULL)
   }
@@ -1013,13 +1029,14 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
       )
     }
     stem <- if (is.null(level)) "ci" else paste0("ci", mg_level_slug(level))
+    recorded <- if (is.null(level)) ci_level else level
     value(
       paste0(key, ".", stem, "_low"), low, digits = digits, unit = unit, quoted = quoted,
-      bounds = point_key, bound = "low", level = level
+      bounds = point_key, bound = "low", level = recorded
     )
     value(
       paste0(key, ".", stem, "_high"), high, digits = digits, unit = unit, quoted = quoted,
-      bounds = point_key, bound = "high", level = level
+      bounds = point_key, bound = "high", level = recorded
     )
     invisible(NULL)
   }

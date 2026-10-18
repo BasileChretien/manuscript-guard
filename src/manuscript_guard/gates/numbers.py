@@ -30,6 +30,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value, number_in
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.gates.labels import labelled
 from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.masking import (
     blank_comments,
@@ -308,6 +309,7 @@ def check_numbers(
         report = report.merge(_fenced_code(path, text, classifier, headings))
 
     report = report.merge(quoted_whole(sentenced, namespace))
+    report = report.merge(labelled(sentenced, namespace))
     report = report.merge(_paper_yaml_prose(project, classifier))
     report = report.merge(_replies(project, classifier, namespace))
     report = report.merge(_emitted_tables(results, classifier))
@@ -754,7 +756,9 @@ def quoted_whole(files: list[tuple[Path, str, list]], namespace: dict[str, Value
             for interval, ends in intervals.items():
                 if placeholder.ref in (interval[0], *ends.values()):
                     first.setdefault(interval, (path, line))
-            if value is None or not value.of:
+            # A spread names what it is of too, and is no p value: its label is read by
+            # `labels`, and an SD in a sentence of its own is not quoted alone (#327).
+            if value is None or not value.of or value.spread:
                 continue
             belongs = [f"{value.namespace}.{name}" for name in (value.of, value.over) if name]
             if set(belongs) & by_sentence[sentence]:

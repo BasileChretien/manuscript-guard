@@ -2543,6 +2543,76 @@ def _with_paragraph(root: Path, paragraph: str) -> None:
     path.write_text(path.read_text(encoding="utf-8") + f"\n\n{paragraph}\n", encoding="utf-8")
 
 
+_LABEL_CODES = ("interval-level-differs", "interval-level-undeclared", "spread-label-differs")
+
+
+def _labels_said(root: Path) -> list[tuple[str, str]]:
+    return [(f.code, f.severity) for f in gate_report(root).findings if f.code in _LABEL_CODES]
+
+
+def test_a_spread_quoted_without_its_mean_is_no_p_value_alone(project: Path) -> None:
+    """Round 1 of #327: a spread records what it is of, and G2 took it for a p value quoted
+    without its estimate, which it "tests"."""
+    document = {
+        "schema": "manuscript-guard/results/1",
+        "provenance": {"generated_by": "analysis/01_disproportionality.py",
+                       "generated_at": "2026-10-18T00:00:00+00:00"},
+        "values": {
+            "age.mean": {"value": 45.2, "display": "45.2"},
+            "age.sd": {"value": 12.3, "display": "12.3", "spread": "sd", "of": "age.mean"},
+        },
+    }  # fmt: skip
+    fragment = project / "results" / "02_labels.json"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\nMean age was "
+                    "{{results.age.mean}} years. Its SD was {{results.age.sd}}.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert "quoted-alone" not in {f.code for f in gate_report(project).findings}
+
+
+def test_a_level_written_otherwise_than_emitted_is_said(project: Path) -> None:
+    """Item 33, as the brief found it: the abstract's "(95% CI ...)" changed to "(90% CI ...)"
+    over the example's 95% interval, and `check` said nothing."""
+    assert _labels_said(project) == []
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    assert text.count("(95% CI {{results.ror.ci_low}}") >= 1
+    path.write_text(text.replace("(95% CI {{results.ror.ci_low}}", "(90% CI {{results.ror.ci_low}}",
+                                 1), encoding="utf-8")  # fmt: skip
+    assert _labels_said(project) == [("interval-level-differs", "warn")]
+
+
+def test_an_interval_quoted_with_no_level_emitted_asks_for_it(project: Path) -> None:
+    for end in ("ci_low", "ci_high"):
+        _value_has(project, f"ror.{end}", level=None)
+    assert _labels_said(project) == [("interval-level-undeclared", "warn")]
+
+
+def test_a_spread_labelled_the_other_kind_is_said(project: Path) -> None:
+    document = {
+        "schema": "manuscript-guard/results/1",
+        "provenance": {"generated_by": "analysis/01_disproportionality.py",
+                       "generated_at": "2026-10-18T00:00:00+00:00"},
+        "values": {
+            "age.mean": {"value": 45.2, "display": "45.2"},
+            "age.sd": {"value": 12.3, "display": "12.3", "spread": "sd", "of": "age.mean"},
+        },
+    }  # fmt: skip
+    fragment = project / "results" / "02_labels.json"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    path = main_md(project)
+    plain = path.read_text(encoding="utf-8")
+    path.write_text(plain + "\n\nAge was {{results.age.mean}} (SD {{results.age.sd}}) years.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert _labels_said(project) == []
+    path.write_text(plain + "\n\nAge was {{results.age.mean}} (SE {{results.age.sd}}) years.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert _labels_said(project) == [("spread-label-differs", "warn")]
+
+
 def _whole_said(root: Path) -> list[tuple[str, str]]:
     codes_ = ("quoted-alone", "interval-not-quoted-whole", "family-uncorrected")
     return [(f.code, f.severity) for f in gate_report(root).findings if f.code in codes_]

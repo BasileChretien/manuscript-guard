@@ -625,6 +625,44 @@ def test_r_and_python_record_an_input_declared_synthetic_alike(tmp_path: Path) -
     ] == [("data/real.csv", None), ("data/simulated.csv", True), ("data/other.csv", None)]
 
 
+LABELS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s", ci_level = "95%%")
+em$interval("ror", 3.8, 2.1, 7.0, digits = 2)
+em$interval("ror", low = 2.5, high = 5.9, level = "90%%", digits = 2)
+em$value("age.mean", 45.2, digits = 1)
+em$value("age.sd", 12.3, digits = 1, spread = "sd", of = "age.mean")
+em$write()
+"""
+
+
+def test_r_and_python_record_a_level_and_a_spread_alike(tmp_path: Path) -> None:
+    """Item 33: the level the script states once, an interval's own, and a spread's kind."""
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "labels.R"
+    script.write_text(LABELS_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    fragment = next((root / "results").glob("*.json"))
+    from_r = json.loads(fragment.read_text(encoding="utf-8"))["values"]
+    em = Emitter(script, root=root, ci_level="95%")
+    em.interval("ror", 3.8, 2.1, 7.0, digits=2)
+    em.interval("ror", low=2.5, high=5.9, level="90%", digits=2)
+    em.value("age.mean", 45.2, digits=1)
+    em.value("age.sd", 12.3, digits=1, spread="sd", of="age.mean")
+    from_python = em.document()["values"]
+    for key in ("ror.ci_low", "ror.ci_high", "ror.ci90_low", "age.sd"):
+        said = {k: from_r[key].get(k) for k in ("level", "spread", "of")}
+        assert said == {k: from_python[key].get(k) for k in ("level", "spread", "of")}, key
+    assert from_r["ror.ci_low"]["level"] == "95%" and from_r["age.sd"]["spread"] == "sd"
+
+
 RAW_R = """
 if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
   cat("MISSING_DEPS\\n"); quit(status = 3)

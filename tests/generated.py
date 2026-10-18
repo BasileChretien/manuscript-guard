@@ -957,6 +957,17 @@ WHOLE = (
     "{{results.female.n}}", "{{results.cohort.n}}",
 )  # fmt: skip
 
+#: The bindings of intervals and spreads, as `labels_namespace` in tests/readings.py
+#: declares them, and the labels a text writes beside them: what the reading of the label
+#: beside a binding compares.
+LABELLED = (
+    "{{results.or.point}}", "{{results.or.ci_low}}", "{{results.or.ci_high}}",
+    "{{results.or.ci90_low}}", "{{results.or.ci90_high}}", "{{results.hr.ci_low}}",
+    "{{results.hr.ci_high}}", "{{results.age.mean}}", "{{results.age.sd}}",
+    "{{results.age.se}}", "95% CI", "90% CI", "95.0% CI", "CI 95%", "SD", "SE", "SEM",
+    "standard error", "standard deviation", "(SD)", "±", "s.d.", "s.e.", "(s.d.)",
+)  # fmt: skip
+
 
 #: What names a dataset, one of each kind the data statement rule knows; links to storage
 #: that is neither persistent nor archived, one of each kind; and links to a fixed version of
@@ -1390,6 +1401,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "interval order": intervals(),
     "quoted whole": texts(WHOLE),
+    "labels": texts(LABELLED),
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),

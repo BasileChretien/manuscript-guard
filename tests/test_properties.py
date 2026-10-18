@@ -629,6 +629,77 @@ def test_a_statistic_is_alone_only_in_a_sentence_without_what_it_belongs_to(text
     assert alone == ["results.hr.p", "the share results.male.pct"], (alone, text)
 
 
+# ------------------------------------------------------- the label beside an interval or a spread
+
+#: Sentences whose labels are those emitted, each set to catch one way of reading them wrong:
+#: a level written "95.0%", two levels in one sentence of which the nearer is the bound's,
+#: a label in the sentence before, and a label written after the binding.
+_LABELLED_RIGHT = (
+    "The ratio was {{results.or.point}} (95% CI {{results.or.ci_low}} to "
+    "{{results.or.ci_high}}).",
+    "A 90% CI was {{results.or.ci90_low}} to {{results.or.ci90_high}}.",
+    "Here 95.0% CI {{results.or.ci_low}} to {{results.or.ci_high}}.",
+    "A 90% CI elsewhere, and 95% CI {{results.or.ci_low}} to {{results.or.ci_high}}.",
+    "Age was {{results.age.mean}} (SD {{results.age.sd}}) years.",
+    "The SE was small. Mean {{results.age.mean}} (\N{PLUS-MINUS SIGN}{{results.age.sd}}).",
+    "Weight {{results.age.mean}} \N{PLUS-MINUS SIGN} {{results.age.se}} (standard error).",
+    # Round 1 of #327: the stop of "s.d." ended a sentence, so its binding stood alone.
+    "Height was {{results.age.mean}} (s.d. {{results.age.sd}}) cm.",
+    # Round 2 of #327: where "s.d." ends a sentence, the next one is not labelled by it.
+    "Values are summarised as mean and s.d. Uncertainty of the slope was "
+    "{{results.age.se}}.",
+    "Spread is given as mean \N{PLUS-MINUS SIGN} s.e.m.\n\nAge varied by {{results.age.sd}} years.",
+)
+#: Sentences whose labels are not those emitted, and what G2 says of each.
+_LABELLED_WRONG = (
+    ("With 90% CI {{results.or.ci_low}} to {{results.or.ci_high}} it was wide.",
+     "results.or.ci_low bounds the 95% interval"),
+    ("The CI 95% was {{results.or.ci90_low}} to {{results.or.ci90_high}}.",
+     "results.or.ci90_low bounds the 90% interval"),
+    ("Age was {{results.age.mean}} (SE {{results.age.sd}}).", "results.age.sd is a standard"),
+    ("Height {{results.age.mean}} \N{PLUS-MINUS SIGN} {{results.age.se}} (SD).",
+     "results.age.se is a standard"),
+    ("HR was {{results.hr.ci_low}} to {{results.hr.ci_high}}.", "the interval of results.hr"),
+    ("Its mean {{results.age.mean}} (s.e. {{results.age.sd}}) mg.", "results.age.sd is a standard"),
+    ("Then {{results.age.mean}} \N{PLUS-MINUS SIGN} {{results.age.se}} (s.d.).",
+     "results.age.se is a standard"),
+)  # fmt: skip
+
+
+@st.composite
+def _labelled_apart(draw: st.DrawFn) -> str:
+    """A text with each planted sentence, in an order drawn and apart in ways drawn, before
+    drawn words: so that nothing drawn after them can put them in a comment it left open."""
+    planted = draw(st.permutations([*_LABELLED_RIGHT, *(said for said, _ in _LABELLED_WRONG)]))
+    gaps = [draw(st.sampled_from((" ", "\n", "\n\n"))) for _ in planted[1:]]
+    after = zip(gaps, planted[1:], strict=True)
+    return planted[0] + "".join(gap + sentence for gap, sentence in after) + "\n\n" + draw(texts())
+
+
+@holds(200, _labelled_apart())
+def test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else(
+    text: str,
+) -> None:
+    """Item 33: whatever the sentences around them, the level written beside an interval's
+    bounds and the label beside a spread are held to what was emitted: a warning for each
+    one written otherwise, one asking for the level of an interval that has none, and
+    nothing for each written as emitted."""
+    from readings import labels_namespace
+
+    from manuscript_guard.gates.labels import labelled
+    from manuscript_guard.gates.numbers import in_sentences
+    from manuscript_guard.text.placeholders import parse
+
+    placeholders, _malformed = parse(text)
+    said = labelled([(Path("main.md"), text, in_sentences(placeholders, text))],
+                    labels_namespace())  # fmt: skip
+    found = sorted(f.message for f in said.findings)
+    assert len(found) == len(_LABELLED_WRONG), (found, text)
+    for (_sentence, start), message in zip(sorted(_LABELLED_WRONG, key=lambda w: w[1]), found,
+                                           strict=True):  # fmt: skip
+        assert message.startswith(start), (message, start, text)
+
+
 # ------------------------------------------------------------------- a data statement
 
 
@@ -4187,6 +4258,57 @@ def _an_isbn_13_is_weighed_as_an_isbn_10(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(identifiers, "isbn_valid", valid)
 
 
+def _a_label_is_read_across_sentences(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import labels
+
+    def everything_before(read, stops, bindings, index):
+        return read[max(0, bindings[index][0] - 120) : bindings[index][0]]
+
+    patch.setattr(labels, "_before", everything_before)
+
+
+def _the_first_level_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import labels
+
+    def first(before):
+        match = labels._LEVEL.search(before)
+        return (match.group(1) or match.group(2)) if match else None
+
+    patch.setattr(labels, "_stated_level", first)
+
+
+def _levels_are_compared_as_written(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import labels
+
+    patch.setattr(labels, "_same_level", lambda stated, recorded: f"{stated}%" == recorded)
+
+
+def _a_label_after_a_spread_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import labels
+
+    patch.setattr(labels, "_after", lambda *_args: "")
+
+
+def _an_abbreviations_stop_never_ends_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import labels
+
+    patch.setattr(labels, "_GOES_ON", re.compile(r""))
+
+
+def _an_abbreviations_stop_ends_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import labels
+
+    patch.setattr(labels, "_ABBREVIATED", re.compile(r"(?!)"))
+
+
+def _a_level_after_the_letters_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import labels
+
+    before_only = labels._LEVEL.pattern.split("|(?<![\\w-])")[0]
+    assert before_only != labels._LEVEL.pattern
+    patch.setattr(labels, "_LEVEL", re.compile(before_only))
+
+
 def _every_stop_is_in_one_sentence(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import numbers
 
@@ -5222,6 +5344,34 @@ BROKEN = {
     "an ISBN's groups are read as ISBNs": (
         _an_isbn_s_groups_are_read_as_isbns,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "a label is read across sentences": (
+        _a_label_is_read_across_sentences,
+        test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
+    ),
+    "the first level in a sentence is read": (
+        _the_first_level_is_read,
+        test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
+    ),
+    "levels are compared as written": (
+        _levels_are_compared_as_written,
+        test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
+    ),
+    "a label after a spread is not read": (
+        _a_label_after_a_spread_is_not_read,
+        test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
+    ),
+    "an abbreviation's stop never ends a sentence": (
+        _an_abbreviations_stop_never_ends_a_sentence,
+        test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
+    ),
+    "an abbreviation's stop ends a sentence": (
+        _an_abbreviations_stop_ends_a_sentence,
+        test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
+    ),
+    "a level after the letters is not read": (
+        _a_level_after_the_letters_is_not_read,
+        test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
     ),
     "every stop is read in one sentence": (
         _every_stop_is_in_one_sentence,

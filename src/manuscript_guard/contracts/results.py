@@ -238,6 +238,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 of=spec.get("of"),
                 over=spec.get("over"),
                 family=spec.get("family"),
+                spread=spec.get("spread"),
             )
 
         for key, spec in document.get("tables", {}).items():

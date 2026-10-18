@@ -39,7 +39,7 @@ def main() -> None:
     with DATA.open(encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
 
-    em = Emitter(__file__)
+    em = Emitter(__file__, ci_level="95%")
     # Simulated: the paper is a demonstration, and says so (paper.yaml, `demonstration`).
     em.add_input(DATA, synthetic=True)
 

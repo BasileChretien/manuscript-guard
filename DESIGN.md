@@ -2820,6 +2820,21 @@ from the copy's and its Deviations section says what it said then: changed with 
 A plan re-wrapped without a word changed is unchanged. Results with no copy, written before
 the emitters kept one, are a note.
 
+**A plan says what its design needs.** The seven sections are the same for every plan, so a
+disproportionality analysis with no case definition or comparator, or a trial with no
+estimand, passed. A project names its design in `paper.yaml` (`study_type`: cohort,
+case-control, self-controlled, disproportionality, trial, systematic-review,
+prediction-model), and G12 then asks the plan for the sections that design needs as well:
+the estimand of a trial (ICH E9(R1)), the time zero and the confounders of a cohort
+(STROBE, TARGET), the risk windows of a self-controlled design, the deduplication, case
+definition, comparator and measure of a disproportionality analysis (READUS-PV). Each
+section in `data/study_types.yaml` names the guideline item it comes from and the date that
+item was read, and the finding's hint carries it. The same table gives the guidelines the
+paper follows, so G5 says (`reporting-guideline-for-design`) when the design is named and
+none of them is declared; the reporting-checklist skill shows the table, and a test holds
+the two to one another. A project that names no design is asked for the seven, as before.
+What the sections say is the author's and the panel's to judge, never a gate's.
+
 ## Stages: not every gate binds on day one
 
 The first version of `check` ran all twelve gates unconditionally, which meant that someone
@@ -6109,6 +6124,15 @@ Added by the adversarial review, verified and **not** fixed:
   splice that item over the whole block (see "The round trip carries prose"). Comparing
   them needs an identifier per item and a merge that puts the list marker back, and neither
   exists.
+- **A design's sections are found by the words of their headings.** "Comparator" is any
+  heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
+  has the section, and one that answers the question under a heading of its own words has
+  not. Seven designs are named; a design outside them (a cross-sectional study, a
+  diagnostic accuracy study, a target trial emulation as a design of its own) names none and
+  keeps the seven sections. The self-controlled designs have no reporting guideline, and
+  their sections come from the methods literature. G5 holds the paper's guidelines to the
+  design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
+  its name, so a name that begins as another does ("STROBE-anything").
 - **Which blocks are paragraphs is decided by pattern, not by pandoc.** `tag` runs where
   pandoc may be absent, so it reproduces pandoc's rules — two spaces after "C." before it is
   a list, the inline HTML tags a paragraph may open with, what can interrupt a paragraph —

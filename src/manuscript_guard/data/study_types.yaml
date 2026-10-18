@@ -1,0 +1,298 @@
+schema: manuscript-guard/study-types/1
+
+# What an analysis plan for each study design states beyond the seven sections G12 asks of
+# every plan (question, design, population, exposure, outcome, analysis, deviations), and the
+# reporting guidelines the paper follows. A project names its design in paper.yaml
+# (`study_type`); a project that names none is asked for the seven only.
+#
+# Each section is a heading the plan holds and something said under it, as the seven are:
+#   id        what G12 calls it;
+#   heading   the words an author's heading is matched by, loosely, since headings are theirs;
+#   says      what it has to say, for the finding's hint;
+#   source    the guideline item it comes from, read on its own page on the date in read_on.
+# A guideline whose page says no licence is cited by its item, never quoted.
+#
+# `guidelines` are the paper's: G5 says where paper.yaml declares none of them for the
+# design it names. The protocol's own guideline, where there is one, is under `protocol`.
+
+types:
+  trial:
+    label: randomised trial
+    guidelines: [CONSORT]
+    protocol: [SPIRIT]
+    sections:
+      - id: estimand
+        heading: '(?i)\bestimands?\b'
+        says: >-
+          the estimand: the treatment, the population, the variable, how each intercurrent
+          event is handled, and the population-level summary
+        source: ICH E9(R1), sections A.3.2 and A.3.3
+        url: https://database.ich.org/sites/default/files/E9-R1_Step4_Guideline_2019_1203.pdf
+        read_on: 2026-10-15
+      - id: sample size
+        heading: '(?i)\bsample size|\bpower\b'
+        says: how the sample size was determined, with every assumption it rests on
+        source: SPIRIT 2025, item 19
+        url: https://www.consort-spirit.org/
+        read_on: 2026-10-15
+      - id: randomisation
+        heading: '(?i)\brandomi[sz]|\ballocation|\bblind|\bmask'
+        says: >-
+          how the sequence is generated and concealed, who is blinded, and when unblinding
+          is allowed
+        source: SPIRIT 2025, items 21a to 24c
+        url: https://www.consort-spirit.org/
+        read_on: 2026-10-15
+      - id: missing data
+        heading: '(?i)\bmissing'
+        says: how missing data will be handled in the analysis
+        source: SPIRIT 2025, item 27c
+        url: https://www.consort-spirit.org/
+        read_on: 2026-10-15
+      - id: sensitivity analyses
+        heading: '(?i)\bsensitivity|\bsubgroup'
+        says: the sensitivity and subgroup analyses, and which assumption each tests
+        source: SPIRIT 2025, item 27d; ICH E9(R1), section A.5.2.1
+        url: https://www.consort-spirit.org/
+        read_on: 2026-10-15
+      - id: interim analyses
+        heading: '(?i)\binterim|\bstopping|\bmonitoring\b|\bdata monitoring'
+        says: any interim analysis and stopping rule, who sees the results and who decides
+        source: SPIRIT 2025, items 28a and 28b
+        url: https://www.consort-spirit.org/
+        read_on: 2026-10-15
+
+  cohort:
+    label: cohort study
+    guidelines: [STROBE, RECORD, TARGET]
+    sections:
+      - id: time zero and follow-up
+        heading: '(?i)\btime zero|\bindex date|\bfollow[- ]?up|\bat[- ]risk|\bcensor'
+        says: >-
+          when follow-up starts (time zero, the date of assignment where a target trial is
+          emulated), the at-risk window, and how loss to follow-up is handled
+        source: STROBE, items 6a and 12d (cohort); TARGET, item 7d
+        url: https://www.strobe-statement.org/download/strobe-checklist-cohort-studies-pdf
+        read_on: 2026-10-15
+      - id: confounding
+        heading: '(?i)\bconfound|\badjust'
+        says: >-
+          the confounders and effect modifiers, the adjustment set with the reason for each,
+          and how confounding is controlled
+        source: STROBE, items 7 and 12a
+        url: https://www.strobe-statement.org/download/strobe-checklist-cohort-studies-pdf
+        read_on: 2026-10-15
+      - id: missing data
+        heading: '(?i)\bmissing'
+        says: how missing data will be handled
+        source: STROBE, item 12c
+        url: https://www.strobe-statement.org/download/strobe-checklist-cohort-studies-pdf
+        read_on: 2026-10-15
+      - id: sensitivity analyses
+        heading: '(?i)\bsensitivity|\bsubgroup'
+        says: the subgroup, interaction and sensitivity analyses
+        source: STROBE, items 12b and 12e
+        url: https://www.strobe-statement.org/download/strobe-checklist-cohort-studies-pdf
+        read_on: 2026-10-15
+
+  case-control:
+    label: case-control study
+    guidelines: [STROBE, RECORD]
+    sections:
+      - id: cases
+        # Not "case" in "Case-control", "Case–control" or "Case crossover", which name a
+        # design: whatever joins the two words.
+        heading: '(?i)\bcases?\b(?!\W{0,3}(?:controls?|crossover|cohort|series)\b)|\bascertain'
+        says: the case definition, and the sources and methods of case ascertainment
+        source: STROBE, item 6a (case-control)
+        url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
+        read_on: 2026-10-15
+      - id: controls
+        heading: '(?i)(?<!case\W)(?<!case\W\W)(?<!case\W\W\W)\bcontrols?\b'
+        says: the sources and methods of control selection, and why these cases and controls
+        source: STROBE, item 6a (case-control)
+        url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
+        read_on: 2026-10-15
+      - id: matching
+        heading: '(?i)\bmatch'
+        says: >-
+          the matching criteria and the number of controls per case, and how the analysis
+          accounts for the matching, or that there is none
+        source: STROBE, items 6b and 12d (case-control)
+        url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
+        read_on: 2026-10-15
+      - id: confounding
+        heading: '(?i)\bconfound|\badjust'
+        says: the confounders, the adjustment set with the reason for each
+        source: STROBE, items 7 and 12a
+        url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
+        read_on: 2026-10-15
+      - id: missing data
+        heading: '(?i)\bmissing'
+        says: how missing data will be handled
+        source: STROBE, item 12c
+        url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
+        read_on: 2026-10-15
+
+  self-controlled:
+    label: self-controlled design (case series or case-crossover)
+    guidelines: [STROBE, RECORD]
+    sections:
+      - id: observation period
+        heading: '(?i)\bobservation'
+        says: the period over which each case's events and exposures are known, and when it starts and ends
+        source: Petersen, Douglas and Whitaker, BMJ 2016;354:i4515, the set-up of a self-controlled case series
+        url: https://doi.org/10.1136/bmj.i4515
+        read_on: 2026-10-15
+      - id: risk windows
+        heading: '(?i)\b(risk|exposure|focal|referent|control) (window|period)s?\b'
+        says: >-
+          the risk windows and their lengths, and the control time; for a case-crossover,
+          the focal and referent windows
+        source: Petersen et al. 2016; Cadarette et al., Pharmacoepidemiol Drug Saf 2021, Table 1
+        url: https://doi.org/10.1002/pds.5227
+        read_on: 2026-10-15
+      - id: washout
+        heading: '(?i)\bwash[- ]?out|\bpre-?exposure|\binduction|\blag\b'
+        says: the induction, lag and washout windows, and any pre-exposure period
+        source: Cadarette et al. 2021, section 4 and Figure 1; Petersen et al. 2016, Table 1
+        url: https://doi.org/10.1002/pds.5227
+        read_on: 2026-10-15
+      - id: time-varying adjustment
+        heading: '(?i)\bage\b|\bseason|\bcalendar|\btime[- ]varying'
+        says: how the observation period is cut by age, season or calendar time
+        source: Petersen et al. 2016, the set-up and the assumption of constant rates
+        url: https://doi.org/10.1136/bmj.i4515
+        read_on: 2026-10-15
+      - id: assumptions
+        heading: '(?i)\bassumption|\bevent[- ]dependent'
+        says: >-
+          how event-dependent exposure, an event that ends observation, and recurrent events
+          are handled
+        source: Petersen et al. 2016, the assumptions of the design and Table 1
+        url: https://doi.org/10.1136/bmj.i4515
+        read_on: 2026-10-15
+
+  disproportionality:
+    label: disproportionality analysis
+    guidelines: [READUS-PV]
+    sections:
+      - id: deduplication
+        heading: '(?i)duplicat|\bpre-?processing|\bcleaning'
+        says: how duplicate reports are found and removed, and every other choice made in preparing the data
+        source: READUS-PV, item 5b and its explanation
+        url: https://doi.org/10.1007/s40264-024-01421-9
+        read_on: 2026-10-15
+      - id: case definition
+        heading: '(?i)\bcase definition|\bcase selection|\bevent selection|\bdrugs? and events?'
+        says: >-
+          the events and the drugs as they are coded, how they are grouped, and which roles
+          of a drug (suspect, concomitant) count
+        source: READUS-PV, items 6a and 6c
+        url: https://doi.org/10.1007/s40264-024-01421-9
+        read_on: 2026-10-15
+      - id: comparator
+        heading: '(?i)\bcomparator|\breference group|\bcomparison group'
+        says: the reference group the reports are compared with, and why it is that one
+        source: READUS-PV, item 3, and its explanation of items 7a, 7b and 8b
+        url: https://doi.org/10.1007/s40264-024-01421-9
+        read_on: 2026-10-15
+      - id: measure
+        # The measure the paper estimates, numbered or not, and not the "Outcome measures",
+        # "Data quality measures" or "Disproportionality analysis" such a plan has.
+        heading: '(?i)^[\W\d]*(?:(?:primary|main|choice of|the|disproportionality|statistical)\s+)*measures?\b(?!\s+of\s+(?:\w+\s+)?(?:outcomes?|exposures?)\b)|\bmeasures? of disproportionality|\bdisproportionality measures?\b|\bsignal (?:threshold|detection|criteri)'
+        says: the measure of disproportionality and any threshold, with the reasons
+        source: READUS-PV, item 7b
+        url: https://doi.org/10.1007/s40264-024-01421-9
+        read_on: 2026-10-15
+      - id: sensitivity analyses
+        heading: '(?i)\bsensitivity|\bconfound|\bstratif|\brestrict'
+        says: the restrictions, subgroups, stratifications and adjustments, and any case-by-case review
+        source: READUS-PV, items 7c and 7d
+        url: https://doi.org/10.1007/s40264-024-01421-9
+        read_on: 2026-10-15
+
+  systematic-review:
+    label: systematic review
+    guidelines: [PRISMA]
+    protocol: [PRISMA-P]
+    sections:
+      - id: eligibility
+        heading: '(?i)\beligib|\binclusion|\bexclusion'
+        says: the eligibility criteria, as population, intervention, comparator, outcome, design, setting, time frame, language and publication status
+        source: PRISMA-P 2015, item 8
+        url: https://doi.org/10.1186/2046-4053-4-1
+        read_on: 2026-10-15
+      - id: search
+        heading: '(?i)\bsearch|\binformation sources|\bdatabases'
+        says: the databases, registers and other sources with their dates, and a draft search for one database
+        source: PRISMA-P 2015, items 9 and 10
+        url: https://doi.org/10.1186/2046-4053-4-1
+        read_on: 2026-10-15
+      - id: selection and extraction
+        heading: '(?i)\bselection|\bscreening|\bdata (collection|extraction)'
+        says: how records are screened and selected, by how many reviewers, and what data are extracted
+        source: PRISMA-P 2015, items 11a to 13
+        url: https://doi.org/10.1186/2046-4053-4-1
+        read_on: 2026-10-15
+      - id: risk of bias
+        heading: '(?i)\brisk of bias|\bquality assessment|\bappraisal'
+        says: how the risk of bias of each study is assessed, and with which tool
+        source: PRISMA-P 2015, item 14
+        url: https://doi.org/10.1186/2046-4053-4-1
+        read_on: 2026-10-15
+      - id: synthesis
+        heading: '(?i)\bsynthesis|\bmeta-?analys'
+        says: when the results are combined and how, the heterogeneity, and the summary where they are not
+        source: PRISMA-P 2015, items 15a to 15d
+        url: https://doi.org/10.1186/2046-4053-4-1
+        read_on: 2026-10-15
+      - id: certainty
+        heading: '(?i)\bcertainty|\bconfidence in|\bgrade\b|\bmeta-?bias|\bpublication bias'
+        says: how meta-bias is assessed, and the confidence in the body of evidence
+        source: PRISMA-P 2015, items 16 and 17
+        url: https://doi.org/10.1186/2046-4053-4-1
+        read_on: 2026-10-15
+
+  prediction-model:
+    label: prediction model
+    guidelines: [TRIPOD]
+    sections:
+      - id: predictors
+        heading: '(?i)\bpredictors?\b|\bcandidate variables|\bfeatures'
+        says: how the predictors are chosen, defined and measured, and when
+        source: TRIPOD+AI, items 9a and 9b
+        url: https://doi.org/10.1136/bmj-2023-078378
+        read_on: 2026-10-15
+      - id: sample size
+        heading: '(?i)\bsample size'
+        says: how the size of each dataset was arrived at
+        source: TRIPOD+AI, item 10
+        url: https://doi.org/10.1136/bmj-2023-078378
+        read_on: 2026-10-15
+      - id: missing data
+        heading: '(?i)\bmissing'
+        says: how missing data will be handled
+        source: TRIPOD+AI, item 11
+        url: https://doi.org/10.1136/bmj-2023-078378
+        read_on: 2026-10-15
+      - id: model development
+        heading: '(?i)\bdevelopment|\binternal validation|\btuning'
+        says: >-
+          how the data are split, the predictors handled, the model chosen and tuned, and how
+          it is validated internally
+        source: TRIPOD+AI, items 12a to 12d and 13
+        url: https://doi.org/10.1136/bmj-2023-078378
+        read_on: 2026-10-15
+      - id: performance
+        heading: '(?i)\bperformance|\bdiscrimination|\bcalibration|\bexternal validation'
+        says: the measures of discrimination, calibration and others, and how the model would be updated
+        source: TRIPOD+AI, items 12e to 12g
+        url: https://doi.org/10.1136/bmj-2023-078378
+        read_on: 2026-10-15
+      - id: fairness
+        heading: '(?i)\bfairness|\bequity'
+        says: how the model's fairness across groups is assessed, and why that way
+        source: TRIPOD+AI, item 14
+        url: https://doi.org/10.1136/bmj-2023-078378
+        read_on: 2026-10-15

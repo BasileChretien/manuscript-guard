@@ -71,15 +71,31 @@
         },
         "changed": {
           "type": "array",
-          "description": "What changed because of this point. Each entry is checked: a manuscript file must actually differ from the submitted version, and a results key must exist. A response claiming a revision that did not happen is the specific failure this whole record exists to catch.",
+          "description": "What changed because of this point. Each entry is checked: a manuscript file must actually differ from the submitted version, a results key must exist, and a quoted text must be in the manuscript now, not in what the journal received, and in the section named. A response claiming a revision that did not happen is the specific failure this whole record exists to catch.",
           "items": {
             "type": "object",
-            "required": ["kind", "name"],
+            "required": ["kind"],
             "additionalProperties": false,
             "properties": {
-              "kind": { "enum": ["manuscript", "results", "figure", "analysis"] },
+              "kind": { "enum": ["manuscript", "results", "figure", "analysis", "text"] },
               "name": { "type": "string", "minLength": 1 },
+              "quote": {
+                "type": "string",
+                "minLength": 1,
+                "description": "With kind `text`: what the manuscript now reads, as the response quotes it to the journal, bindings rendered."
+              },
+              "section": {
+                "type": "string",
+                "minLength": 1,
+                "description": "With kind `text`: the section the response says the text is in, as its heading names it (\"Abstract\", \"Methods\")."
+              },
               "note": { "type": "string" }
+            },
+            "if": { "properties": { "kind": { "const": "text" } } },
+            "then": { "required": ["quote"], "not": { "required": ["name"] } },
+            "else": {
+              "required": ["name"],
+              "not": { "anyOf": [{ "required": ["quote"] }, { "required": ["section"] }] }
             }
           }
         },

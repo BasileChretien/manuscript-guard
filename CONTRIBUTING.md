@@ -59,10 +59,13 @@ skills that call it.
 ## Releases on PyPI
 
 Every number on `main` goes to PyPI, with nobody's click. When a push to `main` raises the
-version in `pyproject.toml` to one PyPI does not have, `.github/workflows/publish.yml`
-builds the wheel and the source distribution, tags that commit `v` and the number
-(`v0.2.431` for 0.2.431), makes the GitHub Release, and uploads them. So the maintainer's
-bump is the release, and a pull request, which leaves the version line alone, never is one.
+version in `pyproject.toml` to one PyPI does not have, and CI has passed on the commit that
+push left `main` at, `.github/workflows/publish.yml` builds the wheel and the source
+distribution from that commit, tags it `v` and the number (`v0.2.431` for 0.2.431), makes
+the GitHub Release, and uploads them. So the maintainer's bump is the release, and a pull
+request, which leaves the version line alone, never is one. The release starts when CI on
+`main` finishes, an hour and a half or more after the push, so a version can be on `main`
+some time before PyPI has it.
 
 A release on PyPI is permanent: a version can be withdrawn, and never replaced or used
 again. So a push that leaves the number alone releases nothing, nor does one that lowers
@@ -74,15 +77,21 @@ later merge that is not the commit the number was raised on.
 
 When a release does not go through:
 
+- A run that says CI did not pass on the commit releases nothing yet. Where the failure
+  was not the code's (a runner lost, a download that timed out), re-run CI's failed jobs
+  on that commit, on the Actions page: when CI's run passes, the release starts again by
+  itself. Where it was, merge the fix and raise the number again. The fix's push leaves
+  the number as it was, so it releases nothing, and the number that failed is passed over.
 - A run that failed is finished by re-running its failed jobs, on the Actions page. That
   builds the same commit, and makes the tag and the GitHub Release only where they are
-  missing. So is a run GitHub cancelled, by re-running all its jobs: one run waits behind
-  the one that is going, and a third push that touches `pyproject.toml` in those minutes
-  cancels the one waiting.
+  missing. So is a run GitHub cancelled, by re-running all its jobs: the tags are made one
+  release at a time, one waits behind the one that is going, and a third release in those
+  minutes cancels the one waiting.
 - A run that says the commit it replaced cannot be read followed a forced push to `main`.
   It releases nothing, since nothing says that push raised the number. If it did, raise
   the number again in a commit of its own: that next number is the release, and the one
-  passed over is never published.
+  passed over is never published. The same holds where GitHub's record of the pushes to
+  `main` shows no single push leaving it at the commit.
 - An upload that stopped after one of its two files is not finished by this workflow.
   PyPI then has the version, so a later run releases nothing, and a re-run of the failed
   job fails on the file already there. Raise the number again: the next release carries

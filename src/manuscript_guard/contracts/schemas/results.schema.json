@@ -212,6 +212,10 @@
           "type": "string",
           "description": "The family of tests a p value is one of. G8 warns on a family of more than one p value with no correction declared in `corrections`."
         },
+        "spread": {
+          "enum": ["sd", "se"],
+          "description": "A dispersion's kind: a standard deviation or a standard error, of the estimate `of` names. G2 warns where the text labels it the other."
+        },
         "level": {
           "type": "string",
           "description": "Which interval this bound belongs to, when one estimate carries more than one - \"90%\" beside a 95% CI, or \"95% CrI\" beside a frequentist one. Bounds are compared within a level and never across: a 90% interval nested inside a 95% one is correct, not a contradiction. Absent means the estimate's only interval."

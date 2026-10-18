@@ -1765,6 +1765,30 @@ declared release typed where the dictionary is named within a few words before i
 line (`typed-dictionary-release`), and only there: "2019" is the release of ICD-10 and the
 year of many other things.
 
+## The label beside an interval or a spread is the one emitted
+
+"(90% CI {{results.ror.ci_low}} to {{results.ror.ci_high}})" over a 95% interval, and "(SE
+{{results.age.sd}})" over a standard deviation, passed every gate: a level was recorded only
+on a second interval, which `level` names, and nothing said whether a dispersion is a
+standard deviation or a standard error. A script now states the level of its intervals
+once, on the emitter (`Emitter(__file__, ci_level="95%")`, `mg_emitter(..., ci_level =
+"95%")`), and every interval without a level of its own records it on its bounds. It is said
+there and not on the interval because `level` names a second interval's keys
+(`ror.ci90_low`): given to the first interval, it would rename its bounds and every binding
+of them. A dispersion says which it is, and of what: `em.value("age.sd", 12.3, digits=1,
+spread="sd", of="age.mean")`. Both emitters write the same.
+
+G2 reads the label nearest each such binding, in its sentence (`in_sentences`) and on its own
+side of any other binding: the text from the binding before it in the sentence, or the
+sentence's start, and for a spread the dozen characters after it ("12.3 (SD)"). A level is
+written before the letters ("95% CI", "90% two-sided confidence interval") or after them
+("CI 95%"), and the nearest one counts, so "a 90% CI elsewhere, and 95% CI ..." reads 95. It
+is compared as a number, so "95.0%" is 95%. A label written otherwise than emitted is a
+warning (`interval-level-differs`, `spread-label-differs`), and so is a quoted interval with
+no level recorded at all, once, where it is first quoted (`interval-level-undeclared`): the
+brief asked for it as a warning at first. Where no label is written beside a binding,
+nothing is said.
+
 ## A P follows from its statistic
 
 A paper's own results are bound, and their arithmetic is the analysis's. Three kinds of
@@ -8454,6 +8478,13 @@ Closed since, and why each mattered:
   produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
+- **A label is read only beside its binding, and only what is written.** A level or a
+  spread's label written in another sentence, or before another binding of the sentence,
+  is not read: "the 90% intervals are below" over a list of bounds says nothing of them. A
+  ± with no word beside it is no label. An interval quoted only in a table is not read, and
+  a spread emitted without `spread` is held to nothing. The words read for a dispersion are
+  SD, SE, SEM, s.d., s.e. and "standard deviation" or "standard error": another
+  abbreviation of either is not read.
 - **A statistic is held to what it declares it belongs to, and only by sentence.** A p
   value or a share emitted without `of` is held to nothing, and nothing guesses that a key
   named `.p` is a p value. A sentence is read as the interval check reads one, so a binding

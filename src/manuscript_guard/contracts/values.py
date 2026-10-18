@@ -66,6 +66,9 @@ class Value:
     of: str | None = None
     over: str | None = None
     family: str | None = None
+    # A dispersion's kind, "sd" or "se", where the analysis says: G2 warns where the text
+    # labels it the other.
+    spread: str | None = None
 
     @property
     def namespace(self) -> str:

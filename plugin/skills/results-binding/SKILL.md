@@ -19,7 +19,7 @@ Python:
 ```python
 from manuscript_guard.emit import Emitter
 
-em = Emitter(__file__, inputs=["data/cohort.csv"])     # inputs relative to the project root
+em = Emitter(__file__, inputs=["data/cohort.csv"], ci_level="95%")  # every interval's level
 em.value("cohort.n", len(rows))                        # an int displays as itself: 4000
 em.value("cohort.n_exposed", n, display=f"{n:,}")      # when the journal wants 4,000
 em.value("case.pct_serious", pct, digits=1)            # a float needs digits or display
@@ -27,6 +27,7 @@ em.value("model.p", p, display="<0.001")               # a comparator only has t
 em.interval("ror", point, low, high, digits=2)         # ror.point, ror.ci_low, ror.ci_high
 em.value("ror.p", p, digits=3, of="ror.point", family="secondary")  # a p value names its estimate
 em.value("female.pct", pct, digits=1, of="female.n", over="cohort.n")  # a share, its counts
+em.value("age.sd", sd, digits=1, spread="sd", of="age.mean")  # a standard deviation, of what
 em.correction("secondary", "holm")                     # how the family is corrected; "none" + reason
 em.value("table2x2.a", a, quoted=False)                # published but not quoted in the text
 alpha = em.parameter("alpha", 0.05)                    # param.alpha: a choice, handed back to use
@@ -220,6 +221,8 @@ checked like any other.
 | `estimate-outside-interval`, `interval-inverted` | fix the interval in the analysis, with `interval()` |
 | `quoted-alone` | a warning: a p value quoted in a sentence without its estimate, or a share without either of its counts. Quote them together: n/N (%) |
 | `interval-not-quoted-whole` | a warning: the estimate is quoted, and no sentence anywhere quotes both bounds of its interval |
+| `interval-level-differs`, `spread-label-differs` | a warning: the level written beside an interval ("90% CI"), or the label beside a dispersion ("SE"), is not the one the analysis emitted. Write the one emitted, or bind what the text means |
+| `interval-level-undeclared` | a warning: an interval is quoted and its level was not emitted. Say it once: `Emitter(__file__, ci_level="95%")`, `mg_emitter(..., ci_level = "95%")` |
 | `family-uncorrected` | a warning: a family of more than one p value, and no `correction()` declared for it. "none" with a reason is a declaration |
 
 ## If you are a model doing this

@@ -30,6 +30,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value, number_in
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.gates.labels import labelled
 from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.masking import (
     blank_comments,
@@ -308,6 +309,7 @@ def check_numbers(
         report = report.merge(_fenced_code(path, text, classifier, headings))
 
     report = report.merge(quoted_whole(sentenced, namespace))
+    report = report.merge(labelled(sentenced, namespace))
     report = report.merge(_paper_yaml_prose(project, classifier))
     report = report.merge(_emitted_tables(results, classifier))
     report = report.merge(_declared_intervals(namespace))

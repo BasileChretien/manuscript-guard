@@ -1030,6 +1030,35 @@ def test_software_that_is_not_installed_is_refused(scratch: Path) -> None:
         emitter(scratch).software("no-such-distribution-anywhere")
 
 
+def test_an_interval_records_the_level_the_script_states_once(scratch: Path) -> None:
+    """Item 33: `level` names a second interval's keys, so the first one's level is said on
+    the emitter, and recorded on its bounds without renaming them."""
+    em = Emitter(scratch / "analysis" / "run.py", root=scratch, ci_level="95%")
+    em.interval("ror", 3.8, 2.1, 7.0, digits=2)
+    em.interval("ror", low=2.5, high=5.9, level="90%", digits=2)
+    values = em.document()["values"]
+    assert values["ror.ci_low"]["level"] == values["ror.ci_high"]["level"] == "95%"
+    assert values["ror.ci90_low"]["level"] == "90%"
+    plain = emitter(scratch)
+    plain.interval("hr", 1.5, 1.1, 2.0, digits=2)
+    assert "level" not in plain.document()["values"]["hr.ci_low"]
+    with pytest.raises(ValueError, match="a level is a percentage"):
+        Emitter(scratch / "analysis" / "run.py", root=scratch, ci_level="95")
+
+
+def test_a_spread_says_which_it_is(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.value("age.mean", 45.2, digits=1)
+    em.value("age.sd", 12.3, digits=1, spread="sd", of="age.mean")
+    assert em.document()["values"]["age.sd"] == {
+        "value": 12.3, "display": "12.3", "digits": 1, "of": "age.mean", "spread": "sd",
+    }  # fmt: skip
+    with pytest.raises(ValueError, match="spread is one of sd, se"):
+        em.value("age.iqr", 3.0, digits=1, spread="iqr")
+    with pytest.raises(ValueError, match="with `of` alone"):
+        em.value("age.se", 1.0, digits=1, spread="se", of="age.mean", over="cohort.n")
+
+
 def test_a_statistic_says_what_it_belongs_to(scratch: Path) -> None:
     """Item 13: a p value names its estimate and family, a share its counts, and a family
     its correction; what makes no sense is refused at the emitter."""

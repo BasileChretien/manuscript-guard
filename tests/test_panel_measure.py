@@ -46,29 +46,33 @@ reply = said[hashlib.sha256(user.encode("utf-8")).hexdigest() + "|" + role]
 print(json.dumps({{"result": reply, "usage": {{"input_tokens": 10, "output_tokens": 5}},
                   "total_cost_usd": 0.01}}))
 """
-#: A stand-in for the adjudicating model: each finding a control is, its known defect, and
-#: every other none, as a JSON list in a fenced block, as models write one.
+#: A stand-in for the adjudicating model: each finding a control is, its known defect, the
+#: finding that raises two, both, and every other none, as a JSON list in a fenced block, as
+#: models write one.
 ADJUDICATOR = """import json, sys
 answers = json.loads({answers!r})
 batch = json.loads(sys.stdin.buffer.read().decode("utf-8"))
-said = [{{"item": i["item"], "defect": answers.get(i["finding"], "none")}} for i in batch]
+said = [{{"item": i["item"], "defects": answers.get(i["finding"], [])}} for i in batch]
 print(json.dumps({{"result": "```json\\n" + json.dumps(said) + "\\n```"}}))
 """
 
+#: One finding that raises two defects, which only an adjudicator can give it.
+TWO = "No case definition is given, and duplicate reports are not mentioned."
+#: A comment that praises what a defect would lack, in that defect's words.
+PRAISE = "The 2 x 2 contingency table lets a reader recompute every estimate."
 #: What each reviewer says in the stand-in replies, by copy: the four known defects raised by
-#: the reviewers asked about them on the pre-fix copy, both planted ones on the minor copy
-#: (one rated major), and on every copy a finding that names no defect.
+#: the reviewers asked about them on the pre-fix copy, two of them in one finding; both
+#: planted ones on the minor copy by one reviewer (one rated major); praise in a defect's
+#: words on the current copy; and on every copy a finding that names no defect.
 SAID = {
-    ("pre-fix", "pharmacoepidemiologist"): [
-        ("major", "Methods", "No case definition: which MedDRA terms make a case is not said."),
-        ("major", "Methods", "Duplicate reports are not mentioned."),
-    ],
+    ("pre-fix", "pharmacoepidemiologist"): [("major", "Methods", TWO)],
     ("pre-fix", "biostatistician"): [
         ("major", "Results", "The contingency table is not reported."),
     ],
     ("pre-fix", "checklist-auditor"): [
         ("minor", "Methods, DEMO-OBS item 3", "How records were selected is not described."),
     ],
+    ("current", "biostatistician"): [("comment", "Results", PRAISE)],
     ("minor", "biostatistician"): [
         ("minor", "Methods", "ICSR is never spelt out."),
         ("major", "Results", "The caption of Table 1 does not say what its values are."),
@@ -111,6 +115,14 @@ def test_every_copy_is_asked_by_every_reviewer_three_times(prepared: tuple[Path,
     assert set(request) == {"system", "user"} and "# The manuscript" in request["user"]
     with pytest.raises(SystemExit, match="already prepared"):
         tool.prepare(work, {"pre-fix": EXAMPLE, "current": EXAMPLE})
+
+
+def test_a_folder_prepared_in_part_is_refused(tmp_path: Path) -> None:
+    """A run that failed half-way leaves its requests and no key; preparing again in that
+    folder is refused with what is there, not a crash."""
+    (tmp_path / "requests").mkdir()
+    with pytest.raises(SystemExit, match=r"already prepared, or in part \(requests\)"):
+        tool.prepare(tmp_path, {"pre-fix": EXAMPLE, "current": EXAMPLE})
 
 
 def test_the_blank_copy_is_its_title_and_abstract_and_the_minor_one_is_planted(
@@ -157,25 +169,37 @@ def test_the_whole_path_answers_scores_adjudicates_and_reports(
 
     scored = tool.score(work, RUBRIC, seed=1)
     adjudicate = yaml.safe_load((work / "adjudicate.yaml").read_text(encoding="utf-8"))
-    # Every reply's "Well argued." and the controls go to the person; nothing says where
-    # an item came from.
-    assert scored["to_adjudicate"] == len(key) + len(RUBRIC["controls"])
-    assert set(adjudicate["items"][0]) == {"item", "where", "finding", "defect"}
+    # Every reply's "Well argued.", the praise in a defect's words, the finding that raises
+    # two defects and the controls go to the adjudicator; nothing says where an item came
+    # from, not even its `where`.
+    blind = [item["finding"] for item in adjudicate["items"]]
+    assert scored["to_adjudicate"] == len(key) + 3 + 6 + len(RUBRIC["controls"])
+    assert blind.count(PRAISE) == 3 and blind.count(TWO) == 6
+    assert set(adjudicate["items"][0]) == {"item", "finding", "defects"}
+    with pytest.raises(SystemExit, match="already scored"):
+        tool.score(work, RUBRIC, seed=1)
     answers = {c["finding"]: c["defect"] for c in RUBRIC["controls"]}
+    answers[TWO] = "duplicates, case-definition"
     for item in adjudicate["items"]:
-        item["defect"] = answers.get(item["finding"], "none")
+        item["defects"] = answers.get(item["finding"], "none")
     (work / "adjudicate.yaml").write_text(yaml.safe_dump(adjudicate, allow_unicode=True),
                                           encoding="utf-8")  # fmt: skip
 
     text = tool.report(work, RUBRIC)
-    counted = tool.tally(tool._adjudicated(work, RUBRIC)[0], key, RUBRIC)["defects"]
-    assert counted["pre-fix"]["case-definition"] == [3, 3, 3]
-    assert counted["pre-fix"]["record-selection"] == [3, 3, 0]
-    assert counted["current"]["duplicates"] == [3, 0, 0]
+    counted = tool.tally(tool._adjudicated(work, RUBRIC)[0], key, RUBRIC)
+    assert counted["defects"]["pre-fix"]["case-definition"] == [3, 3, 3]
+    assert counted["defects"]["pre-fix"]["duplicates"] == [3, 3, 3]
+    assert counted["defects"]["pre-fix"]["record-selection"] == [3, 3, 0]
+    assert counted["defects"]["current"]["duplicates"] == [3, 0, 0]
+    assert counted["defects"]["current"]["contingency-table"] == [3, 0, 0]
     # Of the three biostatistician replies on the minor copy, each raised both planted
-    # defects and rated the caption major: over-escalation.
-    assert counted["minor"]["caption-incomplete"][1:] == [3, 3]
-    assert counted["minor"]["undefined-acronym"][1:] == [3, 0]
+    # defects and rated the caption major: over-escalation. The other two remits, asked
+    # about both, raised neither, and the report gives each reviewer's count.
+    by_reviewer = counted["by_reviewer"]["minor"]["caption-incomplete"]
+    assert by_reviewer["biostatistician"] == [3, 3, 3]
+    assert by_reviewer["pharmacoepidemiologist"] == by_reviewer["checklist-auditor"] == [3, 0, 0]
+    assert counted["defects"]["minor"]["undefined-acronym"] == [9, 3, 0]
+    assert "| caption-incomplete: biostatistician | 3 | 3 | 3 |" in text
     assert "adjudicated by a person; agreement with the controls: 100%" in text
     assert (work / "report.md").read_text(encoding="utf-8") == text
 
@@ -183,28 +207,56 @@ def test_the_whole_path_answers_scores_adjudicates_and_reports(
     # sample of its answers and the controls (2026-10-19).
     by_model = work.parent / "by-model"
     shutil.copytree(work, by_model)
+    lists = {finding: [] if said == "none" else sorted(said.replace(" ", "").split(","))
+             for finding, said in answers.items()}  # fmt: skip
     stand_in = tmp_path / "adjudicator.py"
-    stand_in.write_text(ADJUDICATOR.format(answers=json.dumps(answers)), encoding="utf-8")
+    stand_in.write_text(ADJUDICATOR.format(answers=json.dumps(lists)), encoding="utf-8")
     done = tool.adjudicate_with_model(by_model, RUBRIC, "opus", [sys.executable, str(stand_in)],
                                       seed=2)  # fmt: skip
     assert done["adjudicated"] == len(adjudicate["items"])
+    assert tool.tally(tool._adjudicated(by_model, RUBRIC)[0], key, RUBRIC) == counted
     check = yaml.safe_load((by_model / "check.yaml").read_text(encoding="utf-8"))
-    assert len(check["items"]) == min(tool.CHECKED, len(key)) + len(RUBRIC["controls"])
-    assert all(item["defect"] == "" for item in check["items"])
+    assert len(check["items"]) == tool.CHECKED + len(RUBRIC["controls"])
+    assert all(item["defects"] == "" for item in check["items"])
+    # Unchecked, the report says so (Basile scored none, 2026-10-19).
+    assert "No person checked the model's adjudications" in tool.report(by_model, RUBRIC)
     for item in check["items"]:
-        item["defect"] = answers.get(item["finding"], "none")
+        item["defects"] = answers.get(item["finding"], "none")
     (by_model / "check.yaml").write_text(yaml.safe_dump(check, allow_unicode=True),
                                          encoding="utf-8")  # fmt: skip
-    # Unchecked, the report says so (Basile scored none, 2026-10-19).
-    blank = by_model / "check.yaml"
-    unchecked = blank.read_text(encoding="utf-8")
-    blank.unlink()
-    assert "No person checked the model's adjudications" in tool.report(by_model, RUBRIC)
-    blank.write_text(unchecked, encoding="utf-8")
     text = tool.report(by_model, RUBRIC)
     assert "adjudicated by a model; agreement with the controls: 100%" in text
-    assert f"A person checked {min(tool.CHECKED, len(key))} of the model's adjudications and " \
-        f"agreed with {min(tool.CHECKED, len(key))}" in text  # fmt: skip
+    assert f"A person checked {tool.CHECKED} of the model's adjudications and " \
+        f"agreed with {tool.CHECKED}" in text  # fmt: skip
+
+
+def test_an_adjudication_is_a_list_of_defect_ids_or_none() -> None:
+    known = {d["id"] for d in RUBRIC["defects"]}
+    assert tool.defects_of("none", known, "x") == tool.defects_of([], known, "x") == []
+    assert tool.defects_of("duplicates, case-definition", known, "x") == [
+        "case-definition", "duplicates"]  # fmt: skip
+    assert tool.defects_of(["duplicates"], known, "x") == ["duplicates"]
+    for wrong in ("", "case definition", "none, duplicates", None):
+        with pytest.raises(SystemExit, match="is no defect id or none"):
+            tool.defects_of(wrong, known, "x")
+
+
+@pytest.mark.parametrize(("code", "out", "says"), [
+    (1, "", "claude -p failed"),
+    (0, json.dumps({"is_error": True, "result": "Overloaded"}), "claude -p failed"),
+    (0, json.dumps({"result": "I could not decide."}), "no list of them"),
+    (0, json.dumps({"result": '[{"item": 99, "defects": []}]'}), "no list of them"),
+    (0, json.dumps({"result": '[{"item": 1, "defects": ["case defn"]}]'}), "no defect id"),
+])  # fmt: skip
+def test_an_adjudicating_call_that_failed_or_answered_otherwise_is_refused(
+    code: int, out: str, says: str
+) -> None:
+    import subprocess
+
+    run = subprocess.CompletedProcess([], code, out.encode("utf-8"), b"")
+    known = {d["id"] for d in RUBRIC["defects"]}
+    with pytest.raises(SystemExit, match=says):
+        tool._model_said(run, [{"item": 1, "finding": "f"}, {"item": 2, "finding": "g"}], known)
 
 
 def test_an_answer_that_is_no_defect_id_is_refused(prepared: tuple[Path, dict]) -> None:
@@ -212,7 +264,7 @@ def test_an_answer_that_is_no_defect_id_is_refused(prepared: tuple[Path, dict]) 
     if not (work / "adjudicate.yaml").exists():
         pytest.skip("the whole path has not run")
     adjudicate = yaml.safe_load((work / "adjudicate.yaml").read_text(encoding="utf-8"))
-    adjudicate["items"][0]["defect"] = "case definition"
+    adjudicate["items"][0]["defects"] = "case definition"
     broken = work.parent / "broken"
     if not broken.exists():
         import shutil

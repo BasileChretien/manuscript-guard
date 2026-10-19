@@ -14,27 +14,34 @@ the example, each with that round's panel and nothing else in `review/`:
 * **current**, the fixed version: what the panel still calls major there, and whether it
   raises a fixed defect again;
 * **blank**, the pre-fix version cut to its title and abstract: a reviewer can raise
-  "duplicate reports" without reading anything, and that is no evidence of reading;
+  "duplicate reports" without reading the paper, and that is no evidence of reading. Its
+  reviewers are sent what every reviewer is besides the manuscript: the paper's facts from
+  paper.yaml, the journal's profile and the reporting checklist, DEMO-OBS, whose item 3 asks
+  how records were selected;
 * **minor**, the current version with two minor defects planted (`PLANTED`), to count how
   often a minor defect is rated major, which forces an answer from the author in G11.
 
-Steps, each reading and writing under one working folder:
+Steps, each reading and writing under one working folder, which `prepare` wants empty:
 
     python tools/panel_measure.py prepare --work DIR   # the copies and every request
     python tools/panel_measure.py answer --work DIR --model opus   # or answer them another way
     (each DIR/requests/<id>.json, its system and user text, answered in DIR/replies/<id>.txt)
     python tools/panel_measure.py score --work DIR     # settles what it can; DIR/adjudicate.yaml
-    (fill in each item's `defect` in DIR/adjudicate.yaml, not knowing where it came from)
+    python tools/panel_measure.py adjudicate --work DIR --model opus
+    (or fill in each item's `defects` in DIR/adjudicate.yaml by hand, not knowing where it
+    came from: the ids it raises, separated by commas, or none)
     python tools/panel_measure.py report --work DIR    # DIR/report.md, written by this script only
 
 A request is exactly what `review --run --dry-run` writes for the copy, so a reply may come
 from a provider's API, the panel's own `review --run`, or any other way of putting the text
 to a model. The ids are random, and the adjudication file is shuffled and carries nothing that
-says which copy, reviewer or sample a finding came from. Findings of known grade are mixed in,
-to measure the adjudicator. Defects are those of `tools/data/panel-rubric.yaml`, written
-before any reply was read. Only a defect the copy shows and the reviewer's remit asks about is
-scored; recall and false findings on the clean version are reported, never precision, since
-planted defects have no real prevalence.
+says which copy, reviewer or sample a finding came from, not even the finding's `where`
+("Abstract" would say which copy). Findings of known grade are mixed in, to measure the
+adjudicator. Defects are those of `tools/data/panel-rubric.yaml`, written before any reply
+was read. Each defect is counted on every copy, in the replies of the reviewers whose remit
+the rubric says asks about it; the report marks the copies that do not show it, where raising
+it is a false finding. Recall, and false findings on the clean version, are reported, never
+precision, since planted defects have no real prevalence.
 """
 
 from __future__ import annotations
@@ -42,6 +49,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import random
 import re
 import shutil
@@ -86,7 +94,10 @@ def example_at(revision: str, into: Path, repo: Path = ROOT) -> Path:
     archive = subprocess.run(["git", "archive", revision, "example"], cwd=repo,
                              capture_output=True, check=True).stdout  # fmt: skip
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
-        tar.extractall(into, filter="data")
+        if hasattr(tarfile, "data_filter"):
+            tar.extractall(into, filter="data")
+        else:  # Python before 3.10.12, which has no filters; the archive is our own
+            tar.extractall(into)
     return into / "example"
 
 
@@ -153,8 +164,11 @@ def requests_of(project: Path) -> list[tuple[str, dict]]:
     """Each reviewer's request, as `review --run --dry-run` writes it for `project`: the
     system text and the user text."""
     code = "import sys; from manuscript_guard.cli import main; sys.exit(main(sys.argv[1:]))"
+    # This tree's package, not whichever one is installed.
+    path = os.pathsep.join(filter(None, [str(ROOT / "src"), os.environ.get("PYTHONPATH")]))
     run = subprocess.run([sys.executable, "-c", code, "review", "--run", "--dry-run"],
-                         cwd=project, capture_output=True, text=True)  # fmt: skip
+                         cwd=project, capture_output=True, text=True,
+                         env={**os.environ, "PYTHONPATH": path})  # fmt: skip
     if run.returncode != 0:
         said = run.stdout + run.stderr
         raise SystemExit(f"{project.name}: review --run --dry-run failed:\n{said}")
@@ -169,8 +183,11 @@ def requests_of(project: Path) -> list[tuple[str, dict]]:
 def prepare(work: Path, sources: dict[str, Path], seed: int | None = None) -> dict:
     """The copies under `work`, and each request under `work`/requests, by a random id; the
     key from id to copy, reviewer and sample in `work`/key.yaml."""
-    if (work / "key.yaml").exists():
-        raise SystemExit(f"{work}: already prepared")
+    made = [name for name in ("key.yaml", "requests", "replies", "copies")
+            if (work / name).exists()]  # fmt: skip
+    if made:
+        raise SystemExit(f"{work}: already prepared, or in part ({', '.join(made)}); "
+                         "prepare in an empty folder")  # fmt: skip
     # The round-1 panel, unchanged since it was written; the first version has none.
     panel = _round_one_panel(sources["current"])
     (work / "requests").mkdir(parents=True)
@@ -206,7 +223,7 @@ def answer_with_claude_code(work: Path, model: str, claude: list[str]) -> dict:
             continue
         request = json.loads(path.read_text(encoding="utf-8"))
         system = work / "system.txt"
-        system.write_text(request["system"], encoding="utf-8")
+        system.write_text(request["system"], encoding="utf-8", newline="\n")
         run = subprocess.run(
             [*claude, "-p", "--safe-mode", "--system-prompt-file", str(system), "--tools", "",
              "--model", model, "--output-format", "json", "--max-turns", "1"],
@@ -252,14 +269,23 @@ def matched(finding: dict, rubric: dict) -> list[str]:
             if any(re.search(words, said, re.IGNORECASE) for words in defect["words"])]  # fmt: skip
 
 
+#: What scoring writes, and what is adjudicated from it: a second scoring would shuffle the
+#: blind file anew, and adjudications already made would be read against other findings.
+_SCORED = ("adjudicate.yaml", "adjudication-key.yaml", "adjudicate-model.yaml", "check.yaml")
+
+
 def score(work: Path, rubric: dict, seed: int | None = None) -> dict:
     """Each reply read: its major and minor findings settled by the rubric's words where
     exactly one defect matches, and the rest, with the controls, shuffled into
-    `work`/adjudicate.yaml. A comment is never settled by its words: it may praise what
-    a defect would lack ("the 2 x 2 table lets a reader recompute the estimate"), which
-    the words cannot tell from saying it is missing. (The first scoring of the 2026-10-19
-    run settled comments too, and 20 were taken as raising a defect; this was changed
-    before any finding was adjudicated.)"""
+    `work`/adjudicate.yaml, where any finding may be given several defects. A comment is
+    never settled by its words: it may praise what a defect would lack ("the 2 x 2 table
+    lets a reader recompute the estimate"), which the words cannot tell from saying it is
+    missing. (The first scoring of the 2026-10-19 run settled comments too, and 20 were
+    taken as raising a defect; this was changed before any finding was adjudicated.)"""
+    done = [name for name in _SCORED if (work / name).exists()]
+    if done:
+        raise SystemExit(f"{work}: already scored ({', '.join(done)}); remove these to score "
+                         "again, and adjudicate again after")  # fmt: skip
     key = _load(work / "key.yaml")
     readings: dict[str, dict] = {}
     blind: list[dict] = []
@@ -278,26 +304,25 @@ def score(work: Path, rubric: dict, seed: int | None = None) -> dict:
             if finding.get("severity") not in ("major", "minor"):
                 settled = []
             findings.append({"severity": finding.get("severity"),
-                             "defect": settled[0] if len(settled) == 1 else None})  # fmt: skip
+                             "defects": settled if len(settled) == 1 else None})  # fmt: skip
             if len(settled) != 1:
                 text = " ".join(str(finding.get("finding") or "").split())
-                blind.append({"from": [ident, at], "where": finding.get("where") or "",
-                              "finding": text})  # fmt: skip
+                blind.append({"from": [ident, at], "finding": text})
         readings[ident] = {"verdict": parsed.get("verdict"), "findings": findings}
     for at, control in enumerate(rubric["controls"]):
-        blind.append({"from": ["control", at], "where": control["where"],
-                      "finding": control["finding"]})  # fmt: skip
+        blind.append({"from": ["control", at], "finding": control["finding"]})
     random.Random(seed).shuffle(blind)
-    items = [{"item": n, "where": b["where"], "finding": b["finding"], "defect": ""}
+    items = [{"item": n, "finding": b["finding"], "defects": ""}
              for n, b in enumerate(blind, start=1)]  # fmt: skip
     _dump(work / "adjudicate.yaml", {
-        "about": "For each finding, write the id of the defect it raises, or none. Defects: "
+        "about": "For each finding, write the ids of the defects it raises, separated by "
+                 "commas, or none. Defects: "
                  + "; ".join(f"{d['id']}: {d['about']}" for d in rubric["defects"]),
         "items": items,
     })  # fmt: skip
     _dump(work / "adjudication-key.yaml", {n: b["from"] for n, b in enumerate(blind, start=1)})
     _dump(work / "readings.yaml", readings)
-    return {"replies": len(readings), "settled": sum(f["defect"] is not None for r in
+    return {"replies": len(readings), "settled": sum(f["defects"] is not None for r in
             readings.values() for f in r["findings"]), "to_adjudicate": len(items)}  # fmt: skip
 
 
@@ -309,11 +334,46 @@ BATCH = 40
 CHECKED = 40
 _ADJUDICATOR = (
     "You adjudicate findings of reviewers of a manuscript against a fixed list of defects. "
-    "For each finding, say which one defect it raises, or none: a finding raises a defect "
-    "only where it says the thing is missing or wrong, not where it praises it or mentions "
-    "it. Answer with one JSON list and nothing else, one object per finding, in order: "
-    '[{{"item": <its number>, "defect": "<one id or none>"}}]. The defects:\n{defects}'
+    "For each finding, say which defects it raises, if any: a finding raises a defect only "
+    "where it says the thing is missing or wrong, not where it praises it or mentions it. "
+    "Answer with one JSON list and nothing else, one object per finding, in order: "
+    '[{{"item": <its number>, "defects": [<the ids it raises; none, an empty list>]}}]. '
+    "The defects:\n{defects}"
 )
+
+
+def defects_of(answer: object, known: set[str], where: str) -> list[str]:
+    """An adjudication as a list of defect ids: a list, or ids separated by commas, or
+    "none", which is the empty list. Blank, or naming no defect of the rubric, is refused."""
+    said = answer if isinstance(answer, list) else str(answer or "").split(",")
+    ids = [str(one).strip() for one in said if str(one).strip()]
+    if ids == ["none"] or (isinstance(answer, list) and not ids):
+        return []
+    wrong = [one for one in ids if one not in known] or ([] if ids else ["(blank)"])
+    if wrong:
+        raise SystemExit(f"{where}: {', '.join(map(repr, wrong))} is no defect id or none")
+    return sorted(set(ids))
+
+
+def _model_said(run: subprocess.CompletedProcess, batch: list[dict], known: set[str]) -> dict:
+    """The adjudicating model's answers for `batch`, from Claude Code's output; a call that
+    failed, or an answer that is no list of the batch's items, is refused with what it said."""
+    out, err = run.stdout.decode("utf-8", "replace"), run.stderr.decode("utf-8", "replace")
+    said = json.loads(out) if out.strip().startswith("{") else {}
+    items = f"items {batch[0]['item']} to {batch[-1]['item']}"
+    if run.returncode != 0 or said.get("is_error") or "result" not in said:
+        raise SystemExit(f"{items}: claude -p failed: {out[-400:]}{err[-400:]}")
+    text = str(said["result"])
+    start, end = text.find("["), text.rfind("]")
+    try:
+        given = json.loads(text[start:end + 1]) if 0 <= start < end else None
+    except json.JSONDecodeError:
+        given = None
+    asked = {i["item"] for i in batch}
+    if not isinstance(given, list) or not all(
+            isinstance(a, dict) and a.get("item") in asked for a in given):  # fmt: skip
+        raise SystemExit(f"{items}: the model's answer is no list of them: {text[:400]}")
+    return {a["item"]: defects_of(a.get("defects"), known, f"item {a['item']}") for a in given}
 
 
 def adjudicate_with_model(work: Path, rubric: dict, model: str, claude: list[str],
@@ -323,13 +383,13 @@ def adjudicate_with_model(work: Path, rubric: dict, model: str, claude: list[str
     of them with the controls, shuffled and blank, for a person to adjudicate as a check on
     the model (chosen by Basile on 2026-10-19 in place of scoring all of them himself)."""
     items = _load(work / "adjudicate.yaml")["items"]
-    known = {d["id"] for d in rubric["defects"]} | {"none"}
+    known = {d["id"] for d in rubric["defects"]}
     defects = "\n".join(f"- {d['id']}: {d['about']}" for d in rubric["defects"])
     system = work / "adjudicator.txt"
-    system.write_text(_ADJUDICATOR.format(defects=defects), encoding="utf-8")
-    answers: dict[int, str] = {}
+    system.write_text(_ADJUDICATOR.format(defects=defects), encoding="utf-8", newline="\n")
+    answers: dict[int, list[str]] = {}
     for start in range(0, len(items), BATCH):
-        batch = [{"item": i["item"], "where": i["where"], "finding": i["finding"]}
+        batch = [{"item": i["item"], "finding": i["finding"]}
                  for i in items[start:start + BATCH]]  # fmt: skip
         run = subprocess.run(
             [*claude, "-p", "--safe-mode", "--system-prompt-file", str(system), "--tools", "",
@@ -337,16 +397,11 @@ def adjudicate_with_model(work: Path, rubric: dict, model: str, claude: list[str
             input=json.dumps(batch, ensure_ascii=False).encode("utf-8"), capture_output=True,
             cwd=work, timeout=900,
         )  # fmt: skip
-        said = json.loads(run.stdout.decode("utf-8", "replace") or "{}")
-        text = str(said.get("result", "")).strip().removeprefix("```json").strip("`\n ")
-        for answer in json.loads(text):
-            if answer["defect"] not in known:
-                raise SystemExit(f"item {answer['item']}: {answer['defect']!r} is no defect")
-            answers[int(answer["item"])] = answer["defect"]
+        answers.update(_model_said(run, batch, known))
     missing = {i["item"] for i in items} - set(answers)
     if missing:
         raise SystemExit(f"the model adjudicated no answer for items {sorted(missing)}")
-    _dump(work / "adjudicate-model.yaml", answers)
+    _dump(work / "adjudicate-model.yaml", dict(sorted(answers.items())))
     key = _load(work / "adjudication-key.yaml")
     rng = random.Random(seed)
     findings = [i for i in items if key[i["item"]][0] != "control"]
@@ -355,7 +410,7 @@ def adjudicate_with_model(work: Path, rubric: dict, model: str, claude: list[str
     rng.shuffle(checked)
     _dump(work / "check.yaml", {
         "about": _load(work / "adjudicate.yaml")["about"],
-        "items": [{**i, "defect": ""} for i in checked],
+        "items": [{**i, "defects": ""} for i in checked],
     })  # fmt: skip
     return {"adjudicated": len(answers), "to_check": len(checked)}
 
@@ -363,74 +418,93 @@ def adjudicate_with_model(work: Path, rubric: dict, model: str, claude: list[str
 # ------------------------------------------------------------------------------- report
 
 
-def _answers(path: Path) -> dict[int, str]:
-    return {item["item"]: str(item.get("defect") or "").strip()
+def _answers(path: Path, rubric: dict) -> dict[int, list[str]]:
+    known = {d["id"] for d in rubric["defects"]}
+    return {item["item"]: defects_of(item.get("defects"), known, f"{path.name} item {item['item']}")
             for item in _load(path)["items"]}  # fmt: skip
 
 
+def _filled(path: Path) -> bool:
+    """Whether a person has begun the adjudication file at `path`."""
+    return path.exists() and any(i.get("defects") not in ("", None)
+                                 for i in _load(path)["items"])  # fmt: skip
+
+
+def _control(rubric: dict, at: int) -> list[str]:
+    defect = rubric["controls"][at]["defect"]
+    return [] if defect == "none" else [defect]
+
+
 def _adjudicated(work: Path, rubric: dict) -> tuple[dict, float]:
-    """The readings with each blind finding's defect filled in, and the adjudicator's
+    """The readings with each blind finding's defects filled in, and the adjudicator's
     agreement with the controls: a person's, from `adjudicate.yaml`, or, where a model
     adjudicated, the model's, from `adjudicate-model.yaml`."""
     readings = _load(work / "readings.yaml")
     key = _load(work / "adjudication-key.yaml")
     model = work / "adjudicate-model.yaml"
-    answers = ({int(k): v for k, v in _load(model).items()} if model.exists()
-               else _answers(work / "adjudicate.yaml"))  # fmt: skip
-    known = {d["id"] for d in rubric["defects"]} | {"none"}
+    known = {d["id"] for d in rubric["defects"]}
+    answers = ({int(k): defects_of(v, known, f"{model.name} item {k}")
+                for k, v in _load(model).items()} if model.exists()
+               else _answers(work / "adjudicate.yaml", rubric))  # fmt: skip
     agreed, controls = 0, 0
     for item, (source, at) in key.items():
-        answer = answers.get(item, "")
-        if answer not in known:
-            raise SystemExit(f"adjudicate.yaml item {item}: {answer!r} is no defect id or none")
+        if item not in answers:
+            raise SystemExit(f"item {item} has no adjudication")
         if source == "control":
             controls += 1
-            agreed += answer == rubric["controls"][at]["defect"]
+            agreed += answers[item] == _control(rubric, at)
         else:
-            readings[source]["findings"][at]["defect"] = None if answer == "none" else answer
+            readings[source]["findings"][at]["defects"] = answers[item]
     return readings, agreed / controls if controls else float("nan")
 
 
 def tally(readings: dict, key: dict, rubric: dict) -> dict:
     """For each copy and defect: of the replies from reviewers asked about it, how many
-    raised it, and how many rated it major; and the major findings per reply."""
-    by_copy: dict[str, dict] = defaultdict(lambda: defaultdict(lambda: [0, 0, 0]))
+    raised it, and how many rated it major, in all and by reviewer; and the major findings
+    per reply."""
+    def counts() -> defaultdict:
+        return defaultdict(lambda: [0, 0, 0])
+
+    by_copy: dict[str, dict] = defaultdict(counts)
+    by_reviewer: dict[tuple[str, str], dict] = defaultdict(counts)
     majors: dict[str, list[int]] = defaultdict(list)
     for ident, reading in readings.items():
         where = key[ident]
         raised: dict[str, str] = {}
         for finding in reading["findings"]:
-            if finding["defect"]:
-                worst = raised.get(finding["defect"])
-                raised[finding["defect"]] = "major" if "major" in (worst, finding["severity"]) \
+            for defect in finding["defects"] or []:
+                worst = raised.get(defect)
+                raised[defect] = "major" if "major" in (worst, finding["severity"]) \
                     else finding["severity"]  # fmt: skip
         majors[where["copy"]].append(sum(f["severity"] == "major" for f in reading["findings"]))
         for defect in rubric["defects"]:
             if where["reviewer"] not in defect["asked"]:
                 continue
-            counts = by_copy[where["copy"]][defect["id"]]
-            counts[0] += 1
-            counts[1] += defect["id"] in raised
-            counts[2] += raised.get(defect["id"]) == "major"
+            for total in (by_copy[where["copy"]][defect["id"]],
+                          by_reviewer[where["copy"], defect["id"]][where["reviewer"]]):  # fmt: skip
+                total[0] += 1
+                total[1] += defect["id"] in raised
+                total[2] += raised.get(defect["id"]) == "major"
+    reviewers: dict[str, dict] = defaultdict(dict)
+    for (copy, defect), each in by_reviewer.items():
+        reviewers[copy][defect] = {r: list(v) for r, v in sorted(each.items())}
     return {"defects": {c: {d: list(v) for d, v in ds.items()} for c, ds in by_copy.items()},
-            "majors": dict(majors)}  # fmt: skip
+            "by_reviewer": dict(reviewers), "majors": dict(majors)}  # fmt: skip
 
 
 def checked(work: Path, rubric: dict) -> tuple[int, int, int, int]:
     """Of the findings a person checked, how many the model's adjudication agrees with;
     and of the controls, how many the person got right."""
     key = _load(work / "adjudication-key.yaml")
-    model = {int(k): v for k, v in _load(work / "adjudicate-model.yaml").items()}
-    person = _answers(work / "check.yaml")
-    known = {d["id"] for d in rubric["defects"]} | {"none"}
+    known = {d["id"] for d in rubric["defects"]}
+    model = {int(k): defects_of(v, known, f"item {k}")
+             for k, v in _load(work / "adjudicate-model.yaml").items()}  # fmt: skip
     agree = seen = right = controls = 0
-    for item, answer in person.items():
-        if answer not in known:
-            raise SystemExit(f"check.yaml item {item}: {answer!r} is no defect id or none")
+    for item, answer in _answers(work / "check.yaml", rubric).items():
         source, at = key[item]
         if source == "control":
             controls += 1
-            right += answer == rubric["controls"][at]["defect"]
+            right += answer == _control(rubric, at)
         else:
             seen += 1
             agree += answer == model[item]
@@ -448,8 +522,7 @@ def report(work: Path, rubric: dict) -> str:
              f"The blind findings were adjudicated by {'a model' if by_model else 'a person'}; "
              f"agreement with the controls: {agreement:.0%}."]  # fmt: skip
     if by_model:
-        person = work / "check.yaml"
-        if person.exists() and any(_answers(person).values()):
+        if _filled(work / "check.yaml"):
             agree, seen, right, controls = checked(work, rubric)
             lines.append(f"A person checked {seen} of the model's adjudications and "
                          f"agreed with {agree}, and got {right} of {controls} controls "
@@ -468,6 +541,12 @@ def report(work: Path, rubric: dict) -> str:
         for defect, (asked, raised, major) in sorted(counted["defects"].get(copy, {}).items()):
             note = "" if defect in shown else " (not in this copy)"
             lines.append(f"| {defect}{note} | {asked} | {raised} | {major} |")
+            # A defect several remits ask about, by reviewer: a remit that does not reach it
+            # would otherwise hide the one that does.
+            each = counted["by_reviewer"][copy][defect]
+            if len(each) > 1:
+                lines += [f"| {defect}: {reviewer} | {a} | {r} | {m} |"
+                          for reviewer, (a, r, m) in each.items()]  # fmt: skip
         each = counted["majors"].get(copy, [])
         lines += ["", f"Major findings per reply: {each} (mean "
                   f"{sum(each) / len(each) if each else float('nan'):.1f}).", ""]  # fmt: skip
@@ -484,6 +563,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     rubric = _load(RUBRIC)
     if args.step == "prepare":
+        if args.work.exists() and any(args.work.iterdir()):
+            raise SystemExit(f"{args.work}: not empty; prepare in an empty folder")
         sources = {"pre-fix": example_at(PREFIX, args.work / "sources" / "pre-fix"),
                    "current": example_at("HEAD", args.work / "sources" / "current")}  # fmt: skip
         key = prepare(args.work, sources)

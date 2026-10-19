@@ -2766,9 +2766,9 @@ total. The script writes the report; nothing in it is by hand.
   right; no person checked it. Each count is of the three readings by the reviewer whose
   remit the defect is in. The script's counts for the first two copies were then checked in
   both directions by the agent session that ran the measurement, not by a person: every
-  finding a count rests on was read, and so was every reading of the reviewer asked where a
-  count, or a rating as major, is absent. Where the reading differs, it is given beside the
-  script's.
+  finding a count rests on was read, and so was every reading by the reviewer whose remit
+  holds the defect where a count, or a rating as major, is absent. Where the reading
+  differs, it is given beside the script's.
 
   | Known defect | Raised, two sets of three | Rated major | Raised by the blank reader |
   |---|---|---|---|

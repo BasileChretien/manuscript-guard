@@ -4708,6 +4708,79 @@ def test_an_entry_complete_in_either_format_needs_no_other_field(fields: dict) -
     assert problems("k", fields) == []
 
 
+@pytest.mark.parametrize(
+    "doi",
+    [
+        "https://www.doi.org/10.1016/j.example.2021.01.001",
+        "doi.org/10.1016/j.example.2021.01.001",
+        "dx.doi.org/10.1016/j.example.2021.01.001",
+        "DOI 10.1016/j.example.2021.01.001",
+        "DOI: 10.1016/j.example.2021.01.001",
+    ],
+)
+def test_a_doi_written_with_a_resolver_or_its_scheme_is_read(project: Path, doi: str) -> None:
+    """Round 1 of #249: these were reported malformed. Zotero stores a bare DOI, and a
+    reference typed by hand or pasted from a page is often written so."""
+    _bib_field(project, "doi", doi)
+    assert _bib_findings(project) == []
+
+
+@pytest.mark.parametrize(
+    "isbn",
+    [
+        "ISBN 13: 978-0-306-40615-7",
+        "e-ISBN 978-0-306-40615-7",
+        "eISBN: 978 0 306 40615 7",
+        "978-0-306-40615-7 pbk.",
+        "0-306-40615-2 Hardcover; 978-0-306-40615-7 paperback",
+    ],
+)
+def test_an_isbn_labelled_or_qualified_without_brackets_is_read(isbn: str) -> None:
+    """Round 2 of #249: each label and qualifier stuck to the ISBN beside it, and a valid
+    ISBN was reported."""
+    from manuscript_guard.gates.identifiers import problems
+
+    assert problems("k", {"type": "misc", "isbn": isbn}) == []
+
+
+def test_an_isbn_10_opening_978_before_another_word_is_pinned() -> None:
+    """Known gaps (round 2 of #249): a valid ISBN-10 that opens with 978, followed by a
+    word that is no label or qualifier, is read as the start of an ISBN-13 and reported."""
+    from manuscript_guard.gates.identifiers import problems
+
+    assert problems("k", {"type": "misc", "isbn": "9781234563"}) == []
+    assert problems("k", {"type": "misc", "isbn": "9781234563 pbk."}) == []
+    found = problems("k", {"type": "misc", "isbn": "9781234563 reprint"})
+    assert [code for code, _said in found] == ["identifier-malformed"]
+
+
+def test_a_part_takes_its_book_s_fields_from_its_crossref(project: Path) -> None:
+    """Round 1 of #249: a hand-written `@inproceedings` that takes its booktitle from the
+    `@proceedings` its `crossref` names was told it had none."""
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8")
+        + "\n@inproceedings{part2020,\n  author = {A},\n  title = {A paper},\n"
+        "  crossref = {Proc2020},\n}\n\n@proceedings{proc2020,\n  title = {The meeting},\n"
+        "  year = {2020},\n}\n\n@inproceedings{orphan2020,\n  author = {B},\n"
+        "  title = {Another paper},\n  crossref = {nowhere},\n  year = {2020},\n}\n",
+        encoding="utf-8",
+    )
+    assert [message for _code, message in _bib_findings(project)] == [
+        "@orphan2020: an @inproceedings entry needs its booktitle, and has none"
+    ]
+
+
+def test_a_field_named_type_leaves_the_entry_s_type(tmp_path: Path) -> None:
+    """Round 2 of #261: `type = {chapter}` took the place of `@inbook`, and the entry was
+    read as a type nothing requires anything of."""
+    from manuscript_guard.literature.bibfile import read_entries
+
+    bib = tmp_path / "references.bib"
+    bib.write_text("@inbook{k,\n  type = {Chapter},\n  author = {A},\n}\n", encoding="utf-8")
+    assert read_entries(bib)["k"]["type"] == "inbook"
+
+
 # One work cited under two keys: the reference list prints it twice.
 
 
@@ -4742,8 +4815,14 @@ def _duplicate_findings(root: Path) -> list[tuple[str, str, str]]:
         ({"pmid": "31000001"}, {"pmid": "031000001"}, "PMID"),
         ({"pmcid": "PMC1234"}, {"pmcid": "pmc1234"}, "PMCID"),
         ({"isbn": "0-306-40615-2"}, {"isbn": "978-0-306-40615-7"}, "ISBN"),
+        # Round 2 of #261: one volume written with its word and without.
+        ({"isbn": "0-306-40615-2", "volume": "1"},
+         {"isbn": "978-0-306-40615-7", "volume": "Vol. 1"}, "ISBN"),
+        # Round 1 of #249: a resolver with `www.`, and a scheme with no colon.
+        ({"doi": "10.5555/x.1"}, {"doi": "https://www.doi.org/10.5555/x.1"}, "DOI"),
+        ({"doi": "10.5555/x.1"}, {"doi": "DOI 10.5555/X.1"}, "DOI"),
     ],
-)
+)  # fmt: skip
 def test_one_work_cited_under_two_keys_fails(
     project: Path, first: dict, second: dict, named: str
 ) -> None:

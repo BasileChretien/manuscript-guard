@@ -46,7 +46,10 @@ def read_entries(path: Path) -> dict[str, dict[str, str]]:
         for piece in _pieces(text[start.end() : index - 1]):
             name, sign, value = piece.partition("=")
             name = name.strip().lower()
-            if not sign or not name.isidentifier():
+            # A field named `type`, the kind of a thesis or a chapter, would take the place of
+            # the entry's own type, which every reader of this file looks up under that key
+            # (round 2 of #261); the entry's type is the one kept.
+            if not sign or not name.isidentifier() or name == "type":
                 continue
             value = value.strip()
             if (value[:1], value[-1:]) in {("{", "}"), ('"', '"')}:

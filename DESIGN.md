@@ -909,15 +909,19 @@ keys, so a DOI typed "1016/j.…" without its "10.", a PMID written "PMID: 12345
 ISBN with a check digit that does not add up, or an article with no journal reached the
 reference list as they were. G7 now reads every entry of the committed file, cited or not,
 through the same small reader the co-author items use (`literature/bibfile.py`): a DOI is
-"10.", a registrant code, a slash and a suffix, once a `doi:` or a resolver in front of it
-and a stop after it are taken off, so a legacy SICI DOI passes; a PMID is digits, a PMCID
-"PMC" and digits; an ISBN-10 or -13 has the right check digit, however the field parts
-its groups and holds several (`978 0 306 40615 7`, `ISBN-13: ...`, two parted by a space);
-an arXiv identifier one of its two forms; and an entry has the fields its type needs in
-both formats a `.bib` file is written in: what BibTeX's standard styles require (btxdoc)
-and BibLaTeX also requires (its manual, section 2.1.1), under either's name
+"10.", a registrant code, a slash and a suffix, once a scheme (`doi:`, `DOI `) or a
+resolver (`https://doi.org/`, `www.doi.org/`, `dx.doi.org/`, with its scheme or without)
+in front of it and a stop after it are taken off, so a legacy SICI DOI passes; a PMID is
+digits, a PMCID "PMC" and digits; an ISBN-10 or -13 has the right check digit, however the
+field parts its groups and holds several (`978 0 306 40615 7`, two parted by a space) and
+whatever labels and qualifies them (`ISBN-13: ...`, `ISBN 13:`, `eISBN`, `(pbk.)` or
+`pbk.`); an arXiv identifier one of its two forms; and an entry has the fields its type
+needs in both formats a `.bib` file is written in: what BibTeX's standard styles require
+(btxdoc) and BibLaTeX also requires (its manual, section 2.1.1), under either's name
 (`journaltitle`, `date`). `sync-bib` writes BibLaTeX, which asks no publisher of a book
-and no note of an unpublished work, so neither is required. Each fails from
+and no note of an unpublished work, so neither is required. An entry takes what it lacks
+from the one its `crossref` names, the parent's title as its `booktitle` as BibLaTeX has
+it. Each fails from
 internal-review (`identifier-malformed`, `reference-field-missing`), when the reference
 list is first printed for others to read; while drafting, an entry can still be a
 placeholder, and it is reported and deferred. Whether a DOI is registered, names the work
@@ -6984,8 +6988,9 @@ Closed since, and why each mattered:
 - **A locator is checked for being there, not for being right.** The schema refuses a blank
   `locator`, and nothing reads the one that is written: "Table 2" on a quote taken from the
   abstract passes. It is for the person checking the value, who is sent to the place it names.
-- **A field the literature schemas call blank is one of spaces only.** Their `\S` is any
-  character that is not a space, and a zero-width space (U+200B) or a byte-order mark is one:
+- **A field the literature schemas call blank is one of white space only.** Their `\S` is
+  any character that is not white space (a space, a tab, a line break), and a zero-width
+  space (U+200B) or a byte-order mark is one:
   `attested_by` made of either passes as a signature that shows nothing. Nobody types one by
   accident, and a name that is there but wrong passes as well.
 - **A PDF is read as its reader gives it, less a short table of foldings.** Curly quotes,
@@ -7106,13 +7111,17 @@ Closed since, and why each mattered:
   styles define are held to their fields: BibLaTeX's `@online`, `@report` or `@thesis`, and
   `@misc`, need none. An ISBN-13 whose check digit adds up is read as one even where its
   first three digits are no ISBN prefix. An ISBN-10 that opens with 978 or 979, followed in
-  the same field by another ISBN and parted from it by a space only, is read as the start
-  of an ISBN-13 and reported.
+  the same field by another ISBN, or by a word that is neither a label nor one of the
+  qualifiers set aside ("9781234563 reprint"), and parted from it by a space only, is read
+  as the start of an ISBN-13 and reported. A field named `type` is not read: the entry's
+  own type is kept under that name.
 - **Two keys for one work are found by an identifier or a title, and only among what is
   cited.** Two entries of one work with no identifier in common and titles that differ, a
   preprint and its article, or a translation, are not found. A title of fewer than four
   words is not compared. A chapter or a conference paper cited twice is found only by its
   title, a warning, and a book cited twice with a volume in one entry only is not found. A
+  volume is compared without the word it is written with, "Vol. 1" as "1", and otherwise as
+  written: "I" and "1" are two. A
   DOI is compared as the file writes it, so `\_` is not read as `_` nor `%28` as `(`, and a
   title's TeX accents and commands are read as letters: `Caf\'e` is two words.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no

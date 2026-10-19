@@ -3221,8 +3221,9 @@ folder is not committed, so a fresh checkout says `verify` has not run in it, wh
 document, the prose and the results, as `check` reads it to say a build is current, and the
 digest of what `submit` prints in the authors' names (`front_sha256`): the title page but
 for its word counts, which the manuscript decides (the title, the running title, whether
-the paper is a demonstration, the authors with their degrees, affiliations and
-equal-contribution marks, the corresponding author, the ORCID iDs, the keywords), the
+the paper is a demonstration, the authors with their degrees and equal-contribution
+marks, the affiliations, the equal-contribution note, the corresponding author's block,
+the ORCID iDs, the keywords), the
 CRediT statement and the declarations of funding and competing interests. What none of
 them prints stales no approval: a comment, a role named to sign a warning, the rest of
 `paper.yaml` (the journal, whose style the document prints, is left out on purpose), and

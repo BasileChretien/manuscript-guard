@@ -2096,17 +2096,26 @@ def test_an_approval_covers_the_title_page_the_authors_put_their_names_to(
     ]
     from manuscript_guard.approvals import check_approvals
 
-    said = [f.message for f in check_approvals(load_project(project)[0]).findings]
-    assert all(m.endswith("and its title page or its declarations have changed since")
-               for m in said), said  # fmt: skip
+    def front_said() -> list[str]:
+        return [f.message for f in check_approvals(load_project(project)[0]).findings]
+
+    said = front_said()
+    assert len(said) == 2 and all(m.endswith(
+        "and its title page, CRediT statement or declarations have changed since")
+        for m in said), said  # fmt: skip
     for author in both:
         assert main(["approve", str(project), "--as", author]) == 0
-    # Round 2 of #355: a competing interest is declared in the authors' names too.
+    # Rounds 2 and 3 of #355: a competing interest, a grant and a CRediT role are printed in
+    # the authors' names too.
     declared = authors.read_text(encoding="utf-8")
-    assert '"None declared."' in declared
-    authors.write_text(declared.replace('"None declared."', '"Fees from a comparator\'s maker."',
-                                        1), "utf-8")  # fmt: skip
-    assert len(_approvals_said(project)) == 2, _approvals_said(project)
+    for old, new in (('"None declared."', '"Fees from a comparator\'s maker."'),
+                     ('    competing_interests:', '    funding:\n      - "Grant 1"\n'
+                      '    competing_interests:'),
+                     ("      - Conceptualization\n", "      - Conceptualization\n"
+                      "      - Software\n")):  # fmt: skip
+        assert old in declared, old
+        authors.write_text(declared.replace(old, new, 1), "utf-8")
+        assert len(front_said()) == 2, (new, front_said())
     authors.write_text(declared, encoding="utf-8")
     authors.write_text(authors.read_text(encoding="utf-8").replace(
         "family: Sample", "family: Sample-Smith"), encoding="utf-8")  # fmt: skip

@@ -5,8 +5,9 @@ true or not. So an author's approval is recorded where it can be held to somethi
 `manuscript-guard approve --as <author>` writes `approvals/<author>.yaml`, one file per
 author, with the digest of what decides the built document, the prose and the results, as
 `check` reads it to say a build is current (`gates.review.document_digest`), and the digest of
-the title page the authors put their names to (`front_digest`). An approval is a person's
-statement, so the hooks put to the person an agent's attempt to write one.
+what `submit` prints in the authors' names, the title page, the CRediT statement and the
+declarations (`front_digest`). An approval is a person's statement, so the hooks put to the
+person an agent's attempt to write one.
 
 `submit` then says which authors have not approved, and which approved a manuscript that has
 changed since. It warns and does not refuse: whether to send without an approval is the
@@ -169,7 +170,8 @@ def check_approvals(project: Project) -> Report:
         # judged by the manuscript alone, as it was given.
         recorded = document.get("front_sha256")
         changed = ("it has" if document["document_sha256"] != current else
-                   "its title page or its declarations have" if recorded and recorded != front
+                   "its title page, CRediT statement or declarations have" if recorded and
+                   recorded != front
                    else None)  # fmt: skip
         if changed:
             report = report.with_findings(

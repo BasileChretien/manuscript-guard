@@ -2115,7 +2115,9 @@ def test_an_approval_covers_the_title_page_the_authors_put_their_names_to(
                       "      - Software\n")):  # fmt: skip
         assert old in declared, old
         authors.write_text(declared.replace(old, new, 1), "utf-8")
-        assert len(front_said()) == 2, (new, front_said())
+        said = front_said()
+        front = "CRediT statement or declarations have changed since"
+        assert len(said) == 2 and all(m.endswith(front) for m in said), (new, said)
     authors.write_text(declared, encoding="utf-8")
     authors.write_text(authors.read_text(encoding="utf-8").replace(
         "family: Sample", "family: Sample-Smith"), encoding="utf-8")  # fmt: skip

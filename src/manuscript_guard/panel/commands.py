@@ -155,7 +155,7 @@ def run_panel(
                 "Every reading this run would ask for is on file, so there is nothing to "
                 "send. The round is not complete:"
             )
-            print(_still_waiting(waiting, design=plan.design))
+            print(_still_waiting(waiting, design=plan.design, round_number=plan.round))
             return 1
         print("Every reading of this round is already on file, so there is nothing to send.")
         return 0
@@ -179,8 +179,12 @@ def _not_authorised(plan, project) -> str:
     return " ".join(f"{f.message}; {f.hint}." for f in unauthorised(project, called))
 
 
-def _still_waiting(waiting: Sequence[tuple[str, str]], *, design: bool = False) -> str:
-    """The readers the panel names that have not reported, and the two ways out."""
+def _still_waiting(
+    waiting: Sequence[tuple[str, str]], *, design: bool = False, round_number: int = 1
+) -> str:
+    """The readers the panel names that have not reported, and the two ways out. The command
+    names the round, which `--record` takes as the first where it is not given (round 1 of
+    #316: a reading of round 2 was filed in round 1)."""
     rows = _table([(f"  {reviewer}", reader) for reviewer, reader in waiting])
     return (
         "the panel names these readers, and their readings are not on file:\n"
@@ -189,8 +193,8 @@ def _still_waiting(waiting: Sequence[tuple[str, str]], *, design: bool = False) 
         "another model to that reviewer. A model is listed there and the command run again. "
         "A person files their own reading: `manuscript-guard review --record <reviewer> "
         + ("--design " if design else "") +
-        "--reading <who> --verdict <verdict>`. A reader that is not going to report is "
-        "taken out of its reviewer's `readers` in the panel file."
+        f"--round {round_number} --reading <who> --verdict <verdict>`. A reader that is not "
+        "going to report is taken out of its reviewer's `readers` in the panel file."
     )
 
 
@@ -339,7 +343,8 @@ def _send(plan, project, yes: bool, environ: Mapping[str, str] | None) -> int:
         if (reviewer, f"{reviewer}.{reading_slug(reader)}") not in asked
     ]
     if others:
-        print("The round is not complete: " + _still_waiting(others, design=plan.design))
+        print("The round is not complete: "
+              + _still_waiting(others, design=plan.design, round_number=plan.round))
     print(
         f"`manuscript-guard review{' --design' if plan.design else ''}` shows where the round "
         "stands. Answer each major finding in its record with a `resolution` or an "

@@ -226,6 +226,14 @@ def test_a_record_that_cannot_be_read_is_listed_and_the_pack_is_assembled(
     assert {"round": 1, "reviewer": "biostatistician", "unreadable": "a record"} in (
         manifest["overrides"]
     )
+    # Round 2 of #250: a panel that cannot be read is listed by its file, its round's
+    # overrides with it.
+    panel = project / "review" / "panel-2.yaml"
+    panel.write_text(panel.read_text(encoding="utf-8") + "reviewers: [\n", encoding="utf-8")
+    pack = assemble_pack(projekt, document, checked=False)
+    manifest = yaml.safe_load(pack.manifest.read_text(encoding="utf-8"))
+    assert {"round": 2, "unreadable": "panel-2.yaml"} in manifest["overrides"]
+    assert not [o for o in manifest["overrides"] if o.get("finding") == "r2-de-01"]
 
 
 def test_git_s_output_is_read_as_utf_8_whatever_the_locale(monkeypatch) -> None:

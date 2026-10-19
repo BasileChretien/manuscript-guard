@@ -3617,6 +3617,26 @@ def test_a_sign_off_is_bound_to_every_model_the_warning_names(project: Path) -> 
     assert [f.severity for f in said] == ["warn"] and "changed since" in said[0].hint
 
 
+def test_a_signed_warning_keeps_its_place_among_the_others(project: Path) -> None:
+    """Round 2 of #304: the order was held only where the signed warning came last, which
+    appending it would also pass. Here a later warning follows it."""
+    from manuscript_guard.cli import main
+
+    _crude_beside_adjusted(project, {"rows_sha256": _ROWS["all"]},
+                           {"rows_sha256": _ROWS["some"], "engine": _POISSON,
+                            "covariance": "nonrobust"})  # fmt: skip
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(project_)
+    raised = [f.code for f in check_models(project_, results).findings]
+    signed, later = "poisson-binary-variance", "models-on-different-rows"
+    assert raised.index(signed) < raised.index(later), raised
+    finding = f"G15/{signed}/adjusted"
+    assert main(["sign", str(project), "--as", "Sample", "--finding", finding]) == 0
+    said = check_models(project_, results).findings
+    assert [f.code for f in said] == raised
+    assert [f.severity for f in said if f.code == signed] == ["info"]
+
+
 def test_a_statistician_who_is_not_an_author_signs_by_name(project: Path) -> None:
     from manuscript_guard.cli import main
 
@@ -14116,6 +14136,45 @@ def test_a_design_panel_reviewer_who_has_not_read_is_said(project: Path) -> None
     document["reviewers"].append({"id": "clinician", "remit": "Whether the question matters"})
     panel.write_text(yaml.safe_dump(document), encoding="utf-8")
     assert _design_said(project) == [("design-review-missing", "warn")]
+
+
+def test_a_design_panel_naming_one_reviewer_twice_is_said_once(project: Path) -> None:
+    """Rounds 1 of #308 and #313: G11 says a reviewer listed twice, and G12 did not; one
+    record answered both remits, and its overrides were listed twice."""
+    from manuscript_guard.gates.design_review import override_signables
+
+    record = _design_recorded(project, _DESIGN_MAJOR)
+    record.write_text(record.read_text(encoding="utf-8").replace(
+        "  finding: The comparator", "  overridden: The indication is the exposure here.\n"
+        "  finding: The comparator"), encoding="utf-8")  # fmt: skip
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"].append(dict(document["reviewers"][0]))
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    said = _design_said(project)
+    assert said.count(("design-duplicate-reviewer", "warn")) == 1
+    assert ("design-duplicate-reviewer", "fail") in _design_said(project, submission=True)
+    assert len(override_signables(load_project(project)[0])) == 1
+
+
+def test_a_design_reading_giving_one_id_to_two_findings_is_said(project: Path) -> None:
+    """Round 1 of #313: an override is signed by its finding's id, so two overridden majors
+    of one id shared one sign-off."""
+    _design_recorded(project, _DESIGN_MAJOR + _DESIGN_MAJOR.replace("findings:\n", ""))
+    said = _design_said(project)
+    assert ("design-finding-id-repeated", "warn") in said
+    assert ("design-finding-id-repeated", "fail") in _design_said(project, submission=True)
+
+
+def test_a_design_reader_the_panel_cannot_name_fails_at_submission(project: Path) -> None:
+    """Round 1 of #315: G11 fails a reader it cannot file at submission, and G12 warned."""
+    _design_recorded(project)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"][0]["readers"] = ["model-a", "Model A"]
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    assert ("design-reader-unnamed", "warn") in _design_said(project)
+    assert ("design-reader-unnamed", "fail") in _design_said(project, submission=True)
 
 
 def test_a_design_round_is_not_a_round_of_the_manuscript(project: Path) -> None:

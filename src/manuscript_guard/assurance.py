@@ -178,8 +178,11 @@ def record_verified(project: Project, result) -> Path:
     record = {
         "schema": VERIFIED_SCHEMA,
         "ran_on": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        # A version found other on the re-run is a value on disk too, and counted as the
+        # fragments not re-run count it (round 2 of #306).
         "values": on_disk + sum(
-            len(c.agreed) + len(c.differed) + len(c.only_on_disk) for c in comparisons if c.ran
+            len(c.agreed) + len(c.differed) + len(c.only_on_disk) + len(c.environment)
+            for c in comparisons if c.ran
         ),
         "reproduced": sum(len(c.agreed) for c in comparisons),
         "not_rerun": left,

@@ -1780,8 +1780,11 @@ a heading that names another part of the paper ("Limitations of existing methods
 Introduction) belongs to that part. One over another part is no Methods either:
 "# Statistical methods for signal detection", a paper's title written as a heading over
 `##` sections, is over its Results, and G9 read that whole paper as the Methods, a wrong
-parameter in the Results among them. Of the headings left, one G2 reads as the Methods by
-its name comes first. G4 uses the test for a required section named "Methods", G9 reads the
+parameter in the Results among them. Of the headings left, one named as the Methods, by a
+name of G2's, comes first, its name read here as a reader sees it though G2 reads it as
+typed: "(3) Methods", "**2. Methods**" and "Materials & methods" came after "Limitations
+of existing methods" standing before them (round 3 of #246). G4 uses the test for a required
+section named "Methods", G9 reads the
 first such section of the main text, and a project with analysis code and no such heading is
 told so (`methods-not-found`, a warning). G2 and G15 read the Methods as places, where a
 heading names the method without the word ("Statistical analysis", "Study design"); they
@@ -6135,6 +6138,15 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   Nothing reads it afterwards and the next build makes its own, so the cost is a stray file in
   a cache. Sweeping the directory instead would mean one build deleting a file another build
   is reading, which is the failure this naming exists to prevent.
+- **After a range of tables, a comma goes on with the list.** It must, for "Tables S1-S3,
+  S5", so "In Tables 1-3, 30 patients were excluded" reads Table 30: a pointer past the
+  tables where they are counted, and a count G2 does not hold to the results
+  (`test_a_count_after_a_range_of_tables_read_as_a_table_is_pinned`, round 3 of #256).
+- **A quote of a revised sentence is compared with its Markdown.** Its `*`, backticks and
+  comments are taken off, and nothing else: emphasis written with underscores, a
+  citation, a link, a sub- or superscript or an escape in the sentence keeps a quote of it
+  as it prints from matching, and G13 says the text does not read it
+  (`test_a_quote_of_the_printed_sentence_against_its_markup_is_pinned`, round 1 of #266).
 - **A number a summary gives is looked for by its key, and in a table or figure by its
   display.** A key printed in a table or drawn in a figure the paper places counts as
   reported when its display stands there as a number of its own, so a coincidence keeps the

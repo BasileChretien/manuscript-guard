@@ -90,8 +90,11 @@ def methods_sections(
     (`classify.rules_out_methods`), as "Limitations of existing methods" under the
     Introduction; and not over one, as a paper's title written as a heading over the whole
     paper, "# Statistical methods for signal detection", is over its Results. Of those, a
-    heading G2 reads as the Methods by its name ("Methods", "2. Methods", "Materials and
-    methods") comes before one that only holds the word."""
+    heading whose name is one of `METHODS_SECTIONS`' ("Methods", "2. Methods", "Materials
+    and methods") comes before one that only holds the word. The name is read here as a
+    reader sees it, `plain` and with "&" for "and", so "(3) Methods", "**2. Methods**" and
+    "Materials & methods" come first too (round 3 of #246: they came after "Limitations of
+    existing methods"). G2's `is_methods` reads the title as it is typed."""
     from manuscript_guard.classify import METHODS_SECTIONS, rules_out_methods
 
     found: list[Section] = []
@@ -113,7 +116,10 @@ def methods_sections(
         if any(rules_out_methods(s.title) for s in below):
             continue
         found.append(section)
-    return sorted(found, key=lambda section: METHODS_SECTIONS.match(section.title) is None)
+    def by_name(section: Section) -> bool:
+        return METHODS_SECTIONS.match(plain(section.title).replace("&", " and ")) is None
+
+    return sorted(found, key=by_name)
 
 
 __all__ = [

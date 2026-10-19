@@ -993,13 +993,18 @@ FIXED_LINKS = (
 #: A placeholder of each kind G6 reads, as it is typed and as the rule finds it; the words
 #: that are one in the manuscript only, in lower case; and what looks like one and is prose:
 #: a karyotype, a syndrome, a link, a title translated into English in brackets, a phrase
-#: that goes on, a kinase. What the placeholder reading must tell apart.
+#: that goes on, a kinase. What the placeholder reading must tell apart. With round 2 of
+#: #262's shapes: a phrase before a list item, an instruction marked or linked, a slot that
+#: is a whole field of a cited entry.
 PLACEHOLDERS = (
     ("XXXX", "XXXX"), ("[TO BE COMPLETED]", "[TO BE COMPLETED]"),
     ("[Repository]", "[Repository]"), ("[describe the cohort]", "[describe the cohort]"),
     ("lorem ipsum", "lorem ipsum"), ("fill in later.", "fill in later"), ("TODO", "TODO"),
     ("2025-XX-XX", "2025-XX"), ("INSERT_SOURCE_URL", "INSERT_SOURCE_URL"),
     ("[insert the\nname]", "[insert the\nname]"), ("1,XXX", "XXX"),
+    ("Dose: fill in later\n- Route: oral", "fill in later"),
+    ("[insert the date]{.mark}", "[insert the date]"), ("[insert link](#)", "[insert link]"),
+    ("[DOI]", "[DOI]"),
 )  # fmt: skip
 LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
 LOOKALIKES = (

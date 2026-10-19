@@ -2105,6 +2105,28 @@ def test_an_approval_covers_the_title_page_the_authors_put_their_names_to(
     assert _approvals_said(project) == []
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_submit_says_which_authors_have_not_approved(project: Path, capsys) -> None:
+    """Round 1 of #284: `submit` prints the authors with no approval, and nothing asserted
+    it; the pack is assembled all the same, since sending is the corresponding author's
+    call."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    document = str(project / "build" / "manuscript.docx")
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
+    said = capsys.readouterr().out
+    assert said.count("has not approved the manuscript") == 2, said
+    assert "Ada Example has not" in said and "Blaise Sample has not" in said
+    assert 'manuscript-guard approve --as "Ada Example"' in said
+    for author in ("0000-0002-1825-0097", "0000-0001-5109-3700"):
+        assert main(["approve", str(project), "--as", author]) == 0
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
+    assert "approved" not in capsys.readouterr().out
+
+
 # ------------------------------------------------ the unit written after a binding
 
 
@@ -2500,6 +2522,17 @@ def test_a_quoted_revision_the_journal_already_read_fails(project: Path) -> None
     assert _said(_g13(project), "quoted-text-not-new") == [("quoted-text-not-new", "fail")]
 
 
+def test_a_quote_of_the_printed_sentence_against_its_markup_is_pinned() -> None:
+    """Known gaps (round 1 of #266): a quote is compared with the Markdown less its `*`,
+    backticks and comments, so emphasis written with underscores, or a citation, keeps a
+    quote of the sentence as it prints from matching it."""
+    from manuscript_guard.gates.revision import as_quoted
+
+    assert "The ratio rose" in as_quoted("The *ratio* rose.")
+    assert "The ratio rose" not in as_quoted("The _ratio_ rose.")
+    assert "as reported (1)" not in as_quoted("as reported [@key].")
+
+
 def test_a_quoted_revision_in_another_section_fails(project: Path) -> None:
     _round_with(project, [_point(
         response="We now say so in the Abstract.",
@@ -2536,6 +2569,36 @@ def test_what_must_not_reach_a_journal_in_a_reply_fails(
 ) -> None:
     _round_with(project, [_point(response=reply, rebutted="No change was needed.")])
     assert _said(_g13(project), code) == [(code, "fail")]
+
+
+def test_a_note_on_a_change_is_read_as_the_reply_is(project: Path) -> None:
+    """Round 1 of #266: a changed entry's `note` is printed in the letter after the change,
+    and neither G13's reply checks nor G2 read it."""
+    changed = [{"kind": "text", "quote": "A new sentence.", "note": "TODO: say where."}]
+    _round_with(project, [_point(response="We now say so.", changed=changed)])
+    assert _said(_g13(project), "response-artefact") == [("response-artefact", "fail")]
+    changed[0]["note"] = "as the reviewer asked, from line 120"
+    _round_with(project, [_point(response="We now say so.", changed=changed)])
+    from manuscript_guard.gates.numbers import replies
+
+    document = {"reviewers": [{"id": "r", "points": [{"id": "1", "changed": changed}]}]}
+    assert replies(document, 1) == [("round 1, r point 1, `changed[0].note`",
+                                     "as the reviewer asked, from line 120")]  # fmt: skip
+    # Through G2 itself, and round 1 of #349: a binding in the note is filled in the letter,
+    # as the reply's are, where it was printed as typed.
+    changed[0]["note"] = "the ROR is now 2.31"
+    _round_with(project, [_point(response="We now say so.", changed=changed)])
+    assert any("2.31" in m and "changed[0].note" in m for m in _reply_numbers(project))
+    changed[0]["note"] = "the ROR is now {{results.ror.point}}"
+    _round_with(project, [_point(response="We now say so.", changed=changed)])
+    assert _reply_numbers(project) == []
+    from manuscript_guard.build.submission import response_letter
+    from manuscript_guard.contracts import load_namespace
+
+    projekt, _ = load_project(project)
+    point = load_namespace(projekt)[0]["results.ror.point"].display
+    letter = response_letter(projekt)
+    assert f"the ROR is now {point}" in letter and "{{" not in letter
 
 
 @pytest.mark.parametrize(
@@ -3539,6 +3602,17 @@ def test_a_count_after_a_list_of_tables_is_a_count(project: Path) -> None:
     _add_to_results(project, "In Tables 1 and 2, 30 patients were excluded.")
     assert "unclassified-number" in codes(gate_report(project))
     assert _pointer_findings(project) == []
+
+
+def test_a_count_after_a_range_of_tables_read_as_a_table_is_pinned() -> None:
+    """Known gaps (round 3 of #256): after a range a comma goes on with the list, as it must
+    for "Tables S1-S3, S5", so "In Tables 1-3, 30 patients" reads Table 30."""
+    from manuscript_guard.gates.pointers import pointers_in
+
+    said = pointers_in("In Tables 1-3, 30 patients were excluded.", Path("x"))
+    assert [p.number for p in said] == [1, 2, 3, 30]
+    said = pointers_in("Tables S1-S3, S5 list the codes.", Path("x"))
+    assert [p.number for p in said] == [1, 2, 3, 5]
 
 
 def test_a_serial_comma_ends_no_list_of_tables(project: Path) -> None:
@@ -6929,6 +7003,10 @@ def test_a_paper_s_title_written_as_a_heading_is_not_its_methods(
         "\n\n## Results\n\nAn alpha of 0.07 was used.\n"
     )
     assert methods_in(text) == "\n\nNo alpha here.\n\n"
+    # Round 3 of #246: numbered in brackets, in bold or with an ampersand, the Methods were
+    # not read as named, and the heading before them that only holds the word was taken.
+    for methods in ("(2) Methods", "**2. Methods**", "Materials & methods"):
+        assert methods_in(text.replace("## Methods", f"## {methods}")) == "\n\nNo alpha here.\n\n"
     main = main_md(project)
     body = main.read_text(encoding="utf-8").split("---\n", 2)
     demoted = body[2].replace("\n# ", "\n## ")
@@ -7101,6 +7179,10 @@ def test_a_journal_style_the_project_does_not_keep_is_said(project: Path) -> Non
     assert _style_said(project) == [("journal-style-not-stored", "warn")]
     keep_style(project, DEPENDENT)
     assert _style_said(project) == []
+    # Round 1 of #322: a file's name is said to be one (round 1 of #349: untested).
+    name_style(project, f"{DEPENDENT}.csl")
+    [said] = [f for f in _journal(project).findings if f.code == "journal-style-not-stored"]
+    assert "a name with `.csl` is a file's" in said.message
 
 
 def test_a_kept_style_edited_since_is_said_and_not_used(project: Path) -> None:
@@ -8281,6 +8363,9 @@ def test_a_refused_build_into_the_build_directory_itself_does_not_crash(
 # ------------------------------------------------- a document reviewed blind names no author
 
 _W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+_R_NS = (
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+)
 
 
 def _blind(root: Path, kind: str = "double") -> None:
@@ -8389,6 +8474,61 @@ _CORE_NS = (
             "<w:p><w:r><w:t>As B. O\N{RIGHT SINGLE QUOTATION MARK}Sample said.</w:t></w:r></w:p>",
             {}, [("Blaise O'Sample", "the text")], id="an apostrophe printed curly",
         ),
+        # Round 1 of #273: a link's address, a field's code and Word's company field.
+        pytest.param(
+            "", {"word___rels__document.xml.rels": "<Relationships xmlns='http://schemas."
+                 "openxmlformats.org/package/2006/relationships'><Relationship Id='rId9' "
+                 "Type='hyperlink' Target='mailto:ada.example@invalid.example' "
+                 "TargetMode='External'/></Relationships>"},
+            [("the e-mail address ada.example@invalid.example", "the address of a link")],
+            id="a link's address",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText "
+            "xml:space='preserve'> HYPERLINK \"https://orcid.org/</w:instrText></w:r><w:r>"
+            "<w:instrText>0000-0002-1825-0097\" </w:instrText></w:r><w:r><w:fldChar "
+            "w:fldCharType='separate'/></w:r><w:r><w:t>my record</w:t></w:r><w:r><w:fldChar "
+            "w:fldCharType='end'/></w:r></w:p>", {},
+            [("the ORCID iD 0000-0002-1825-0097", "a field's code")], id="a field's code",
+        ),
+        pytest.param(
+            "<w:p><w:fldSimple w:instr=' HYPERLINK \"mailto:ada.example@invalid.example\" '>"
+            "<w:r><w:t>write</w:t></w:r></w:fldSimple></w:p>", {},
+            [("the e-mail address ada.example@invalid.example", "a field's code")],
+            id="a simple field's code",
+        ),
+        # Round 2 of #349: a table pasted as a link to its file, a field nested in a link's
+        # code, and a link's field left open at the paragraph's end.
+        pytest.param(
+            "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText> LINK "
+            "Excel.Sheet.12 \"C:/Users/Ada Example/Documents/t.xlsx\" \"Sheet1\" "
+            "</w:instrText></w:r><w:r><w:fldChar w:fldCharType='separate'/></w:r><w:r><w:t>"
+            "a table</w:t></w:r><w:r><w:fldChar w:fldCharType='end'/></w:r></w:p>", {},
+            [("Ada Example", "a field's code")], id="a table linked to its file",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText> HYPERLINK "
+            "\"mailto:</w:instrText></w:r><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r>"
+            "<w:instrText> MERGEFIELD x </w:instrText></w:r><w:r><w:fldChar "
+            "w:fldCharType='end'/></w:r><w:r><w:instrText>ada.example@invalid.example\" "
+            "</w:instrText></w:r><w:r><w:fldChar w:fldCharType='separate'/></w:r><w:r><w:t>"
+            "write</w:t></w:r><w:r><w:fldChar w:fldCharType='end'/></w:r></w:p>", {},
+            [("the e-mail address ada.example@invalid.example", "a field's code")],
+            id="a field nested in a link's code",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText> HYPERLINK "
+            "\"https://orcid.org/0000-0002-1825-0097\" </w:instrText></w:r></w:p>", {},
+            [("the ORCID iD 0000-0002-1825-0097", "a field's code")],
+            id="a link's field left open",
+        ),
+        pytest.param(
+            "", {"docProps__app_xml": "<Properties xmlns='http://schemas.openxmlformats.org/"
+                 "officeDocument/2006/extended-properties'><Company>Example University "
+                 "Graduate School of Medicine</Company></Properties>"},
+            [("Example University Graduate School of Medicine",
+              "the document's company (Company)")], id="Word's company field",
+        ),
     ],
 )  # fmt: skip
 def test_a_document_reviewed_blind_names_no_author_anywhere_word_keeps_one(
@@ -8404,6 +8544,37 @@ def test_a_document_reviewed_blind_names_no_author_anywhere_word_keeps_one(
             "family: Sample", "family: \"O'Sample\""), encoding="utf-8")  # fmt: skip
     document = _word(tmp_path / "manuscript.docx", body, **parts)
     assert _named(project, document) == sorted(said)
+
+
+def test_a_place_building_again_does_not_clear_says_how_to_clear_it(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round 1 of #349: a link's address, a field's code and the Company had the text's
+    hint, "build again", which clears none of them."""
+    from manuscript_guard.build.blinding import check_blinded
+
+    _blind(project)
+    company = ("<Properties xmlns='http://schemas.openxmlformats.org/officeDocument/2006/"
+               "extended-properties'><Company>Example University Graduate School of Medicine"
+               "</Company></Properties>")  # fmt: skip
+    document = _word(tmp_path / "a.docx", **{"docProps__app_xml": company})
+    [found] = check_blinded(load_project(project)[0], document).findings
+    assert "Inspect Document" in found.hint and "build again" not in found.hint
+
+
+def test_what_the_blind_check_reads_wrongly_is_pinned(project: Path, tmp_path: Path) -> None:
+    """Known gaps (#273): an institution named in two words is not looked for, and an
+    initial with its stop before a word that is an author's family name reads as that
+    author, "Panel A. Example" as Ada Example."""
+    _blind(project)
+    authors = project / "authors.yaml"
+    authors.write_text(authors.read_text(encoding="utf-8").replace(
+        "Department of Clinical Pharmacology, Example University Graduate School of Medicine",
+        "Example Institute"), encoding="utf-8")  # fmt: skip
+    body = "<w:p><w:r><w:t>Data from the Example Institute were used.</w:t></w:r></w:p>"
+    assert _named(project, _word(tmp_path / "a.docx", body)) == []
+    body = "<w:p><w:r><w:t>Panel A. Example of the design.</w:t></w:r></w:p>"
+    assert _named(project, _word(tmp_path / "b.docx", body)) == [("Ada Example", "the text")]
 
 
 def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
@@ -8429,6 +8600,31 @@ def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
         "<w:name w:val='Bibliography'/></w:style></w:styles>"
     )
     assert _named(project, _word(tmp_path / "a.docx", body, word__styles_xml=styles)) == []
+    # Round 1 of #349: a live citation's field code holds the cited work's data, a
+    # self-citation's publisher among it, and a link in the reference list is the list's.
+    cited = (
+        "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText> ADDIN "
+        "ZOTERO_ITEM CSL_CITATION {\"citationItems\":[{\"itemData\":{\"publisher\":\"Example "
+        "University Graduate School of Medicine\"}}]}</w:instrText></w:r><w:r><w:fldChar "
+        "w:fldCharType='separate'/></w:r><w:r><w:t>(1)</w:t></w:r><w:r><w:fldChar "
+        "w:fldCharType='end'/></w:r></w:p>"
+        f"<w:p {_R_NS}><w:pPr><w:pStyle w:val='Bibliography'/></w:pPr><w:hyperlink "
+        "r:id='rId5'><w:r><w:t>Example A. A thesis.</w:t></w:r></w:hyperlink></w:p>"
+    )
+    links = (
+        "<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'>"
+        "<Relationship Id='rId5' Type='hyperlink' Target='mailto:ada.example@invalid.example' "
+        "TargetMode='External'/></Relationships>"
+    )
+    # Round 2 of #349: pandoc copies every link into the notes' part, under the same
+    # identifier or another, and the address is the reference list's there too.
+    rels = {"word___rels__document.xml.rels": links,
+            "word___rels__footnotes.xml.rels": links.replace("rId5", "rId9")}
+    # Round 3 of #349: and a field elsewhere that links to the same address.
+    cited += ("<w:p><w:fldSimple w:instr=' HYPERLINK \"mailto:ada.example@invalid.example\" '>"
+              "<w:r><w:t>write</w:t></w:r></w:fldSimple></w:p>")  # fmt: skip
+    document = _word(tmp_path / "cited.docx", cited, **rels)
+    assert _named(project, document) == []
     named = "<w:p><w:r><w:t>As Ada Example showed.</w:t></w:r></w:p>"
     assert _named(project, _word(tmp_path / "b.docx", named)) == [("Ada Example", "the text")]
     _blind(project, "single")

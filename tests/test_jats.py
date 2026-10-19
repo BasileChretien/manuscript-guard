@@ -172,6 +172,15 @@ def test_transcribe_says_a_broken_download_is_one_and_goes_on(tmp_path: Path, ca
     _recipe(folder / "recipes")
     assert main(["transcribe", "IMAGINARY", "--root", str(root)]) == 1
     assert "IMAGINARY.recipe.yaml:" in capsys.readouterr().out
+    # Round 2 of #294: and goes on, to the recipe after it, which one recipe never showed.
+    _article(folder / "sources", name="whole.xml")
+    first = _recipe(folder / "recipes", meta={"name": "AAA"})
+    first.rename(folder / "recipes" / "AAA.recipe.yaml")
+    second = _recipe(folder / "recipes", meta={"name": "ZZZ"}, document="whole.xml")
+    second.rename(folder / "recipes" / "ZZZ.recipe.yaml")
+    assert main(["transcribe", "--root", str(root)]) == 1
+    said = capsys.readouterr().out
+    assert said.index("AAA.recipe.yaml:") < said.index(": 4 items"), said
 
 
 def test_a_document_with_another_root_is_refused(tmp_path: Path) -> None:

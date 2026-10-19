@@ -475,8 +475,15 @@ def _reply(path: Path, number: int, reviewer: str, point: dict, severity: str) -
             )
         )
     rules = load_rules()
-    for field in ("response", "rebutted"):
-        text = str(point.get(field, "") or "")
+    # A changed entry's `note` is printed in the letter after the change, and read with the
+    # reply (round 1 of #266: it went to the journal unread).
+    written = [(field, str(point.get(field, "") or "")) for field in ("response", "rebutted")]
+    written += [
+        (f"changed[{at}].note", str(entry.get("note") or ""))
+        for at, entry in enumerate(point.get("changed") or [])
+        if isinstance(entry, dict)
+    ]
+    for field, text in written:
         found: list[tuple[str, str, str]] = [
             ("response-placeholder", m.group(0), "a place the author still has to write")
             for m in MARKER.finditer(text)

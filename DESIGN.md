@@ -1309,29 +1309,40 @@ event.
 **How often it warns on papers written by people** is measured, and the rate thresholds
 come from that measurement (item 54). `tools/g6_baseline.py` drew 400 open-access research
 articles under CC BY from Europe PMC, published from 2010 to October 2022, before chat
-models were common, at random with a fixed seed: 300 to set thresholds and 100 held out.
-What the run had to show was fixed before it: each threshold at the 99th percentile of the
-first set, and, on the held-out papers, no failure and at most two warnings on 95% of them.
-Each paper is read as G6 reads a manuscript, its JATS through pandoc's JATS reader, from
-its first heading to its reference list; `tools/data/g6-corpus.yaml` keeps each paper's
-identifiers and the digests of what was read, never its text.
+models were common, with a fixed seed: 300 to set thresholds and 100 held out. The draw
+took a random day, then a random article of the up to 1000 Europe PMC listed that day, so
+not every article had the same chance: one on a busy day had less, and one past the
+first 1000 of its day none. What the run had to show was fixed before it: each threshold
+at the 99th percentile of the first set, and, on the held-out papers, no failure and at
+most two warnings on 95% of them. Each paper is read as G6 reads a manuscript's prose:
+its JATS through pandoc's JATS reader, without the `smart` extension, from its first
+heading to its reference list, its tables left out, as a manuscript's are emitted and
+bound. `tools/data/g6-corpus.yaml` keeps each paper's identifiers and the digests of what
+was read, never its text.
 
-- **2026-10-19.** Of the 400, 291 and 93 were used. Twelve were shorter than 1000 words,
-  one had no heading pandoc could read, and three stated no licence of their own. The
+- **2026-10-19.** Of the 400, 292 and 93 were used. Twelve were shorter than 1000 words,
+  one had no heading pandoc could read, and two stated no licence of their own. The
   thresholds, per 1000 words, were set by hand before this, from the project's own prose:
-  "AI vocabulary" from 6 to 2.7, em dashes from 4 to 1.1, bold from 8 to 27.4, lists of
-  three from 3 to 6.6, "serves as" and its kind from 2 to 0.6.
-  - On the held-out papers, nothing failed, but only 88.2% had two warnings or fewer: the
-    budget was not met. Two phrase rules warned at each occurrence, and each did so on
-    about a quarter of all 384 papers: "not only ... but also" on 25.8%, "plays a key role"
-    on 25.5%.
+  "AI vocabulary" from 6 to 2.7, em dashes from 4 to 13.9, bold from 8 to 9.3, lists of
+  three from 3 to 6.3, "serves as" and its kind from 2 to 0.6.
+  - In a first measurement, nothing on the held-out papers failed, but only 88.2% had two
+    warnings or fewer: the budget was not met. Two phrase rules warned at each occurrence,
+    and each did so on about a quarter of all the papers: "not only ... but also" on
+    25.8%, "plays a key role" on 25.5%.
   - Basile chose to count those two by rate, as the vocabulary is, at the same percentile:
-    0.8 and 0.9 per 1000. Measured again on the same papers, 98.9% of the held-out papers
-    had two warnings or fewer, and the budget was met. The held-out papers showed which
-    two rules broke the budget, so they are no longer an independent check of that choice.
-  - Of all 384, the other phrase rules warn on fewer: an "-ing" tail asserting significance on
-    9.4%, a hedge on a hedge on 7.3%, "it is important to note" on 5.2%, the rest on under
-    3% each. A vague attribution with no citation near it is reported on 4.2%.
+    0.8 and 0.9 per 1000. Measured again, 98.9% of the held-out papers had two warnings or
+    fewer, and the budget was met. The held-out papers showed which two rules broke the
+    budget, so they are no longer an independent check of that choice.
+  - That first measurement read each paper with pandoc's `smart` extension on, which wrote
+    an em dash as `---`: G6 counts the dash itself, and saw one in 18 papers of 384. It
+    also counted the bold of each paper's tables. Both were put right and the corpus
+    measured again (round 1 of #339), where 140 papers have an em dash; the thresholds and
+    the counts here are from that measurement. A licence named with its version, "Creative
+    Commons Attribution 4.0 International License", is read as CC BY now, which added a
+    paper.
+  - Of all 385, the other phrase rules warn on fewer: an "-ing" tail asserting significance
+    on 9.4%, a hedge on a hedge on 7.5%, "it is important to note" on 5.2%, the rest on
+    under 3% each. A vague attribution with no citation near it is reported on 4.2%.
 
 What this does not measure: no text written by a model was read, so it says nothing of
 what G6 catches, only how often it warns on people writing biomedical research in English.
@@ -8811,7 +8822,7 @@ Closed since, and why each mattered:
   The copy is in version control like the plan, and a person can delete it; the next run then
   freezes the plan as it is. A plan that is not UTF-8 text is not frozen until it is.
 - **G6's thresholds are measured on people only, in one field.** Each rate's threshold is
-  the 99th percentile of 291 biomedical research articles of 2010 to 2022 (see "The
+  the 99th percentile of 292 biomedical research articles of 2010 to 2022 (see "The
   AI-writing lint measures rate, not presence"), so about one paper by people in a hundred
   is above each by construction, and more in a field, a kind of article or a register those
   papers do not hold: a review, a case report, a paper in mathematics. No text written by a

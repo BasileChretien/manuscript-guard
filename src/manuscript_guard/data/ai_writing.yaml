@@ -172,7 +172,7 @@ vague_attribution:
 # Words that are ordinary once and a tell in quantity. Rates are per 1000 words of prose.
 density:
   - id: ai-vocabulary
-    # The 99th percentile of 291 papers by people
+    # The 99th percentile of 292 papers by people
     # (tools/g6_baseline.py, corpus d986324d02aa94ae, drawn 2026-10-19).
     per_1000: 2.7
     why: >-
@@ -230,18 +230,18 @@ density:
       - '(?i)\bcomprehensive\s+(?:cohort|search\s+strategy)\b'
 
   - id: em-dash
-    # The 99th percentile of 291 papers by people
+    # The 99th percentile of 292 papers by people
     # (tools/g6_baseline.py, corpus d986324d02aa94ae, drawn 2026-10-19).
-    per_1000: 1.1
+    per_1000: 13.9
     pattern: '—'
     why: >-
       Em dashes are legitimate punctuation and heavily overused by models. A high rate is
       worth a look; a few are fine.
 
   - id: boldface
-    # The 99th percentile of 291 papers by people
+    # The 99th percentile of 292 papers by people
     # (tools/g6_baseline.py, corpus d986324d02aa94ae, drawn 2026-10-19).
-    per_1000: 27.4
+    per_1000: 9.3
     pattern: '\*\*[^*\n]+\*\*'
     why: Emphasis scattered through prose rather than reserved for structure
     exempt:
@@ -250,9 +250,9 @@ density:
       - '(?m)^\s*\*\*[A-Z][\w /-]{2,28}[.:]\*\*'
 
   - id: rule-of-three
-    # The 99th percentile of 291 papers by people
+    # The 99th percentile of 292 papers by people
     # (tools/g6_baseline.py, corpus d986324d02aa94ae, drawn 2026-10-19).
-    per_1000: 6.6
+    per_1000: 6.3
     pattern: '(?i)\b\w+,\s+\w+,\s+and\s+\w+\b'
     why: >-
       Three-item lists are normal; a high rate is the cadence the source essay describes.
@@ -261,7 +261,7 @@ density:
   # warned on about a quarter of 384 such papers (tools/g6_baseline.py, 2026-10-19), so
   # they are counted by rate, as the vocabulary is.
   - id: negative-parallelism
-    # The 99th percentile of 291 papers by people
+    # The 99th percentile of 292 papers by people
     # (tools/g6_baseline.py, corpus d986324d02aa94ae, drawn 2026-10-19).
     per_1000: 0.8
     pattern: '(?i)\bnot\s+(?:just|only|merely|simply)\b[^.;:]{2,80}?\bbut\s+(?:also\s+)?'
@@ -270,7 +270,7 @@ density:
       is a sentence; a high rate is the cadence.
 
   - id: plays-a-role
-    # The 99th percentile of 291 papers by people
+    # The 99th percentile of 292 papers by people
     # (tools/g6_baseline.py, corpus d986324d02aa94ae, drawn 2026-10-19).
     per_1000: 0.9
     pattern: '(?i)\bplays?\s+an?\s+(?:crucial|pivotal|vital|key|significant|important)\s+role\b'
@@ -282,7 +282,7 @@ density:
 structure:
   - id: copula-avoidance
     verbs: [serves as, stands as, functions as, operates as, boasts, represents a]
-    # The 99th percentile of 291 papers by people
+    # The 99th percentile of 292 papers by people
     # (tools/g6_baseline.py, corpus d986324d02aa94ae, drawn 2026-10-19).
     per_1000: 0.6
     why: >-

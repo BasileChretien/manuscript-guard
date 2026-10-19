@@ -82,7 +82,12 @@ _LICENCE = re.compile(r"creativecommons\.org/licenses/([a-z-]+)/", re.IGNORECASE
 #: A licence stated in words, as older articles do with no link: "distributed under the terms
 #: of the Creative Commons Attribution License", which is CC BY unless a further term follows.
 _LICENCE_TEXT = re.compile(r"<license\b.*?</license>", re.IGNORECASE | re.DOTALL)
-_ATTRIBUTION = re.compile(r"Creative\s+Commons\s+Attribution\s+Licen[cs]e", re.IGNORECASE)
+#: Its version, "International" and "(CC BY)" may stand before "License" (round 1 of #339).
+_ATTRIBUTION = re.compile(
+    r"Creative\s+Commons\s+Attribution\b(?:[^.<]|\.(?=\d)){0,60}?Licen[cs]e"
+    r"|\bAttribution\s*\(CC[\s-]?BY\b[^)]*\)\s*Licen[cs]e",
+    re.IGNORECASE,
+)
 _FURTHER_TERM = re.compile(r"Non-?Commercial|No-?Deriv|Share-?Alike|\bNC\b|\bND\b|\bSA\b")
 
 
@@ -137,7 +142,9 @@ def _shares(counts: dict[int, int], total: int) -> dict[int, int]:
 def draw(fetch: Fetch = fetch_url, today: date | None = None) -> dict:
     """The candidates: each year's share of `CANDIDATES` in proportion to its articles, and
     within a year one article at random on each of as many random days, with `HELD_OUT` of
-    them set aside at random."""
+    them set aside at random. An article is not drawn with the same chance as every other:
+    one on a day with many is less likely than one on a quiet day, and one past the first
+    1000 Europe PMC lists for its day is never drawn (round 1 of #339)."""
     rng = random.Random(SEED)
     first, last = WINDOW
     years = range(first.year, last.year + 1)
@@ -211,10 +218,25 @@ def body_of(markdown: str) -> str | None:
     return body[: cut.start()] if cut else body
 
 
+#: The filter that leaves a paper's tables out of what is measured: a manuscript's tables are
+#: emitted and bound, and G6 does not count them, while a paper's bold marks values in its
+#: tables (round 1 of #339).
+NO_TABLES = ROOT / "tools" / "data" / "g6-no-tables.lua"
+
+
 def to_markdown(path: Path, pandoc: str) -> str | None:
-    """`path`'s JATS as pandoc's JATS reader writes it in Markdown; None where it cannot."""
-    run = subprocess.run([pandoc, "-f", "jats", "-t", "markdown", "--wrap=none", str(path)],
-                         capture_output=True, timeout=120)  # fmt: skip
+    """`path`'s JATS as pandoc's JATS reader writes it in Markdown, its tables left out;
+    None where it cannot, in two minutes. Without `smart`, which writes an em dash as "---"
+    and an en dash as "--", where G6 counts the dashes themselves (round 1 of #339: the
+    first measurement saw an em dash in 18 of 384 papers)."""
+    try:
+        run = subprocess.run(
+            [pandoc, "-f", "jats", "-t", "markdown-smart", "--wrap=none",
+             "--lua-filter", str(NO_TABLES), str(path)],
+            capture_output=True, timeout=120,
+        )  # fmt: skip
+    except subprocess.TimeoutExpired:
+        return None
     if run.returncode != 0:
         return None
     return run.stdout.decode("utf-8", errors="strict")

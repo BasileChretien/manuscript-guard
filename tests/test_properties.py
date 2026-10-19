@@ -87,6 +87,7 @@ from manuscript_guard.gates import quotations as quotations_gate
 from manuscript_guard.gates import reported as reported_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
+from manuscript_guard.gates import writing as writing_gate
 from manuscript_guard.gates.language import _file, _hidden
 from manuscript_guard.gates.notation import VALUE, _counted
 from manuscript_guard.gates.spelling import MANY, _prose, _variants, judge_spelling
@@ -3731,6 +3732,39 @@ def test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is(
     assert found == expected, text
 
 
+# ---------------------------------------------- a technical sense, counted towards no rate
+
+#: Technical senses of words the vocabulary rate counts, in the singular and the plural.
+_TECHNICAL = (
+    "robust standard error", "robust standard errors", "Robust variance", "robust variances",
+    "robust estimator", "robust estimators", "robust regression", "robust regressions",
+    "robustness check", "robustness checks", "robust analysis", "robust analyses",
+    "sandwich robust", "comprehensive cohort", "comprehensive search strategy",
+)  # fmt: skip
+
+
+@st.composite
+def _technical_senses(draw: st.DrawFn) -> str:
+    """Plain words with every technical sense among them once, in an order and with spaces
+    drawn each time."""
+    parts = []
+    for phrase in draw(st.permutations(_TECHNICAL)):
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=12, max_size=20))
+        gap = draw(st.sampled_from((" ", "  ", "\n", "\N{NO-BREAK SPACE}")))
+        parts.append(" ".join(words) + " " + phrase.replace(" ", gap) + ".")
+    return " ".join(parts)
+
+
+@holds(60, _technical_senses())
+def test_a_technical_sense_adds_nothing_to_the_vocabulary_rate(text: str) -> None:
+    """Item 54: "robust standard errors" is how papers by people write it, and counted
+    towards the rate in the plural. Each technical sense, however cased and spaced, counts
+    as the same text with its flagged word replaced by a plain one of the same length."""
+    plain = re.sub(r"(?i)\b(?:robust|comprehensive)", "plain", text)
+    rate = writing_gate.rates([(Path("m.md"), text)])["ai-vocabulary"]
+    assert rate == writing_gate.rates([(Path("m.md"), plain)])["ai-vocabulary"], text
+
+
 # ------------------------------------------------------------ a journal's limit, in its quote
 
 #: Words that write a number up to twenty, as G4 reads them.
@@ -4879,6 +4913,21 @@ def _a_unit_is_read_inside_a_longer_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
 
 
+def _a_technical_sense_counts_in_the_plural(patch: pytest.MonkeyPatch) -> None:
+    """The exemption before item 54: its nouns in the singular only."""
+    import dataclasses
+
+    rules = writing_gate.load_rules()
+    old = (r"(?i)\brobust(?:ness)?\s+(?:standard\s+error|variance|estimator|regression|check"
+           r"|analysis|analyses)\b")  # fmt: skip
+    density = tuple(
+        {**rule, "exempt": [old, *rule["exempt"][1:]]} if rule["id"] == "ai-vocabulary" else rule
+        for rule in rules.density
+    )
+    assert density != rules.density
+    patch.setattr(writing_gate, "load_rules", lambda: dataclasses.replace(rules, density=density))
+
+
 def _a_slash_divides_by_symbols_only(patch: pytest.MonkeyPatch) -> None:
     pattern = bound_units_gate._UNIT.pattern.replace(
         r"/[^\W\d_]+", "/(?:" + bound_units_gate._SYMBOL + ")", 1
@@ -5197,6 +5246,10 @@ BROKEN = {
     "a unit is read after a plain space only": (
         _a_unit_is_read_after_a_plain_space_only,
         test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
+    ),
+    "a technical sense counts towards the vocabulary rate in the plural": (
+        _a_technical_sense_counts_in_the_plural,
+        test_a_technical_sense_adds_nothing_to_the_vocabulary_rate,
     ),
     "a unit is read inside a longer word": (
         _a_unit_is_read_inside_a_longer_word,

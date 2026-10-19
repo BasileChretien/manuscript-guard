@@ -584,8 +584,10 @@ def test_a_run_leaves_its_results_in_the_repository_and_says_where(
     said = capsys.readouterr().out
     written = list(repo.rglob("aggregate-result.json"))
     if not writes:
-        # The run left its folder empty: no results are named (round 5 of #333).
+        # The run left its folder empty: no results are named, and the empty folder goes
+        # (rounds 5 and 6 of #333).
         assert written == [] and "no results were written" in said
+        assert not any((repo / "evals" / "results").iterdir())
         return
     [result] = written
     assert result.parent.parent == repo / "evals" / "results"

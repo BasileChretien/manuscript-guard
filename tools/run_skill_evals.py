@@ -87,10 +87,16 @@ def main(
         raise SystemExit(f"{results} exists already: run again") from None
     # A process the run started may still hold a file of the copy on Windows; the copy is
     # left to the system then, rather than the run's exit status lost to a traceback.
-    with tempfile.TemporaryDirectory(prefix="mg-evals-", ignore_cleanup_errors=True) as folder:
-        plugin = stage(repo, Path(folder))
-        done = run(command(claude, plugin, passed, results), cwd=repo)
-    print(f"results in {results}" if any(results.iterdir()) else "no results were written")
+    try:
+        with tempfile.TemporaryDirectory(prefix="mg-evals-", ignore_cleanup_errors=True) as tmp:
+            plugin = stage(repo, Path(tmp))
+            done = run(command(claude, plugin, passed, results), cwd=repo)
+    finally:
+        # A folder the run left empty, or a run that never started, leaves nothing behind.
+        wrote = results.is_dir() and any(results.iterdir())
+        if results.is_dir() and not wrote:
+            results.rmdir()
+    print(f"results in {results}" if wrote else "no results were written")
     return done.returncode
 
 

@@ -55,7 +55,7 @@ LEFT_OUT = ("build", "__pycache__", "AGENTS.md", "CLAUDE.md", ".claude")
 
 def stage(repo: Path, into: Path) -> Path:
     """A copy of `repo`'s plugin with the suite inside it, its past results left out, and
-    the worked example beside the cases, without `LEFT_OUT` and its YAML comments."""
+    the worked example beside the cases, without `LEFT_OUT` and its whole-line YAML comments."""
     plugin = into / "plugin"
     shutil.copytree(repo / "plugin", plugin)
     shutil.copytree(repo / "evals", plugin / "evals", ignore=shutil.ignore_patterns("results"))
@@ -75,10 +75,14 @@ def _uncommented(path: Path) -> None:
     blank = " \t\N{ZERO WIDTH NO-BREAK SPACE}"  # a byte-order mark before the first line
     kept = "".join(line for line in text.splitlines(keepends=True)
                    if not line.lstrip(blank).startswith("#"))  # fmt: skip
-    try:
-        before, after = (yaml.safe_dump(yaml.safe_load(each)) for each in (text, kept))
-    except yaml.YAMLError as error:
-        raise SystemExit(f"{path}: not one YAML document ({error.__class__.__name__})") from None
+    loaded = []
+    for each, which in ((text, "as it is"), (kept, "without its comments")):
+        try:
+            loaded.append(yaml.safe_dump(yaml.safe_load(each)))
+        except yaml.YAMLError as error:
+            raise SystemExit(f"{path}: does not load as one YAML document {which} "
+                             f"({error.__class__.__name__})") from None  # fmt: skip
+    before, after = loaded
     if before != after:
         raise SystemExit(f"{path}: its data reads otherwise without its comments")
     path.write_bytes(kept.encode("utf-8"))

@@ -579,8 +579,13 @@ def test_the_staged_example_leaves_out_a_build_and_an_agent_s_instructions(
     # Not one YAML document: refused, not a traceback; a NaN is equal to itself (the
     # post-budget round of #338).
     (repo / "example" / "paper.yaml").write_text("a: 1\n---\nb: 2\n", encoding="utf-8")
-    with pytest.raises(SystemExit, match="not one YAML document"):
+    with pytest.raises(SystemExit, match="does not load as one YAML document as it is"):
         script.stage(repo, tmp_path / "two")
+    # A byte-order mark before a first-line comment goes with it.
+    marked = "\N{ZERO WIDTH NO-BREAK SPACE}# a skill writes this\nx: 1\n"
+    (repo / "example" / "paper.yaml").write_bytes(marked.encode("utf-8"))
+    project = script.stage(repo, tmp_path / "mark") / "evals" / "_project"
+    assert (project / "paper.yaml").read_text(encoding="utf-8") == "x: 1\n"
     (repo / "example" / "paper.yaml").write_text("# a comment\nx: .nan\n", encoding="utf-8")
     project = script.stage(repo, tmp_path / "nan") / "evals" / "_project"
     assert (project / "paper.yaml").read_text(encoding="utf-8") == "x: .nan\n"

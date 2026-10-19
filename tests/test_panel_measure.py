@@ -11,7 +11,9 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -119,10 +121,32 @@ def test_every_copy_is_asked_by_every_reviewer_three_times(prepared: tuple[Path,
 
 def test_a_folder_prepared_in_part_is_refused(tmp_path: Path) -> None:
     """A run that failed half-way leaves its requests and no key; preparing again in that
-    folder is refused with what is there, not a crash."""
+    folder is refused with what is there, not a crash. From the command line, any folder
+    with something in it is refused before the sources are written into it."""
     (tmp_path / "requests").mkdir()
     with pytest.raises(SystemExit, match=r"already prepared, or in part \(requests\)"):
         tool.prepare(tmp_path, {"pre-fix": EXAMPLE, "current": EXAMPLE})
+    with pytest.raises(SystemExit, match="not empty"):
+        tool.main(["prepare", "--work", str(tmp_path)])
+    assert not (tmp_path / "sources").exists()
+
+
+def test_the_dry_run_imports_this_tree_s_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The requests are what this tree's `review --run --dry-run` writes, not the installed
+    package's, whatever PYTHONPATH already holds."""
+    seen = {}
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        seen.update(kwargs)
+        return subprocess.CompletedProcess(command, 1, "", "stopped here")
+
+    monkeypatch.setenv("PYTHONPATH", "elsewhere")
+    monkeypatch.setattr(tool.subprocess, "run", run)
+    with pytest.raises(SystemExit, match="stopped here"):
+        tool.requests_of(tmp_path)
+    assert seen["env"]["PYTHONPATH"].split(os.pathsep) == [str(tool.ROOT / "src"), "elsewhere"]
 
 
 def test_the_blank_copy_is_its_title_and_abstract_and_the_minor_one_is_planted(
@@ -166,6 +190,8 @@ def test_the_whole_path_answers_scores_adjudicates_and_reports(
     stand_in.write_text(STAND_IN.format(replies=str(replies)), encoding="utf-8")
     answered = tool.answer_with_claude_code(work, "opus", [sys.executable, str(stand_in)])
     assert answered["answered"] == len(key)
+    # The system text as the panel wrote it, its line ends LF on every system.
+    assert b"\r\n" not in (work / "system.txt").read_bytes()
 
     scored = tool.score(work, RUBRIC, seed=1)
     adjudicate = yaml.safe_load((work / "adjudicate.yaml").read_text(encoding="utf-8"))
@@ -214,6 +240,7 @@ def test_the_whole_path_answers_scores_adjudicates_and_reports(
     done = tool.adjudicate_with_model(by_model, RUBRIC, "opus", [sys.executable, str(stand_in)],
                                       seed=2)  # fmt: skip
     assert done["adjudicated"] == len(adjudicate["items"])
+    assert b"\r\n" not in (by_model / "adjudicator.txt").read_bytes()
     assert tool.tally(tool._adjudicated(by_model, RUBRIC)[0], key, RUBRIC) == counted
     check = yaml.safe_load((by_model / "check.yaml").read_text(encoding="utf-8"))
     assert len(check["items"]) == tool.CHECKED + len(RUBRIC["controls"])
@@ -243,6 +270,7 @@ def test_an_adjudication_is_a_list_of_defect_ids_or_none() -> None:
 
 @pytest.mark.parametrize(("code", "out", "says"), [
     (1, "", "claude -p failed"),
+    (0, '{"result": "[', "claude -p failed"),
     (0, json.dumps({"is_error": True, "result": "Overloaded"}), "claude -p failed"),
     (0, json.dumps({"result": "I could not decide."}), "no list of them"),
     (0, json.dumps({"result": '[{"item": 99, "defects": []}]'}), "no list of them"),
@@ -251,8 +279,6 @@ def test_an_adjudication_is_a_list_of_defect_ids_or_none() -> None:
 def test_an_adjudicating_call_that_failed_or_answered_otherwise_is_refused(
     code: int, out: str, says: str
 ) -> None:
-    import subprocess
-
     run = subprocess.CompletedProcess([], code, out.encode("utf-8"), b"")
     known = {d["id"] for d in RUBRIC["defects"]}
     with pytest.raises(SystemExit, match=says):

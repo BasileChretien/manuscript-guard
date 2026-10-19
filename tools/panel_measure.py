@@ -39,9 +39,14 @@ says which copy, reviewer or sample a finding came from, not even the finding's 
 ("Abstract" would say which copy). Findings of known grade are mixed in, to measure the
 adjudicator. Defects are those of `tools/data/panel-rubric.yaml`, written before any reply
 was read. Each defect is counted on every copy, in the replies of the reviewers whose remit
-the rubric says asks about it; the report marks the copies that do not show it, where raising
-it is a false finding. Recall, and false findings on the clean version, are reported, never
-precision, since planted defects have no real prevalence.
+the rubric says asks about it; the report marks the copies that do not show it, where a
+count is a false finding or, as often, another finding in the defect's words. Recall, and
+what is counted on the clean version, are reported, never precision, since planted defects
+have no real prevalence.
+
+A finding settled by words is given the one defect whose words it uses, and not another it
+raises in other words. The adjudicator does not see a finding's `where`, so a defect named
+only there ("Methods, DEMO-OBS item 3") cannot be given to it.
 """
 
 from __future__ import annotations
@@ -209,6 +214,16 @@ def prepare(work: Path, sources: dict[str, Path], seed: int | None = None) -> di
 # ------------------------------------------------------------------------------- answer
 
 
+def _json_object(out: str) -> dict:
+    """What Claude Code printed, as the JSON object it should be, or empty: cut short or
+    garbled output is a failed call, which the caller refuses with the output itself."""
+    try:
+        said = json.loads(out)
+    except json.JSONDecodeError:
+        return {}
+    return said if isinstance(said, dict) else {}
+
+
 def answer_with_claude_code(work: Path, model: str, claude: list[str]) -> dict:
     """Each request not yet answered put to `model` through Claude Code's headless mode, as
     the panel would put it: its system text as the whole system prompt, no tools, and
@@ -233,7 +248,7 @@ def answer_with_claude_code(work: Path, model: str, claude: list[str]) -> dict:
             cwd=work, timeout=600,
         )  # fmt: skip
         out, err = run.stdout.decode("utf-8", "replace"), run.stderr.decode("utf-8", "replace")
-        said = json.loads(out) if out.strip().startswith("{") else {}
+        said = _json_object(out)
         if run.returncode != 0 or said.get("is_error") or "result" not in said:
             failed = out[-400:] + err[-400:]
             raise SystemExit(f"{path.stem}: claude -p failed: {failed}")
@@ -277,7 +292,7 @@ _SCORED = ("adjudicate.yaml", "adjudication-key.yaml", "adjudicate-model.yaml", 
 def score(work: Path, rubric: dict, seed: int | None = None) -> dict:
     """Each reply read: its major and minor findings settled by the rubric's words where
     exactly one defect matches, and the rest, with the controls, shuffled into
-    `work`/adjudicate.yaml, where any finding may be given several defects. A comment is
+    `work`/adjudicate.yaml, where each may be given several defects. A comment is
     never settled by its words: it may praise what a defect would lack ("the 2 x 2 table
     lets a reader recompute the estimate"), which the words cannot tell from saying it is
     missing. (The first scoring of the 2026-10-19 run settled comments too, and 20 were
@@ -359,7 +374,7 @@ def _model_said(run: subprocess.CompletedProcess, batch: list[dict], known: set[
     """The adjudicating model's answers for `batch`, from Claude Code's output; a call that
     failed, or an answer that is no list of the batch's items, is refused with what it said."""
     out, err = run.stdout.decode("utf-8", "replace"), run.stderr.decode("utf-8", "replace")
-    said = json.loads(out) if out.strip().startswith("{") else {}
+    said = _json_object(out)
     items = f"items {batch[0]['item']} to {batch[-1]['item']}"
     if run.returncode != 0 or said.get("is_error") or "result" not in said:
         raise SystemExit(f"{items}: claude -p failed: {out[-400:]}{err[-400:]}")

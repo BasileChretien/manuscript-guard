@@ -2764,12 +2764,14 @@ total. The script writes the report; nothing in it is by hand.
   a subscription.** No reading was refused unread. The blind findings, 313 with the
   controls, were adjudicated by the same model, which put all six controls of known grade
   right; no person checked it. Each count is of the three readings by the reviewer whose
-  remit the defect is in.
+  remit the defect is in. The script's counts for the first two copies were then checked by
+  reading every finding they rest on; that reading was done by the agent session that ran
+  the measurement, not by a person. Where it differs, it is given beside the script's.
 
   | Known defect | Raised, two sets of three | Rated major | Raised by the blank reader |
   |---|---|---|---|
   | No case definition | 3, 3 | 3, 3 | 3 of 3, all major |
-  | The 2 x 2 table's counts not given | 3, 2 | 0, 0 | 3 of 3, all major |
+  | The 2 x 2 table's counts not given | 2 (the script: 3), 2 | 0, 0 | 3 of 3, all major |
   | Duplicate reports not mentioned | 3, 3 | 3, 2 | 3 of 3, 2 major |
   | Record selection not described | 3, 3 | 3, 3 | 3 of 3, all major |
 
@@ -2778,22 +2780,31 @@ total. The script writes the report; nothing in it is by hand.
     major findings a reading against 1.8 and 1.7 from the readers of the whole. The case
     definition is the panel's own instructions' example of a finding, and record selection
     is asked for by item 3 of the checklist that reader was sent.
-  - The readers of the whole raised each defect in its reviewer's readings, but the 2 x 2
-    table in two of the second three, and one of the first three is about the unit of
-    analysis, which the table's words settle. What differs is severity. The 2 x 2 table,
-    major in the round-1 record, was rated major by no reader of the whole and by every
-    blank reader. Duplicates were rated major in three readings of three, then in two, for
-    the same request: a difference of one reading in three is noise.
-  - The first adjudication gave each finding one defect at most, and counted duplicates in
-    two readings and then none: the pharmacoepidemiologist raises duplicates inside a
-    finding about record selection, and the adjudicator had to choose (round 1 of #334).
+  - Read, every reading counted as raising one of the four on the version the panel read
+    has a finding that says it is missing, and every one counted as rating it major has
+    such a finding rated major, but one reading: its only finding counted for the 2 x 2
+    table is on the unit of analysis, which the table's words settle. Some readings have
+    other findings counted in a defect's words that are about something else, the age
+    bands of Table 1 under item 3 for one, which change no count. Each of the six
+    checklist-auditor readings has a major finding that item 3's record selection is not
+    described, five of them adjudicated blind. What differs between
+    readings is severity. The 2 x 2 table, major in the round-1 record, was rated major by
+    no reader of the whole and by every blank reader. Duplicates were rated major in three
+    readings of three, then in two, for the same request: a difference of one reading in
+    three is noise.
+  - A first adjudication, made before round 1 of #334, gave each finding one defect at
+    most, and counted duplicates in two readings and then none. The pharmacoepidemiologist
+    raises duplicates inside a finding about record selection, and that adjudicator had to
+    choose. The second differs in more than that rule: it is another run of the model, on
+    a file that no longer gives each finding's `where`.
   - On the fixed version the readings gave 0.2 major findings each. Defects the fixed
     version does not have were still counted, as minor findings: the 2 x 2 table and record
     selection in three readings of three, the caption in three of nine. They are other
-    findings in the same words: the unit of analysis, put through the table's words; how a
-    report was put in the drug's group, under item 3; and a row of Table 1 without
-    percentages under a caption that says n (%), which is so in the example. Words settle a
-    finding by its vocabulary, not by what it says is missing.
+    findings in the same words: the unit of analysis, put through the table's words; under
+    item 3, how a report was put in the drug's group, which the fix left unsaid; and a row
+    of Table 1 without percentages under a caption that says n (%), which is so in the
+    example. Words settle a finding by its vocabulary, not by what it says is missing, and
+    a finding they settle is given that one defect, not another it raises in other words.
   - The planted minor defects were not found. The undefined acronym was raised in none of
     nine readings. The caption was counted once, by the biostatistician, and that finding
     is about the row without percentages. Neither was rated major. No remit is about
@@ -2802,7 +2813,9 @@ total. The script writes the report; nothing in it is by hand.
   - The record's digest (`bcb8549c...`) is of a later version than the one the round-1
     panel read: the records came with the fixes, and were stamped again with each change
     after. The version read is the example's first, `e6a8cca6`. A first run on the later
-    version found none of the four, since they are fixed there, and is not reported.
+    version found none of the four, since they are fixed there, and is not reported. The
+    record's resolution of record selection says the Methods now describe inclusion
+    without restriction on age or sex; that sentence was in the first version already.
 
 ## A document reviewed blind names none of its authors
 

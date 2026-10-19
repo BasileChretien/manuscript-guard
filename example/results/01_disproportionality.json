@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "f5ea07ef309c3fb12dded6d5c6f4164bc8ee42c219a601b5bd30080ac7de760a",
-    "generated_at": "2026-10-18T16:45:38+00:00",
+    "generated_by_sha256": "926c05a7e95aeba33afc975e069d3ef4b019ba121ea91b1673df6b1b86bcda1a",
+    "generated_at": "2026-10-19T05:18:44+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.447"
+      "version": "0.2.448"
     },
     "vcs": {
-      "sha": "f47d0f43a1d0f48b13e84e42ac71e42b1884e0e1",
+      "sha": "99775a43d2245beab03dc896a46270719f9b1684",
       "dirty": true,
-      "branch": "feat/interval-labels"
+      "branch": "fix/example-table1-percentages"
     },
     "inputs": [
       {
@@ -279,8 +279,8 @@
         ],
         [
           "Hepatic injury",
-          "77",
-          "194"
+          "77 (18.1)",
+          "194 (5.4)"
         ],
         [
           "Age 18-44",
@@ -338,18 +338,20 @@
         },
         {
           "column": 1,
-          "template": "{}",
+          "template": "{} ({})",
           "row": 1,
           "parts": [
-            "77"
+            "77",
+            "18.1"
           ]
         },
         {
           "column": 2,
-          "template": "{}",
+          "template": "{} ({})",
           "row": 1,
           "parts": [
-            "194"
+            "194",
+            "5.4"
           ]
         },
         {

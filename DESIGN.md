@@ -885,6 +885,11 @@ two of them and on which line: numbers, which are most often line numbers or a c
 figures read into the sentence, or words, which are the quote's own omission or a column,
 a footnote or a running header. Or it names the word split by a hyphen, or, where the
 words stand together, the first place the punctuation or a symbol differs, "2·6" for "2.6".
+A difference in white space alone beside punctuation, "drug-\ninduced", is not named; an
+HTML entity is named as numbers or words; a word split at the edge of an interruption is
+named by one half; nothing between two words is named where the first word was retyped or
+a word is missing; a line number equal to the quote's next number is read as the later of
+the two; and a PDF is read again for each quote that fails in it (round 1 of #301).
 Where only some are there, it says how many, and the quote's next word against what the
 source has in its place. The line is the file's own for a text file or a page, and is not
 given for a PDF, whose lines are its reader's. This is said and decides nothing: the quote
@@ -1796,7 +1801,14 @@ a p value is one of. G2 reads which bindings sit together in a sentence, and not
 the sentence says: a p value quoted in a sentence that binds no estimate of it, or a share in
 one that binds neither of its counts, is `quoted-alone`; an estimate emitted with an
 interval and quoted in no sentence with both its bounds is `interval-not-quoted-whole`. Both
-are warnings: a paper may rightly give a p value again a line after its estimate.
+are warnings: a paper may rightly give a p value again a line after its estimate. Sentences
+end where the labels of a spread read them to end (`sentence_stops`): the stop of "s.d.",
+"s.e." or "s.e.m." before a number or a word in lower case ends none, so "(s.e. 0.21), P =
+..." keeps its P with its estimate. A statistic whose `of` or `over` names a key no fragment
+emits is told so, once per quote and whatever the sentence holds, rather than told it is
+quoted alone. And the schema holds
+what the emitters refuse, so that a fragment written by hand cannot step around these
+checks: `over` and `family` only with `of`, and never both on one value.
 
 Multiple comparisons are declared, never guessed. `correction("secondary", "holm")` says how
 a family is corrected, and "none" is a declaration too, with its reason. G8 warns on a
@@ -3763,10 +3775,13 @@ share of 56.0%. "{{results.dose}} mg" printed "250 mg" of a dose emitted in micr
 nothing said so. G2 now reads the symbol written right after each binding, from the list of
 symbols G14 knows a number is not to run into, and `%` and `‰`, with a power after it or a
 slash and what it divides by, and warns (`unit-differs-from-emitted`) where it is not the unit
-emitted. Spellings of one unit are one: µg, μg and mcg; mL and ml; °C and ℃. A value emitted
-with no unit, or with one that is no symbol ("years"), has nothing to compare it with. The
-gap between the binding and its unit may be any space or one line break, which pandoc prints
-as a space; a blank line, or a word between, ends the unit's claim to the binding.
+emitted. Spellings of one unit are one: µg, μg and mcg; mL and ml; °C and ℃; a litre after
+a slash, mmol/l and mmol/L (round 1 of #279). A value emitted with no unit, or with one that
+is no symbol ("years"), has nothing to compare it with. The gap between the binding and its
+unit may be spaces of any width, pandoc's escaped space (`\ `), the entity of a no-break
+space in any of its spellings, an HTML comment, which is not printed and ends at its own
+`-->`, and one line break, which pandoc prints as a space; a blank line, or a word between,
+ends the unit's claim to the binding, also between two comments (round 1 of #341).
 
 ## A rule names values, not shapes
 
@@ -4041,13 +4056,24 @@ below it (`count-below-minimum`), naming the key, from the `internal-review` sta
 reads its own small counts while it drafts, and a panel sent to a model provider is already
 outside it. A count is a whole number the analysis emitted with no unit, that is neither a
 parameter, a software version nor a label; "3 years" is emitted with its unit and is no
-count of people, and nought is no small cell.
+count of people, and nought is no small cell. A display that holds the count back behind a
+bound, "<5" or "≤4", its bound a whole number or a decimal, alone or followed by a word,
+"<5 patients", passes only where the bound allows every count the custodian forbids: "<2"
+or "≤3" under a minimum of five still say the count is one, or at most three, and fail
+(round 3 of #275, round 1 of #341). A count the analysis emits as a decimal, 3.0, or with a
+unit naming people, "patients", is not taken for one (pinned by
+`test_what_the_count_reading_gets_wrong_is_pinned`).
 
 An input is declared restricted where the analysis declares it, in either emitter
 (`em.add_input(path, restricted=True)`, `em$add_input(path, restricted = TRUE)`), and the
 results record it. G1 fails while git tracks such a file (`restricted-input-tracked`), from
 the first stage: a pushed repository is a copy outside the custodian's hands. Git is asked
-with a time limit; where it cannot be asked, the finding is a warning.
+with a time limit, in English, whose words are read, for the path as written, not as a
+pattern ("data[1].csv" is not "data1.csv"), and whatever its case where git ignores case; a
+path outside the repository's work tree is not tracked by it (round 1 of #275). git's answer
+is read as UTF-8, so a restricted file whose name is in another script or carries an accent
+is found, where the system's code page could not read it (round 1 of #341). Where git
+cannot be asked, the finding is a warning.
 
 An input is declared synthetic the same way (`em.add_input(path, synthetic=True)`,
 `em$add_input(path, synthetic = TRUE)`): simulated data, a dummy extract, a test fixture, on
@@ -6082,12 +6108,21 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers
   that might add up. That is the price of checking nothing by guesswork.
 - **A relation between values is exact, so a value emitted rounded fails it.** Whole numbers
-  are compared exactly and floats to their last bits (a relative 1e-9). A script that emits
-  `round(rate, 1)` instead of the rate breaks a ratio that holds, and is told to emit the
-  value unrounded and let the display round it.
+  are compared exactly and floats to their last bits (1e-9 of the result, and 1e-9 of
+  nought), so a result and its computed value both within 1e-9 of nought are equal,
+  whatever the terms: 1e-12 passes as the sum of 1e-12 and 2e-12, and 9e-10 as 0.3 less
+  0.3 (pinned by `test_terms_all_near_nought_are_equal_by_being_small`). A
+  tolerance taken from the terms instead let a wrong ratio pass, its largest term being
+  its denominator, and a difference of terms near a million rounded at the sixth place,
+  and failed a true difference of two means summed two ways (#340). A script that emits
+  `round(rate, 1)` instead of the rate
+  breaks a ratio that holds, and is told to emit the value unrounded and let the display
+  round it.
 - **The printed arithmetic reads the first number of each display.** A display that is not a
-  rounding of its own value ("<0.001", a rate printed per 1,000 of a value held per person,
-  "1.2 × 10⁻³") is left out of it, and the relation is then held to the values alone. A
+  rounding of its own value ("<0.001", whatever its value, a rate printed per 1,000 of a
+  value held per person, "1.2 × 10⁻³") is left out of it, and the relation is then held to
+  the values alone. What Decimal arithmetic leaves in its last digits, 100 over 3 times 3
+  being 99.99...9, is no rounding of the printed numbers (round 1 of #293). A
   share held as a fraction and printed as a percentage is read as a percentage. The warning
   is meant to fire routinely: percentages rounded one by one often miss 100, and the text
   may say so rather than change a number.
@@ -6097,6 +6132,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   named in `overlapping`, which waives the sum of that step's reasons but not its total; the
   reasons are still each at most what the step removed, and together at least that. The flow diagram is not yet
   drawn from the record: a figure script reads the counts from the results like any other.
+  A flow two fragments record is the first's, as its counts are, and `duplicate-key` says so
+  of the second's (round 1 of #293, where the second record was held to the first's counts).
+  Python's `relation()` refuses an `of` that is one key written as a string, which it read
+  as its letters (in R a string is a vector of one key), and either emitter refuses a name
+  that is no results key. Python takes NumPy's whole numbers and its single truth values as
+  its own, and the steps that overlap as a list or a NumPy array of whole numbers; R takes
+  any numeric vector of whole values, or a single number, for those steps.
 - **A UTF-16 input without a BOM is normalised as if it were 8-bit text.** Its 0x0D and 0x0A
   bytes can belong to ordinary characters, so an edit that swaps one such character for
   another (U+4E0D for U+4E0A) can leave the digest unchanged and pass G1. Exports that write
@@ -6228,6 +6270,17 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   only; a result the section describes in words is not checked, and a section with one key
   and ten results in words says nothing of the ten. A Deviations section that names a key,
   whatever it says of it, stands down that key's warning.
+- **A statistic is held to what it belongs to by which bindings share its sentence, and by
+  nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
+  each, though a paper quotes the one it means. An interval quoted whole only in a table the
+  analysis emits is asked for again, since a table's cells are text and bind no key. A
+  caption, a supplement or a Discussion that gives a P again on its own is warned of, as a
+  sentence of the Results would be. And a key declared `same_as` the estimate stands for
+  nothing of it here: "Overall it was {{results.headline}}, P = {{results.or.p}}" is quoted
+  alone. All are warnings, and `test_what_quoted_alone_does_not_read_is_pinned` holds them as
+  they are. And a sentence that really ends at "s.e." followed by a binding or a word in
+  lower case runs on into the next, for the order of an interval's bounds as for the rest,
+  so a bound restated before it can hide a reversal after it (round 1 of #343).
 - **The feasibility results are asked for by their names only.** Any one result under
   `feasibility.` quiets `feasibility-not-run`: nothing checks that the counts cover the
   plan's variables or its selection steps, or that the script read the data the analysis
@@ -6273,11 +6326,24 @@ Added by the adversarial review, verified and **not** fixed:
   a rule that flags them is a rule that gets the gate switched off.
 - **A P is held to its statistic only in a sentence that writes both, for four kinds of
   test.** t, F, chi-squared and z are read; r, U, H, W and the rest are not. A test in a
-  table, its statistic in one column and its P in another, is not read, and neither is a P
-  written before its statistic, "P = .03 (t(23) = 2.45)". A sentence ends at a stop before a
+  table, its statistic in one column and its P in another, is not read. A statistic takes
+  the next P in its sentence, before the next statistic, so where each P stands before its
+  own, "P = .022 (t(23) = 2.45); P = .40 (t(30) = 0.85)", the first statistic is judged
+  with the second's P and reported (round 1 of #285, where this said such a P was not
+  read; `test_a_p_written_before_its_statistic_is_read_as_the_next_one_s`). A number written
+  with a middle dot or a comma for its point, "0·62" or "0,62", is not read at all, so a
+  paper set that way has none of its tests judged; a comma after a number with its point,
+  "P = 0.40,12", is the sentence's (round 1 of #336), so in such a paper a point that groups
+  thousands is read as a point, "1.234,5" as 1.234 (pinned by
+  `test_a_point_that_groups_thousands_in_a_decimal_comma_paper_is_read_as_a_point`). A P above 1 is not judged. A sentence ends at a stop before a
   capital or a bracket, so "et al. (2019)" ends one, and a word before it that says the
   test is not the textbook one is not seen. Such a word stands the test down wherever it is
-  in the sentence, about this test or not: "exact" or "corrected" said of anything. Degrees
+  in the sentence, about this test or not: "exact" or "corrected" said of anything, and
+  "adjusted", so "adjusted for age, z = 2.10, P = .40" is not judged, though a Wald z of an
+  adjusted model is the textbook one (pinned by
+  `test_adjusted_said_of_anything_stands_a_test_down`). Dunnett's and Games-Howell's
+  procedures are among those words; others are not. A quote two ledger values rest on is
+  judged once. Degrees
   of freedom with a thousands separator, "F(1, 1,234)", are not read. Decimal degrees of
   freedom are read over their digits by the corners of that range, which is exact where the
   P moves one way with each. A t or a z is read as two-sided unless its sentence says
@@ -6293,7 +6359,28 @@ Added by the adversarial review, verified and **not** fixed:
   the level near it, and are reported unless the sentence calls the test exact or
   likelihood-based, or the P adjusted for multiplicity. A word that stands an interval or
   its P down does so wherever it is in the sentence, as for the tests. A P given before its
-  interval, or in a table column of its own, is not read.
+  interval, or in a table column of its own, is not read. Each of these is pinned by
+  `test_what_the_interval_reader_gets_wrong_is_pinned` (rounds 1 and 2 of #300):
+  - a P in a later clause is taken as the estimate's, the search stopping only at another
+    interval's name: in "OR 1.9 (95% CI 1.2-3.0) but not in women (OR 1.1, P = 0.40)" the
+    first OR is judged with 0.40;
+  - "HR" for heart rate, or "RR" for respiratory rate, is read as a ratio held to 1;
+  - an interval whose level is not printed is taken as 95%, so a paper that states 90% once
+    in its Methods is judged at 0.05;
+  - "the difference in hazard ratios" is read as a hazard ratio;
+  - a word that says a P is another's, "heterogeneity" or "interaction", stands it down
+    when it stands between the interval and the P or follows the P within 40 characters,
+    whatever it is about (round 1 of #336, where this said only after).
+
+  An SMR, an SIR, a standardised mortality or incidence ratio and a ratio of means are not
+  read, since their exact intervals need not be symmetric on the log scale. "SMR", "SIR"
+  and "ratio of means" stop a "difference" before them, which is not read across them
+  (round 2 of #300); a longer name keeps the two apart anyway, since a name and its
+  estimate stand at most 24 characters apart. An en dash straight before an estimate's
+  digits, after no digit, is read as its minus, "MD–0.4" and a log ratio's "–0.4" too,
+  except glued to a ratio's name: "OR–1.9" is 1.9 (#336). After a ratio's name, glued to any
+  letter it is a dash, so "log OR was–0.4", with no space, is read as 0.4, outside its interval, as on main
+  (pinned by `test_an_en_dash_glued_to_any_word_before_a_ratio_is_a_dash`).
 - **An n (%) is held to its denominator only where the table writes both, in one cell, in
   a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
   count and its share in columns of their own, nor a share whose denominator only a caption
@@ -6319,11 +6406,25 @@ Added by the adversarial review, verified and **not** fixed:
   marker after it, or with no comma before its "%" ("SpO2 %"), is not a measure.
   Categories whose counts add up to an old denominator are let off as shares of it. "No. of
   patients (%)" and "% (n)" are not read as saying shares. A nested Word table is read as
-  text in its cell.
+  text in its cell. A measure in percent whose mean is above 100, "Predicted FEV1, % | 104
+  (15)" under a header that says n (%), is read as a share and listed, since only a number
+  up to 100 is barred as a measure. What may stand beside a characteristic's own label
+  takes a lone "P", "<", "0" or "1", so a second header row "| Characteristic | | | P |" is
+  read as a label, and refuses a negative SMD, a P with a footnote marker and "NS", beside
+  which the label is read as a header (round 3 of #314). A span is held to the 63 columns a
+  Word table has.
 - **A mean of whole numbers is checked only where the author says it is one, and only
   as a mean.** `audit` reads only the table rows `--whole-numbers` names, and in them only a
-  cell shaped as a mean, with its SD or not; a mean in a sentence is not read, nor a median,
-  nor a mean whose thousands are grouped. Its n is its column header's, so a mean over those
+  cell shaped as a mean, with its SD or not, a nought before its point or not (".47"); a
+  mean in a sentence is not read, nor a median, nor a mean whose thousands are grouped. A
+  cell that is a mean and names its n, "3.1 (1.0), n = 25", or any other cell of a row of
+  means that names one, sets the n for the column below, and the means held to it are
+  uncertain, whether its own row is read or not (round 1 of #336); a mean naming its n has a
+  spread or a point, and is not in the table's first row, so a header "2019 (n = 120)" or
+  "0.5 (n = 40)" in the first row is a header (#336). In a second header row, a decimal
+  beside an n, "0.5 (n = 40)", is taken for a mean naming its n, though "2019 (n = 120)" is
+  not: the n is right, and the means below are called uncertain (pinned
+  by `test_a_header_of_two_rows_marks_the_means_below_uncertain`). Its n is its column header's, so a mean over those
   with data is listed as not fitting where its n is smaller; the message gives the nearest n
   it fits, and the reader decides. A mean of several items per person is read in `audit` as
   a mean of one number each: every mean possible for n is possible for n times the items, so
@@ -8697,8 +8798,12 @@ Closed since, and why each mattered:
 - **A unit after a binding is read from a list of symbols.** "mg" is read and "milligrams"
   is not, so a unit written out in words is compared with nothing; one-letter symbols other
   than g and h (m, L, s) are left out as G14 leaves them, so "{{results.length}} m" is not
-  read. Units that mean the same and are spelt apart ("mg/kg" against "mg kg-1") are taken
-  for two.
+  read. A divisor after a space, "mg kg-1", is not read: written, the unit is its first
+  symbol, so "mg kg-1" against an emitted "mg/kg" is said to differ, and emitted, it is
+  compared with nothing. A divisor written as a word, "mg/kg per day" against an emitted
+  "mg/kg/day", is said to differ too (round 1 of #279, where this entry said "mg/kg" and
+  "mg kg-1" were taken for two both ways; pinned by
+  `test_what_the_unit_reading_gets_wrong_is_pinned`).
 - **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
   `- Results` over an underline as a list item holding a heading titled "Results". The
   gates keep the marker in the title, so it ends the section above; "- Results" is read as
@@ -8989,9 +9094,11 @@ Closed since, and why each mattered:
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number
   with no unit that is no count of people (a number of sites, of years written without the
-  unit) fails as one: emit it with its unit. A restricted input that git ignores but that a
-  person copies elsewhere is not seen, and one that was committed and then removed stays in
-  the history, which only a rewrite takes out.
+  unit) fails as one: emit it with its unit. A count held back behind a bound is read where
+  a word or nothing follows the bound: "<2 (cases)" or "<+2" is read as no count and passes,
+  and "<2E1" as a bound of 2 (round 2 of #341). A restricted input that git ignores but that
+  a person copies elsewhere is not seen, and one that was committed and then removed stays
+  in the history, which only a rewrite takes out.
 - **A synthetic input is followed to the results the text binds, and no further.** G1 names
   a result of a run that read a synthetic input where the manuscript or the supplement binds
   it as `results.` or `table.`. A figure drawn from such a run and placed with `figure.` is

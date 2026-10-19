@@ -56,14 +56,22 @@ _DIFFERENCE = (
     r"(?<![\w-])(?:MD|RD|ARD|SMD|WMD)(?![\w-])"
     r"|(?i:\b(?:mean|risk|absolute|standardi[sz]ed mean)?\s?differences?\b)"
 )
+#: Ratios this does not read, whose intervals need not be symmetric on the log scale (an
+#: SMR's exact Poisson interval), but whose names a difference does not cross either. A
+#: longer name, "standardised mortality ratio", cannot stand within the 24 characters a name
+#: and its estimate may be apart, so no difference reaches across it (round 1 of #336).
+_UNREAD = r"(?<![\w-])(?:SMR|SIR)(?![\w-])|(?i:\bratios?\s+of\s+means\b)"
 #: Where no other estimate's name begins: "No difference in mortality, HR 0.83" names an HR,
-#: and the difference is no estimate of it (round 1 of #300).
-_NOT_A_NAME = rf"(?!{_RATIO}|{_DIFFERENCE})"
+#: and the difference is no estimate of it (round 1 of #300); nor does it of an SMR (round 2).
+_NOT_A_NAME = rf"(?!{_RATIO}|{_DIFFERENCE}|{_UNREAD})"
 _INTERVAL = re.compile(
     rf"(?:(?P<ratio>{_RATIO})|(?P<difference>{_DIFFERENCE}))"
     # "= 2.6", " of 2.6", " was 2.6", ", 2.6": what stands between the name and its value.
     rf"(?:{_NOT_A_NAME}(?:[^\d\n()\[\]{{}}]|\n(?![ \t]*\n))){{0,24}}?"
-    rf"(?P<estimate>{_NUMBER})"
+    # An en dash straight before the estimate's digits, and after no digit, is its minus:
+    # "–1.4" (round 2 of #300). Between two numbers it joins bounds, which come later. Glued
+    # to a ratio's name it is a dash, "OR–1.9" being 1.9, and is dropped below (#336).
+    rf"(?P<estimate>(?:(?<![\d.])\N{{EN DASH}}(?=\.?\d))?{_NUMBER})"
     rf"{_S}*[(\[,;]?{_S}*"
     # "exact 95% CI", "95% profile-likelihood CI": what the interval is, said before it.
     rf"{_METHOD}(?:(?P<level>\d{{2}}(?:\.\d)?){_S}?%{_S}*)?{_METHOD}"
@@ -152,11 +160,15 @@ def reported_intervals(text: str) -> list[ReportedInterval]:
             p = None
         quiet = _INTERVAL_QUIET.search(text, start, finish)
         p_quiet = _P_QUIET.search(text, start, finish)
+        estimate = match.group("estimate")
+        if match.group("ratio") and estimate.startswith("\N{EN DASH}") and _glued(
+                text, match.start("estimate")):  # fmt: skip
+            estimate = estimate[1:]
         found.append(
             ReportedInterval(
                 kind="ratio" if match.group("ratio") else "difference",
                 name=" ".join((match.group("ratio") or match.group("difference")).split()),
-                estimate=match.group("estimate"),
+                estimate=estimate,
                 low=low,
                 high=high,
                 level=match.group("level") or match.group("level2") or "",
@@ -192,9 +204,17 @@ def alpha_of(level: str) -> float | None:
     return alpha if 0 < alpha < 1 else None
 
 
+def _glued(text: str, at: int) -> bool:
+    """Whether the en dash at `at` touches a letter, as a ratio's name in "OR–1.9", where it
+    is a dash: a ratio is never negative (round 1 of #336). After a space it is a minus, a
+    log ratio's "–0.4" (the post-budget round of #336); glued to another word, "was–0.4",
+    it is a dash too, a Known gap main shares."""
+    return at > 0 and text[at - 1].isalpha()
+
+
 def _value(printed: str) -> Decimal | None:
     try:
-        return Decimal(printed.replace("\N{MINUS SIGN}", "-"))
+        return Decimal(printed.replace("\N{MINUS SIGN}", "-").replace("\N{EN DASH}", "-"))
     except InvalidOperation:
         return None
 

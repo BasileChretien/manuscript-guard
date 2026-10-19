@@ -748,6 +748,7 @@ em$value("or.p", 0.012, digits = 3, of = "or.point", family = "secondary")
 em$value("female.pct", 52.1, digits = 1, of = "female.n", over = "cohort.n")
 em$correction("secondary", "holm")
 em$correction("exploratory", "none", reason = "hypothesis-generating")
+em$correction("tertiary", "bonferroni", reason = "")
 em$write()
 """
 
@@ -760,12 +761,15 @@ em.value("or.p", 0.012, digits=3, of="or.point", family="secondary")
 em.value("female.pct", 52.1, digits=1, of="female.n", over="cohort.n")
 em.correction("secondary", "holm")
 em.correction("exploratory", "none", reason="hypothesis-generating")
+em.correction("tertiary", "bonferroni", reason="")
 em.write()
 """
 
 
 def test_r_and_python_say_alike_what_a_statistic_belongs_to(tmp_path: Path) -> None:
-    """Item 13: `of`, `over`, `family` and the corrections, the same from either language."""
+    """Item 13: `of`, `over`, `family` and the corrections, the same from either language;
+    an empty reason left out by both, since the schema refuses one (round 1 of #267: R
+    wrote it)."""
     import runpy
 
     root = _parameter_project(tmp_path)
@@ -782,7 +786,7 @@ def test_r_and_python_say_alike_what_a_statistic_belongs_to(tmp_path: Path) -> N
     def written() -> dict:
         path = root / "results" / "belongs.json"
         document = json.loads(path.read_text(encoding="utf-8"))
-        validate(document, "results", path)
+        assert validate(document, "results", path).ok
         return {"values": document["values"], "corrections": document["corrections"]}
 
     from_r = written()
@@ -983,8 +987,8 @@ em$flow("prisma",
         exclusions = list(c("Duplicates" = 20), c("Not relevant" = 70, "No outcome" = 30)),
         overlapping = 2, quoted = FALSE)
 em$value("cohort.n", 300L)
-# sapply names what it returns: a named `of` is still an array of keys.
-em$relation("sum", "cohort.n", sapply(1:2, function(n) paste0("flow.consort.arm.", n)))
+# A named `of` is still an array of keys (round 2 of #293: sapply over 1:2 names nothing).
+em$relation("sum", "cohort.n", c(drug = "flow.consort.arm.1", placebo = "flow.consort.arm.2"))
 em$relation("ratio", "cohort.n", c("flow.consort.stage.2", "flow.consort.stage.1"), scale = 412)
 em$relation("at_most", "flow.prisma.stage.3", "flow.prisma.stage.2")
 em$write()
@@ -1074,6 +1078,9 @@ def test_r_and_python_write_the_same_flows_and_relations(tmp_path: Path) -> None
         ('em$relation("mean", "a", "b")', "the kinds are"),
         ('em$relation("difference", "a", "b")', "is of 2 key"),
         ('em$relation("ratio", "a", c("b", "c"), scale = 0)', "positive number"),
+        # Round 1 of #293: a key that is no results key is refused at the call, as Python's.
+        ('em$relation("sum", "a", "Cohort N")', "'Cohort N' is no results key"),
+        ('em$relation("sum", "a b", "b")', "'a b' is no results key"),
     ],
 )  # fmt: skip
 def test_r_refuses_the_flows_and_relations_python_refuses(

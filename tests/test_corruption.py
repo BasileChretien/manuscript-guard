@@ -1441,6 +1441,37 @@ def test_a_count_below_the_custodians_minimum_is_not_printed(project: Path) -> N
     assert "count-below-minimum" in codes(report)
 
 
+@pytest.mark.parametrize("fields", [
+    {"value": 3.0, "display": "3"},  # a count emitted as a float
+    {"value": 3, "display": "3", "unit": "patients"},  # a count given a unit of people
+])  # fmt: skip
+def test_what_the_count_reading_gets_wrong_is_pinned(project: Path, fields: dict) -> None:
+    """A Known gap, as DESIGN.md writes it (round 1 of #275): a small count the emitter
+    recorded as a float, or with a unit naming people, is not taken for a count."""
+    _custodian(project, 5)
+    _value_has(project, "case.n_serious", **fields)
+    assert _small(project) == []
+
+
+@pytest.mark.parametrize(("display", "said"), [
+    ("<2", True), ("< 3", True), ("\N{LESS-THAN OR EQUAL TO}3", True), ("<=2", True),
+    ("<5", False), ("\N{LESS-THAN OR EQUAL TO}4", False), ("<=4", False), ("<10", False),
+    ("<1", False),  # nought, which is no small cell
+    # Round 1 of #341: a decimal or words after the bound, as the emitter takes a display.
+    ("<2 patients", True), ("< 2 cases", True), ("<2.0", True), ("<5 patients", False),
+    ("<4.5", False),
+])  # fmt: skip
+def test_a_count_held_back_by_a_bound_tighter_than_the_minimum_is_said(
+    project: Path, display: str, said: bool
+) -> None:
+    """Round 3 of #275: a comparator display passed whatever its bound, so "<2" under a
+    minimum of five, which says the count is one, printed no small count."""
+    _custodian(project, 5)
+    _value_has(project, "case.n_serious", value=1, display=display)
+    found = _small(project)
+    assert bool(found) is said, found
+
+
 def _git(root: Path, *args: str) -> None:
     import subprocess
 
@@ -1477,6 +1508,47 @@ def test_an_input_declared_restricted_is_not_tracked_by_git(project: Path) -> No
     assert tracked() == [f"{data} is declared restricted, and git tracks it"]
     report, _project, _chosen, _deferred = _run_gates(project, stage="design")
     assert "restricted-input-tracked" in codes(report)
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_a_restricted_input_is_found_in_git_by_its_own_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 1 of #275: the path was a pattern, so a tracked "data1.csv" stood for an
+    untracked "data[1].csv"; a path outside the work tree, or git in another language,
+    was "could not say"; and a name in another case was missed where git ignores case."""
+    from manuscript_guard.gates import custodian
+
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "core.ignorecase", "false")
+    for name in ("data1.csv", "data[1].csv", "Kept.csv"):
+        (tmp_path / name).write_text("a\n", encoding="utf-8")
+    _git(tmp_path, "add", "data1.csv", "Kept.csv")
+    assert custodian._tracked(tmp_path, "data1.csv") is True
+    assert custodian._tracked(tmp_path, "data[1].csv") is False
+    assert custodian._tracked(tmp_path, "../outside.csv") is False
+    assert custodian._tracked(tmp_path, "kept.csv") is False
+    _git(tmp_path, "config", "core.ignorecase", "true")
+    assert custodian._tracked(tmp_path, "kept.csv") is True
+    # A name in another script or with an accent is read as UTF-8 whatever the locale's
+    # code page: under cp932 or cp1252 the unquoted name raised (round 1 of #341).
+    for name in ("\N{KATAKANA LETTER DE}\N{KATAKANA LETTER SMALL TU}\N{KATAKANA LETTER TA}.csv",
+                 "\N{LATIN CAPITAL LETTER A WITH ACUTE}baco.csv"):  # fmt: skip
+        (tmp_path / name).write_text("a\n", encoding="utf-8")
+        _git(tmp_path, "add", name)
+        assert custodian._tracked(tmp_path, name) is True, name
+    # Asked in English, whatever the user's language, since its words are read.
+    seen: list[dict] = []
+    run = custodian.subprocess.run
+
+    def recorded(*args, **kwargs):
+        seen.append(kwargs["env"])
+        return run(*args, **kwargs)
+
+    monkeypatch.setenv("LANGUAGE", "fr")
+    monkeypatch.setattr(custodian.subprocess, "run", recorded)
+    assert custodian._tracked(tmp_path, "data[1].csv") is False
+    assert seen and all(env["LC_ALL"] == "C" and env["LANGUAGE"] == "C" for env in seen)
 
 
 def test_both_emitters_record_an_input_declared_restricted(tmp_path: Path) -> None:
@@ -1948,6 +2020,20 @@ def _units_said(root: Path) -> list[tuple[str, int]]:
         ("mg/kg", " mg/kg", False),
         ("years", " mg", False),  # no symbol emitted: nothing to compare
         (None, " mg", False),  # no unit emitted
+        # Round 1 of #279: a litre after a slash in either case, and what may stand between
+        # the binding and its unit, pandoc's escaped space, an entity, a comment and the
+        # narrow spaces, none of which hid the unit from the reading.
+        ("mmol/L", " mmol/l", False),
+        ("\N{MICRO SIGN}g", "\\ mg", True),
+        ("\N{MICRO SIGN}g", "&nbsp;mg", True),
+        ("\N{MICRO SIGN}g", "<!-- the dose --> mg", True),
+        ("\N{MICRO SIGN}g", "\N{HAIR SPACE}mg", True),
+        ("\N{MICRO SIGN}g", "\N{FIGURE SPACE}mg", True),
+        # Round 1 of #341: the other spellings of the entity are read, and no unit is read
+        # across the words between two comments.
+        ("\N{MICRO SIGN}g", "&#0160;mg", True),
+        ("\N{MICRO SIGN}g", "&NonBreakingSpace;mg", True),
+        ("\N{MICRO SIGN}g", "<!-- a --> patients were given <!-- b --> mg", False),
     ],
 )
 def test_a_unit_written_after_a_binding_is_the_one_emitted(
@@ -1965,6 +2051,50 @@ def test_a_unit_written_after_a_binding_is_the_one_emitted(
         path.write_text(text, encoding="utf-8")
     line = next(n for n, row in enumerate(text.splitlines(), 1) if "case.pct_serious" in row)
     assert _units_said(project) == ([("results.case.pct_serious", line)] if said else [])
+
+
+@pytest.mark.parametrize(("emitted", "written", "said"), [
+    # A divisor after a space is not read: the written unit is its first symbol, and an
+    # emitted one is compared with nothing.
+    ("mg/kg", " mg kg-1", True),
+    ("mg kg-1", " mg/kg", False),
+    # A divisor written as a word is not read either.
+    ("mg/kg/day", " mg/kg per day", True),
+])  # fmt: skip
+def test_what_the_unit_reading_gets_wrong_is_pinned(
+    project: Path, emitted: str, written: str, said: bool
+) -> None:
+    """Known gaps, as DESIGN.md writes them (round 1 of #279, where it said "mg/kg" and
+    "mg kg-1" were taken for two units both ways)."""
+    _unit_emitted(project, "case.pct_serious", emitted)
+    path = main_md(project)
+    binding = "{{results.case.pct_serious}}"
+    path.write_text(path.read_text(encoding="utf-8").replace(binding + "%", binding + written, 1),
+                    encoding="utf-8")  # fmt: skip
+    assert bool(_units_said(project)) is said
+
+
+@pytest.mark.parametrize(("written", "emitted"), [
+    ("\N{GREEK SMALL LETTER MU}g", "\N{MICRO SIGN}g"), ("mcg", "\N{MICRO SIGN}g"),
+    ("ml", "mL"), ("dl", "dL"), ("mmol/l", "mmol/L"), ("mg/dl", "mg/dL"),
+    ("\N{GREEK SMALL LETTER MU}L", "\N{MICRO SIGN}L"), ("\N{MICRO SIGN}l", "\N{MICRO SIGN}L"),
+    ("\N{GREEK SMALL LETTER MU}l", "\N{MICRO SIGN}L"),
+    ("\N{GREEK SMALL LETTER MU}m", "\N{MICRO SIGN}m"),
+    ("\N{GREEK SMALL LETTER MU}mol", "\N{MICRO SIGN}mol"),
+    ("\N{GREEK SMALL LETTER MU}M", "\N{MICRO SIGN}M"),
+    ("\N{GREEK SMALL LETTER MU}Sv", "\N{MICRO SIGN}Sv"),
+    ("\N{MASCULINE ORDINAL INDICATOR}C", "\N{DEGREE SIGN}C"),
+    ("\N{DEGREE CELSIUS}", "\N{DEGREE SIGN}C"),
+    ("\N{MASCULINE ORDINAL INDICATOR}F", "\N{DEGREE SIGN}F"),
+    ("cm\N{SUPERSCRIPT TWO}", "cm2"), ("cm^2^", "cm2"), ("cm\N{SUPERSCRIPT THREE}", "cm3"),
+    ("h\N{MINUS SIGN}1", "h-1"),
+])  # fmt: skip
+def test_every_spelling_of_one_unit_is_one_unit(written: str, emitted: str) -> None:
+    """Round 1 of #279: only mcg and mu were held, so an empty list of spellings passed."""
+    from manuscript_guard.gates.bound_units import same_unit
+
+    assert same_unit(written, emitted) is True
+    assert same_unit(written, "kg") is False
 
 
 # ------------------------------------- the table rule, applied to the file rather than the API
@@ -2651,11 +2781,136 @@ def test_a_statistic_quoted_without_what_it_belongs_to_is_a_warning(
         f"The ratio was {_ESTIMATE}. Of {{{{results.whole.cohort.n}}}} patients, "
         "{{results.whole.female.n}} ({{results.whole.female.pct}}%) were women.",
         f"The ratio was {_ESTIMATE}. It was {{{{results.whole.or.point}}}} again.",
+        # #267: the stop of "s.e." before a number ends no sentence, as `labels` reads it.
+        f"The ratio was {_ESTIMATE} (s.e. 0.21), P = {{{{results.whole.or.p}}}}.",
     ],
 )
 def test_a_statistic_quoted_with_what_it_belongs_to_passes(project: Path, paragraph: str) -> None:
     _with_whole(project, paragraph, {"secondary": {"method": "holm"}})
     assert _whole_said(project) == []
+
+
+def test_a_statistic_naming_what_nothing_emits_says_so(project: Path) -> None:
+    """#267: a p value whose `of` names a key no fragment emits was said to be quoted
+    alone, whatever its sentence held; it is the name that is wrong."""
+    _with_whole(project, f"The ratio was {_ESTIMATE}.", {"secondary": {"method": "holm"}})
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["whole.hr.p"]["of"] = "whole.hr.point"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\nThe hazard ratio had P = "
+        "{{results.whole.hr.p}} beside {{results.whole.or.point}}.\n",
+        encoding="utf-8",
+    )
+    said = [f for f in gate_report(project).findings if f.code == "quoted-alone"]
+    assert [f.message for f in said] == [
+        "results.whole.hr.p names results.whole.hr.point as what it belongs to, which "
+        "nothing emits"
+    ]
+
+
+def test_a_share_naming_what_nothing_emits_beside_its_other_count_says_so(
+    project: Path,
+) -> None:
+    """Round 1 of #343: a share whose `of` is misspelt, quoted beside its `over`, passed,
+    since the sentence held one of its names; no other gate reads `over`."""
+    paragraph = ("Of {{results.whole.cohort.n}} patients, {{results.whole.female.pct}}% were "
+                 "women.")  # fmt: skip
+    _with_whole(project, f"The ratio was {_ESTIMATE}. {paragraph}",
+                {"secondary": {"method": "holm"}})  # fmt: skip
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["whole.female.pct"]["of"] = "whole.femal.n"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    said = [f for f in gate_report(project).findings if f.code == "quoted-alone"]
+    assert [f.message for f in said] == [
+        "results.whole.female.pct names results.whole.femal.n as what it belongs to, which "
+        "nothing emits"
+    ]
+    # Round 2 of #343: the name nothing emits, bound in the sentence, is said once, as the
+    # binding that resolves to nothing.
+    del document["values"]["whole.cohort.n"]
+    document["values"]["whole.female.pct"]["of"] = "whole.female.n"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    codes = [f.code for f in gate_report(project).findings
+             if f.code in ("quoted-alone", "unresolved-binding")]  # fmt: skip
+    assert codes == ["unresolved-binding"]
+
+
+@pytest.mark.parametrize(
+    ("added", "paragraph", "said"),
+    [
+        # A second level of the same estimate is asked for whole as well, though the paper
+        # quotes the one it means.
+        ({"values": {"whole.or.ci90_low": {"value": 1.6, "display": "1.60",
+                                           "bounds": "whole.or.point", "bound": "low",
+                                           "level": "90%"},
+                     "whole.or.ci90_high": {"value": 3.4, "display": "3.40",
+                                            "bounds": "whole.or.point", "bound": "high",
+                                            "level": "90%"}}},
+         f"The ratio was {_ESTIMATE}.", ["interval-not-quoted-whole"]),
+        # An interval quoted whole only in a table the analysis emits: its cells are text,
+        # and no sentence binds the bounds.
+        ({"tables": {"ratios": {"columns": ["Ratio", "95% CI"],
+                                "rows": [["2.50", "1.40 to 3.80"]]}}},
+         "The ratio was {{results.whole.or.point}} (Table 3).\n\n{{table.ratios}}",
+         ["interval-not-quoted-whole"]),
+        # A caption that gives a P again is a sentence of its own.
+        ({}, f"The ratio was {_ESTIMATE} (P = {{{{results.whole.or.p}}}}).\n\n"
+             "Table: Ratios; P = {{results.whole.or.p}} for the first.", ["quoted-alone"]),
+        # A key declared the same quantity as the estimate stands for nothing of it.
+        ({"values": {"whole.headline": {"value": 2.5, "display": "2.50",
+                                        "same_as": "whole.or.point"}}},
+         f"The ratio was {_ESTIMATE}. Overall it was {{{{results.whole.headline}}}}, P = "
+         "{{results.whole.or.p}}.", ["quoted-alone"]),
+    ],
+)  # fmt: skip
+def test_what_quoted_alone_does_not_read_is_pinned(
+    project: Path, added: dict, paragraph: str, said: list[str]
+) -> None:
+    """Known gaps (#267): G2 reads which bindings share a sentence, so a second level of an
+    interval, an emitted table, a caption and a key declared `same_as` the estimate are each
+    read as they stand. A change here is a change to what DESIGN.md says of them."""
+    _with_whole(project, paragraph, {"secondary": {"method": "holm"}})
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for field, entries in added.items():
+        document.setdefault(field, {}).update(entries)
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _whole_said(project) == [(code, "warn") for code in said]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"over": "whole.cohort.n"},
+        {"family": "secondary"},
+        {"of": "whole.female.n", "over": "whole.cohort.n", "family": "secondary"},
+    ],
+)
+def test_a_fragment_written_by_hand_is_held_to_what_the_emitters_refuse(
+    project: Path, fields: dict
+) -> None:
+    """#267: the emitters refuse a denominator with no numerator, a family with no estimate,
+    and a share in a family of p values; the schema did not, so a fragment written by hand
+    skipped G2's and G8's checks of them."""
+    from manuscript_guard.contracts import load_namespace
+
+    _with_whole(project, "", {"secondary": {"method": "holm"}})
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["whole.extra"] = {"value": 0.5, "display": "0.50", **fields}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    projekt, _ = load_project(project)
+    _namespace, _results, _literature, report = load_namespace(projekt)
+    assert any(f.path and f.path.name == "02_whole.json" for f in report.failures)
 
 
 def test_a_family_of_p_values_with_no_correction_is_a_warning(project: Path) -> None:
@@ -5085,6 +5340,29 @@ def test_a_quote_whose_statistic_and_p_disagree_is_found(project: Path) -> None:
     assert report.counts["literature_verified"] == 2
 
 
+def test_a_quote_two_values_rest_on_is_judged_once(project: Path) -> None:
+    """Round 1 of #285: one quote backing two values reported its statistic and P twice,
+    once under each key. The source is the same sentence either way."""
+    said = (
+        "The crude incidence of drug-induced hepatic injury was 14 per 100 000 "
+        "person-years in 2019, t(23) = 2.45, p = .40."
+    )
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text(source.read_text(encoding="utf-8") + "\n" + said + "\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["quote"] = said
+    second = dict(document["entries"][0], key="background.reported_year", value=2019,
+                  display="2019")  # fmt: skip
+    second.pop("unit", None)
+    document["entries"].append(second)
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = _literature_report(project)
+    assert report.counts["literature_verified"] == 3
+    found = [f for f in report.findings if f.code == "quote-p-inconsistent"]
+    assert len(found) == 1, [f.message for f in found]
+
+
 def test_an_audited_paper_s_p_that_does_not_follow_is_listed_apart(tmp_path: Path) -> None:
     """`audit` reads a paper that was never bound, and needs no outputs for this."""
     from manuscript_guard.audit import audit, measure_discrimination, render
@@ -5346,6 +5624,8 @@ def _ledger_mean(project: Path, printed: str, declared: dict | None) -> None:
         ("3.47", {"n": 96}, ["quote-mean-not-assessable"]),
         ("3.47", {"n": 95}, []),
         ("3.47", None, []),
+        # A count YAML writes "28.0" is 28 (round 1 of #331: the float raised).
+        ("3.47", {"n": 28.0}, ["quote-mean-not-possible"]),
     ],
 )  # fmt: skip
 def test_a_ledger_mean_of_whole_numbers_is_held_to_its_n(
@@ -5381,6 +5661,114 @@ def test_a_ledger_mean_of_whole_numbers_needs_a_count(project: Path) -> None:
     """An n of none is refused by the schema, not read as a mean of nothing."""
     _ledger_mean(project, "3.47", {"n": 0})
     assert "schema-violation" in [f.code for f in _literature_report(project).findings]
+
+
+def test_a_ledger_mean_printed_with_more_than_itself_says_how_to_test_it(
+    project: Path,
+) -> None:
+    """Round 1 of #331: a display that is not a plain decimal, "3.47 (1.20)", is not
+    assessable, and the note said there was nothing to do; the mean can be tested if it is
+    recorded alone."""
+    said = "The 28 patients interviewed rated their pain 3.47 (1.20) on average."
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text(source.read_text(encoding="utf-8") + "\n" + said + "\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"].append({
+        "key": "background.pain_mean", "value": "3.47 (1.20)", "display": "3.47 (1.20)",
+        "citekey": "fictionalHepaticCohort2021", "depth": "full-text",
+        "source_file": "sources/fictionalHepaticCohort2021.txt", "locator": "Results",
+        "quote": said, "mean_of_whole_numbers": {"n": 28},
+    })  # fmt: skip
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    [note] = [f for f in _literature_report(project).findings
+              if f.code == "quote-mean-not-assessable"]  # fmt: skip
+    assert "record the mean alone" in note.hint
+
+
+def test_not_assessable_is_worked_out_as_the_search_finds_it() -> None:
+    """Round 2 of #331: a mean is not assessable where every mean printed to its places is
+    possible for N. That is worked out, from the ties between totals, since the search took
+    seconds at four places; here the two agree for every N at one, two and three places."""
+    import math
+    from fractions import Fraction
+
+    from manuscript_guard.stats import granularity
+
+    def searched(count: int, places: int) -> bool:
+        scale = 10**places
+        half = Fraction(1, 2 * scale)
+        return count < scale and any(
+            math.ceil((Fraction(k, scale) - half) * count)
+            > math.floor((Fraction(k, scale) + half) * count)
+            for k in range(scale)
+        )
+
+    for places in (1, 2, 3):
+        counts = range(1, 10**places + 3) if places < 3 else range(480, 1003)
+        for count in counts:
+            assert granularity._some_mean_is_none(count, places) is searched(count, places), (
+                count, places)  # fmt: skip
+
+
+def test_a_mean_without_a_nought_and_a_mean_under_a_body_row_s_n_are_read() -> None:
+    """Round 1 of #331: ".47 (.12)" was not read. Round 2: a row of means whose other cell
+    names an n set it for the rows below, and their means were not uncertain."""
+    from manuscript_guard.stats.granularity import table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    text = ("| | Treated (n = 30) | Note |\n|---|---|---|\n"
+            "| Pain at 12 weeks | .47 (.12) | n = 25 |\n"
+            "| Pain at 24 weeks | 3.0 (1.0) | 3.1 (0.9) |\n")  # fmt: skip
+    [table] = markdown_tables(text)
+    found = [(m.mean, m.n, m.uncertain) for m in table_means(table, ("pain",))]
+    assert found[0] == (".47", 30, None)
+    assert found[1][:2] == ("3.0", 30) and found[1][2] is None
+    assert found[2][:2] == ("3.1", 25) and "row of means" in found[2][2]
+
+
+@pytest.mark.parametrize("row", [
+    "| Pain at 12 weeks | 3.1 (1.0), n = 25 |",
+    "| Age, years | 45.1 (9.0), n = 25 |",
+    "| Pain at 12 weeks | 3.1 (1.0) (n = 25) |",
+])  # fmt: skip
+def test_a_mean_that_names_its_n_makes_the_means_below_it_uncertain(row: str) -> None:
+    """Round 1 of #336: a cell that is a mean and its n set the n for the column below,
+    and those means were held to it as certain, where its row had no other mean or was not
+    a row read for means at all."""
+    from manuscript_guard.stats.granularity import table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    [table] = markdown_tables(f"| | Treated (n = 30) |\n|---|---|\n{row}\n| Pain | 3.0 (1.0) |\n")
+    below = table_means(table, ("pain",))[-1]
+    assert (below.mean, below.n) == ("3.0", 25)
+    assert below.uncertain and "row of means" in below.uncertain
+
+
+@pytest.mark.parametrize("header", ["| | 2019 (n = 120) |", "| | 12 (n = 120) |",
+                                    "| | 0.5 (n = 120) |"])  # fmt: skip
+def test_a_year_or_a_count_beside_an_n_is_a_header_not_a_mean(header: str) -> None:
+    """Round 2 of #336: a header's year, or a count, with an n beside it was taken for a
+    mean naming its n, and the means below it were called uncertain."""
+    from manuscript_guard.stats.granularity import table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    [table] = markdown_tables(f"{header}\n|---|---|\n| Pain | 3.0 (1.0) |\n")
+    [below] = table_means(table, ("pain",))
+    assert (below.mean, below.n, below.uncertain) == ("3.0", 120, None)
+
+
+def test_a_header_of_two_rows_marks_the_means_below_uncertain() -> None:
+    """A Known gap (the post-budget round of #336): only the first row is a header, so a
+    second header row, "0.5 (n = 40)", is taken for a mean naming its n. The n is right;
+    the means below are called uncertain."""
+    from manuscript_guard.stats.granularity import table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    [table] = markdown_tables("| | Dose (mg) |\n|---|---|\n| | 0.5 (n = 40) |\n"
+                              "| Pain | 3.0 (1.0) |\n")  # fmt: skip
+    [below] = table_means(table, ("pain",))
+    assert (below.mean, below.n) == ("3.0", 40) and "row of means" in below.uncertain
 
 
 _WHOLE_NUMBERS = (
@@ -5487,6 +5875,21 @@ def test_audit_whole_numbers_on_the_command_line(
 def _cell(text: str, *, span: int = 1) -> str:
     props = f'<w:tcPr><w:gridSpan w:val="{span}"/></w:tcPr>' if span > 1 else ""
     return f"<w:tc>{props}<w:p>{text}</w:p></w:tc>"
+
+
+@pytest.mark.parametrize(("value", "span"), [("3", 3), ("63", 63), ("999999999", 63),
+                                              ("0", 1), ("x", 1)])  # fmt: skip
+def test_a_cell_spans_no_more_columns_than_word_allows(value: str, span: int) -> None:
+    """Round 1 of #314: a span had no upper bound, and a crafted gridSpan of 999999999 built
+    a string of marks of about a gigabyte. Word allows a table 63 columns."""
+    import xml.etree.ElementTree as ET
+
+    from manuscript_guard.text import docx
+
+    namespace = docx.W.strip("{}")
+    cell = ET.fromstring(f'<w:tc xmlns:w="{namespace}"><w:tcPr><w:gridSpan w:val="{value}"/>'
+                         f"</w:tcPr></w:tc>")  # fmt: skip
+    assert docx._span(cell) == span
 
 
 def _run(text: str, *, raised: bool = False) -> str:

@@ -186,7 +186,11 @@ def main() -> None:
         align=["left", "right", "right"],
         rows=[
             ["Reports", len(drug), len(other)],
-            ["Hepatic injury", a, c],
+            [
+                "Hepatic injury",
+                _pct(em, drug, "event", EVENT),
+                _pct(em, other, "event", EVENT),
+            ],
             *[
                 [
                     f"Age {group}",

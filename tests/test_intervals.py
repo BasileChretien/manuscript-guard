@@ -233,6 +233,15 @@ def test_a_minus_written_as_an_en_dash_before_an_estimate_is_read() -> None:
     assert logged.estimate == "\N{EN DASH}0.4" and not outside_interval(logged)
 
 
+def test_an_en_dash_glued_to_any_word_before_a_ratio_is_a_dash() -> None:
+    """A Known gap, as main has it (the post-budget round of #336): glued to a word, not the
+    name, "was–0.4", a log ratio's minus is read as a dash, and its estimate as 0.4."""
+    from manuscript_guard.stats.intervals import outside_interval
+
+    found = _one("The log OR was\N{EN DASH}0.4 (95% CI -0.8 to -0.1).")
+    assert found.estimate == "0.4" and outside_interval(found)
+
+
 @pytest.mark.parametrize(
     ("text", "said"),
     [

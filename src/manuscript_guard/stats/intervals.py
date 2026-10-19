@@ -161,10 +161,8 @@ def reported_intervals(text: str) -> list[ReportedInterval]:
         quiet = _INTERVAL_QUIET.search(text, start, finish)
         p_quiet = _P_QUIET.search(text, start, finish)
         estimate = match.group("estimate")
-        # An en dash glued to a ratio's name is a dash, "OR–1.9" (round 1 of #336); after a
-        # space it is a minus, a log ratio's "–0.4" (the post-budget round of #336).
-        if match.group("ratio") and estimate.startswith("\N{EN DASH}") and text[
-                match.start("estimate") - 1].isalpha():  # fmt: skip
+        if match.group("ratio") and estimate.startswith("\N{EN DASH}") and _glued(
+                text, match.start("estimate")):  # fmt: skip
             estimate = estimate[1:]
         found.append(
             ReportedInterval(
@@ -204,6 +202,14 @@ def alpha_of(level: str) -> float | None:
     except InvalidOperation:
         return None
     return alpha if 0 < alpha < 1 else None
+
+
+def _glued(text: str, at: int) -> bool:
+    """Whether the en dash at `at` touches a letter, as a ratio's name in "OR–1.9", where it
+    is a dash: a ratio is never negative (round 1 of #336). After a space it is a minus, a
+    log ratio's "–0.4" (the post-budget round of #336); glued to another word, "was–0.4",
+    it is a dash too, a Known gap main shares."""
+    return at > 0 and text[at - 1].isalpha()
 
 
 def _value(printed: str) -> Decimal | None:

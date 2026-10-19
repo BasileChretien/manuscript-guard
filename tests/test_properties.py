@@ -1273,7 +1273,7 @@ def _planted_intervals(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
             ]  # fmt: skip
     plans += [(0, plan) for plan in ("next interval", "interaction", "next sentence")]
     plans += [(7, "hyphens"), (0, "reversed"), (0, "after difference"), (0, "unread ratio"),
-              (0, "en dash")]  # fmt: skip
+              (0, "en dash"), (0, "glued ratio")]  # fmt: skip
     sentences: list[tuple[str, tuple[Any, ...] | None]] = []
     for index, plan in draw(st.permutations(plans)):
         kind, form, level = _INTERVAL_FORMS[index]
@@ -1284,6 +1284,15 @@ def _planted_intervals(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
             name = draw(st.sampled_from(_UNREAD_RATIOS))
             sentences.append((f"No difference, {name} {shown(e)} (95% CI "
                               f"{shown(low)} to {shown(high)}), P = 0.40", None))  # fmt: skip
+            continue
+        if plan == "glued ratio":
+            # An en dash glued to a ratio's name is a dash, not a minus: a ratio is never
+            # negative (#336).
+            e, low, high, _p = ratio("symmetric", "95")
+            e_, low_, high_ = shown(e), shown(low), shown(high)
+            sentences.append((f"OR\N{EN DASH}{e_} (95% CI {low_} to {high_})",
+                              (0, "ratio", e_, low_, high_, "95", None, "zero", False,
+                               False)))  # fmt: skip
             continue
         if plan == "en dash":
             # A minus written as an en dash before the estimate (round 2 of #300).
@@ -1466,6 +1475,13 @@ def _a_difference_runs_across_a_ratio_it_does_not_read(patch: pytest.MonkeyPatch
     pattern = intervals._INTERVAL.pattern.replace(intervals._NOT_A_NAME, without)
     assert pattern != intervals._INTERVAL.pattern
     patch.setattr(intervals, "_INTERVAL", re.compile(pattern))
+
+
+def _an_en_dash_glued_to_a_ratio_is_its_minus(patch: pytest.MonkeyPatch) -> None:
+    """The rule before #336: "OR–1.9" read as -1.9, outside its own interval."""
+    from manuscript_guard.stats import intervals
+
+    patch.setattr(intervals, "_glued", lambda _text, _at: False)
 
 
 def _an_en_dash_before_an_estimate_is_no_minus(patch: pytest.MonkeyPatch) -> None:
@@ -5181,6 +5197,10 @@ BROKEN = {
     ),
     "an en dash before an estimate is not its minus": (
         _an_en_dash_before_an_estimate_is_no_minus,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "an en dash glued to a ratio's name is its minus": (
+        _an_en_dash_glued_to_a_ratio_is_its_minus,
         test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
     ),
     "bounds joined by hyphens after a negative one, or the wrong way round, are read": (

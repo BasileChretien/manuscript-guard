@@ -5455,6 +5455,19 @@ def test_a_year_or_a_count_beside_an_n_is_a_header_not_a_mean(header: str) -> No
     assert (below.mean, below.n, below.uncertain) == ("3.0", 120, None)
 
 
+def test_a_header_of_two_rows_marks_the_means_below_uncertain() -> None:
+    """A Known gap (the post-budget round of #336): only the first row is a header, so a
+    second header row, "0.5 (n = 40)", is taken for a mean naming its n. The n is right;
+    the means below are called uncertain."""
+    from manuscript_guard.stats.granularity import table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    [table] = markdown_tables("| | Dose (mg) |\n|---|---|\n| | 0.5 (n = 40) |\n"
+                              "| Pain | 3.0 (1.0) |\n")  # fmt: skip
+    [below] = table_means(table, ("pain",))
+    assert (below.mean, below.n) == ("3.0", 40) and "row of means" in below.uncertain
+
+
 _WHOLE_NUMBERS = (
     "# Results\n\n"
     "| Characteristic | Treated (n = 28) | Control (n = 140) |\n"

@@ -6684,9 +6684,9 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   a design round folder with no panel, are passed over; a design reading is superseded by its
   reviewer and reader, not by its remit, and a stale plain record only by a later plain
   one. An override's digest is of the finding and the reason, not of `where`, `ask` or
-  `overridden_by`. A named reading is opened at the path its name gives, so a file system
-  that tells case apart reads one filed under other capitals as missing, and two files
-  under one slug go unsaid; a misfiled reading is named by its slug where its overrides are
+  `overridden_by`. A named design reading is opened at the path its name gives, so a file
+  system that tells case apart reads one filed under other capitals as missing, and two
+  files under one slug go unsaid (G11 finds both in a manuscript round); a misfiled reading is named by its slug where its overrides are
   listed. A reader named O'Brien makes the printed hint unparsable. The design remit is
   looked up outside the record's lock, and a panel that is a YAML list raises. `review
   --design` passes over `--digest` and `--files`, and says nothing for a project with no
@@ -6714,8 +6714,9 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   mismatched curly marks can be warned of wrongly. A data statement's DOI is cut at `<` in
   a SICI DOI, and a closing `'`, `’` or `_` is kept on it.
 - **What `impact` reads.** Figure scripts are found in the scripts folder only, not below
-  it, figures only where a `results.` key exists, and a figure file only as `.png`, `.pdf`,
-  `.svg` or `.tif`; answers are matched by file name, and readings G11 does not judge are
+  it, figures only where a `results.` key exists, and a figure file, where no render record
+  names it, only by its script's stem and as `.svg`, `.pdf`, `.png`, `.tif`, `.tiff`, `.jpg`
+  or `.eps` (not `.jpeg`, `.gif` or `.webp`); answers are matched by file name, and readings G11 does not judge are
   listed. `--since` placed before `--` can carry an option. A folder named lists only the
   readings of the whole manuscript, and a file name that is not UTF-8 is shown with
   replacement characters on Linux.
@@ -6730,7 +6731,8 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   counts as a line break for one count and not the other. `stripplot` is not marked seeded,
   `geom_jitter(position = "jitter")` passes quietly, and R's `rt`, `rchisq`, `rlnorm`,
   `rnbinom`, `rweibull` and `sample.int` are not among the draws.
-- **Figure files.** With no `widths_mm`, resolution, height and shrinking are not checked;
+- **Figure files.** With no `widths_mm` in the profile and no `print_width_mm` beside the
+  figure, resolution, height and shrinking are not checked;
   72 dpi written as a placeholder gives an absurd shrink, and EXIF's resolution is not
   read. Any "Figure N" paragraph after the placeholder counts as its legend, a figure
   placed twice is reported twice, the whole file is read for its header, a size, height or
@@ -6844,8 +6846,9 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   capital. The frozen-plan loop test is skipped where `git ls-files` fails, and from an
   sdist inside another repository it copies nothing.
 - **Skills copied for other agents.** `--remove` takes away a user's folder identical to a
-  skill `install-skills` recorded; a symbolic link or an empty folder inside a skill is not
-  in its digest; an error partway through `--remove` does not list what went; `--verify`
+  skill `install-skills` recorded; a link to a file counts as its target's content, and a
+  link to a folder or an empty folder inside a skill is not in its digest; an error partway
+  through `--remove` does not list what went; `--verify`
   prints the remover's version for a stamp kept; an older release calls such a stamp newer.
 - **Test fixtures.** `_keeps_data`, called twice, writes `data_custodian` twice under
   `roles:`; the generator always draws a P beside the subtypes' label, the bare label held

@@ -1358,6 +1358,10 @@ paper's identifiers and the digests of what was read, never its text.
     dash. A licence named with its version, "Creative Commons Attribution 4.0 International
     License", is read as CC BY now, and one whose further terms are spelt as CC 3.0 spells
     them, "Noncommercial" or "No Derivative Works", is not.
+  - G6 counted the em dash itself, so a Markdown manuscript that typed one as `---`, which
+    pandoc prints as one, showed it none. Three hyphens count as an em dash now, two do
+    not, and neither does a line of dashes, a rule or a table's. Measured again with that
+    rule, the corpus gives the same thresholds, since it was read with the dash written out.
   - Of all 384, the other phrase rules warn on fewer: an "-ing" tail asserting significance
     on 9.4%, a hedge on a hedge on 7.6%, "it is important to note" on 5.2%, the rest on
     under 3% each. A vague attribution with no citation near it is reported on 4.2%.
@@ -9121,9 +9125,7 @@ Closed since, and why each mattered:
   often each warns on people. The held-out check informed the choice of counting two
   of them by rate, so its 98.9% is not independent of that choice. A percentile of 291 is
   set by the three or four papers at the top: the em-dash threshold was 13.9 while one
-  paper's table notes were counted, and is 4.7 without them. And G6 counts the em dash
-  itself, so a Markdown manuscript that types one as `---`, which pandoc prints as an em
-  dash, shows it none.
+  paper's table notes were counted, and is 4.7 without them.
 - **A small count is found where it is bound, by its value.** A count printed in an emitted
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number

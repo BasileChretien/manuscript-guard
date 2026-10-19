@@ -234,7 +234,12 @@ density:
     # The 99th percentile of 291 papers by people
     # (tools/g6_baseline.py, corpus d986324d02aa94ae, drawn 2026-10-19).
     per_1000: 4.7
-    pattern: '—'
+    # Typed or as pandoc prints three hyphens, `word---word`: the papers measured were read
+    # with the dash written out, so the threshold holds for both. Not two hyphens, an en dash,
+    # nor four; and not a line of dashes, pipes and colons, which is a rule or a table's.
+    pattern: '—|(?<!-)---(?!-)'
+    exempt:
+      - '(?m)^[ \t]*[-|:+][-|:+ \t]*$'
     why: >-
       Em dashes are legitimate punctuation and heavily overused by models. A high rate is
       worth a look; a few are fine.

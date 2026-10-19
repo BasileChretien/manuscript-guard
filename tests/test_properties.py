@@ -2035,6 +2035,9 @@ def _typed_releases(draw: st.DrawFn) -> tuple[str, list[tuple[Value, ...]], list
         # Round 1 of #287: a release of digits typed with a "v" before it, "MedDRA v26.1".
         if release[0].isdigit():
             plans.append((name, draw(st.sampled_from("vV")) + release, named[0], True))
+            # Not with the "v" the end of a word, "MedDRA Rev26.1" (round 1 of #351).
+            word = draw(st.sampled_from(("Re", "x", "Ser")))
+            plans.append((name, word + draw(st.sampled_from("vV")) + release, named[0], False))
         plans += [
             (name, release, "", False),
             (name, release, "m" + name + "ed ", False),
@@ -2076,12 +2079,14 @@ def _a_dictionary_is_named_inside_a_longer_word(patch: pytest.MonkeyPatch) -> No
     )  # fmt: skip
 
 
-def _a_release_with_a_v_before_it_is_not_read(patch: pytest.MonkeyPatch) -> None:
-    def old(text: str, dictionaries: list[Value]) -> list:
+def _releases_read_as(patch: pytest.MonkeyPatch, before: str) -> None:
+    """`typed_releases` with `before` in place of what may stand before a release."""
+
+    def read(text: str, dictionaries: list[Value]) -> list:
         found = []
         for value in dictionaries:
             name = value.key.removeprefix("dictionary.")
-            pattern = re.compile(r"(?<![\w.])" + re.escape(value.display) + r"(?!\w|\.\d)")
+            pattern = re.compile(before + re.escape(value.display) + r"(?!\w|\.\d)")
             for match in pattern.finditer(text):
                 line = text.rfind("\n", 0, match.start()) + 1
                 words = text[max(line, match.start() - numbers_gate.NAMED_WITHIN) : match.start()]
@@ -2089,7 +2094,15 @@ def _a_release_with_a_v_before_it_is_not_read(patch: pytest.MonkeyPatch) -> None
                     found.append((match.start(), match.end(), value))
         return sorted(found, key=lambda place: place[0])
 
-    patch.setattr(numbers_gate, "typed_releases", old)
+    patch.setattr(numbers_gate, "typed_releases", read)
+
+
+def _a_release_with_a_v_before_it_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    _releases_read_as(patch, r"(?<![\w.])")
+
+
+def _a_v_ending_a_word_is_taken_for_one_before_a_release(patch: pytest.MonkeyPatch) -> None:
+    _releases_read_as(patch, r"(?:(?<=[vV])|(?<![\w.]))")
 
 
 def _a_dictionary_is_named_anywhere_before_on_its_line(patch: pytest.MonkeyPatch) -> None:
@@ -5645,6 +5658,10 @@ BROKEN = {
     ),
     "a release with a v before it is not read": (
         _a_release_with_a_v_before_it_is_not_read,
+        test_a_dictionary_release_is_found_typed_where_its_name_stands_before_it,
+    ),
+    "a v that ends a word is taken for one before a release": (
+        _a_v_ending_a_word_is_taken_for_one_before_a_release,
         test_a_dictionary_release_is_found_typed_where_its_name_stands_before_it,
     ),
     "a dictionary is named anywhere before its release on the line": (

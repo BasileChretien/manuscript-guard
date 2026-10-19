@@ -1935,6 +1935,22 @@ def test_impact_refuses_a_folder_and_a_name_that_is_no_file(
     (project / "manuscript" / "supplementary" / "S1_code_lists.md").unlink()
     assert main(["impact", str(project / "manuscript" / "supplementary" / "S1_code_lists.md"),
                  "--json"]) == 0  # fmt: skip
+    # A deleted input whose results hold one table nothing binds yet is named by those
+    # results, and answered with them (asked in round 1 of #351: `empty` counts results).
+    first = project / "results" / "01_disproportionality.json"
+    document = json.loads(first.read_text(encoding="utf-8"))
+    document["provenance"]["generated_by"] = "analysis/03_tables.py"
+    document["provenance"]["inputs"] = [{"path": "data/gone.csv", "sha256": "0" * 64}]
+    document["tables"] = {"unbound": document["tables"]["two_by_two"]}
+    document["values"] = {}
+    for key in ("steps", "variables", "models", "code_lists"):
+        document.pop(key, None)
+    third = project / "results" / "03_tables.json"
+    third.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(third)
+    capsys.readouterr()
+    assert main(["impact", str(project / "data" / "gone.csv"), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["results"] == ["results/03_tables.json"]
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
@@ -3705,6 +3721,10 @@ def test_a_deviations_heading_that_names_the_planned_results_is_not_the_list(
     start, end = text.index("## Planned results\n"), text.index("## Sample size")
     plan.write_text(text[:start] + text[end:], encoding="utf-8")
     assert _planned_said(project) == []
+    # Round 1 of #351: where the planned results come first, the heading is the list's.
+    words = "## Planned results and amendments\n\nThe cases and the ratio.\n\n"
+    plan.write_text(text[:start] + words + text[end:], encoding="utf-8")
+    assert _planned_said(project) == [("planned-results-unkeyed", "")]
 
 
 def test_a_planned_group_of_tables_or_models_is_looked_for_among_them(project: Path) -> None:
@@ -15899,6 +15919,8 @@ def _coded_with(root: Path, **releases: str) -> None:
         ("Events were coded with MedDRA version 26.1.", ["'26.1'"]),
         # Round 1 of #287: with a "v" before it.
         ("Events were coded with MedDRA v26.1.", ["'26.1'"]),
+        # Round 1 of #351: a "v" that ends a word is no "v" before the release.
+        ("Events were coded with MedDRA Rev26.1.", []),
         ("Drugs were coded with WHODrug Global B3 March 2025.", ["'Global B3 March 2025'"]),
         ("Diagnoses were coded with ICD-10 2019 codes.", ["'2019'"]),
         ("Events were coded with MedDRA version {{results.dictionary.meddra}}.", []),

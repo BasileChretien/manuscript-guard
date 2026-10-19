@@ -209,8 +209,12 @@ def planned_results(text: str) -> list[Planned] | None:
     planned: list[Planned] | None = None
     for index, section in enumerate(sections):
         # "Changes to the planned results" heads the Deviations, not the list (round 1 of
-        # #305): read as the list, it named no key and the plan was said to have none.
-        if not re.search(PLANNED, section.title) or re.search(deviations, section.title):
+        # #305): read as the list, it named no key and the plan was said to have none. The
+        # words that come first say which: "Planned results and amendments" is the list
+        # (round 1 of #351).
+        named = re.search(PLANNED, section.title)
+        changed = re.search(deviations, section.title)
+        if not named or (changed and changed.start() < named.start()):
             continue
         planned = planned or []
         after = index + len(subsections(sections, index))

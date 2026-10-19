@@ -3036,7 +3036,9 @@ or names only values emitted with `quoted=False`
 promised result is a deviation, and saying so is the remedy. A section that names no key at
 all is a warning of its own (`planned-results-unkeyed`). A plan without the section says
 nothing to hold the results to and gets no finding. A heading that is also the Deviations
-section's, "Changes to the planned results", heads the Deviations and not the list.
+section's heads the Deviations where the words of a change come first, "Changes to the
+planned results", and the list where the planned results do, "Planned results and
+amendments".
 
 **The plan is frozen when the first results are written.** A plan rewritten after the
 results are known is the pattern of a hypothesis fitted to its results, and it can be told

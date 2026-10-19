@@ -24,7 +24,9 @@ choice or a judgement is neither, and says so:
    clone of the project whose input digests failed). Two would measure the toolkit as a
    whole. The review panel read against defects already known has been run once, on the
    example's own manuscript and not on a real paper ("What the panel finds of the defects
-   we know"). How often G6 fires on clean text written by people is proposed and not run.
+   we know"). How often G6 fires on clean text written by people has been measured once,
+   on 384 biomedical research articles of 2010 to 2022, and its rate thresholds set from it
+   ("The AI-writing lint measures rate, not presence"); no text written by a model was read.
 3. **The author used it on a real manuscript.**
 4. **Someone else did.**
 
@@ -914,15 +916,21 @@ keys, so a DOI typed "1016/j.…" without its "10.", a PMID written "PMID: 12345
 ISBN with a check digit that does not add up, or an article with no journal reached the
 reference list as they were. G7 now reads every entry of the committed file, cited or not,
 through the same small reader the co-author items use (`literature/bibfile.py`): a DOI is
-"10.", a registrant code, a slash and a suffix, once a `doi:` or a resolver in front of it
-and a stop after it are taken off, so a legacy SICI DOI passes; a PMID is digits, a PMCID
-"PMC" and digits; an ISBN-10 or -13 has the right check digit, however the field parts
-its groups and holds several (`978 0 306 40615 7`, `ISBN-13: ...`, two parted by a space);
-an arXiv identifier one of its two forms; and an entry has the fields its type needs in
-both formats a `.bib` file is written in: what BibTeX's standard styles require (btxdoc)
-and BibLaTeX also requires (its manual, section 2.1.1), under either's name
+"10.", a registrant code, a slash and a suffix, once a scheme (`doi:`, `DOI `) or a
+resolver (`https://doi.org/`, `www.doi.org/`, `dx.doi.org/`, with its scheme or without)
+in front of it and a stop after it are taken off, so a legacy SICI DOI passes; a PMID is
+digits, a PMCID "PMC" and digits; an ISBN-10 or -13 has the right check digit, however the
+field parts its groups and holds several (`978 0 306 40615 7`, two parted by a space) and
+whatever labels and qualifies them (`ISBN-13: ...`, `ISBN 13:`, `eISBN`, `(pbk.)` or
+`pbk.`); an arXiv identifier one of its two forms; and an entry has the fields its type
+needs in both formats a `.bib` file is written in: what BibTeX's standard styles require
+(btxdoc) and BibLaTeX also requires (its manual, section 2.1.1), under either's name
 (`journaltitle`, `date`). `sync-bib` writes BibLaTeX, which asks no publisher of a book
-and no note of an unpublished work, so neither is required. Each fails from
+and no note of an unpublished work, so neither is required. An entry takes the fields it
+lacks from the one its `crossref` names, the key matched exactly, as biber does: a book's
+author for its chapter, its editor, publisher and date, and its title where biber puts it,
+a book's, a collection's or proceedings' as the part's `booktitle`, a periodical's as the
+article's `journaltitle`, never as the part's own title. Each fails from
 internal-review (`identifier-malformed`, `reference-field-missing`), when the reference
 list is first printed for others to read; while drafting, an entry can still be a
 placeholder, and it is reported and deferred. Whether a DOI is registered, names the work
@@ -1312,6 +1320,51 @@ future of ... lies in"), text about the text ("In this section, we will discuss"
 instruction to whoever fills the text in ("the user should add"). Each is a warning. Not
 "not widely available" or "not widely reported", which a paper says of a drug or an adverse
 event.
+
+**How often it warns on papers written by people** is measured, and the rate thresholds
+come from that measurement (item 54). `tools/g6_baseline.py` drew 400 open-access research
+articles under CC BY from Europe PMC, published from 2010 to October 2022, before chat
+models were common, with a fixed seed: 300 to set thresholds and 100 held out. The draw
+took a random day, then a random article of the up to 1000 Europe PMC listed that day, so
+not every article had the same chance: one on a busy day had less, and one past the
+first 1000 of its day none. What the run had to show was fixed before it: each threshold
+at the 99th percentile of the first set, and, on the held-out papers, no failure and at
+most two warnings on 95% of them. Each paper is read as G6 reads a manuscript's prose:
+its JATS through pandoc's JATS reader, written as Markdown without the `smart` extension,
+from its first heading to its reference list, its tables left out with their captions and
+notes, as a manuscript's are emitted and bound. `tools/data/g6-corpus.yaml` keeps each
+paper's identifiers and the digests of what was read, never its text.
+
+- **2026-10-19.** Of the 400, 291 and 93 were used. Thirteen were shorter than 1000 words,
+  one had no heading pandoc could read, and two stated no licence of their own. The
+  thresholds, per 1000 words, were set by hand before this, from the project's own prose:
+  "AI vocabulary" from 6 to 2.7, em dashes from 4 to 4.7, bold from 8 to 9.4, lists of
+  three from 3 to 6.2, "serves as" and its kind from 2 to 0.7.
+  - In a first measurement, nothing on the held-out papers failed, but only 88.2% had two
+    warnings or fewer: the budget was not met. Two phrase rules warned at each occurrence,
+    and each did so on about a quarter of all the papers: "not only ... but also" on
+    25.8%, "plays a key role" on 25.5%.
+  - Basile chose to count those two by rate, as the vocabulary is, at the same percentile:
+    0.8 and 1.0 per 1000 in the last measurement. Measured again, 98.9% of the held-out
+    papers had two warnings or fewer, and the budget was met. The held-out papers showed
+    which two rules broke the budget, so they are no longer an independent check of that
+    choice.
+  - That first measurement read each paper with pandoc's `smart` extension on, which wrote
+    an em dash as `---`: G6 counts the dash itself, and saw one in 18 papers of 384. It
+    also counted the bold of each paper's tables. Both were put right and the corpus
+    measured again (round 1 of #339). That one still counted the captions and notes of the
+    tables, which JATS keeps beside the table, and where one paper had about a hundred em
+    dashes: the em-dash threshold was 13.9 with them and is 4.7 without (round 2). The
+    thresholds and counts here are from this last measurement, where 139 papers have an em
+    dash. A licence named with its version, "Creative Commons Attribution 4.0 International
+    License", is read as CC BY now, and one whose further terms are spelt as CC 3.0 spells
+    them, "Noncommercial" or "No Derivative Works", is not.
+  - Of all 384, the other phrase rules warn on fewer: an "-ing" tail asserting significance
+    on 9.4%, a hedge on a hedge on 7.6%, "it is important to note" on 5.2%, the rest on
+    under 3% each. A vague attribution with no citation near it is reported on 4.2%.
+
+What this does not measure: no text written by a model was read, so it says nothing of
+what G6 catches, only how often it warns on people writing biomedical research in English.
 
 ## Abbreviations are checked against the manuscript, not against a style guide
 
@@ -1755,7 +1808,14 @@ a p value is one of. G2 reads which bindings sit together in a sentence, and not
 the sentence says: a p value quoted in a sentence that binds no estimate of it, or a share in
 one that binds neither of its counts, is `quoted-alone`; an estimate emitted with an
 interval and quoted in no sentence with both its bounds is `interval-not-quoted-whole`. Both
-are warnings: a paper may rightly give a p value again a line after its estimate.
+are warnings: a paper may rightly give a p value again a line after its estimate. Sentences
+end where the labels of a spread read them to end (`sentence_stops`): the stop of "s.d.",
+"s.e." or "s.e.m." before a number or a word in lower case ends none, so "(s.e. 0.21), P =
+..." keeps its P with its estimate. A statistic whose `of` or `over` names a key no fragment
+emits is told so, once per quote and whatever the sentence holds, rather than told it is
+quoted alone. And the schema holds
+what the emitters refuse, so that a fragment written by hand cannot step around these
+checks: `over` and `family` only with `of`, and never both on one value.
 
 Multiple comparisons are declared, never guessed. `correction("secondary", "holm")` says how
 a family is corrected, and "none" is a declaration too, with its reason. G8 warns on a
@@ -2103,8 +2163,9 @@ from the adjusted model only: the change between the two is then partly the rows
 counts can hide different rows, so each card records a digest of the labels of the rows
 its fit used (`rows_sha256`: pandas' index, R's row names). G15 warns
 (`models-on-different-rows`) where two models of one outcome, one's terms a strict subset
-of the other's, were fitted on different rows. The same terms on different rows are a
-subgroup, by design, and are left alone.
+of the other's, were fitted on different rows. One outcome is the same variables written
+the same way, spaces aside: `I(score > 5)` and `I(score > 10)` are two. The same terms on
+different rows are a subgroup, by design, and are left alone.
 
 **A Poisson regression of a binary outcome has a robust variance.** Poisson regression of a
 binary outcome estimates a risk ratio, and its model-based variance overstates the error;
@@ -2112,7 +2173,9 @@ a sandwich variance corrects it (Zou, Am J Epidemiol 2004;159:702-6). G15 warns
 (`poisson-binary-variance`) on a Poisson model of an outcome declared binary, or of a
 comparison written in the formula, whose card records model-based standard errors. A fit
 with an offset or an exposure is left alone: events over person-time estimate a rate ratio,
-and that model's own variance is the right one. Each emitter records the offset on the card.
+and that model's own variance is the right one. Each emitter records the offset on the card,
+in the formula or given beside it, where it differs between rows: a constant one, nought or
+the log of one person-time for all, is the intercept's and makes no rate.
 
 ## A step of the code and the text that points at it
 
@@ -3729,10 +3792,13 @@ share of 56.0%. "{{results.dose}} mg" printed "250 mg" of a dose emitted in micr
 nothing said so. G2 now reads the symbol written right after each binding, from the list of
 symbols G14 knows a number is not to run into, and `%` and `‰`, with a power after it or a
 slash and what it divides by, and warns (`unit-differs-from-emitted`) where it is not the unit
-emitted. Spellings of one unit are one: µg, μg and mcg; mL and ml; °C and ℃. A value emitted
-with no unit, or with one that is no symbol ("years"), has nothing to compare it with. The
-gap between the binding and its unit may be any space or one line break, which pandoc prints
-as a space; a blank line, or a word between, ends the unit's claim to the binding.
+emitted. Spellings of one unit are one: µg, μg and mcg; mL and ml; °C and ℃; a litre after
+a slash, mmol/l and mmol/L (round 1 of #279). A value emitted with no unit, or with one that
+is no symbol ("years"), has nothing to compare it with. The gap between the binding and its
+unit may be spaces of any width, pandoc's escaped space (`\ `), the entity of a no-break
+space in any of its spellings, an HTML comment, which is not printed and ends at its own
+`-->`, and one line break, which pandoc prints as a space; a blank line, or a word between,
+ends the unit's claim to the binding, also between two comments (round 1 of #341).
 
 ## A rule names values, not shapes
 
@@ -4007,13 +4073,24 @@ below it (`count-below-minimum`), naming the key, from the `internal-review` sta
 reads its own small counts while it drafts, and a panel sent to a model provider is already
 outside it. A count is a whole number the analysis emitted with no unit, that is neither a
 parameter, a software version nor a label; "3 years" is emitted with its unit and is no
-count of people, and nought is no small cell.
+count of people, and nought is no small cell. A display that holds the count back behind a
+bound, "<5" or "≤4", its bound a whole number or a decimal, alone or followed by a word,
+"<5 patients", passes only where the bound allows every count the custodian forbids: "<2"
+or "≤3" under a minimum of five still say the count is one, or at most three, and fail
+(round 3 of #275, round 1 of #341). A count the analysis emits as a decimal, 3.0, or with a
+unit naming people, "patients", is not taken for one (pinned by
+`test_what_the_count_reading_gets_wrong_is_pinned`).
 
 An input is declared restricted where the analysis declares it, in either emitter
 (`em.add_input(path, restricted=True)`, `em$add_input(path, restricted = TRUE)`), and the
 results record it. G1 fails while git tracks such a file (`restricted-input-tracked`), from
 the first stage: a pushed repository is a copy outside the custodian's hands. Git is asked
-with a time limit; where it cannot be asked, the finding is a warning.
+with a time limit, in English, whose words are read, for the path as written, not as a
+pattern ("data[1].csv" is not "data1.csv"), and whatever its case where git ignores case; a
+path outside the repository's work tree is not tracked by it (round 1 of #275). git's answer
+is read as UTF-8, so a restricted file whose name is in another script or carries an accent
+is found, where the system's code page could not read it (round 1 of #341). Where git
+cannot be asked, the finding is a warning.
 
 An input is declared synthetic the same way (`em.add_input(path, synthetic=True)`,
 `em$add_input(path, synthetic = TRUE)`): simulated data, a dummy extract, a test fixture, on
@@ -6048,12 +6125,21 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers
   that might add up. That is the price of checking nothing by guesswork.
 - **A relation between values is exact, so a value emitted rounded fails it.** Whole numbers
-  are compared exactly and floats to their last bits (a relative 1e-9). A script that emits
-  `round(rate, 1)` instead of the rate breaks a ratio that holds, and is told to emit the
-  value unrounded and let the display round it.
+  are compared exactly and floats to their last bits (1e-9 of the result, and 1e-9 of
+  nought), so a result and its computed value both within 1e-9 of nought are equal,
+  whatever the terms: 1e-12 passes as the sum of 1e-12 and 2e-12, and 9e-10 as 0.3 less
+  0.3 (pinned by `test_terms_all_near_nought_are_equal_by_being_small`). A
+  tolerance taken from the terms instead let a wrong ratio pass, its largest term being
+  its denominator, and a difference of terms near a million rounded at the sixth place,
+  and failed a true difference of two means summed two ways (#340). A script that emits
+  `round(rate, 1)` instead of the rate
+  breaks a ratio that holds, and is told to emit the value unrounded and let the display
+  round it.
 - **The printed arithmetic reads the first number of each display.** A display that is not a
-  rounding of its own value ("<0.001", a rate printed per 1,000 of a value held per person,
-  "1.2 × 10⁻³") is left out of it, and the relation is then held to the values alone. A
+  rounding of its own value ("<0.001", whatever its value, a rate printed per 1,000 of a
+  value held per person, "1.2 × 10⁻³") is left out of it, and the relation is then held to
+  the values alone. What Decimal arithmetic leaves in its last digits, 100 over 3 times 3
+  being 99.99...9, is no rounding of the printed numbers (round 1 of #293). A
   share held as a fraction and printed as a percentage is read as a percentage. The warning
   is meant to fire routinely: percentages rounded one by one often miss 100, and the text
   may say so rather than change a number.
@@ -6063,6 +6149,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   named in `overlapping`, which waives the sum of that step's reasons but not its total; the
   reasons are still each at most what the step removed, and together at least that. The flow diagram is not yet
   drawn from the record: a figure script reads the counts from the results like any other.
+  A flow two fragments record is the first's, as its counts are, and `duplicate-key` says so
+  of the second's (round 1 of #293, where the second record was held to the first's counts).
+  Python's `relation()` refuses an `of` that is one key written as a string, which it read
+  as its letters (in R a string is a vector of one key), and either emitter refuses a name
+  that is no results key. Python takes NumPy's whole numbers and its single truth values as
+  its own, and the steps that overlap as a list or a NumPy array of whole numbers; R takes
+  any numeric vector of whole values, or a single number, for those steps.
 - **A UTF-16 input without a BOM is normalised as if it were 8-bit text.** Its 0x0D and 0x0A
   bytes can belong to ordinary characters, so an edit that swaps one such character for
   another (U+4E0D for U+4E0A) can leave the digest unchanged and pass G1. Exports that write
@@ -6194,6 +6287,17 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   only; a result the section describes in words is not checked, and a section with one key
   and ten results in words says nothing of the ten. A Deviations section that names a key,
   whatever it says of it, stands down that key's warning.
+- **A statistic is held to what it belongs to by which bindings share its sentence, and by
+  nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
+  each, though a paper quotes the one it means. An interval quoted whole only in a table the
+  analysis emits is asked for again, since a table's cells are text and bind no key. A
+  caption, a supplement or a Discussion that gives a P again on its own is warned of, as a
+  sentence of the Results would be. And a key declared `same_as` the estimate stands for
+  nothing of it here: "Overall it was {{results.headline}}, P = {{results.or.p}}" is quoted
+  alone. All are warnings, and `test_what_quoted_alone_does_not_read_is_pinned` holds them as
+  they are. And a sentence that really ends at "s.e." followed by a binding or a word in
+  lower case runs on into the next, for the order of an interval's bounds as for the rest,
+  so a bound restated before it can hide a reversal after it (round 1 of #343).
 - **The feasibility results are asked for by their names only.** Any one result under
   `feasibility.` quiets `feasibility-not-run`: nothing checks that the counts cover the
   plan's variables or its selection steps, or that the script read the data the analysis
@@ -6228,11 +6332,25 @@ Added by the adversarial review, verified and **not** fixed:
 - **Two models' rows are compared by their labels, within one language.** pandas numbers
   rows from 0 and R from 1, so a model fitted in Python and one fitted in R on the same
   data are always taken for different rows; and two data frames whose labels were reset
-  between the fits are too. A count with a person-time denominator modelled with no offset
-  is not yet read: it needs the rate the analysis declares, which nothing records. An R
-  `lm` or `glm` records "model-based" standard errors whatever is done after the fit, so a
-  modified Poisson regression whose sandwich variance is computed beside the fit
-  (`sandwich::vcovHC`) is still warned.
+  between the fits are too. Rows that share a label are not told apart: where a frame's
+  index repeats, a fit without the first of two such rows and a fit without the second
+  record the same rows (`test_rows_that_share_a_label_are_not_told_apart`). A stratum
+  fitted without its stratifier, beside the whole cohort's model with it, is two models of
+  one outcome on different rows, one's terms among the other's, and is warned of as a crude
+  model fitted on other rows, with advice for that. A count with a person-time denominator
+  modelled with no offset is not yet read: it needs the rate the analysis declares, which
+  nothing records. An R `lm` or `glm` records "model-based" standard errors whatever is
+  done after the fit, so a modified Poisson regression whose sandwich variance is computed
+  beside the fit (`sandwich::vcovHC`) is still warned; the hint says so. An R `lm` keeps no
+  data, and its rows are found by their labels in the data its call names, looked up in the
+  formula's environment, as that data is when the model is emitted: a label gone since the
+  fit is refused, but data relabelled since (sorted and its row names reset, or new rows
+  bound before it) is not detected where its new labels still cover the old, and its other
+  rows are counted; a unit changed since the fit is counted as it now is. One outcome is the
+  same variables, the same comparison or none, and the same expression, spaces aside: a
+  space inside a quoted level counts for nothing (`I(group == "a b")` is `"ab"`), and any
+  other difference in how it is written makes two (`> 5` and `> 5.0`, `'IV'` and `"IV"` in
+  a Python formula; R writes double quotes).
 - **Numbers written as words escape the tokeniser.** "four thousand and twenty-one" is not
   read. Vulgar fractions and enclosed digits now are. Number words are left alone on
   purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and
@@ -7237,8 +7355,9 @@ Closed since, and why each mattered:
 - **A locator is checked for being there, not for being right.** The schema refuses a blank
   `locator`, and nothing reads the one that is written: "Table 2" on a quote taken from the
   abstract passes. It is for the person checking the value, who is sent to the place it names.
-- **A field the literature schemas call blank is one of spaces only.** Their `\S` is any
-  character that is not a space, and a zero-width space (U+200B) or a byte-order mark is one:
+- **A field the literature schemas call blank is one of white space only.** Their `\S` is
+  any character that is not white space (a space, a tab, a line break), and a zero-width
+  space (U+200B) or a byte-order mark is one:
   `attested_by` made of either passes as a signature that shows nothing. Nobody types one by
   accident, and a name that is there but wrong passes as well.
 - **A PDF is read as its reader gives it, less a short table of foldings.** Curly quotes,
@@ -7359,13 +7478,23 @@ Closed since, and why each mattered:
   styles define are held to their fields: BibLaTeX's `@online`, `@report` or `@thesis`, and
   `@misc`, need none. An ISBN-13 whose check digit adds up is read as one even where its
   first three digits are no ISBN prefix. An ISBN-10 that opens with 978 or 979, followed in
-  the same field by another ISBN and parted from it by a space only, is read as the start
-  of an ISBN-13 and reported.
+  the same field by another ISBN, or by a word that is neither a label nor one of the
+  qualifiers set aside ("9781234563 reprint"), and parted from it by a space only, is read
+  as the start of an ISBN-13 and reported. A field named `type` is kept beside the entry's
+  own type, which stays under that name: G7 reads the entry's, the data statement either
+  (a `@misc` with `type = {dataset}` is a dataset), and a co-author is shown the field. In an
+  ISBN field, any number of ten or thirteen digits in brackets is checked as an ISBN, an
+  LCCN as well; one in brackets with its label, "(eISBN 978-...)", is not read, so its
+  check digit is not checked, and a field of it alone is said to hold no ISBN. A parent's
+  title goes where biber puts it by the parent's type alone, so an `@incollection` whose
+  `crossref` names a `@book` takes the book's title for a booktitle biber does not give it.
 - **Two keys for one work are found by an identifier or a title, and only among what is
   cited.** Two entries of one work with no identifier in common and titles that differ, a
   preprint and its article, or a translation, are not found. A title of fewer than four
   words is not compared. A chapter or a conference paper cited twice is found only by its
   title, a warning, and a book cited twice with a volume in one entry only is not found. A
+  volume is compared without the word it is written with, "Vol. 1" as "1", and otherwise as
+  written: "I" and "1" are two. A
   DOI is compared as the file writes it, so `\_` is not read as `_` nor `%28` as `(`, and a
   title's TeX accents and commands are read as letters: `Caf\'e` is two words.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
@@ -8906,8 +9035,12 @@ Closed since, and why each mattered:
 - **A unit after a binding is read from a list of symbols.** "mg" is read and "milligrams"
   is not, so a unit written out in words is compared with nothing; one-letter symbols other
   than g and h (m, L, s) are left out as G14 leaves them, so "{{results.length}} m" is not
-  read. Units that mean the same and are spelt apart ("mg/kg" against "mg kg-1") are taken
-  for two.
+  read. A divisor after a space, "mg kg-1", is not read: written, the unit is its first
+  symbol, so "mg kg-1" against an emitted "mg/kg" is said to differ, and emitted, it is
+  compared with nothing. A divisor written as a word, "mg/kg per day" against an emitted
+  "mg/kg/day", is said to differ too (round 1 of #279, where this entry said "mg/kg" and
+  "mg kg-1" were taken for two both ways; pinned by
+  `test_what_the_unit_reading_gets_wrong_is_pinned`).
 - **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
   `- Results` over an underline as a list item holding a heading titled "Results". The
   gates keep the marker in the title, so it ends the section above; "- Results" is read as
@@ -9184,16 +9317,28 @@ Closed since, and why each mattered:
   frozen until it is put right; one saved in UTF-16 with no byte-order mark decodes as
   UTF-8 where its text is ASCII, so G12 does not say it is not UTF-8, and the
   `plan-not-frozen` hint, that the emitter keeps it on the next write, is not true of it.
-- **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
-  by running the lint against this project's own prose, not by calibrating against a corpus
-  of human and machine writing. They are a starting point.
+- **G6's thresholds are measured on people only, in one field.** Each rate's threshold is
+  the 99th percentile of 291 biomedical research articles of 2010 to 2022 (see "The
+  AI-writing lint measures rate, not presence"), so about one paper by people in a hundred
+  is above each by construction, and more in a field, a kind of article or a register those
+  papers do not hold: a review, a case report, a paper in mathematics. No text written by a
+  model was measured, so how much of what G6 looks for it catches is not known. The phrase
+  rules that warn at each occurrence are not calibrated by rate; the measurement says how
+  often each warns on people. The held-out check informed the choice of counting two
+  of them by rate, so its 98.9% is not independent of that choice. A percentile of 291 is
+  set by the three or four papers at the top: the em-dash threshold was 13.9 while one
+  paper's table notes were counted, and is 4.7 without them. And G6 counts the em dash
+  itself, so a Markdown manuscript that types one as `---`, which pandoc prints as an em
+  dash, shows it none.
 - **A small count is found where it is bound, by its value.** A count printed in an emitted
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number
   with no unit that is no count of people (a number of sites, of years written without the
-  unit) fails as one: emit it with its unit. A restricted input that git ignores but that a
-  person copies elsewhere is not seen, and one that was committed and then removed stays in
-  the history, which only a rewrite takes out.
+  unit) fails as one: emit it with its unit. A count held back behind a bound is read where
+  a word or nothing follows the bound: "<2 (cases)" or "<+2" is read as no count and passes,
+  and "<2E1" as a bound of 2 (round 2 of #341). A restricted input that git ignores but that
+  a person copies elsewhere is not seen, and one that was committed and then removed stays
+  in the history, which only a rewrite takes out.
 - **A synthetic input is followed to the results the text binds, and no further.** G1 names
   a result of a run that read a synthetic input where the manuscript or the supplement binds
   it as `results.` or `table.`. A figure drawn from such a run and placed with `figure.` is

@@ -748,6 +748,7 @@ em$value("or.p", 0.012, digits = 3, of = "or.point", family = "secondary")
 em$value("female.pct", 52.1, digits = 1, of = "female.n", over = "cohort.n")
 em$correction("secondary", "holm")
 em$correction("exploratory", "none", reason = "hypothesis-generating")
+em$correction("tertiary", "bonferroni", reason = "")
 em$write()
 """
 
@@ -760,12 +761,15 @@ em.value("or.p", 0.012, digits=3, of="or.point", family="secondary")
 em.value("female.pct", 52.1, digits=1, of="female.n", over="cohort.n")
 em.correction("secondary", "holm")
 em.correction("exploratory", "none", reason="hypothesis-generating")
+em.correction("tertiary", "bonferroni", reason="")
 em.write()
 """
 
 
 def test_r_and_python_say_alike_what_a_statistic_belongs_to(tmp_path: Path) -> None:
-    """Item 13: `of`, `over`, `family` and the corrections, the same from either language."""
+    """Item 13: `of`, `over`, `family` and the corrections, the same from either language;
+    an empty reason left out by both, since the schema refuses one (round 1 of #267: R
+    wrote it)."""
     import runpy
 
     root = _parameter_project(tmp_path)
@@ -782,7 +786,7 @@ def test_r_and_python_say_alike_what_a_statistic_belongs_to(tmp_path: Path) -> N
     def written() -> dict:
         path = root / "results" / "belongs.json"
         document = json.loads(path.read_text(encoding="utf-8"))
-        validate(document, "results", path)
+        assert validate(document, "results", path).ok
         return {"values": document["values"], "corrections": document["corrections"]}
 
     from_r = written()
@@ -983,8 +987,8 @@ em$flow("prisma",
         exclusions = list(c("Duplicates" = 20), c("Not relevant" = 70, "No outcome" = 30)),
         overlapping = 2, quoted = FALSE)
 em$value("cohort.n", 300L)
-# sapply names what it returns: a named `of` is still an array of keys.
-em$relation("sum", "cohort.n", sapply(1:2, function(n) paste0("flow.consort.arm.", n)))
+# A named `of` is still an array of keys (round 2 of #293: sapply over 1:2 names nothing).
+em$relation("sum", "cohort.n", c(drug = "flow.consort.arm.1", placebo = "flow.consort.arm.2"))
 em$relation("ratio", "cohort.n", c("flow.consort.stage.2", "flow.consort.stage.1"), scale = 412)
 em$relation("at_most", "flow.prisma.stage.3", "flow.prisma.stage.2")
 em$write()
@@ -1074,6 +1078,9 @@ def test_r_and_python_write_the_same_flows_and_relations(tmp_path: Path) -> None
         ('em$relation("mean", "a", "b")', "the kinds are"),
         ('em$relation("difference", "a", "b")', "is of 2 key"),
         ('em$relation("ratio", "a", c("b", "c"), scale = 0)', "positive number"),
+        # Round 1 of #293: a key that is no results key is refused at the call, as Python's.
+        ('em$relation("sum", "a", "Cohort N")', "'Cohort N' is no results key"),
+        ('em$relation("sum", "a b", "b")', "'a b' is no results key"),
     ],
 )  # fmt: skip
 def test_r_refuses_the_flows_and_relations_python_refuses(
@@ -1176,6 +1183,11 @@ em$variable("event", "binary", label = "event", levels = c(0, 1))
 em$variable("x", "continuous", label = "x")
 em$model("rate", glm(event ~ x + offset(log(time)), family = poisson, data = d), name = "Rate")
 em$model("risk", glm(event ~ x, family = poisson, data = d), name = "Risk")
+em$model("argument", glm(event ~ x, family = poisson, data = d, offset = log(time)),
+         name = "Argument")
+d$one <- 1
+em$model("constant", glm(event ~ x + offset(log(one)), family = poisson, data = d),
+         name = "Constant")
 em$write()
 """
 
@@ -1191,6 +1203,66 @@ def test_r_records_an_offset(tmp_path: Path) -> None:
     models = json.loads((root / "results" / "offset.json").read_text(encoding="utf-8"))["models"]
     assert models["rate"]["offset"] is True
     assert "offset" not in models["risk"]
+    # Round 2 of #289: glm's own `offset =`, and a constant offset, which makes no rate.
+    assert models["argument"]["offset"] is True
+    assert "offset" not in models["constant"]
+
+
+UNITS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+d <- data.frame(y = as.integer((seq_len(60) * 7) %%%% 5 < 2), x = rep(1:6, 10),
+                pid = rep(1:20, each = 3))
+d$x[5] <- NA
+said <- function(label, expr) {
+  cat(label, ": ", tryCatch({ force(expr); "none" }, error = function(e) conditionMessage(e)),
+      "\\n", sep = "")
+}
+s <- d[d$pid > 5, ]
+em$model("subsetted", glm(y ~ x, data = s, family = binomial()), name = "Subsetted",
+         unit = "pid")
+em$model("excluded", glm(y ~ x, data = d, family = binomial(), na.action = na.exclude),
+         name = "Excluded", unit = "pid")
+em$model("linear", lm(x ~ y, data = s), name = "Linear", unit = "pid")
+if (requireNamespace("tibble", quietly = TRUE)) {
+  em$model("tibble", glm(y ~ x, data = tibble::as_tibble(s), family = binomial()),
+           name = "Tibble", unit = "pid")
+}
+m <- d
+m$pid[10] <- NA
+said("MISSING", em$model("missing", glm(y ~ x, data = m, family = binomial()),
+                         name = "Missing", unit = "pid"))
+changed <- s
+fit <- lm(x ~ y, data = changed)
+changed <- changed[changed$pid > 10, ]
+said("CHANGED", em$model("changed", fit, name = "Changed", unit = "pid"))
+em$write()
+"""
+
+
+def test_r_counts_the_units_of_the_rows_its_fit_used(tmp_path: Path) -> None:
+    """Round 2 of #268: R's refusal of a missing unit, and a subsetted, `na.exclude` or tibble
+    frame, had no test of their own; and an lm's data changed after the fit was matched by
+    the start of a row name, giving another row's unit or a missing one."""
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "units.R"
+    script.write_text(UNITS_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    said = dict(line.split(": ", 1) for line in out.stdout.splitlines() if ": " in line)
+    assert said["MISSING"] == ("model: unit pid is missing in 1 of the rows the model used, so "
+                               "how many units they hold cannot be counted")  # fmt: skip
+    assert said["CHANGED"].startswith("model: 15 of the rows the model used are not in the data")
+    models = json.loads((root / "results" / "units.json").read_text(encoding="utf-8"))["models"]
+    units = {key: card["unit"]["units"] for key, card in models.items()}
+    expected = {"subsetted": 15, "excluded": 20, "linear": 15}
+    if "tibble" in models:
+        expected["tibble"] = 15
+    assert units == expected
 
 
 def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> None:

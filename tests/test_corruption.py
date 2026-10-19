@@ -1441,6 +1441,37 @@ def test_a_count_below_the_custodians_minimum_is_not_printed(project: Path) -> N
     assert "count-below-minimum" in codes(report)
 
 
+@pytest.mark.parametrize("fields", [
+    {"value": 3.0, "display": "3"},  # a count emitted as a float
+    {"value": 3, "display": "3", "unit": "patients"},  # a count given a unit of people
+])  # fmt: skip
+def test_what_the_count_reading_gets_wrong_is_pinned(project: Path, fields: dict) -> None:
+    """A Known gap, as DESIGN.md writes it (round 1 of #275): a small count the emitter
+    recorded as a float, or with a unit naming people, is not taken for a count."""
+    _custodian(project, 5)
+    _value_has(project, "case.n_serious", **fields)
+    assert _small(project) == []
+
+
+@pytest.mark.parametrize(("display", "said"), [
+    ("<2", True), ("< 3", True), ("\N{LESS-THAN OR EQUAL TO}3", True), ("<=2", True),
+    ("<5", False), ("\N{LESS-THAN OR EQUAL TO}4", False), ("<=4", False), ("<10", False),
+    ("<1", False),  # nought, which is no small cell
+    # Round 1 of #341: a decimal or words after the bound, as the emitter takes a display.
+    ("<2 patients", True), ("< 2 cases", True), ("<2.0", True), ("<5 patients", False),
+    ("<4.5", False),
+])  # fmt: skip
+def test_a_count_held_back_by_a_bound_tighter_than_the_minimum_is_said(
+    project: Path, display: str, said: bool
+) -> None:
+    """Round 3 of #275: a comparator display passed whatever its bound, so "<2" under a
+    minimum of five, which says the count is one, printed no small count."""
+    _custodian(project, 5)
+    _value_has(project, "case.n_serious", value=1, display=display)
+    found = _small(project)
+    assert bool(found) is said, found
+
+
 def _git(root: Path, *args: str) -> None:
     import subprocess
 
@@ -1477,6 +1508,47 @@ def test_an_input_declared_restricted_is_not_tracked_by_git(project: Path) -> No
     assert tracked() == [f"{data} is declared restricted, and git tracks it"]
     report, _project, _chosen, _deferred = _run_gates(project, stage="design")
     assert "restricted-input-tracked" in codes(report)
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_a_restricted_input_is_found_in_git_by_its_own_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 1 of #275: the path was a pattern, so a tracked "data1.csv" stood for an
+    untracked "data[1].csv"; a path outside the work tree, or git in another language,
+    was "could not say"; and a name in another case was missed where git ignores case."""
+    from manuscript_guard.gates import custodian
+
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "core.ignorecase", "false")
+    for name in ("data1.csv", "data[1].csv", "Kept.csv"):
+        (tmp_path / name).write_text("a\n", encoding="utf-8")
+    _git(tmp_path, "add", "data1.csv", "Kept.csv")
+    assert custodian._tracked(tmp_path, "data1.csv") is True
+    assert custodian._tracked(tmp_path, "data[1].csv") is False
+    assert custodian._tracked(tmp_path, "../outside.csv") is False
+    assert custodian._tracked(tmp_path, "kept.csv") is False
+    _git(tmp_path, "config", "core.ignorecase", "true")
+    assert custodian._tracked(tmp_path, "kept.csv") is True
+    # A name in another script or with an accent is read as UTF-8 whatever the locale's
+    # code page: under cp932 or cp1252 the unquoted name raised (round 1 of #341).
+    for name in ("\N{KATAKANA LETTER DE}\N{KATAKANA LETTER SMALL TU}\N{KATAKANA LETTER TA}.csv",
+                 "\N{LATIN CAPITAL LETTER A WITH ACUTE}baco.csv"):  # fmt: skip
+        (tmp_path / name).write_text("a\n", encoding="utf-8")
+        _git(tmp_path, "add", name)
+        assert custodian._tracked(tmp_path, name) is True, name
+    # Asked in English, whatever the user's language, since its words are read.
+    seen: list[dict] = []
+    run = custodian.subprocess.run
+
+    def recorded(*args, **kwargs):
+        seen.append(kwargs["env"])
+        return run(*args, **kwargs)
+
+    monkeypatch.setenv("LANGUAGE", "fr")
+    monkeypatch.setattr(custodian.subprocess, "run", recorded)
+    assert custodian._tracked(tmp_path, "data[1].csv") is False
+    assert seen and all(env["LC_ALL"] == "C" and env["LANGUAGE"] == "C" for env in seen)
 
 
 def test_both_emitters_record_an_input_declared_restricted(tmp_path: Path) -> None:
@@ -1966,6 +2038,20 @@ def _units_said(root: Path) -> list[tuple[str, int]]:
         ("mg/kg", " mg/kg", False),
         ("years", " mg", False),  # no symbol emitted: nothing to compare
         (None, " mg", False),  # no unit emitted
+        # Round 1 of #279: a litre after a slash in either case, and what may stand between
+        # the binding and its unit, pandoc's escaped space, an entity, a comment and the
+        # narrow spaces, none of which hid the unit from the reading.
+        ("mmol/L", " mmol/l", False),
+        ("\N{MICRO SIGN}g", "\\ mg", True),
+        ("\N{MICRO SIGN}g", "&nbsp;mg", True),
+        ("\N{MICRO SIGN}g", "<!-- the dose --> mg", True),
+        ("\N{MICRO SIGN}g", "\N{HAIR SPACE}mg", True),
+        ("\N{MICRO SIGN}g", "\N{FIGURE SPACE}mg", True),
+        # Round 1 of #341: the other spellings of the entity are read, and no unit is read
+        # across the words between two comments.
+        ("\N{MICRO SIGN}g", "&#0160;mg", True),
+        ("\N{MICRO SIGN}g", "&NonBreakingSpace;mg", True),
+        ("\N{MICRO SIGN}g", "<!-- a --> patients were given <!-- b --> mg", False),
     ],
 )
 def test_a_unit_written_after_a_binding_is_the_one_emitted(
@@ -1983,6 +2069,50 @@ def test_a_unit_written_after_a_binding_is_the_one_emitted(
         path.write_text(text, encoding="utf-8")
     line = next(n for n, row in enumerate(text.splitlines(), 1) if "case.pct_serious" in row)
     assert _units_said(project) == ([("results.case.pct_serious", line)] if said else [])
+
+
+@pytest.mark.parametrize(("emitted", "written", "said"), [
+    # A divisor after a space is not read: the written unit is its first symbol, and an
+    # emitted one is compared with nothing.
+    ("mg/kg", " mg kg-1", True),
+    ("mg kg-1", " mg/kg", False),
+    # A divisor written as a word is not read either.
+    ("mg/kg/day", " mg/kg per day", True),
+])  # fmt: skip
+def test_what_the_unit_reading_gets_wrong_is_pinned(
+    project: Path, emitted: str, written: str, said: bool
+) -> None:
+    """Known gaps, as DESIGN.md writes them (round 1 of #279, where it said "mg/kg" and
+    "mg kg-1" were taken for two units both ways)."""
+    _unit_emitted(project, "case.pct_serious", emitted)
+    path = main_md(project)
+    binding = "{{results.case.pct_serious}}"
+    path.write_text(path.read_text(encoding="utf-8").replace(binding + "%", binding + written, 1),
+                    encoding="utf-8")  # fmt: skip
+    assert bool(_units_said(project)) is said
+
+
+@pytest.mark.parametrize(("written", "emitted"), [
+    ("\N{GREEK SMALL LETTER MU}g", "\N{MICRO SIGN}g"), ("mcg", "\N{MICRO SIGN}g"),
+    ("ml", "mL"), ("dl", "dL"), ("mmol/l", "mmol/L"), ("mg/dl", "mg/dL"),
+    ("\N{GREEK SMALL LETTER MU}L", "\N{MICRO SIGN}L"), ("\N{MICRO SIGN}l", "\N{MICRO SIGN}L"),
+    ("\N{GREEK SMALL LETTER MU}l", "\N{MICRO SIGN}L"),
+    ("\N{GREEK SMALL LETTER MU}m", "\N{MICRO SIGN}m"),
+    ("\N{GREEK SMALL LETTER MU}mol", "\N{MICRO SIGN}mol"),
+    ("\N{GREEK SMALL LETTER MU}M", "\N{MICRO SIGN}M"),
+    ("\N{GREEK SMALL LETTER MU}Sv", "\N{MICRO SIGN}Sv"),
+    ("\N{MASCULINE ORDINAL INDICATOR}C", "\N{DEGREE SIGN}C"),
+    ("\N{DEGREE CELSIUS}", "\N{DEGREE SIGN}C"),
+    ("\N{MASCULINE ORDINAL INDICATOR}F", "\N{DEGREE SIGN}F"),
+    ("cm\N{SUPERSCRIPT TWO}", "cm2"), ("cm^2^", "cm2"), ("cm\N{SUPERSCRIPT THREE}", "cm3"),
+    ("h\N{MINUS SIGN}1", "h-1"),
+])  # fmt: skip
+def test_every_spelling_of_one_unit_is_one_unit(written: str, emitted: str) -> None:
+    """Round 1 of #279: only mcg and mu were held, so an empty list of spellings passed."""
+    from manuscript_guard.gates.bound_units import same_unit
+
+    assert same_unit(written, emitted) is True
+    assert same_unit(written, "kg") is False
 
 
 # ------------------------------------- the table rule, applied to the file rather than the API
@@ -2474,6 +2604,23 @@ def test_a_dataset_cited_by_its_key_is_named_by_its_doi(project: Path) -> None:
     ) == [("data-identifier-missing", "fail")]
 
 
+def test_a_dataset_written_as_misc_with_its_type_field_is_named_by_its_doi(
+    project: Path,
+) -> None:
+    """Round 1 of #345: BibTeX has no `@dataset`, and a hand-kept file writes one as `@misc`
+    with `type = {dataset}`; the reader that kept the entry's own type dropped the field."""
+    bib = project / "literature" / "references.bib"
+    dataset = ("@misc{fictionalHepaticCohort2021,\n  type = {dataset},\n"
+               "  doi = {10.5281/zenodo.1234567},\n")  # fmt: skip
+    bib.write_text(
+        bib.read_text(encoding="utf-8").replace(
+            "@article{fictionalHepaticCohort2021,\n", dataset, 1
+        ),
+        encoding="utf-8",
+    )
+    assert _data_statement(project, "Data are in Zenodo [@fictionalHepaticCohort2021].") == []
+
+
 @pytest.mark.parametrize(
     ("before", "heading"),
     [
@@ -2669,11 +2816,136 @@ def test_a_statistic_quoted_without_what_it_belongs_to_is_a_warning(
         f"The ratio was {_ESTIMATE}. Of {{{{results.whole.cohort.n}}}} patients, "
         "{{results.whole.female.n}} ({{results.whole.female.pct}}%) were women.",
         f"The ratio was {_ESTIMATE}. It was {{{{results.whole.or.point}}}} again.",
+        # #267: the stop of "s.e." before a number ends no sentence, as `labels` reads it.
+        f"The ratio was {_ESTIMATE} (s.e. 0.21), P = {{{{results.whole.or.p}}}}.",
     ],
 )
 def test_a_statistic_quoted_with_what_it_belongs_to_passes(project: Path, paragraph: str) -> None:
     _with_whole(project, paragraph, {"secondary": {"method": "holm"}})
     assert _whole_said(project) == []
+
+
+def test_a_statistic_naming_what_nothing_emits_says_so(project: Path) -> None:
+    """#267: a p value whose `of` names a key no fragment emits was said to be quoted
+    alone, whatever its sentence held; it is the name that is wrong."""
+    _with_whole(project, f"The ratio was {_ESTIMATE}.", {"secondary": {"method": "holm"}})
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["whole.hr.p"]["of"] = "whole.hr.point"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\nThe hazard ratio had P = "
+        "{{results.whole.hr.p}} beside {{results.whole.or.point}}.\n",
+        encoding="utf-8",
+    )
+    said = [f for f in gate_report(project).findings if f.code == "quoted-alone"]
+    assert [f.message for f in said] == [
+        "results.whole.hr.p names results.whole.hr.point as what it belongs to, which "
+        "nothing emits"
+    ]
+
+
+def test_a_share_naming_what_nothing_emits_beside_its_other_count_says_so(
+    project: Path,
+) -> None:
+    """Round 1 of #343: a share whose `of` is misspelt, quoted beside its `over`, passed,
+    since the sentence held one of its names; no other gate reads `over`."""
+    paragraph = ("Of {{results.whole.cohort.n}} patients, {{results.whole.female.pct}}% were "
+                 "women.")  # fmt: skip
+    _with_whole(project, f"The ratio was {_ESTIMATE}. {paragraph}",
+                {"secondary": {"method": "holm"}})  # fmt: skip
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["whole.female.pct"]["of"] = "whole.femal.n"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    said = [f for f in gate_report(project).findings if f.code == "quoted-alone"]
+    assert [f.message for f in said] == [
+        "results.whole.female.pct names results.whole.femal.n as what it belongs to, which "
+        "nothing emits"
+    ]
+    # Round 2 of #343: the name nothing emits, bound in the sentence, is said once, as the
+    # binding that resolves to nothing.
+    del document["values"]["whole.cohort.n"]
+    document["values"]["whole.female.pct"]["of"] = "whole.female.n"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    codes = [f.code for f in gate_report(project).findings
+             if f.code in ("quoted-alone", "unresolved-binding")]  # fmt: skip
+    assert codes == ["unresolved-binding"]
+
+
+@pytest.mark.parametrize(
+    ("added", "paragraph", "said"),
+    [
+        # A second level of the same estimate is asked for whole as well, though the paper
+        # quotes the one it means.
+        ({"values": {"whole.or.ci90_low": {"value": 1.6, "display": "1.60",
+                                           "bounds": "whole.or.point", "bound": "low",
+                                           "level": "90%"},
+                     "whole.or.ci90_high": {"value": 3.4, "display": "3.40",
+                                            "bounds": "whole.or.point", "bound": "high",
+                                            "level": "90%"}}},
+         f"The ratio was {_ESTIMATE}.", ["interval-not-quoted-whole"]),
+        # An interval quoted whole only in a table the analysis emits: its cells are text,
+        # and no sentence binds the bounds.
+        ({"tables": {"ratios": {"columns": ["Ratio", "95% CI"],
+                                "rows": [["2.50", "1.40 to 3.80"]]}}},
+         "The ratio was {{results.whole.or.point}} (Table 3).\n\n{{table.ratios}}",
+         ["interval-not-quoted-whole"]),
+        # A caption that gives a P again is a sentence of its own.
+        ({}, f"The ratio was {_ESTIMATE} (P = {{{{results.whole.or.p}}}}).\n\n"
+             "Table: Ratios; P = {{results.whole.or.p}} for the first.", ["quoted-alone"]),
+        # A key declared the same quantity as the estimate stands for nothing of it.
+        ({"values": {"whole.headline": {"value": 2.5, "display": "2.50",
+                                        "same_as": "whole.or.point"}}},
+         f"The ratio was {_ESTIMATE}. Overall it was {{{{results.whole.headline}}}}, P = "
+         "{{results.whole.or.p}}.", ["quoted-alone"]),
+    ],
+)  # fmt: skip
+def test_what_quoted_alone_does_not_read_is_pinned(
+    project: Path, added: dict, paragraph: str, said: list[str]
+) -> None:
+    """Known gaps (#267): G2 reads which bindings share a sentence, so a second level of an
+    interval, an emitted table, a caption and a key declared `same_as` the estimate are each
+    read as they stand. A change here is a change to what DESIGN.md says of them."""
+    _with_whole(project, paragraph, {"secondary": {"method": "holm"}})
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for field, entries in added.items():
+        document.setdefault(field, {}).update(entries)
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _whole_said(project) == [(code, "warn") for code in said]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"over": "whole.cohort.n"},
+        {"family": "secondary"},
+        {"of": "whole.female.n", "over": "whole.cohort.n", "family": "secondary"},
+    ],
+)
+def test_a_fragment_written_by_hand_is_held_to_what_the_emitters_refuse(
+    project: Path, fields: dict
+) -> None:
+    """#267: the emitters refuse a denominator with no numerator, a family with no estimate,
+    and a share in a family of p values; the schema did not, so a fragment written by hand
+    skipped G2's and G8's checks of them."""
+    from manuscript_guard.contracts import load_namespace
+
+    _with_whole(project, "", {"secondary": {"method": "holm"}})
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["whole.extra"] = {"value": 0.5, "display": "0.50", **fields}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    projekt, _ = load_project(project)
+    _namespace, _results, _literature, report = load_namespace(projekt)
+    assert any(f.path and f.path.name == "02_whole.json" for f in report.failures)
 
 
 def test_a_family_of_p_values_with_no_correction_is_a_warning(project: Path) -> None:
@@ -3445,6 +3717,8 @@ _ROWS = {name: hashlib.sha256(name.encode("utf-8")).hexdigest() for name in ("al
 @pytest.mark.parametrize(
     ("crude", "adjusted", "said"),
     [
+        # A stratum fitted without its stratifier is these two cards as well, and is warned
+        # of as a crude model on other rows: Known gaps.
         ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["some"], "n_used": 3800}, 1),
         # Equal counts and different rows: the digest tells them apart.
         ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["some"]}, 1),
@@ -3453,17 +3727,29 @@ _ROWS = {name: hashlib.sha256(name.encode("utf-8")).hexdigest() for name in ("al
         ({"rows_sha256": None}, {"rows_sha256": _ROWS["some"]}, 0),
         # The same terms on other rows are a subgroup, by design.
         ({"rows_sha256": _ROWS["all"], "terms": "adjusted's"}, {"rows_sha256": _ROWS["some"]}, 0),
+        # Round 1 of #289: another outcome of the same variable, `I(score > 10)` beside
+        # `I(score > 5)`, is not the crude model of this one; the same one spaced otherwise is.
+        ({"rows_sha256": _ROWS["all"], "outcome": "I(hepatic > 1)"},
+         {"rows_sha256": _ROWS["some"]}, 0),
+        ({"rows_sha256": _ROWS["all"], "outcome": " spaced "}, {"rows_sha256": _ROWS["some"]}, 1),
     ],
-    ids=["fewer rows", "as many rows", "the same rows", "rows unknown", "a subgroup"],
-)
+    ids=["fewer rows", "as many rows", "the same rows", "rows unknown", "a subgroup",
+         "another outcome", "the outcome spaced"],
+)  # fmt: skip
 def test_a_crude_and_an_adjusted_model_on_different_rows_are_a_warning(
     project: Path, crude: dict, adjusted: dict, said: int
 ) -> None:
     """Item 36: a covariate's missing values drop rows from the adjusted model only, and
     the crude and adjusted estimates were compared as if one adjustment parted them."""
+    card = json.loads(next((project / "results").glob("*.json"))
+                      .read_text(encoding="utf-8"))["models"]["adjusted"]  # fmt: skip
     if crude.get("terms") == "adjusted's":
-        crude = {**crude, "terms": json.loads(next((project / "results").glob("*.json"))
-                 .read_text(encoding="utf-8"))["models"]["adjusted"]["terms"]}  # fmt: skip
+        crude = {**crude, "terms": card["terms"]}
+    if crude.get("outcome") == " spaced ":
+        spaced = " " + card["outcome"]["expression"].replace("", " ").strip() + " "
+        crude = {**crude, "outcome": {**card["outcome"], "expression": spaced}}
+    elif isinstance(crude.get("outcome"), str):
+        crude = {**crude, "outcome": {**card["outcome"], "expression": crude["outcome"]}}
     _crude_beside_adjusted(project, crude, adjusted)
     found = _models_said(project, "models-on-different-rows")
     assert len(found) == said, found
@@ -3496,6 +3782,18 @@ def test_a_poisson_model_of_a_binary_outcome_wants_a_robust_variance(
     own standard errors, passed; they overstate its error."""
     _adjusted_has(project, **fields)
     assert len(_models_said(project, "poisson-binary-variance")) == said
+
+
+def test_the_poisson_hint_says_what_r_can_do(project: Path) -> None:
+    """Round 1 of #289: R's card always says model-based, and the hint named only the
+    statsmodels remedy."""
+    _adjusted_has(project, engine=_POISSON, covariance="model-based")
+    loaded, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(loaded)
+    hints = [f.hint for f in check_models(loaded, results).findings
+             if f.code == "poisson-binary-variance"]  # fmt: skip
+    assert len(hints) == 1 and "glm(family = binomial(link = 'log'))" in hints[0]
+    assert "sandwich::vcovHC" in hints[0]
 
 
 def test_rows_of_one_unit_taken_as_independent_are_a_warning(project: Path) -> None:
@@ -4726,6 +5024,153 @@ def test_an_entry_complete_in_either_format_needs_no_other_field(fields: dict) -
     assert problems("k", fields) == []
 
 
+@pytest.mark.parametrize(
+    "doi",
+    [
+        "https://www.doi.org/10.1016/j.example.2021.01.001",
+        "doi.org/10.1016/j.example.2021.01.001",
+        "dx.doi.org/10.1016/j.example.2021.01.001",
+        "DOI 10.1016/j.example.2021.01.001",
+        "DOI: 10.1016/j.example.2021.01.001",
+    ],
+)
+def test_a_doi_written_with_a_resolver_or_its_scheme_is_read(project: Path, doi: str) -> None:
+    """Round 1 of #249: these were reported malformed. Zotero stores a bare DOI, and a
+    reference typed by hand or pasted from a page is often written so."""
+    _bib_field(project, "doi", doi)
+    assert _bib_findings(project) == []
+
+
+@pytest.mark.parametrize(
+    "isbn",
+    [
+        "ISBN 13: 978-0-306-40615-7",
+        "e-ISBN 978-0-306-40615-7",
+        "eISBN: 978 0 306 40615 7",
+        "978-0-306-40615-7 pbk.",
+        "0-306-40615-2 Hardcover; 978-0-306-40615-7 paperback",
+    ],
+)
+def test_an_isbn_labelled_or_qualified_without_brackets_is_read(isbn: str) -> None:
+    """Round 2 of #249: each label and qualifier stuck to the ISBN beside it, and a valid
+    ISBN was reported."""
+    from manuscript_guard.gates.identifiers import problems
+
+    assert problems("k", {"type": "misc", "isbn": isbn}) == []
+
+
+def test_an_isbn_10_opening_978_before_another_word_is_pinned() -> None:
+    """Known gaps (round 2 of #249): a valid ISBN-10 that opens with 978, followed by a
+    word that is no label or qualifier, is read as the start of an ISBN-13 and reported."""
+    from manuscript_guard.gates.identifiers import problems
+
+    assert problems("k", {"type": "misc", "isbn": "9781234563"}) == []
+    assert problems("k", {"type": "misc", "isbn": "9781234563 pbk."}) == []
+    found = problems("k", {"type": "misc", "isbn": "9781234563 reprint"})
+    assert [code for code, _said in found] == ["identifier-malformed"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        # Round 1 of #345: a field of qualifiers alone holds no ISBN, and was emptied.
+        ("isbn", "online"),
+        ("isbn", "(print)"),
+        # A scheme that lost its colon is no dressing to take off.
+        ("doi", "doi10.1000/x"),
+    ],
+)
+def test_what_is_set_aside_beside_an_identifier_is_no_identifier(field: str, value: str) -> None:
+    from manuscript_guard.gates.identifiers import problems
+
+    found = problems("k", {"type": "misc", field: value})
+    assert [code for code, _said in found] == ["identifier-malformed"], found
+
+
+def test_an_isbn_written_in_brackets_alone_is_left_as_it_was() -> None:
+    """Round 2 of #345: a bracketed group is set aside as a qualifier, so an ISBN written in
+    brackets alone left the field empty, and "holds no ISBN" refused a valid one."""
+    from manuscript_guard.gates.identifiers import problems
+
+    assert problems("k", {"type": "misc", "isbn": "(978-0-306-40615-7)"}) == []
+    # Round 3: read there, with its check digit; and a digit in a label or in words in
+    # brackets is no ISBN.
+    for field in ("(978-0-306-40615-8)", "ISBN-13:", "(2nd ed., 1999)"):
+        found = problems("k", {"type": "misc", "isbn": field})
+        assert [code for code, _said in found] == ["identifier-malformed"], field
+
+
+def test_a_volume_of_its_word_alone_stays_a_volume() -> None:
+    """Round 1 of #345: "V." (five) became no volume, and the book merged with the one
+    cited with none. Round 2: "Volume" lost its "Vol", and "Vol." became "."."""
+    from manuscript_guard.gates.duplicates import _volume, identifiers_of
+
+    def named(volume: str | None) -> set:
+        fields = {"type": "book", "isbn": "0-306-40615-2"}
+        return identifiers_of({**fields, "volume": volume} if volume else fields)
+
+    assert named("V.") != named(None) and named("Volume") != named(None)
+    assert named("Vol. 1") == named("1") == named("v. 1") == named("Volume 1")
+    assert [_volume(v) for v in ("Volume", "Vol.", "V.", "Vol.2")] == ["volume", "vol.", "v.", "2"]
+    # Round 3: a word with a digit straight after it.
+    assert named("Vol1") == named("1")
+
+
+def test_a_part_takes_from_its_crossref_all_but_the_title() -> None:
+    """Round 1 of #345: every field of the parent was taken under its own name, so a paper
+    with no title of its own met "needs its title" with the proceedings' name. Round 2: a
+    chapter takes its book's author, as biber gives it."""
+    from manuscript_guard.gates.identifiers import problems
+
+    parent = {"type": "proceedings", "title": "The meeting", "year": "2020",
+              "editor": "Somebody"}  # fmt: skip
+    found = problems("k", {"type": "inproceedings", "author": "A", "crossref": "p"}, parent)
+    assert [said for _code, said in found] == [
+        "@k: an @inproceedings entry needs its title, and has none",
+    ]
+    book = {"type": "book", "author": "Kant, I.", "title": "Werke", "year": "1900"}
+    assert problems("c", {"type": "inbook", "title": "Kritik", "crossref": "b"}, book) == []
+    # Round 3: a periodical's title is the article's journal, and a multi-volume work's is
+    # no booktitle.
+    article = {"type": "article", "author": "A", "title": "T", "year": "2000", "crossref": "j"}
+    assert problems("a", article, {"type": "periodical", "title": "J"}) == []
+    chapter = {"type": "incollection", "author": "A", "title": "T", "year": "2000"}
+    found = problems("a", chapter, {"type": "mvcollection", "title": "J"})
+    assert [said for _code, said in found] == [
+        "@a: an @incollection entry needs its booktitle, and has none"
+    ]
+
+
+def test_a_part_takes_its_book_s_fields_from_its_crossref(project: Path) -> None:
+    """Round 1 of #249: a hand-written `@inproceedings` that takes its booktitle from the
+    `@proceedings` its `crossref` names was told it had none. The key is matched exactly, as
+    biber matches it (round 1 of #345)."""
+    bib = project / "literature" / "references.bib"
+    bib.write_text(
+        bib.read_text(encoding="utf-8")
+        + "\n@inproceedings{part2020,\n  author = {A},\n  title = {A paper},\n"
+        "  crossref = {proc2020},\n}\n\n@proceedings{proc2020,\n  title = {The meeting},\n"
+        "  year = {2020},\n}\n\n@inproceedings{orphan2020,\n  author = {B},\n"
+        "  title = {Another paper},\n  crossref = {Proc2020},\n  year = {2020},\n}\n",
+        encoding="utf-8",
+    )
+    assert [message for _code, message in _bib_findings(project)] == [
+        "@orphan2020: an @inproceedings entry needs its booktitle, and has none"
+    ]
+
+
+def test_a_field_named_type_leaves_the_entry_s_type(tmp_path: Path) -> None:
+    """Round 2 of #261: `type = {chapter}` took the place of `@inbook`, and the entry was
+    read as a type nothing requires anything of."""
+    from manuscript_guard.literature.bibfile import read_entries
+
+    bib = tmp_path / "references.bib"
+    bib.write_text("@inbook{k,\n  type = {Chapter},\n  author = {A},\n}\n", encoding="utf-8")
+    assert read_entries(bib)["k"]["type"] == "inbook"
+    # Round 1 of #345: the field is kept beside it, for the readers that want it.
+    assert read_entries(bib)["k"]["type_field"] == "Chapter"
+
+
 # One work cited under two keys: the reference list prints it twice.
 
 
@@ -4760,8 +5205,14 @@ def _duplicate_findings(root: Path) -> list[tuple[str, str, str]]:
         ({"pmid": "31000001"}, {"pmid": "031000001"}, "PMID"),
         ({"pmcid": "PMC1234"}, {"pmcid": "pmc1234"}, "PMCID"),
         ({"isbn": "0-306-40615-2"}, {"isbn": "978-0-306-40615-7"}, "ISBN"),
+        # Round 2 of #261: one volume written with its word and without.
+        ({"isbn": "0-306-40615-2", "volume": "1"},
+         {"isbn": "978-0-306-40615-7", "volume": "Vol. 1"}, "ISBN"),
+        # Round 1 of #249: a resolver with `www.`, and a scheme with no colon.
+        ({"doi": "10.5555/x.1"}, {"doi": "https://www.doi.org/10.5555/x.1"}, "DOI"),
+        ({"doi": "10.5555/x.1"}, {"doi": "DOI 10.5555/X.1"}, "DOI"),
     ],
-)
+)  # fmt: skip
 def test_one_work_cited_under_two_keys_fails(
     project: Path, first: dict, second: dict, named: str
 ) -> None:

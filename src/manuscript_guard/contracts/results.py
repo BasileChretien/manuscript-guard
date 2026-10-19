@@ -273,8 +273,11 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
         reports.append(_read_cards(document, path, variables, models))
         reports.append(_read_steps(document, path, steps))
         relations += [{**relation, "source": path} for relation in document.get("relations", ())]
-        flows.update({key: {**flow, "source": path}
-                      for key, flow in (document.get("flows") or {}).items()})  # fmt: skip
+        # A flow two fragments record is the first's, as its counts are: `duplicate-key` says
+        # so of the second's values (round 1 of #293, where the second record was checked
+        # against the first's counts).
+        for key, flow in (document.get("flows") or {}).items():
+            flows.setdefault(key, {**flow, "source": path})
 
     models_report, values, tables = _models_into(
         models, variables, values, tables

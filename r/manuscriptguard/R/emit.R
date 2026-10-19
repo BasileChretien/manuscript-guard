@@ -560,7 +560,15 @@ mg_fit_units <- function(fit, unit) {
          call. = FALSE)
   }
   data <- as.data.frame(data)
-  values <- data[rownames(stats::model.frame(fit)), unit, drop = TRUE]
+  # Matched exactly: `[` takes a row name by its start where nothing equals it, so an lm's
+  # data changed after the fit gave another row's unit, or a missing one (round 2 of #268).
+  at <- match(rownames(stats::model.frame(fit)), rownames(data))
+  if (anyNA(at)) {
+    stop("model: ", sum(is.na(at)), " of the rows the model used are not in the data its ",
+         "call names, which has changed since the fit; emit the model before changing its ",
+         "data", call. = FALSE)
+  }
+  values <- data[at, unit, drop = TRUE]
   if (anyNA(values)) {
     stop("model: unit ", unit, " is missing in ", sum(is.na(values)), " of the rows the ",
          "model used, so how many units they hold cannot be counted", call. = FALSE)
@@ -645,7 +653,10 @@ mg_read_fit <- function(fit, unit = NULL) {
     rows_sha256 = digest::digest(paste(rownames(stats::model.frame(fit)), collapse = "\n"),
                                  algo = "sha256", serialize = FALSE)
   )
-  if (!is.null(stats::model.offset(stats::model.frame(fit)))) card$offset <- TRUE
+  # An offset in the formula or given as `offset =`, where it differs between rows: a constant
+  # one is the intercept's and makes no rate, as in Python (round 2 of #289).
+  offset <- stats::model.offset(stats::model.frame(fit))
+  if (!is.null(offset) && length(unique(offset)) > 1) card$offset <- TRUE
   if (!is.null(unit)) card$unit <- mg_fit_units(fit, unit)
   if (!is.null(counted)) {
     card$events <- as.integer(sum(counted$rows))
@@ -813,7 +824,9 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
            call. = FALSE)
     }
     entry <- list(method = method)
-    if (!is.null(reason)) entry$reason <- reason
+    # An empty reason is left out, as Python leaves it, since the schema refuses one (round
+    # 1 of #267).
+    if (!is.null(reason) && nzchar(reason)) entry$reason <- reason
     state$corrections[[family]] <- entry
     invisible(NULL)
   }
@@ -1212,7 +1225,17 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       stop("relation '", key, "': the kinds are ", paste(names(arity), collapse = ", "),
            call. = FALSE)
     }
+    # as.character drops the names a named vector carries, so a named `of` is still an
+    # array of keys; and a key that is none of the results' is refused here, not at
+    # `write`, as the Python `relation()` refuses it (round 1 of #293).
     of <- as.character(of)
+    keys <- c(as.character(key), of)
+    bad <- keys[!grepl("^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$", keys)]
+    if (!is.character(key) || length(key) != 1L || length(bad) > 0L) {
+      stop("relation '", paste(key, collapse = ", "), "': '",
+           if (length(bad) > 0L) bad[[1]] else paste(key, collapse = ", "),
+           "' is no results key", call. = FALSE)
+    }
     expected <- arity[[kind]]
     if (expected > 0L && length(of) != expected) {
       stop("relation '", key, "': a ", kind, " is of ", expected, " key(s), not ", length(of),
@@ -1228,8 +1251,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
                              scale > 0)) {
       stop("relation '", key, "': a ratio's scale is a positive number", call. = FALSE)
     }
-    # unname: a named vector, as sapply returns, would be written as a JSON object.
-    entry <- list(kind = kind, key = key, of = as.list(unname(of)))
+    entry <- list(kind = kind, key = key, of = as.list(of))
     if (!is.null(scale)) entry$scale <- scale
     state$relations[[length(state$relations) + 1L]] <- entry
     invisible(NULL)

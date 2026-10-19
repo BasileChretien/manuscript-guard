@@ -85,7 +85,9 @@ LAST_WORD = re.compile(r"([A-Za-z][A-Za-z.]*)\.$")
 #: BibTeX (`journal`, `year`); a co-author shown a reference with no journal and no year cannot
 #: tell whether it is right, which is the whole question being put to them.
 REFERENCE_FIELDS = (
-    ("Kind of record", ("type",)),
+    # The `type` field where the entry has one, "phdthesis" of a `@thesis`, as it was shown
+    # before the reader kept the two apart (round 1 of #345).
+    ("Kind of record", ("type_field", "type")),
     ("Authors", ("author", "editor")),
     ("Title", ("title",)),
     ("Journal", ("journaltitle", "journal", "booktitle", "institution", "organization")),

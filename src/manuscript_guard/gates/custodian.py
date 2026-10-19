@@ -21,7 +21,11 @@ is a copy of it outside them.
 
 from __future__ import annotations
 
+import math
+import os
+import re
 import subprocess
+from decimal import Decimal
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_text
@@ -68,24 +72,47 @@ def check_small_cells(project: Project, results: Results) -> Report:
             if placeholder.namespace != "results" or placeholder.key in said:
                 continue
             value = results.values.get(placeholder.key)
-            if value is None or not is_count(value) or not 0 < _printed(value.display) < minimum:
+            wrong = None if value is None or not is_count(value) else _small(value, minimum)
+            if wrong is None:
                 continue
             said.add(placeholder.key)
             report = report.with_findings(
                 Finding(
                     gate="G2",
                     code="count-below-minimum",
-                    message=f"results.{placeholder.key} is {value.display}, a count below "
-                    f"the data custodian's minimum of {minimum}",
+                    message=f"results.{placeholder.key} is {value.display}, {wrong} the data "
+                    f"custodian's minimum of {minimum}",
                     path=path,
                     line=placeholder.line,
-                    hint="report it as fewer than the minimum with a display such as \"<5\", "
-                    "or merge the category with "
-                    "another, in the analysis; a number that is no count of people is "
-                    "emitted with its unit",
+                    hint=f"report it as fewer than the minimum, \"<{minimum}\", or merge the "
+                    "category with another, in the analysis; a number that is no count of "
+                    "people is emitted with its unit",
                 )
             )
     return report
+
+
+#: A count held back behind a comparator: "<5", "< 5", "≤4", "<=4".
+#: A bound with a decimal or words after it, as the emitter takes a display: "<2.0", "<2
+#: patients" (round 1 of #341).
+_HELD_BACK = re.compile(
+    r"\s*(?P<sign><=|<|\N{LESS-THAN OR EQUAL TO})\s*(?P<bound>\d+(?:\.\d+)?)(?![\d.])"
+    r"(?:\s*[^\W\d][^<>\N{LESS-THAN OR EQUAL TO}]*)?\s*"
+)
+
+
+def _small(value, minimum: int) -> str | None:
+    """What is wrong with how a count's display prints it, or None. A comparator hides the
+    count only where every count it allows is one the custodian forbids or nought: "<2" and
+    "≤3" under a minimum of 5 still say the count is one, or at most three (round 3 of
+    #275)."""
+    held = _HELD_BACK.fullmatch(value.display)
+    if held is None:
+        return "a count below" if 0 < _printed(value.display) < minimum else None
+    bound = Decimal(held["bound"])
+    # The largest whole count it allows: below a bound, the whole number under it.
+    largest = math.ceil(bound) - 1 if held["sign"] == "<" else math.floor(bound)
+    return "a bound tighter than" if 1 <= largest < minimum - 1 else None
 
 
 def _printed(display: str) -> float:
@@ -131,21 +158,33 @@ def check_restricted_inputs(project: Project, results: Results) -> Report:
 
 
 def _tracked(root: Path, relative: str) -> bool | None:
-    """Whether git tracks `relative` under `root`; False outside a repository, None where
-    git could not be asked."""
+    """Whether git tracks `relative` under `root`; False outside a repository or outside
+    its work tree, None where git could not be asked. The path is matched as written, not
+    as a pattern ("data[1].csv" is not "data1.csv"), and whatever its case where git itself
+    ignores case; git is asked in English, whose words are read (round 1 of #275)."""
     try:
-        finished = subprocess.run(
-            ["git", "-c", "core.fsmonitor=false", "ls-files", "--error-unmatch", "--", relative],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            timeout=GIT_SECONDS,
-            check=False,
-        )
+        ignorecase = _git(root, "config", "--bool", "core.ignorecase").stdout.strip() == "true"
+        magic = "literal,icase" if ignorecase else "literal"
+        finished = _git(root, "ls-files", "-z", "--", f":({magic}){relative}")
     except (OSError, subprocess.TimeoutExpired):
         return None
     if finished.returncode == 0:
-        return True
-    if "not a git repository" in finished.stderr.lower():
-        return False
-    return False if "did not match any file" in finished.stderr else None
+        return bool(finished.stdout.strip("\0"))
+    said = finished.stderr.lower()
+    return False if "not a git repository" in said or "outside repository" in said else None
+
+
+def _git(root: Path, *arguments: str) -> subprocess.CompletedProcess:
+    """git, its output read as UTF-8: `ls-files -z` writes a name unquoted, "データ.csv"
+    as its UTF-8 bytes, which the locale's code page cannot read (round 1 of #341, as
+    `impact` found under cp932 in round 1 of #280)."""
+    return subprocess.run(
+        ["git", "-c", "core.fsmonitor=false", *arguments],
+        cwd=root,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=GIT_SECONDS,
+        check=False,
+        env={**os.environ, "LC_ALL": "C", "LANGUAGE": "C"},
+    )

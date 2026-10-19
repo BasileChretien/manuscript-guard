@@ -56,10 +56,12 @@ DATA = Path(__file__).parent.parent / "data" / "ai_writing.yaml"
 # How far either side of a claim a supporting citation may sit.
 CITATION_WINDOW = 240
 BIB_FILE = "references.bib"
-#: Fields of a reference that no reference list prints, or that are the type of the entry.
+#: Fields of a reference that no reference list prints, or that are the type of the entry: its
+#: kind, and a field named `type`, which the reader keeps under `type_field` and which was
+#: never read here (round 2 of #345).
 UNPRINTED = frozenset(
     {"abstract", "annotation", "annote", "comment", "file", "keywords", "langid", "language",
-     "mendeley-tags", "type", "urldate"}
+     "mendeley-tags", "type", "type_field", "urldate"}
 )  # fmt: skip
 
 
@@ -88,24 +90,9 @@ def load_rules() -> Rules:
 
 def check_writing(project: Project, results: Results | None = None) -> Report:
     rules = load_rules()
-    report = Report()
-    totals = {"words": 0, "artefacts": 0, "phrases": 0, "vague": 0}
-    corpus: list[tuple[Path, str, str]] = []
-
-    for path in source_files(project.path("manuscript")):
-        text = read_text(path)
-        # Prose only: citations, code and bindings are not the author's cadence.
-        prose = mask(text).replace("\x00", " ")
-        corpus.append((path, text, prose))
-        totals["words"] += count_words(text)
-
-    for path, text, prose in corpus:
-        report = report.merge(_artefacts(rules, path, text, totals))
-        report = report.merge(_phrases(rules, path, text, prose, totals))
-        report = report.merge(_vague(rules, path, text, prose, totals))
-
-    report = report.merge(_density(rules, corpus, totals["words"]))
-    elsewhere = _elsewhere(project, results, [text for _path, text, _prose in corpus])
+    corpus = [(path, read_text(path)) for path in source_files(project.path("manuscript"))]
+    report, totals = judge_texts(corpus, rules)
+    elsewhere = _elsewhere(project, results, [text for _path, text in corpus])
     for where in elsewhere:
         report = report.merge(_artefacts_elsewhere(rules, where, totals))
 
@@ -116,6 +103,43 @@ def check_writing(project: Project, results: Results | None = None) -> Report:
         writing_vague=totals["vague"],
         writing_texts_elsewhere=len(elsewhere),
     )
+
+
+def _prose(corpus: list[tuple[Path, str]]) -> list[tuple[Path, str, str]]:
+    """Each text with its prose: citations, code and bindings are not the author's cadence."""
+    return [(path, text, mask(text).replace("\x00", " ")) for path, text in corpus]
+
+
+def judge_texts(
+    corpus: list[tuple[Path, str]], rules: Rules | None = None
+) -> tuple[Report, dict[str, int]]:
+    """What G6 says of manuscript texts on their own, and its totals: the artefacts, phrases,
+    vague attributions and rates of `check_writing`, without the figures, captions and cited
+    fields it also reads. `tools/g6_baseline.py` judges papers written by people with it."""
+    rules = rules or load_rules()
+    report = Report()
+    totals = {"words": 0, "artefacts": 0, "phrases": 0, "vague": 0}
+    read = _prose(corpus)
+    totals["words"] = sum(count_words(text) for _path, text, _prose in read)
+    for path, text, prose in read:
+        report = report.merge(_artefacts(rules, path, text, totals))
+        report = report.merge(_phrases(rules, path, text, prose, totals))
+        report = report.merge(_vague(rules, path, text, prose, totals))
+    return report.merge(_density(rules, read, totals["words"])), totals
+
+
+def rates(corpus: list[tuple[Path, str]], rules: Rules | None = None) -> dict[str, float]:
+    """Each rate rule's occurrences per 1000 words over the texts together, whatever its
+    threshold: the number `_density` holds to `per_1000`. Empty under 200 words, where G6
+    holds no rate."""
+    rules = rules or load_rules()
+    read = _prose(corpus)
+    words = sum(count_words(text) for _path, text, _prose in read)
+    if words < 200:
+        return {}
+    joined = "\n".join(prose for _path, _text, prose in read)
+    return {rule["id"]: 1000 * len(_hits(rule, joined)) / words
+            for rule in (*rules.density, *rules.structure)}  # fmt: skip
 
 
 def _line_of(text: str, match: re.Match[str]) -> int:
@@ -309,27 +333,9 @@ def _density(rules: Rules, corpus: list[tuple[Path, str, str]], words: int) -> R
     joined = "\n".join(prose for _path, _text, prose in corpus)
     checked = 0
 
-    for rule in rules.density:
+    for rule in (*rules.density, *rules.structure):
         checked += 1
-        # Exemptions apply to both kinds of rule: a technical sense of a flagged word, and
-        # a legitimate structural use of a flagged construction.
-        spans = [
-            span
-            for expression in rule.get("exempt", [])
-            for span in _spans(re.compile(expression), joined)
-        ]
-        if "terms" in rule:
-            pattern = re.compile(
-                r"(?i)\b(?:" + "|".join(re.escape(t) for t in rule["terms"]) + r")\b"
-            )
-        else:
-            pattern = re.compile(rule["pattern"])
-        hits = [
-            m
-            for m in pattern.finditer(joined)
-            if not any(start <= m.start() < end for start, end in spans)
-        ]
-
+        hits = _hits(rule, joined)
         rate = 1000 * len(hits) / words
         if rate <= rule["per_1000"]:
             continue
@@ -348,29 +354,28 @@ def _density(rules: Rules, corpus: list[tuple[Path, str, str]], words: int) -> R
             )
         )
 
-    for rule in rules.structure:
-        checked += 1
-        pattern = re.compile(
-            r"(?i)\b(?:" + "|".join(re.escape(v) for v in rule["verbs"]) + r")\b"
-        )
-        hits = list(pattern.finditer(joined))
-        rate = 1000 * len(hits) / words
-        if rate > rule["per_1000"]:
-            report = report.with_findings(
-                Finding(
-                    gate=GATE,
-                    code="ai-cadence",
-                    severity=WARN,
-                    message=(
-                        f"{rule['id']}: {len(hits)} in {words} words "
-                        f"({rate:.1f} per 1000, threshold {rule['per_1000']})"
-                    ),
-                    context=", ".join(sorted({h.group(0).lower() for h in hits})[:8]),
-                    hint=rule["why"].strip(),
-                )
-            )
-
     return report.with_counts(density_checked=checked)
+
+
+def _hits(rule: dict, joined: str) -> list[re.Match[str]]:
+    """A rate rule's occurrences in the prose: its terms, its pattern or its verbs, less
+    those inside an exemption. Exemptions apply to every kind of rule: a technical sense of
+    a flagged word, and a legitimate structural use of a flagged construction."""
+    spans = [
+        span
+        for expression in rule.get("exempt", [])
+        for span in _spans(re.compile(expression), joined)
+    ]
+    if "terms" in rule or "verbs" in rule:
+        words = rule.get("terms") or rule["verbs"]
+        pattern = re.compile(r"(?i)\b(?:" + "|".join(re.escape(w) for w in words) + r")\b")
+    else:
+        pattern = re.compile(rule["pattern"])
+    return [
+        m
+        for m in pattern.finditer(joined)
+        if not any(start <= m.start() < end for start, end in spans)
+    ]
 
 
 def _spans(pattern: re.Pattern[str], text: str) -> list[tuple[int, int]]:

@@ -3,8 +3,9 @@
 What can be known of `references.bib` without asking anyone: whether a DOI has the shape of
 one, a PMID is digits, a PMCID is "PMC" and digits, an ISBN's check digit is right, an arXiv
 identifier has one of its two forms, and whether an entry has the fields its type needs to be
-printed (an article its journal, a book its publisher). It runs in CI, needs no network and
-reads the committed file, so it means the same on every machine.
+printed (an article its journal, a thesis its school), or takes them from the entry its
+`crossref` names. It runs in CI, needs no network and reads the committed file, so it means
+the same on every machine.
 
 Whether a well-formed DOI is registered, names the work the entry describes, or has been
 retracted is another question, for a lookup that records what it found.
@@ -24,8 +25,13 @@ BIB_FILE = "references.bib"
 #: A DOI as Crossref and DataCite issue them: the directory "10.", a registrant code of
 #: four to nine digits (dotted subcodes allowed), a slash, and a suffix with no space.
 _DOI = re.compile(r"10\.\d{4,9}(?:\.\d+)*/\S+")
-#: What a DOI is often written with: a scheme, a resolver, a trailing stop.
-_DOI_DRESSING = re.compile(r"^(?:doi:\s*|https?://(?:dx\.)?doi\.org/)", re.IGNORECASE)
+#: What a DOI is often written with: a scheme, with its colon or a space after it, a
+#: resolver, with its scheme or without and with `www.` or `dx.` (round 1 of #249), a
+#: trailing stop. The resolver is tried first, so that the "doi" of "doi.org/" is not taken
+#: for the scheme; "doi10." has lost its colon and is left as it is (round 1 of #345).
+_DOI_DRESSING = re.compile(
+    r"^(?:(?:https?://)?(?:www\.|dx\.)?doi\.org/|doi(?:\s*:\s*|\s+))", re.IGNORECASE
+)
 _PMID = re.compile(r"\d{1,9}")
 _PMCID = re.compile(r"PMC\d{1,9}", re.IGNORECASE)
 #: arXiv's two forms: "2101.01234v2" since 2007, "hep-th/9901001" before.
@@ -35,7 +41,9 @@ _ARXIV = re.compile(r"(?:\d{4}\.\d{4,5}|[a-z][a-z.-]*(?:\.[A-Z]{2})?/\d{7})(?:v\
 #: BibTeX's standard styles require (btxdoc, "Entry Types") and BibLaTeX's also require (its
 #: manual, section 2.1.1), under either's name. `sync-bib` writes BibLaTeX, and BibLaTeX asks
 #: no publisher of a book or a collection's chapter and no note of an unpublished work, so
-#: those are not required here. Each tuple is one field, any of whose names will do.
+#: those are not required here. Each tuple is one field, any of whose names will do. A book
+#: or a part of one with editors and no author passes, as BibTeX has it, though BibLaTeX asks
+#: for an author (round 2 of #249).
 REQUIRED: dict[str, tuple[tuple[str, ...], ...]] = {
     "article": (("author",), ("title",), ("journal", "journaltitle"), ("year", "date")),
     "book": (("author", "editor"), ("title",), ("year", "date")),
@@ -86,8 +94,16 @@ def pmid_of(fields: dict[str, str]) -> str | None:
     return pmid if pmid and _PMID.fullmatch(pmid) else None
 
 
-#: What an ISBN field holds beside its numbers: a label, and a qualifier in brackets.
-_ISBN_ASIDE = re.compile(r"\bISBN(?:-?1[03])?\s*:?|\([^()]*\)", re.IGNORECASE)
+#: What an ISBN field holds beside its numbers: a label, "ISBN-13", "ISBN 13:", "e-ISBN" or
+#: "eISBN"; a qualifier in brackets; and the qualifiers written without them, "pbk." (round 2
+#: of #249: each stuck to the ISBN beside it). A "10" or "13" after the label is the label's
+#: only where no digit follows it, so an ISBN-10 that opens "13" keeps them.
+_ISBN_ASIDE = re.compile(
+    r"\b(?:e-?)?ISBN(?:[-\s]?1[03](?!\d))?\s*:?|\([^()]*\)"
+    r"|\b(?:pbk|hbk|paperback|hardback|hardcover|softcover|cloth|print|online|electronic"
+    r"|e-?book)\b\.?",
+    re.IGNORECASE,
+)
 
 
 def _isbn_length(written: str) -> int:
@@ -117,8 +133,11 @@ def _isbns(field: str) -> list[str]:
     return found
 
 
-def problems(key: str, fields: dict[str, str]) -> list[tuple[str, str]]:
-    """What is wrong with one entry: each as a code and a sentence."""
+def problems(
+    key: str, fields: dict[str, str], parent: dict[str, str] | None = None
+) -> list[tuple[str, str]]:
+    """What is wrong with one entry: each as a code and a sentence. `parent` is the entry its
+    `crossref` names, whose fields it takes where it gives none of its own."""
     found: list[tuple[str, str]] = []
 
     def malformed(kind: str, value: str, why: str) -> None:
@@ -142,13 +161,26 @@ def problems(key: str, fields: dict[str, str]) -> list[tuple[str, str]]:
     if arxiv and not _ARXIV.fullmatch(re.sub(r"(?i)^arxiv:", "", arxiv)):
         malformed("arXiv identifier", arxiv, 'has neither of its forms, "2101.01234" or '
                   '"hep-th/9901001"')  # fmt: skip
-    for isbn in _isbns(fields.get("isbn", "")):
+    isbns = _isbns(fields.get("isbn", ""))
+    for isbn in isbns:
         if not isbn_valid(isbn):
             malformed("ISBN", isbn.strip(), "has a check digit that does not add up")
+    # A field of labels and qualifiers alone, "online", holds none (round 1 of #345). An ISBN
+    # written in brackets is set aside with them, and is read there (round 2).
+    written = fields.get("isbn", "").strip()
+    bracketed = [re.sub(r"[\s-]", "", inner).upper() for inner in re.findall(r"\(([^()]*)\)",
+                                                                              written)]
+    in_brackets = [b for b in bracketed if re.fullmatch(r"\d{9}[\dX]|\d{13}", b)]
+    for isbn in in_brackets:
+        if not isbn_valid(isbn):
+            malformed("ISBN", isbn, "has a check digit that does not add up")
+    if written and not any(isbn.strip() for isbn in isbns) and not in_brackets:
+        malformed("ISBN", written, "holds no ISBN, only what is written beside one")
 
     kind = fields.get("type", "").lower()
+    given = {**inherited(parent), **{name: v for name, v in fields.items() if v.strip()}}
     for names in REQUIRED.get(kind, ()):
-        if not any(fields.get(name, "").strip() for name in names):
+        if not any(given.get(name, "").strip() for name in names):
             found.append(
                 (
                     "reference-field-missing",
@@ -159,6 +191,48 @@ def problems(key: str, fields: dict[str, str]) -> list[tuple[str, str]]:
     return found
 
 
+#: What a part does not take from the work that holds it: the parent's title, which becomes
+#: the part's `booktitle` and is not its title (round 1 of #345: a paper with no title of
+#: its own took the proceedings' name for one), and what names the parent's own entry.
+NOT_INHERITED = (
+    "title", "subtitle", "titleaddon", "shorttitle", "type", "type_field", "crossref", "xref",
+    "ids", "entryset", "label", "shorthand", "sortkey",
+)  # fmt: skip
+
+
+#: Where biber puts a parent's title, by the parent's type (BibLaTeX's manual, appendix B):
+#: a book's, a collection's, proceedings' or a reference work's is the part's `booktitle`, a
+#: periodical's the article's `journaltitle`, a multi-volume work's `maintitle`, which no
+#: type requires (round 3 of #345).
+TITLE_GOES_TO = {
+    "book": "booktitle", "collection": "booktitle", "proceedings": "booktitle",
+    "reference": "booktitle", "periodical": "journaltitle",
+}  # fmt: skip
+
+
+def inherited(parent: dict[str, str] | None) -> dict[str, str]:
+    """What an entry takes from the one its `crossref` names: every field it lacks but the
+    title, as biber inherits it (BibLaTeX's manual, appendix B), the author of a book given
+    to its chapter (round 2 of #345); and the parent's title where biber puts it, a book's as
+    the part's `booktitle`, which BibTeX's parent writes itself (round 1 of #249: a
+    hand-written `@inproceedings` was told it had no booktitle)."""
+    if not parent:
+        return {}
+    fields = {name: value for name, value in parent.items() if name not in NOT_INHERITED}
+    goes_to = TITLE_GOES_TO.get(parent.get("type", "").lower())
+    if goes_to and parent.get("title", "").strip() and not fields.get(goes_to, "").strip():
+        fields[goes_to] = parent["title"]
+    return fields
+
+
+def parent_of(fields: dict[str, str], entries: dict[str, dict[str, str]]) -> dict | None:
+    """The entry `fields` names in its `crossref`, matched exactly, as biber matches keys
+    (round 1 of #345: a key in other capitals was taken for it, and the build does not).
+    None where it names none, or one the file does not hold."""
+    named = fields.get("crossref", "").strip()
+    return entries.get(named) if named else None
+
+
 def check_identifiers(project: Project) -> Report:
     """Every entry of the committed `references.bib`, cited or not."""
     path = project.path("literature") / BIB_FILE
@@ -167,7 +241,7 @@ def check_identifiers(project: Project) -> Report:
     entries = read_entries(path)
     report = Report()
     for key, fields in sorted(entries.items()):
-        for code, message in problems(key, fields):
+        for code, message in problems(key, fields, parent_of(fields, entries)):
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -192,8 +266,10 @@ __all__ = [
     "REQUIRED",
     "check_identifiers",
     "doi_of",
+    "inherited",
     "isbn_valid",
     "normal_doi",
+    "parent_of",
     "pmid_of",
     "problems",
 ]

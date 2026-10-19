@@ -1169,9 +1169,18 @@ def test_a_card_records_an_offset_or_an_exposure(scratch: Path) -> None:
     em.model("exposure", smf.glm("event ~ x", data, family=poisson,
                                  exposure=data["time"]).fit(), name="Exposure")  # fmt: skip
     em.model("risk", smf.glm("event ~ x", data, family=poisson).fit(), name="Risk")
+    # Round 2 of #289: the discrete Poisson model takes an offset too; and a constant offset
+    # or exposure is the intercept's, which makes no rate.
+    em.model("discrete", smf.poisson("event ~ x", data, offset=np.log(data["time"]))
+             .fit(disp=0), name="Discrete")  # fmt: skip
+    em.model("nought", smf.glm("event ~ x", data, family=poisson,
+                               offset=np.zeros(len(data))).fit(), name="Nought")  # fmt: skip
+    constant = smf.glm("event ~ x", data, family=poisson, exposure=np.full(len(data), 2.0))
+    em.model("constant", constant.fit(), name="Constant")
     models = em.document()["models"]
     assert models["rate"]["offset"] is True and models["exposure"]["offset"] is True
-    assert "offset" not in models["risk"]
+    assert models["discrete"]["offset"] is True
+    assert not {"risk", "nought", "constant"} & {k for k, m in models.items() if "offset" in m}
 
 
 def test_a_card_records_the_rows_its_fit_used(scratch: Path) -> None:
@@ -1190,3 +1199,19 @@ def test_a_card_records_the_rows_its_fit_used(scratch: Path) -> None:
     models = em.document()["models"]
     assert models["crude"]["rows_sha256"] == rows_digest(["10", "11", "12", "13", "14", "15"])
     assert models["adjusted"]["rows_sha256"] == rows_digest(["10", "11", "13", "14", "15"])
+
+
+def test_rows_that_share_a_label_are_not_told_apart(scratch: Path) -> None:
+    """Known gaps (round 1 of #289): the digest is of the labels, so where two rows share
+    one, a fit without the first and a fit without the second record the same rows."""
+    pd = pytest.importorskip("pandas")
+    smf = pytest.importorskip("statsmodels.formula.api")
+
+    rows = {"y": [1.0, 2.0, 3.0, 4.0, 5.0, 7.0], "x": [1.0, 2.0, 3.0, 4.0, 6.0, 5.0]}
+    first = pd.DataFrame({**rows, "z": [None, 1.0, 0.0, 1.0, 0.0, 1.0]}, index=[0, 0, 1, 1, 2, 2])
+    second = pd.DataFrame({**rows, "z": [0.0, None, 0.0, 1.0, 0.0, 1.0]}, index=[0, 0, 1, 1, 2, 2])
+    em = emitter(scratch)
+    em.model("first", smf.ols("y ~ x + z", first).fit(), name="First")
+    em.model("second", smf.ols("y ~ x + z", second).fit(), name="Second")
+    models = em.document()["models"]
+    assert models["first"]["rows_sha256"] == models["second"]["rows_sha256"]

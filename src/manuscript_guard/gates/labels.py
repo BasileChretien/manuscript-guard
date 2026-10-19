@@ -65,13 +65,13 @@ def labelled(files: list[tuple[Path, str, list]], namespace: dict[str, Value]) -
     asked: set[str] = set()
     for path, text, located in files:
         read = blank_comments(text) if "<!--" in text else text
-        stops = _stops(read)
-        bindings = sorted(((p.start, p.end, p.ref, s) for p, s in located), key=lambda b: b[0])
-        for index, (start, end, ref, _sentence) in enumerate(bindings):
+        stops = sentence_stops(read)
+        bindings = sorted(((p.start, p.end, p.ref, p.line) for p, _s in located),
+                          key=lambda b: b[0])  # fmt: skip
+        for index, (_start, end, ref, line) in enumerate(bindings):
             value = namespace.get(ref)
             if value is None or not (value.bounds or value.spread):
                 continue
-            line = text.count("\n", 0, start) + 1
             before = _before(read, stops, bindings, index)
             if value.bounds and value.bound in ("low", "high"):
                 estimate = f"{value.namespace}.{value.bounds}"
@@ -93,9 +93,10 @@ def labelled(files: list[tuple[Path, str, list]], namespace: dict[str, Value]) -
     return report
 
 
-def _stops(read: str) -> list[int]:
+def sentence_stops(read: str) -> list[int]:
     """Where the sentences of `read` end: each stop and a space, but an abbreviation's where
-    the sentence goes on."""
+    the sentence goes on. G2's quotes read sentences so too, so that a P value after "s.e."
+    is in its estimate's sentence (round 2 of #327)."""
     return [
         match.start()
         for match in _SENTENCE_END.finditer(read)
@@ -110,15 +111,18 @@ def _before(read: str, stops: list[int], bindings: list, index: int) -> str:
     start = bindings[index][0]
     count = bisect_left(stops, start)
     opens = stops[count - 1] + 1 if count else 0
-    previous = [binding[1] for binding in bindings[:index] if binding[1] <= start]
-    return read[max([opens, *previous]) : start]
+    # The bindings are in order and apart, so the one before ends last (round 2 of #327:
+    # each binding looked at all the ones before it).
+    previous = bindings[index - 1][1] if index and bindings[index - 1][1] <= start else 0
+    return read[max(opens, previous) : start]
 
 
 def _after(read: str, stops: list[int], bindings: list, index: int, end: int) -> str:
     """The few characters after a binding, up to the next binding or the sentence's end."""
     following = bindings[index + 1][0] if index + 1 < len(bindings) else len(read)
     reach = min(following, end + _AFTER)
-    ending = next((stop for stop in stops if end <= stop < reach), reach)
+    at = bisect_left(stops, end)
+    ending = stops[at] if at < len(stops) and stops[at] < reach else reach
     return read[end:ending]
 
 

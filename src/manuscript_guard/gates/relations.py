@@ -40,6 +40,10 @@ GATE = "G8"
 TOLERANCE = 1e-9
 #: The first number in a display, with its thousands separators and its sign.
 _NUMBER = re.compile(r"[-\N{MINUS SIGN}]?\d[\d,]*(?:\.\d+)?")
+#: A bound before a display's number: "<0.001" prints no rounding of the value.
+_BOUND = re.compile(r"[<>\N{LESS-THAN OR EQUAL TO}\N{GREATER-THAN OR EQUAL TO}]|&[lg]t;")
+#: The share of a Decimal result its own arithmetic may leave wrong, at 28 digits.
+_LAST_DIGITS = Decimal("1e-20")
 _FLOW_HINT = (
     "a flow's counts come from one computation; find the step whose count is not the one "
     "that step produced"
@@ -106,6 +110,9 @@ def _takes(kind: str) -> str:
 
 
 def _equal(result: float, computed: float, exact: bool) -> bool:
+    """Equal, or within `TOLERANCE` of the result or of nought. Two values both within it of
+    nought are equal whatever the terms, a Known gap: a tolerance taken from the terms
+    instead let a wrong ratio pass, or a rounded difference, or failed a true one (#340)."""
     if exact:
         return result == computed
     return math.isclose(result, computed, rel_tol=TOLERANCE, abs_tol=TOLERANCE)
@@ -134,7 +141,9 @@ def _printed(
         computed = _apply(kind, [number for number, _half in parts], Decimal(str(scale)))
     except (InvalidOperation, DivisionByZero):
         return []
-    if computed is None or abs(computed - printed) <= half:
+    # Decimal arithmetic leaves a remainder in its last digits, 100 / 3 * 3 being
+    # 99.99...9: that is no rounding of the printed numbers (round 1 of #293).
+    if computed is None or abs(computed - printed) <= half + _LAST_DIGITS * abs(computed):
         return []
     printed_parts = ", ".join(values[name].display for name in of)
     return [
@@ -157,7 +166,7 @@ def _shown(value: Value) -> tuple[Decimal, Decimal] | None:
     "<0.001", or a value printed on another scale. A whole number printed whole is exact."""
     match = _NUMBER.search(value.display)
     number = _number(value.value)
-    if match is None or number is None:
+    if match is None or number is None or _BOUND.search(value.display, 0, match.start()):
         return None
     try:
         printed = Decimal(match.group(0).replace(",", "").replace("\N{MINUS SIGN}", "-"))

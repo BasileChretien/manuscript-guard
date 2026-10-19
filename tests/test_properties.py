@@ -87,6 +87,7 @@ from manuscript_guard.gates import quotations as quotations_gate
 from manuscript_guard.gates import reported as reported_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
+from manuscript_guard.gates import writing as writing_gate
 from manuscript_guard.gates.language import _file, _hidden
 from manuscript_guard.gates.notation import VALUE, _counted
 from manuscript_guard.gates.spelling import MANY, _prose, _variants, judge_spelling
@@ -598,6 +599,8 @@ _TOGETHER = (
     "{{results.or.ci_high}}; P = {{results.or.p}}), and {{results.female.n}} of "
     "{{results.cohort.n}} ({{results.female.pct}}%) were women."
 )
+#: A P value after "s.e.", in its estimate's sentence (round 2 of #327).
+_AFTER_SE = "Its ratio, {{results.or.point}} (s.e. 0.21), P = {{results.or.p}}."
 #: Each kind of statistic in a sentence of its own, without what it belongs to.
 _APART = ("Then P was {{results.hr.p}}.", "Men were {{results.male.pct}}%.")
 
@@ -607,7 +610,7 @@ def _quoted_apart(draw: st.DrawFn) -> str:
     """A text that quotes each kind of statistic with what it belongs to, and each again in
     a sentence without it: the planted sentences first, in an order drawn, so that nothing
     drawn after them can put them in a comment it left open."""
-    planted = draw(st.permutations([_TOGETHER, *_APART]))
+    planted = draw(st.permutations([_TOGETHER, _AFTER_SE, *_APART]))
     gaps = [draw(st.sampled_from((" ", "\n", "\n\n"))) for _ in planted[1:]]
     after = zip(gaps, planted[1:], strict=True)
     return planted[0] + "".join(gap + sentence for gap, sentence in after) + "\n\n" + draw(texts())
@@ -3797,6 +3800,19 @@ def _what_differs_is_looked_for_at_the_ends_only(patch: pytest.MonkeyPatch) -> N
 #: kind, a power, a slash, a symbol of the list, and words that open with a symbol's letters.
 _AFTER_A_BINDING = (
     (" mg", "mg"),
+    # Pandoc's escaped space, the entity of a no-break one, a comment, which is not
+    # printed, and the hair and figure spaces (round 1 of #279).
+    ("\\ mg", "mg"),
+    ("&nbsp;mg", "mg"),
+    ("&#160;g", "g"),
+    ("<!-- the dose --> mg", "mg"),
+    ("\N{HAIR SPACE}mg", "mg"),
+    ("\N{FIGURE SPACE}mg", "mg"),
+    ("&#0160;mg", "mg"),
+    # No unit across the words between two comments, nor after a backslash that escapes no
+    # space (round 1 of #341).
+    ("<!-- a --> and <!-- b --> mg", None),
+    ("\\\nmg", None),
     ("\N{NO-BREAK SPACE}\N{MICRO SIGN}g/kg", "\N{MICRO SIGN}g/kg"),
     ("\N{THIN SPACE}\N{GREEK SMALL LETTER MU}g", "\N{GREEK SMALL LETTER MU}g"),
     ("%", "%"),
@@ -3842,6 +3858,39 @@ def test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is(
     text, expected = planted
     found = [(w.key, w.start, w.unit) for w in bound_units_gate.units_after(text)]
     assert found == expected, text
+
+
+# ---------------------------------------------- a technical sense, counted towards no rate
+
+#: Technical senses of words the vocabulary rate counts, in the singular and the plural.
+_TECHNICAL = (
+    "robust standard error", "robust standard errors", "Robust variance", "robust variances",
+    "robust estimator", "robust estimators", "robust regression", "robust regressions",
+    "robustness check", "robustness checks", "robust analysis", "robust analyses",
+    "sandwich robust", "comprehensive cohort", "comprehensive search strategy",
+)  # fmt: skip
+
+
+@st.composite
+def _technical_senses(draw: st.DrawFn) -> str:
+    """Plain words with every technical sense among them once, in an order and with spaces
+    drawn each time."""
+    parts = []
+    for phrase in draw(st.permutations(_TECHNICAL)):
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=12, max_size=20))
+        gap = draw(st.sampled_from((" ", "  ", "\n", "\N{NO-BREAK SPACE}")))
+        parts.append(" ".join(words) + " " + phrase.replace(" ", gap) + ".")
+    return " ".join(parts)
+
+
+@holds(60, _technical_senses())
+def test_a_technical_sense_adds_nothing_to_the_vocabulary_rate(text: str) -> None:
+    """Item 54: "robust standard errors" is how papers by people write it, and counted
+    towards the rate in the plural. Each technical sense, however cased and spaced, counts
+    as the same text with its flagged word replaced by a plain one."""
+    plain = re.sub(r"(?i)\b(?:robust|comprehensive)", "plain", text)
+    rate = writing_gate.rates([(Path("m.md"), text)])["ai-vocabulary"]
+    assert rate == writing_gate.rates([(Path("m.md"), plain)])["ai-vocabulary"], text
 
 
 # ------------------------------------------------------------ a journal's limit, in its quote
@@ -3935,6 +3984,11 @@ def _isbns(draw: st.DrawFn) -> tuple[list[str], list[str]]:
         f"{spaced[0]} {spaced[1]}",
         f"{spaced[1]} {spaced[0]}",
         f"ISBN-10: {spaced[0]}; ISBN-13: {hyphened[1]} (pbk.)",
+        # Round 2 of #249: a label spaced from its number, an electronic one, and a
+        # qualifier with no brackets.
+        f"ISBN 10 {spaced[0]}, ISBN 13: {spaced[1]}",
+        f"e-ISBN {hyphened[1]}; eISBN: {spaced[1]}",
+        f"{hyphened[0]} pbk. {spaced[1]} Hardcover",
     ]
     return fields, changed
 
@@ -4183,6 +4237,17 @@ def test_one_work_is_one_work_however_its_identifiers_are_written(
         a = identifiers_of({"type": "book", kind: first[kind]})
         b = identifiers_of({"type": "book", kind: second[kind]})
         assert a and a == b, (kind, first[kind], second[kind], a, b)
+    # Round 1 of #249: every way a DOI is dressed, in each example.
+    a = identifiers_of({"type": "book", "doi": first["doi"]})
+    for dressing in _DOI_DRESSINGS:
+        dressed = dressing + first["doi"].upper() + "."
+        assert identifiers_of({"type": "book", "doi": dressed}) == a, dressed
+
+
+#: A resolver with its scheme or without, with `www.` or `dx.`, and the scheme with its
+#: colon or without.
+_DOI_DRESSINGS = ("https://doi.org/", "http://dx.doi.org/", "https://www.doi.org/", "doi.org/",
+                  "dx.doi.org/", "www.doi.org/", "doi:", "doi: ", "DOI ", "")  # fmt: skip
 
 
 # --------------------------------------------------------------------------------------- TeX
@@ -4490,6 +4555,20 @@ def _an_isbn_s_groups_are_read_as_isbns(patch: pytest.MonkeyPatch) -> None:
     )  # fmt: skip
 
 
+def _a_label_without_brackets_sticks_to_its_isbn(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    patch.setattr(identifiers, "_ISBN_ASIDE",
+                  re.compile(r"\bISBN(?:-?1[03])?\s*:?|\([^()]*\)", re.IGNORECASE))  # fmt: skip
+
+
+def _a_doi_s_resolver_is_undressed_only_as_it_was(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    dressing = re.compile(r"^(?:doi:\s*|https?://(?:dx\.)?doi\.org/)", re.IGNORECASE)
+    patch.setattr(identifiers, "_DOI_DRESSING", dressing)
+
+
 def _an_isbn_13_is_weighed_as_an_isbn_10(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import identifiers
 
@@ -4558,7 +4637,16 @@ def _a_level_after_the_letters_is_not_read(patch: pytest.MonkeyPatch) -> None:
 def _every_stop_is_in_one_sentence(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import numbers
 
-    patch.setattr(numbers, "_SENTENCE_END", re.compile(r"(?!)"))
+    patch.setattr(numbers, "sentence_stops", lambda _read: [])
+
+
+def _a_stop_after_s_e_ends_a_quote_s_sentence(patch: pytest.MonkeyPatch) -> None:
+    """G2's quotes before round 2 of #327: every stop and a space ended a sentence, so a P
+    value after "s.e." was cut from its estimate."""
+    from manuscript_guard.gates import numbers
+
+    patch.setattr(numbers, "sentence_stops", lambda read: [
+        match.start() for match in numbers._SENTENCE_END.finditer(read)])  # fmt: skip
 
 
 def _a_share_is_held_to_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -4987,9 +5075,41 @@ def _a_unit_is_read_after_a_plain_space_only(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
 
 
+def _a_unit_is_read_after_a_space_character_only(patch: pytest.MonkeyPatch) -> None:
+    """The gap before round 1 of #279: spaces of three widths, and no escaped space,
+    entity, comment, hair or figure space."""
+    old = "[ \t\N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE}]"
+    assert bound_units_gate._SPACE in bound_units_gate._UNIT.pattern
+    pattern = bound_units_gate._UNIT.pattern.replace(bound_units_gate._SPACE, old)
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
+def _a_comment_in_the_gap_runs_on_to_the_next(patch: pytest.MonkeyPatch) -> None:
+    """The comment of round 1 of #279's gap, lazy but free to reach past its own end."""
+    comment = r"<!--(?:(?!-->)(?!\n[ \t]*\n)[\s\S])*-->"
+    assert comment in bound_units_gate._UNIT.pattern
+    pattern = bound_units_gate._UNIT.pattern.replace(comment, r"<!--[\s\S]*?-->")
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
 def _a_unit_is_read_inside_a_longer_word(patch: pytest.MonkeyPatch) -> None:
     pattern = bound_units_gate._UNIT.pattern.rsplit("(?!", 1)[0]
     patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
+def _a_technical_sense_counts_in_the_plural(patch: pytest.MonkeyPatch) -> None:
+    """The exemption before item 54: its nouns in the singular only."""
+    import dataclasses
+
+    rules = writing_gate.load_rules()
+    old = (r"(?i)\brobust(?:ness)?\s+(?:standard\s+error|variance|estimator|regression|check"
+           r"|analysis|analyses)\b")  # fmt: skip
+    density = tuple(
+        {**rule, "exempt": [old, *rule["exempt"][1:]]} if rule["id"] == "ai-vocabulary" else rule
+        for rule in rules.density
+    )
+    assert density != rules.density
+    patch.setattr(writing_gate, "load_rules", lambda: dataclasses.replace(rules, density=density))
 
 
 def _a_slash_divides_by_symbols_only(patch: pytest.MonkeyPatch) -> None:
@@ -5339,6 +5459,18 @@ BROKEN = {
         _a_unit_is_read_after_a_plain_space_only,
         test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
     ),
+    "a technical sense counts towards the vocabulary rate in the plural": (
+        _a_technical_sense_counts_in_the_plural,
+        test_a_technical_sense_adds_nothing_to_the_vocabulary_rate,
+    ),
+    "a comment in the gap runs on to the next": (
+        _a_comment_in_the_gap_runs_on_to_the_next,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
+    ),
+    "a unit is read after a space character only": (
+        _a_unit_is_read_after_a_space_character_only,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
+    ),
     "a unit is read inside a longer word": (
         _a_unit_is_read_inside_a_longer_word,
         test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
@@ -5659,6 +5791,14 @@ BROKEN = {
         _an_isbn_s_groups_are_read_as_isbns,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
     ),
+    "a label without brackets sticks to its ISBN": (
+        _a_label_without_brackets_sticks_to_its_isbn,
+        test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "a DOI's resolver is undressed only as it was": (
+        _a_doi_s_resolver_is_undressed_only_as_it_was,
+        test_one_work_is_one_work_however_its_identifiers_are_written,
+    ),
     "a label is read across sentences": (
         _a_label_is_read_across_sentences,
         test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
@@ -5689,6 +5829,10 @@ BROKEN = {
     ),
     "every stop is read in one sentence": (
         _every_stop_is_in_one_sentence,
+        test_a_statistic_is_alone_only_in_a_sentence_without_what_it_belongs_to,
+    ),
+    "a stop after s.e. ends a quote's sentence": (
+        _a_stop_after_s_e_ends_a_quote_s_sentence,
         test_a_statistic_is_alone_only_in_a_sentence_without_what_it_belongs_to,
     ),
     "a share is held to nothing": (

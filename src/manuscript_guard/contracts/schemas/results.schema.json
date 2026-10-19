@@ -351,6 +351,9 @@
       "type": "object",
       "required": ["value"],
       "additionalProperties": false,
+      "$comment": "What the emitters refuse, held here too, so that a fragment written by hand cannot skip G2's and G8's checks: a share's denominator beside its numerator, a family of p values each naming its estimate and no denominator.",
+      "dependentRequired": { "over": ["of"], "family": ["of"] },
+      "not": { "required": ["family", "over"] },
       "properties": {
         "value": {
           "description": "The machine value. Comparisons and figures use this.",

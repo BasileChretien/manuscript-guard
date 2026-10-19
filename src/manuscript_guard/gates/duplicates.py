@@ -74,11 +74,24 @@ def identifiers_of(fields: dict[str, str]) -> set[tuple[str, str]]:
     )
     if pmcid and _PMCID.fullmatch(pmcid):
         found.add(("PMCID", "PMC" + str(int(pmcid[3:]))))
-    volume = " ".join(fields.get("volume", "").split())
+    volume = _volume(fields.get("volume", ""))
     for isbn in _isbns(fields.get("isbn", "") if kind in BOOKS else ""):
         if isbn_valid(isbn):
             found.add(("ISBN", isbn_13(isbn) + (f", volume {volume}" if volume else "")))
     return found
+
+
+#: The word a volume is often written with: "Vol. 1", "Volume 1", "v. 1", "Vol1". Taken off
+#: only where a stop, a space or a digit ends it and something follows, so that "V." (five),
+#: "Volume" and "Vol." alone stay as written (rounds 1 to 3 of #345).
+_VOLUME_WORD = re.compile(r"^(?:volume|vol|v)(?:\.\s*|\s+|(?=\d))(?=\S)", re.IGNORECASE)
+
+
+def _volume(written: str) -> str:
+    """A volume as it names a book's part: without the word it is written with, so that "1"
+    and "Vol. 1" are one volume (round 2 of #261: they were two, and one book cited twice
+    was not found)."""
+    return _VOLUME_WORD.sub("", " ".join(written.split())).casefold()
 
 
 def title_of(fields: dict[str, str]) -> str | None:

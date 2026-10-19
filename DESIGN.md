@@ -7117,7 +7117,12 @@ Closed since, and why each mattered:
   qualifiers set aside ("9781234563 reprint"), and parted from it by a space only, is read
   as the start of an ISBN-13 and reported. A field named `type` is kept beside the entry's
   own type, which stays under that name: G7 reads the entry's, the data statement either
-  (a `@misc` with `type = {dataset}` is a dataset), and a co-author is shown the field.
+  (a `@misc` with `type = {dataset}` is a dataset), and a co-author is shown the field. In an
+  ISBN field, any number of ten or thirteen digits in brackets is checked as an ISBN, an
+  LCCN as well; one in brackets with its label, "(eISBN 978-...)", is not read, so its
+  check digit is not checked, and a field of it alone is said to hold no ISBN. A parent's
+  title goes where biber puts it by the parent's type alone, so an `@incollection` whose
+  `crossref` names a `@book` takes the book's title for a booktitle biber does not give it.
 - **Two keys for one work are found by an identifier or a title, and only among what is
   cited.** Two entries of one work with no identifier in common and titles that differ, a
   preprint and its article, or a translation, are not found. A title of fewer than four

@@ -14,6 +14,16 @@ chooses the folder:
 
     python tools/run_skill_evals.py -- --ablation with-without --runs 3 --model <model>
 
+A routing case whose prompt speaks of a finished project, "my analysis script", "the
+draft", starts in a copy of the worked example: the copy of the suite carries one,
+`evals/_project/`, and the case's `scaffold.sh` copies it into the empty folder the run
+starts in. The command is given `--scaffold` for that, since the scripts are this
+repository's own. The copy names no skill: it leaves out the project's instructions to an
+agent, `AGENTS.md`, and the whole-line comments of its YAML files, which say which skill does what
+(rounds 1 and 2 of #338; Basile's choice). What the project is made of, its bindings and
+its emitter calls, still shows the toolkit in use, to either arm, as any project made with
+it would. The near-miss cases and the requests no skill is for start empty, as before.
+
 A run is paid at API prices, or counts against a subscription's usage. Run one case once
 first to measure it (`-- --case <name> --runs 1 --ablation none`).
 """
@@ -29,18 +39,53 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 REPO = Path(__file__).resolve().parent.parent
-#: What `claude plugin eval` is always given: the copy's suite, a local report, and the
-#: trust a copy of this repository's own plugin needs to run without asking each time.
-FIXED = ("--eval-dir", "evals", "--no-publish", "--trust-plugin")
+#: What `claude plugin eval` is always given: the copy's suite, a local report, the trust a
+#: copy of this repository's own plugin needs to run without asking each time, and leave to
+#: run the cases' own scaffold scripts.
+FIXED = ("--eval-dir", "evals", "--no-publish", "--trust-plugin", "--scaffold")
+#: Where in the copy of the suite the worked example is, for the cases' scaffold scripts.
+PROJECT = "_project"
+#: What of the example is not copied: what a build or a run wrote, and what tells an agent
+#: the toolkit's rules, which the arm without the plugin must not read (round 1 of #338).
+LEFT_OUT = ("build", "__pycache__", "AGENTS.md", "CLAUDE.md", ".claude")
 
 
 def stage(repo: Path, into: Path) -> Path:
-    """A copy of `repo`'s plugin with the suite inside it, its past results left out."""
+    """A copy of `repo`'s plugin with the suite inside it, its past results left out, and
+    the worked example beside the cases, without `LEFT_OUT` and its whole-line YAML comments."""
     plugin = into / "plugin"
     shutil.copytree(repo / "plugin", plugin)
     shutil.copytree(repo / "evals", plugin / "evals", ignore=shutil.ignore_patterns("results"))
+    project = plugin / "evals" / PROJECT
+    shutil.copytree(repo / "example", project, ignore=shutil.ignore_patterns(*LEFT_OUT))
+    for path in sorted(project.rglob("*.y*ml")):
+        _uncommented(path)
     return plugin
+
+
+def _uncommented(path: Path) -> None:
+    """`path` without its whole-line comments, refused where its data then reads otherwise:
+    a line opening with "#" inside a block of text is the text's (round 2 of #338). Compared
+    as written out again, so that a NaN is equal to itself; a file that is not one YAML
+    document is refused too."""
+    text = path.read_bytes().decode("utf-8")
+    blank = " \t\N{ZERO WIDTH NO-BREAK SPACE}"  # a byte-order mark before the first line
+    kept = "".join(line for line in text.splitlines(keepends=True)
+                   if not line.lstrip(blank).startswith("#"))  # fmt: skip
+    loaded = []
+    for each, which in ((text, "as it is"), (kept, "without its comments")):
+        try:
+            loaded.append(yaml.safe_dump(yaml.safe_load(each)))
+        except yaml.YAMLError as error:
+            raise SystemExit(f"{path}: does not load as one YAML document {which} "
+                             f"({error.__class__.__name__})") from None  # fmt: skip
+    before, after = loaded
+    if before != after:
+        raise SystemExit(f"{path}: its data reads otherwise without its comments")
+    path.write_bytes(kept.encode("utf-8"))
 
 
 def arguments(argv: list[str]) -> list[str]:

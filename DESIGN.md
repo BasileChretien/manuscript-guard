@@ -3448,6 +3448,35 @@ other than the one run.
     reads a suite only from inside the plugin. `tools/run_skill_evals.py` now runs it from
     a copy.
 
+**After that run** (Basile's choice, 2026-10-19), a routing case whose prompt speaks of a
+finished project starts in one. 12 of the 15 do: `tools/run_skill_evals.py` puts a copy of
+the worked example beside the cases in the copy of the suite it runs, as `evals/_project/`.
+Each such case's `case.yaml` names a `scaffold.sh` that copies it into the folder the run
+starts in, and the command is given `--scaffold`. The copy names no skill: it leaves out
+`AGENTS.md`, the project's instructions to an agent, and its YAML files lose their whole-line
+comments, where the profiles said which skill writes them (rounds 1 and 2 of #338; Basile chose
+this over keeping them and saying so). With them, the arm without the plugin could read what
+several criteria ask for. A file whose data would read otherwise without its comments is
+refused. What the project is made of, its bindings and its emitter calls, still shows the
+toolkit in use to either arm, as any project made with it would, so the difference between
+the arms is what a skill adds to a model reading such a project. Three routing cases still
+start empty, and so do the near misses and the requests no skill is for:
+- project-setup starts a project, and may give the `init` command where it has no shell to
+  run it;
+- manuscript-writing carries its own paragraph, and invents no finding, since its prompt
+  gives none;
+- analysis-plan is about the plan before any analysis code, and the example has both.
+
+The example is a finished project, and some prompts ask for what it lacks: paper-audit and
+word-roundtrip speak of a .docx, reviewer-response of reviewers' comments, and review-panel
+and figure-review find readings already recorded. A reply that asks for what is missing, or
+works from what is there, is what their criteria pass.
+
+One run of one scaffolded case (methods-writer, Claude Haiku, no baseline arm, $0.01 at API
+prices) started in a folder holding the example, and passed. Asked for `_project` as a case,
+the command found none. No run of the whole suite has been made since, so what each skill
+adds is still not measured.
+
 ## Auditing existing papers, and saying what the audit is worth
 
 `check` works because manuscript source contains bindings: a results-derived number cannot

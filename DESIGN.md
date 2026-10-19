@@ -6266,7 +6266,8 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   title.** The title has no minimum length, and the year and the first author are
   compared only where both give them, so a conference abstract filed without its DOI is
   taken for the paper of the same title and authors (round 1 of #350). An entry that has
-  the field's DOI is always taken first.
+  the field's DOI is always taken first, the DOI read as the gates read one, whatever it
+  is dressed in (`doi:`, `http://dx.doi.org/`, a stop after it) and in one case.
 - **Some tests of the literature are narrower than the rule they hold.** The words beside a
   quoted value are drawn with each value once, between spaces, and never inside a word with
   a digit: a value quoted twice, or within "CYP3A14", and a quote in a script written
@@ -9025,9 +9026,7 @@ Closed since, and why each mattered:
   phrasing is matched as the profile writes it, without regard to case, and its `unless`
   anywhere in the statement accepts it. The statement is the section under its heading, its
   subsections included, the outermost where several headings match and the first of several
-  at one level, so a numbered Methods subsection on data sharing is read where the statement
-  stands under a Declarations heading at the same level
-  (`test_a_statement_heading_level_with_a_methods_subsection_is_pinned`); a statement
+  at one level (a limit, among the open Known gaps); a statement
   written as a paragraph with no heading of its own is not read. A link to a repository with any path after its name, a branch's as
   much as a release's, is taken for a fixed version, and a bare repository is warned of even
   where the statement names its archive too. A dataset's DOI counts as cited when an entry of

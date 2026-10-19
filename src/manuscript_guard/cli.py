@@ -709,14 +709,22 @@ def _first_family(authors: str) -> str:
     return family.strip().lower()
 
 
+def _doi_of(written: str) -> str:
+    """A DOI as the gates read it, whatever it is dressed in, `doi:`, `http://dx.doi.org/`
+    or a stop after it, in one case (round 2 of #350: only `https://doi.org/` was taken off,
+    and the entry with the DOI written otherwise lost to a duplicate without one)."""
+    from manuscript_guard.gates.identifiers import normal_doi
+
+    return normal_doi(written).lower()
+
+
 def _the_work(work, fields: dict[str, str]) -> bool:
     """Whether a `.bib` entry is the work a citation field names: by its DOI where both give
     one, or else by its title, and then by its year and first author wherever both say them.
     A title alone was too little: two works whose titles share only "COVID-19" in Latin
     letters were one. An entry with no DOI is matched by its title (round 2 of #298: it was
     never found where the field gave a DOI)."""
-    doi = work.doi.lower().removeprefix("https://doi.org/")
-    known = fields.get("doi", "").lower().removeprefix("https://doi.org/")
+    doi, known = _doi_of(work.doi), _doi_of(fields.get("doi", ""))
     if doi and known:
         return known == doi
     title = _plain_title(work.title)
@@ -733,12 +741,9 @@ def _said_inserted(work, entries: dict[str, dict[str, str]]) -> str:
     """What the import says of a work a co-author cited with their reference manager. The
     entry with the field's DOI first, wherever it stands: a duplicate with no DOI above it was
     taken for the work (round 1 of #350)."""
-    def doi_of(text: str) -> str:
-        return text.lower().removeprefix("https://doi.org/")
-
-    doi = doi_of(work.doi)
+    doi = _doi_of(work.doi)
     key = next((key for key, fields in entries.items()
-                if doi and doi_of(fields.get("doi", "")) == doi), None)  # fmt: skip
+                if doi and _doi_of(fields.get("doi", "")) == doi), None)  # fmt: skip
     if key is None:
         key = next((key for key, fields in entries.items() if _the_work(work, fields)), None)
     said = f"{work} was cited in Word with a reference manager, whose field the build does not read"

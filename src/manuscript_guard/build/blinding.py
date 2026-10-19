@@ -217,6 +217,7 @@ def _places(document: Path) -> list[tuple[str, str]]:
         names = archive.namelist()
         listed = _bibliography_styles(archive) if "word/styles.xml" in names else set()
         cited: dict[str, set[str]] = {}
+        codes: list[str] = []
         for name in names:
             if _TEXT_PART.fullmatch(name):
                 root = read_part(archive, name)
@@ -225,9 +226,8 @@ def _places(document: Path) -> list[tuple[str, str]]:
                 places += [("the author of a tracked change or a comment", a) for a in authors]
                 # A field's code holding an address is not printed and is in the file (round
                 # 1 of #273); the reference list's are its own, as its text is.
-                codes, cited[name] = _addresses(root, listed)
-                if codes:
-                    places.append(("a field's code", "\n".join(codes)))
+                found, cited[name] = _addresses(root, listed)
+                codes += found
             elif name.startswith("word/media/") and name.lower().endswith(".svg"):
                 figure = f"a figure ({name[len('word/media/') :]})"
                 places.append((figure, _svg_text(read_member(archive, name))))
@@ -252,6 +252,10 @@ def _places(document: Path) -> list[tuple[str, str]]:
             shown = [target for target in targets.values() if target not in listed_at]
             if shown:
                 places.append(("the address of a link", "\n".join(shown)))
+        # A field's code that links to such an address is the list's too (round 3 of #349).
+        codes = [code for code in codes if not any(at in code for at in listed_at)]
+        if codes:
+            places.append(("a field's code", "\n".join(codes)))
         if "docProps/core.xml" in names:
             for node in read_part(archive, "docProps/core.xml"):
                 if node.tag in _CORE and node.text:

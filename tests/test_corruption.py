@@ -8158,6 +8158,9 @@ def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
     # identifier or another, and the address is the reference list's there too.
     rels = {"word___rels__document.xml.rels": links,
             "word___rels__footnotes.xml.rels": links.replace("rId5", "rId9")}
+    # Round 3 of #349: and a field elsewhere that links to the same address.
+    cited += ("<w:p><w:fldSimple w:instr=' HYPERLINK \"mailto:ada.example@invalid.example\" '>"
+              "<w:r><w:t>write</w:t></w:r></w:fldSimple></w:p>")  # fmt: skip
     document = _word(tmp_path / "cited.docx", cited, **rels)
     assert _named(project, document) == []
     named = "<w:p><w:r><w:t>As Ada Example showed.</w:t></w:r></w:p>"

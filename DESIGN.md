@@ -2864,9 +2864,10 @@ Institute") is not looked for, and an initial with its stop before a word that i
 name reads as that author, "Panel A. Example" as Ada Example
 (`test_what_the_blind_check_reads_wrongly_is_pinned`). The reference list, a paragraph
 whose style is named "Bibliography", is not read, nor the addresses it links to, wherever
-else they are linked: the journals that review blind mostly ask for the authors' own work
-to be cited in the third person, not taken out, and a self-citation prints their names
-there.
+else they are linked, by a link or a field (so a link Word adds in the body to one of them
+is not read either; the list prints that address anyway): the journals that review blind
+mostly ask for the authors' own work to be cited in the third person, not taken out, and a
+self-citation prints their names there.
 
 ## The submission pack writes nothing twice
 

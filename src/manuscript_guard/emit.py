@@ -501,7 +501,8 @@ def _overlapping(key: str, overlapping: object, steps: int) -> bool | list[int]:
     NumPy's truth values and whole numbers are taken as Python's (round 2 of #293)."""
     if _truth_value(overlapping):
         return bool(overlapping)
-    # A NumPy array of step numbers is taken as R takes c(1, 3) (round 1 of #340).
+    # A NumPy array of whole numbers is taken as a list of them (round 1 of #340). R takes
+    # any numeric vector of whole values, a single number too, where Python wants a list.
     listed = isinstance(overlapping, (list, tuple, set, frozenset)) or getattr(
         overlapping, "ndim", None) == 1  # fmt: skip
     named = list(overlapping) if listed else []

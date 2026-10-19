@@ -140,6 +140,19 @@ def test_terms_all_near_nought_are_not_equal_by_being_small() -> None:
     assert report.findings == ()
 
 
+def test_a_difference_emitted_rounded_fails_however_large_its_terms() -> None:
+    """Round 2 of #340: held to 1e-9 of its largest term, 1.2e-3 here, a difference emitted
+    rounded to three places passed, where main's 1e-9 failed it. Held to 1e-12 of it, as
+    float arithmetic over thousands of terms leaves, it fails, and the true one passes."""
+    terms = {"t.a": _value("t.a", 1234567.891234, "1,234,567.891"),
+             "t.b": _value("t.b", 1234560.0, "1,234,560.0"),
+             "t.d": _value("t.d", 7.891, "7.891")}  # fmt: skip
+    difference = {"kind": "difference", "key": "t.d", "of": ["t.a", "t.b"]}
+    assert ("relation-broken", FAIL) in _codes(_check(difference, values=terms))
+    terms["t.d"] = _value("t.d", 1234567.891234 - 1234560.0, "7.891")
+    assert _check(difference, values=terms).findings == ()
+
+
 def test_a_ratio_is_held_to_its_result_not_to_its_denominator() -> None:
     """Round 1 of #340: a tolerance of 1e-9 of the largest number made 2e-3 of a
     denominator of 2,000,000, and a rate of 0.0007 passed for 700 over it, which is

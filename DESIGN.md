@@ -5917,11 +5917,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers
   that might add up. That is the price of checking nothing by guesswork.
 - **A relation between values is exact, so a value emitted rounded fails it.** Whole numbers
-  are compared exactly and floats to their last bits: a sum or a difference to 1e-9 of its
-  largest term, and a ratio to 1e-9 of its result. Before round 1 of #293 the tolerance was
-  also 1e-9 absolute, so terms all near nought were equal by being small; a ratio held to
-  its largest term, its denominator, let a rate twice the true one pass (round 1 of #340).
-  A script that emits `round(rate, 1)` instead of the rate
+  are compared exactly and floats to their last bits: to 1e-9 of the result, and a sum or a
+  difference also to 1e-12 of its largest term, which a sum of thousands of floats keeps
+  within. Before round 1 of #293 the tolerance was also 1e-9 absolute, so terms all near
+  nought were equal by being small. Held to 1e-9 of their largest term, a ratio's being its
+  denominator, a rate twice the true one passed, and so did a difference of terms near a
+  million rounded to three places (rounds 1 and 2 of #340). A script that emits
+  `round(rate, 1)` instead of the rate
   breaks a ratio that holds, and is told to emit the value unrounded and let the display
   round it.
 - **The printed arithmetic reads the first number of each display.** A display that is not a
@@ -5942,8 +5944,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   of the second's (round 1 of #293, where the second record was held to the first's counts).
   Python's `relation()` refuses an `of` that is one key written as a string, which it read
   as its letters (in R a string is a vector of one key), and either emitter refuses a name
-  that is no results key; NumPy's whole numbers and truth values are taken as Python's, as
-  R takes any whole numeric.
+  that is no results key. Python takes NumPy's whole numbers and its single truth values as
+  its own, and the steps that overlap as a list or a NumPy array of whole numbers; R takes
+  any numeric vector of whole values, or a single number, for those steps.
 - **A UTF-16 input without a BOM is normalised as if it were 8-bit text.** Its 0x0D and 0x0A
   bytes can belong to ordinary characters, so an edit that swaps one such character for
   another (U+4E0D for U+4E0A) can leave the digest unchanged and pass G1. Exports that write

@@ -1306,6 +1306,36 @@ instruction to whoever fills the text in ("the user should add"). Each is a warn
 "not widely available" or "not widely reported", which a paper says of a drug or an adverse
 event.
 
+**How often it warns on papers written by people** is measured, and the rate thresholds
+come from that measurement (item 54). `tools/g6_baseline.py` drew 400 open-access research
+articles under CC BY from Europe PMC, published from 2010 to October 2022, before chat
+models were common, at random with a fixed seed: 300 to set thresholds and 100 held out.
+What the run had to show was fixed before it: each threshold at the 99th percentile of the
+first set, and, on the held-out papers, no failure and at most two warnings on 95% of them.
+Each paper is read as G6 reads a manuscript, its JATS through pandoc's JATS reader, from
+its first heading to its reference list; `tools/data/g6-corpus.yaml` keeps each paper's
+identifiers and the digests of what was read, never its text.
+
+- **2026-10-19.** Of the 400, 291 and 93 were used. Twelve were shorter than 1000 words,
+  one had no heading pandoc could read, and three stated no licence of their own. The
+  thresholds, per 1000 words, were set by hand before this, from the project's own prose:
+  "AI vocabulary" from 6 to 2.7, em dashes from 4 to 1.1, bold from 8 to 27.4, lists of
+  three from 3 to 6.6, "serves as" and its kind from 2 to 0.6.
+  - On the held-out papers, nothing failed, but only 88.2% had two warnings or fewer: the
+    budget was not met. Two phrase rules warned at each occurrence, and each did so on
+    about a quarter of all 384 papers: "not only ... but also" on 25.8%, "plays a key role"
+    on 25.5%.
+  - Basile chose to count those two by rate, as the vocabulary is, at the same percentile:
+    0.8 and 0.9 per 1000. Measured again on the same papers, 98.9% of the held-out papers
+    had two warnings or fewer, and the budget was met. The held-out papers showed which
+    two rules broke the budget, so they are no longer an independent check of that choice.
+  - Of all 384, the other phrase rules warn on fewer: an "-ing" tail asserting significance on
+    9.4%, a hedge on a hedge on 7.3%, "it is important to note" on 5.2%, the rest on under
+    3% each. A vague attribution with no citation near it is reported on 4.2%.
+
+What this does not measure: no text written by a model was read, so it says nothing of
+what G6 catches, only how often it warns on people writing biomedical research in English.
+
 ## Abbreviations are checked against the manuscript, not against a style guide
 
 G14 is the first check on the language itself, and it is built on one distinction. Whether
@@ -8780,9 +8810,15 @@ Closed since, and why each mattered:
   change to the Deviations section, a word or a date, satisfies the check, whatever it says.
   The copy is in version control like the plan, and a person can delete it; the next run then
   freezes the plan as it is. A plan that is not UTF-8 text is not frozen until it is.
-- **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen
-  by running the lint against this project's own prose, not by calibrating against a corpus
-  of human and machine writing. They are a starting point.
+- **G6's thresholds are measured on people only, in one field.** Each rate's threshold is
+  the 99th percentile of 291 biomedical research articles of 2010 to 2022 (see "The
+  AI-writing lint measures rate, not presence"), so about one paper by people in a hundred
+  is above each by construction, and more in a field, a kind of article or a register those
+  papers do not hold: a review, a case report, a paper in mathematics. No text written by a
+  model was measured, so how much of what G6 looks for it catches is not known. The phrase
+  rules that warn at each occurrence are not calibrated by rate; the measurement says how
+  often each warns on people. The held-out check informed the choice of counting two
+  of them by rate, so its 98.9% is not independent of that choice.
 - **A small count is found where it is bound, by its value.** A count printed in an emitted
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number

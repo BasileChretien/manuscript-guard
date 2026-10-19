@@ -81,10 +81,8 @@ def test_model_artefacts_fail(project: Path, artefact: str) -> None:
         ("We delve into the mechanisms of injury.", "delve"),
         ("The data form a rich tapestry of exposure patterns.", "tapestry-landscape"),
         ("This is a testament to the value of spontaneous reporting.", "testament"),
-        ("The finding is not just statistical but also clinical.", "negative-parallelism"),
         ("It is important to note that reporting is voluntary.", "important-to-note"),
         ("Despite these challenges, the signal persisted.", "despite-challenges"),
-        ("Hepatic metabolism plays a crucial role in clearance.", "plays-a-role"),
         ("These findings pave the way for prospective study.", "paves-the-way"),
         ("In the realm of pharmacovigilance, signals are noisy.", "in-the-realm"),
         ("The ever-evolving regulatory landscape complicates this.", "ever-evolving"),
@@ -95,6 +93,25 @@ def test_known_tells_are_reported(project: Path, phrase: str, rule: str) -> None
     report = written(project, f"# Discussion\n\n{phrase}\n")
     assert "ai-phrasing" in codes(report)
     assert rule in messages(report)
+
+
+#: Two constructions papers by people use too: each was reported wherever it stood, and so
+#: in about a quarter of 384 such papers (tools/g6_baseline.py, 2026-10-19). Basile chose to
+#: count them by rate instead.
+BY_RATE = ("The signal is not only statistical but also clinical. Hepatic metabolism plays a "
+           "crucial role in clearance. ")  # fmt: skip
+
+
+def test_a_construction_counted_by_its_rate_is_no_warning_once(project: Path) -> None:
+    # Once in some 2300 words, a paper's length, is under either threshold.
+    once = written(project, f"# Discussion\n\n{BY_RATE}\n\n{FILLER * 7}")
+    assert "negative-parallelism" not in messages(once)
+    assert "plays-a-role" not in messages(once)
+    often = written(project, f"# Discussion\n\n{BY_RATE * 5}\n\n{FILLER * 2}")
+    assert "ai-cadence" in codes(often)
+    for rule in ("negative-parallelism", "plays-a-role"):
+        assert any(f.code == "ai-cadence" and f.message.startswith(f"{rule}: ")
+                   for f in often.findings), rule  # fmt: skip
 
 
 def test_a_high_rate_of_ai_vocabulary_is_reported(project: Path) -> None:
@@ -144,6 +161,19 @@ def test_technical_senses_are_not_counted(project: Path) -> None:
     )
     report = written(project, text)
     assert "ai-vocabulary" not in messages(report)
+
+
+def test_a_technical_sense_counts_nothing_towards_the_rate() -> None:
+    """Held on the count, not the finding: one "robust" under the threshold passed whether
+    it was exempt or not, and the plural, "robust standard errors", as people write it, was
+    counted (found on papers by people, item 54)."""
+    from manuscript_guard.gates.writing import rates
+
+    text = (
+        "We report robust standard errors, robust variances and robust estimators, with "
+        "robust regressions and robust checks, and one robust analysis. " + FILLER * 3
+    )
+    assert rates([(Path("main.md"), text)])["ai-vocabulary"] == 0
 
 
 def test_a_flagged_word_used_once_is_not_reported(project: Path) -> None:

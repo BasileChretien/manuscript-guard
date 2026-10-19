@@ -17,6 +17,7 @@ from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.journal_style import (
     NUMERIC,
     changed,
+    is_file_name,
     profile_style,
     read_record,
     record_path,
@@ -36,10 +37,13 @@ def check_style(project: Project, document: dict, path: Path) -> Report:
         return Report()
     name = style_name(named)
     if name is None:
+        file_named = "; a name with `.csl` is a file's, and the repository's has none" if (
+            is_file_name(named)) else ""  # fmt: skip
         return _finding(
             "journal-style-not-stored",
             f"the profile names the citation style {named!r}, which is not a name of the CSL "
-            "style repository, so an offline build formats citations in pandoc's default style",
+            f"style repository{file_named}, so an offline build formats citations in pandoc's "
+            "default style",
             "name the style as the repository does (`the-lancet`, or its zotero.org/styles "
             "URL) and run `manuscript-guard style`, or build with `--csl FILE`",
             path,

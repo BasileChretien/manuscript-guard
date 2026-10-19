@@ -103,6 +103,11 @@ def test_a_version_found_on_another_machine_is_reported_and_reproduces(project: 
     assert result.ok, to_report(result).render(project)
     found = [f for f in to_report(result).warnings if f.code == "rerun-other-software"]
     assert len(found) == 1 and "written with 2.7.18" in found[0].message
+    # Round 2 of #306: the version is among the values counted, and not reproduced.
+    from manuscript_guard.verify import render
+
+    agreed = sum(len(c.agreed) for c in result.comparisons)
+    assert f"{agreed}/{agreed + 1} values reproduced" in render(result, project)
 
 
 def test_a_fit_s_last_digits_from_another_machine_reproduce(project: Path) -> None:

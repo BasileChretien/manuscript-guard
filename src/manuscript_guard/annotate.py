@@ -635,6 +635,11 @@ def figure_sheet(project, results) -> str:
         ] + [
             (f"| {value} | in the figure's script | {why} |", value)
             for value, why in _declared(declared, "allow_source")
+        ] + [
+            # A statistic the figure's script estimates itself, allowed with its reason
+            # (round 1 of #288: the sheet left these out).
+            (f"| {value} | estimated by the figure's script | {why} |", value)
+            for value, why in _declared(declared, "allow_estimates")
         ]
         if rows:
             out.append(

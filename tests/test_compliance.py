@@ -553,6 +553,21 @@ def test_a_limit_of_none_or_one_is_held_to_the_page_and_not_to_its_number(
     assert not found & {"journal-limit-not-in-quote", "journal-quote-not-on-page"}, found
 
 
+def test_a_limit_of_two_is_held_to_its_quote_s_number(project: Path) -> None:
+    """Round 4 of #297: the cut-off is above one, and nothing held it there: a cut-off of
+    two passed the suite."""
+    page = project / PAGE
+    quote = "no more than three tables"
+    page.write_text(page.read_text(encoding="utf-8") + f"\n{quote}\n", encoding="utf-8")
+
+    def two(document: dict) -> None:
+        document["limits"]["tables"] = 2
+        document["quotes"]["limits.tables"] = quote
+
+    edit_yaml(project / JOURNAL, two)
+    assert ("journal-limit-not-in-quote", "fail") in _quoted(journal_report(project))
+
+
 # ---------------------------------------------------------------- the reporting gate
 
 

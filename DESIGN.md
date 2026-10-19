@@ -649,7 +649,9 @@ Zotero. The offline build, which is what CI and a co-author without Zotero get, 
 pandoc's default style unless `--csl` named a file. `manuscript-guard style` now fetches the
 style once from the repository's own files and keeps it in the project, under
 `profiles/journals/styles/`. A name is asked for at the repository's root, where its
-independent styles are, and then under `dependent/`. A dependent style holds no formatting of
+independent styles are, and then under `dependent/`. A name with `.csl`, a file's, is
+refused with the name to give instead, and G4 says the same (round 1 of #322: it was asked
+for as `vancouver.csl.csl`). A dependent style holds no formatting of
 its own and names the style it formats like (`<link rel="independent-parent">`), so that
 style is fetched from the root and kept beside it. A record, `<name>.yaml`, holds each
 file's address, the SHA-256 of its bytes, the licence it names, the day, and the style's
@@ -1027,7 +1029,10 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   cite one, and a PMID PubMed types as a notice (`reference-not-the-work`). A registered title that holds less than 85% of the cited
   title's words (`reference-title-mismatch`): the cited title is held to the registered
   one with its subtitle and to its original-language title, so a subtitle the entry left
-  out costs nothing; markup, TeX, case, accents and punctuation are folded (a tag or a
+  out costs nothing, and to PubMed's where PubMed gives the work the entry's own DOI, the
+  English title of a paper Crossref registered in another language (round 1 of #253),
+  once Crossref or DataCite has found the DOI: with neither, no title is compared; of
+  Crossref's titles only the first is kept, so a further one is not compared; markup, TeX, case, accents and punctuation are folded (a tag or a
   command is part of the word it marks, `PM<sub>2.5</sub>` and `PM\textsubscript{2.5}`
   being "PM2.5", and an accent command keeps its letter), British
   spellings are read as American through G14's list, and no word is dropped for being
@@ -1780,8 +1785,11 @@ a heading that names another part of the paper ("Limitations of existing methods
 Introduction) belongs to that part. One over another part is no Methods either:
 "# Statistical methods for signal detection", a paper's title written as a heading over
 `##` sections, is over its Results, and G9 read that whole paper as the Methods, a wrong
-parameter in the Results among them. Of the headings left, one G2 reads as the Methods by
-its name comes first. G4 uses the test for a required section named "Methods", G9 reads the
+parameter in the Results among them. Of the headings left, one named as the Methods, by a
+name of G2's, comes first, its name read here as a reader sees it though G2 reads it as
+typed: "(3) Methods", "**2. Methods**" and "Materials & methods" came after "Limitations
+of existing methods" standing before them (round 3 of #246). G4 uses the test for a required
+section named "Methods", G9 reads the
 first such section of the main text, and a project with analysis code and no such heading is
 told so (`methods-not-found`, a warning). G2 and G15 read the Methods as places, where a
 heading names the method without the word ("Statistical analysis", "Study design"); they
@@ -1890,10 +1898,11 @@ pharmacovigilance paper the release of MedDRA decides which preferred terms exis
 `dictionary`, in both emitters, and digests the file it names as an input, so that a new
 release is a change G1 sees. MedDRA's ASCII release states its version in
 `meddra_release.asc`, the first `$`-separated field of its first line, and the emitter reads
-it from there; another dictionary's release is given, and checked against nothing. G2 fails a
-declared release typed where the dictionary is named within a few words before it on its
-line (`typed-dictionary-release`), and only there: "2019" is the release of ICD-10 and the
-year of many other things.
+it from there; another dictionary's release is given, and checked against nothing, and R
+refuses one that is not a single value. G2 fails a declared release typed where the
+dictionary is named within a few words before it on its line (`typed-dictionary-release`),
+with or without a `v` before it ("MedDRA v26.1"), and only there: "2019" is the release of
+ICD-10 and the year of many other things.
 
 ## The label beside an interval or a spread is the one emitted
 
@@ -2901,8 +2910,13 @@ and the profile said so only in its free-text notes. The profile now says it (`b
 double`, or `triple`), and the build looks for the authors in the document it made: their
 names, ORCID iDs and e-mail addresses from `authors.yaml`, and the institutions of their
 affiliations. It reads the text, the notes, the comments, the headers and the footers, the
-text a tracked change deleted, the text of the figures, Word's author fields, the author of
-each tracked change and comment, and the list of people Word keeps. A name found is a
+text a tracked change deleted, the text of the figures, Word's author fields and its company
+field, the author of each tracked change and comment, the list of people Word keeps, the
+address behind a link and the code of a field that holds one (`HYPERLINK`,
+`INCLUDEPICTURE`, `INCLUDETEXT`, and `LINK` or `DDE` for a table pasted as a link to its
+file), a `mailto:` or an ORCID iD behind words (round 1 of
+#273). Not a citation's field code, which holds the cited work's data: a self-citation
+of a thesis names the author's school there (round 1 of #349). A name found is a
 `BUILD` failure (`blind-document-names-author`): `build` writes the document, says so and
 exits 1, and `submit` does not assemble the pack. `submit --document` reads the copy it is
 given, which is the one that comes back from a co-author with Word's fields filled in.
@@ -2913,10 +2927,15 @@ space between the words and either apostrophe, since pandoc prints a typed one c
 initial is not read: "A Cross-sectional study" does not name Anna Cross, nor "Ward A" Alice
 Ward. The family name alone is not, because many are ordinary words; an institution is the
 part of an affiliation between its commas that has three words or more, in any case, because
-a city or a country names many other things. The reference list, a paragraph whose style is
-named "Bibliography", is not read: the journals that review blind mostly ask for the
-authors' own work to be cited in the third person, not taken out, and a self-citation
-prints their names there.
+a city or a country names many other things. So an institution of two words ("Example
+Institute") is not looked for, and an initial with its stop before a word that is a family
+name reads as that author, "Panel A. Example" as Ada Example
+(`test_what_the_blind_check_reads_wrongly_is_pinned`). The reference list, a paragraph
+whose style is named "Bibliography", is not read, nor the addresses it links to, wherever
+else they are linked, by a link or a field (so a link Word adds in the body to one of them
+is not read either; the list prints that address anyway): the journals that review blind
+mostly ask for the authors' own work to be cited in the third person, not taken out, and a
+self-citation prints their names there.
 
 ## The submission pack writes nothing twice
 
@@ -2935,7 +2954,8 @@ The manifest records every file with its sha256, because six months later "which
 did the journal actually get" has no reliable answer otherwise. It also says what made the
 pack: the version of manuscript-guard that checked it (`checked_with`), so that a later fix
 can say which packs to check again; the project's commit, and whether anything in the
-project's folder outside `build/` differed from it (`tree`); the day the journal's profile
+project's folder outside `build/` differed from it (`tree`, each file of a folder git
+has not been given counted, round 1 of #250); the day the journal's profile
 and each reporting checklist were read from their sources; and every review finding a
 person chose to leave as it was, with the reason and who decided (`overrides`, from
 `overridden` and `overridden_by` in the review records). Where a record names nobody,
@@ -3069,7 +3089,14 @@ statistician under a key that names the reader. A reader the panel names who has
 `design-reading-misfiled` and not counted; and a file beside the record whose reader the
 panel does not name is said (`design-reading-unnamed`) and not read. Until this, a design
 panel's named readers were not read at all, and a remit read by two models counted one
-reading.
+reading. As in G11, a reviewer the panel lists twice is said (`design-duplicate-reviewer`)
+and read once, with the readers every one of its entries names and its plain record where
+one names none, so that one record does not
+answer two remits nor its overrides go to the statistician twice; a reading that gives one id to two findings is said
+(`design-finding-id-repeated`), since an answer and a sign-off are held to a finding by its
+id; and two readers whose names would be filed as one, or a name with no letter or digit,
+are `design-reader-unnamed`. All three fail at submission, as G11's do (rounds 1 of #308,
+#313 and #315).
 
 An override of a design-round major, a reason given for leaving the objection standing, is
 the statistician's to accept, not the author's alone (`sign_offs`): G12 warns
@@ -3087,11 +3114,15 @@ backticks: `ror.point`, or `results.ror.point` as the manuscript binds it, or a 
 item's first blank line, and a span with no dot is code, not a key; a key with no dot of its
 own is written bound, `results.dose`. Once the stage is past
 `design`, G12 warns where a key listed there names no value, table or model the analysis
-emitted (`planned-result-missing`), or names only values emitted with `quoted=False`
+emitted (`planned-result-missing`; `table.*` and `model.*` name the tables and the models),
+or names only values emitted with `quoted=False`
 (`planned-result-unquoted`), unless the Deviations section names the key: dropping a
 promised result is a deviation, and saying so is the remedy. A section that names no key at
 all is a warning of its own (`planned-results-unkeyed`). A plan without the section says
-nothing to hold the results to and gets no finding.
+nothing to hold the results to and gets no finding. A heading that is also the Deviations
+section's heads the Deviations where the words of a change come first, "Changes to the
+planned results", and the list where the planned results do, "Planned results and
+amendments".
 
 **The plan is frozen when the first results are written.** A plan rewritten after the
 results are known is the pattern of a hypothesis fitted to its results, and it can be told
@@ -3102,7 +3133,9 @@ because the results folder is cleared and written again on every run, and a copy
 would be frozen again on the changed plan. Written as JSON, which is YAML too, so that R needs
 no package to write it. G12 warns (`plan-changed-after-results`) when the plan's words differ
 from the copy's and its Deviations section says what it said then: changed with nothing said.
-A plan re-wrapped without a word changed is unchanged. Results with no copy, written before
+A plan re-wrapped without a word changed is unchanged, and so is one saved with or without a
+byte order mark: both emitters keep the plan without the mark, and G12 compares it without
+one. Results with no copy, written before
 the emitters kept one, are a note. The worked example commits its copy beside its plan, as it
 commits its results. Until it did, every run of its analysis left the copy in a file git
 neither tracked nor ignored, which the next `git add -A` would have committed; a test now
@@ -3178,7 +3211,9 @@ findings' at the project's stage, as before. It is printed text only: `check --j
 unchanged.
 
 `verify` now records its last full run in the build folder (`build/verify.json`): when, how
-many values it reproduced of how many, and a digest of the results fragments it re-ran.
+many values it reproduced of how many, and a digest of the results fragments it re-ran. A
+software version found other on the re-run is among the values and not among those
+reproduced, in the record as in what `verify` prints (round 2 of #306).
 `check` says that run, and says the results have changed since where they have. A run of
 some scripts only (`--only`) is not recorded, since it did not re-run the analysis. The
 folder is not committed, so a fresh checkout says `verify` has not run in it, which is true.
@@ -4147,7 +4182,10 @@ be run again, read again or signed again?" had no answer in one place.
 
 `manuscript-guard impact <file>` walks it from a file and prints every dependant, with
 `--json` for a machine; with no file it takes the files changed since a commit (`--since`,
-HEAD by default) and the files git does not track yet. It is derived only: it keeps no record
+HEAD by default) and the files git does not track yet; a file moved is listed under both its
+names, since what named the old one is stale too. A folder is refused, and so is a name that
+is no file and that no record names, a slip of the keyboard; a file deleted that a record
+still names is answered. It is derived only: it keeps no record
 of its own, so it cannot go stale, and nobody fills it in. It says what depends on a file,
 not whether the dependant has changed; that is the gates' once the analysis has run again.
 
@@ -4869,7 +4907,8 @@ able to build something to read, so ordinary work warns and a resubmission fails
 **The letter is checked like the manuscript.** It goes to the journal with the paper, and
 `response` and `rebutted` were printed in it word for word: "the adjusted OR is now 2.31
 (95% CI 1.40 to 3.80)" typed into a reply went out unchecked, the core rule with a hole in a
-document we send. G2 now reads the authors' own words in each round as it reads prose, in a
+document we send. G2 now reads the authors' own words in each round, the `note` of each
+change as well (round 1 of #266), as it reads prose, in a
 section of their own, so the Methods' conventions, an alpha among them, do not pass a
 reply's "p < 0.001". A reply binds its results with `{{results.<key>}}` and `{{lit.<key>}}`,
 which the letter fills in; a typed one is `reply-unbound-number`, which fails at submission,
@@ -6104,6 +6143,15 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   Nothing reads it afterwards and the next build makes its own, so the cost is a stray file in
   a cache. Sweeping the directory instead would mean one build deleting a file another build
   is reading, which is the failure this naming exists to prevent.
+- **After a range of tables, a comma goes on with the list.** It must, for "Tables S1-S3,
+  S5", so "In Tables 1-3, 30 patients were excluded" reads Table 30: a pointer past the
+  tables where they are counted, and a count G2 does not hold to the results
+  (`test_a_count_after_a_range_of_tables_read_as_a_table_is_pinned`, round 3 of #256).
+- **A quote of a revised sentence is compared with its Markdown.** Its `*`, backticks and
+  comments are taken off, and nothing else: emphasis written with underscores, a
+  citation, a link, a sub- or superscript or an escape in the sentence keeps a quote of it
+  as it prints from matching, and G13 says the text does not read it
+  (`test_a_quote_of_the_printed_sentence_against_its_markup_is_pinned`, round 1 of #266).
 - **A number a summary gives is looked for by its key, and in a table or figure by its
   display.** A key printed in a table or drawn in a figure the paper places counts as
   reported when its display stands there as a number of its own, so a coincidence keeps the
@@ -6283,7 +6331,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   `ror.point`, the crude one, passes. Keys are read from the list items' first code spans
   only; a result the section describes in words is not checked, and a section with one key
   and ten results in words says nothing of the ten. A Deviations section that names a key,
-  whatever it says of it, stands down that key's warning.
+  whatever it says of it, stands down that key's warning. A heading that names both,
+  "Planned results and amendments", or a list nested under the Deviations heading, is
+  read as the list and as the Deviations, so its items stand down their own keys' warnings
+  (rounds 2 and 3 of #351; telling the two apart made other plans warned of).
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the
@@ -6316,6 +6367,26 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   A raw block, ```` ```{=openxml} ````, is blanked although pandoc passes its text into the
   document. An indented code block is not blanked, so a pattern written for a phrase can be
   met by a line of code; one anchored on a heading cannot.
+- **A data statement is the first of two matching headings at one level.** A numbered
+  Methods subsection on data sharing is read as the statement where the statement stands
+  under a Declarations heading at the same level
+  (`test_a_statement_heading_level_with_a_methods_subsection_is_pinned`, round 2 of #269).
+- **A Word citation field with a DOI no entry has is matched to an entry with no DOI by its
+  title.** The title has no minimum length, and the year and the first author are
+  compared only where both give them, so a conference abstract filed without its DOI is
+  taken for the paper of the same title and authors (round 1 of #350). An entry that has
+  the field's DOI is always taken first, each DOI read as the gates read one: without the
+  dressing `normal_doi` takes off (`doi:`, a resolver's address, a stop after it), in one
+  case.
+- **Some tests of the literature are narrower than the rule they hold.** The words beside a
+  quoted value are drawn with each value once, between spaces, and never inside a word with
+  a digit: a value quoted twice, or within "CYP3A14", and a quote in a script written
+  without spaces, are held by corruption cases only, or not at all (round 1 of #278). A
+  Zotero field in a returned document is tested in one shape, with its run properties and
+  its result in one run: a field with no `rPr`, a result over several runs, a
+  `w:fldSimple` and a `formattedCitation` are not (round 1 of #281). A narrative
+  citation's name written as hex on the command line is tested with Latin names only
+  (round 3 of #296).
 
 Added by the adversarial review, verified and **not** fixed:
 
@@ -6600,7 +6671,11 @@ Added by the adversarial review, verified and **not** fixed:
   (`kdeplot`) are not. A method of the same name on another object is taken for one: any
   `.sample(` or `.std(`. Any seed call in the script (`np.random.seed`, `default_rng(7)`,
   `random.seed`, `set.seed`) is taken to settle every random call in it, though
-  `np.random.seed` does not seed Python's `random` module. A seaborn bootstrap is settled
+  `np.random.seed` does not seed Python's `random` module. A draw from a generator the script
+  made, `rng = np.random.default_rng()` and then `rng.normal()`, is a method of that object
+  and not under `np.random.`, so it is not read even unseeded; a test pins it. The figure's
+  sheet lists what is allowed under `allow_estimates`, and a section there that is no list
+  allows nothing. A seaborn bootstrap is settled
   only by its own `seed=`. `geom_smooth`, `stat_summary` and `dropna` have no argument that
   quiets them: each needs a reason under `allow_estimates`, or the computation moved into
   the analysis.
@@ -9088,9 +9163,10 @@ Closed since, and why each mattered:
   the DOI of a dataset the statement cites by its key: an entry of type `dataset` only, so a
   `@misc` that holds a dataset and says nothing of it is not read as one. A forbidden
   phrasing is matched as the profile writes it, without regard to case, and its `unless`
-  anywhere in the statement accepts it. The statement is the section under its heading, its subsections included, the
-  outermost where several headings match; a statement written as a paragraph with no heading
-  of its own is not read. A link to a repository with any path after its name, a branch's as
+  anywhere in the statement accepts it. The statement is the section under its heading, its
+  subsections included, the outermost where several headings match and the first of several
+  at one level (a limit, among the open Known gaps); a statement
+  written as a paragraph with no heading of its own is not read. A link to a repository with any path after its name, a branch's as
   much as a release's, is taken for a fixed version, and a bare repository is warned of even
   where the statement names its archive too. A dataset's DOI counts as cited when an entry of
   `references.bib` holds it, whether the text cites that entry or not. A regular expression

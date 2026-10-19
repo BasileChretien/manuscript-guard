@@ -205,9 +205,16 @@ def planned_results(text: str) -> list[Planned] | None:
     spans = code_spans(masked)
     items = list_items(text)
     lines = text.count("\n") + 2
+    deviations = dict((name, rule) for name, rule, _purpose in REQUIRED)["deviations"]
     planned: list[Planned] | None = None
     for index, section in enumerate(sections):
-        if not re.search(PLANNED, section.title):
+        # "Changes to the planned results" heads the Deviations, not the list (round 1 of
+        # #305): read as the list, it named no key and the plan was said to have none. The
+        # words that come first say which: "Planned results and amendments" is the list
+        # (round 1 of #351).
+        named = re.search(PLANNED, section.title)
+        changed = re.search(deviations, section.title)
+        if not named or (changed and changed.start() < named.start()):
             continue
         planned = planned or []
         after = index + len(subsections(sections, index))
@@ -248,16 +255,29 @@ def _emitted(results: Results, planned: Planned) -> list[bool]:
     """Whether each result the planned key names is quoted: one entry for each value, table
     or model it names, none where the analysis emitted nothing under it."""
     key = planned.key
+    kind, _, name = key.partition(".")
     if planned.group:
-        return [v.quoted for k, v in results.values.items() if k.startswith(f"{key}.")]
+        # `table.*` and `model.*` name tables and models, which are not values (round 1 of
+        # #305: the group was looked for among the values alone, and said to be missing).
+        within = [v.quoted for k, v in results.values.items() if k.startswith(f"{key}.")]
+        if kind == "table":
+            within += [t.quoted for n, t in results.tables.items() if _under(n, name)]
+        if kind == "model":
+            within += [True for n in results.models if _under(n, name)]
+        return within
     if key in results.values:
         return [results.values[key].quoted]
-    kind, _, name = key.partition(".")
     if kind == "table" and name in results.tables:
         return [results.tables[name].quoted]
     if kind == "model" and name in results.models:
         return [True]
     return []
+
+
+def _under(name: str, stem: str) -> bool:
+    """Whether a table or model's name falls in a group: every one for `table.*`, those
+    whose name opens with `adjusted.` for `model.adjusted.*`."""
+    return not stem or name.startswith(f"{stem}.")
 
 
 def _written(planned: Planned) -> str:
@@ -366,10 +386,12 @@ def _frozen(project: Project, path: Path, text: str) -> Report:
                 ),
             )
         )
-    # Unchanged by its bytes, or by its words: a plan re-wrapped says what it said.
-    if source_digest_matches(path, record["sha256"]) or text.split() == record["plan"].split():
+    # Unchanged by its bytes, or by its words: a plan re-wrapped says what it said. A copy
+    # kept with a byte-order mark, before the emitters took it off, is read without it.
+    kept = record["plan"].removeprefix("﻿")
+    if source_digest_matches(path, record["sha256"]) or text.split() == kept.split():
         return Report()
-    if deviations_said(text) != deviations_said(record["plan"]):
+    if deviations_said(text) != deviations_said(kept):
         return Report()
     return Report(
         (

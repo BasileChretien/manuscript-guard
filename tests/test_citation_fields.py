@@ -188,6 +188,13 @@ def test_a_field_or_tag_that_is_no_citation_is_none(code: str) -> None:
          {"title": "A {Study} of Hepatic Injury", "year": "2021", "author": "Fictional, Anne"},
          "k"),
         ({"doi": "https://doi.org/10.1/ABC"}, {"doi": "10.1/abc", "title": "x"}, "k"),
+        # Round 2 of #298: an entry with no DOI is found by its title, year and author.
+        ({"doi": "10.1/abc", "title": "A study of hepatic injury", "year": "2021",
+          "author": "Fictional"},
+         {"title": "A {Study} of Hepatic Injury", "year": "2021", "author": "Fictional, Anne"},
+         "k"),
+        ({"doi": "10.1/abc", "title": "A study of hepatic injury"},
+         {"doi": "10.1/xyz", "title": "A study of hepatic injury"}, None),
     ],
 )  # fmt: skip
 def test_a_work_cited_in_word_is_matched_to_a_key_only_when_it_is_that_work(
@@ -199,3 +206,25 @@ def test_a_work_cited_in_word_is_matched_to_a_key_only_when_it_is_that_work(
 
     said = _said_inserted(Work(**work), {"k": fields})
     assert ("[@k]" in said) is (key is not None), said
+
+
+def test_the_entry_with_the_field_s_doi_is_taken_before_a_duplicate_without_one() -> None:
+    """Round 1 of #350: a Zotero duplicate with no DOI, above the entry that has it, matched
+    by its title first, and the import named the duplicate's key."""
+    from manuscript_guard.citationfields import Work
+    from manuscript_guard.cli import _said_inserted
+
+    work = Work(doi="10.1/abc", title="A study of hepatic injury", year="2021", author="Fictional")
+    same = {"title": "A study of hepatic injury", "year": "2021", "author": "Fictional, Anne"}
+    said = _said_inserted(work, {"b": same, "a": {**same, "doi": "10.1/abc"}})
+    assert "[@a]" in said, said
+    # Round 2 of #350: whatever the entry's DOI is dressed in.
+    for written in ("http://dx.doi.org/10.1/ABC", "doi:10.1/abc", "10.1/abc."):
+        said = _said_inserted(work, {"b": same, "a": {**same, "doi": written}})
+        assert "[@a]" in said, (written, said)
+    # And on the field's side, where only the DOI can match the entry.
+    dressed = Work(doi="https://dx.doi.org/10.1/ABC", title="X")
+    assert "[@a]" in _said_inserted(dressed, {"a": {"doi": "doi:10.1/abc", "title": "Y"}})
+    from manuscript_guard.cli import _the_work
+
+    assert _the_work(dressed, {"doi": "https://doi.org/10.1/abc", "title": "Y"})

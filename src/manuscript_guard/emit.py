@@ -404,7 +404,9 @@ def freeze_plan(root: Path, script: Path | str) -> Path | None:
     if not plan.is_file() or frozen.exists():
         return None
     try:
-        text = plan.read_bytes().decode("utf-8")
+        # Without a byte-order mark, which G12 strips when it reads the plan, so that the
+        # copy reads as the plan does (round 1 of #271: a re-wrapped plan then differed).
+        text = plan.read_bytes().decode("utf-8-sig")
     except UnicodeDecodeError:
         return None
     if "\x00" in text:

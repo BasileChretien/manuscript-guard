@@ -79,6 +79,12 @@ def test_a_run_of_verify_that_left_a_fragment_out_says_so(project: Path) -> None
     record_verified(loaded, VerifyReport([Comparison("01.json", agreed=agreed)]))
     [line] = [line for line in _said(project) if "`verify`" in line]
     assert line.endswith(": 31 of 31 values reproduced")
+    # Round 2 of #306: a version other on the re-run is a value that was not reproduced.
+    other = Comparison("01.json", agreed=agreed,
+                       environment=(("software.python", "3.12.3", "3.13.0"),))  # fmt: skip
+    record_verified(loaded, VerifyReport([other]))
+    [line] = [line for line in _said(project) if "`verify`" in line]
+    assert line.endswith(": 31 of 32 values reproduced")
 
 
 def test_a_reporting_checklist_that_stops_its_gate_is_said_under_reporting(project: Path) -> None:

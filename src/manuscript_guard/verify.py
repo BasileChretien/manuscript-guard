@@ -512,7 +512,9 @@ def render(result: VerifyReport, root: Path) -> str:
     for name, why in result.skipped:
         lines.append(f"  [SKIP] {name}: {why}")
     reproduced = sum(len(c.agreed) for c in result.comparisons)
-    total = reproduced + sum(len(c.differed) for c in result.comparisons)
+    # A version other on this machine is no reproduction and no failure, and is counted
+    # among the values all the same (round 2 of #306).
+    total = reproduced + sum(len(c.differed) + len(c.environment) for c in result.comparisons)
     lines.append("")
     if total:
         lines.append(f"{reproduced}/{total} values reproduced by re-running the analysis.")

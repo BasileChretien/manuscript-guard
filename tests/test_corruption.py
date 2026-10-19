@@ -442,6 +442,15 @@ def test_a_figure_that_estimates_while_it_draws_is_warned(
     assert _estimates_said(project) == said
 
 
+def test_a_draw_from_a_generator_the_script_made_is_not_read_as_pinned(project: Path) -> None:
+    """A known gap (round 1 of #288): `rng.normal` is a method of the generator, not under
+    `np.random.`, so an unseeded generator's draws are not warned. DESIGN.md says so."""
+    script = project / "figures" / "forest.py"
+    added = "rng = np.random.default_rng()\nnoise = rng.normal(size=3)\n"
+    script.write_text(script.read_text(encoding="utf-8") + "\n" + added, encoding="utf-8")
+    assert _estimates_said(project) == []
+
+
 def test_an_estimate_with_its_reason_beside_the_figure_is_not_warned(project: Path) -> None:
     script = project / "figures" / "forest.py"
     script.write_text(
@@ -457,6 +466,17 @@ def test_an_estimate_with_its_reason_beside_the_figure_is_not_warned(project: Pa
         encoding="utf-8",
     )
     assert _estimates_said(project) == ["frame.sample"]
+
+
+def test_an_allowlist_section_that_is_no_list_allows_nothing(project: Path) -> None:
+    """Round 1 of #288: `allow_estimates: 5` was iterated, raised, and the gate errored."""
+    script = project / "figures" / "forest.py"
+    script.write_text(script.read_text(encoding="utf-8") + '\nsns.barplot(data=frame)\n',
+                      encoding="utf-8")  # fmt: skip
+    sidecar = project / "figures" / "forest.guard.yaml"
+    sidecar.write_text(sidecar.read_text(encoding="utf-8") + "\nallow_estimates: 5\n",
+                       encoding="utf-8")  # fmt: skip
+    assert _estimates_said(project) == ["sns.barplot"]
 
 
 @pytest.mark.parametrize(
@@ -1901,6 +1921,38 @@ def test_impact_follows_results_into_results_and_a_deleted_file_to_its_readings(
     assert not only.empty and "    A on x" in as_text(only)
 
 
+def test_impact_refuses_a_folder_and_a_name_that_is_no_file(
+    project: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """Round 1 of #280: a folder, or a name mistyped, was answered as a file no record
+    names, exit 0, which reads as "nothing depends on it"."""
+    from manuscript_guard.cli import main
+
+    assert main(["impact", str(project / "manuscript")]) == 2
+    assert "is a folder" in capsys.readouterr().err
+    assert main(["impact", str(project / "analysis" / "01_disproportionalty.py")]) == 2
+    assert "does not exist, and no record names it" in capsys.readouterr().err
+    (project / "manuscript" / "supplementary" / "S1_code_lists.md").unlink()
+    assert main(["impact", str(project / "manuscript" / "supplementary" / "S1_code_lists.md"),
+                 "--json"]) == 0  # fmt: skip
+    # A deleted input whose results hold one table nothing binds yet is named by those
+    # results, and answered with them (asked in round 1 of #351: `empty` counts results).
+    first = project / "results" / "01_disproportionality.json"
+    document = json.loads(first.read_text(encoding="utf-8"))
+    document["provenance"]["generated_by"] = "analysis/03_tables.py"
+    document["provenance"]["inputs"] = [{"path": "data/gone.csv", "sha256": "0" * 64}]
+    document["tables"] = {"unbound": document["tables"]["two_by_two"]}
+    document["values"] = {}
+    for key in ("steps", "variables", "models", "code_lists"):
+        document.pop(key, None)
+    third = project / "results" / "03_tables.json"
+    third.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(third)
+    capsys.readouterr()
+    assert main(["impact", str(project / "data" / "gone.csv"), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["results"] == ["results/03_tables.json"]
+
+
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 def test_impact_with_no_file_lists_what_changed_since_the_last_commit(
     project: Path, monkeypatch: pytest.MonkeyPatch
@@ -1927,6 +1979,30 @@ def test_impact_with_no_file_lists_what_changed_since_the_last_commit(
     named = project / "manuscript" / ("r" + chr(0xE9) + "sum" + chr(0x8003) + ".md")
     named.write_text("New.\n", encoding="utf-8")
     assert named.name in {Path(one["file"]).name for one in _impact(project)}
+    # Round 2 of #280: on a UTF-8 locale the name above passes without the encoding, so the
+    # encoding git's names are read in is asked of the call itself.
+    import manuscript_guard.impact as impact
+
+    asked = []
+    real = impact.subprocess.run
+
+    def run(*args, **kwargs):
+        asked.append(kwargs.get("encoding"))
+        return real(*args, **kwargs)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(impact.subprocess, "run", run)
+        _impact(project)
+    assert asked and set(asked) == {"utf-8"}
+    # A file moved with `git mv` is two files to what depends on them: the old name's
+    # readings are stale as much as the new name's, and rename detection lists only the new.
+    named.unlink()
+    git("mv", "manuscript/supplementary/S1_code_lists.md", "manuscript/supplementary/S1.md")
+    files = {one["file"]: one for one in _impact(project)}
+    assert {"manuscript/supplementary/S1_code_lists.md", "manuscript/supplementary/S1.md"} <= set(
+        files
+    ), files
+    assert files["manuscript/supplementary/S1_code_lists.md"]["readings"]
 
 
 # ------------------------------------------------------------- the authors' approvals
@@ -1982,6 +2058,28 @@ def test_two_authors_named_alike_are_approved_apart(project: Path) -> None:
     assert _approvals_said(project) == [("approval-missing", "Wei Zhang")]
     assert main(["approve", str(project), "--as", "0000-0001-5109-3700"]) == 0
     assert _approvals_said(project) == []
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_submit_says_which_authors_have_not_approved(project: Path, capsys) -> None:
+    """Round 1 of #284: `submit` prints the authors with no approval, and nothing asserted
+    it; the pack is assembled all the same, since sending is the corresponding author's
+    call."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    document = str(project / "build" / "manuscript.docx")
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
+    said = capsys.readouterr().out
+    assert said.count("has not approved the manuscript") == 2, said
+    assert "Ada Example has not" in said and "Blaise Sample has not" in said
+    assert 'manuscript-guard approve --as "Ada Example"' in said
+    for author in ("0000-0002-1825-0097", "0000-0001-5109-3700"):
+        assert main(["approve", str(project), "--as", author]) == 0
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
+    assert "approved" not in capsys.readouterr().out
 
 
 # ------------------------------------------------ the unit written after a binding
@@ -2379,6 +2477,17 @@ def test_a_quoted_revision_the_journal_already_read_fails(project: Path) -> None
     assert _said(_g13(project), "quoted-text-not-new") == [("quoted-text-not-new", "fail")]
 
 
+def test_a_quote_of_the_printed_sentence_against_its_markup_is_pinned() -> None:
+    """Known gaps (round 1 of #266): a quote is compared with the Markdown less its `*`,
+    backticks and comments, so emphasis written with underscores, or a citation, keeps a
+    quote of the sentence as it prints from matching it."""
+    from manuscript_guard.gates.revision import as_quoted
+
+    assert "The ratio rose" in as_quoted("The *ratio* rose.")
+    assert "The ratio rose" not in as_quoted("The _ratio_ rose.")
+    assert "as reported (1)" not in as_quoted("as reported [@key].")
+
+
 def test_a_quoted_revision_in_another_section_fails(project: Path) -> None:
     _round_with(project, [_point(
         response="We now say so in the Abstract.",
@@ -2415,6 +2524,36 @@ def test_what_must_not_reach_a_journal_in_a_reply_fails(
 ) -> None:
     _round_with(project, [_point(response=reply, rebutted="No change was needed.")])
     assert _said(_g13(project), code) == [(code, "fail")]
+
+
+def test_a_note_on_a_change_is_read_as_the_reply_is(project: Path) -> None:
+    """Round 1 of #266: a changed entry's `note` is printed in the letter after the change,
+    and neither G13's reply checks nor G2 read it."""
+    changed = [{"kind": "text", "quote": "A new sentence.", "note": "TODO: say where."}]
+    _round_with(project, [_point(response="We now say so.", changed=changed)])
+    assert _said(_g13(project), "response-artefact") == [("response-artefact", "fail")]
+    changed[0]["note"] = "as the reviewer asked, from line 120"
+    _round_with(project, [_point(response="We now say so.", changed=changed)])
+    from manuscript_guard.gates.numbers import replies
+
+    document = {"reviewers": [{"id": "r", "points": [{"id": "1", "changed": changed}]}]}
+    assert replies(document, 1) == [("round 1, r point 1, `changed[0].note`",
+                                     "as the reviewer asked, from line 120")]  # fmt: skip
+    # Through G2 itself, and round 1 of #349: a binding in the note is filled in the letter,
+    # as the reply's are, where it was printed as typed.
+    changed[0]["note"] = "the ROR is now 2.31"
+    _round_with(project, [_point(response="We now say so.", changed=changed)])
+    assert any("2.31" in m and "changed[0].note" in m for m in _reply_numbers(project))
+    changed[0]["note"] = "the ROR is now {{results.ror.point}}"
+    _round_with(project, [_point(response="We now say so.", changed=changed)])
+    assert _reply_numbers(project) == []
+    from manuscript_guard.build.submission import response_letter
+    from manuscript_guard.contracts import load_namespace
+
+    projekt, _ = load_project(project)
+    point = load_namespace(projekt)[0]["results.ror.point"].display
+    letter = response_letter(projekt)
+    assert f"the ROR is now {point}" in letter and "{{" not in letter
 
 
 @pytest.mark.parametrize(
@@ -2628,6 +2767,22 @@ def test_the_statement_is_found_under_its_heading_however_written(
     text = path.read_text(encoding="utf-8").replace(before, "", 1)
     path.write_text(text.replace(heading, "# Data availability", 1), encoding="utf-8")
     assert said("Data are held by the team.") == [("data-identifier-missing", "fail")]
+
+
+def test_a_statement_heading_level_with_a_methods_subsection_is_pinned(project: Path) -> None:
+    """Known gaps (round 2 of #269): of two matching headings at one level, the first is
+    read, so a numbered Methods subsection on data sharing is taken for the statement where
+    the statement stands under a Declarations heading at the same level."""
+    _data_statement(project, "Data are held by the team.")
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace("# Results", "## 2.4 Data sharing between sites\n\nThe sites shared "
+                        "records weekly.\n\n# Results", 1)  # fmt: skip
+    text = text.replace("# Data availability\n\nData are held by the team.",
+                        "# Declarations\n\n## Availability of data and materials\n\nThe "
+                        "dataset is in GEO, GSE123456.", 1)  # fmt: skip
+    path.write_text(text, encoding="utf-8")
+    assert _data_findings(project) == [("data-identifier-missing", "fail")]
 
 
 def test_a_dataset_doi_the_reference_list_cites_passes(project: Path) -> None:
@@ -3431,6 +3586,17 @@ def test_a_count_after_a_list_of_tables_is_a_count(project: Path) -> None:
     assert _pointer_findings(project) == []
 
 
+def test_a_count_after_a_range_of_tables_read_as_a_table_is_pinned() -> None:
+    """Known gaps (round 3 of #256): after a range a comma goes on with the list, as it must
+    for "Tables S1-S3, S5", so "In Tables 1-3, 30 patients" reads Table 30."""
+    from manuscript_guard.gates.pointers import pointers_in
+
+    said = pointers_in("In Tables 1-3, 30 patients were excluded.", Path("x"))
+    assert [p.number for p in said] == [1, 2, 3, 30]
+    said = pointers_in("Tables S1-S3, S5 list the codes.", Path("x"))
+    assert [p.number for p in said] == [1, 2, 3, 5]
+
+
 def test_a_serial_comma_ends_no_list_of_tables(project: Path) -> None:
     """Round 3 of #256: "Tables 1, 2, and 3" stopped the pointer at 2, and the 3 was taken
     for a cross-reference no gate held to a table, in a paper that places two."""
@@ -3498,6 +3664,21 @@ def test_a_plan_rewrapped_says_what_it_said(project: Path) -> None:
     plan = project / "design" / "plan.md"
     text = plan.read_text(encoding="utf-8")
     plan.write_text(text.replace("\n\n", "\n\n\n").replace(". ", ".\n"), encoding="utf-8")
+    assert _plan_said(project) == []
+
+
+def test_a_plan_kept_with_its_byte_order_mark_and_rewrapped_says_what_it_said(
+    project: Path,
+) -> None:
+    """Round 1 of #271: the emitters kept a plan's byte-order mark, which G12 strips when it
+    reads the plan, and a plan re-wrapped then no longer read as the copy."""
+    frozen = project / "design" / "plan.frozen.yaml"
+    record = json.loads(frozen.read_text(encoding="utf-8"))
+    record["plan"] = "﻿" + record["plan"]
+    frozen.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    plan.write_bytes(("﻿" + text.replace(". ", ".\n")).encode("utf-8"))
     assert _plan_said(project) == []
 
 
@@ -3660,6 +3841,35 @@ def test_a_planned_results_section_that_names_no_key_is_a_warning(project: Path)
     words = "## Planned results\n\nThe cases, the ratio and the share that were serious.\n\n"
     plan.write_text(text[:start] + words + text[end:], encoding="utf-8")
     assert _planned_said(project) == [("planned-results-unkeyed", "")]
+
+
+def test_a_deviations_heading_that_names_the_planned_results_is_not_the_list(
+    project: Path,
+) -> None:
+    """Round 1 of #305: "Changes to the planned results" was read as the plan's list, named
+    no key, and the plan was said to list its results by none."""
+    _plan_edited(project, "## Deviations from the plan", "## Changes to the planned results")
+    assert _planned_said(project) == []
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    start, end = text.index("## Planned results\n"), text.index("## Sample size")
+    plan.write_text(text[:start] + text[end:], encoding="utf-8")
+    assert _planned_said(project) == []
+    # Round 1 of #351: where the planned results come first, the heading is the list's.
+    words = "## Planned results and amendments\n\nThe cases and the ratio.\n\n"
+    plan.write_text(text[:start] + words + text[end:], encoding="utf-8")
+    assert _planned_said(project) == [("planned-results-unkeyed", "")]
+
+
+def test_a_planned_group_of_tables_or_models_is_looked_for_among_them(project: Path) -> None:
+    """Round 1 of #305: `table.*` was looked for among the values, found nothing, and the
+    tables the analysis emitted were said to be missing."""
+    groups = "- `table.*`: the tables\n- `model.*`: the models\n- `case.pct_serious`"
+    _plan_edited(project, "- `case.pct_serious`", groups)
+    assert _planned_said(project) == []
+    _plan_edited(project, "- `model.*`: the models", "- `model.crude.*`: the crude models")
+    assert _planned_said(project) == [("planned-result-missing",
+                                       "- `model.crude.*`: the crude models")]  # fmt: skip
 
 
 # ------------------------------------------------- the unit of analysis
@@ -3940,6 +4150,26 @@ def test_a_sign_off_is_bound_to_every_model_the_warning_names(project: Path) -> 
     said = [f for f in check_models(project_, results).findings
             if f.code == "models-on-different-rows"]  # fmt: skip
     assert [f.severity for f in said] == ["warn"] and "changed since" in said[0].hint
+
+
+def test_a_signed_warning_keeps_its_place_among_the_others(project: Path) -> None:
+    """Round 2 of #304: the order was held only where the signed warning came last, which
+    appending it would also pass. Here a later warning follows it."""
+    from manuscript_guard.cli import main
+
+    _crude_beside_adjusted(project, {"rows_sha256": _ROWS["all"]},
+                           {"rows_sha256": _ROWS["some"], "engine": _POISSON,
+                            "covariance": "nonrobust"})  # fmt: skip
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(project_)
+    raised = [f.code for f in check_models(project_, results).findings]
+    signed, later = "poisson-binary-variance", "models-on-different-rows"
+    assert raised.index(signed) < raised.index(later), raised
+    finding = f"G15/{signed}/adjusted"
+    assert main(["sign", str(project), "--as", "Sample", "--finding", finding]) == 0
+    said = check_models(project_, results).findings
+    assert [f.code for f in said] == raised
+    assert [f.severity for f in said if f.code == signed] == ["info"]
 
 
 def test_a_statistician_who_is_not_an_author_signs_by_name(project: Path) -> None:
@@ -4814,6 +5044,20 @@ def test_a_title_in_british_spelling_matches_its_american_registration(project: 
         crossref={**_CROSSREF, "title": "Hemorrhage and tumor behavior in a randomized cohort"},
     )
     assert "reference-title-mismatch" not in _g7_codes(project)
+
+
+@pytest.mark.parametrize(("pubmed_doi", "fails"), [(_LOOKED_DOI, False), (None, True)])
+def test_pubmed_s_title_of_the_same_work_is_a_candidate(
+    project: Path, pubmed_doi: str | None, fails: bool
+) -> None:
+    """Round 1 of #253: a paper Crossref registered under its title in another language,
+    and PubMed under the English one the entry cites, was said to name another title.
+    PubMed's title counts where PubMed gives the work the entry's own DOI."""
+    crossref = {**_CROSSREF, "title": "Lésions hépatiques dans une cohorte nationale fictive"}
+    pubmed = {"status": "found", "title": "Hepatic injury in a fictional national cohort, "
+              "2010-2019", **({"doi": pubmed_doi} if pubmed_doi else {})}  # fmt: skip
+    _looked_up(project, pmid="31000001", crossref=crossref, pubmed=pubmed)
+    assert ("reference-title-mismatch" in _g7_codes(project)) is fails
 
 
 def test_a_title_in_another_script_is_not_compared(project: Path) -> None:
@@ -6259,6 +6503,9 @@ def test_a_quote_not_in_its_source_says_what_stands_in_the_way(
     [
         ("A signal was detected for the class as a whole (ROR 2.6, 95% CI 2.1-3.2).", False),
         ("the class as a whole (ROR 2.6", False),
+        # Round 1 of #278: the threshold itself, four words beside the value and three.
+        ("as a whole (ROR 2.6", False),
+        ("a whole (ROR 2.6", True),
         ("whole (ROR 2.6", True),
         ("ROR 2.6", True),
         ("2.6", True),
@@ -6738,6 +6985,10 @@ def test_a_paper_s_title_written_as_a_heading_is_not_its_methods(
         "\n\n## Results\n\nAn alpha of 0.07 was used.\n"
     )
     assert methods_in(text) == "\n\nNo alpha here.\n\n"
+    # Round 3 of #246: numbered in brackets, in bold or with an ampersand, the Methods were
+    # not read as named, and the heading before them that only holds the word was taken.
+    for methods in ("(2) Methods", "**2. Methods**", "Materials & methods"):
+        assert methods_in(text.replace("## Methods", f"## {methods}")) == "\n\nNo alpha here.\n\n"
     main = main_md(project)
     body = main.read_text(encoding="utf-8").split("---\n", 2)
     demoted = body[2].replace("\n# ", "\n## ")
@@ -6910,6 +7161,10 @@ def test_a_journal_style_the_project_does_not_keep_is_said(project: Path) -> Non
     assert _style_said(project) == [("journal-style-not-stored", "warn")]
     keep_style(project, DEPENDENT)
     assert _style_said(project) == []
+    # Round 1 of #322: a file's name is said to be one (round 1 of #349: untested).
+    name_style(project, f"{DEPENDENT}.csl")
+    [said] = [f for f in _journal(project).findings if f.code == "journal-style-not-stored"]
+    assert "a name with `.csl` is a file's" in said.message
 
 
 def test_a_kept_style_edited_since_is_said_and_not_used(project: Path) -> None:
@@ -8090,6 +8345,9 @@ def test_a_refused_build_into_the_build_directory_itself_does_not_crash(
 # ------------------------------------------------- a document reviewed blind names no author
 
 _W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+_R_NS = (
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+)
 
 
 def _blind(root: Path, kind: str = "double") -> None:
@@ -8198,6 +8456,61 @@ _CORE_NS = (
             "<w:p><w:r><w:t>As B. O\N{RIGHT SINGLE QUOTATION MARK}Sample said.</w:t></w:r></w:p>",
             {}, [("Blaise O'Sample", "the text")], id="an apostrophe printed curly",
         ),
+        # Round 1 of #273: a link's address, a field's code and Word's company field.
+        pytest.param(
+            "", {"word___rels__document.xml.rels": "<Relationships xmlns='http://schemas."
+                 "openxmlformats.org/package/2006/relationships'><Relationship Id='rId9' "
+                 "Type='hyperlink' Target='mailto:ada.example@invalid.example' "
+                 "TargetMode='External'/></Relationships>"},
+            [("the e-mail address ada.example@invalid.example", "the address of a link")],
+            id="a link's address",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText "
+            "xml:space='preserve'> HYPERLINK \"https://orcid.org/</w:instrText></w:r><w:r>"
+            "<w:instrText>0000-0002-1825-0097\" </w:instrText></w:r><w:r><w:fldChar "
+            "w:fldCharType='separate'/></w:r><w:r><w:t>my record</w:t></w:r><w:r><w:fldChar "
+            "w:fldCharType='end'/></w:r></w:p>", {},
+            [("the ORCID iD 0000-0002-1825-0097", "a field's code")], id="a field's code",
+        ),
+        pytest.param(
+            "<w:p><w:fldSimple w:instr=' HYPERLINK \"mailto:ada.example@invalid.example\" '>"
+            "<w:r><w:t>write</w:t></w:r></w:fldSimple></w:p>", {},
+            [("the e-mail address ada.example@invalid.example", "a field's code")],
+            id="a simple field's code",
+        ),
+        # Round 2 of #349: a table pasted as a link to its file, a field nested in a link's
+        # code, and a link's field left open at the paragraph's end.
+        pytest.param(
+            "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText> LINK "
+            "Excel.Sheet.12 \"C:/Users/Ada Example/Documents/t.xlsx\" \"Sheet1\" "
+            "</w:instrText></w:r><w:r><w:fldChar w:fldCharType='separate'/></w:r><w:r><w:t>"
+            "a table</w:t></w:r><w:r><w:fldChar w:fldCharType='end'/></w:r></w:p>", {},
+            [("Ada Example", "a field's code")], id="a table linked to its file",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText> HYPERLINK "
+            "\"mailto:</w:instrText></w:r><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r>"
+            "<w:instrText> MERGEFIELD x </w:instrText></w:r><w:r><w:fldChar "
+            "w:fldCharType='end'/></w:r><w:r><w:instrText>ada.example@invalid.example\" "
+            "</w:instrText></w:r><w:r><w:fldChar w:fldCharType='separate'/></w:r><w:r><w:t>"
+            "write</w:t></w:r><w:r><w:fldChar w:fldCharType='end'/></w:r></w:p>", {},
+            [("the e-mail address ada.example@invalid.example", "a field's code")],
+            id="a field nested in a link's code",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText> HYPERLINK "
+            "\"https://orcid.org/0000-0002-1825-0097\" </w:instrText></w:r></w:p>", {},
+            [("the ORCID iD 0000-0002-1825-0097", "a field's code")],
+            id="a link's field left open",
+        ),
+        pytest.param(
+            "", {"docProps__app_xml": "<Properties xmlns='http://schemas.openxmlformats.org/"
+                 "officeDocument/2006/extended-properties'><Company>Example University "
+                 "Graduate School of Medicine</Company></Properties>"},
+            [("Example University Graduate School of Medicine",
+              "the document's company (Company)")], id="Word's company field",
+        ),
     ],
 )  # fmt: skip
 def test_a_document_reviewed_blind_names_no_author_anywhere_word_keeps_one(
@@ -8213,6 +8526,37 @@ def test_a_document_reviewed_blind_names_no_author_anywhere_word_keeps_one(
             "family: Sample", "family: \"O'Sample\""), encoding="utf-8")  # fmt: skip
     document = _word(tmp_path / "manuscript.docx", body, **parts)
     assert _named(project, document) == sorted(said)
+
+
+def test_a_place_building_again_does_not_clear_says_how_to_clear_it(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round 1 of #349: a link's address, a field's code and the Company had the text's
+    hint, "build again", which clears none of them."""
+    from manuscript_guard.build.blinding import check_blinded
+
+    _blind(project)
+    company = ("<Properties xmlns='http://schemas.openxmlformats.org/officeDocument/2006/"
+               "extended-properties'><Company>Example University Graduate School of Medicine"
+               "</Company></Properties>")  # fmt: skip
+    document = _word(tmp_path / "a.docx", **{"docProps__app_xml": company})
+    [found] = check_blinded(load_project(project)[0], document).findings
+    assert "Inspect Document" in found.hint and "build again" not in found.hint
+
+
+def test_what_the_blind_check_reads_wrongly_is_pinned(project: Path, tmp_path: Path) -> None:
+    """Known gaps (#273): an institution named in two words is not looked for, and an
+    initial with its stop before a word that is an author's family name reads as that
+    author, "Panel A. Example" as Ada Example."""
+    _blind(project)
+    authors = project / "authors.yaml"
+    authors.write_text(authors.read_text(encoding="utf-8").replace(
+        "Department of Clinical Pharmacology, Example University Graduate School of Medicine",
+        "Example Institute"), encoding="utf-8")  # fmt: skip
+    body = "<w:p><w:r><w:t>Data from the Example Institute were used.</w:t></w:r></w:p>"
+    assert _named(project, _word(tmp_path / "a.docx", body)) == []
+    body = "<w:p><w:r><w:t>Panel A. Example of the design.</w:t></w:r></w:p>"
+    assert _named(project, _word(tmp_path / "b.docx", body)) == [("Ada Example", "the text")]
 
 
 def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
@@ -8238,6 +8582,31 @@ def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
         "<w:name w:val='Bibliography'/></w:style></w:styles>"
     )
     assert _named(project, _word(tmp_path / "a.docx", body, word__styles_xml=styles)) == []
+    # Round 1 of #349: a live citation's field code holds the cited work's data, a
+    # self-citation's publisher among it, and a link in the reference list is the list's.
+    cited = (
+        "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText> ADDIN "
+        "ZOTERO_ITEM CSL_CITATION {\"citationItems\":[{\"itemData\":{\"publisher\":\"Example "
+        "University Graduate School of Medicine\"}}]}</w:instrText></w:r><w:r><w:fldChar "
+        "w:fldCharType='separate'/></w:r><w:r><w:t>(1)</w:t></w:r><w:r><w:fldChar "
+        "w:fldCharType='end'/></w:r></w:p>"
+        f"<w:p {_R_NS}><w:pPr><w:pStyle w:val='Bibliography'/></w:pPr><w:hyperlink "
+        "r:id='rId5'><w:r><w:t>Example A. A thesis.</w:t></w:r></w:hyperlink></w:p>"
+    )
+    links = (
+        "<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'>"
+        "<Relationship Id='rId5' Type='hyperlink' Target='mailto:ada.example@invalid.example' "
+        "TargetMode='External'/></Relationships>"
+    )
+    # Round 2 of #349: pandoc copies every link into the notes' part, under the same
+    # identifier or another, and the address is the reference list's there too.
+    rels = {"word___rels__document.xml.rels": links,
+            "word___rels__footnotes.xml.rels": links.replace("rId5", "rId9")}
+    # Round 3 of #349: and a field elsewhere that links to the same address.
+    cited += ("<w:p><w:fldSimple w:instr=' HYPERLINK \"mailto:ada.example@invalid.example\" '>"
+              "<w:r><w:t>write</w:t></w:r></w:fldSimple></w:p>")  # fmt: skip
+    document = _word(tmp_path / "cited.docx", cited, **rels)
+    assert _named(project, document) == []
     named = "<w:p><w:r><w:t>As Ada Example showed.</w:t></w:r></w:p>"
     assert _named(project, _word(tmp_path / "b.docx", named)) == [("Ada Example", "the text")]
     _blind(project, "single")
@@ -14744,6 +15113,65 @@ def test_a_design_panel_reviewer_who_has_not_read_is_said(project: Path) -> None
     assert _design_said(project) == [("design-review-missing", "warn")]
 
 
+def test_a_design_panel_naming_one_reviewer_twice_is_said_once(project: Path) -> None:
+    """Rounds 1 of #308 and #313: G11 says a reviewer listed twice, and G12 did not; one
+    record answered both remits, and its overrides were listed twice."""
+    from manuscript_guard.gates.design_review import override_signables
+
+    record = _design_recorded(project, _DESIGN_MAJOR)
+    record.write_text(record.read_text(encoding="utf-8").replace(
+        "  finding: The comparator", "  overridden: The indication is the exposure here.\n"
+        "  finding: The comparator"), encoding="utf-8")  # fmt: skip
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"].append(dict(document["reviewers"][0]))
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    said = _design_said(project)
+    assert said.count(("design-duplicate-reviewer", "warn")) == 1
+    assert ("design-duplicate-reviewer", "fail") in _design_said(project, submission=True)
+    assert len(override_signables(load_project(project)[0])) == 1
+
+
+def test_a_reader_named_by_a_reviewer_s_second_slot_is_read(project: Path) -> None:
+    """Round 1 of #348: a reviewer listed twice was read from its first slot alone, so a
+    reader only the second named went unread, and its open major unsaid."""
+    _design_read_by(project, "openai/gpt-x")
+    _design_read_by(project, "Dr Tanaka", _DESIGN_MAJOR)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    first = document["reviewers"][0]
+    document["reviewers"] = [{**first, "readers": ["openai/gpt-x"]},
+                             {**first, "readers": ["Dr Tanaka"]}]  # fmt: skip
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    said = _design_said(project)
+    assert ("design-major-open", "warn") in said, said
+    assert ("design-reading-unnamed", "warn") not in said
+    # Round 2 of #348: a slot that names no reader asks for the plain record still.
+    del document["reviewers"][0]["readers"]
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    assert ("design-review-missing", "warn") in _design_said(project)
+
+
+def test_a_design_reading_giving_one_id_to_two_findings_is_said(project: Path) -> None:
+    """Round 1 of #313: an override is signed by its finding's id, so two overridden majors
+    of one id shared one sign-off."""
+    _design_recorded(project, _DESIGN_MAJOR + _DESIGN_MAJOR.replace("findings:\n", ""))
+    said = _design_said(project)
+    assert ("design-finding-id-repeated", "warn") in said
+    assert ("design-finding-id-repeated", "fail") in _design_said(project, submission=True)
+
+
+def test_a_design_reader_the_panel_cannot_name_fails_at_submission(project: Path) -> None:
+    """Round 1 of #315: G11 fails a reader it cannot file at submission, and G12 warned."""
+    _design_recorded(project)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"][0]["readers"] = ["model-a", "Model A"]
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    assert ("design-reader-unnamed", "warn") in _design_said(project)
+    assert ("design-reader-unnamed", "fail") in _design_said(project, submission=True)
+
+
 def test_a_design_round_is_not_a_round_of_the_manuscript(project: Path) -> None:
     """Kept apart: a design round never counts toward the manuscript's rounds, and needs a
     remit of its own before a folder is made for it."""
@@ -15994,6 +16422,10 @@ def _coded_with(root: Path, **releases: str) -> None:
     ("sentence", "typed"),
     [
         ("Events were coded with MedDRA version 26.1.", ["'26.1'"]),
+        # Round 1 of #287: with a "v" before it.
+        ("Events were coded with MedDRA v26.1.", ["'26.1'"]),
+        # Round 1 of #351: a "v" that ends a word is no "v" before the release.
+        ("Events were coded with MedDRA Rev26.1.", []),
         ("Drugs were coded with WHODrug Global B3 March 2025.", ["'Global B3 March 2025'"]),
         ("Diagnoses were coded with ICD-10 2019 codes.", ["'2019'"]),
         ("Events were coded with MedDRA version {{results.dictionary.meddra}}.", []),

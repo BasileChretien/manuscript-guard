@@ -240,6 +240,23 @@ def test_a_decimal_point_that_is_no_full_stop_is_not_read(text) -> None:
     assert reported_tests(text) == []
 
 
+@pytest.mark.parametrize(
+    ("text", "statistic", "p"),
+    [
+        # Round 1 of #336: a number with its point already is no decimal-comma number, and a
+        # comma and a digit after it, a reference set inline in text from a PDF, left the
+        # test unread.
+        ("t(23) = 2.45, p = 0.40,12 and later.", "2.45", "0.40"),
+        ("t(23) = 2.45,12 p = 0.40.", "2.45", "0.40"),
+        # A middle dot before a power of ten is a times sign.
+        ("t(23) = 6.10, p = 4\N{MIDDLE DOT}10^-6^.", "6.10", "4\N{MIDDLE DOT}10^-6^"),
+    ],
+)
+def test_a_comma_after_a_number_with_its_point_is_the_sentence_s(text, statistic, p) -> None:
+    [found] = reported_tests(text)
+    assert (found.statistic, found.p) == (statistic, p)
+
+
 def test_a_p_cut_off_by_the_reach_is_not_read() -> None:
     """Round 1 of #285: the P was looked for up to `REACH` characters on, and one whose
     digits ran past that point was read cut, "0.0412" as "0.04"."""
@@ -249,6 +266,17 @@ def test_a_p_cut_off_by_the_reach_is_not_read() -> None:
     text = stat + "a" * (REACH - 11) + " p = 0.0412 later."
     # The reach ends just after "0.04", inside the P's digits.
     assert text.index("p = 0.04") + len("p = 0.04") == len("t(23) = 2.45") + REACH
+    assert reported_tests(text) == []
+
+
+@pytest.mark.parametrize("point", ["\N{MIDDLE DOT}", ","])
+def test_a_p_cut_before_its_middle_dot_or_comma_is_not_read(point: str) -> None:
+    """Round 1 of #336: cut at the reach, "p = 0" was read, and read again whole it was no
+    P at all, since its point is not read; the check of the cut raised."""
+    from manuscript_guard.stats.reported import REACH
+
+    text = "t(23) = 2.45, " + "a" * (REACH - 8) + f" p = 0{point}022 later."
+    assert text.index("p = 0") + len("p = 0") == len("t(23) = 2.45") + REACH
     assert reported_tests(text) == []
 
 

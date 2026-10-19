@@ -965,7 +965,7 @@ def _reported_tests(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
     for index in range(len(_TEST_FORMS)):
         plans += [(index, kind) for kind in ("moderate", "large", "far", "near", "quiet")]
     plans += [(-1, "next sentence"), (-1, "two statistics"), (-1, "middle dot"),
-              (-1, "decimal comma")]  # fmt: skip
+              (-1, "decimal comma"), (-1, "reference after")]  # fmt: skip
     shapes = draw(st.permutations(("e", "x10", "<")))
     sentences: list[tuple[str, tuple[Any, ...] | None]] = []
     for number, (index, plan) in enumerate(draw(st.permutations(plans))):
@@ -982,6 +982,16 @@ def _reported_tests(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
                 sentences.append((f"t({df[0]}) = {s}, p = {printed}", None))
             else:
                 sentences.append((f"t({df[0]}) = {s.replace('.', ',')}, p = {p:.3f}", None))
+            continue
+        if plan == "reference after":
+            # A reference set inline after a number that has its point, as text taken from
+            # a PDF gives it: the comma is the sentence's, and the test is read (round 1 of
+            # #336).
+            s, df, p = statistic("t", _MODERATE)
+            sign, printed = _printed_p(draw, p, "=")
+            first, second = draw(st.integers(1, 99)), draw(st.integers(1, 99))
+            sentences.append((f"t({df[0]}) = {s},{first} p {sign} {printed},{second}",
+                              (0, "t", s, df, sign, printed, "right")))  # fmt: skip
             continue
         if plan == "two statistics":
             first, first_df, _p = statistic("t", _MODERATE)
@@ -1072,9 +1082,24 @@ def _less_than_is_read_as_equal_to(patch: pytest.MonkeyPatch) -> None:
 def _a_decimal_comma_is_read_as_a_whole_number(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import reported
 
-    pattern = reported._STATISTIC.pattern.replace(reported._DECIMAL_ON, r"(?![\d]|\.\d)")
-    assert pattern != reported._STATISTIC.pattern
+    refusal = r"(?(stat_point)|(?![\N{MIDDLE DOT},]\d))"
+    assert refusal in reported._STATISTIC.pattern
+    pattern = reported._STATISTIC.pattern.replace(refusal, "")
     patch.setattr(reported, "_STATISTIC", re.compile(pattern))
+
+
+def _a_comma_after_a_point_is_taken_for_a_decimal_comma(patch: pytest.MonkeyPatch) -> None:
+    """The rule before round 1 of #336: a comma and a digit after a number refused it, though
+    the number had its point already."""
+    from manuscript_guard.stats import reported
+
+    refusal = r"(?![\N{MIDDLE DOT},]\d)"
+    for name, conditional in (("_STATISTIC", rf"(?(stat_point)|{refusal})"),
+                              ("_P", rf"(?(p_point)|(?(power)|{refusal}))")):  # fmt: skip
+        expression = getattr(reported, name)
+        assert conditional in expression.pattern
+        patch.setattr(reported, name, re.compile(expression.pattern.replace(
+            conditional, refusal)))  # fmt: skip
 
 
 def _a_middle_dot_is_read_as_the_end_of_a_p(patch: pytest.MonkeyPatch) -> None:
@@ -1162,8 +1187,9 @@ _NOT_PLAIN_INTERVAL = (
 _DIFFERENCE_BEFORE = (
     "there was no difference, ", "with no difference in mortality, ", "the difference: ",
 )  # fmt: skip
-#: Ratios the reader does not read, whose names a difference before them does not cross.
-_UNREAD_RATIOS = ("SMR", "SIR", "the standardised mortality ratio", "a ratio of means of")
+#: Ratios the reader does not read, whose names a difference before them does not cross;
+#: short enough that, without the stop, the gap would reach across them (round 1 of #336).
+_UNREAD_RATIOS = ("SMR", "SIR", "ratio of means", "ratios of means")
 _NOT_PLAIN_P = (
     "after Bonferroni adjustment, ", "one-sided, ", "with P values adjusted for multiple testing, ",
 )  # fmt: skip
@@ -1256,7 +1282,7 @@ def _planted_intervals(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
             # (round 2 of #300): nothing is found.
             e, low, high, _p = ratio("symmetric", "95")
             name = draw(st.sampled_from(_UNREAD_RATIOS))
-            sentences.append((f"No difference in mortality, {name} {shown(e)} (95% CI "
+            sentences.append((f"No difference, {name} {shown(e)} (95% CI "
                               f"{shown(low)} to {shown(high)}), P = 0.40", None))  # fmt: skip
             continue
         if plan == "en dash":
@@ -1445,7 +1471,7 @@ def _a_difference_runs_across_a_ratio_it_does_not_read(patch: pytest.MonkeyPatch
 def _an_en_dash_before_an_estimate_is_no_minus(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import intervals
 
-    dash = r"(?:(?<![\d.])\N{EN DASH}(?=\.?\d))?"
+    dash = r"(?:(?<![\w.])\N{EN DASH}(?=\.?\d))?"
     assert dash in intervals._INTERVAL.pattern
     patch.setattr(intervals, "_INTERVAL", re.compile(intervals._INTERVAL.pattern.replace(dash, "")))
 
@@ -5075,6 +5101,10 @@ BROKEN = {
     ),
     "a statistic written with a decimal comma is read as its whole part": (
         _a_decimal_comma_is_read_as_a_whole_number,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a comma after a number with its point is taken for a decimal comma": (
+        _a_comma_after_a_point_is_taken_for_a_decimal_comma,
         test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
     ),
     "a P written with a middle dot is read as its whole part": (

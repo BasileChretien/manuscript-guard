@@ -194,7 +194,10 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
             shaped = _MEAN.fullmatch(text) if named else None
             if shaped is None:
                 set_here = _header(cell, column, over)
-                from_means = (from_means | set_here) if means else (from_means - set_here)
+                # A mean that names its n is a row of means too, read or not (round 1 of
+                # #336).
+                of_means = means or _names_its_n(text)
+                from_means = (from_means | set_here) if of_means else (from_means - set_here)
                 continue
             if column not in over:
                 continue
@@ -208,6 +211,13 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
                 label=label, uncertain=uncertain, context=context,
             ))  # fmt: skip
     return found
+
+
+def _names_its_n(text: str) -> bool:
+    """Whether a cell is a mean and the n it is over, "3.1 (1.0), n = 25" or "3.1 (1.0)
+    (n = 25)"."""
+    rest = re.sub(r"[(\[]\s*[)\]]", "", _N.sub("", text)).strip(" ,;")
+    return _N.search(text) is not None and _MEAN.fullmatch(rest) is not None
 
 
 def _header(cell: TableCell, column: int, over: dict[int, int]) -> set[int]:

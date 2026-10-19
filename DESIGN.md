@@ -6092,7 +6092,8 @@ Added by the adversarial review, verified and **not** fixed:
   with the second's P and reported (round 1 of #285, where this said such a P was not
   read; `test_a_p_written_before_its_statistic_is_read_as_the_next_one_s`). A number written
   with a middle dot or a comma for its point, "0·62" or "0,62", is not read at all, so a
-  paper set that way has none of its tests judged. A P above 1 is not judged. A sentence ends at a stop before a
+  paper set that way has none of its tests judged; a comma after a number with its point,
+  "P = 0.40,12", is the sentence's (round 1 of #336). A P above 1 is not judged. A sentence ends at a stop before a
   capital or a bracket, so "et al. (2019)" ends one, and a word before it that says the
   test is not the textbook one is not seen. Such a word stands the test down wherever it is
   in the sentence, about this test or not: "exact" or "corrected" said of anything, and
@@ -6126,12 +6127,15 @@ Added by the adversarial review, verified and **not** fixed:
     in its Methods is judged at 0.05;
   - "the difference in hazard ratios" is read as a hazard ratio;
   - a word that says a P is another's, "heterogeneity" or "interaction", stands it down
-    when it follows within 40 characters, whatever it is about.
+    when it stands between the interval and the P or follows the P within 40 characters,
+    whatever it is about (round 1 of #336, where this said only after).
 
   An SMR, an SIR, a standardised mortality or incidence ratio and a ratio of means are not
-  read, since their exact intervals need not be symmetric on the log scale; their names
-  stop a "difference" before them, which is not read across them (round 2 of #300). An en
-  dash straight before an estimate's digits, after no digit, is read as its minus.
+  read, since their exact intervals need not be symmetric on the log scale. "SMR", "SIR"
+  and "ratio of means" stop a "difference" before them, which is not read across them
+  (round 2 of #300); a longer name keeps the two apart anyway, since a name and its
+  estimate stand at most 24 characters apart. An en dash straight before an estimate's
+  digits, after no digit or letter, is read as its minus; "OR–1.9" is 1.9.
 - **An n (%) is held to its denominator only where the table writes both, in one cell, in
   a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
   count and its share in columns of their own, nor a share whose denominator only a caption
@@ -6168,8 +6172,9 @@ Added by the adversarial review, verified and **not** fixed:
   as a mean.** `audit` reads only the table rows `--whole-numbers` names, and in them only a
   cell shaped as a mean, with its SD or not, a nought before its point or not (".47"); a
   mean in a sentence is not read, nor a median, nor a mean whose thousands are grouped. A
-  cell of a row of means that names an n, "3.1 (1.0), n = 25", sets the n for the column
-  below, and the means held to it are uncertain. Its n is its column header's, so a mean over those
+  cell that is a mean and names its n, "3.1 (1.0), n = 25", or any other cell of a row of
+  means that names one, sets the n for the column below, and the means held to it are
+  uncertain, whether its own row is read or not (round 1 of #336). Its n is its column header's, so a mean over those
   with data is listed as not fitting where its n is smaller; the message gives the nearest n
   it fits, and the reader decides. A mean of several items per person is read in `audit` as
   a mean of one number each: every mean possible for n is possible for n times the items, so

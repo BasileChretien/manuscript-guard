@@ -5424,6 +5424,24 @@ def test_a_mean_without_a_nought_and_a_mean_under_a_body_row_s_n_are_read() -> N
     assert found[2][:2] == ("3.1", 25) and "row of means" in found[2][2]
 
 
+@pytest.mark.parametrize("row", [
+    "| Pain at 12 weeks | 3.1 (1.0), n = 25 |",
+    "| Age, years | 45.1 (9.0), n = 25 |",
+    "| Pain at 12 weeks | 3.1 (1.0) (n = 25) |",
+])  # fmt: skip
+def test_a_mean_that_names_its_n_makes_the_means_below_it_uncertain(row: str) -> None:
+    """Round 1 of #336: a cell that is a mean and its n set the n for the column below,
+    and those means were held to it as certain, where its row had no other mean or was not
+    a row read for means at all."""
+    from manuscript_guard.stats.granularity import table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    [table] = markdown_tables(f"| | Treated (n = 30) |\n|---|---|\n{row}\n| Pain | 3.0 (1.0) |\n")
+    below = table_means(table, ("pain",))[-1]
+    assert (below.mean, below.n) == ("3.0", 25)
+    assert below.uncertain and "row of means" in below.uncertain
+
+
 _WHOLE_NUMBERS = (
     "# Results\n\n"
     "| Characteristic | Treated (n = 28) | Control (n = 140) |\n"

@@ -52,9 +52,13 @@ _SYMBOL = (
 _DF = r"\d+(?:\.\d+)?"
 _MINUS = r"[-\N{MINUS SIGN}\N{EN DASH}]"
 # Not the whole part of a decimal written with a middle dot or a comma, "2·45" or "2,45":
-# such a number is not read at all (round 1 of #285).
-_DECIMAL_ON = r"(?![\d]|[.\N{MIDDLE DOT},]\d)"
-_VALUE = rf"(?P<stat>{_MINUS}?(?:\d+(?:\.\d+)?|\.\d+)){_DECIMAL_ON}"
+# such a number is not read at all (round 1 of #285). A number that has its point already
+# is not one, and a comma after it is the sentence's, "2.45,12" with a reference (round 1
+# of #336).
+_VALUE = (
+    rf"(?P<stat>{_MINUS}?\d*(?P<stat_point>\.)?\d+)(?![\d]|\.\d)"
+    r"(?(stat_point)|(?![\N{MIDDLE DOT},]\d))"
+)
 _N = rf"[,;]{_GAP}{_EMPH}[nN]{_EMPH}{_GAP}={_GAP}\d[\d,]*"
 _IN_BRACKETS = (
     rf"{_GAP}\({_GAP}(?P<d1>{_DF})(?:{_GAP},{_GAP}(?P<d2>{_DF}))?(?:{_N})?{_GAP}\)"
@@ -78,14 +82,16 @@ _RAISED = (
     "\N{SUPERSCRIPT THREE}\N{SUPERSCRIPT FOUR}-\N{SUPERSCRIPT NINE}]+"
 )
 _TIMES = rf"{_SPACE}?[x\N{{MULTIPLICATION SIGN}}\N{{MIDDLE DOT}}\N{{DOT OPERATOR}}*]{_SPACE}?10"
+# As a statistic's value: a whole part followed by a middle dot or a comma and a digit is
+# no P read, unless what follows is a power of ten, "4·10^-5^".
 _P_NUMBER = (
-    r"(?P<mantissa>\d*\.?\d+)(?:"
+    r"(?P<mantissa>\d*(?P<p_point>\.)?\d+)(?P<power>"
     rf"[eE](?P<e1>[-+\N{{MINUS SIGN}}]?\d+)"
     rf"|{_TIMES}(?:\^(?P<e2>{_MINUS}?\d+)\^?"
     rf"|<sup>(?P<e3>{_MINUS}?\d+)</sup>"
     rf"|(?P<e4>{_RAISED})"
     rf"|(?P<e5>{_MINUS}\d+))"
-    r")?(?![\d]|[\N{MIDDLE DOT},]\d)"
+    r")?(?!\d)(?(p_point)|(?(power)|(?![\N{MIDDLE DOT},]\d)))"
 )
 # The escape `mask` blanks before `<` and `>` may stand before the sign.
 _P = re.compile(
@@ -168,8 +174,10 @@ def reported_tests(text: str) -> list[Reported]:
         following = statistics[index + 1] if index + 1 < len(statistics) else None
         p = _P.search(text, match.end(), _reach(match, following, ends, len(text)))
         # A P the reach cuts through is no P read: "0.0412" read to the reach is "0.04"
-        # (round 1 of #285).
-        if p is None or _P.match(text, p.start()).end() != p.end():
+        # (round 1 of #285). Read whole, it may be no P at all: "0" cut before "·022"
+        # (round 1 of #336).
+        whole = None if p is None else _P.match(text, p.start())
+        if whole is None or whole.end() != p.end():
             continue
         start = max((end for end in ends if end <= match.start()), default=0)
         finish = next((end for end in ends if end >= p.end()), len(text))

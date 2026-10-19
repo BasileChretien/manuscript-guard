@@ -200,6 +200,9 @@ def test_a_ratio_named_after_the_word_difference_is_read_as_a_ratio(text: str, n
     [
         "No difference in mortality, SMR 1.4 (95% CI 1.1 to 1.8), P = 0.40.",
         "No difference in incidence, SIR 1.4 (95% CI 1.1 to 1.8), P = 0.40.",
+        "No difference, ratio of means 1.4 (95% CI 1.1 to 1.8), P = 0.40.",
+        # Names too long to stand within the gap: no difference reaches across them anyway
+        # (round 1 of #336).
         "No difference: the standardised mortality ratio was 1.4 (95% CI 1.1 to 1.8), P = 0.40.",
         "No difference, a ratio of geometric means of 1.4 (95% CI 1.1 to 1.8), P = 0.40.",
     ],
@@ -213,11 +216,14 @@ def test_a_difference_is_not_read_across_a_ratio_it_does_not_judge(text: str) ->
 
 def test_a_minus_written_as_an_en_dash_before_an_estimate_is_read() -> None:
     """Round 2 of #300: "–1.4" lost its en dash to the words before it, and 1.4 was said to
-    lie outside its own interval, -2.0 to -0.8."""
+    lie outside its own interval, -2.0 to -0.8. Round 1 of #336: against a name the en dash
+    is a dash, and "OR–1.9" was read as -1.9, outside 1.2 to 3.0."""
     from manuscript_guard.stats.intervals import outside_interval
 
     found = _one("The mean difference was \N{EN DASH}1.4 (95% CI -2.0 to -0.8).")
     assert found.estimate == "\N{EN DASH}1.4" and not outside_interval(found)
+    glued = _one("OR\N{EN DASH}1.9 (95% CI 1.2 to 3.0).")
+    assert glued.estimate == "1.9" and not outside_interval(glued)
 
 
 @pytest.mark.parametrize(
@@ -233,8 +239,10 @@ def test_a_minus_written_as_an_en_dash_before_an_estimate_is_read() -> None:
         # A difference between two hazard ratios is read as a hazard ratio.
         ("The difference in hazard ratios between arms was 0.3 (95% CI -0.1 to 0.7), "
          "P = 0.40.", True),
-        # A word saying the P is another's, within 40 characters after it, stands it down.
+        # A word saying the P is another's, within 40 characters after it, stands it down,
+        # and so does one between the interval and the P (round 1 of #336).
         ("OR 1.9 (95% CI 1.2 to 3.0), P = 0.40, with no heterogeneity.", False),
+        ("OR 1.9 (95% CI 1.2 to 3.0) for interaction, P = 0.40.", False),
     ],
 )  # fmt: skip
 def test_what_the_interval_reader_gets_wrong_is_pinned(text: str, said: bool) -> None:

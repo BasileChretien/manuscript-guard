@@ -6199,9 +6199,13 @@ Added by the adversarial review, verified and **not** fixed:
   nothing records. An R `lm` or `glm` records "model-based" standard errors whatever is
   done after the fit, so a modified Poisson regression whose sandwich variance is computed
   beside the fit (`sandwich::vcovHC`) is still warned; the hint says so. An R `lm` keeps no
-  data, and its rows are found by name in the data its call names as that data is when the
-  model is emitted: rows gone since the fit are refused, and a unit changed since the fit
-  in rows still there is counted as it now is.
+  data, and its rows are found by their labels in the data its call names as that data is
+  when the model is emitted: a label gone since the fit is refused, but data relabelled
+  since (sorted, or bound to new rows, with its row names reset) is not detected where its
+  new labels still cover the old, and its other rows are counted; a unit changed since the
+  fit is counted as it now is. One outcome is compared as its expression, spaces aside, so
+  a space inside a quoted level counts for nothing (`I(group == "a b")` is `"ab"`), and the
+  quotation marks count (`'IV'` and `"IV"` are two).
 - **Numbers written as words escape the tokeniser.** "four thousand and twenty-one" is not
   read. Vulgar fractions and enclosed digits now are. Number words are left alone on
   purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and

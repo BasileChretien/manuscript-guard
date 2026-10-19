@@ -3219,12 +3219,15 @@ folder is not committed, so a fresh checkout says `verify` has not run in it, wh
 `manuscript-guard approve --as <author>` now records an author's approval in
 `approvals/<author>.yaml`, one file per author, with the digest of what decides the built
 document, the prose and the results, as `check` reads it to say a build is current, and the
-digest of the title page the authors put their names to (`front_sha256`): what `paper.yaml`
-prints, its title, running title, keywords and whether it is a demonstration, and the whole
-of `authors.yaml`, read as data, so that a comment changes nothing. The rest of
-`paper.yaml`, the journal, the stage, the review models, prints nothing and stales no
-approval; nor does a figure's file, whose bytes a re-render changes (Basile's choice,
-2026-10-20, round 1 of #284: a new title or an author added left every approval standing).
+digest of the title page the authors put their names to (`front_sha256`), as `submit`
+prints it but for its word counts, which the manuscript decides: the title, the running
+title, whether the paper is a demonstration, the authors with their degrees and
+affiliations, the corresponding author, the ORCID iDs and the keywords. What it does not
+print stales no approval: a comment, a role, the CRediT roles, the funding, the rest of
+`paper.yaml` (the journal, whose style the document prints, is left out on purpose), and
+a figure's file, whose bytes a re-render changes (Basile's choice, 2026-10-20, round 1 of
+#284: a new title or an author added left every approval standing; round 1 of #355: the
+whole of `authors.yaml` was held, and a role added to sign a warning staled them all).
 An approval written before has no `front_sha256` and is judged by the manuscript alone. The
 author is found by ORCID iD, e-mail address, full name or family name in `authors.yaml`.
 `submit` warns where an author has no approval (`approval-missing`) or approved a manuscript

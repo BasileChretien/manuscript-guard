@@ -2065,8 +2065,9 @@ def test_an_approval_covers_the_title_page_the_authors_put_their_names_to(
 ) -> None:
     """Round 1 of #284, Basile's choice of 2026-10-20: a new title, or an author added, left
     every approval of the old one standing, since the digest held the prose and the results
-    alone. What `paper.yaml` prints and the whole of `authors.yaml` now count; the rest of
-    `paper.yaml` does not, nor a comment, nor an approval written before."""
+    alone. What the title page prints now counts; what it does not, a comment, a role, the
+    keywords written another way, does not (round 1 of #355), nor an approval written
+    before."""
     from manuscript_guard.cli import main
 
     both = ("0000-0002-1825-0097", "0000-0001-5109-3700")
@@ -2075,8 +2076,19 @@ def test_an_approval_covers_the_title_page_the_authors_put_their_names_to(
     paper = project / "paper.yaml"
     text = paper.read_text(encoding="utf-8")
     commented = text.replace("target_journal:", "# a comment\ntarget_journal:")
-    paper.write_text(commented, "utf-8")
+    flowed = commented.replace("keywords:\n  - pharmacovigilance\n  - disproportionality\n  - "
+                               "hepatotoxicity", "keywords: [pharmacovigilance, "
+                               "disproportionality, hepatotoxicity]")  # fmt: skip
+    assert flowed != commented
+    paper.write_text(flowed, "utf-8")
+    authors = project / "authors.yaml"
+    listed = authors.read_text(encoding="utf-8")
+    named = listed.replace("  statistician: Sample\n",
+                           "  statistician: Sample\n  data_custodian: Example\n")  # fmt: skip
+    assert named != listed
+    authors.write_text(named, encoding="utf-8")
     assert _approvals_said(project) == []
+    authors.write_text(listed, encoding="utf-8")
     paper.write_text(text.replace('short_title: "Hepatic injury with example-drug"',
                                   'short_title: "Hepatic injury"'), "utf-8")  # fmt: skip
     assert _approvals_said(project) == [
@@ -2088,7 +2100,6 @@ def test_an_approval_covers_the_title_page_the_authors_put_their_names_to(
     assert all(m.endswith("and its title page has changed since") for m in said), said
     for author in both:
         assert main(["approve", str(project), "--as", author]) == 0
-    authors = project / "authors.yaml"
     authors.write_text(authors.read_text(encoding="utf-8").replace(
         "family: Sample", "family: Sample-Smith"), encoding="utf-8")  # fmt: skip
     said = _approvals_said(project)

@@ -16,7 +16,6 @@ corresponding author's decision, and an approval given by e-mail is still one.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import unicodedata
 from datetime import date
@@ -30,21 +29,21 @@ from manuscript_guard.findings import WARN, Finding, Report
 
 DIRECTORY = "approvals"
 SCHEMA = "manuscript-guard/approval/1"
-#: What `paper.yaml` holds that the title page prints. The rest of it, the journal, the
-#: stage, the review models, prints nothing and stales no approval.
-PRINTED = ("title", "short_title", "keywords", "demonstration")
 
 
 def front_digest(project: Project) -> str:
-    """The title page as the authors approve it: what `paper.yaml` prints and the whole of
-    `authors.yaml`, read as data, so that a comment or a re-indented line changes nothing
-    (round 1 of #284: a new title, or an author added, left every approval of the old one
-    standing)."""
-    paper = project.paper if isinstance(project.paper, dict) else {}
-    authors = project.authors if isinstance(project.authors, dict) else {}
-    front = {"paper": {key: paper.get(key) for key in PRINTED}, "authors": authors}
-    text = json.dumps(front, sort_keys=True, ensure_ascii=False, default=str)
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    """The title page as the authors approve it, as `submit` prints it but for its word
+    counts, which the manuscript decides (round 1 of #284: a new title, or an author added,
+    left every approval of the old one standing). What it does not print, a role, the
+    CRediT roles, the funding, stales nothing (round 1 of #355). A title page that cannot be
+    built, with no `authors.yaml` or one the schema refuses, is the same empty page."""
+    from manuscript_guard.build.submission import SubmissionError, printed_front
+
+    try:
+        printed = printed_front(project)
+    except (SubmissionError, KeyError, TypeError, AttributeError, IndexError):
+        printed = ""
+    return hashlib.sha256(printed.encode("utf-8")).hexdigest()
 
 
 class NoSuchAuthor(Exception):

@@ -6199,13 +6199,15 @@ Added by the adversarial review, verified and **not** fixed:
   nothing records. An R `lm` or `glm` records "model-based" standard errors whatever is
   done after the fit, so a modified Poisson regression whose sandwich variance is computed
   beside the fit (`sandwich::vcovHC`) is still warned; the hint says so. An R `lm` keeps no
-  data, and its rows are found by their labels in the data its call names as that data is
-  when the model is emitted: a label gone since the fit is refused, but data relabelled
-  since (sorted, or bound to new rows, with its row names reset) is not detected where its
-  new labels still cover the old, and its other rows are counted; a unit changed since the
-  fit is counted as it now is. One outcome is compared as its expression, spaces aside, so
-  a space inside a quoted level counts for nothing (`I(group == "a b")` is `"ab"`), and the
-  quotation marks count (`'IV'` and `"IV"` are two).
+  data, and its rows are found by their labels in the data its call names, looked up in the
+  formula's environment, as that data is when the model is emitted: a label gone since the
+  fit is refused, but data relabelled since (sorted and its row names reset, or new rows
+  bound before it) is not detected where its new labels still cover the old, and its other
+  rows are counted; a unit changed since the fit is counted as it now is. One outcome is the
+  same variables, the same comparison or none, and the same expression, spaces aside: a
+  space inside a quoted level counts for nothing (`I(group == "a b")` is `"ab"`), and any
+  other difference in how it is written makes two (`> 5` and `> 5.0`, `'IV'` and `"IV"` in
+  a Python formula; R writes double quotes).
 - **Numbers written as words escape the tokeniser.** "four thousand and twenty-one" is not
   read. Vulgar fractions and enclosed digits now are. Number words are left alone on
   purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and

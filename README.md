@@ -369,10 +369,14 @@ everywhere.
 
 ## Status
 
-Alpha. Its author has written one real manuscript with it, and the gates still change from
-week to week: interfaces, file formats and what a gate reports can change without a
-migration path. Every round of review so far has found something the round before had
-opened up.
+Alpha. No real manuscript has been through it yet, its author's or anyone else's: `check`,
+`build`, `import` and `review --run` have run on the worked example and the test suite's
+inputs only. `audit`, which reads a paper written some other way, has been pointed at one
+submitted paper, and what it found is recorded in DESIGN.md. What it claims rests on its
+tests and on the measurements recorded in [DESIGN.md](DESIGN.md), under "What a claim rests
+on". The gates still change from week to week: interfaces, file formats and what a gate
+reports can change without a migration path. Every round of review so far has found
+something the round before had opened up.
 
 A passing `check` means that no finding due at the project's stage is open. At
 `submission` that is what the tables above describe; at an earlier stage the findings not

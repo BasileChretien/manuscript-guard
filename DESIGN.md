@@ -21,9 +21,10 @@ choice or a judgement is neither, and says so:
    test has, and no more.
 2. **A measurement on real inputs**, with its date, the inputs, and what it found, negative
    results included. Some are recorded where they belong (`audit` on a submitted paper; a
-   clone of the project whose input digests failed). Two that would measure the toolkit as
-   a whole are proposed and not run: the review panel read against defects already known in
-   real papers, and how often G6 fires on clean text written by people.
+   clone of the project whose input digests failed). Two would measure the toolkit as a
+   whole. The review panel read against defects already known has been run once, on the
+   example's own manuscript and not on a real paper ("What the panel finds of the defects
+   we know"). How often G6 fires on clean text written by people is proposed and not run.
 3. **The author used it on a real manuscript.**
 4. **Someone else did.**
 
@@ -32,7 +33,7 @@ of a pull request is no test; a release on PyPI is no use.
 
 The test of the whole toolkit is a measurement, not a claim: on real projects, are critical
 problems found before submission, by the tool or by the person it sends the author to? It
-has not been measured. The two proposed above would be first steps, and real users the
+has not been measured. The two above would be first steps, and real users the
 next.
 
 **Defaults taken, not decided by the author.** Where the author was asked to choose and did
@@ -2781,6 +2782,90 @@ reviewer lets the call go on to the lock.
 The record itself is written by exclusive create, so two calls for one reader cannot both
 succeed.
 
+## What the panel finds of the defects we know
+
+A measurement with its date (item 53), of a real model on the example's manuscript, which is
+synthetic: no real paper was read. `tools/panel_measure.py` puts the example's round-1
+panel, its three reviewers and their remits, to four copies of the example, each three
+times, through the requests `review --run --dry-run` writes. The copies are the version that
+panel read, which had the four defects its records name, twice over; the fixed version; that
+first version cut to its title and abstract; and the fixed version with two minor defects
+planted, an undefined "ICSR" and a Table 1 caption that no longer says its values are n (%).
+Each reader of the cut copy, the "blank reader", is sent what every reviewer is sent besides
+the manuscript: the paper's facts from `paper.yaml` (its title, its keywords), the journal's
+profile and the reporting checklist, DEMO-OBS, whose item 3 asks how records were selected.
+Each finding is settled by the words of `tools/data/panel-rubric.yaml`, written before any
+reply was read, where a major or minor finding uses one defect's words; the rest, comments
+among them, are adjudicated blind, with nothing that says where they came from, and may
+raise several defects. The rubric counts the planted defects in the replies of all three
+reviewers, as written in advance, though no remit is about presentation: the
+biostatistician's, whether a reader can reconstruct the estimate from what is reported,
+comes nearest a table's caption, and none reaches an abbreviation, while the panel's
+instructions keep a reviewer to the remit. The report gives each reviewer's count beside the
+total. The script writes the report; nothing in it is by hand.
+
+- **2026-10-19, Claude Opus 5.5, through Claude Code (`--safe-mode`, the panel's system
+  text as the whole system prompt, no tools), 45 readings, $4.10 at API prices, run under
+  a subscription.** No reading was refused unread. The blind findings, 313 with the
+  controls, were adjudicated by the same model, which put all six controls of known grade
+  right; no person checked it. Each count is of the three readings by the reviewer whose
+  remit the defect is in. The script's counts for the first two copies were then checked in
+  both directions by the agent session that ran the measurement, not by a person: every
+  finding a count rests on was read, and so was every reading by the reviewer whose remit
+  holds the defect where a count, or a rating as major, is absent. Where the reading
+  differs, it is given beside the script's.
+
+  | Known defect | Raised, two sets of three | Rated major | Raised by the blank reader |
+  |---|---|---|---|
+  | No case definition | 3, 3 | 3, 3 | 3 of 3, all major |
+  | The 2 x 2 table's counts not given | 2 (the script: 3), 2 | 0, 0 | 3 of 3, all major |
+  | Duplicate reports not mentioned | 3, 3 | 3, 2 | 3 of 3, 2 major |
+  | Record selection not described | 3, 3 | 3, 3 | 3 of 3, all major |
+
+  - A finding raised is not evidence that the manuscript was read. The reader given the
+    title and abstract raised every one of the four, nearly always as major, with 5.9
+    major findings a reading against 1.8 and 1.7 from the readers of the whole. The case
+    definition is the panel's own instructions' example of a finding, and record selection
+    is asked for by item 3 of the checklist that reader was sent.
+  - Read, every reading counted as raising one of the four on the version the panel read
+    has a finding that says it is missing, but one reading, whose only finding counted for
+    the 2 x 2 table is on the unit of analysis, which the table's words settle. Every
+    reading counted as rating a defect major has such a finding rated major. No reading
+    where a count or a major rating is absent raises the defect, or rates it major, in
+    other words; where the 2 x 2 table is not counted, the reading praises the counts given
+    or says nothing of them. Some readings have other findings counted in a defect's words
+    that are about something else, the age bands of Table 1 under item 3 for one, which
+    change no count. Each of the six checklist-auditor readings has a major finding that
+    item 3's record selection is not described, five of them adjudicated blind. Beyond the
+    2 x 2 table, what differs between readings is severity. The 2 x 2 table, major in the
+    round-1 record, was rated major by no reader of the whole and by every blank reader.
+    Duplicates were rated major in three readings of three, then in two, for the same
+    request: a difference of one reading in three is noise.
+  - A first adjudication, made before round 1 of #334, gave each finding one defect at
+    most, and counted duplicates in two readings and then none. The pharmacoepidemiologist
+    raises duplicates inside a finding about record selection, and that adjudicator had to
+    choose. The second differs in more than that rule: it is another run of the model, on
+    a file that no longer gives each finding's `where`.
+  - On the fixed version the readings gave 0.2 major findings each. Defects the fixed
+    version does not have were still counted, as minor findings: the 2 x 2 table and record
+    selection in three readings of three, the caption in three of nine. They are other
+    findings in the same words: the unit of analysis, put through the table's words; under
+    item 3, how a report was put in the drug's group, which the fix left unsaid; and a row
+    of Table 1 without percentages under a caption that says n (%), which is so in the
+    example. Words settle a finding by its vocabulary, not by what it says is missing, and
+    a finding they settle is given that one defect, not another it raises in other words.
+  - The planted minor defects were not found. The undefined acronym was raised in none of
+    nine readings. The caption was counted once, by the biostatistician, and that finding
+    is about the row without percentages. Neither was rated major. No remit is about
+    presentation and the instructions keep a reviewer to the remit, so this panel, as
+    built, does not look for such defects; it is no measure of over-escalation either.
+  - The record's digest (`bcb8549c...`) is of a later version than the one the round-1
+    panel read: the records came with the fixes, and were stamped again with each change
+    after. The version read is the example's first, `e6a8cca6`. A first run on the later
+    version found none of the four, since they are fixed there, and is not reported. The
+    record's resolution of record selection says the Methods now describe inclusion
+    without restriction on age or sex; that sentence was in the first version already.
+
 ## A document reviewed blind names none of its authors
 
 A journal whose review is double-blind asks for a manuscript that does not say who wrote it,
@@ -2990,7 +3075,11 @@ would be frozen again on the changed plan. Written as JSON, which is YAML too, s
 no package to write it. G12 warns (`plan-changed-after-results`) when the plan's words differ
 from the copy's and its Deviations section says what it said then: changed with nothing said.
 A plan re-wrapped without a word changed is unchanged. Results with no copy, written before
-the emitters kept one, are a note.
+the emitters kept one, are a note. The worked example commits its copy beside its plan, as it
+commits its results. Until it did, every run of its analysis left the copy in a file git
+neither tracked nor ignored, which the next `git add -A` would have committed; a test now
+runs the example's analysis and `check` in a checkout of it and fails on any such file. The
+test fixture deletes the copy along with the results, so that its run is a first run.
 
 **A plan says what its design needs.** The seven sections are the same for every plan, so a
 disproportionality analysis with no case definition or comparator, or a trial with no
@@ -3375,7 +3464,63 @@ Run with and without the plugin, the routing cases show what each skill adds ove
 alone; a skill that adds nothing measurable is cut, or folded into another's references. What
 a run cannot establish: that a skill fires for a user's own wording, which 28 prompts
 do not sample; that a judged outcome is right, since the judge is a model; and anything about a model
-other than the one run. No run is recorded yet: the model is the author's choice.
+other than the one run.
+
+**The runs.** A measurement on real inputs, with its date:
+
+- **2026-10-19, Claude Opus 5.5 (`--model opus`), Claude Code 2.1.303, the plugin of a
+  clean checkout of `main` at 0.2.448.** All 28 cases, 3 runs each, with and without the
+  plugin: 168 runs, $15.90 at API prices as Claude Code reports them, run under a
+  subscription. One case, run once first, cost $0.14. The arms were what they say: a run of
+  one case in each, its trace kept, loaded the copy under test alone in the one and no
+  manuscript-guard in the other, though a release of the plugin was installed for the user.
+  - Routing: every one of the 15 skills fired on all 3 runs of its own case. Each of the 8
+    near misses fired the skill it was for and not its neighbour, on all 3 runs. None of the
+    3 requests no skill is for fired one.
+  - Proportionality: neither small request started a workflow, on any run. The judge
+    failed one of the three politer replies, which left "page X, lines Y–Z" to be filled in.
+  - What each skill adds was not measured. The judged outcome of a routing case passed on 18
+    runs of 45 with the plugin and 13 of 45 without. Of the 59 that failed, 53 did so
+    because the case runs in an empty folder: no `paper.yaml`, manuscript, figure or plan to
+    work on, which each reply said, in either arm. Five were the manuscript-writing case,
+    whose criterion asks the rewrite to say what was found, which its prompt never gives:
+    with the plugin the reply would not invent it, three times, and without, two replies
+    left a placeholder for it. One was project-setup, whose case gives
+    no shell to make the project with. That difference says nothing of a skill, and no
+    skill is cut on it. It needs cases that set up a project first, and criteria that ask
+    only for what the prompt gives.
+  - Before this run the command in `docs/agent-tools.md` found no case: `claude plugin eval`
+    reads a suite only from inside the plugin. `tools/run_skill_evals.py` now runs it from
+    a copy.
+
+**After that run** (Basile's choice, 2026-10-19), a routing case whose prompt speaks of a
+finished project starts in one. 12 of the 15 do: `tools/run_skill_evals.py` puts a copy of
+the worked example beside the cases in the copy of the suite it runs, as `evals/_project/`.
+Each such case's `case.yaml` names a `scaffold.sh` that copies it into the folder the run
+starts in, and the command is given `--scaffold`. The copy names no skill: it leaves out
+`AGENTS.md`, the project's instructions to an agent, and its YAML files lose their whole-line
+comments, where the profiles said which skill writes them (rounds 1 and 2 of #338; Basile chose
+this over keeping them and saying so). With them, the arm without the plugin could read what
+several criteria ask for. A file whose data would read otherwise without its comments is
+refused. What the project is made of, its bindings and its emitter calls, still shows the
+toolkit in use to either arm, as any project made with it would, so the difference between
+the arms is what a skill adds to a model reading such a project. Three routing cases still
+start empty, and so do the near misses and the requests no skill is for:
+- project-setup starts a project, and may give the `init` command where it has no shell to
+  run it;
+- manuscript-writing carries its own paragraph, and invents no finding, since its prompt
+  gives none;
+- analysis-plan is about the plan before any analysis code, and the example has both.
+
+The example is a finished project, and some prompts ask for what it lacks: paper-audit and
+word-roundtrip speak of a .docx, reviewer-response of reviewers' comments, and review-panel
+and figure-review find readings already recorded. A reply that asks for what is missing, or
+works from what is there, is what their criteria pass.
+
+One run of one scaffolded case (methods-writer, Claude Haiku, no baseline arm, $0.01 at API
+prices) started in a folder holding the example, and passed. Asked for `_project` as a case,
+the command found none. No run of the whole suite has been made since, so what each skill
+adds is still not measured.
 
 ## Auditing existing papers, and saying what the audit is worth
 

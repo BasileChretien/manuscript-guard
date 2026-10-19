@@ -144,7 +144,8 @@ def test_a_ratio_is_held_to_its_result_not_to_its_denominator() -> None:
     """Round 1 of #340: a tolerance of 1e-9 of the largest number made 2e-3 of a
     denominator of 2,000,000, and a rate of 0.0007 passed for 700 over it, which is
     0.00035."""
-    rate = {"r.rate": _value("r.rate", 0.0007, "0.0007"), "r.events": _value("r.events", 700, "700"),
+    rate = {"r.rate": _value("r.rate", 0.0007, "0.0007"),
+            "r.events": _value("r.events", 700, "700"),
             "r.py": _value("r.py", 2_000_000, "2,000,000")}  # fmt: skip
     report = _check({"kind": "ratio", "key": "r.rate", "of": ["r.events", "r.py"]}, values=rate)
     assert ("relation-broken", FAIL) in _codes(report)

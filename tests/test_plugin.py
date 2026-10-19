@@ -542,64 +542,53 @@ def test_the_suite_s_command_keeps_its_report_and_results_and_needs_arguments(
     assert run[:4] == ["claude", "plugin", "eval", str(tmp_path / "plugin")]
     assert {"--no-publish", "--trust-plugin"} <= set(run)
     assert run[run.index("--eval-dir") + 1] == "evals"
-    assert run[run.index("--output-dir") + 1] == str(tmp_path / "results")
+    assert run[run.index("--output-dir") + 1] == str((tmp_path / "results").resolve())
+    assert run.count("--output-dir") == 1
     assert run[-4:] == passed
-    # The folder is always the one `main` resolved, given once, whatever form the arguments
-    # named one in (rounds 2 and 3 of #333).
-    for given in (["--output-dir", "x"], ["--output-dir=x"]):
-        named = script.command("claude", tmp_path, [*given, "--model", "opus"], tmp_path / "x")
-        assert [a for a in named if a.startswith("--output-dir")] == ["--output-dir"]
-        assert named[named.index("--output-dir") + 1] == str(tmp_path / "x")
-        assert script.output_dir(given) == "x"
-    for empty in ([], ["--"], ["--", "--model", "opus", "--output-dir"]):
+    # Nothing that names another results folder is taken: the script chooses it, so that
+    # it is never read against the copy (rounds 3 and 4 of #333).
+    refused = ([], ["--"], ["--", "--model", "opus", "--output-dir", "x"],
+               ["--", "--output-dir=", "--model", "opus"], ["--", "--output-dir"])  # fmt: skip
+    for given in refused:
         with pytest.raises(SystemExit):
-            script.arguments(empty)
+            script.arguments(given)
 
 
-@pytest.mark.parametrize(
-    ("named", "writes"),
-    [(None, True), ("mine", True), ("--output-dir=mine", True), ("mine", False)],
-)
+@pytest.mark.parametrize("writes", [True, False])
 def test_a_run_leaves_its_results_in_the_repository_and_says_where(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], named: str | None, writes: bool
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], writes: bool
 ) -> None:
     """Rounds 2 and 3 of #333: `main` itself, with a stand-in for the run. The results are
-    in the repository after the copy is gone, the folder given to the run is absolute so
-    that it cannot be read against the copy, and the script names the folder only where
-    this run wrote into it: a folder a past run left is no results of this one."""
+    in a new folder of the repository after the copy is gone, the folder given to the run
+    is absolute, so that it cannot be read against the copy, and the script names it only
+    where the run wrote it."""
     script = _evals_script()
     repo = tmp_path / "repo"
     (repo / "plugin" / ".claude-plugin").mkdir(parents=True)
     (repo / "plugin" / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
     (repo / "evals" / "a-case").mkdir(parents=True)
-    (repo / "mine").mkdir()
-    (repo / "mine" / "past.json").write_text("{}", encoding="utf-8")
     seen: list[list[str]] = []
 
     def run(command: list[str], cwd: Path):
         seen.append(command)
-        folder = Path(script.output_dir(command[4:]))
-        assert folder.is_absolute(), folder
+        folder = Path(command[command.index("--output-dir") + 1])
+        assert folder.is_absolute() and not folder.exists(), folder
         assert Path(command[3]).name == "plugin" and (Path(command[3]) / "evals").is_dir()
         if writes:
-            folder.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True)
             (folder / "aggregate-result.json").write_text("{}", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0)
 
-    given = {None: [], "mine": ["--output-dir", "mine"]}.get(named, [named])
-    code = script.main(["--", *given, "--model", "opus"], repo=repo, claude="claude", run=run)
+    code = script.main(["--", "--model", "opus"], repo=repo, claude="claude", run=run)
     assert code == 0 and not Path(seen[0][3]).exists()
     said = capsys.readouterr().out
     written = list(repo.rglob("aggregate-result.json"))
     if not writes:
         assert written == [] and "no results were written" in said
         return
-    assert len(written) == 1
-    if named is None:
-        assert written[0].parent.parent == repo / "evals" / "results"
-    else:
-        assert written[0].parent == (repo / "mine").resolve()
-    assert f"results in {written[0].parent}" in said
+    [result] = written
+    assert result.parent.parent == repo / "evals" / "results"
+    assert f"results in {result.parent}" in said
 
 
 def test_a_description_is_plain_text_and_a_name_is_the_project_s() -> None:

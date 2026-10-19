@@ -1183,6 +1183,11 @@ em$variable("event", "binary", label = "event", levels = c(0, 1))
 em$variable("x", "continuous", label = "x")
 em$model("rate", glm(event ~ x + offset(log(time)), family = poisson, data = d), name = "Rate")
 em$model("risk", glm(event ~ x, family = poisson, data = d), name = "Risk")
+em$model("argument", glm(event ~ x, family = poisson, data = d, offset = log(time)),
+         name = "Argument")
+d$one <- 1
+em$model("constant", glm(event ~ x + offset(log(one)), family = poisson, data = d),
+         name = "Constant")
 em$write()
 """
 
@@ -1198,6 +1203,66 @@ def test_r_records_an_offset(tmp_path: Path) -> None:
     models = json.loads((root / "results" / "offset.json").read_text(encoding="utf-8"))["models"]
     assert models["rate"]["offset"] is True
     assert "offset" not in models["risk"]
+    # Round 2 of #289: glm's own `offset =`, and a constant offset, which makes no rate.
+    assert models["argument"]["offset"] is True
+    assert "offset" not in models["constant"]
+
+
+UNITS_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+d <- data.frame(y = as.integer((seq_len(60) * 7) %%%% 5 < 2), x = rep(1:6, 10),
+                pid = rep(1:20, each = 3))
+d$x[5] <- NA
+said <- function(label, expr) {
+  cat(label, ": ", tryCatch({ force(expr); "none" }, error = function(e) conditionMessage(e)),
+      "\\n", sep = "")
+}
+s <- d[d$pid > 5, ]
+em$model("subsetted", glm(y ~ x, data = s, family = binomial()), name = "Subsetted",
+         unit = "pid")
+em$model("excluded", glm(y ~ x, data = d, family = binomial(), na.action = na.exclude),
+         name = "Excluded", unit = "pid")
+em$model("linear", lm(x ~ y, data = s), name = "Linear", unit = "pid")
+if (requireNamespace("tibble", quietly = TRUE)) {
+  em$model("tibble", glm(y ~ x, data = tibble::as_tibble(s), family = binomial()),
+           name = "Tibble", unit = "pid")
+}
+m <- d
+m$pid[10] <- NA
+said("MISSING", em$model("missing", glm(y ~ x, data = m, family = binomial()),
+                         name = "Missing", unit = "pid"))
+changed <- s
+fit <- lm(x ~ y, data = changed)
+changed <- changed[changed$pid > 10, ]
+said("CHANGED", em$model("changed", fit, name = "Changed", unit = "pid"))
+em$write()
+"""
+
+
+def test_r_counts_the_units_of_the_rows_its_fit_used(tmp_path: Path) -> None:
+    """Round 2 of #268: R's refusal of a missing unit, and a subsetted, `na.exclude` or tibble
+    frame, had no test of their own; and an lm's data changed after the fit was matched by
+    the start of a row name, giving another row's unit or a missing one."""
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "units.R"
+    script.write_text(UNITS_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    said = dict(line.split(": ", 1) for line in out.stdout.splitlines() if ": " in line)
+    assert said["MISSING"] == ("model: unit pid is missing in 1 of the rows the model used, so "
+                               "how many units they hold cannot be counted")  # fmt: skip
+    assert said["CHANGED"].startswith("model: 15 of the rows the model used are not in the data")
+    models = json.loads((root / "results" / "units.json").read_text(encoding="utf-8"))["models"]
+    units = {key: card["unit"]["units"] for key, card in models.items()}
+    expected = {"subsetted": 15, "excluded": 20, "linear": 15}
+    if "tibble" in models:
+        expected["tibble"] = 15
+    assert units == expected
 
 
 def test_r_and_python_read_the_same_model_from_the_same_data(tmp_path: Path) -> None:

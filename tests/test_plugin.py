@@ -572,10 +572,10 @@ def test_a_run_leaves_its_results_in_the_repository_and_says_where(
     def run(command: list[str], cwd: Path):
         seen.append(command)
         folder = Path(command[command.index("--output-dir") + 1])
-        assert folder.is_absolute() and not folder.exists(), folder
+        # Made by the script before the run, empty, so that no other run shares it.
+        assert folder.is_absolute() and folder.is_dir() and not any(folder.iterdir()), folder
         assert Path(command[3]).name == "plugin" and (Path(command[3]) / "evals").is_dir()
         if writes:
-            folder.mkdir(parents=True)
             (folder / "aggregate-result.json").write_text("{}", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0)
 
@@ -584,11 +584,35 @@ def test_a_run_leaves_its_results_in_the_repository_and_says_where(
     said = capsys.readouterr().out
     written = list(repo.rglob("aggregate-result.json"))
     if not writes:
+        # The run left its folder empty: no results are named (round 5 of #333).
         assert written == [] and "no results were written" in said
         return
     [result] = written
     assert result.parent.parent == repo / "evals" / "results"
     assert f"results in {result.parent}" in said
+
+
+def test_a_run_does_not_share_a_results_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 5 of #333: a folder that is there already is refused before the run starts,
+    so that two runs started together never write into one."""
+    from datetime import datetime
+
+    script = _evals_script()
+    repo = tmp_path / "repo"
+    (repo / "plugin").mkdir(parents=True)
+    (repo / "evals").mkdir()
+    moment = datetime(2026, 10, 19, 12, 0, 0, 123456)
+    fixed = type("Fixed", (), {"now": staticmethod(lambda: moment)})
+    monkeypatch.setattr(script, "datetime", fixed)
+    (repo / "evals" / "results" / moment.strftime("%Y-%m-%dT%H-%M-%S-%f")).mkdir(parents=True)
+
+    def run(*_args, **_kwargs):
+        raise AssertionError("the run started")
+
+    with pytest.raises(SystemExit, match="exists already"):
+        script.main(["--", "--model", "opus"], repo=repo, claude="claude", run=run)
 
 
 def test_a_description_is_plain_text_and_a_name_is_the_project_s() -> None:

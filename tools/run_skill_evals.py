@@ -79,15 +79,18 @@ def main(
     if claude is None:
         raise SystemExit("claude is not on PATH")
     # A new folder each run, so that what is in it after the run is this run's.
-    results = repo / "evals" / "results" / datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-    if results.exists():
-        raise SystemExit(f"{results} exists already: wait a second and run again")
+    # Made here, and refused if it is there already, so that two runs never share one.
+    results = repo / "evals" / "results" / datetime.now().strftime("%Y-%m-%dT%H-%M-%S-%f")
+    try:
+        results.mkdir(parents=True)
+    except FileExistsError:
+        raise SystemExit(f"{results} exists already: run again") from None
     # A process the run started may still hold a file of the copy on Windows; the copy is
     # left to the system then, rather than the run's exit status lost to a traceback.
     with tempfile.TemporaryDirectory(prefix="mg-evals-", ignore_cleanup_errors=True) as folder:
         plugin = stage(repo, Path(folder))
         done = run(command(claude, plugin, passed, results), cwd=repo)
-    print(f"results in {results}" if results.exists() else "no results were written")
+    print(f"results in {results}" if any(results.iterdir()) else "no results were written")
     return done.returncode
 
 

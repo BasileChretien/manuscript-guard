@@ -3030,7 +3030,11 @@ would be frozen again on the changed plan. Written as JSON, which is YAML too, s
 no package to write it. G12 warns (`plan-changed-after-results`) when the plan's words differ
 from the copy's and its Deviations section says what it said then: changed with nothing said.
 A plan re-wrapped without a word changed is unchanged. Results with no copy, written before
-the emitters kept one, are a note.
+the emitters kept one, are a note. The worked example commits its copy beside its plan, as it
+commits its results. Until it did, every run of its analysis left the copy in a file git
+neither tracked nor ignored, which the next `git add -A` would have committed; a test now
+runs the example's analysis and `check` in a checkout of it and fails on any such file. The
+test fixture deletes the copy along with the results, so that its run is a first run.
 
 **A plan says what its design needs.** The seven sections are the same for every plan, so a
 disproportionality analysis with no case definition or comparator, or a trial with no

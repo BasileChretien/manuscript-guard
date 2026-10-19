@@ -2476,10 +2476,10 @@ def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, i
     the supplement's own words, past the main text's figures, and one past the supplement's
     figures. The main text's tables and the supplement's are placed by binding only, so they
     are counted; the main text's figures include one placed by hand, so they are not, and a
-    pointer past them is not said. The supplement's figures are placed by binding, and as
-    many again sent as files, the fourth part, which paper.yaml declares: a pointer to the
-    last of those passes, and one past it is said (round 2 of #256: no example held a count
-    of figures). What the counted pointers point at is the third part."""
+    pointer past them is not said. The supplement places none to two figures by binding,
+    and one or two are sent as files, the fourth part, which paper.yaml declares: a pointer
+    to the last of those passes, and one past it is said (round 2 of #256: no example held a
+    count of figures). What the counted pointers point at is the third part."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))

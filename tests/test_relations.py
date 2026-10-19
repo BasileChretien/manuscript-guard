@@ -138,6 +138,10 @@ def test_terms_all_near_nought_are_equal_by_being_small() -> None:
               "t.diff": _value("t.diff", 0.0, "0.0")}  # fmt: skip
     report = _check({"kind": "difference", "key": "t.diff", "of": ["t.a", "t.b"]}, values=cancel)
     assert report.findings == ()
+    # Whatever the terms: 9e-10 passes as 0.3 less 0.3.
+    cancel["t.b"], cancel["t.diff"] = _value("t.b", 0.3, "0.3"), _value("t.diff", 9e-10, "0.0")
+    report = _check({"kind": "difference", "key": "t.diff", "of": ["t.a", "t.b"]}, values=cancel)
+    assert report.findings == ()
 
 
 @pytest.mark.parametrize("places", [3, 6])

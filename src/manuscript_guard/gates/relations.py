@@ -110,9 +110,9 @@ def _takes(kind: str) -> str:
 
 
 def _equal(result: float, computed: float, exact: bool) -> bool:
-    """Equal, or within `TOLERANCE` of the result or of nought. Terms all below it are
-    equal by being small, a Known gap: a tolerance taken from the terms instead let a wrong
-    ratio pass, or a rounded difference, or failed a true one, as #340 found."""
+    """Equal, or within `TOLERANCE` of the result or of nought. Two values both within it of
+    nought are equal whatever the terms, a Known gap: a tolerance taken from the terms
+    instead let a wrong ratio pass, or a rounded difference, or failed a true one (#340)."""
     if exact:
         return result == computed
     return math.isclose(result, computed, rel_tol=TOLERANCE, abs_tol=TOLERANCE)

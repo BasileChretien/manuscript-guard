@@ -5918,8 +5918,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   that might add up. That is the price of checking nothing by guesswork.
 - **A relation between values is exact, so a value emitted rounded fails it.** Whole numbers
   are compared exactly and floats to their last bits (1e-9 of the result, and 1e-9 of
-  nought), so terms all below about 1e-9 are equal by being small: 1e-12 passes as the sum
-  of 1e-12 and 2e-12 (pinned by `test_terms_all_near_nought_are_equal_by_being_small`). A
+  nought), so a result and its computed value both within 1e-9 of nought are equal,
+  whatever the terms: 1e-12 passes as the sum of 1e-12 and 2e-12, and 9e-10 as 0.3 less
+  0.3 (pinned by `test_terms_all_near_nought_are_equal_by_being_small`). A
   tolerance taken from the terms instead let a wrong ratio pass, its largest term being
   its denominator, and a difference of terms near a million rounded at the sixth place,
   and failed a true difference of two means summed two ways (#340). A script that emits

@@ -6742,9 +6742,10 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `opacity` that hide text, a `tspan`'s tail, and a width of 100% with no `viewBox` (read
   as 16 units) are not read as a browser would; `@media` and `@supports` apply always, a
   child combinator matches as a descendant, and `font-size` and the `font` shorthand are
-  not ordered. A run of `{` before one `}` is read again from each brace. In PDF, cyclic
-  font resources, a `MediaBox` written as a number or a name, which page is first, an
-  inline image's `EI` inside its data, and a form decoded once per use are not handled.
+  not ordered. A run of `{` before one `}` is read again from each brace. In PDF, two forms
+  whose resources name each other are followed until Python's recursion limit raises; a
+  `MediaBox` written as a number or a name, which page is first, an inline image's `EI`
+  inside its data, and a form decoded once per use are not handled.
 - **Study designs and their plan sections.** A section is found by words of its heading:
   "Trial monitoring" answers interim analyses, a bare "Measures" answers the measure, and
   "Risk interval", "Events of interest", "Definition of cases", "Case-finding",
@@ -6799,7 +6800,8 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
 - **Placeholders.** "47,XXX reports" (a count in the forty thousands) is read as a
   karyotype, the karyotypes 69,XXX and 92,XXXX as gaps; a bracketed translated title that
   opens with an instruction's verb, or holds a to-come word in capitals, fails in a cited
-  entry; "[Your ...]" is not read in a caption, nor filler inside a pipe table's cell.
+  entry; "[Your ...]" is not read in a caption, nor "fill in later" or "replace later" just
+  before a pipe table's `|`.
 - **Scripts the gates do not read.** Front matter and image captions are not counted; a
   citation key that opens with a CJK character is counted as prose; 々, 〆, 〇, CJK Extensions
   G to I, the compatibility supplement, Hangul Jamo Extended A and B and half-width Hangul
@@ -6823,9 +6825,11 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
 - **The emitters.** R lists lockfiles in their case on Windows (`Requirements.txt` is not
   seen); an empty lockfile's digest has not been compared between R and Python, nor R's
   `validUTF8` with Python's decoder on overlong, surrogate and out-of-range forms. A path
-  given to R's `add_input` as a factor adds its code. A plan whose deviations heading is
-  "### Standard deviation of the dose" is read as a Deviations section. A `.txt` input is
-  digested as its bytes, so a copy checked out with CRLF line ends reads as changed.
+  given to R's `add_input` as a factor is recorded, and its `restricted` or `synthetic` mark
+  is lost, so G1 says nothing of a restricted file git tracks. A `.txt` input is digested
+  as its bytes, so a copy checked out with CRLF line ends reads as changed.
+- **The plan's sections.** A heading "### Standard deviation of the dose" is read by G12 as
+  a Deviations section.
 - **Inputs kept by Git LFS or git-annex.** Results written from an analysis run on an
   unfetched pointer read as `input-changed`; a pointer's size written as "²" raises; a
   large input is hashed twice.
@@ -6839,12 +6843,13 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
 - **The plugin's own tests.** A code-shaped string in a skill's text counts as a code it
   names, a description's list of codes is read by shape, `--yes` is looked for in one
   fragment, only `pip install` counts as an install, `venv/` is not skipped and `build/` is
-  at any depth, and `Invoke-Expression`, `WebClient.DownloadString`, `sudo -E bash` and `|
-  python3` are not among the forms of a download run. A grader's keys are checked against
-  every type's together, the `mguard` alias is not a mention, an `input_match` is not
-  required of every Skill grader, and the last sentence is found only after ". " before a
-  capital. The frozen-plan loop test is skipped where `git ls-files` fails, and from an
-  sdist inside another repository it copies nothing.
+  at any depth, and `Invoke-Expression (...)` called on a download,
+  `WebClient.DownloadString`, `sudo -E bash` and `| python3` are not among the forms of a
+  download run. A grader's keys are checked against every type's together, a hook's refusal
+  messages are checked for the commands they name without the `mguard` alias, an
+  `input_match` is not required of every Skill grader, and the last sentence is found only
+  after ". " before a capital. The frozen-plan loop test is skipped where `git ls-files`
+  fails, and from an sdist inside another repository it copies nothing.
 - **Skills copied for other agents.** `--remove` takes away a user's folder identical to a
   skill `install-skills` recorded; a link to a file counts as its target's content, and a
   link to a folder or an empty folder inside a skill is not in its digest; an error partway

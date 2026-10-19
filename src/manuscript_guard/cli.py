@@ -730,8 +730,17 @@ def _the_work(work, fields: dict[str, str]) -> bool:
 
 
 def _said_inserted(work, entries: dict[str, dict[str, str]]) -> str:
-    """What the import says of a work a co-author cited with their reference manager."""
-    key = next((key for key, fields in entries.items() if _the_work(work, fields)), None)
+    """What the import says of a work a co-author cited with their reference manager. The
+    entry with the field's DOI first, wherever it stands: a duplicate with no DOI above it was
+    taken for the work (round 1 of #350)."""
+    def doi_of(text: str) -> str:
+        return text.lower().removeprefix("https://doi.org/")
+
+    doi = doi_of(work.doi)
+    key = next((key for key, fields in entries.items()
+                if doi and doi_of(fields.get("doi", "")) == doi), None)  # fmt: skip
+    if key is None:
+        key = next((key for key, fields in entries.items() if _the_work(work, fields)), None)
     said = f"{work} was cited in Word with a reference manager, whose field the build does not read"
     if key is not None:
         return f"{said}: cite it in the .md as [@{key}]"

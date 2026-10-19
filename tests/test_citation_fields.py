@@ -206,3 +206,15 @@ def test_a_work_cited_in_word_is_matched_to_a_key_only_when_it_is_that_work(
 
     said = _said_inserted(Work(**work), {"k": fields})
     assert ("[@k]" in said) is (key is not None), said
+
+
+def test_the_entry_with_the_field_s_doi_is_taken_before_a_duplicate_without_one() -> None:
+    """Round 1 of #350: a Zotero duplicate with no DOI, above the entry that has it, matched
+    by its title first, and the import named the duplicate's key."""
+    from manuscript_guard.citationfields import Work
+    from manuscript_guard.cli import _said_inserted
+
+    work = Work(doi="10.1/abc", title="A study of hepatic injury", year="2021", author="Fictional")
+    same = {"title": "A study of hepatic injury", "year": "2021", "author": "Fictional, Anne"}
+    said = _said_inserted(work, {"b": same, "a": {**same, "doi": "10.1/abc"}})
+    assert "[@a]" in said, said

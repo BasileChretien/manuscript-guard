@@ -1020,7 +1020,8 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   title's words (`reference-title-mismatch`): the cited title is held to the registered
   one with its subtitle and to its original-language title, so a subtitle the entry left
   out costs nothing, and to PubMed's where PubMed gives the work the entry's own DOI, the
-  English title of a paper Crossref registered in another language (round 1 of #253); of
+  English title of a paper Crossref registered in another language (round 1 of #253),
+  once Crossref or DataCite has found the DOI: with neither, no title is compared; of
   Crossref's titles only the first is kept, so a further one is not compared; markup, TeX, case, accents and punctuation are folded (a tag or a
   command is part of the word it marks, `PM<sub>2.5</sub>` and `PM\textsubscript{2.5}`
   being "PM2.5", and an accent command keeps its letter), British
@@ -6257,6 +6258,15 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   A raw block, ```` ```{=openxml} ````, is blanked although pandoc passes its text into the
   document. An indented code block is not blanked, so a pattern written for a phrase can be
   met by a line of code; one anchored on a heading cannot.
+- **A data statement is the first of two matching headings at one level.** A numbered
+  Methods subsection on data sharing is read as the statement where the statement stands
+  under a Declarations heading at the same level
+  (`test_a_statement_heading_level_with_a_methods_subsection_is_pinned`, round 2 of #269).
+- **A Word citation field with a DOI no entry has is matched to an entry with no DOI by its
+  title.** The title has no minimum length, and the year and the first author are
+  compared only where both give them, so a conference abstract filed without its DOI is
+  taken for the paper of the same title and authors (round 1 of #350). An entry that has
+  the field's DOI is always taken first.
 - **Some tests of the literature are narrower than the rule they hold.** The words beside a
   quoted value are drawn with each value once, between spaces, and never inside a word with
   a digit: a value quoted twice, or within "CYP3A14", and a quote in a script written

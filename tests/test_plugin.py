@@ -502,8 +502,11 @@ def test_the_routing_cases_are_whole_and_name_only_our_skills() -> None:
 
 
 #: The routed cases that start in an empty folder: one starts a project, one carries its own
-#: paragraph. Every other one speaks of a project, and starts in a copy of the example.
-EMPTY_CASES = frozenset({"route-project-setup", "route-manuscript-writing"})
+#: paragraph, and one is about the plan before any analysis code, which the example has
+#: (round 1 of #338). Every other one speaks of a finished project, and starts in a copy of
+#: the example.
+EMPTY_CASES = frozenset({"route-project-setup", "route-manuscript-writing",
+                         "route-analysis-plan"})  # fmt: skip
 
 
 def test_a_case_that_speaks_of_a_project_starts_in_a_copy_of_the_example(
@@ -547,6 +550,23 @@ def test_a_case_that_speaks_of_a_project_starts_in_a_copy_of_the_example(
     assert done.returncode != 0 and "tools/run_skill_evals.py" in done.stderr
 
 
+def test_the_staged_example_leaves_out_a_build_and_an_agent_s_instructions(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #338: where the example has a build, as on an author's machine, it is not
+    staged, nor any file that tells an agent the toolkit's rules, at any depth."""
+    repo = tmp_path / "repo"
+    (repo / "plugin" / ".claude-plugin").mkdir(parents=True)
+    (repo / "evals").mkdir()
+    for name in ("paper.yaml", "build/manuscript.docx", "AGENTS.md", "CLAUDE.md",
+                 ".claude/settings.json", "analysis/__pycache__/x.pyc"):  # fmt: skip
+        (repo / "example" / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / "example" / name).write_text("x", encoding="utf-8")
+    project = _evals_script().stage(repo, tmp_path / "staged") / "evals" / "_project"
+    assert sorted(p.relative_to(project).as_posix() for p in project.rglob("*")) == [
+        "analysis", "paper.yaml"]  # fmt: skip
+
+
 def _evals_script():
     import importlib.util
 
@@ -570,9 +590,12 @@ def test_the_suite_is_run_from_a_copy_of_the_plugin_with_it_inside(tmp_path: Pat
     cases = sorted(p.name for p in staged.iterdir() if p.is_dir() and p.name != "_project")
     assert cases == sorted(p.name for p in EVALS.iterdir() if p.is_dir() and p.name != "results")
     assert not (staged / "results").exists()
-    # The worked example beside the cases, for their scaffolds, without a build.
+    # The worked example beside the cases, for their scaffolds, without its instructions to
+    # an agent, which state the rules the arm without the plugin must not read (round 1 of
+    # #338).
     assert (staged / "_project" / "paper.yaml").is_file()
-    assert not (staged / "_project" / "build").exists()
+    assert (REPO / "example" / "AGENTS.md").is_file()
+    assert not (staged / "_project" / "AGENTS.md").exists()
     docs = (REPO / "docs" / "agent-tools.md").read_text(encoding="utf-8")
     assert "python tools/run_skill_evals.py --" in docs
     assert not re.search(r"claude plugin eval\s+\S*plugin\b", docs), "a command with no case"

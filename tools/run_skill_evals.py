@@ -14,10 +14,13 @@ chooses the folder:
 
     python tools/run_skill_evals.py -- --ablation with-without --runs 3 --model <model>
 
-A case whose prompt speaks of a project, "my analysis script", "the draft", starts in a
-copy of the worked example: the copy of the suite carries one, `evals/_project/`, and the
-case's `scaffold.sh` copies it into the empty folder the run starts in. The command is
-given `--scaffold` for that, since the scripts are this repository's own.
+A routing case whose prompt speaks of a finished project, "my analysis script", "the
+draft", starts in a copy of the worked example: the copy of the suite carries one,
+`evals/_project/`, and the case's `scaffold.sh` copies it into the empty folder the run
+starts in. The command is given `--scaffold` for that, since the scripts are this
+repository's own. The copy leaves out the project's instructions to an agent, `AGENTS.md`,
+which state the toolkit's rules, so that the arm without the plugin learns them from
+nothing but the model (round 1 of #338). The near-miss cases start empty, as before.
 
 A run is paid at API prices, or counts against a subscription's usage. Run one case once
 first to measure it (`-- --case <name> --runs 1 --ablation none`).
@@ -41,16 +44,19 @@ REPO = Path(__file__).resolve().parent.parent
 FIXED = ("--eval-dir", "evals", "--no-publish", "--trust-plugin", "--scaffold")
 #: Where in the copy of the suite the worked example is, for the cases' scaffold scripts.
 PROJECT = "_project"
+#: What of the example is not copied: what a build or a run wrote, and what tells an agent
+#: the toolkit's rules, which the arm without the plugin must not read (round 1 of #338).
+LEFT_OUT = ("build", "__pycache__", "AGENTS.md", "CLAUDE.md", ".claude")
 
 
 def stage(repo: Path, into: Path) -> Path:
     """A copy of `repo`'s plugin with the suite inside it, its past results left out, and
-    the worked example beside the cases, without what a build wrote."""
+    the worked example beside the cases, without `LEFT_OUT`."""
     plugin = into / "plugin"
     shutil.copytree(repo / "plugin", plugin)
     shutil.copytree(repo / "evals", plugin / "evals", ignore=shutil.ignore_patterns("results"))
     shutil.copytree(repo / "example", plugin / "evals" / PROJECT,
-                    ignore=shutil.ignore_patterns("build", "__pycache__"))  # fmt: skip
+                    ignore=shutil.ignore_patterns(*LEFT_OUT))  # fmt: skip
     return plugin
 
 

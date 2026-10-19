@@ -170,6 +170,9 @@ def built_example(tmp_path_factory: pytest.TempPathFactory) -> Path:
     shutil.copytree(EXAMPLE, root, ignore=IGNORE)
     for stale in (root / "results").glob("*"):
         stale.unlink()
+    # The example commits the plan its first results kept, as a project does. The run here is
+    # a first run, so the copy the tests read is the one the emitter keeps on it.
+    (root / "design" / "plan.frozen.yaml").unlink(missing_ok=True)
     run_analysis(root)
     restamp_figure_review(root)
     return root

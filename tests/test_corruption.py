@@ -3218,6 +3218,54 @@ def test_results_with_no_kept_plan_are_a_note(project: Path) -> None:
     assert _plan_said(project) == [("plan-not-frozen", "info")]
 
 
+def test_the_example_keeps_its_plan_as_a_project_does() -> None:
+    """The example commits its results, so it commits the plan kept when they were first
+    written. Without it, `check` there gave the note for results older than the emitters'
+    copy, and each run of the analysis left a file git neither tracked nor ignored."""
+    from conftest import EXAMPLE
+
+    assert _plan_said(EXAMPLE) == []
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_the_example_s_loop_leaves_nothing_git_does_not_know(tmp_path: Path) -> None:
+    """Its analysis and `check`, run in a checkout of the example, write only files the
+    repository tracks or ignores. A file that is neither goes in with the next `git add -A`;
+    the plan the emitter keeps was one until the example committed its own."""
+    import subprocess
+
+    from conftest import EXAMPLE, REPO, run_analysis
+
+    from manuscript_guard.cli import main
+
+    def git(*args: str, given: str | None = None) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(["git", "-c", "core.fsmonitor=false", *args], cwd=REPO,
+                              input=given, capture_output=True, text=True, encoding="utf-8",
+                              timeout=60)  # fmt: skip
+
+    listed = git("ls-files", "-z", "example")
+    if listed.returncode != 0:
+        pytest.skip("not a git checkout")
+    tracked = {name.removeprefix("example/") for name in listed.stdout.split("\0") if name}
+    root = tmp_path / "example"
+    for name in tracked:
+        if (EXAMPLE / name).is_file():
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(EXAMPLE / name, root / name)
+    run_analysis(root)
+    assert main(["check", str(root)]) in (0, 1)  # whether it passes is held elsewhere
+    written = sorted(
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file() and path.relative_to(root).as_posix() not in tracked
+    )
+    ignored = git("check-ignore", "--stdin", given="".join(f"example/{n}\n" for n in written))
+    # 0: some are ignored, 1: none are. Anything else is git failing, not an answer.
+    assert ignored.returncode in (0, 1), ignored.stderr
+    unknown = set(written) - {name.removeprefix("example/") for name in ignored.stdout.splitlines()}
+    assert not unknown, f"written, and neither tracked nor ignored: {sorted(unknown)}"
+
+
 # ------------------------------------------------- the results the plan promised
 
 

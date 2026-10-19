@@ -31,14 +31,14 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
-from functools import cache
 
 from manuscript_guard.stats.shares import _N, _NOTE, _clean, _columns, _whole
 from manuscript_guard.text.tables import Table, TableCell
 
 #: A mean as a table cell prints it: alone, with its SD in brackets, or with a plus-minus
-#: sign and its SD. A minus sign may stand before it.
-_NUMBER = r"\d+(?:\.\d+)?"
+#: sign and its SD. A minus sign may stand before it, and no nought before its point,
+#: ".47 (.12)" (round 1 of #331).
+_NUMBER = r"(?:\d+(?:\.\d+)?|\.\d+)"
 _MEAN = re.compile(
     rf"(?P<mean>[-\N{{MINUS SIGN}}]?{_NUMBER})"
     rf"(?:\s*[(\[]\s*{_NUMBER}\s*[)\]]|\s*(?:\N{{PLUS-MINUS SIGN}}|\+/-)\s*{_NUMBER})?"
@@ -77,19 +77,21 @@ def assessable(mean: str, n: int, items: int = 1) -> bool:
     return _some_mean_is_none(n * items, places(mean))
 
 
-@cache
 def _some_mean_is_none(count: int, places_: int) -> bool:
     """Whether some mean printed to `places_` is no whole total over `count`. Never for 10 to
-    the power of the places or more; always for fewer than half that, since each total
-    prints at most two means; between, each mean of one unit is tried, which is enough,
-    since a mean a unit up is a total `count` up."""
+    the power of the places or more. Below that, the `count` totals of one unit each print
+    one mean, and a total half a unit from two printed means, a tie, prints both; some mean
+    is none where totals and ties are fewer than the means a unit holds. A total is a tie
+    where 2 * 10**places_ * total / count is odd: k * count / g for odd k below
+    g = gcd(count, 2 * 10**places_), where 2 * 10**places_ / g is odd. Worked out, not
+    searched, since the search took seconds at four places (round 2 of #331); a test holds
+    it to the search at one, two and three."""
     scale = 10**places_
     if count >= scale:
         return False
-    if 2 * count < scale:
-        return True
-    return any(low > high for low, high in
-               (_span(Fraction(k, scale), places_, count) for k in range(scale)))  # fmt: skip
+    common = math.gcd(count, 2 * scale)
+    ties = common // 2 if (2 * scale // common) % 2 == 1 else 0
+    return count + ties < scale
 
 
 def possible(mean: str, n: int, items: int = 1) -> bool | None:
@@ -176,10 +178,14 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
     cell is the scale's name is still a header (round 1 of #331)."""
     found: list[Mean] = []
     over: dict[int, int] = {}
-    for row in table:
+    # The columns whose n a row of means named in one of its other cells, "3.1 (1.0), n =
+    # 25": the means below are held to it, and are uncertain (round 2 of #331).
+    from_means: set[int] = set()
+    for at, row in enumerate(table):
         placed = list(_columns(row))
         label = row[0].text if row else ""
         named = any(names(wanted, label) for wanted in labels)
+        means = named and any(_MEAN.fullmatch(_clean(cell.text)[0]) for _c, cell in placed[1:])
         context = " | ".join(" ".join(cell.text.split()) for cell in row)
         if len(context) > _CONTEXT:
             context = context[: _CONTEXT - 1] + "\N{HORIZONTAL ELLIPSIS}"
@@ -187,24 +193,45 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
             text, noted = _clean(cell.text)
             shaped = _MEAN.fullmatch(text) if named else None
             if shaped is None:
-                _header(cell, column, over)
+                set_here = _header(cell, column, over)
+                # A mean that names its n is a row of means too, read or not (round 1 of
+                # #336); a cell of the first row, the header, is none, "0.5 (n = 40)" in a
+                # dose table being a header (the post-budget round of #336).
+                of_means = means or (at > 0 and _names_its_n(text))
+                from_means = (from_means | set_here) if of_means else (from_means - set_here)
                 continue
             if column not in over:
                 continue
+            uncertain = _uncertain(label, noted) or (
+                "its column's n is one a row of means names, not a header's"
+                if column in from_means else None
+            )  # fmt: skip
             found.append(Mean(
                 line=cell.line, printed=" ".join(cell.text.split()),
                 mean=shaped.group("mean").replace("\N{MINUS SIGN}", "-"), n=over[column],
-                label=label, uncertain=_uncertain(label, noted), context=context,
+                label=label, uncertain=uncertain, context=context,
             ))  # fmt: skip
     return found
 
 
-def _header(cell: TableCell, column: int, over: dict[int, int]) -> None:
-    """The n a cell names, where it names one, for each column it spans."""
+def _names_its_n(text: str) -> bool:
+    """Whether a cell is a mean and the n it is over, "3.1 (1.0), n = 25" or "3.1 (1.0)
+    (n = 25)": a number with its spread or its point beside an n. A header's year, "2019
+    (n = 120)", or a count, "12 (n = 25)", is none (round 2 of #336)."""
+    rest = re.sub(r"[(\[]\s*[)\]]", "", _N.sub("", text)).strip(" ,;")
+    shaped = _MEAN.fullmatch(rest) if _N.search(text) else None
+    return shaped is not None and (shaped.end("mean") < shaped.end() or "." in shaped["mean"])
+
+
+def _header(cell: TableCell, column: int, over: dict[int, int]) -> set[int]:
+    """The n a cell names, where it names one, for each column it spans; the columns set."""
     named = {_whole(match.group("n")) for match in _N.finditer(cell.text)}
-    if len(named) == 1:
-        for each in range(column, column + max(cell.span, 1)):
-            over[each] = next(iter(named))
+    if len(named) != 1:
+        return set()
+    spanned = set(range(column, column + max(cell.span, 1)))
+    for each in spanned:
+        over[each] = next(iter(named))
+    return spanned
 
 
 def _uncertain(label: str, noted: bool) -> str | None:

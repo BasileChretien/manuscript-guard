@@ -51,7 +51,14 @@ _SYMBOL = (
 )
 _DF = r"\d+(?:\.\d+)?"
 _MINUS = r"[-\N{MINUS SIGN}\N{EN DASH}]"
-_VALUE = rf"(?P<stat>{_MINUS}?(?:\d+(?:\.\d+)?|\.\d+))(?![\d]|\.\d)"
+# Not the whole part of a decimal written with a middle dot or a comma, "2·45" or "2,45":
+# such a number is not read at all (round 1 of #285). A number that has its point already
+# is not one, and a comma after it is the sentence's, "2.45,12" with a reference (round 1
+# of #336).
+_VALUE = (
+    rf"(?P<stat>{_MINUS}?\d*(?P<stat_point>\.)?\d+)(?![\d]|\.\d)"
+    r"(?(stat_point)|(?![\N{MIDDLE DOT},]\d))"
+)
 _N = rf"[,;]{_GAP}{_EMPH}[nN]{_EMPH}{_GAP}={_GAP}\d[\d,]*"
 _IN_BRACKETS = (
     rf"{_GAP}\({_GAP}(?P<d1>{_DF})(?:{_GAP},{_GAP}(?P<d2>{_DF}))?(?:{_N})?{_GAP}\)"
@@ -75,14 +82,16 @@ _RAISED = (
     "\N{SUPERSCRIPT THREE}\N{SUPERSCRIPT FOUR}-\N{SUPERSCRIPT NINE}]+"
 )
 _TIMES = rf"{_SPACE}?[x\N{{MULTIPLICATION SIGN}}\N{{MIDDLE DOT}}\N{{DOT OPERATOR}}*]{_SPACE}?10"
+# As a statistic's value: a whole part followed by a middle dot or a comma and a digit is
+# no P read, unless what follows is a power of ten, "4·10^-5^".
 _P_NUMBER = (
-    r"(?P<mantissa>\d*\.?\d+)(?:"
+    r"(?P<mantissa>\d*(?P<p_point>\.)?\d+)(?P<power>"
     rf"[eE](?P<e1>[-+\N{{MINUS SIGN}}]?\d+)"
     rf"|{_TIMES}(?:\^(?P<e2>{_MINUS}?\d+)\^?"
     rf"|<sup>(?P<e3>{_MINUS}?\d+)</sup>"
     rf"|(?P<e4>{_RAISED})"
     rf"|(?P<e5>{_MINUS}\d+))"
-    r")?(?![\d])"
+    r")?(?!\d)(?(p_point)|(?(power)|(?![\N{MIDDLE DOT},]\d)))"
 )
 # The escape `mask` blanks before `<` and `>` may stand before the sign.
 _P = re.compile(
@@ -106,7 +115,8 @@ _SENTENCE_END = re.compile(r"[.!?](?=\s+[A-Z(\[])|\n[ \t]*\n")
 QUIET = re.compile(
     r"\b(?:one[- ]sided|one[- ]tailed|adjust\w*|correct(?:ed|ion)|Bonferroni|Holm|Hochberg"
     r"|Benjamini|[S\N{LATIN CAPITAL LETTER S WITH CARON}]id[a\N{LATIN SMALL LETTER A WITH ACUTE}]k"
-    r"|false discovery|FDR|Tukey|Scheff\w*|Welch|Greenhouse|Huynh|Satterthwaite|exact"
+    r"|false discovery|FDR|Tukey|Scheff\w*|Dunnett|Games[- ]Howell|Welch|Greenhouse|Huynh"
+    r"|Satterthwaite|exact"
     r"|permut\w*|randomi[sz]ation test|Monte Carlo|bootstrap\w*|simulat\w*)\b",
     re.IGNORECASE,
 )
@@ -163,7 +173,11 @@ def reported_tests(text: str) -> list[Reported]:
             continue
         following = statistics[index + 1] if index + 1 < len(statistics) else None
         p = _P.search(text, match.end(), _reach(match, following, ends, len(text)))
-        if p is None:
+        # A P the reach cuts through is no P read: "0.0412" read to the reach is "0.04"
+        # (round 1 of #285). Read whole, it may be no P at all: "0" cut before "·022"
+        # (round 1 of #336).
+        whole = None if p is None else _P.match(text, p.start())
+        if whole is None or whole.end() != p.end():
             continue
         start = max((end for end in ends if end <= match.start()), default=0)
         finish = next((end for end in ends if end >= p.end()), len(text))
@@ -225,6 +239,9 @@ def p_range(sign: str, printed: str) -> tuple[float, float] | None:
     except (ValueError, InvalidOperation):
         return None
     value = mantissa.scaleb(power)
+    if value > 1:
+        # No P: "P = 2" read as a P gave a range from 1.95 down to 1 (round 1 of #285).
+        return None
     if sign == "<":
         return 0.0, float(value)
     if sign == ">":
@@ -259,10 +276,15 @@ def judge(test: Reported, alpha: float = ALPHA) -> Verdict | None:
     if test.kind in ("F", "chi2") and statistic < 0:
         return None
     low, high = _range(str(abs(statistic)))
-    corners = [
-        _p(test.kind, s, tuple(d))
-        for s, *d in product((max(low, 0.0), high), *dfs)
-    ]
+    try:
+        corners = [
+            _p(test.kind, s, tuple(d))
+            for s, *d in product((max(low, 0.0), high), *dfs)
+        ]
+    except (ArithmeticError, ValueError):
+        # A series that does not converge, on numbers no paper prints: said nothing of,
+        # rather than the gate erroring (round 1 of #285).
+        return None
     recomputed = (min(corners), max(corners))
     inconsistent = recomputed[1] < reported[0] or recomputed[0] > reported[1]
     below = reported[1] < alpha or (test.sign == "<" and reported[1] <= alpha)

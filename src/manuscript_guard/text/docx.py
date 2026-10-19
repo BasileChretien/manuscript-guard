@@ -316,11 +316,18 @@ class _Opens:
         return marks
 
 
+#: The most columns a Word table has: a larger span is no table Word made, and one of
+#: 999999999 built a string of marks of about a gigabyte (round 1 of #314).
+_MOST_COLUMNS = 63
+
+
 def _span(cell: ET.Element) -> int:
     """How many grid columns a cell spans."""
     span = cell.find(f"{W}tcPr/{W}gridSpan")
     value = span.get(W + "val", "1") if span is not None else "1"
-    return int(value) if value.isascii() and value.isdigit() and int(value) > 0 else 1
+    if not (value.isascii() and value.isdigit() and int(value) > 0):
+        return 1
+    return min(int(value), _MOST_COLUMNS)
 
 
 def _raised(node: ET.Element, parents: dict) -> bool:

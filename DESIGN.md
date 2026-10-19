@@ -6040,12 +6040,21 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers
   that might add up. That is the price of checking nothing by guesswork.
 - **A relation between values is exact, so a value emitted rounded fails it.** Whole numbers
-  are compared exactly and floats to their last bits (a relative 1e-9). A script that emits
-  `round(rate, 1)` instead of the rate breaks a ratio that holds, and is told to emit the
-  value unrounded and let the display round it.
+  are compared exactly and floats to their last bits (1e-9 of the result, and 1e-9 of
+  nought), so a result and its computed value both within 1e-9 of nought are equal,
+  whatever the terms: 1e-12 passes as the sum of 1e-12 and 2e-12, and 9e-10 as 0.3 less
+  0.3 (pinned by `test_terms_all_near_nought_are_equal_by_being_small`). A
+  tolerance taken from the terms instead let a wrong ratio pass, its largest term being
+  its denominator, and a difference of terms near a million rounded at the sixth place,
+  and failed a true difference of two means summed two ways (#340). A script that emits
+  `round(rate, 1)` instead of the rate
+  breaks a ratio that holds, and is told to emit the value unrounded and let the display
+  round it.
 - **The printed arithmetic reads the first number of each display.** A display that is not a
-  rounding of its own value ("<0.001", a rate printed per 1,000 of a value held per person,
-  "1.2 × 10⁻³") is left out of it, and the relation is then held to the values alone. A
+  rounding of its own value ("<0.001", whatever its value, a rate printed per 1,000 of a
+  value held per person, "1.2 × 10⁻³") is left out of it, and the relation is then held to
+  the values alone. What Decimal arithmetic leaves in its last digits, 100 over 3 times 3
+  being 99.99...9, is no rounding of the printed numbers (round 1 of #293). A
   share held as a fraction and printed as a percentage is read as a percentage. The warning
   is meant to fire routinely: percentages rounded one by one often miss 100, and the text
   may say so rather than change a number.
@@ -6055,6 +6064,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   named in `overlapping`, which waives the sum of that step's reasons but not its total; the
   reasons are still each at most what the step removed, and together at least that. The flow diagram is not yet
   drawn from the record: a figure script reads the counts from the results like any other.
+  A flow two fragments record is the first's, as its counts are, and `duplicate-key` says so
+  of the second's (round 1 of #293, where the second record was held to the first's counts).
+  Python's `relation()` refuses an `of` that is one key written as a string, which it read
+  as its letters (in R a string is a vector of one key), and either emitter refuses a name
+  that is no results key. Python takes NumPy's whole numbers and its single truth values as
+  its own, and the steps that overlap as a list or a NumPy array of whole numbers; R takes
+  any numeric vector of whole values, or a single number, for those steps.
 - **A UTF-16 input without a BOM is normalised as if it were 8-bit text.** Its 0x0D and 0x0A
   bytes can belong to ordinary characters, so an edit that swaps one such character for
   another (U+4E0D for U+4E0A) can leave the digest unchanged and pass G1. Exports that write

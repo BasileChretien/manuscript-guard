@@ -3427,6 +3427,8 @@ _ROWS = {name: hashlib.sha256(name.encode("utf-8")).hexdigest() for name in ("al
 @pytest.mark.parametrize(
     ("crude", "adjusted", "said"),
     [
+        # A stratum fitted without its stratifier is these two cards as well, and is warned
+        # of as a crude model on other rows: Known gaps.
         ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["some"], "n_used": 3800}, 1),
         # Equal counts and different rows: the digest tells them apart.
         ({"rows_sha256": _ROWS["all"]}, {"rows_sha256": _ROWS["some"]}, 1),
@@ -3435,17 +3437,29 @@ _ROWS = {name: hashlib.sha256(name.encode("utf-8")).hexdigest() for name in ("al
         ({"rows_sha256": None}, {"rows_sha256": _ROWS["some"]}, 0),
         # The same terms on other rows are a subgroup, by design.
         ({"rows_sha256": _ROWS["all"], "terms": "adjusted's"}, {"rows_sha256": _ROWS["some"]}, 0),
+        # Round 1 of #289: another outcome of the same variable, `I(score > 10)` beside
+        # `I(score > 5)`, is not the crude model of this one; the same one spaced otherwise is.
+        ({"rows_sha256": _ROWS["all"], "outcome": "I(hepatic > 1)"},
+         {"rows_sha256": _ROWS["some"]}, 0),
+        ({"rows_sha256": _ROWS["all"], "outcome": " spaced "}, {"rows_sha256": _ROWS["some"]}, 1),
     ],
-    ids=["fewer rows", "as many rows", "the same rows", "rows unknown", "a subgroup"],
-)
+    ids=["fewer rows", "as many rows", "the same rows", "rows unknown", "a subgroup",
+         "another outcome", "the outcome spaced"],
+)  # fmt: skip
 def test_a_crude_and_an_adjusted_model_on_different_rows_are_a_warning(
     project: Path, crude: dict, adjusted: dict, said: int
 ) -> None:
     """Item 36: a covariate's missing values drop rows from the adjusted model only, and
     the crude and adjusted estimates were compared as if one adjustment parted them."""
+    card = json.loads(next((project / "results").glob("*.json"))
+                      .read_text(encoding="utf-8"))["models"]["adjusted"]  # fmt: skip
     if crude.get("terms") == "adjusted's":
-        crude = {**crude, "terms": json.loads(next((project / "results").glob("*.json"))
-                 .read_text(encoding="utf-8"))["models"]["adjusted"]["terms"]}  # fmt: skip
+        crude = {**crude, "terms": card["terms"]}
+    if crude.get("outcome") == " spaced ":
+        spaced = " " + card["outcome"]["expression"].replace("", " ").strip() + " "
+        crude = {**crude, "outcome": {**card["outcome"], "expression": spaced}}
+    elif isinstance(crude.get("outcome"), str):
+        crude = {**crude, "outcome": {**card["outcome"], "expression": crude["outcome"]}}
     _crude_beside_adjusted(project, crude, adjusted)
     found = _models_said(project, "models-on-different-rows")
     assert len(found) == said, found
@@ -3478,6 +3492,18 @@ def test_a_poisson_model_of_a_binary_outcome_wants_a_robust_variance(
     own standard errors, passed; they overstate its error."""
     _adjusted_has(project, **fields)
     assert len(_models_said(project, "poisson-binary-variance")) == said
+
+
+def test_the_poisson_hint_says_what_r_can_do(project: Path) -> None:
+    """Round 1 of #289: R's card always says model-based, and the hint named only the
+    statsmodels remedy."""
+    _adjusted_has(project, engine=_POISSON, covariance="model-based")
+    loaded, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(loaded)
+    hints = [f.hint for f in check_models(loaded, results).findings
+             if f.code == "poisson-binary-variance"]  # fmt: skip
+    assert len(hints) == 1 and "glm(family = binomial(link = 'log'))" in hints[0]
+    assert "sandwich::vcovHC" in hints[0]
 
 
 def test_rows_of_one_unit_taken_as_independent_are_a_warning(project: Path) -> None:

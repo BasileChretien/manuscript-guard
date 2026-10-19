@@ -560,7 +560,15 @@ mg_fit_units <- function(fit, unit) {
          call. = FALSE)
   }
   data <- as.data.frame(data)
-  values <- data[rownames(stats::model.frame(fit)), unit, drop = TRUE]
+  # Matched exactly: `[` takes a row name by its start where nothing equals it, so an lm's
+  # data changed after the fit gave another row's unit, or a missing one (round 2 of #268).
+  at <- match(rownames(stats::model.frame(fit)), rownames(data))
+  if (anyNA(at)) {
+    stop("model: ", sum(is.na(at)), " of the rows the model used are not in the data its ",
+         "call names, which has changed since the fit; emit the model before changing its ",
+         "data", call. = FALSE)
+  }
+  values <- data[at, unit, drop = TRUE]
   if (anyNA(values)) {
     stop("model: unit ", unit, " is missing in ", sum(is.na(values)), " of the rows the ",
          "model used, so how many units they hold cannot be counted", call. = FALSE)
@@ -645,7 +653,10 @@ mg_read_fit <- function(fit, unit = NULL) {
     rows_sha256 = digest::digest(paste(rownames(stats::model.frame(fit)), collapse = "\n"),
                                  algo = "sha256", serialize = FALSE)
   )
-  if (!is.null(stats::model.offset(stats::model.frame(fit)))) card$offset <- TRUE
+  # An offset in the formula or given as `offset =`, where it differs between rows: a constant
+  # one is the intercept's and makes no rate, as in Python (round 2 of #289).
+  offset <- stats::model.offset(stats::model.frame(fit))
+  if (!is.null(offset) && length(unique(offset)) > 1) card$offset <- TRUE
   if (!is.null(unit)) card$unit <- mg_fit_units(fit, unit)
   if (!is.null(counted)) {
     card$events <- as.integer(sum(counted$rows))

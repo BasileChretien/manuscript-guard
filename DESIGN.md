@@ -2097,8 +2097,9 @@ from the adjusted model only: the change between the two is then partly the rows
 counts can hide different rows, so each card records a digest of the labels of the rows
 its fit used (`rows_sha256`: pandas' index, R's row names). G15 warns
 (`models-on-different-rows`) where two models of one outcome, one's terms a strict subset
-of the other's, were fitted on different rows. The same terms on different rows are a
-subgroup, by design, and are left alone.
+of the other's, were fitted on different rows. One outcome is the same variables written
+the same way, spaces aside: `I(score > 5)` and `I(score > 10)` are two. The same terms on
+different rows are a subgroup, by design, and are left alone.
 
 **A Poisson regression of a binary outcome has a robust variance.** Poisson regression of a
 binary outcome estimates a risk ratio, and its model-based variance overstates the error;
@@ -2106,7 +2107,9 @@ a sandwich variance corrects it (Zou, Am J Epidemiol 2004;159:702-6). G15 warns
 (`poisson-binary-variance`) on a Poisson model of an outcome declared binary, or of a
 comparison written in the formula, whose card records model-based standard errors. A fit
 with an offset or an exposure is left alone: events over person-time estimate a rate ratio,
-and that model's own variance is the right one. Each emitter records the offset on the card.
+and that model's own variance is the right one. Each emitter records the offset on the card,
+in the formula or given beside it, where it differs between rows: a constant one, nought or
+the log of one person-time for all, is the intercept's and makes no rate.
 
 ## A step of the code and the text that points at it
 
@@ -6186,11 +6189,19 @@ Added by the adversarial review, verified and **not** fixed:
 - **Two models' rows are compared by their labels, within one language.** pandas numbers
   rows from 0 and R from 1, so a model fitted in Python and one fitted in R on the same
   data are always taken for different rows; and two data frames whose labels were reset
-  between the fits are too. A count with a person-time denominator modelled with no offset
-  is not yet read: it needs the rate the analysis declares, which nothing records. An R
-  `lm` or `glm` records "model-based" standard errors whatever is done after the fit, so a
-  modified Poisson regression whose sandwich variance is computed beside the fit
-  (`sandwich::vcovHC`) is still warned.
+  between the fits are too. Rows that share a label are not told apart: where a frame's
+  index repeats, a fit without the first of two such rows and a fit without the second
+  record the same rows (`test_rows_that_share_a_label_are_not_told_apart`). A stratum
+  fitted without its stratifier, beside the whole cohort's model with it, is two models of
+  one outcome on different rows, one's terms among the other's, and is warned of as a crude
+  model fitted on other rows, with advice for that. A count with a person-time denominator
+  modelled with no offset is not yet read: it needs the rate the analysis declares, which
+  nothing records. An R `lm` or `glm` records "model-based" standard errors whatever is
+  done after the fit, so a modified Poisson regression whose sandwich variance is computed
+  beside the fit (`sandwich::vcovHC`) is still warned; the hint says so. An R `lm` keeps no
+  data, and its rows are found by name in the data its call names as that data is when the
+  model is emitted: rows gone since the fit are refused, and a unit changed since the fit
+  in rows still there is counted as it now is.
 - **Numbers written as words escape the tokeniser.** "four thousand and twenty-one" is not
   read. Vulgar fractions and enclosed digits now are. Number words are left alone on
   purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and

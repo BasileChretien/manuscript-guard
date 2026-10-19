@@ -254,7 +254,12 @@ def _rows_compared(models: dict[str, Model]) -> list[Finding]:
 
 
 def _modelled(model: Model) -> tuple:
-    return tuple(model.outcome.get("variables", ())), model.outcome.get("comparison")
+    """The outcome a model is of: its variables, whether it is a comparison, and its
+    expression without its spaces, so that `I(score > 5)` and `I(score > 10)` are two
+    outcomes and not one (round 1 of #289)."""
+    outcome = model.outcome
+    expression = re.sub(r"\s+", "", str(outcome.get("expression") or ""))
+    return tuple(outcome.get("variables", ())), outcome.get("comparison"), expression
 
 
 def _terms(model: Model) -> frozenset[str]:
@@ -288,7 +293,10 @@ def _poisson_of_binary(model: Model, engine, variables: dict[str, Variable]) -> 
             f"a Poisson regression of a binary outcome with {model.covariance} standard "
             f"errors, which overstate the error of its risk ratio",
             "fit it with a robust (sandwich) variance, in statsmodels .fit(cov_type='HC0'), "
-            "or a log-binomial model; Zou, Am J Epidemiol 2004;159:702-6",
+            "or a log-binomial model; in R the card cannot see a variance computed beside the "
+            "fit (sandwich::vcovHC), so this stays for a modified Poisson model, and the fit "
+            "it reads is glm(family = binomial(link = 'log')); Zou, Am J Epidemiol "
+            "2004;159:702-6",
             warn=True,
         )
     ]

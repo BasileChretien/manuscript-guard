@@ -844,7 +844,7 @@ def read_statsmodels(fit: object, unit: str | None = None) -> dict:
     labels = getattr(data, "row_labels", None)
     if labels is not None:
         card["rows_sha256"] = rows_digest(str(label) for label in labels)
-    if getattr(model, "offset", None) is not None or getattr(model, "exposure", None) is not None:
+    if _varies(getattr(model, "offset", None)) or _varies(getattr(model, "exposure", None)):
         card["offset"] = True
     if unit is not None:
         card["unit"] = {"column": unit, "units": _units(frame, data, unit)}
@@ -855,6 +855,18 @@ def read_statsmodels(fit: object, unit: str | None = None) -> dict:
         if events_by_level:
             card["events_by_level"] = events_by_level
     return card
+
+
+def _varies(values: object) -> bool:
+    """Whether an offset or an exposure differs between rows. A constant one, nought or the
+    log of one person-time for all, is the intercept's and makes no rate (round 2 of #289:
+    it was taken for a rate model, and the variance of a risk ratio went unread)."""
+    if values is None:
+        return False
+    import numpy as np
+
+    array = np.asarray(values, dtype=float).ravel()
+    return array.size > 1 and bool(np.ptp(array) > 0)
 
 
 #: What binds a name: the nearest of these round an assignment is the name's scope.

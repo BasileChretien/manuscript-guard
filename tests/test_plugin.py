@@ -533,8 +533,8 @@ def test_the_suite_s_command_keeps_its_report_and_results_and_needs_arguments(
     tmp_path: Path,
 ) -> None:
     """Round 1 of #333: the report stays on this machine, the results go into the
-    repository as the run writes them, the arguments after `--` are passed as given, and a
-    run with none, a whole paid run on the command's defaults, is refused."""
+    repository, the arguments after `--` are passed as given, and a run with none, a whole
+    paid run on the command's defaults, is refused."""
     script = _evals_script()
     passed = script.arguments(["--", "--model", "opus", "--runs", "1"])
     assert passed == ["--model", "opus", "--runs", "1"]
@@ -544,11 +544,49 @@ def test_the_suite_s_command_keeps_its_report_and_results_and_needs_arguments(
     assert run[run.index("--eval-dir") + 1] == "evals"
     assert run[run.index("--output-dir") + 1] == str(tmp_path / "results")
     assert run[-4:] == passed
-    named = script.command("claude", tmp_path, ["--output-dir", "x", "--model", "opus"], tmp_path)
-    assert named.count("--output-dir") == 1 and named[named.index("--output-dir") + 1] == "x"
+    # A folder the arguments name is the one used, in either form (round 2 of #333).
+    for given in (["--output-dir", "x"], ["--output-dir=x"]):
+        named = script.command("claude", tmp_path, [*given, "--model", "opus"], tmp_path)
+        assert [a for a in named if a.startswith("--output-dir")] == given[:1]
+        assert script.output_dir(given) == "x"
     for empty in ([], ["--"]):
         with pytest.raises(SystemExit):
             script.arguments(empty)
+
+
+@pytest.mark.parametrize("named", [None, "mine", "--output-dir=mine"])
+def test_a_run_leaves_its_results_in_the_repository_and_says_where(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], named: str | None
+) -> None:
+    """Round 2 of #333: `main` itself, with a stand-in for the run: the results the run
+    writes are in the repository after the copy is gone, and the script names the folder
+    they are in, the one the arguments name or its own."""
+    script = _evals_script()
+    repo = tmp_path / "repo"
+    (repo / "plugin" / ".claude-plugin").mkdir(parents=True)
+    (repo / "plugin" / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
+    (repo / "evals" / "a-case").mkdir(parents=True)
+    seen: list[list[str]] = []
+
+    def run(command: list[str], cwd: Path):
+        seen.append(command)
+        out = script.output_dir(command[4:])
+        assert Path(command[3]).name == "plugin" and (Path(command[3]) / "evals").is_dir()
+        folder = Path(cwd) / out
+        folder.mkdir(parents=True)
+        (folder / "aggregate-result.json").write_text("{}", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0)
+
+    given = {None: [], "mine": ["--output-dir", "mine"]}.get(named, [named])
+    code = script.main(["--", *given, "--model", "opus"], repo=repo, claude="claude", run=run)
+    assert code == 0 and not Path(seen[0][3]).exists()
+    written = list(repo.rglob("aggregate-result.json"))
+    assert len(written) == 1
+    if named is None:
+        assert written[0].parent.parent == repo / "evals" / "results"
+    else:
+        assert written[0].parent == repo / "mine"
+    assert f"results in {written[0].parent}" in capsys.readouterr().out
 
 
 def test_a_description_is_plain_text_and_a_name_is_the_project_s() -> None:

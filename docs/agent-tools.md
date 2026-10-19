@@ -113,8 +113,8 @@ python tools/run_skill_evals.py -- --ablation with-without --runs 3 --model <mod
 A run is paid at API prices, or counts against a subscription's usage, and is 168 runs at
 the size chosen (28 cases, 3 runs, 2 arms): run one case once first (`-- --case <name>
 --runs 1 --ablation none`) to measure it. The results and the report are written to
-`evals/results/`, which git ignores, as the run goes, so a run stopped part way keeps them.
-The copy is of the working tree as it is: record a run made on a clean checkout. Record each run's date, model and
+`evals/results/`, which git ignores, and not into the copy, which is deleted when the run
+ends. The copy is of the working tree as it is: record a run made on a clean checkout. Record each run's date, model and
 result in DESIGN.md, and run it again whenever a pull request changes a skill's name or
 description.
 

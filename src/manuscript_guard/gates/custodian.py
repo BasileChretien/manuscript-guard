@@ -21,9 +21,11 @@ is a copy of it outside them.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import subprocess
+from decimal import Decimal
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_text
@@ -91,7 +93,12 @@ def check_small_cells(project: Project, results: Results) -> Report:
 
 
 #: A count held back behind a comparator: "<5", "< 5", "≤4", "<=4".
-_HELD_BACK = re.compile(r"\s*(?P<sign><=|<|\N{LESS-THAN OR EQUAL TO})\s*(?P<bound>\d+)\s*")
+#: A bound with a decimal or words after it, as the emitter takes a display: "<2.0", "<2
+#: patients" (round 1 of #341).
+_HELD_BACK = re.compile(
+    r"\s*(?P<sign><=|<|\N{LESS-THAN OR EQUAL TO})\s*(?P<bound>\d+(?:\.\d+)?)(?![\d.])"
+    r"(?:\s*[^\W\d][^<>\N{LESS-THAN OR EQUAL TO}]*)?\s*"
+)
 
 
 def _small(value, minimum: int) -> str | None:
@@ -102,8 +109,10 @@ def _small(value, minimum: int) -> str | None:
     held = _HELD_BACK.fullmatch(value.display)
     if held is None:
         return "a count below" if 0 < _printed(value.display) < minimum else None
-    bound = int(held["bound"]) - (held["sign"] == "<")  # the largest count it allows
-    return "a bound tighter than" if 1 <= bound < minimum - 1 else None
+    bound = Decimal(held["bound"])
+    # The largest whole count it allows: below a bound, the whole number under it.
+    largest = math.ceil(bound) - 1 if held["sign"] == "<" else math.floor(bound)
+    return "a bound tighter than" if 1 <= largest < minimum - 1 else None
 
 
 def _printed(display: str) -> float:
@@ -166,11 +175,15 @@ def _tracked(root: Path, relative: str) -> bool | None:
 
 
 def _git(root: Path, *arguments: str) -> subprocess.CompletedProcess:
+    """git, its output read as UTF-8: `ls-files -z` writes a name unquoted, "データ.csv"
+    as its UTF-8 bytes, which the locale's code page cannot read (round 1 of #341, as
+    `impact` found under cp932 in round 1 of #280)."""
     return subprocess.run(
         ["git", "-c", "core.fsmonitor=false", *arguments],
         cwd=root,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=GIT_SECONDS,
         check=False,
         env={**os.environ, "LC_ALL": "C", "LANGUAGE": "C"},

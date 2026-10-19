@@ -3692,6 +3692,11 @@ _AFTER_A_BINDING = (
     ("<!-- the dose --> mg", "mg"),
     ("\N{HAIR SPACE}mg", "mg"),
     ("\N{FIGURE SPACE}mg", "mg"),
+    ("&#0160;mg", "mg"),
+    # No unit across the words between two comments, nor after a backslash that escapes no
+    # space (round 1 of #341).
+    ("<!-- a --> and <!-- b --> mg", None),
+    ("\\\nmg", None),
     ("\N{NO-BREAK SPACE}\N{MICRO SIGN}g/kg", "\N{MICRO SIGN}g/kg"),
     ("\N{THIN SPACE}\N{GREEK SMALL LETTER MU}g", "\N{GREEK SMALL LETTER MU}g"),
     ("%", "%"),
@@ -4891,6 +4896,14 @@ def _a_unit_is_read_after_a_space_character_only(patch: pytest.MonkeyPatch) -> N
     patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
 
 
+def _a_comment_in_the_gap_runs_on_to_the_next(patch: pytest.MonkeyPatch) -> None:
+    """The comment of round 1 of #279's gap, lazy but free to reach past its own end."""
+    comment = r"<!--(?:(?!-->)(?!\n[ \t]*\n)[\s\S])*-->"
+    assert comment in bound_units_gate._UNIT.pattern
+    pattern = bound_units_gate._UNIT.pattern.replace(comment, r"<!--[\s\S]*?-->")
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
 def _a_unit_is_read_inside_a_longer_word(patch: pytest.MonkeyPatch) -> None:
     pattern = bound_units_gate._UNIT.pattern.rsplit("(?!", 1)[0]
     patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
@@ -5213,6 +5226,10 @@ BROKEN = {
     ),
     "a unit is read after a plain space only": (
         _a_unit_is_read_after_a_plain_space_only,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
+    ),
+    "a comment in the gap runs on to the next": (
+        _a_comment_in_the_gap_runs_on_to_the_next,
         test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
     ),
     "a unit is read after a space character only": (

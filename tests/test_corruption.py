@@ -1457,6 +1457,9 @@ def test_what_the_count_reading_gets_wrong_is_pinned(project: Path, fields: dict
     ("<2", True), ("< 3", True), ("\N{LESS-THAN OR EQUAL TO}3", True), ("<=2", True),
     ("<5", False), ("\N{LESS-THAN OR EQUAL TO}4", False), ("<=4", False), ("<10", False),
     ("<1", False),  # nought, which is no small cell
+    # Round 1 of #341: a decimal or words after the bound, as the emitter takes a display.
+    ("<2 patients", True), ("< 2 cases", True), ("<2.0", True), ("<5 patients", False),
+    ("<4.5", False),
 ])  # fmt: skip
 def test_a_count_held_back_by_a_bound_tighter_than_the_minimum_is_said(
     project: Path, display: str, said: bool
@@ -1527,6 +1530,13 @@ def test_a_restricted_input_is_found_in_git_by_its_own_name(
     assert custodian._tracked(tmp_path, "kept.csv") is False
     _git(tmp_path, "config", "core.ignorecase", "true")
     assert custodian._tracked(tmp_path, "kept.csv") is True
+    # A name in another script or with an accent is read as UTF-8 whatever the locale's
+    # code page: under cp932 or cp1252 the unquoted name raised (round 1 of #341).
+    for name in ("\N{KATAKANA LETTER DE}\N{KATAKANA LETTER SMALL TU}\N{KATAKANA LETTER TA}.csv",
+                 "\N{LATIN CAPITAL LETTER A WITH ACUTE}baco.csv"):  # fmt: skip
+        (tmp_path / name).write_text("a\n", encoding="utf-8")
+        _git(tmp_path, "add", name)
+        assert custodian._tracked(tmp_path, name) is True, name
     # Asked in English, whatever the user's language, since its words are read.
     seen: list[dict] = []
     run = custodian.subprocess.run
@@ -2019,6 +2029,11 @@ def _units_said(root: Path) -> list[tuple[str, int]]:
         ("\N{MICRO SIGN}g", "<!-- the dose --> mg", True),
         ("\N{MICRO SIGN}g", "\N{HAIR SPACE}mg", True),
         ("\N{MICRO SIGN}g", "\N{FIGURE SPACE}mg", True),
+        # Round 1 of #341: the other spellings of the entity are read, and no unit is read
+        # across the words between two comments.
+        ("\N{MICRO SIGN}g", "&#0160;mg", True),
+        ("\N{MICRO SIGN}g", "&NonBreakingSpace;mg", True),
+        ("\N{MICRO SIGN}g", "<!-- a --> patients were given <!-- b --> mg", False),
     ],
 )
 def test_a_unit_written_after_a_binding_is_the_one_emitted(

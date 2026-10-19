@@ -29,7 +29,11 @@ GATE = "G2"
 #: line break, which pandoc prints as a space (round 1 of #279).
 _SPACE = (
     r"(?:[ \t\u00a0\u2009\u202f\N{HAIR SPACE}\N{FIGURE SPACE}]"
-    r"|\\ |&nbsp;|&#160;|&#[xX]0*[aA]0;|<!--[\s\S]*?-->)"
+    r"|\\ |&nbsp;|&NonBreakingSpace;|&#0*160;|&#[xX]0*[aA]0;"
+    # A comment ends at its own "-->" and at a blank line, so that no unit is read across
+    # the text between two comments, and adjacent ones cannot be split two ways (round 1
+    # of #341).
+    r"|<!--(?:(?!-->)(?!\n[ \t]*\n)[\s\S])*-->)"
 )
 _GAP = rf"{_SPACE}*(?:\r?\n{_SPACE}*)?"
 _SYMBOLS = (*UNITS, "%", "\u2030")

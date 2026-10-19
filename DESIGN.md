@@ -3602,8 +3602,9 @@ emitted. Spellings of one unit are one: µg, μg and mcg; mL and ml; °C and ℃
 a slash, mmol/l and mmol/L (round 1 of #279). A value emitted with no unit, or with one that
 is no symbol ("years"), has nothing to compare it with. The gap between the binding and its
 unit may be spaces of any width, pandoc's escaped space (`\ `), the entity of a no-break
-space, an HTML comment, which is not printed, and one line break, which pandoc prints as a
-space; a blank line, or a word between, ends the unit's claim to the binding.
+space in any of its spellings, an HTML comment, which is not printed and ends at its own
+`-->`, and one line break, which pandoc prints as a space; a blank line, or a word between,
+ends the unit's claim to the binding, also between two comments (round 1 of #341).
 
 ## A rule names values, not shapes
 
@@ -3879,9 +3880,11 @@ reads its own small counts while it drafts, and a panel sent to a model provider
 outside it. A count is a whole number the analysis emitted with no unit, that is neither a
 parameter, a software version nor a label; "3 years" is emitted with its unit and is no
 count of people, and nought is no small cell. A display that holds the count back behind a
-bound, "<5" or "≤4", passes only where the bound allows every count the custodian forbids:
-"<2" or "≤3" under a minimum of five still say the count is one, or at most three, and fail
-(round 3 of #275). A count the analysis emits as a decimal, 3.0, or with a unit naming people,
+bound, "<5" or "≤4", with a decimal or words after it or not, "<5 patients", passes only
+where the bound allows every count the custodian forbids: "<2" or "≤3" under a minimum of
+five still say the count is one, or at most three, and fail (round 3 of #275, round 1 of
+#341). git is read as UTF-8, so a restricted file whose name is in another script or
+carries an accent is found, where the system's code page could not read git's answer. A count the analysis emits as a decimal, 3.0, or with a unit naming people,
 "patients", is not taken for one (pinned by `test_what_the_count_reading_gets_wrong_is_pinned`).
 
 An input is declared restricted where the analysis declares it, in either emitter

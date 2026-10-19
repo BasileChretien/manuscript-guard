@@ -919,10 +919,10 @@ whatever labels and qualifies them (`ISBN-13: ...`, `ISBN 13:`, `eISBN`, `(pbk.)
 needs in both formats a `.bib` file is written in: what BibTeX's standard styles require
 (btxdoc) and BibLaTeX also requires (its manual, section 2.1.1), under either's name
 (`journaltitle`, `date`). `sync-bib` writes BibLaTeX, which asks no publisher of a book
-and no note of an unpublished work, so neither is required. An entry takes the container's
-fields it lacks from the one its `crossref` names, the key matched exactly as biber matches
-it: the parent's title as its `booktitle`, as BibLaTeX has it, and the editor, publisher
-and date, never the part's own author or title. Each fails from
+and no note of an unpublished work, so neither is required. An entry takes the fields it
+lacks from the one its `crossref` names, the key matched exactly, as biber does: a book's
+author for its chapter, its editor, publisher and date, and its title as the part's
+`booktitle`, never as the part's own title. Each fails from
 internal-review (`identifier-malformed`, `reference-field-missing`), when the reference
 list is first printed for others to read; while drafting, an entry can still be a
 placeholder, and it is reported and deferred. Whether a DOI is registered, names the work

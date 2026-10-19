@@ -165,9 +165,11 @@ def problems(
     for isbn in isbns:
         if not isbn_valid(isbn):
             malformed("ISBN", isbn.strip(), "has a check digit that does not add up")
-    # A field of labels and qualifiers alone, "online", holds none (round 1 of #345).
-    if fields.get("isbn", "").strip() and not any(isbn.strip() for isbn in isbns):
-        malformed("ISBN", fields["isbn"].strip(), "holds no ISBN, only what is written beside one")
+    # A field of labels and qualifiers alone, "online", holds none (round 1 of #345); one
+    # with a digit in it may hold an ISBN set aside in brackets, and is left as it was.
+    written = fields.get("isbn", "").strip()
+    if written and not any(isbn.strip() for isbn in isbns) and not re.search(r"\d", written):
+        malformed("ISBN", written, "holds no ISBN, only what is written beside one")
 
     kind = fields.get("type", "").lower()
     given = {**inherited(parent), **{name: v for name, v in fields.items() if v.strip()}}
@@ -183,23 +185,24 @@ def problems(
     return found
 
 
-#: What a part takes from the work that holds it: the fields that describe the container,
-#: never the part's own author or title (round 1 of #345: a paper with no title of its own
-#: took the proceedings' name for one).
-CONTAINER_FIELDS = (
-    "booktitle", "editor", "publisher", "year", "date", "school", "institution", "journal",
-    "journaltitle", "organization", "address", "location", "series", "volume", "isbn",
+#: What a part does not take from the work that holds it: the parent's title, which becomes
+#: the part's `booktitle` and is not its title (round 1 of #345: a paper with no title of
+#: its own took the proceedings' name for one), and what names the parent's own entry.
+NOT_INHERITED = (
+    "title", "subtitle", "titleaddon", "shorttitle", "type", "type_field", "crossref", "xref",
+    "ids", "entryset", "label", "shorthand", "sortkey",
 )  # fmt: skip
 
 
 def inherited(parent: dict[str, str] | None) -> dict[str, str]:
-    """What an entry takes from the one its `crossref` names: the container's fields, and the
-    parent's title as its `booktitle`, as BibLaTeX inherits it from a book, a collection or
-    proceedings (its manual, appendix B); BibTeX's parent writes `booktitle` itself (round 1
-    of #249: a hand-written `@inproceedings` was told it had no booktitle)."""
+    """What an entry takes from the one its `crossref` names: every field it lacks but the
+    title, as biber inherits from a book, a collection or proceedings (BibLaTeX's manual,
+    appendix B), the author of a book given to its chapter (round 2 of #345); and the
+    parent's title as its `booktitle`, which BibTeX's parent writes itself (round 1 of #249:
+    a hand-written `@inproceedings` was told it had no booktitle)."""
     if not parent:
         return {}
-    fields = {name: parent[name] for name in CONTAINER_FIELDS if name in parent}
+    fields = {name: value for name, value in parent.items() if name not in NOT_INHERITED}
     if parent.get("title", "").strip() and not fields.get("booktitle", "").strip():
         fields["booktitle"] = parent["title"]
     return fields

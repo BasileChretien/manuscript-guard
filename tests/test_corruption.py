@@ -4788,31 +4788,42 @@ def test_what_is_set_aside_beside_an_identifier_is_no_identifier(field: str, val
     assert [code for code, _said in found] == ["identifier-malformed"], found
 
 
+def test_an_isbn_written_in_brackets_alone_is_left_as_it_was() -> None:
+    """Round 2 of #345: a bracketed group is set aside as a qualifier, so an ISBN written in
+    brackets alone left the field empty, and "holds no ISBN" refused a valid one."""
+    from manuscript_guard.gates.identifiers import problems
+
+    assert problems("k", {"type": "misc", "isbn": "(978-0-306-40615-7)"}) == []
+
+
 def test_a_volume_of_its_word_alone_stays_a_volume() -> None:
     """Round 1 of #345: "V." (five) became no volume, and the book merged with the one
-    cited with none."""
-    from manuscript_guard.gates.duplicates import identifiers_of
+    cited with none. Round 2: "Volume" lost its "Vol", and "Vol." became "."."""
+    from manuscript_guard.gates.duplicates import _volume, identifiers_of
 
     def named(volume: str | None) -> set:
         fields = {"type": "book", "isbn": "0-306-40615-2"}
         return identifiers_of({**fields, "volume": volume} if volume else fields)
 
     assert named("V.") != named(None) and named("Volume") != named(None)
-    assert named("Vol. 1") == named("1") == named("v. 1")
+    assert named("Vol. 1") == named("1") == named("v. 1") == named("Volume 1")
+    assert [_volume(v) for v in ("Volume", "Vol.", "V.", "Vol.2")] == ["volume", "vol.", "v.", "2"]
 
 
-def test_a_part_takes_its_container_from_its_crossref_and_not_its_title() -> None:
+def test_a_part_takes_from_its_crossref_all_but_the_title() -> None:
     """Round 1 of #345: every field of the parent was taken under its own name, so a paper
-    with no title of its own met "needs its title" with the proceedings' name."""
+    with no title of its own met "needs its title" with the proceedings' name. Round 2: a
+    chapter takes its book's author, as biber gives it."""
     from manuscript_guard.gates.identifiers import problems
 
     parent = {"type": "proceedings", "title": "The meeting", "year": "2020",
-              "author": "Somebody"}  # fmt: skip
-    found = problems("k", {"type": "inproceedings", "crossref": "p"}, parent)
+              "editor": "Somebody"}  # fmt: skip
+    found = problems("k", {"type": "inproceedings", "author": "A", "crossref": "p"}, parent)
     assert [said for _code, said in found] == [
-        "@k: an @inproceedings entry needs its author, and has none",
         "@k: an @inproceedings entry needs its title, and has none",
     ]
+    book = {"type": "book", "author": "Kant, I.", "title": "Werke", "year": "1900"}
+    assert problems("c", {"type": "inbook", "title": "Kritik", "crossref": "b"}, book) == []
 
 
 def test_a_part_takes_its_book_s_fields_from_its_crossref(project: Path) -> None:

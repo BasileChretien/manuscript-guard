@@ -56,10 +56,12 @@ DATA = Path(__file__).parent.parent / "data" / "ai_writing.yaml"
 # How far either side of a claim a supporting citation may sit.
 CITATION_WINDOW = 240
 BIB_FILE = "references.bib"
-#: Fields of a reference that no reference list prints, or that are the type of the entry.
+#: Fields of a reference that no reference list prints, or that are the type of the entry: its
+#: kind, and a field named `type`, which the reader keeps under `type_field` and which was
+#: never read here (round 2 of #345).
 UNPRINTED = frozenset(
     {"abstract", "annotation", "annote", "comment", "file", "keywords", "langid", "language",
-     "mendeley-tags", "type", "urldate"}
+     "mendeley-tags", "type", "type_field", "urldate"}
 )  # fmt: skip
 
 

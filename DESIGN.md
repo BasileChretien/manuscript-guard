@@ -6266,8 +6266,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   title.** The title has no minimum length, and the year and the first author are
   compared only where both give them, so a conference abstract filed without its DOI is
   taken for the paper of the same title and authors (round 1 of #350). An entry that has
-  the field's DOI is always taken first, the DOI read as the gates read one, whatever it
-  is dressed in (`doi:`, `http://dx.doi.org/`, a stop after it) and in one case.
+  the field's DOI is always taken first, each DOI read as the gates read one: without the
+  dressing `normal_doi` takes off (`doi:`, a resolver's address, a stop after it), in one
+  case.
 - **Some tests of the literature are narrower than the rule they hold.** The words beside a
   quoted value are drawn with each value once, between spaces, and never inside a word with
   a digit: a value quoted twice, or within "CYP3A14", and a quote in a script written

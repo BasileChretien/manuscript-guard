@@ -222,3 +222,9 @@ def test_the_entry_with_the_field_s_doi_is_taken_before_a_duplicate_without_one(
     for written in ("http://dx.doi.org/10.1/ABC", "doi:10.1/abc", "10.1/abc."):
         said = _said_inserted(work, {"b": same, "a": {**same, "doi": written}})
         assert "[@a]" in said, (written, said)
+    # And on the field's side, where only the DOI can match the entry.
+    dressed = Work(doi="https://dx.doi.org/10.1/ABC", title="X")
+    assert "[@a]" in _said_inserted(dressed, {"a": {"doi": "doi:10.1/abc", "title": "Y"}})
+    from manuscript_guard.cli import _the_work
+
+    assert _the_work(dressed, {"doi": "https://doi.org/10.1/abc", "title": "Y"})

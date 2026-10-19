@@ -5442,6 +5442,18 @@ def test_a_mean_that_names_its_n_makes_the_means_below_it_uncertain(row: str) ->
     assert below.uncertain and "row of means" in below.uncertain
 
 
+@pytest.mark.parametrize("header", ["| | 2019 (n = 120) |", "| | 12 (n = 120) |"])
+def test_a_year_or_a_count_beside_an_n_is_a_header_not_a_mean(header: str) -> None:
+    """Round 2 of #336: a header's year, or a count, with an n beside it was taken for a
+    mean naming its n, and the means below it were called uncertain."""
+    from manuscript_guard.stats.granularity import table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    [table] = markdown_tables(f"{header}\n|---|---|\n| Pain | 3.0 (1.0) |\n")
+    [below] = table_means(table, ("pain",))
+    assert (below.mean, below.n, below.uncertain) == ("3.0", 120, None)
+
+
 _WHOLE_NUMBERS = (
     "# Results\n\n"
     "| Characteristic | Treated (n = 28) | Control (n = 140) |\n"

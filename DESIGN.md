@@ -6093,7 +6093,9 @@ Added by the adversarial review, verified and **not** fixed:
   read; `test_a_p_written_before_its_statistic_is_read_as_the_next_one_s`). A number written
   with a middle dot or a comma for its point, "0·62" or "0,62", is not read at all, so a
   paper set that way has none of its tests judged; a comma after a number with its point,
-  "P = 0.40,12", is the sentence's (round 1 of #336). A P above 1 is not judged. A sentence ends at a stop before a
+  "P = 0.40,12", is the sentence's (round 1 of #336), so in such a paper a point that groups
+  thousands is read as a point, "1.234,5" as 1.234 (pinned by
+  `test_a_point_that_groups_thousands_in_a_decimal_comma_paper_is_read_as_a_point`). A P above 1 is not judged. A sentence ends at a stop before a
   capital or a bracket, so "et al. (2019)" ends one, and a word before it that says the
   test is not the textbook one is not seen. Such a word stands the test down wherever it is
   in the sentence, about this test or not: "exact" or "corrected" said of anything, and
@@ -6135,7 +6137,8 @@ Added by the adversarial review, verified and **not** fixed:
   and "ratio of means" stop a "difference" before them, which is not read across them
   (round 2 of #300); a longer name keeps the two apart anyway, since a name and its
   estimate stand at most 24 characters apart. An en dash straight before an estimate's
-  digits, after no digit or letter, is read as its minus; "OR–1.9" is 1.9.
+  digits, after no digit, is read as its minus, "MD–0.4" too, except before a ratio's, which
+  is never negative: "OR–1.9" is 1.9 (rounds 1 and 2 of #336).
 - **An n (%) is held to its denominator only where the table writes both, in one cell, in
   a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
   count and its share in columns of their own, nor a share whose denominator only a caption

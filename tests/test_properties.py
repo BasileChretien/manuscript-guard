@@ -1471,7 +1471,7 @@ def _a_difference_runs_across_a_ratio_it_does_not_read(patch: pytest.MonkeyPatch
 def _an_en_dash_before_an_estimate_is_no_minus(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import intervals
 
-    dash = r"(?:(?<![\w.])\N{EN DASH}(?=\.?\d))?"
+    dash = r"(?:(?<![\d.])\N{EN DASH}(?=\.?\d))?"
     assert dash in intervals._INTERVAL.pattern
     patch.setattr(intervals, "_INTERVAL", re.compile(intervals._INTERVAL.pattern.replace(dash, "")))
 

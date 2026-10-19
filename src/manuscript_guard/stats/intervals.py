@@ -69,9 +69,10 @@ _INTERVAL = re.compile(
     # "= 2.6", " of 2.6", " was 2.6", ", 2.6": what stands between the name and its value.
     rf"(?:{_NOT_A_NAME}(?:[^\d\n()\[\]{{}}]|\n(?![ \t]*\n))){{0,24}}?"
     # An en dash straight before the estimate's digits, and after no digit, is its minus:
-    # "–1.4" (round 2 of #300). Between two numbers it joins bounds, which come later, and
-    # against a name it is a dash: "OR–1.9" is 1.9 (round 1 of #336).
-    rf"(?P<estimate>(?:(?<![\w.])\N{{EN DASH}}(?=\.?\d))?{_NUMBER})"
+    # "–1.4" (round 2 of #300). Between two numbers it joins bounds, which come later. A
+    # ratio is never negative, so before a ratio's estimate it is a dash, "OR–1.9" being
+    # 1.9, and is dropped below (rounds 1 and 2 of #336).
+    rf"(?P<estimate>(?:(?<![\d.])\N{{EN DASH}}(?=\.?\d))?{_NUMBER})"
     rf"{_S}*[(\[,;]?{_S}*"
     # "exact 95% CI", "95% profile-likelihood CI": what the interval is, said before it.
     rf"{_METHOD}(?:(?P<level>\d{{2}}(?:\.\d)?){_S}?%{_S}*)?{_METHOD}"
@@ -164,7 +165,8 @@ def reported_intervals(text: str) -> list[ReportedInterval]:
             ReportedInterval(
                 kind="ratio" if match.group("ratio") else "difference",
                 name=" ".join((match.group("ratio") or match.group("difference")).split()),
-                estimate=match.group("estimate"),
+                estimate=(match.group("estimate").removeprefix("\N{EN DASH}")
+                          if match.group("ratio") else match.group("estimate")),  # fmt: skip
                 low=low,
                 high=high,
                 level=match.group("level") or match.group("level2") or "",

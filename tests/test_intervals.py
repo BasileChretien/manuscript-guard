@@ -216,14 +216,17 @@ def test_a_difference_is_not_read_across_a_ratio_it_does_not_judge(text: str) ->
 
 def test_a_minus_written_as_an_en_dash_before_an_estimate_is_read() -> None:
     """Round 2 of #300: "–1.4" lost its en dash to the words before it, and 1.4 was said to
-    lie outside its own interval, -2.0 to -0.8. Round 1 of #336: against a name the en dash
-    is a dash, and "OR–1.9" was read as -1.9, outside 1.2 to 3.0."""
+    lie outside its own interval, -2.0 to -0.8. Round 1 of #336: a ratio is never negative,
+    so before its estimate an en dash is a dash, and "OR–1.9" was read as -1.9, outside 1.2
+    to 3.0; round 2: before a difference's it is still its minus, "MD–0.4"."""
     from manuscript_guard.stats.intervals import outside_interval
 
     found = _one("The mean difference was \N{EN DASH}1.4 (95% CI -2.0 to -0.8).")
     assert found.estimate == "\N{EN DASH}1.4" and not outside_interval(found)
     glued = _one("OR\N{EN DASH}1.9 (95% CI 1.2 to 3.0).")
     assert glued.estimate == "1.9" and not outside_interval(glued)
+    minus = _one("MD\N{EN DASH}0.4 (95% CI -0.8 to -0.1).")
+    assert minus.estimate == "\N{EN DASH}0.4" and not outside_interval(minus)
 
 
 @pytest.mark.parametrize(

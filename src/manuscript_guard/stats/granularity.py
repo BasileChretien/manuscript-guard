@@ -215,9 +215,11 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
 
 def _names_its_n(text: str) -> bool:
     """Whether a cell is a mean and the n it is over, "3.1 (1.0), n = 25" or "3.1 (1.0)
-    (n = 25)"."""
+    (n = 25)": a number with its spread or its point beside an n. A header's year, "2019
+    (n = 120)", or a count, "12 (n = 25)", is none (round 2 of #336)."""
     rest = re.sub(r"[(\[]\s*[)\]]", "", _N.sub("", text)).strip(" ,;")
-    return _N.search(text) is not None and _MEAN.fullmatch(rest) is not None
+    shaped = _MEAN.fullmatch(rest) if _N.search(text) else None
+    return shaped is not None and (shaped.end("mean") < shaped.end() or "." in shaped["mean"])
 
 
 def _header(cell: TableCell, column: int, over: dict[int, int]) -> set[int]:

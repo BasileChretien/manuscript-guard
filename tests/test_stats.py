@@ -248,13 +248,23 @@ def test_a_decimal_point_that_is_no_full_stop_is_not_read(text) -> None:
         # test unread.
         ("t(23) = 2.45, p = 0.40,12 and later.", "2.45", "0.40"),
         ("t(23) = 2.45,12 p = 0.40.", "2.45", "0.40"),
-        # A middle dot before a power of ten is a times sign.
+        # A middle dot before a power of ten is a times sign, and a comma after the power
+        # is the sentence's (round 2 of #336: nothing held the second).
         ("t(23) = 6.10, p = 4\N{MIDDLE DOT}10^-6^.", "6.10", "4\N{MIDDLE DOT}10^-6^"),
+        ("t(23) = 6.10, p = 4\N{MIDDLE DOT}10^-6^,12 and later.", "6.10",
+         "4\N{MIDDLE DOT}10^-6^"),
     ],
 )
 def test_a_comma_after_a_number_with_its_point_is_the_sentence_s(text, statistic, p) -> None:
     [found] = reported_tests(text)
     assert (found.statistic, found.p) == (statistic, p)
+
+
+def test_a_point_that_groups_thousands_in_a_decimal_comma_paper_is_read_as_a_point() -> None:
+    """A Known gap (round 2 of #336): in a paper that writes its decimals with a comma, a
+    point groups thousands, and "1.234,5" is read as 1.234. Such a paper writes its P with a
+    comma too, which is not read, so a test is formed only where its P has a point."""
+    assert [t.statistic for t in reported_tests("χ2(1) = 1.234,5, p = .40")] == ["1.234"]
 
 
 def test_a_p_cut_off_by_the_reach_is_not_read() -> None:

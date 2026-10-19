@@ -88,7 +88,7 @@ as `cd paper && manuscript-guard submit` does when it is sent from the folder ab
 ### Whether each skill fires when it should
 
 `evals/`, beside the plugin rather than in it so that installing the plugin copies none of
-it, holds the cases `claude plugin eval` runs against the installed plugin.
+it, holds the cases `claude plugin eval` runs against a copy of this checkout's plugin.
 Each case is a prompt and its graders:
 
 - **routing:** a request each skill is for;
@@ -101,15 +101,20 @@ what each skill adds over the model alone.
 
 The suite is run by hand, never by pytest or CI. Tests never call a provider, and an agent
 never decides pass or fail. It needs Claude Code 2.1.269 or later. The two proportionality
-cases grant Bash, which on Windows runs only under WSL2. From the repository's root:
+cases grant Bash, which on Windows runs only under WSL2. `claude plugin eval` reads a suite
+only from inside the plugin it runs, so `tools/run_skill_evals.py` copies the plugin and the
+suite into a folder of their own and runs it there, with the report kept local. From the
+repository's root, the arguments after `--` going to `claude plugin eval`:
 
 ```bash
-claude plugin eval plugin --eval-dir evals --ablation with-without --runs 3 --model <model> --max-cost-usd <budget>
+python tools/run_skill_evals.py -- --ablation with-without --runs 3 --model <model> --max-cost-usd <budget>
 ```
 
-A run is paid, and is 168 runs at the size chosen (28 cases, 3 runs, 2 arms): run
-one case once first (`--eval-dir evals --case <name> --runs 1 --ablation none`) to measure its tokens. The
-report goes to `evals/results/`, which git ignores. Record each run's date, model and
+A run is paid at API prices, or counts against a subscription's usage, and is 168 runs at
+the size chosen (28 cases, 3 runs, 2 arms): run one case once first (`-- --case <name>
+--runs 1 --ablation none`) to measure it. The results and the report are written to a new
+folder under `evals/results/`, which git ignores, and not into the copy, which is deleted when
+the run ends; the script chooses the folder, and refuses `--output-dir`. The copy is of the working tree as it is: record a run made on a clean checkout. Record each run's date, model and
 result in DESIGN.md, and run it again whenever a pull request changes a skill's name or
 description.
 

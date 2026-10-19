@@ -501,6 +501,122 @@ def test_the_routing_cases_are_whole_and_name_only_our_skills() -> None:
     assert routed == names, sorted(names - routed)
 
 
+def _evals_script():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "run_skill_evals", REPO / "tools" / "run_skill_evals.py"
+    )
+    assert spec and spec.loader
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    return script
+
+
+def test_the_suite_is_run_from_a_copy_of_the_plugin_with_it_inside(tmp_path: Path) -> None:
+    """`claude plugin eval` refuses a suite outside the plugin it runs, so the suite is run
+    from a copy that holds both, its past results left behind, and the docs give that
+    command, not one that finds no case."""
+    script = _evals_script()
+    plugin = script.stage(REPO, tmp_path)
+    assert (plugin / ".claude-plugin" / "plugin.json").is_file()
+    assert sorted(p.name for p in (plugin / "evals").iterdir() if p.is_dir()) == sorted(
+        p.name for p in EVALS.iterdir() if p.is_dir() and p.name != "results"
+    )
+    assert not (plugin / "evals" / "results").exists()
+    docs = (REPO / "docs" / "agent-tools.md").read_text(encoding="utf-8")
+    assert "python tools/run_skill_evals.py --" in docs
+    assert not re.search(r"claude plugin eval\s+\S*plugin\b", docs), "a command with no case"
+
+
+def test_the_suite_s_command_keeps_its_report_and_results_and_needs_arguments(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #333: the report stays on this machine, the results go into the
+    repository, the arguments after `--` are passed as given, and a run with none, a whole
+    paid run on the command's defaults, is refused."""
+    script = _evals_script()
+    passed = script.arguments(["--", "--model", "opus", "--runs", "1"])
+    assert passed == ["--model", "opus", "--runs", "1"]
+    run = script.command("claude", tmp_path / "plugin", passed, tmp_path / "results")
+    assert run[:4] == ["claude", "plugin", "eval", str(tmp_path / "plugin")]
+    assert {"--no-publish", "--trust-plugin"} <= set(run)
+    assert run[run.index("--eval-dir") + 1] == "evals"
+    assert run[run.index("--output-dir") + 1] == str((tmp_path / "results").resolve())
+    assert run.count("--output-dir") == 1
+    assert run[-4:] == passed
+    # Nothing that names another results folder is taken: the script chooses it, so that
+    # it is never read against the copy (rounds 3 and 4 of #333).
+    refused = ([], ["--"], ["--", "--model", "opus", "--output-dir", "x"],
+               ["--", "--output-dir=", "--model", "opus"], ["--", "--output-dir"])  # fmt: skip
+    for given in refused:
+        with pytest.raises(SystemExit):
+            script.arguments(given)
+
+
+@pytest.mark.parametrize("writes", [True, False])
+def test_a_run_leaves_its_results_in_the_repository_and_says_where(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], writes: bool
+) -> None:
+    """Rounds 2 and 3 of #333: `main` itself, with a stand-in for the run. The results are
+    in a new folder of the repository after the copy is gone, the folder given to the run
+    is absolute, so that it cannot be read against the copy, and the script names it only
+    where the run wrote it."""
+    script = _evals_script()
+    repo = tmp_path / "repo"
+    (repo / "plugin" / ".claude-plugin").mkdir(parents=True)
+    (repo / "plugin" / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
+    (repo / "evals" / "a-case").mkdir(parents=True)
+    seen: list[list[str]] = []
+
+    def run(command: list[str], cwd: Path):
+        seen.append(command)
+        folder = Path(command[command.index("--output-dir") + 1])
+        # Made by the script before the run, empty, so that no other run shares it.
+        assert folder.is_absolute() and folder.is_dir() and not any(folder.iterdir()), folder
+        assert Path(command[3]).name == "plugin" and (Path(command[3]) / "evals").is_dir()
+        if writes:
+            (folder / "aggregate-result.json").write_text("{}", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0)
+
+    code = script.main(["--", "--model", "opus"], repo=repo, claude="claude", run=run)
+    assert code == 0 and not Path(seen[0][3]).exists()
+    said = capsys.readouterr().out
+    written = list(repo.rglob("aggregate-result.json"))
+    if not writes:
+        # The run left its folder empty: no results are named, and the empty folder goes
+        # (rounds 5 and 6 of #333).
+        assert written == [] and "no results were written" in said
+        assert not any((repo / "evals" / "results").iterdir())
+        return
+    [result] = written
+    assert result.parent.parent == repo / "evals" / "results"
+    assert f"results in {result.parent}" in said
+
+
+def test_a_run_does_not_share_a_results_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 5 of #333: a folder that is there already is refused before the run starts,
+    so that two runs started together never write into one."""
+    from datetime import datetime
+
+    script = _evals_script()
+    repo = tmp_path / "repo"
+    (repo / "plugin").mkdir(parents=True)
+    (repo / "evals").mkdir()
+    moment = datetime(2026, 10, 19, 12, 0, 0, 123456)
+    fixed = type("Fixed", (), {"now": staticmethod(lambda: moment)})
+    monkeypatch.setattr(script, "datetime", fixed)
+    (repo / "evals" / "results" / moment.strftime("%Y-%m-%dT%H-%M-%S-%f")).mkdir(parents=True)
+
+    def run(*_args, **_kwargs):
+        raise AssertionError("the run started")
+
+    with pytest.raises(SystemExit, match="exists already"):
+        script.main(["--", "--model", "opus"], repo=repo, claude="claude", run=run)
+
+
 def test_a_description_is_plain_text_and_a_name_is_the_project_s() -> None:
     for name in sorted(skill_names()):
         description = frontmatter(SKILLS / name / "SKILL.md").get("description") or ""

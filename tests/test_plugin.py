@@ -501,10 +501,7 @@ def test_the_routing_cases_are_whole_and_name_only_our_skills() -> None:
     assert routed == names, sorted(names - routed)
 
 
-def test_the_suite_is_run_from_a_copy_of_the_plugin_with_it_inside(tmp_path: Path) -> None:
-    """`claude plugin eval` refuses a suite outside the plugin it runs, so the suite is run
-    from a copy that holds both, its past results left behind, and the docs give that
-    command, not the one that finds no case."""
+def _evals_script():
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
@@ -513,6 +510,14 @@ def test_the_suite_is_run_from_a_copy_of_the_plugin_with_it_inside(tmp_path: Pat
     assert spec and spec.loader
     script = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)
+    return script
+
+
+def test_the_suite_is_run_from_a_copy_of_the_plugin_with_it_inside(tmp_path: Path) -> None:
+    """`claude plugin eval` refuses a suite outside the plugin it runs, so the suite is run
+    from a copy that holds both, its past results left behind, and the docs give that
+    command, not one that finds no case."""
+    script = _evals_script()
     plugin = script.stage(REPO, tmp_path)
     assert (plugin / ".claude-plugin" / "plugin.json").is_file()
     assert sorted(p.name for p in (plugin / "evals").iterdir() if p.is_dir()) == sorted(
@@ -521,7 +526,29 @@ def test_the_suite_is_run_from_a_copy_of_the_plugin_with_it_inside(tmp_path: Pat
     assert not (plugin / "evals" / "results").exists()
     docs = (REPO / "docs" / "agent-tools.md").read_text(encoding="utf-8")
     assert "python tools/run_skill_evals.py --" in docs
-    assert "claude plugin eval plugin --eval-dir evals" not in docs
+    assert not re.search(r"claude plugin eval\s+\S*plugin\b", docs), "a command with no case"
+
+
+def test_the_suite_s_command_keeps_its_report_and_results_and_needs_arguments(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #333: the report stays on this machine, the results go into the
+    repository as the run writes them, the arguments after `--` are passed as given, and a
+    run with none, a whole paid run on the command's defaults, is refused."""
+    script = _evals_script()
+    passed = script.arguments(["--", "--model", "opus", "--runs", "1"])
+    assert passed == ["--model", "opus", "--runs", "1"]
+    run = script.command("claude", tmp_path / "plugin", passed, tmp_path / "results")
+    assert run[:4] == ["claude", "plugin", "eval", str(tmp_path / "plugin")]
+    assert {"--no-publish", "--trust-plugin"} <= set(run)
+    assert run[run.index("--eval-dir") + 1] == "evals"
+    assert run[run.index("--output-dir") + 1] == str(tmp_path / "results")
+    assert run[-4:] == passed
+    named = script.command("claude", tmp_path, ["--output-dir", "x", "--model", "opus"], tmp_path)
+    assert named.count("--output-dir") == 1 and named[named.index("--output-dir") + 1] == "x"
+    for empty in ([], ["--"]):
+        with pytest.raises(SystemExit):
+            script.arguments(empty)
 
 
 def test_a_description_is_plain_text_and_a_name_is_the_project_s() -> None:

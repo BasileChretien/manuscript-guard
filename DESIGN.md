@@ -3334,18 +3334,27 @@ other than the one run.
 
 **The runs.** A measurement on real inputs, with its date:
 
-- **2026-10-19, Claude Opus 5.5 (`--model opus`), Claude Code 2.1.303, plugin 0.2.448.**
-  All 28 cases, 3 runs each, with and without the plugin: 168 runs, $15.90 at API prices as
-  Claude Code reports them, run under a subscription. One case, run once first, cost $0.14.
+- **2026-10-19, Claude Opus 5.5 (`--model opus`), Claude Code 2.1.303, the plugin of a
+  clean checkout of `main` at 0.2.448.** All 28 cases, 3 runs each, with and without the
+  plugin: 168 runs, $15.90 at API prices as Claude Code reports them, run under a
+  subscription. One case, run once first, cost $0.14. The arms were what they say: a run of
+  one case in each, its trace kept, loaded the copy under test alone in the one and no
+  manuscript-guard in the other, though a release of the plugin was installed for the user.
   - Routing: every one of the 15 skills fired on all 3 runs of its own case. Each of the 8
     near misses fired the skill it was for and not its neighbour, on all 3 runs. None of the
     3 requests no skill is for fired one.
   - Proportionality: neither small request started a workflow, on any run. The judge
     failed one of the three politer replies, which left "page X, lines Y–Z" to be filled in.
-  - What each skill adds was not measured. Every judged outcome that failed did so because
-    the case runs in an empty folder: no `paper.yaml`, manuscript, figure or plan to work
-    on, which each reply said, with the plugin and without. The two arms therefore differ
-    by chance, and no skill is cut on them. That needs cases that set up a project first.
+  - What each skill adds was not measured. The judged outcome of a routing case passed on 18
+    runs of 45 with the plugin and 13 of 45 without. Of the 59 that failed, 53 did so
+    because the case runs in an empty folder: no `paper.yaml`, manuscript, figure or plan to
+    work on, which each reply said, in either arm. Five were the manuscript-writing case,
+    whose criterion asks the rewrite to say what was found, which its prompt never gives:
+    with the plugin the reply would not invent it, three times, and without, two replies
+    left a placeholder for it. One was project-setup, whose case gives
+    no shell to make the project with. That difference says nothing of a skill, and no
+    skill is cut on it. It needs cases that set up a project first, and criteria that ask
+    only for what the prompt gives.
   - Before this run the command in `docs/agent-tools.md` found no case: `claude plugin eval`
     reads a suite only from inside the plugin. `tools/run_skill_evals.py` now runs it from
     a copy.

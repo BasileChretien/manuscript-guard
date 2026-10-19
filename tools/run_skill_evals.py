@@ -3,10 +3,12 @@
 `claude plugin eval` reads its cases from a folder inside the plugin it runs, and refuses one
 outside it ("--eval-dir must stay inside the plugin root", Claude Code 2.1.303). The suite
 lives beside the plugin, so that installing the plugin copies none of it. So this copies the
-plugin and the suite into a folder of their own, runs the command on that copy, and copies
-its results back into `evals/results/`, which git ignores. The report stays on this machine
+plugin and the suite into a folder of their own and runs the command on that copy. The copy
+is of the working tree as it is, uncommitted files included: run it on a clean checkout to
+record a run. The results are written straight into `evals/results/<time>/`, which git
+ignores, so that a run stopped part way keeps what it wrote; the report stays on this machine
 (`--no-publish`), and the copy is of this repository's own plugin (`--trust-plugin`). Every
-argument after `--` goes to `claude plugin eval` as it is:
+argument after `--` goes to `claude plugin eval` as it is, and there must be some:
 
     python tools/run_skill_evals.py -- --ablation with-without --runs 3 --model <model>
 
@@ -19,7 +21,9 @@ from __future__ import annotations
 import argparse
 import shutil
 import subprocess
+import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -36,22 +40,38 @@ def stage(repo: Path, into: Path) -> Path:
     return plugin
 
 
-def main(argv: list[str] | None = None) -> int:
+def arguments(argv: list[str]) -> list[str]:
+    """The arguments for `claude plugin eval`, those after `--`; refused where there are
+    none, since a run with none is a whole paid run on the command's defaults."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("passed", nargs=argparse.REMAINDER,
                         help="after --, the arguments for claude plugin eval")  # fmt: skip
-    args = parser.parse_args(argv)
-    passed = args.passed[1:] if args.passed[:1] == ["--"] else args.passed
+    passed = parser.parse_args(argv).passed
+    passed = passed[1:] if passed[:1] == ["--"] else passed
+    if not passed:
+        parser.error("give the arguments for claude plugin eval after --, at least --model")
+    return passed
+
+
+def command(claude: str, plugin: Path, passed: list[str], results: Path) -> list[str]:
+    """The command run: the copy, the fixed arguments, the results written into the
+    repository unless the arguments name where, and the arguments given."""
+    out = [] if "--output-dir" in passed else ["--output-dir", str(results)]
+    return [claude, "plugin", "eval", str(plugin), *FIXED, *out, *passed]
+
+
+def main(argv: list[str] | None = None) -> int:
+    passed = arguments(sys.argv[1:] if argv is None else argv)
     claude = shutil.which("claude")
     if claude is None:
         raise SystemExit("claude is not on PATH")
-    with tempfile.TemporaryDirectory(prefix="mg-evals-") as folder:
+    results = REPO / "evals" / "results" / datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    # A process the run started may still hold a file of the copy on Windows; the copy is
+    # left to the system then, rather than the run's exit status lost to a traceback.
+    with tempfile.TemporaryDirectory(prefix="mg-evals-", ignore_cleanup_errors=True) as folder:
         plugin = stage(REPO, Path(folder))
-        run = subprocess.run([claude, "plugin", "eval", str(plugin), *FIXED, *passed], cwd=REPO)
-        results = plugin / "evals" / "results"
-        if results.is_dir():
-            shutil.copytree(results, REPO / "evals" / "results", dirs_exist_ok=True)
-            print(f"results copied into {REPO / 'evals' / 'results'}")
+        run = subprocess.run(command(claude, plugin, passed, results), cwd=REPO)
+    print(f"results in {results}" if results.exists() else "no results were written")
     return run.returncode
 
 

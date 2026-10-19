@@ -501,6 +501,29 @@ def test_the_routing_cases_are_whole_and_name_only_our_skills() -> None:
     assert routed == names, sorted(names - routed)
 
 
+def test_the_suite_is_run_from_a_copy_of_the_plugin_with_it_inside(tmp_path: Path) -> None:
+    """`claude plugin eval` refuses a suite outside the plugin it runs, so the suite is run
+    from a copy that holds both, its past results left behind, and the docs give that
+    command, not the one that finds no case."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "run_skill_evals", REPO / "tools" / "run_skill_evals.py"
+    )
+    assert spec and spec.loader
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    plugin = script.stage(REPO, tmp_path)
+    assert (plugin / ".claude-plugin" / "plugin.json").is_file()
+    assert sorted(p.name for p in (plugin / "evals").iterdir() if p.is_dir()) == sorted(
+        p.name for p in EVALS.iterdir() if p.is_dir() and p.name != "results"
+    )
+    assert not (plugin / "evals" / "results").exists()
+    docs = (REPO / "docs" / "agent-tools.md").read_text(encoding="utf-8")
+    assert "python tools/run_skill_evals.py --" in docs
+    assert "claude plugin eval plugin --eval-dir evals" not in docs
+
+
 def test_a_description_is_plain_text_and_a_name_is_the_project_s() -> None:
     for name in sorted(skill_names()):
         description = frontmatter(SKILLS / name / "SKILL.md").get("description") or ""

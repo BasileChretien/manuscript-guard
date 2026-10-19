@@ -3330,7 +3330,25 @@ Run with and without the plugin, the routing cases show what each skill adds ove
 alone; a skill that adds nothing measurable is cut, or folded into another's references. What
 a run cannot establish: that a skill fires for a user's own wording, which 28 prompts
 do not sample; that a judged outcome is right, since the judge is a model; and anything about a model
-other than the one run. No run is recorded yet: the model is the author's choice.
+other than the one run.
+
+**The runs.** A measurement on real inputs, with its date:
+
+- **2026-10-19, Claude Opus 5.5 (`--model opus`), Claude Code 2.1.303, plugin 0.2.448.**
+  All 28 cases, 3 runs each, with and without the plugin: 168 runs, $15.90 at API prices as
+  Claude Code reports them, run under a subscription. One case, run once first, cost $0.14.
+  - Routing: every one of the 15 skills fired on all 3 runs of its own case. Each of the 8
+    near misses fired the skill it was for and not its neighbour, on all 3 runs. None of the
+    3 requests no skill is for fired one.
+  - Proportionality: neither small request started a workflow, on any run. The judge
+    failed one of the three politer replies, which left "page X, lines Y–Z" to be filled in.
+  - What each skill adds was not measured. Every judged outcome that failed did so because
+    the case runs in an empty folder: no `paper.yaml`, manuscript, figure or plan to work
+    on, which each reply said, with the plugin and without. The two arms therefore differ
+    by chance, and no skill is cut on them. That needs cases that set up a project first.
+  - Before this run the command in `docs/agent-tools.md` found no case: `claude plugin eval`
+    reads a suite only from inside the plugin. `tools/run_skill_evals.py` now runs it from
+    a copy.
 
 ## Auditing existing papers, and saying what the audit is worth
 

@@ -3364,8 +3364,8 @@ finished project starts in one. 12 of the 15 do: `tools/run_skill_evals.py` puts
 the worked example beside the cases in the copy of the suite it runs, as `evals/_project/`.
 Each such case's `case.yaml` names a `scaffold.sh` that copies it into the folder the run
 starts in, and the command is given `--scaffold`. The copy names no skill: it leaves out
-`AGENTS.md`, the project's instructions to an agent, and its YAML files lose their comments,
-where the profiles said which skill writes them (rounds 1 and 2 of #338; Basile chose
+`AGENTS.md`, the project's instructions to an agent, and its YAML files lose their whole-line
+comments, where the profiles said which skill writes them (rounds 1 and 2 of #338; Basile chose
 this over keeping them and saying so). With them, the arm without the plugin could read what
 several criteria ask for. A file whose data would read otherwise without its comments is
 refused. What the project is made of, its bindings and its emitter calls, still shows the

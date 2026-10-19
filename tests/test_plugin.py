@@ -576,6 +576,14 @@ def test_the_staged_example_leaves_out_a_build_and_an_agent_s_instructions(
                                                  encoding="utf-8")  # fmt: skip
     with pytest.raises(SystemExit, match="reads otherwise"):
         script.stage(repo, tmp_path / "refused")
+    # Not one YAML document: refused, not a traceback; a NaN is equal to itself (the
+    # post-budget round of #338).
+    (repo / "example" / "paper.yaml").write_text("a: 1\n---\nb: 2\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="not one YAML document"):
+        script.stage(repo, tmp_path / "two")
+    (repo / "example" / "paper.yaml").write_text("# a comment\nx: .nan\n", encoding="utf-8")
+    project = script.stage(repo, tmp_path / "nan") / "evals" / "_project"
+    assert (project / "paper.yaml").read_text(encoding="utf-8") == "x: .nan\n"
 
 
 def _evals_script():
@@ -610,11 +618,13 @@ def test_the_suite_is_run_from_a_copy_of_the_plugin_with_it_inside(tmp_path: Pat
     # Nor does any comment name a skill, as the example's profiles did (round 2 of #338).
     named = re.compile("|".join(map(re.escape, sorted(skill_names()))) + r"|\bskills?\b", re.I)
     for path in sorted((staged / "_project").rglob("*")):
-        if path.is_file() and path.suffix in (".yaml", ".yml", ".md", ".py", ".bib", ".lock"):
-            # A record's schema, "manuscript-guard/figure-review/1", is its data's name.
-            text = re.sub(r"manuscript-guard/[a-z-]+/\d+", "", path.read_text(encoding="utf-8"))
-            said = named.search(text)
-            assert said is None, (path, said)
+        try:  # every file of text, whatever its kind; a picture is no text
+            text = path.read_bytes().decode("utf-8") if path.is_file() else ""
+        except UnicodeDecodeError:
+            continue
+        # A record's schema, "manuscript-guard/figure-review/1", is its data's name.
+        said = named.search(re.sub(r"manuscript-guard/[a-z-]+/\d+", "", text))
+        assert said is None, (path, said)
     docs = (REPO / "docs" / "agent-tools.md").read_text(encoding="utf-8")
     assert "python tools/run_skill_evals.py --" in docs
     assert not re.search(r"claude plugin eval\s+\S*plugin\b", docs), "a command with no case"

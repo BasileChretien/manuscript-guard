@@ -105,8 +105,8 @@ cases grant Bash, which on Windows runs only under WSL2. `claude plugin eval` re
 only from inside the plugin it runs, so `tools/run_skill_evals.py` copies the plugin and the
 suite into a folder of their own and runs it there, with the report kept local. A routing
 case whose prompt speaks of a finished project, "my analysis script", starts in a copy of
-the worked example that names no skill: without its `AGENTS.md`, and without the comments
-of its YAML files. Its bindings and emitter calls still show the toolkit in use, to either
+the worked example that names no skill: without its `AGENTS.md`, and without the whole-line
+comments of its YAML files. Its bindings and emitter calls still show the toolkit in use, to either
 arm. The script puts the copy beside the cases, the case's `scaffold.sh` copies it in, and
 the script passes `--scaffold` for that. From the repository's root, the arguments after
 `--` going to `claude plugin eval`:

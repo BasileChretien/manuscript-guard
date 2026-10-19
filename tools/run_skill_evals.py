@@ -5,8 +5,9 @@ outside it ("--eval-dir must stay inside the plugin root", Claude Code 2.1.303).
 lives beside the plugin, so that installing the plugin copies none of it. So this copies the
 plugin and the suite into a folder of their own and runs the command on that copy. The copy
 is of the working tree as it is, uncommitted files included: run it on a clean checkout to
-record a run. The results go into `evals/results/<time>/`, which git ignores, and not into
-the copy, which is deleted when the run ends; the report stays on this machine
+record a run. The results go into `evals/results/<time>/`, which git ignores, or the
+folder `--output-dir` names, under the repository where it is relative, and never into the
+copy, which is deleted when the run ends; the report stays on this machine
 (`--no-publish`), and the copy is of this repository's own plugin (`--trust-plugin`). Every
 argument after `--` goes to `claude plugin eval` as it is, and there must be some:
 
@@ -51,6 +52,8 @@ def arguments(argv: list[str]) -> list[str]:
     passed = passed[1:] if passed[:1] == ["--"] else passed
     if not passed:
         parser.error("give the arguments for claude plugin eval after --, at least --model")
+    if passed[-1] == "--output-dir":
+        parser.error("--output-dir names no folder")
     return passed
 
 
@@ -64,11 +67,30 @@ def output_dir(passed: list[str]) -> str | None:
     return None
 
 
+def _without_output_dir(passed: list[str]) -> list[str]:
+    kept: list[str] = []
+    skip = False
+    for given in passed:
+        if skip:
+            skip = False
+        elif given == "--output-dir":
+            skip = True
+        elif not given.startswith("--output-dir="):
+            kept.append(given)
+    return kept
+
+
 def command(claude: str, plugin: Path, passed: list[str], results: Path) -> list[str]:
-    """The command run: the copy, the fixed arguments, the results written into the
-    repository unless the arguments name where, and the arguments given."""
-    out = [] if output_dir(passed) is not None else ["--output-dir", str(results)]
-    return [claude, "plugin", "eval", str(plugin), *FIXED, *out, *passed]
+    """The command run: the copy, the fixed arguments, the results folder given as an
+    absolute path, so that it cannot be read against the copy (round 3 of #333), and the
+    other arguments as given."""
+    rest = _without_output_dir(passed)
+    return [claude, "plugin", "eval", str(plugin), *FIXED, "--output-dir", str(results), *rest]
+
+
+def _files(folder: Path) -> dict[Path, float]:
+    return {p: p.stat().st_mtime for p in folder.rglob("*") if p.is_file()} \
+        if folder.is_dir() else {}  # fmt: skip
 
 
 def main(
@@ -83,15 +105,18 @@ def main(
     if claude is None:
         raise SystemExit("claude is not on PATH")
     named = output_dir(passed)
-    # The run's folder is the repository, so a folder the arguments name is under it.
-    results = repo / named if named is not None else (
+    # A folder the arguments name is under the repository where it is relative.
+    results = (repo / named).resolve() if named is not None else (
         repo / "evals" / "results" / datetime.now().strftime("%Y-%m-%dT%H-%M-%S"))  # fmt: skip
+    before = _files(results)
     # A process the run started may still hold a file of the copy on Windows; the copy is
     # left to the system then, rather than the run's exit status lost to a traceback.
     with tempfile.TemporaryDirectory(prefix="mg-evals-", ignore_cleanup_errors=True) as folder:
         plugin = stage(repo, Path(folder))
         done = run(command(claude, plugin, passed, results), cwd=repo)
-    print(f"results in {results}" if results.exists() else "no results were written")
+    # Said only where this run wrote into the folder, which may have held a past run.
+    wrote = _files(results) != before
+    print(f"results in {results}" if wrote else "no results were written")
     return done.returncode
 
 

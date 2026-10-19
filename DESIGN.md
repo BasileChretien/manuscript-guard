@@ -1722,10 +1722,11 @@ a heading that names another part of the paper ("Limitations of existing methods
 Introduction) belongs to that part. One over another part is no Methods either:
 "# Statistical methods for signal detection", a paper's title written as a heading over
 `##` sections, is over its Results, and G9 read that whole paper as the Methods, a wrong
-parameter in the Results among them. Of the headings left, one G2 reads as the Methods by
-its name comes first, its name read as a reader sees it: "(3) Methods", "**2. Methods**" and
-"Materials & methods" came after "Limitations of existing methods" standing before them
-(round 3 of #246). G4 uses the test for a required section named "Methods", G9 reads the
+parameter in the Results among them. Of the headings left, one named as the Methods, by a
+name of G2's, comes first, its name read here as a reader sees it though G2 reads it as
+typed: "(3) Methods", "**2. Methods**" and "Materials & methods" came after "Limitations
+of existing methods" standing before them (round 3 of #246). G4 uses the test for a required
+section named "Methods", G9 reads the
 first such section of the main text, and a project with analysis code and no such heading is
 told so (`methods-not-found`, a warning). G2 and G15 read the Methods as places, where a
 heading names the method without the word ("Statistical analysis", "Study design"); they

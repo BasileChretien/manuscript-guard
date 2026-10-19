@@ -1924,8 +1924,9 @@ def _papers_with_summaries(draw: st.DrawFn) -> list[tuple[str, str | None, set[s
             opening = f"\n\n## Results\n\n{given} " if structured else f"\n\n{given} "
             # A Background and a Methods of the abstract's own, each giving a key there alone
             # (`g`, `t`): the abstract's Methods are not the paper's (round 1 of #272). Not
-            # under a "Summary" no profile names, which is taken for a title over the paper:
-            # DESIGN.md has that among its Known gaps.
+            # under a "Summary": where no profile names it, it is taken for a title over the
+            # paper, which DESIGN.md has among its Known gaps, and the text is drawn once for
+            # every title a profile may give the abstract, a "Summary" named or not.
             children = structured and abstract != "Summary"
             if children:
                 opening = (f"\n\n## Background\n\n{words()} {{{{results.g}}}}.\n\n## Methods\n\n"
@@ -2487,7 +2488,7 @@ def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, i
         (False, "table"): draw(st.integers(2, 3)),
         (False, "figure"): draw(st.integers(1, 2)),
         (True, "table"): draw(st.integers(1, 2)),
-        (True, "figure"): draw(st.integers(1, 2)),
+        (True, "figure"): draw(st.integers(0, 2)),
     }
     as_files = draw(st.integers(1, 2))
     parts: dict[bool, list[str]] = {False: ["# Results\n"], True: ["# Supplementary\n"]}
@@ -4988,6 +4989,22 @@ def _the_methods_are_taken_in_the_order_they_stand(patch: pytest.MonkeyPatch) ->
     patch.setattr(journal, "methods_sections", in_order)
 
 
+def _the_methods_name_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    # The sort as it was before round 3 of #246: by the title as typed.
+    from manuscript_guard.classify import METHODS_SECTIONS
+    from manuscript_guard.gates import journal
+    from manuscript_guard.text import section_names
+
+    found = section_names.methods_sections
+
+    def as_typed(sections, abstract_title=None):
+        standing = sorted(found(sections, abstract_title), key=lambda section: section.line)
+        return sorted(standing, key=lambda section: METHODS_SECTIONS.match(section.title) is None)
+
+    patch.setattr(methods_gate, "methods_sections", as_typed)
+    patch.setattr(journal, "methods_sections", as_typed)
+
+
 def _the_abstract_s_methods_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
     _methods_found_without_the_paper_s_structure(patch, "below")
 
@@ -6168,6 +6185,10 @@ BROKEN = {
     ),
     "the Methods are taken in the order they stand, not by name first": (
         _the_methods_are_taken_in_the_order_they_stand,
+        test_the_methods_named_as_such_are_read_before_a_heading_that_only_holds_the_word,
+    ),
+    "the Methods' name is read as typed when they are put first": (
+        _the_methods_name_is_read_as_typed,
         test_the_methods_named_as_such_are_read_before_a_heading_that_only_holds_the_word,
     ),
     "a number's sign is no part of it": (

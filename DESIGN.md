@@ -6235,7 +6235,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   `ror.point`, the crude one, passes. Keys are read from the list items' first code spans
   only; a result the section describes in words is not checked, and a section with one key
   and ten results in words says nothing of the ten. A Deviations section that names a key,
-  whatever it says of it, stands down that key's warning.
+  whatever it says of it, stands down that key's warning. A heading that names both,
+  "Planned results and amendments", or a list nested under the Deviations heading, is
+  read as the list and as the Deviations, so its items stand down their own keys' warnings
+  (rounds 2 and 3 of #351; telling the two apart made other plans warned of).
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the

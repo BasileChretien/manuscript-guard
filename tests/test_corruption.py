@@ -3725,12 +3725,6 @@ def test_a_deviations_heading_that_names_the_planned_results_is_not_the_list(
     words = "## Planned results and amendments\n\nThe cases and the ratio.\n\n"
     plan.write_text(text[:start] + words + text[end:], encoding="utf-8")
     assert _planned_said(project) == [("planned-results-unkeyed", "")]
-    # Round 2 of #351: and only the list's, so its items do not name their own keys as
-    # deviations from it.
-    listed = "## Planned results and amendments\n\n- `ror.missing`: a ratio never emitted\n\n"
-    plan.write_text(text[:start] + listed + text[end:], encoding="utf-8")
-    assert _planned_said(project) == [("planned-result-missing",
-                                       "- `ror.missing`: a ratio never emitted")]  # fmt: skip
 
 
 def test_a_planned_group_of_tables_or_models_is_looked_for_among_them(project: Path) -> None:

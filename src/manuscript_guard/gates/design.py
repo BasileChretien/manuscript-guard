@@ -177,27 +177,15 @@ def _says_nothing(sections: list[Section], index: int) -> bool:
     return all(_EMPTY.match(part.body.strip()) for part in subsections(sections, index))
 
 
-def _heads(title: str) -> str | None:
-    """What a plan's heading heads of the two whose names share words, the list of planned
-    results or the Deviations, or None. Where both match, the words that come first say
-    which: "Changes to the planned results" heads the Deviations (round 1 of #305), and
-    "Planned results and amendments" the list, and only the list (rounds 1 and 2 of #351:
-    read as the Deviations too, its items named every key it lists)."""
-    named = re.search(PLANNED, title)
-    changed = re.search(dict((n, rule) for n, rule, _purpose in REQUIRED)["deviations"], title)
-    if named and not (changed and changed.start() < named.start()):
-        return PLANNED
-    return "deviations" if changed else None
-
-
 def deviations_said(text: str) -> str:
     """What a plan's Deviations section says, as words: its line breaks and spacing left
     out, so that a section re-wrapped says what it said."""
+    pattern = dict((name, rule) for name, rule, _purpose in REQUIRED)["deviations"]
     sections = _plan_sections(text)
     said = [
         part.body
         for index, section in enumerate(sections)
-        if _heads(section.title) == "deviations"
+        if re.search(pattern, section.title)
         for part in subsections(sections, index)
     ]
     return " ".join(" ".join(said).split())
@@ -217,9 +205,16 @@ def planned_results(text: str) -> list[Planned] | None:
     spans = code_spans(masked)
     items = list_items(text)
     lines = text.count("\n") + 2
+    deviations = dict((name, rule) for name, rule, _purpose in REQUIRED)["deviations"]
     planned: list[Planned] | None = None
     for index, section in enumerate(sections):
-        if _heads(section.title) != PLANNED:
+        # "Changes to the planned results" heads the Deviations, not the list (round 1 of
+        # #305): read as the list, it named no key and the plan was said to have none. The
+        # words that come first say which: "Planned results and amendments" is the list
+        # (round 1 of #351).
+        named = re.search(PLANNED, section.title)
+        changed = re.search(deviations, section.title)
+        if not named or (changed and changed.start() < named.start()):
             continue
         planned = planned or []
         after = index + len(subsections(sections, index))

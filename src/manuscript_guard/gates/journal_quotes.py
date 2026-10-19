@@ -11,7 +11,8 @@ was read from (`quotes:`, keyed by the rule), as a value in the literature ledge
 quote. A rule no gate checks goes under `manual:` with its quote, rather than nowhere.
 
 * `journal-quote-not-on-page` (fails): a quote that is not in the stored page.
-* `journal-limit-not-in-quote` (fails): a limit whose number its quote does not state.
+* `journal-limit-not-in-quote` (fails): a limit above 1 whose number its quote does not
+  state. A limit of 0 or 1 is held to the page only, since its quote may say "no" or "a".
 * `journal-rule-unquoted` (warning): the rules that carry no quote, named together.
 * `journal-quote-names-no-rule` (warning): a quote for a rule the profile does not have.
 * `journal-page-not-stored` (warning): the page is not there to hold the quotes to.

@@ -19,7 +19,7 @@
     "page_file": {
       "type": "string",
       "minLength": 1,
-      "description": "Where the instructions page is stored as text, from the project's root. Without it, profiles/journals/sources/<name>.txt."
+      "description": "Where the instructions page is stored as text, from the project's root. Without it, profiles/journals/sources/<slug>.txt, the slug being the profile file's name without .yaml."
     },
     "page_sha256": {
       "type": "string",
@@ -162,7 +162,7 @@
           "supplementary": {
             "type": "object",
             "additionalProperties": false,
-            "description": "Rules of their own for supplementary figures, in place of the ones above.",
+            "description": "Rules of their own for supplementary figures: each one given here replaces the same rule above for them, and the rest above still hold.",
             "properties": {
               "formats": {
                 "type": "array",

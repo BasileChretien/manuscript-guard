@@ -842,7 +842,7 @@ def test_a_plan_that_is_not_utf8_is_kept_by_neither_language(
 ) -> None:
     """Round 1 of #271: R stopped on a plan saved in UTF-16, with its results written and
     the rest of the script not run. Neither emitter keeps a plan that is not UTF-8 text,
-    and both finish; G12 says the plan is not UTF-8."""
+    or that holds a NUL, and both finish."""
     from manuscript_guard.emit import freeze_plan
 
     root = _parameter_project(tmp_path)

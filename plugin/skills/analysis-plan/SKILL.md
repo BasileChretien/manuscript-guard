@@ -86,8 +86,9 @@ emitting through the emitter under `feasibility.`:
 - the duplicates found, and how they were found;
 - whatever else the design needs counted before it is fixed.
 
-Write these into the plan as bindings, "about {{results.feasibility.n_reports}} reports":
-nothing renders the plan, but the binding names the result, and G1 holds that result to the
+Write these into the plan as bindings, "about {{results.feasibility.n_reports}} reports",
+so that a reader knows which result is meant. Nothing renders the plan and nothing checks
+its bindings, so a key misspelt there is never reported; G1 holds the result itself to the
 script and the data that made it. A count too small to publish is small in the plan too.
 At the `design` stage, G12 warns (`feasibility-not-run`) where the plan sets out an analysis
 and nothing is emitted under `feasibility.`.

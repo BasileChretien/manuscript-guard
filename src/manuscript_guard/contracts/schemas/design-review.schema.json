@@ -61,7 +61,7 @@
     "reading_sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
-      "description": "The seal: SHA-256 of what the reader wrote, which is the verdict, the summary, the rejection tests, and each finding's id, severity, where and finding. The answers (resolution, resolved_on, overridden) are not in it. Written by `review --run` when it files a reading, and by `review --seal` for one filed by hand once its findings are written. G11 recomputes it, and a reading whose words no longer match is reading-altered."
+      "description": "The seal: SHA-256 of what the reader wrote, which is the verdict, the summary, the rejection tests, and each finding's id, severity, where and finding, with its ask where it has one (round 1 of #276). The answers (resolution, resolved_on, overridden) are not in it. Written by `review --run` when it files a reading, and by `review --seal` for one filed by hand once its findings are written. G11 recomputes it, and a reading whose words no longer match is reading-altered."
     },
     "rejection_tests": {
       "type": "array",

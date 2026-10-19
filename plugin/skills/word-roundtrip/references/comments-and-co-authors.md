@@ -1,7 +1,8 @@
 # Comments, and several co-authors
 
-Part of the word-roundtrip skill, read when a returned document carries comments, or when
-more than one co-author sends theirs back.
+Part of the word-roundtrip skill, read when a returned document carries comments, when
+more than one co-author sends theirs back, or when an import is refused because the
+manuscript changed after the build.
 
 Comments are printed, never stored. Recording them is the reader's job:
 
@@ -92,3 +93,7 @@ so is `respond --open --from` on it, when anything it was built from has changed
 build, the results included. Otherwise it is refused only when a file it carries has front
 matter that is now read differently. Rebuild, send the new document, and carry over by hand
 anything already written in the old one.
+
+One copy is refused in the same way when the manuscript has changed since its build, as
+each of several is: `--force` imports it anyway, an edit merged only where its paragraph
+reads as it did at the build, and every hunk still has to be read.

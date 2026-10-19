@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://manuscript-guard.org/schemas/csl-style/1",
   "title": "manuscript-guard stored citation style",
-  "description": "A journal's citation style as `manuscript-guard style` fetched it from the CSL style repository, kept in profiles/journals/styles/<style>.yaml beside the files. The offline build uses the stored file, and G4 reads this record offline.",
+  "description": "A journal's citation style as `manuscript-guard style` fetched it from the CSL style repository, kept in profiles/journals/styles/<style>.yaml, beside the folder that holds its files, profiles/journals/styles/<style>/. The offline build uses the stored file, and G4 reads this record offline.",
   "type": "object",
   "required": ["schema", "style", "file", "source_url", "sha256", "retrieved_on"],
   "additionalProperties": false,

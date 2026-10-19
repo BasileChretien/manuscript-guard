@@ -1561,7 +1561,8 @@ def test_a_demonstration_says_so_on_its_title_page(project: Path) -> None:
     from manuscript_guard.build.submission import title_page
 
     page = title_page(load_project(project)[0])
-    assert "**A demonstration.** The data this paper analyses are synthetic; its results" in page
+    # Round 2 of #320: "analyses" is British, whatever the paper's English.
+    assert "**A demonstration.** The data of this paper are synthetic; its results" in page
     _not_a_demonstration(project)
     assert "A demonstration" not in title_page(load_project(project)[0])
 
@@ -1669,8 +1670,9 @@ def test_a_number_printed_in_a_table_or_a_figure_the_paper_places_is_reported(
 def test_a_section_of_a_later_file_is_not_taken_for_one_of_an_earlier() -> None:
     """Round 1 of #272: which sections report and which summarise was kept by identity, and
     once a file's sections were freed a section of the next file could be given the address
-    of one of them. A conclusion in the second file was then read as the Results of the
-    first, now and then: about one read in twenty with forty Results subsections."""
+    of one of them. A section of the second file, its Discussion, was then given the
+    address of the first file's Methods, now and then: about one read in twenty with forty
+    Results subsections."""
     from manuscript_guard.gates.reported import Given, Walk
 
     subgroups = "".join(f"## Subgroup {i}\n\nz\n\n" for i in range(40))
@@ -1743,6 +1745,22 @@ def test_a_quotation_in_the_prose_is_in_the_source_it_cites(
     project_, _ = load_project(project)
     found = check_prose_quotations(project_).findings
     assert [(f.code, f.severity) for f in found] == said
+
+
+def test_a_misquotation_names_only_the_works_looked_in(project: Path) -> None:
+    """Round 1 of #282: every cited key was named, a work with no stored source as well."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    path = main_md(project)
+    sentence = ("The cohort found that “incidence fell with age and differed by sex” "
+                "[@fictionalHepaticCohort2021; @fictionalAgencyReport].")  # fmt: skip
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion\n", "\n" + sentence + "\n\n# Discussion\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    project_, _ = load_project(project)
+    [found] = check_prose_quotations(project_).findings
+    assert found.code == "quotation-not-in-source"
+    assert found.message.endswith("is not in the stored source of @fictionalHepaticCohort2021")
 
 
 # ------------------------------------------------------------- what a change makes stale
@@ -14744,6 +14762,14 @@ def test_a_paper_whose_design_has_none_of_its_guidelines_is_told(
         _paper_has(project, study_type=design)
     _paper_has(project, reporting_guideline=guidelines)
     assert bool(_guideline_said(project)) is said
+
+
+def test_the_guidelines_a_paper_declares_are_named_as_it_writes_them(project: Path) -> None:
+    """Round 1 of #292: the message named them in the capitals they are compared in."""
+    _paper_has(project, study_type="cohort")
+    _paper_has(project, reporting_guideline=["Consort"])
+    [said] = _guideline_said(project)
+    assert said.endswith("and paper.yaml declares Consort")
 
 
 # --------------------------------------------------------------------------------------

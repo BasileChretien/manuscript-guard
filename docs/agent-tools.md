@@ -222,7 +222,9 @@ manuscript-guard install-skills --remove            # remove them, then the stam
 
 `--verify` changes nothing. `--remove` takes away each skill whose files are still as they
 were copied, then the stamp. A skill you have edited is named and left, and the stamp is
-kept with that skill alone in it; delete it yourself if it should go.
+kept with that skill alone in it. That stamp draws no line from `check` or `build` about
+another release. Delete the skill yourself if it should go, and the stamp with it: left
+behind, the stamp still lists the skill, and `--verify` says it is no longer there.
 
 **There are no hooks under these tools.** Nothing is caught at the moment of the mistake.
 `check`, `build` and `submit` hold as they do everywhere, so an edited results file or an

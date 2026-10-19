@@ -17,8 +17,9 @@ co-author edited in Word: that is where the author fields come from.
 
 A reference list is not read. The journals that review blind mostly ask for the authors' own
 work to be cited in the third person, not taken out, and a self-citation then prints their
-names there. A name is looked for as a person writes it: the given and the family name, and
-an initial with the family name either way round, with any space between. A family name
+names there. A name is looked for as a person writes it: the given and the family name,
+with any space between, and an initial with its stop before the family name ("A. Example")
+or behind a comma after it ("Example, A."), never a bare initial. A family name
 alone is not, since many are words ("Young", "Long"), nor is an institution's city or country.
 """
 

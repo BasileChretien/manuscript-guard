@@ -162,7 +162,7 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
                     code="quote-too-short",
                     severity=WARN,
                     message=f"{key}: the quote holds {len(beside)} word(s) beside "
-                    f"{value.display!r}, which shows only that those digits are in the source",
+                    f"{value.display!r}, which shows only that the value is in the source",
                     path=value.source,
                     context=quote[:140],
                     hint="quote the sentence that says what the value is of: the measure, the "

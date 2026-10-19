@@ -488,7 +488,8 @@ def check_design(
 def _feasibility_unknown(results: Results | None, stage: str | None) -> bool:
     """While the plan is being written, whether no result says what the data can answer.
 
-    Asked at the design stage only: once the analysis has run, its own results say it.
+    Asked at the design stage only, whatever has been emitted: from the analysis stage on,
+    the analysis's own results say it.
     """
     from manuscript_guard.policy import DESIGN
 

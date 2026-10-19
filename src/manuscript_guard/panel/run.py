@@ -325,6 +325,9 @@ HEADER = (
     "# version was read, `reading_sha256` seals what the reader wrote, and a second\n"
     "# reading is a further round.\n"
 )
+#: A design reading is filed by its own command (round 1 of #316: it named the other).
+DESIGN_HEADER = HEADER.replace("`manuscript-guard review --run`",
+                               "`manuscript-guard review --design --run`")
 
 
 def file_reading(
@@ -350,7 +353,7 @@ def file_reading(
             "the reply repeats the key it was called with, or part of it; a record is "
             "committed, so this one is not filed"
         )
-    text = HEADER + _dump(document)
+    text = (DESIGN_HEADER if plan.design else HEADER) + _dump(document)
     # The record has to say what the model said. YAML writes U+0085 as it is and reads it
     # back as a line break, so a finding came back with its words changed; whatever else
     # does not survive the trip is caught the same way, by making the trip.

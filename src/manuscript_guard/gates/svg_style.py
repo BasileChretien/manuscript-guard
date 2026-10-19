@@ -52,8 +52,9 @@ def declarations(text: str) -> dict[str, str]:
 
 
 def _rules(text: str):
-    """Each rule's selectors and declarations, in one pass over the stylesheet: an at-rule's
-    block is stepped into, and its rules read as rules. A pattern tried at every character
+    """Each rule's selectors and declarations, an at-rule's block stepped into and its rules
+    read as rules: in one pass, except over a run of "{" before one "}", which is read
+    again from each brace. A pattern tried at every character
     took time quadratic in a run with no brace, as a font embedded in a stylesheet makes
     (round 2 of #302)."""
     at = 0

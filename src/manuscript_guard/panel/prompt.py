@@ -478,7 +478,8 @@ def gather_design(project: Project) -> Material:
     data, text = _read(plan, label)
     shown, unrendered = _as_read(text, printable, tables)
     parts = ["# The paper", _about(project), "# The analysis plan", _block(label, shown)]
-    sent = [Sent(label, "without its comments, its feasibility results printed into it")]
+    sent = [Sent(label, "without its front matter and comments, its feasibility results "
+                         "printed into it")]
     if counted:
         listed = "\n".join(f"{key}: {value.display}" for key, value in sorted(counted.items()))
         parts += ["# The feasibility results", _block("results: feasibility.*", listed)]

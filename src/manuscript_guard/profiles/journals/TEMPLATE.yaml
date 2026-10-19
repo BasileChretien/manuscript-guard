@@ -266,7 +266,8 @@ reporting_guidelines:
 #   min_text_pt: 5
 #   min_line_pt: 0.25
 #   legend_words: 250
-#   # Rules of their own for supplementary figures, in place of the ones above.
+#   # Rules of their own for supplementary figures: each replaces the same rule above
+#   # for them, and the rest above still hold.
 #   # supplementary: {max_dpi: 300, max_file_mb: 10}
 
 # ── Quotes ───────────────────────────────────────────────────────────────────────────────

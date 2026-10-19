@@ -592,8 +592,8 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
                     gate=GATE,
                     code="duplicate-reviewer",
                     severity=severity,
-                    message=f"round {number}: {', '.join(repeated)} appears twice in the "
-                    f"panel, so one record answers both remits",
+                    message=f"round {number}: {', '.join(repeated)} appears more than once in "
+                    "the panel, so one record answers each of its remits",
                     path=path,
                     hint="give each reviewer a distinct id; two reviewers with the same "
                     "remit are one reviewer",

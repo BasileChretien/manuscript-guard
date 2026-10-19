@@ -129,8 +129,8 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
         if repeated:
             report = report.with_findings(_finding(
                 "design-duplicate-reviewer",
-                f"design round {number}: {', '.join(repeated)} appears twice in the panel, so "
-                "one record answers both remits", path, severity=severity,
+                f"design round {number}: {', '.join(repeated)} appears more than once in the "
+                "panel, so one record answers each of its remits", path, severity=severity,
                 hint="give each reviewer a distinct id; two reviewers with the same remit are "
                 "one reviewer",
             ))  # fmt: skip
@@ -171,16 +171,26 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
 
 
 def _repeated(names: list) -> list:
-    """The names given more than once, each once and in order."""
+    """The names given more than once, each once, sorted."""
     return sorted({name for name in names if names.count(name) > 1}, key=str)
 
 
 def _once_each(reviewers: list[dict]) -> list[dict]:
-    """The panel's reviewers, the first of each id: one record answers every slot sharing
-    its id, so a second is not read again, and its overrides not listed twice (round 1 of
-    #313)."""
-    seen: set = set()
-    return [r for r in reviewers if not (r["id"] in seen or seen.add(r["id"]))]
+    """The panel's reviewers, one entry for each id: one record answers every slot sharing
+    its id, so it is not read again, and its overrides not listed twice (round 1 of #313).
+    The entry names the readers of every such slot, so that a reader named only by a later
+    one is still read (round 1 of #348)."""
+    merged: dict = {}
+    for reviewer in reviewers:
+        name = reviewer["id"]
+        if name not in merged:
+            merged[name] = dict(reviewer)
+            continue
+        readers = list(merged[name].get("readers") or ())
+        readers += [r for r in reviewer.get("readers") or () if r not in readers]
+        if readers:
+            merged[name]["readers"] = readers
+    return list(merged.values())
 
 
 def _asked(

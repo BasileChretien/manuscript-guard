@@ -14157,6 +14157,22 @@ def test_a_design_panel_naming_one_reviewer_twice_is_said_once(project: Path) ->
     assert len(override_signables(load_project(project)[0])) == 1
 
 
+def test_a_reader_named_by_a_reviewer_s_second_slot_is_read(project: Path) -> None:
+    """Round 1 of #348: a reviewer listed twice was read from its first slot alone, so a
+    reader only the second named went unread, and its open major unsaid."""
+    _design_read_by(project, "openai/gpt-x")
+    _design_read_by(project, "Dr Tanaka", _DESIGN_MAJOR)
+    panel = project / "review" / "design" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    first = document["reviewers"][0]
+    document["reviewers"] = [{**first, "readers": ["openai/gpt-x"]},
+                             {**first, "readers": ["Dr Tanaka"]}]  # fmt: skip
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    said = _design_said(project)
+    assert ("design-major-open", "warn") in said, said
+    assert ("design-reading-unnamed", "warn") not in said
+
+
 def test_a_design_reading_giving_one_id_to_two_findings_is_said(project: Path) -> None:
     """Round 1 of #313: an override is signed by its finding's id, so two overridden majors
     of one id shared one sign-off."""

@@ -2997,8 +2997,8 @@ statistician under a key that names the reader. A reader the panel names who has
 panel does not name is said (`design-reading-unnamed`) and not read. Until this, a design
 panel's named readers were not read at all, and a remit read by two models counted one
 reading. As in G11, a reviewer the panel lists twice is said (`design-duplicate-reviewer`)
-and read once, so that one record does not answer two remits nor its overrides go to the
-statistician twice; a reading that gives one id to two findings is said
+and read once, with the readers every one of its entries names, so that one record does not
+answer two remits nor its overrides go to the statistician twice; a reading that gives one id to two findings is said
 (`design-finding-id-repeated`), since an answer and a sign-off are held to a finding by its
 id; and two readers whose names would be filed as one, or a name with no letter or digit,
 are `design-reader-unnamed`. All three fail at submission, as G11's do (rounds 1 of #308,

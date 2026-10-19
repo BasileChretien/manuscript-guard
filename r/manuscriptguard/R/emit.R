@@ -813,7 +813,9 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
            call. = FALSE)
     }
     entry <- list(method = method)
-    if (!is.null(reason)) entry$reason <- reason
+    # An empty reason is left out, as Python leaves it, since the schema refuses one (round
+    # 1 of #267).
+    if (!is.null(reason) && nzchar(reason)) entry$reason <- reason
     state$corrections[[family]] <- entry
     invisible(NULL)
   }

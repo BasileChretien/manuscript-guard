@@ -30,7 +30,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value, number_in
 from manuscript_guard.findings import INFO, WARN, Finding, Report
-from manuscript_guard.gates.labels import labelled
+from manuscript_guard.gates.labels import labelled, sentence_stops
 from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.masking import (
     blank_comments,
@@ -666,7 +666,7 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
     # between two bounds, and a reversal there passed and was printed; and a stop with a
     # comment typed against it ended none, so the bounds of two sentences were compared.
     read = blank_comments(text) if "<!--" in text else text
-    ends = [match.start() for match in _SENTENCE_END.finditer(read)]
+    ends = sentence_stops(read)
     by_sentence: dict[int, list] = {}
     for placeholder, value in bounds:
         sentence = _sentence(read, ends, placeholder.start)
@@ -711,9 +711,11 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
 
 def in_sentences(placeholders, text: str) -> list:
     """Each value binding of a file, with the sentence it stands in, as `_interval_order`
-    reads sentences: each HTML comment blanked, and a line break no end of one."""
+    reads sentences: each HTML comment blanked, a line break no end of one, and the stop of
+    "s.d.", "s.e." or "s.e.m." none where the sentence goes on, as `labels` reads them
+    (round 2 of #327: a P value after "s.e." was cut from its estimate)."""
     read = blank_comments(text) if "<!--" in text else text
-    ends = [match.start() for match in _SENTENCE_END.finditer(read)]
+    ends = sentence_stops(read)
     return [
         (placeholder, _sentence(read, ends, placeholder.start))
         for placeholder in placeholders
@@ -746,13 +748,15 @@ def quoted_whole(files: list[tuple[Path, str, list]], namespace: dict[str, Value
     intervals = _intervals(namespace)
     whole: set[tuple[str, str]] = set()
     first: dict[tuple[str, str], tuple[Path, int]] = {}
-    for path, text, located in files:
+    for path, _text, located in files:
         by_sentence: dict[int, set[str]] = {}
         for placeholder, sentence in located:
             by_sentence.setdefault(sentence, set()).add(placeholder.ref)
         for placeholder, sentence in located:
             value = namespace.get(placeholder.ref)
-            line = text.count("\n", 0, placeholder.start) + 1
+            # The binding's own line: counting from the top for each was quadratic (round 1
+            # of #267).
+            line = placeholder.line
             for interval, ends in intervals.items():
                 if placeholder.ref in (interval[0], *ends.values()):
                     first.setdefault(interval, (path, line))
@@ -761,9 +765,14 @@ def quoted_whole(files: list[tuple[Path, str, list]], namespace: dict[str, Value
             if value is None or not value.of or value.spread:
                 continue
             belongs = [f"{value.namespace}.{name}" for name in (value.of, value.over) if name]
-            if set(belongs) & by_sentence[sentence]:
+            # A name nothing emits is said whatever the sentence holds: a share whose `of` is
+            # misspelt, quoted beside its `over`, passed (round 1 of #343). One the sentence
+            # binds is an unresolved binding already, and said once (round 2).
+            missing = [name for name in belongs
+                       if name not in namespace and name not in by_sentence[sentence]]  # fmt: skip
+            if not missing and set(belongs) & by_sentence[sentence]:
                 continue
-            report = report.with_findings(_alone(value, belongs, path, line))
+            report = report.with_findings(_alone(value, belongs, missing, path, line))
         for interval, ends in intervals.items():
             if any(set(ends.values()) <= refs for refs in by_sentence.values()):
                 whole.add(interval)
@@ -787,9 +796,17 @@ def quoted_whole(files: list[tuple[Path, str, list]], namespace: dict[str, Value
     return report
 
 
-def _alone(value: Value, belongs: list[str], path: Path, line: int) -> Finding:
-    """A statistic quoted in a sentence that binds nothing it belongs to."""
-    if value.over:
+def _alone(
+    value: Value, belongs: list[str], missing: list[str], path: Path, line: int
+) -> Finding:
+    """A statistic quoted in a sentence that binds nothing it belongs to; or, where what it
+    names is nothing the analysis emits, that (round 1 of #267: it was said to be quoted
+    alone on every quote, whatever the sentence held)."""
+    if missing:
+        said = (f"{value.namespace}.{value.key} names {', '.join(missing)} as what it belongs "
+                f"to, which nothing emits")  # fmt: skip
+        hint = "name in `of` and `over` keys the analysis emits, or emit them"
+    elif value.over:
         said = f"the share {value.namespace}.{value.key} is quoted with neither of its counts"
         hint = "quote the counts beside it, n/N (%), each bound"
     else:

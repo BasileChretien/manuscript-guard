@@ -2781,11 +2781,136 @@ def test_a_statistic_quoted_without_what_it_belongs_to_is_a_warning(
         f"The ratio was {_ESTIMATE}. Of {{{{results.whole.cohort.n}}}} patients, "
         "{{results.whole.female.n}} ({{results.whole.female.pct}}%) were women.",
         f"The ratio was {_ESTIMATE}. It was {{{{results.whole.or.point}}}} again.",
+        # #267: the stop of "s.e." before a number ends no sentence, as `labels` reads it.
+        f"The ratio was {_ESTIMATE} (s.e. 0.21), P = {{{{results.whole.or.p}}}}.",
     ],
 )
 def test_a_statistic_quoted_with_what_it_belongs_to_passes(project: Path, paragraph: str) -> None:
     _with_whole(project, paragraph, {"secondary": {"method": "holm"}})
     assert _whole_said(project) == []
+
+
+def test_a_statistic_naming_what_nothing_emits_says_so(project: Path) -> None:
+    """#267: a p value whose `of` names a key no fragment emits was said to be quoted
+    alone, whatever its sentence held; it is the name that is wrong."""
+    _with_whole(project, f"The ratio was {_ESTIMATE}.", {"secondary": {"method": "holm"}})
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["whole.hr.p"]["of"] = "whole.hr.point"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\nThe hazard ratio had P = "
+        "{{results.whole.hr.p}} beside {{results.whole.or.point}}.\n",
+        encoding="utf-8",
+    )
+    said = [f for f in gate_report(project).findings if f.code == "quoted-alone"]
+    assert [f.message for f in said] == [
+        "results.whole.hr.p names results.whole.hr.point as what it belongs to, which "
+        "nothing emits"
+    ]
+
+
+def test_a_share_naming_what_nothing_emits_beside_its_other_count_says_so(
+    project: Path,
+) -> None:
+    """Round 1 of #343: a share whose `of` is misspelt, quoted beside its `over`, passed,
+    since the sentence held one of its names; no other gate reads `over`."""
+    paragraph = ("Of {{results.whole.cohort.n}} patients, {{results.whole.female.pct}}% were "
+                 "women.")  # fmt: skip
+    _with_whole(project, f"The ratio was {_ESTIMATE}. {paragraph}",
+                {"secondary": {"method": "holm"}})  # fmt: skip
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["whole.female.pct"]["of"] = "whole.femal.n"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    said = [f for f in gate_report(project).findings if f.code == "quoted-alone"]
+    assert [f.message for f in said] == [
+        "results.whole.female.pct names results.whole.femal.n as what it belongs to, which "
+        "nothing emits"
+    ]
+    # Round 2 of #343: the name nothing emits, bound in the sentence, is said once, as the
+    # binding that resolves to nothing.
+    del document["values"]["whole.cohort.n"]
+    document["values"]["whole.female.pct"]["of"] = "whole.female.n"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    codes = [f.code for f in gate_report(project).findings
+             if f.code in ("quoted-alone", "unresolved-binding")]  # fmt: skip
+    assert codes == ["unresolved-binding"]
+
+
+@pytest.mark.parametrize(
+    ("added", "paragraph", "said"),
+    [
+        # A second level of the same estimate is asked for whole as well, though the paper
+        # quotes the one it means.
+        ({"values": {"whole.or.ci90_low": {"value": 1.6, "display": "1.60",
+                                           "bounds": "whole.or.point", "bound": "low",
+                                           "level": "90%"},
+                     "whole.or.ci90_high": {"value": 3.4, "display": "3.40",
+                                            "bounds": "whole.or.point", "bound": "high",
+                                            "level": "90%"}}},
+         f"The ratio was {_ESTIMATE}.", ["interval-not-quoted-whole"]),
+        # An interval quoted whole only in a table the analysis emits: its cells are text,
+        # and no sentence binds the bounds.
+        ({"tables": {"ratios": {"columns": ["Ratio", "95% CI"],
+                                "rows": [["2.50", "1.40 to 3.80"]]}}},
+         "The ratio was {{results.whole.or.point}} (Table 3).\n\n{{table.ratios}}",
+         ["interval-not-quoted-whole"]),
+        # A caption that gives a P again is a sentence of its own.
+        ({}, f"The ratio was {_ESTIMATE} (P = {{{{results.whole.or.p}}}}).\n\n"
+             "Table: Ratios; P = {{results.whole.or.p}} for the first.", ["quoted-alone"]),
+        # A key declared the same quantity as the estimate stands for nothing of it.
+        ({"values": {"whole.headline": {"value": 2.5, "display": "2.50",
+                                        "same_as": "whole.or.point"}}},
+         f"The ratio was {_ESTIMATE}. Overall it was {{{{results.whole.headline}}}}, P = "
+         "{{results.whole.or.p}}.", ["quoted-alone"]),
+    ],
+)  # fmt: skip
+def test_what_quoted_alone_does_not_read_is_pinned(
+    project: Path, added: dict, paragraph: str, said: list[str]
+) -> None:
+    """Known gaps (#267): G2 reads which bindings share a sentence, so a second level of an
+    interval, an emitted table, a caption and a key declared `same_as` the estimate are each
+    read as they stand. A change here is a change to what DESIGN.md says of them."""
+    _with_whole(project, paragraph, {"secondary": {"method": "holm"}})
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for field, entries in added.items():
+        document.setdefault(field, {}).update(entries)
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _whole_said(project) == [(code, "warn") for code in said]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"over": "whole.cohort.n"},
+        {"family": "secondary"},
+        {"of": "whole.female.n", "over": "whole.cohort.n", "family": "secondary"},
+    ],
+)
+def test_a_fragment_written_by_hand_is_held_to_what_the_emitters_refuse(
+    project: Path, fields: dict
+) -> None:
+    """#267: the emitters refuse a denominator with no numerator, a family with no estimate,
+    and a share in a family of p values; the schema did not, so a fragment written by hand
+    skipped G2's and G8's checks of them."""
+    from manuscript_guard.contracts import load_namespace
+
+    _with_whole(project, "", {"secondary": {"method": "holm"}})
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["whole.extra"] = {"value": 0.5, "display": "0.50", **fields}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    projekt, _ = load_project(project)
+    _namespace, _results, _literature, report = load_namespace(projekt)
+    assert any(f.path and f.path.name == "02_whole.json" for f in report.failures)
 
 
 def test_a_family_of_p_values_with_no_correction_is_a_warning(project: Path) -> None:

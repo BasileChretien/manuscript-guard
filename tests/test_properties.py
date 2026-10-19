@@ -2102,7 +2102,8 @@ def _a_release_with_a_v_before_it_is_not_read(patch: pytest.MonkeyPatch) -> None
 
 
 def _a_v_ending_a_word_is_taken_for_one_before_a_release(patch: pytest.MonkeyPatch) -> None:
-    _releases_read_as(patch, r"(?:(?<=[vV])|(?<![\w.]))")
+    # The real rule, and a "v" that ends a word as well: they differ on "Rev26.1" alone.
+    _releases_read_as(patch, r"(?:(?<![\w.])(?:[vV](?=\d))?|(?<=\w)[vV](?=\d))")
 
 
 def _a_dictionary_is_named_anywhere_before_on_its_line(patch: pytest.MonkeyPatch) -> None:

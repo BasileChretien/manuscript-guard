@@ -3950,6 +3950,11 @@ def _isbns(draw: st.DrawFn) -> tuple[list[str], list[str]]:
         f"{spaced[0]} {spaced[1]}",
         f"{spaced[1]} {spaced[0]}",
         f"ISBN-10: {spaced[0]}; ISBN-13: {hyphened[1]} (pbk.)",
+        # Round 2 of #249: a label spaced from its number, an electronic one, and a
+        # qualifier with no brackets.
+        f"ISBN 10 {spaced[0]}, ISBN 13: {spaced[1]}",
+        f"e-ISBN {hyphened[1]}; eISBN: {spaced[1]}",
+        f"{hyphened[0]} pbk. {spaced[1]} Hardcover",
     ]
     return fields, changed
 
@@ -4198,6 +4203,17 @@ def test_one_work_is_one_work_however_its_identifiers_are_written(
         a = identifiers_of({"type": "book", kind: first[kind]})
         b = identifiers_of({"type": "book", kind: second[kind]})
         assert a and a == b, (kind, first[kind], second[kind], a, b)
+    # Round 1 of #249: every way a DOI is dressed, in each example.
+    a = identifiers_of({"type": "book", "doi": first["doi"]})
+    for dressing in _DOI_DRESSINGS:
+        dressed = dressing + first["doi"].upper() + "."
+        assert identifiers_of({"type": "book", "doi": dressed}) == a, dressed
+
+
+#: A resolver with its scheme or without, with `www.` or `dx.`, and the scheme with its
+#: colon or without.
+_DOI_DRESSINGS = ("https://doi.org/", "http://dx.doi.org/", "https://www.doi.org/", "doi.org/",
+                  "dx.doi.org/", "www.doi.org/", "doi:", "doi: ", "DOI ", "")  # fmt: skip
 
 
 # --------------------------------------------------------------------------------------- TeX
@@ -4503,6 +4519,20 @@ def _an_isbn_s_groups_are_read_as_isbns(patch: pytest.MonkeyPatch) -> None:
         identifiers, "_isbns",
         lambda field: [p for p in re.split(r"[,;/]|\s(?=\d{3})", field) if p.strip()],
     )  # fmt: skip
+
+
+def _a_label_without_brackets_sticks_to_its_isbn(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    patch.setattr(identifiers, "_ISBN_ASIDE",
+                  re.compile(r"\bISBN(?:-?1[03])?\s*:?|\([^()]*\)", re.IGNORECASE))  # fmt: skip
+
+
+def _a_doi_s_resolver_is_undressed_only_as_it_was(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    dressing = re.compile(r"^(?:doi:\s*|https?://(?:dx\.)?doi\.org/)", re.IGNORECASE)
+    patch.setattr(identifiers, "_DOI_DRESSING", dressing)
 
 
 def _an_isbn_13_is_weighed_as_an_isbn_10(patch: pytest.MonkeyPatch) -> None:
@@ -5707,6 +5737,14 @@ BROKEN = {
     "an ISBN's groups are read as ISBNs": (
         _an_isbn_s_groups_are_read_as_isbns,
         test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "a label without brackets sticks to its ISBN": (
+        _a_label_without_brackets_sticks_to_its_isbn,
+        test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not,
+    ),
+    "a DOI's resolver is undressed only as it was": (
+        _a_doi_s_resolver_is_undressed_only_as_it_was,
+        test_one_work_is_one_work_however_its_identifiers_are_written,
     ),
     "a label is read across sentences": (
         _a_label_is_read_across_sentences,

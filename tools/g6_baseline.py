@@ -88,7 +88,11 @@ _ATTRIBUTION = re.compile(
     r"|\bAttribution\s*\(CC[\s-]?BY\b[^)]*\)\s*Licen[cs]e",
     re.IGNORECASE,
 )
-_FURTHER_TERM = re.compile(r"Non-?Commercial|No-?Deriv|Share-?Alike|\bNC\b|\bND\b|\bSA\b")
+#: Its further terms, as CC 3.0 titles them too, "Noncommercial", "No Derivative Works",
+#: "Share Alike" (round 2 of #339).
+_FURTHER_TERM = re.compile(
+    r"(?i:Non[-\s]?Commercial|No[-\s]?Deriv|Share[-\s]?Alike)|\bNC\b|\bND\b|\bSA\b"
+)
 
 
 def licences_of(xml: str) -> set[str]:

@@ -63,6 +63,9 @@ FILLER = (
         "See :contentReference[oaicite:3]{index=3} for detail.",
         "This was reported previously [cite: 12].",
         "As of my last training data, no such analysis existed.",
+        # Round 2 of #339: the apostrophe a word processor curls.
+        "I don\N{RIGHT SINGLE QUOTATION MARK}t have access to the full registry.",
+        "Here\N{RIGHT SINGLE QUOTATION MARK}s the revised Methods section.",
         "Certainly! Here is the revised Methods section.",
         "We analysed TODO reports.",
         "The rate was [insert value here] per year.",

@@ -3759,7 +3759,7 @@ def _technical_senses(draw: st.DrawFn) -> str:
 def test_a_technical_sense_adds_nothing_to_the_vocabulary_rate(text: str) -> None:
     """Item 54: "robust standard errors" is how papers by people write it, and counted
     towards the rate in the plural. Each technical sense, however cased and spaced, counts
-    as the same text with its flagged word replaced by a plain one of the same length."""
+    as the same text with its flagged word replaced by a plain one."""
     plain = re.sub(r"(?i)\b(?:robust|comprehensive)", "plain", text)
     rate = writing_gate.rates([(Path("m.md"), text)])["ai-vocabulary"]
     assert rate == writing_gate.rates([(Path("m.md"), plain)])["ai-vocabulary"], text

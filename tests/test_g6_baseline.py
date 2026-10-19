@@ -81,6 +81,11 @@ def test_only_a_research_article_under_cc_by_is_used(kind: str, licence: str, st
         ("under a Creative Commons Attribution 4.0 International License", {"by"}),
         ("distributed under the Attribution (CC BY) license", {"by"}),
         ("under a Creative Commons Attribution-NonCommercial 4.0 International License", set()),
+        # Round 2 of #339: CC 3.0's own titles of its further terms.
+        ("under a Creative Commons Attribution-Noncommercial-Share Alike 3.0 Unported License",
+         set()),
+        ("under a Creative Commons Attribution-Noncommercial-No Derivative Works 3.0 Unported "
+         "License", set()),
     ],
 )  # fmt: skip
 def test_a_licence_stated_in_words_is_read(stated: str, licences: set[str]) -> None:
@@ -229,21 +234,26 @@ def test_a_paper_s_dashes_are_kept_and_its_tables_left_out(tmp_path: Path) -> No
     """Round 1 of #339: pandoc's Markdown wrote an em dash as "---", which G6 does not
     count, so the first measurement saw one in 18 papers of 384; and a table's bold, which a
     manuscript's emitted tables never show G6, counted towards the rate."""
-    table = ("<table-wrap><table><tr><td><bold>0.03</bold></td><td><bold>0.04</bold></td>"
-             "</tr></table></table-wrap>")  # fmt: skip
+    table = ("<table-wrap><label>Table 1</label><caption><title><bold>Table 1.</bold> "
+             "Cohort</title></caption><table><tr><td><bold>0.03</bold></td>"
+             "<td><bold>0.04</bold></td></tr></table><table-wrap-foot><p><bold>Bold</bold> "
+             "values differ.</p></table-wrap-foot></table-wrap>")  # fmt: skip
     text = "The cohort \N{EM DASH} all adults \N{EM DASH} was followed for 1\N{EN DASH}2 years."
     path = tmp_path / "paper.xml"
     path.write_text(JATS.format(kind="research-article", licence="by", text=text)
                     .replace("</sec>", table + "</sec>"), encoding="utf-8")  # fmt: skip
     body = tool.body_of(tool.to_markdown(path, PANDOC))
     assert body.count("\N{EM DASH}") == 2 and "\N{EN DASH}" in body and "---" not in body
-    assert "0.03" not in body and "**" not in body
+    # Round 2 of #339: the caption and the foot of a table are kept outside it, in the
+    # table-wrap, and were counted.
+    assert "0.03" not in body and "**" not in body and "values differ" not in body
 
 
-def test_a_pandoc_that_does_not_finish_marks_the_paper_unread(
+def test_a_pandoc_that_does_not_finish_marks_the_paper_garbled(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Round 1 of #339: a timeout raised, and the run was lost with every paper in it."""
+    """Round 1 of #339: a timeout raised, and the run was lost with every paper in it. It is
+    now a paper pandoc could not read, as any other failure of pandoc's."""
     import subprocess
 
     def slow(*args, **kwargs):
@@ -251,3 +261,7 @@ def test_a_pandoc_that_does_not_finish_marks_the_paper_unread(
 
     monkeypatch.setattr(tool.subprocess, "run", slow)
     assert tool.to_markdown(tmp_path / "paper.xml", "pandoc") is None
+    xml = JATS.format(kind="research-article", licence="by", text="Some text.").encode()
+    assert tool.measure_one({"pmcid": "PMC1"}, xml, None) == {
+        "status": "garbled", "why": "pandoc failed"
+    }

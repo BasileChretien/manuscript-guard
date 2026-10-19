@@ -35,16 +35,16 @@ candidates:
   set: tune
   xml_sha256: 871abd9654556831ea07f3622ba14329cce873b9a11752669282c9e101609e17
   status: used
-  text_sha256: 879dec8ba1fb59b23256fbc583fff9697f347d699e4b768c040aba2778039183
-  words: 3407
+  text_sha256: ccaa929e54314a727313933f8c76833a8b9344cd01894aee910800d37893f5fd
+  words: 3194
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
-    boldface: 0.2935
-    rule-of-three: 0.2935
+    boldface: 0.3131
+    rule-of-three: 0.3131
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.587
+    copula-avoidance: 0.6262
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -56,12 +56,12 @@ candidates:
   set: tune
   xml_sha256: 6785d608ff2570755ec81202a2cdd549782ed7904684861dd195d9dc270ce9b6
   status: used
-  text_sha256: 3e3484fa04c2404d117dff3a14ff6b92653de6ab5a3e89b7e6286a14966f85dc
-  words: 2859
+  text_sha256: d637003404c886764ce512ed6b1eee92056bdb59a2552011e480d25a7c765b8e
+  words: 2847
   rates:
-    ai-vocabulary: 1.0493
+    ai-vocabulary: 1.0537
     em-dash: 0.0
-    boldface: 1.7489
+    boldface: 1.7562
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -98,16 +98,16 @@ candidates:
   set: tune
   xml_sha256: 65e9726627bd70102e05878f297e0ed570cea95a6d10cfd48ad995843506296d
   status: used
-  text_sha256: f56f16a8b1bd771300cdc00d18cef194607e90f7d4182c66037ac099022bbfdf
-  words: 2881
+  text_sha256: bb7c8ed00deb910d281411092787d4fbccdb4e9a6413487974e4e4d5bdb0162d
+  words: 2875
   rates:
-    ai-vocabulary: 0.3471
+    ai-vocabulary: 0.3478
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.3471
+    copula-avoidance: 0.3478
   failures: 0
   phrase_findings: 1
   vague_findings: 0
@@ -120,15 +120,15 @@ candidates:
   set: tune
   xml_sha256: 836f63d65f1c39dc0b99c7cb3008ada49957997d80481bd3f227f35b563269d3
   status: used
-  text_sha256: 9cab8ea2839794be45044c750ba2cf719ed40a561553f05c94028b0f24476736
-  words: 4462
+  text_sha256: c611e11a3c61e980ca9b3972be36f69c3937a229e529b0e216745909a95398ed
+  words: 3870
   rates:
-    ai-vocabulary: 0.2241
-    em-dash: 1.3447
-    boldface: 4.0341
-    rule-of-three: 1.1206
+    ai-vocabulary: 0.2584
+    em-dash: 1.5504
+    boldface: 0.0
+    rule-of-three: 0.7752
     negative-parallelism: 0.0
-    plays-a-role: 0.2241
+    plays-a-role: 0.2584
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -148,15 +148,15 @@ candidates:
   set: held-out
   xml_sha256: 0fb726776a9456dd7157e49e7a18505483d00cd3ef8c537086ecab1c6b0cca5d
   status: used
-  text_sha256: 41d31ccc9cad17764cf1ecd7ae92036fef76720de18d49d30d64bfe7a341cd4a
-  words: 8941
+  text_sha256: b22a00a5e8318c998cbb5ed686bc3c6a8f52e79ce4846be991d3cbde04b35a39
+  words: 8822
   rates:
-    ai-vocabulary: 0.8948
+    ai-vocabulary: 0.9068
     em-dash: 0.0
-    boldface: 9.1712
+    boldface: 9.2949
     rule-of-three: 0.0
     negative-parallelism: 0.0
-    plays-a-role: 0.1118
+    plays-a-role: 0.1134
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -170,13 +170,13 @@ candidates:
   set: held-out
   xml_sha256: d9c4707bb1b18330f6b73ff7cbbba5da10a65f3d99881a45acd653e2069ad9d4
   status: used
-  text_sha256: 8951d89331abf3212036c119d2777af62168bb758def675b5389cb7e526333a5
-  words: 3237
+  text_sha256: c81cc4b0a7692b8724b00354c9710b988588d95edd2b3fec063e1c557c4bb74b
+  words: 2805
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.5446
+    rule-of-three: 1.7825
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -191,8 +191,8 @@ candidates:
   set: held-out
   xml_sha256: 0a58232df7194978f954e8053d9a66194d214a3fc49b1bf73d66acb28e7dc3d7
   status: used
-  text_sha256: 64c801a265a5de97df2be67a92b77cb7c9a77bafb1ac11d600c198505304f2a3
-  words: 2443
+  text_sha256: 2a27be0d67cda61e41163c1e7ef8607f5ec42711ce5ca123c46a131ede328cb6
+  words: 2411
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
@@ -212,16 +212,16 @@ candidates:
   set: tune
   xml_sha256: 4da13b4d7221745d5ff0c0e6d35427a757e9d79eaee539881bedf001521e4b46
   status: used
-  text_sha256: 751a484ef7b5e64947e1803cee6a1b3f9c37bdbfbac06a7c16decf7ed6087f56
-  words: 10749
+  text_sha256: 756a75f528d41d41427d8f8cb501a64ac174f01f53109d4462d5d028d5b9c53c
+  words: 10414
   rates:
-    ai-vocabulary: 0.6512
+    ai-vocabulary: 0.6722
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.5582
+    rule-of-three: 0.5761
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.093
+    copula-avoidance: 0.096
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -233,13 +233,13 @@ candidates:
   set: tune
   xml_sha256: 4f50afe1f80ec479966770d54dc285427df95879be8a16c9aff4cc621fc13bf6
   status: used
-  text_sha256: 222ed3a5a8f5077c1fe5e3f98a51e51f26520df89e30bfbc32c67a4a6254fb40
-  words: 3471
+  text_sha256: da7f8d9f69dd94e96141445fbdaa66c3dc610c0f46289e48985f89b103be82d7
+  words: 3301
   rates:
-    ai-vocabulary: 0.5762
+    ai-vocabulary: 0.6059
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.2881
+    rule-of-three: 0.3029
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -254,13 +254,13 @@ candidates:
   set: tune
   xml_sha256: 3ebc2d43fc14b3655d22203803dba5e89a5ecac8ead6db1d9502f3c38619399a
   status: used
-  text_sha256: 14fd8e0957fb625ff6cc123f472635b3d99d2593999009724c7377548be6e620
-  words: 6424
+  text_sha256: dbe5b6a97d03eca92a01ffd221a1a133e9dcab8ac6faa0436b3104e687214d9d
+  words: 6413
   rates:
-    ai-vocabulary: 0.1557
+    ai-vocabulary: 0.1559
     em-dash: 0.0
-    boldface: 1.2453
-    rule-of-three: 0.467
+    boldface: 1.2475
+    rule-of-three: 0.4678
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -296,13 +296,13 @@ candidates:
   set: held-out
   xml_sha256: 2c37749386b399f828bc6de38f83d2fd77f91a31b948c8a552f32bd49e5dbefc
   status: used
-  text_sha256: 3cabf576dd6a2da7e393ef32a0254c30dbe0c7eb3f77fb8540097e1305958bf4
-  words: 4437
+  text_sha256: 22ddf8fe4f1693c8664e8b8c2e73c38e3f7e40efce727ab199123eca66466dd6
+  words: 4121
   rates:
-    ai-vocabulary: 0.6761
+    ai-vocabulary: 0.4853
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.1269
+    rule-of-three: 0.9706
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -317,7 +317,7 @@ candidates:
   set: held-out
   xml_sha256: 6e276b53e875b2d64bd26626c19a89243b039c49cd8fdc6bcc637eaeaba1f8c8
   status: too-short
-  words: 927
+  words: 919
 - pmcid: PMC3120381
   doi: 10.1107/s1600536811017661
   published: '2011-05-14'
@@ -331,14 +331,14 @@ candidates:
   set: tune
   xml_sha256: e9b70b7df54c725d5f8fc3ef3d28228a12d7877c9753c752c7a9d0ded82b6e31
   status: used
-  text_sha256: 5b71480da2cf2e24c9b8012efcf5c40e053e34932078350347d7f5790ec7f346
-  words: 2726
+  text_sha256: 070df06bcf3d9ffd6a985b3492c197e57bda2bd0177faddacf72d7f597cd1f05
+  words: 2712
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.8342
-    negative-parallelism: 0.7337
+    rule-of-three: 1.8437
+    negative-parallelism: 0.7375
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -352,16 +352,16 @@ candidates:
   set: tune
   xml_sha256: 68f9ce4e7bc244ffbc220b0548392c6611e838fd185032cee17acdb7c52ae250
   status: used
-  text_sha256: 12b4678d5856b22af5d2ee988aa165222264323dc81312227b231af19b3bb10e
-  words: 2240
+  text_sha256: 9ffbd204f781f80e5a9e3ccc5fc48133682bcb0acd790a2b67ec37f1ca50b5ec
+  words: 2217
   rates:
-    ai-vocabulary: 0.4464
+    ai-vocabulary: 0.4511
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.4464
+    copula-avoidance: 0.4511
   failures: 0
   phrase_findings: 0
   vague_findings: 1
@@ -373,22 +373,22 @@ candidates:
   set: tune
   xml_sha256: 537f8fc310d44264874fc88cb41e92fb2f0d9e2a34433c82461161e956420aa9
   status: too-short
-  words: 833
+  words: 814
 - pmcid: PMC3372021
   doi: null
   published: '2012-01-01'
   set: tune
   xml_sha256: f70c1145276cddc0c80cb2c46c4aa497091075ec22b577154bbcf843275ca65a
   status: used
-  text_sha256: 160bd93b594f3bb58566343872a87a2c9771e6a41aae97a1ed150beea42a6bfe
-  words: 1241
+  text_sha256: 7aa6417bcfe3fe7d4a03974b0411ab51db7646fda53231550549fe8fefc754ad
+  words: 1205
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
-    plays-a-role: 0.8058
+    plays-a-role: 0.8299
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -401,12 +401,12 @@ candidates:
   set: tune
   xml_sha256: 02ab33d4bba5909f2baf3bb4b8d206d7874bf052b952fd71124bc6fb342a697b
   status: used
-  text_sha256: cf1fe22af67a40fb987dc996577844c6052522d72b0c744f2459fda07e90029e
-  words: 8061
+  text_sha256: b22d1905f7830d710953c809f45aaef947ae1d376296220f6740598804b1579c
+  words: 8054
   rates:
-    ai-vocabulary: 0.7443
+    ai-vocabulary: 0.745
     em-dash: 0.0
-    boldface: 0.1241
+    boldface: 0.1242
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -430,10 +430,10 @@ candidates:
   set: tune
   xml_sha256: e9ff8e3ae3e797becdab22fc82f87b3503c4c72628baced3b88328e43438562b
   status: used
-  text_sha256: b37489e9059b9a577228bfdeeeaadc0e2a7c6e3fc6cb2fc0a739ffbe8cbdad47
-  words: 5193
+  text_sha256: 4d191379083a9576914621d9da40a46f47a9328e1b130a8738bde284a85eede8
+  words: 4901
   rates:
-    ai-vocabulary: 1.5405
+    ai-vocabulary: 1.6323
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
@@ -458,13 +458,13 @@ candidates:
   set: tune
   xml_sha256: f88569346a50e464654914c81fd4722772163c619723142f5032039126f44670
   status: used
-  text_sha256: 8300401ef285017cbe94394e03fb884d86a3f8fbe9a7b66c81199ddfdddc2fd5
-  words: 4891
+  text_sha256: 1e8e7fd609561c5f565fea45fd1b32cca46d708ae6511458addaf4fd1000e453
+  words: 4844
   rates:
-    ai-vocabulary: 0.6134
+    ai-vocabulary: 0.6193
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.8178
+    rule-of-three: 0.8258
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -479,10 +479,10 @@ candidates:
   set: tune
   xml_sha256: c894491df6205d4329420822867583656f31f8cb49ca3f8ac1f8164da03f589c
   status: used
-  text_sha256: ec66bb656474d062eae545876855e69a490cd1d5c3eb3032a43e676fed351ae4
-  words: 3463
+  text_sha256: 748f960ee890273759ce3b8cc2fdafa1f5944df6f20176dcb8368a43120a4591
+  words: 3416
   rates:
-    ai-vocabulary: 0.2888
+    ai-vocabulary: 0.2927
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
@@ -507,13 +507,13 @@ candidates:
   set: tune
   xml_sha256: cf8f74b22d65aba30f5d9fba2809c8c737da5c5b10d326ca6d3445281a79b9e5
   status: used
-  text_sha256: 0ddadb9bffd2ef9d860a24db02133e1c6b11eb12a37598a733b892a53567ac63
-  words: 4228
+  text_sha256: f0ebcd3776a60bb41a50dc72c322905ea11102b850dbca4814bbaad69f632f53
+  words: 4222
   rates:
-    ai-vocabulary: 0.2365
+    ai-vocabulary: 0.2369
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.6017
+    rule-of-three: 2.6054
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -571,12 +571,12 @@ candidates:
   set: tune
   xml_sha256: f7b4f742440bc47468ba7d4c17cdc01024965e0467dfa7db7dd41ee2e875a91a
   status: used
-  text_sha256: b8ca22b4347cf4b1f56c1bd960ab22caf50df5bb6a3d313cf6c262a5ec9a0004
-  words: 2334
+  text_sha256: fcf5901b896acaadace63e7723f6f0f3ff56e5274acafd81de1b968fb57199d6
+  words: 2297
   rates:
-    ai-vocabulary: 0.8569
+    ai-vocabulary: 0.8707
     em-dash: 0.0
-    boldface: 1.7138
+    boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -592,14 +592,14 @@ candidates:
   set: tune
   xml_sha256: 60e5c1522ee6efc6aa2a43065040786e4a8cc9a5f0b4de98b8b7c7fff8801166
   status: used
-  text_sha256: 66020fbd0c61ca9d1994c796a2635eca3304fcd716e769001bc0dd3fd5627c04
-  words: 7298
+  text_sha256: a3e88871bf95646bcd22299c59aafee118b5a4d978d965b7002a6328e3c4962e
+  words: 7257
   rates:
-    ai-vocabulary: 0.274
+    ai-vocabulary: 0.2756
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
-    negative-parallelism: 0.4111
+    negative-parallelism: 0.4134
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -621,14 +621,14 @@ candidates:
   set: tune
   xml_sha256: a7bc726380312584b0d7b4e0db1e0dfa7f96f08d173e099bbcf9c51c5221b100
   status: used
-  text_sha256: c8e45e741dd7dd8e7651023d84013ccc4d2614c9b0baac51459f3e8abf1deced
-  words: 4112
+  text_sha256: 5f0a1f50cbe1c5cd7d56b263dd02c8a582c594e5215140cb804be8914d013a25
+  words: 4104
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.7296
-    negative-parallelism: 0.2432
+    rule-of-three: 0.731
+    negative-parallelism: 0.2437
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -708,15 +708,15 @@ candidates:
   set: tune
   xml_sha256: 9c3b1fae5a14d5e4f6b4fc3475589ac4e6a75e01ae1972fb331b8507f65f8367
   status: used
-  text_sha256: cca4d6a43bcff8fb7f63b85fff45728c6f04481a4b53a2dbd6272d114ccc6fbf
-  words: 3687
+  text_sha256: 3a84f0ba9049956899feeac51f979fcab33bd53847b5ceed7215cb866af6005b
+  words: 3636
   rates:
-    ai-vocabulary: 0.5424
+    ai-vocabulary: 0.5501
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.441
+    rule-of-three: 2.4752
     negative-parallelism: 0.0
-    plays-a-role: 0.2712
+    plays-a-role: 0.275
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -750,14 +750,14 @@ candidates:
   set: held-out
   xml_sha256: e86b46b53bfe23641df56dcd1a84aca2c2fb7c1f0386a519a7705b75314cb68d
   status: used
-  text_sha256: 8a578f41d385bff96f127a5ad380067cbbbd9b74681186ab63f2a546e2d41fdb
-  words: 4943
+  text_sha256: 0dabe80295fc0ddb6aa94f2da56aa4c4d8b8481f469b2380a17edc399b52b512
+  words: 4807
   rates:
-    ai-vocabulary: 1.0115
+    ai-vocabulary: 1.0401
     em-dash: 0.0
-    boldface: 1.0115
-    rule-of-three: 1.2138
-    negative-parallelism: 0.2023
+    boldface: 1.0401
+    rule-of-three: 1.2482
+    negative-parallelism: 0.208
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -792,13 +792,13 @@ candidates:
   set: tune
   xml_sha256: 1e6798aeff85f92cabbc96182bd7d17253b0714016ad3466dfa8073db9b47cdd
   status: used
-  text_sha256: d75415212706a97d7968fd3bdf2a39a444953b49d372be9da7c7cab053a529dc
-  words: 2611
+  text_sha256: 433ff9b2cd8db9b7eb63c07fb1b2a9feba26fb5294ac140baa265281ad306c51
+  words: 2584
   rates:
-    ai-vocabulary: 0.766
+    ai-vocabulary: 0.774
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.149
+    rule-of-three: 1.161
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -814,15 +814,15 @@ candidates:
   set: tune
   xml_sha256: b9b9ddd6d629ac7ab69206b5e2e7b137c56ccd27ca53cb8357a7f16cfefcdbbb
   status: used
-  text_sha256: 3586b86c0b72ef1bac4b5a0ce294d7ece6ca49a326b1eab8c804898b43afc57c
-  words: 3074
+  text_sha256: df14795b774258afd42de840c7af7545ad3d00cb40bdeddde8a3a9872a6cccf1
+  words: 2904
   rates:
-    ai-vocabulary: 0.6506
+    ai-vocabulary: 0.6887
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.3253
+    rule-of-three: 0.3444
     negative-parallelism: 0.0
-    plays-a-role: 0.3253
+    plays-a-role: 0.3444
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -836,15 +836,15 @@ candidates:
   set: tune
   xml_sha256: b064ddadd9df35a984c7824c9827a937eea36a5d83d051f89e8c6329d99aab8f
   status: used
-  text_sha256: 7c1e6baa3e9af6bd6623e3eae9542f63d298c63da2de36bd0c94b77b1296a857
-  words: 4339
+  text_sha256: 5c66d9fd45ed33049646c7f2f680fae497908b830795197dd846a7367b4d54c8
+  words: 4267
   rates:
-    ai-vocabulary: 0.6914
+    ai-vocabulary: 0.7031
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
-    plays-a-role: 0.4609
+    plays-a-role: 0.4687
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -878,12 +878,12 @@ candidates:
   set: tune
   xml_sha256: 83c6df58fb46e904079e5c90af3832af44653c93541aaf2b350226f54f0df6b7
   status: used
-  text_sha256: 07a8eb1e1135ef104ae6bc63f559613fe9eeb96e4091f40751362647207ad7d2
-  words: 3983
+  text_sha256: d82b740204d5934831e88797607d4c43bf7d8e94ccae27614462671913ae5e7c
+  words: 3914
   rates:
-    ai-vocabulary: 0.2511
+    ai-vocabulary: 0.2555
     em-dash: 0.0
-    boldface: 0.5021
+    boldface: 0.2555
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -921,16 +921,16 @@ candidates:
   set: held-out
   xml_sha256: 87e9114526abb7ac92759705bd6b8b867f6a3ccab817843a3eac33e3642f608a
   status: used
-  text_sha256: f7ec25d51c180dc0e0e46e7ec1362bdd037acefef0f7c9cac1452d23e7c65edd
-  words: 5498
+  text_sha256: dec93992923f49c92a7b6108dd43bd16e00735a209153fb6ab6130f242026209
+  words: 5413
   rates:
-    ai-vocabulary: 0.9094
+    ai-vocabulary: 0.9237
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
-    negative-parallelism: 0.1819
+    negative-parallelism: 0.1847
     plays-a-role: 0.0
-    copula-avoidance: 0.3638
+    copula-avoidance: 0.3695
   failures: 0
   phrase_findings: 1
   vague_findings: 0
@@ -971,14 +971,14 @@ candidates:
   set: tune
   xml_sha256: ca8836afdac8f6b4f05e0546e8f25155847d95c643ae7ec84c6b70b1c8610114
   status: used
-  text_sha256: 2866ea5ebec728f4581f36b96cffbc52f4b2e19f9e4d5a2162c93ec5a45e7b1b
-  words: 3156
+  text_sha256: 0082c0d6403252545d0b319f1225c0107ddd9a03e096d7effb43e885ee41c795
+  words: 3150
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.5843
-    negative-parallelism: 0.3169
+    rule-of-three: 1.5873
+    negative-parallelism: 0.3175
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -992,13 +992,13 @@ candidates:
   set: tune
   xml_sha256: 8b68d0d2edf25ce2423e3cb4d842874400b5036530376c419dc6b2b28e9e8045
   status: used
-  text_sha256: d0ef9294c1a205e7a8435553eb41c3757106e7f2d429c777827aec79af63b117
-  words: 2902
+  text_sha256: 317bb5d54c0e5d1a83775c92c8d0f8a9b72795730e07cc5659cc881415fd899c
+  words: 2870
   rates:
-    ai-vocabulary: 0.6892
+    ai-vocabulary: 0.6969
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 3.7905
+    rule-of-three: 3.8328
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1013,16 +1013,16 @@ candidates:
   set: tune
   xml_sha256: ae317ebb389cae40a36eb3b695fe82a2596ac7d6c6afcf86fd357076325ae92c
   status: used
-  text_sha256: c15a0b07b8192f20255b0928c500b3dad6ff915284340e8e14d07475421cb2d1
-  words: 2256
+  text_sha256: e7b33932b3de71ee71d8c5609c057ad7a3925fdbe26ef432eded621e76fdac78
+  words: 2114
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.4433
+    rule-of-three: 0.473
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.4433
+    copula-avoidance: 0.473
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -1034,15 +1034,15 @@ candidates:
   set: tune
   xml_sha256: 21f53be5eac0c12fe6829985a6018994e514d97791ab5c67bff49ba40e23ffc3
   status: used
-  text_sha256: fea01c709932df7c3ecb1b349c889009834890446440091f830e323a565e647a
-  words: 8390
+  text_sha256: b93b3a0f83891462f462e2f3e21e0ba817b68dd6a255dc55dd980aee954d4a4f
+  words: 8171
   rates:
-    ai-vocabulary: 0.4768
+    ai-vocabulary: 0.4895
     em-dash: 0.0
-    boldface: 0.5959
+    boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
-    plays-a-role: 0.1192
+    plays-a-role: 0.1224
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -1055,13 +1055,13 @@ candidates:
   set: tune
   xml_sha256: 7d64101a764b8abb47a7dd6e16e38f5abf5086b231f67981fc5456936b3af092
   status: used
-  text_sha256: b2f692b1602a5342645cee6c8a8a047f57880a8e1b7e222b4dbd0a58b5c25468
-  words: 1083
+  text_sha256: 3550297ccb4fea26b60da67e25fa10d1203216f22d2dce6b96654934ea83e8fa
+  words: 1047
   rates:
     ai-vocabulary: 0.0
-    em-dash: 13.8504
+    em-dash: 14.3266
     boldface: 0.0
-    rule-of-three: 0.9234
+    rule-of-three: 0.9551
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1076,15 +1076,15 @@ candidates:
   set: held-out
   xml_sha256: d6520d5184bc2dcb345e969a9706d59abd52a1fba5190ef9c778c87bf04d0fe9
   status: used
-  text_sha256: ed512dd780de992513c897125e169bed29273f76ec677dcf2faf5e95f43e8c4d
-  words: 7700
+  text_sha256: 5f2d15daf201c11909af8fcce34c2c993877af1fd6d65136058b4eed9c3ea310
+  words: 7264
   rates:
-    ai-vocabulary: 0.9091
+    ai-vocabulary: 0.9637
     em-dash: 0.0
-    boldface: 0.1299
-    rule-of-three: 0.3896
+    boldface: 0.1377
+    rule-of-three: 0.413
     negative-parallelism: 0.0
-    plays-a-role: 0.2597
+    plays-a-role: 0.2753
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -1118,14 +1118,14 @@ candidates:
   set: held-out
   xml_sha256: eda096276a1735b0bc9cf4cfbc1d0008adfa3599b5eff4cb443f461542224f6d
   status: used
-  text_sha256: 7c7b2d47b13e5f7f403e4f5f6a5a0b18df40bbda36c30723b595997374c468b9
-  words: 3474
+  text_sha256: 2e49426240359b22e8ccad18736b9cd856f7ef2afc5d8f916d9db0c3affb02b9
+  words: 3419
   rates:
-    ai-vocabulary: 0.2879
-    em-dash: 0.2879
-    boldface: 0.5757
+    ai-vocabulary: 0.2925
+    em-dash: 0.2925
+    boldface: 0.0
     rule-of-three: 0.0
-    negative-parallelism: 0.5757
+    negative-parallelism: 0.585
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -1139,13 +1139,13 @@ candidates:
   set: tune
   xml_sha256: edfcf76c182ee8d5380bb241c3123fb68f9651ba3c64a9d9ea0732f6081ad44f
   status: used
-  text_sha256: a05c2cf36a9d8d8e8e203ad89b36a1b73e87cfc40331778bbf1d58daa12f79c8
-  words: 8227
+  text_sha256: 081990a89bfba5e565de41304f0788d916a288f658b04139b70f09dfc655e16e
+  words: 8066
   rates:
-    ai-vocabulary: 0.3647
+    ai-vocabulary: 0.3719
     em-dash: 0.0
-    boldface: 0.1216
-    rule-of-three: 0.8509
+    boldface: 0.0
+    rule-of-three: 0.8678
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1161,13 +1161,13 @@ candidates:
   set: tune
   xml_sha256: 3100f62461226eaa8106bab3598723fcf35017b508be4154c8bd928974453d98
   status: used
-  text_sha256: 8b7e9495545d2a2669239bea3aa22a3d209eed7d942b9399c37429d27c7a4f6b
-  words: 1879
+  text_sha256: 2b06c59c5804b05c703d67336c1eca1f90f5eed6cd770bb0d30b83b67be70efb
+  words: 1853
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 3.7254
+    rule-of-three: 3.7777
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1203,13 +1203,13 @@ candidates:
   set: tune
   xml_sha256: ec54a4622cc20d69563e7c1eeaf84a32524d6f7a1f3565afc44af7bbe7df508c
   status: used
-  text_sha256: d332a9d9117bd8ae7c132f531734e4cf6d1b528df3d0a6f3da3ad9e10213dd09
-  words: 3492
+  text_sha256: 1be3d868aa2208a7a0c1f6b59d9e82bd6a4f51d1319f77aa85797f31a30eda43
+  words: 3406
   rates:
-    ai-vocabulary: 1.1455
+    ai-vocabulary: 1.1744
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.5773
+    rule-of-three: 2.6424
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1225,13 +1225,13 @@ candidates:
   set: tune
   xml_sha256: 27870a592bbc4a072043a774da43aebcf851152285b98bec40842e65372ddbf9
   status: used
-  text_sha256: 63459cbbf77ad83fb3b1207c43945cc61736e0bf3ab26441072385d94d29e227
-  words: 2408
+  text_sha256: 643bdcdee73cdcefdd589a78a62737aa6c7e4722b2701f0e9c8749b329bf5ae9
+  words: 2341
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.907
+    rule-of-three: 2.9902
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1268,16 +1268,16 @@ candidates:
   set: tune
   xml_sha256: f95a444ad0da545db913aafb5d62b7b46d2a45450a7369c50c204e2eb9c3391f
   status: used
-  text_sha256: caa6d3cb48c2e90e769ea305a302a7ecbd48f231de4df0bfee001b1476f86132
-  words: 4470
+  text_sha256: 2a89cad69eb3afbdbd8575a872cca1a367a56a0cf18262b76b32c9c38eef2106
+  words: 4345
   rates:
-    ai-vocabulary: 0.2237
+    ai-vocabulary: 0.2301
     em-dash: 0.0
-    boldface: 0.2237
-    rule-of-three: 1.1186
+    boldface: 0.0
+    rule-of-three: 0.9206
     negative-parallelism: 0.0
-    plays-a-role: 0.2237
-    copula-avoidance: 0.2237
+    plays-a-role: 0.2301
+    copula-avoidance: 0.2301
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -1289,14 +1289,14 @@ candidates:
   set: tune
   xml_sha256: 056ff8ebae93cedfb8f7da7d29a459082c6df29309adfe40da11d08dd0ef8b85
   status: used
-  text_sha256: ac4cec4e71729181edfbf464237e8b527e9c23aa30b1cefe2432b0030b679510
-  words: 3508
+  text_sha256: 96a66dc4525de0c0fcfb08f7469f0e5d7b04de0cc3f2fc02d09721c81e1b66fe
+  words: 3443
   rates:
-    ai-vocabulary: 0.2851
+    ai-vocabulary: 0.2904
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.5656
-    negative-parallelism: 0.2851
+    rule-of-three: 2.614
+    negative-parallelism: 0.2904
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -1310,13 +1310,13 @@ candidates:
   set: tune
   xml_sha256: 05651f17d8e7a702c469b75f2b1c1b0878bb8ee1d9f9dedff4dbcf6a390ba3ff
   status: used
-  text_sha256: 6c715509f93078a9f526d531d2c11affe1c9c37b9df4907d83825cbb129c1036
-  words: 4614
+  text_sha256: 3b4689fcba2026798fbd87b40c8551b45d7953362cf1a222b8e7d1dc669e6cc6
+  words: 4502
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
-    boldface: 0.4335
-    rule-of-three: 0.6502
+    boldface: 0.4442
+    rule-of-three: 0.6664
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1331,13 +1331,13 @@ candidates:
   set: held-out
   xml_sha256: 4c27df9f77fa52a421d1829ab25fc550e04f61e59e298ddb4ab6b765de2e3567
   status: used
-  text_sha256: 260a5a57fbee726a13f25256e38be35e052f827086fd7e386d530d055fa5ed0b
-  words: 2999
+  text_sha256: f51ce11225fbe1d031087e0bf44aeeda57243456a2b17acf6c93fcdcfa0ae8f5
+  words: 2936
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.0007
+    rule-of-three: 2.0436
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1374,13 +1374,13 @@ candidates:
   set: tune
   xml_sha256: cc7c665439cf25b307ff741e06e18928952240ea657f6b4a35b58eb9259a4a9a
   status: used
-  text_sha256: d5a78f0756b42d78719494f0de8296ab2edf0b9f7dbd3d77b921e15ec3856eff
-  words: 2842
+  text_sha256: c08c5e92f0a8e67601b43560d357815bf1ab071ce1813cf52b5d0f6ab2ab89b5
+  words: 2782
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.3519
+    em-dash: 0.3595
     boldface: 0.0
-    rule-of-three: 0.7037
+    rule-of-three: 0.7189
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1396,13 +1396,13 @@ candidates:
   set: tune
   xml_sha256: f1678dd513c55656e210af4a443e6413cabb6f3703c6c475b08fe35d0843c114
   status: used
-  text_sha256: f837a1034757f4c10868402a5dbdbe2e0e3d5999f1142c6ad3c931a3e669b7eb
-  words: 10779
+  text_sha256: dba8908155dd80c7085fa34bf436585b7c6d6eb9533b33371d9f4ba9fb6582e4
+  words: 10691
   rates:
-    ai-vocabulary: 0.6494
-    em-dash: 0.7422
+    ai-vocabulary: 0.6548
+    em-dash: 0.7483
     boldface: 0.0
-    rule-of-three: 0.3711
+    rule-of-three: 0.3741
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1419,12 +1419,12 @@ candidates:
   set: held-out
   xml_sha256: 9860d03604010c7cdf5408bae779161ae82862915a225882acf6d860c6cfe34e
   status: used
-  text_sha256: 30151c71a35a335ccf0dc521f875e520de05f13ebad19c857945801f810ec4a0
-  words: 4420
+  text_sha256: e595f4805b40491a2e942a9df196ffc8cb21691e245d925ba6b989efde7776a4
+  words: 4342
   rates:
-    ai-vocabulary: 0.4525
+    ai-vocabulary: 0.4606
     em-dash: 0.0
-    boldface: 0.905
+    boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -1440,12 +1440,12 @@ candidates:
   set: tune
   xml_sha256: 0990151a1a041e60ebe3915e3c71b5c279836d4d64d98a31ca49d71dd3d4f2f1
   status: used
-  text_sha256: f5c8a1cd1e9e4ddae163d650420d38d95366815b05a87ac7a7b0e6163d22ae63
-  words: 3705
+  text_sha256: 203cffce19e488aa81e7b87fafd68ae43ac0789e43c4087f27246c485aa2bde9
+  words: 3587
   rates:
-    ai-vocabulary: 0.5398
+    ai-vocabulary: 0.5576
     em-dash: 0.0
-    boldface: 0.5398
+    boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -1482,12 +1482,12 @@ candidates:
   set: tune
   xml_sha256: 61da1dcda3c86fd14922c5b24cb19c0d38852ec25c75468b1cef9311fa05c2bc
   status: used
-  text_sha256: 28840546a9448c3a5b667d3fd856c6ae28c41edec1e8c579df7abed059d73d71
-  words: 4050
+  text_sha256: ab6c494971245d9fa2444fb37d15ba80df7447c14bbfc7cf696126e58c536c8a
+  words: 3994
   rates:
-    ai-vocabulary: 0.2469
+    ai-vocabulary: 0.2504
     em-dash: 0.0
-    boldface: 1.7284
+    boldface: 1.7526
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -1524,16 +1524,16 @@ candidates:
   set: tune
   xml_sha256: 7a571acba8fa5b617e7b45f313bf91da5a59eb5b1a140468b097087fb1f581f2
   status: used
-  text_sha256: 2e63d5137a93719b149ca43b69bfc81e3e2bd53d777bcd811ba0a0fed5d68766
-  words: 8417
+  text_sha256: 49d5809cbf79904c6e98cf1c6052050bc11e3eecc3a603f762e3f285f7cc8fd6
+  words: 8244
   rates:
-    ai-vocabulary: 0.2376
+    ai-vocabulary: 0.2426
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.1188
+    copula-avoidance: 0.1213
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -1545,15 +1545,15 @@ candidates:
   set: tune
   xml_sha256: b126140d374ef687d9894f409b566d253b5916ab13f08ac7c28fda9049f34860
   status: used
-  text_sha256: 67622d1b7b201fdcd29d5ddfd18dd3afbac81470498103730e0206413af3e4aa
-  words: 4473
+  text_sha256: 25c6df77cacae48904b09697b61976ed04ee5b7772a5d4b547e5516a1fc83ec4
+  words: 4411
   rates:
-    ai-vocabulary: 0.8943
+    ai-vocabulary: 0.9068
     em-dash: 0.0
-    boldface: 1.1178
+    boldface: 0.6801
     rule-of-three: 0.0
     negative-parallelism: 0.0
-    plays-a-role: 0.2236
+    plays-a-role: 0.2267
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -1567,12 +1567,12 @@ candidates:
   set: tune
   xml_sha256: f8f567263be347f85b04f6b7c355f8871f2e75a803063be3e54d487aaf263d70
   status: used
-  text_sha256: 955c21a27f2a1bb7111293f9197ab54efdc81bf1f2cd38d5fe116314e33e5a1f
-  words: 3380
+  text_sha256: 0a6ec199b4085fa3c0a9fe0949096d1677684d454c9636fed8458892b3c617e7
+  words: 3321
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
-    boldface: 2.071
+    boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -1588,13 +1588,13 @@ candidates:
   set: tune
   xml_sha256: f780624ca8f66efb80c81e8bd07d0ab08c0bd8a0ae2ec144e2737588648539d4
   status: used
-  text_sha256: e4ffb2406bf2de5c73d67da04b47e9b6cfb4886e43ec3faff655d9144d022052
-  words: 6293
+  text_sha256: bc184c863582ca57245d508faf7395dbfefd2658eabfd2081cd1e2721dd5d4af
+  words: 6281
   rates:
-    ai-vocabulary: 1.2713
+    ai-vocabulary: 1.2737
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 3.0192
+    rule-of-three: 3.025
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1660,10 +1660,10 @@ candidates:
   set: tune
   xml_sha256: 7af8d0a2ea483c41fd9f7bc7365dea4b0e0911c29cfd6372ed91a15a9ea3fd48
   status: used
-  text_sha256: 1a28b408d0230278b3c7d5c6f3fe88e428b7c672cebbf8e263c634325078aabd
-  words: 4938
+  text_sha256: 28f9afb158d1690ae7cf361d309bba286e109b557488b127b35f485c12ba5a5f
+  words: 4666
   rates:
-    ai-vocabulary: 0.405
+    ai-vocabulary: 0.4286
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
@@ -1681,13 +1681,13 @@ candidates:
   set: tune
   xml_sha256: d1ce6010baca1315b8887e0e5eeb29f1c43da0460473cf56b6b54820a17de61a
   status: used
-  text_sha256: 7320e8c9cfa4cc99ad537b5ea442d124265dc4d29575d21bb8a42c652bfcdd34
-  words: 4437
+  text_sha256: 1024167483fb91454458d14babbcd221213695b1ce64d46202cde9fad1087494
+  words: 4170
   rates:
-    ai-vocabulary: 0.2254
+    ai-vocabulary: 0.2398
     em-dash: 0.0
-    boldface: 0.4508
-    rule-of-three: 1.5776
+    boldface: 0.0
+    rule-of-three: 1.4388
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1702,14 +1702,14 @@ candidates:
   set: tune
   xml_sha256: 88e4842e8f918f4281df6f76aadfa2ae538a4680794e41f1939a4b09edcacd79
   status: used
-  text_sha256: 09a9a1cadc24796db7591fcacd27df4a1eb59567c01f09032c2c2f958dfe0297
-  words: 5351
+  text_sha256: 6e0db8e60f170b54ab4394d3f6b69117cbfa1a562d4911c0e7b9304b4b8e1e09
+  words: 5080
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.1869
-    boldface: 5.6064
+    em-dash: 0.1969
+    boldface: 5.9055
     rule-of-three: 0.0
-    negative-parallelism: 0.1869
+    negative-parallelism: 0.1969
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -1724,13 +1724,13 @@ candidates:
   set: tune
   xml_sha256: 35ba206c5a3aef88ce807383b3aa2321b286f63924b1594782931b78819e8949
   status: used
-  text_sha256: 618b9d63cc3ac77b4fd077c35984ee8add2a7107b46d7ceedadc08264b8cf997
-  words: 2507
+  text_sha256: c288f7b5742c89582633517aff6ae643712acaa69dedb2f614fea59ea314b716
+  words: 2479
   rates:
-    ai-vocabulary: 1.1966
-    em-dash: 0.3989
-    boldface: 1.9944
-    rule-of-three: 0.3989
+    ai-vocabulary: 1.2102
+    em-dash: 0.4034
+    boldface: 2.0169
+    rule-of-three: 0.4034
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1745,16 +1745,16 @@ candidates:
   set: tune
   xml_sha256: a2a8075835e290c34fee2a6110ba4a40994747661a152c0ef3cc4d7380f52a4e
   status: used
-  text_sha256: c3d46e68dbb496736178edcec677c1d6416d6daa724e90cf5397aa8e5fad5c0f
-  words: 4259
+  text_sha256: 6572aff5071423623eed601002916c0f7414cf57522d5a4d3db6a2f59b96a23b
+  words: 4238
   rates:
-    ai-vocabulary: 0.4696
-    em-dash: 0.2348
+    ai-vocabulary: 0.4719
+    em-dash: 0.236
     boldface: 0.0
-    rule-of-three: 0.2348
+    rule-of-three: 0.236
     negative-parallelism: 0.0
-    plays-a-role: 0.7044
-    copula-avoidance: 0.4696
+    plays-a-role: 0.7079
+    copula-avoidance: 0.4719
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -1766,14 +1766,14 @@ candidates:
   set: held-out
   xml_sha256: 7c51f3fadf9dff17576bf1dd7e769df1492c324f483822ec113357a0f805781c
   status: used
-  text_sha256: ae7bf8d4b286c905da4b302e1e49ad53b7f6a5eb8db47fe294b4de101b6eda8e
-  words: 3031
+  text_sha256: 53f7bbb9d0c733104eb9b732a28fb7e3747fdcc1ee3b0b9fffa07404cbc6bf31
+  words: 2827
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.6496
-    negative-parallelism: 0.3299
+    rule-of-three: 1.7687
+    negative-parallelism: 0.3537
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -1787,13 +1787,13 @@ candidates:
   set: tune
   xml_sha256: 27d45f759f90f4dffd33152ec4cb0b76d007662e3ab3ab509ca7d3b5ee2c0406
   status: used
-  text_sha256: a6e609e4096a2c6e12f54d0634c5c9f49f32a7486746dfc6ca5a487b451c7ad1
-  words: 4841
+  text_sha256: 4498cecb5eeab81245d056a8968cd60e62a1fbcf431b3f5f219c7f9ac3125ec9
+  words: 4787
   rates:
-    ai-vocabulary: 0.2066
-    em-dash: 0.4131
-    boldface: 1.6526
-    rule-of-three: 1.6526
+    ai-vocabulary: 0.2089
+    em-dash: 0.4178
+    boldface: 1.6712
+    rule-of-three: 1.6712
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1829,13 +1829,13 @@ candidates:
   set: tune
   xml_sha256: 1fc4ffa9e5bd15a33d7742e3d6cfd593063e5f64b1ce31cfb0182016f53f8c97
   status: used
-  text_sha256: 64b1ce82984b73c3352d6447dff81e441ee9452e517b4f75b7ea8549cf6b6110
-  words: 4246
+  text_sha256: 70b05f586d898fafafec78e9faf34fd0c5e7efc97417db8f3686efda69e586ad
+  words: 4177
   rates:
-    ai-vocabulary: 0.471
+    ai-vocabulary: 0.4788
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.4131
+    rule-of-three: 1.4364
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1850,15 +1850,15 @@ candidates:
   set: held-out
   xml_sha256: 3fa4d4733908076f1a72f97d68c184002a9ad5121c226efb9d0c0474640734d8
   status: used
-  text_sha256: 88492e0d89222258239f043b7161e21cd371bc8e6e53acc7e3b5d61ee2e45b9f
-  words: 4222
+  text_sha256: 2016c658791f4638728f806a1293347e78e20f5e2b78b35bc75e6e261266542e
+  words: 4175
   rates:
-    ai-vocabulary: 0.4737
+    ai-vocabulary: 0.479
     em-dash: 0.0
-    boldface: 2.6054
-    rule-of-three: 1.1843
+    boldface: 2.6347
+    rule-of-three: 1.1976
     negative-parallelism: 0.0
-    plays-a-role: 0.2369
+    plays-a-role: 0.2395
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -1871,13 +1871,13 @@ candidates:
   set: tune
   xml_sha256: 42bf6dfd7c296edf8f63792b10e6e6fb9ab48841bec674268a7584dd8596808d
   status: used
-  text_sha256: f8706313abb2c0c7b8460a4f087195c3d071241ee5ccebbbb0e336afe8698746
-  words: 5524
+  text_sha256: 13b70193232192fe0fba6eb90da5a056992b8b02af5ae50ec633cf8617ebd620
+  words: 5353
   rates:
-    ai-vocabulary: 0.3621
+    ai-vocabulary: 0.3736
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.9913
+    rule-of-three: 2.0549
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -1914,15 +1914,15 @@ candidates:
   set: tune
   xml_sha256: f8f8d88a18c801a1317e7a664ca10c6568f60539d58a202391f0315e17865a8e
   status: used
-  text_sha256: 3d9d1f82193ec49abb6ff1f085b58ffff99f1991833699208ce89e64d5810c24
-  words: 4730
+  text_sha256: ab004350c07658fe805689c7502aff76cd7c043b4b5ff0f9c4392d29fdee4ee3
+  words: 4126
   rates:
-    ai-vocabulary: 0.6342
+    ai-vocabulary: 0.7271
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
-    plays-a-role: 0.2114
+    plays-a-role: 0.2424
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -1957,10 +1957,10 @@ candidates:
   set: tune
   xml_sha256: 8d8e7aa139f02ec0bf36c7388099c5229e56673a8f904e8e4af3acb7e609d2e5
   status: used
-  text_sha256: ba9b98d3b7240ab23e8bf2f073910f6f852200bd4909354c103b63c07af3366b
-  words: 4420
+  text_sha256: 43373cededbcec0427c43933c8f74caa0f698a05af486276a9747d8003acf99c
+  words: 4290
   rates:
-    ai-vocabulary: 0.6787
+    ai-vocabulary: 0.6993
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
@@ -1999,14 +1999,14 @@ candidates:
   set: tune
   xml_sha256: cb63268a39b7b3fb7e7672754fecb90500c71c937b0488179e5f8895a60d186d
   status: used
-  text_sha256: 31d237e7d820ce178d457a02ca46b5fc63898b76cf05bb44056f2308dd9db96f
-  words: 2611
+  text_sha256: ff9748966a9794ebe8057004120c88ce69588fcaaddd42c165e5dbd2cd8c1468
+  words: 2538
   rates:
-    ai-vocabulary: 0.383
+    ai-vocabulary: 0.394
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.383
-    negative-parallelism: 0.383
+    rule-of-three: 0.394
+    negative-parallelism: 0.394
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -2027,16 +2027,16 @@ candidates:
   set: tune
   xml_sha256: 21cbca750e1e63181b5dd8a4d3c67e2b4a90958f69d193ba57bf8170917a1c3a
   status: used
-  text_sha256: ba871043c557aad21d8277fddda52afe761f8f39b4d8e73fa79f4fc74b843722
-  words: 4662
+  text_sha256: 476c7d10e69308ce461c6f1f9845f620c6dd3ef9be517faf7a6dfc66d7b37c2e
+  words: 4632
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.2145
+    em-dash: 0.2159
     boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.429
+    copula-avoidance: 0.4318
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -2076,16 +2076,16 @@ candidates:
   set: tune
   xml_sha256: 917c3c2d19988450384170219605aa0d222ed3f90e19f6c7a9f02256565bf91b
   status: used
-  text_sha256: db9cb1fb7291ae2df8064df26ad8fc2bce60eb787801f8b52cd6381c8965b5da
-  words: 6762
+  text_sha256: 787da99c13d1921335a5802cfc0ea62214b43047857e4103848436dfe29d4b3d
+  words: 6698
   rates:
-    ai-vocabulary: 0.1479
+    ai-vocabulary: 0.1493
     em-dash: 0.0
-    boldface: 26.7672
-    rule-of-three: 0.2958
-    negative-parallelism: 0.1479
+    boldface: 26.1272
+    rule-of-three: 0.2986
+    negative-parallelism: 0.1493
     plays-a-role: 0.0
-    copula-avoidance: 0.2958
+    copula-avoidance: 0.2986
   failures: 0
   phrase_findings: 1
   vague_findings: 0
@@ -2098,16 +2098,16 @@ candidates:
   set: tune
   xml_sha256: c998fb7be0562815bf7448b4516f4a33355d6192e82d5964c18dbf488883a352
   status: used
-  text_sha256: 0c42a694b6576149547e748f0744c696906176beef044fb3ed51ae201204407d
-  words: 4311
+  text_sha256: ad872db642be4a76b36f280247cbdb4a31bfc125de07b47fa571aaf45cc26434
+  words: 4273
   rates:
-    ai-vocabulary: 0.9279
+    ai-vocabulary: 0.9361
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.232
+    copula-avoidance: 0.234
   failures: 0
   phrase_findings: 1
   vague_findings: 0
@@ -2120,13 +2120,13 @@ candidates:
   set: tune
   xml_sha256: 6726722e21563a8f5eeccacf15e25badadd729ad7892606f6e083b934b42246d
   status: used
-  text_sha256: 583d0afbd44f4b0178cee6c5a62bc832feb033b1829af8db3b03caae99cccf3c
-  words: 6882
+  text_sha256: 43f92db893ec846716a17bd9def826ec62018f8bee0f3f679e2de3aeca03012e
+  words: 6774
   rates:
-    ai-vocabulary: 1.0171
-    em-dash: 0.4359
+    ai-vocabulary: 1.0334
+    em-dash: 0.4429
     boldface: 0.0
-    rule-of-three: 1.4531
+    rule-of-three: 1.3286
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -2150,13 +2150,13 @@ candidates:
   set: tune
   xml_sha256: 4129b244158d97eef91d111daa53ab28fd9a94b56294d386de5ba13dac725931
   status: used
-  text_sha256: 846dbb2308353fb50f12820d3bc0f33775951a435af33628f9537f613543875c
-  words: 5066
+  text_sha256: c272b1359cbc35be15ee11fae968a78dc703eb1375cc52ae535b2fd2a0a562b5
+  words: 4876
   rates:
-    ai-vocabulary: 0.987
-    em-dash: 1.5792
+    ai-vocabulary: 1.0254
+    em-dash: 0.4102
     boldface: 0.0
-    rule-of-three: 0.1974
+    rule-of-three: 0.2051
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -2193,15 +2193,15 @@ candidates:
   set: held-out
   xml_sha256: 94657d193fc36d6cabbc6f928265ab7cb20def2b7532871e40ee62b05d6d2090
   status: used
-  text_sha256: 05e2c35a183d2cf829240b8ab6858998148a6ff99014677ccb7a1769bbdb6da3
-  words: 2809
+  text_sha256: 97d57b2976b9b7fe814643caf67ee1e6808c33ca9d524d9cdd9ea044ef3c6875
+  words: 2717
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
-    negative-parallelism: 0.356
-    plays-a-role: 0.356
+    negative-parallelism: 0.3681
+    plays-a-role: 0.3681
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -2214,13 +2214,13 @@ candidates:
   set: tune
   xml_sha256: 4a02000c4a066919e34ea3ba21853c30bf2d3377ee99299975d48465f8087b2d
   status: used
-  text_sha256: 123500cc0a7f2167ec01df395976eb0e8a3aa337ed18b09603256b964f89cedd
-  words: 4394
+  text_sha256: d59902f8910553c17f26b26793d880caedc84a6e956fd8a66fcf9bbbe082cf37
+  words: 4355
   rates:
-    ai-vocabulary: 0.4552
+    ai-vocabulary: 0.4592
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.2276
+    rule-of-three: 0.2296
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -2235,13 +2235,13 @@ candidates:
   set: held-out
   xml_sha256: e6bb11e4f4968ba64151a7d03b767255f227825d420a3c080feaed35658f5443
   status: used
-  text_sha256: 808cf5b15058d3de776707ee65b9a0809f319e78284b7eedaf0eaff78928e2ec
-  words: 4638
+  text_sha256: 2d180a5a60ca0d3e9fb252a6f244da9dd6815147b5886568ba8f10bc0a067329
+  words: 4623
   rates:
-    ai-vocabulary: 0.8624
-    em-dash: 3.4498
+    ai-vocabulary: 0.8652
+    em-dash: 3.461
     boldface: 0.0
-    rule-of-three: 0.8624
+    rule-of-three: 0.8652
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -2258,15 +2258,15 @@ candidates:
   set: tune
   xml_sha256: 9cca779831f355fe1e2c00bf4ae4bf32a138be6fe6632d816cc05894d6d78ba6
   status: used
-  text_sha256: d3fb36675e3e5a300122ac547a6562a09edf1caead1164625bf95d76f3598cbd
-  words: 4457
+  text_sha256: 9aadc3ca73a0379e836aeb0bd9e023fd6172057a5ed3364dbbf8a7989776321a
+  words: 4330
   rates:
-    ai-vocabulary: 1.7949
+    ai-vocabulary: 1.8476
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.4487
+    rule-of-three: 0.4619
     negative-parallelism: 0.0
-    plays-a-role: 0.2244
+    plays-a-role: 0.2309
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -2280,15 +2280,15 @@ candidates:
   set: held-out
   xml_sha256: 80edde45d4f3b61bf22624a5876f291ffdebb7f663a6a8ea36c4a770b146384e
   status: used
-  text_sha256: ed86aafbe4c6e13cf736a15d019cd3d19b2505e45f032630d9c41edda24cfd01
-  words: 4029
+  text_sha256: c2176e289501b927f782db5ba624608ddb99ffe120aa05002b8314c95c87b7c8
+  words: 3926
   rates:
-    ai-vocabulary: 1.9856
+    ai-vocabulary: 2.0377
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.7374
+    rule-of-three: 1.783
     negative-parallelism: 0.0
-    plays-a-role: 0.9928
+    plays-a-role: 1.0188
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -2301,13 +2301,13 @@ candidates:
   set: tune
   xml_sha256: c817d799ee39df0e3797537fef1b50fdacfad80ebbbece71e2d1468b8a86db4a
   status: used
-  text_sha256: bb0845b7c8e9574be93e2c59a37e0a442a5b5ebdb26fa67ab101a5bc67d3ed88
-  words: 1981
+  text_sha256: e45ffcb8bb73e7544916b9fa33eae5344f5961ea96aefcb6e3d2df8baf5691a0
+  words: 1934
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 4.5432
+    rule-of-three: 4.6536
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -2322,15 +2322,15 @@ candidates:
   set: held-out
   xml_sha256: a170daa29b14ee7435bd6aa3c08893ea79f7084b7899afd5481f13b6178a64aa
   status: used
-  text_sha256: 2969d06d651210a7296b9741d4394b5f08cfc4bae07585f6fef97aa0da6d2d4d
-  words: 3493
+  text_sha256: 3eccadff169a088a6593b9b0aaba7d74e260b9805016a33f9c32cdf808b48211
+  words: 3477
   rates:
-    ai-vocabulary: 0.8589
-    em-dash: 0.8589
+    ai-vocabulary: 0.8628
+    em-dash: 0.8628
     boldface: 0.0
     rule-of-three: 0.0
-    negative-parallelism: 0.2863
-    plays-a-role: 0.8589
+    negative-parallelism: 0.2876
+    plays-a-role: 0.8628
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -2343,8 +2343,8 @@ candidates:
   set: tune
   xml_sha256: 5793144fdccd745bf57e9f50ffbabbbcf3978a9b4fe3721437d329e5853c738d
   status: used
-  text_sha256: 40b7eb01b1f360e8794406584a576e74059294f34036084960f5282ec2d8dbca
-  words: 3403
+  text_sha256: 699b441b3207522eda0aa3f0ee7060cd84231805c5be3a8c8bd77db8922dc9cd
+  words: 3302
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
@@ -2385,16 +2385,16 @@ candidates:
   set: tune
   xml_sha256: b323c387d8c5c89d6a0d939084943bcfcaf76210969e5e7001208104b256b9d0
   status: used
-  text_sha256: 65bce624f6f91156b46338e965e56c4f66abdada1eeda7c26d551edff1bc9178
-  words: 7008
+  text_sha256: 0f2e816d5363c27ae6d69fbd3f99f38446c43db4973e8c9780002bf2aae24b34
+  words: 6909
   rates:
-    ai-vocabulary: 0.2854
+    ai-vocabulary: 0.2895
     em-dash: 0.0
-    boldface: 8.4189
-    rule-of-three: 0.7135
-    negative-parallelism: 0.1427
-    plays-a-role: 0.2854
-    copula-avoidance: 0.1427
+    boldface: 8.5396
+    rule-of-three: 0.7237
+    negative-parallelism: 0.1447
+    plays-a-role: 0.2895
+    copula-avoidance: 0.1447
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -2406,16 +2406,16 @@ candidates:
   set: tune
   xml_sha256: 6c887bfcc841d3252b457ca9f8ef2b52e18d5d05202815ae837cc4f3c91e588f
   status: used
-  text_sha256: 46f66f529de8cf95cc8d502f426881258d5514c930fcc33cf33c8cc0b8f03190
-  words: 4664
+  text_sha256: d078c76afb5ad27c1e5cb32df59bc47c230ec0011cf58c726cf6317a1f33a8e8
+  words: 4642
   rates:
-    ai-vocabulary: 0.8576
+    ai-vocabulary: 0.8617
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 3.2161
+    rule-of-three: 3.2314
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.2144
+    copula-avoidance: 0.2154
   failures: 0
   phrase_findings: 1
   vague_findings: 0
@@ -2449,14 +2449,14 @@ candidates:
   set: held-out
   xml_sha256: d6b12cea8de1852fb9a8300895251aa7047915b320d076c2b6bbdeba9a6e3ad5
   status: used
-  text_sha256: 079d95a5f6e4583729b9d9322a17a8ce99c18937c552540c19335cad413efc11
-  words: 3884
+  text_sha256: c4b425d0c43121b20c050ccaab28bae8f566a13281d2f0157c8913ff74f0f649
+  words: 3745
   rates:
-    ai-vocabulary: 1.2873
+    ai-vocabulary: 1.3351
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
-    negative-parallelism: 1.0299
+    negative-parallelism: 1.0681
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -2470,13 +2470,13 @@ candidates:
   set: tune
   xml_sha256: 98495a402b7a72f1fff88d1e6cd27d37d6065213bdda67bf57a6a55aaf9a12c0
   status: used
-  text_sha256: 7a29ffede5e98f4db03a2bf0ffc978d6c1a4677169aba92a6fe0a36282729098
-  words: 7942
+  text_sha256: 4f5907bd346a1ca8f3b2e20bc7cc256a7f78ffca9fbb7b407d2d6bccf1ae9808
+  words: 7924
   rates:
-    ai-vocabulary: 0.1259
-    em-dash: 0.1259
+    ai-vocabulary: 0.1262
+    em-dash: 0.1262
     boldface: 0.0
-    rule-of-three: 0.5037
+    rule-of-three: 0.5048
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -2491,14 +2491,14 @@ candidates:
   set: tune
   xml_sha256: 1afcde15d52cdcb173ac9182da8d62a19161a440b7a7ebea20d37ba76a641337
   status: used
-  text_sha256: e05e213b363b7b32e6fd0a02c23c8c29ea13e7ec738e6cdd1a2522b228ea9b1f
-  words: 6122
+  text_sha256: ec2f357dc81bdb31a86497e0147acfe5c1104ab8448abe8a3893c434e125d021
+  words: 5902
   rates:
-    ai-vocabulary: 0.49
+    ai-vocabulary: 0.5083
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.6335
-    negative-parallelism: 0.1633
+    rule-of-three: 1.5249
+    negative-parallelism: 0.1694
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -2513,14 +2513,14 @@ candidates:
   set: tune
   xml_sha256: 0886a231587bcd1a086cc3173035a22ee3fd040f03375a25b439b17ea31b161c
   status: used
-  text_sha256: 71bb4d5935ddfb2db7e6d2ff29d449b6e2df2cba2addbbd43a001929e90cbe54
-  words: 2856
+  text_sha256: da2f4b1fa5757db54f2dea0acfa4f837db5588bfda44778a6781e8c5fd7a9690
+  words: 2684
   rates:
-    ai-vocabulary: 1.0504
+    ai-vocabulary: 1.1177
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.0504
-    negative-parallelism: 0.3501
+    rule-of-three: 0.7452
+    negative-parallelism: 0.3726
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -2534,7 +2534,7 @@ candidates:
   set: tune
   xml_sha256: 6a0248365d8187f576016eefde9a4b2c5a9bd01fa3f0f4f5d47d9dfe80f63a74
   status: used
-  text_sha256: 9db424c3d3fa20e89112a03dee6d1c6fa64709813f83f771e858e8b4f65a811d
+  text_sha256: cc1ff185ccd5fa4ceff2ba96b3957ae71686d16a0db7b2e2a124fbc4283e4bc6
   words: 1669
   rates:
     ai-vocabulary: 0.5992
@@ -2578,13 +2578,13 @@ candidates:
   set: held-out
   xml_sha256: 2cea210adedb793bc53880eb9f45e2fb75627984119ce4fc8edefff29cf21c42
   status: used
-  text_sha256: 23f64323b53499910e432febbe7916bd13ebf937508ff198904479820d8cc94d
-  words: 9416
+  text_sha256: 1c0ccf4f75a3f870eae5f659818e2e92c44f3c9a70eb40dbb21b321fbe7ce478
+  words: 8394
   rates:
-    ai-vocabulary: 0.6372
-    em-dash: 0.7434
+    ai-vocabulary: 0.7148
+    em-dash: 0.5957
     boldface: 0.0
-    rule-of-three: 0.3186
+    rule-of-three: 0.3574
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -2599,15 +2599,15 @@ candidates:
   set: tune
   xml_sha256: dd02879529a9c224ab6fa1b8efe00a34a815eb46ca061e478ed424f8ddc466d6
   status: used
-  text_sha256: c04674d1cc8d71d8f677accd3e3557542cd0646d7bb21a7f27ed7f4bd8bffe58
-  words: 7368
+  text_sha256: 7e2a2720bd0b4fe1e48709a58eb17a27605fc1de23efa1ff6d2a0ccaa45ffcc0
+  words: 7336
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.8143
-    negative-parallelism: 0.1357
-    plays-a-role: 0.1357
+    rule-of-three: 0.8179
+    negative-parallelism: 0.1363
+    plays-a-role: 0.1363
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -2641,15 +2641,15 @@ candidates:
   set: held-out
   xml_sha256: cb10bea6cff4f510c30714f5db161668c6f052383ca06a098a91f18e28983276
   status: used
-  text_sha256: 53225f39a82477f6c104303512fe9101bcaea49de0e7ae93a7f10a36908988ee
-  words: 7605
+  text_sha256: af14eeb31f00ab412f00c8607e4d23b9f9c1b42b8fdadaf83e7b3c727a67eb95
+  words: 7432
   rates:
-    ai-vocabulary: 0.6575
+    ai-vocabulary: 0.6728
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.8409
+    rule-of-three: 1.8837
     negative-parallelism: 0.0
-    plays-a-role: 0.9204
+    plays-a-role: 0.9419
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -2662,15 +2662,15 @@ candidates:
   set: tune
   xml_sha256: c5f23035e7c0d4cb1a7bdd62cab0a0e6993e008d6dba20f3115521efb5361fc1
   status: used
-  text_sha256: 5ef333a39c0d28e85b3ab561ce9bda10277d26ff8f354a9d594241ad4d90552d
-  words: 7556
+  text_sha256: 8590a91643f2b408714af19155c907cd012a06bf00a30ab94801a0faee0b2fab
+  words: 7402
   rates:
-    ai-vocabulary: 0.1323
+    ai-vocabulary: 0.1351
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 5.4262
-    negative-parallelism: 0.1323
-    plays-a-role: 0.2647
+    rule-of-three: 5.4039
+    negative-parallelism: 0.1351
+    plays-a-role: 0.2702
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -2704,13 +2704,13 @@ candidates:
   set: tune
   xml_sha256: 5c36c9416c6af63ac74094ae5b28fdf33d7770dec86e7e58310085391601217c
   status: used
-  text_sha256: 22e4fcb2f9b5c284025f8c95c680c018317f5b584c64fc6ce90ccf7ce9b791ad
-  words: 4960
+  text_sha256: 747d0c3c503d797a985014c6833bb1a3d89e4af9b1a25242395fc65994fe76f7
+  words: 4890
   rates:
-    ai-vocabulary: 0.8065
+    ai-vocabulary: 0.818
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.4032
+    rule-of-three: 0.409
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -2725,13 +2725,13 @@ candidates:
   set: held-out
   xml_sha256: 70baf6c5674c7e82487d858d5bae5622707e23fbfdafde49e3484bd0a84deed1
   status: used
-  text_sha256: f75142f5885ebca94b9597ab79198d7d35d94cc04a3bbd2f058742a5263dbf20
-  words: 2254
+  text_sha256: 24ba3aae79f1c4756570391d6991ed1e476b1ac0cc0ae9333829bfbae511fae7
+  words: 2157
   rates:
-    ai-vocabulary: 0.4437
+    ai-vocabulary: 0.4636
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.4437
+    rule-of-three: 0.4636
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -2746,15 +2746,15 @@ candidates:
   set: tune
   xml_sha256: 5b4b23afba9ce7ddf825dfc3fe0bb7fc80f0df65e60e344cb250313cad7f76b0
   status: used
-  text_sha256: 041d478c02eb5ae22b1a82546a40a346f7cc3edd2f8844e75adf4240685c180c
-  words: 3370
+  text_sha256: 5e8bfd37d2fb8e8f242471f4ad13ad543255f471130c445924e45c3a868fa867
+  words: 3202
   rates:
-    ai-vocabulary: 0.2967
+    ai-vocabulary: 0.3123
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.9674
+    rule-of-three: 3.123
     negative-parallelism: 0.0
-    plays-a-role: 0.2967
+    plays-a-role: 0.3123
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -2789,13 +2789,13 @@ candidates:
   set: tune
   xml_sha256: 411bf83f48e7efc4b46d54d57047c084f462184a51bfecde865bf7d217f31aba
   status: used
-  text_sha256: 7517bf8a08d29d2812aba604260d3c7f8ce7ddffeaa3d52b59f562ec1e0ac461
-  words: 4797
+  text_sha256: 23a496834e1244d2d61dfb73bc472e14c3a8749aeb08b180217cfb66b699d691
+  words: 4577
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.4592
+    rule-of-three: 1.3109
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -2810,16 +2810,16 @@ candidates:
   set: tune
   xml_sha256: 76983bd6cc72c0fd800354dff6371e54e2d835cf71225f00ffec42a1bdbdfcf6
   status: used
-  text_sha256: 072641f8ede9cf7a321c5faf961718e5eefa1ee1853e371ff0b87e373eb21420
-  words: 4110
+  text_sha256: 17d870e050947bf81a136bb6b098b07f3fc6b997d288fb4fc949623a5fa0bc7f
+  words: 4074
   rates:
-    ai-vocabulary: 0.2433
+    ai-vocabulary: 0.2455
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
-    plays-a-role: 0.2433
-    copula-avoidance: 0.2433
+    plays-a-role: 0.2455
+    copula-avoidance: 0.2455
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -2852,10 +2852,10 @@ candidates:
   set: tune
   xml_sha256: 62e754740c687bc4b2515e09bfad9f1d06bb5869b1042f61bdadf38371ab79af
   status: used
-  text_sha256: 3b2e0d0373379dbed5d67e3279f3981d9b3ebadad510c1ccb70ca47727fb9165
-  words: 4347
+  text_sha256: 17055a2a57ce53ae00d793f1eb31169fbe84720e4ce4db98e27ea1449b2bdc1f
+  words: 4282
   rates:
-    ai-vocabulary: 0.9202
+    ai-vocabulary: 0.9341
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
@@ -2873,13 +2873,13 @@ candidates:
   set: tune
   xml_sha256: 82208387d4e3fb7dcb9fdfd18fa41344527b04991b7d49ca440c18513bf9eadd
   status: used
-  text_sha256: 91b98d66c0f3633403d108b4cf0b9475aee5f573cd607ad95de75a833c0b936a
-  words: 6477
+  text_sha256: c65ec8d9bf259fdeeae1c35d00f00a006743f150de73072da753709f428fd021
+  words: 5909
   rates:
-    ai-vocabulary: 1.0807
+    ai-vocabulary: 1.1846
     em-dash: 0.0
-    boldface: 0.4632
-    rule-of-three: 2.3159
+    boldface: 0.5077
+    rule-of-three: 2.3693
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -2895,15 +2895,15 @@ candidates:
   set: held-out
   xml_sha256: 1434a4e9d39b0c1aba9288361281c3ee2f3a3c1a195fbd51daf552022e67ed95
   status: used
-  text_sha256: afd3d3af0b05bd29e640ee7fb29420a03db8278004fe908be65f8843e9b24455
-  words: 6297
+  text_sha256: 5eb6b75c488b6e989d1ed3d0c0eeec88a2fddc471609ac15e97423cbbe8c11b1
+  words: 6293
   rates:
-    ai-vocabulary: 1.5881
+    ai-vocabulary: 1.5891
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.3176
+    rule-of-three: 0.3178
     negative-parallelism: 0.0
-    plays-a-role: 0.1588
+    plays-a-role: 0.1589
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -2938,15 +2938,15 @@ candidates:
   set: tune
   xml_sha256: 1953b69b41a98ee6b31d7a92de2d41fa2d180c765582125892801ed01abcd16b
   status: used
-  text_sha256: dfca3b756e1506d0c1ad1ec2c5d2e862780f53774a0439cc37920e722fd64684
-  words: 4011
+  text_sha256: 32b6b39fcdd75e6921ff1ff767a13970538e26b5b9448dff4aab4313445e5cc2
+  words: 3962
   rates:
-    ai-vocabulary: 0.9973
+    ai-vocabulary: 1.0096
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.4986
+    rule-of-three: 0.5048
     negative-parallelism: 0.0
-    plays-a-role: 0.2493
+    plays-a-role: 0.2524
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -2959,14 +2959,14 @@ candidates:
   set: held-out
   xml_sha256: 37115ede9ea223f001e6df3125055027ddada8435e655a2a24c26e16f47aca14
   status: used
-  text_sha256: dfaf63ed292b87360b3814bbacfdd32c5290b099eda8b14e5f7bb1e4555c42c3
-  words: 4979
+  text_sha256: fd1f419823fac750dd21bbcaf219ef5c210383f1bb5275ad918de41b6de41124
+  words: 4936
   rates:
-    ai-vocabulary: 0.4017
+    ai-vocabulary: 0.4052
     em-dash: 0.0
-    boldface: 0.6025
-    rule-of-three: 0.6025
-    negative-parallelism: 0.2008
+    boldface: 0.6078
+    rule-of-three: 0.6078
+    negative-parallelism: 0.2026
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -2981,14 +2981,14 @@ candidates:
   set: tune
   xml_sha256: d89ca994d69ee69d1ff5c4d09e6835d29b2f6daa9697edbcfb00f894323bd223
   status: used
-  text_sha256: 51597ab5a28826fef59bf91ba5da9eae4c3dc55089b7ddd4058f4ed15bac3dbe
-  words: 10863
+  text_sha256: 7738129f73c2d6c0b5833de44b881b27a2bebcf290b741bdc6878df3d346456b
+  words: 10841
   rates:
-    ai-vocabulary: 0.5523
+    ai-vocabulary: 0.5535
     em-dash: 0.0
-    boldface: 7.0883
-    rule-of-three: 0.3682
-    negative-parallelism: 0.1841
+    boldface: 6.9182
+    rule-of-three: 0.369
+    negative-parallelism: 0.1845
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -3023,12 +3023,12 @@ candidates:
   set: tune
   xml_sha256: e2978ce342f58e413ee7828af2446026bc0f5c92a0de921fe38df0bf5aa6939d
   status: used
-  text_sha256: 1c91d2fd1d43599cc5497ea424f8e179add830722276de794832f5f6cbc606b7
-  words: 6174
+  text_sha256: 8eafa17316e62bebcf30874312db0f5a629a5eea3cc09791fbe0693c1d21456f
+  words: 5987
   rates:
-    ai-vocabulary: 0.8098
-    em-dash: 2.5915
-    boldface: 0.3239
+    ai-vocabulary: 0.8351
+    em-dash: 2.0043
+    boldface: 0.3341
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -3066,14 +3066,14 @@ candidates:
   set: tune
   xml_sha256: 30a6edaf51d8f6b82e15062dc076ab99b7737dc0304f77b0c648100ab689a6fa
   status: used
-  text_sha256: e89f66f8a042f1d42d9ee61fd1804e841e51a0cd04f125baf02e508ae81f3169
-  words: 3788
+  text_sha256: fadcae16b052685f911e6d9a2b2f22b78b0e554be5a6459eec257a71e1aa528d
+  words: 3653
   rates:
-    ai-vocabulary: 0.528
-    em-dash: 0.264
+    ai-vocabulary: 0.5475
+    em-dash: 0.2737
     boldface: 0.0
-    rule-of-three: 0.528
-    negative-parallelism: 0.264
+    rule-of-three: 0.5475
+    negative-parallelism: 0.2737
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -3087,14 +3087,14 @@ candidates:
   set: held-out
   xml_sha256: 18102bc138a0e9fdd6e6517a44720542988741ccb24668668d1dffabbb1c1d44
   status: used
-  text_sha256: bca25b04fd0c3eaf2f34285c6cbcd8b8e97b7ef2f03fbefcc5174afcd190553b
-  words: 6344
+  text_sha256: e1b78cc6aa37e6b27926421763318fe9b26aa8432e6b7ce6b62a48d11f4733ec
+  words: 6089
   rates:
-    ai-vocabulary: 0.6305
+    ai-vocabulary: 0.6569
     em-dash: 0.0
-    boldface: 1.1034
-    rule-of-three: 0.7881
-    negative-parallelism: 0.1576
+    boldface: 1.1496
+    rule-of-three: 0.8212
+    negative-parallelism: 0.1642
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -3151,13 +3151,13 @@ candidates:
   set: tune
   xml_sha256: f2fcb4f895c3f7d6d4ddc91ae2c2efc84953ab2bf41885fe8b346ee15cf0d61f
   status: used
-  text_sha256: 830bb5022dfaef85a9d634fc452cf0a87ee5c35bc5ffe3e3ec2416c64926e2ef
-  words: 6537
+  text_sha256: 05da2d6c4a49468c83ba8f48a5cfbe0923b8b7067f2983ee9dcb22d03e32c7a2
+  words: 6497
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.1417
+    rule-of-three: 2.1548
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -3172,14 +3172,14 @@ candidates:
   set: tune
   xml_sha256: d8198b0511e2062087ee8d047788203f03716c34c1d4c9d4a8d8e30cd0740e18
   status: used
-  text_sha256: 0e8e68f416d11244aaaf8cddd0d37ac1a8113bc6ce32f9e42f0d78bba6252fe2
-  words: 4073
+  text_sha256: 4e99d9df21242971eb48e52f44abcbac41076537400d74ff5586b63c3e11f063
+  words: 3950
   rates:
-    ai-vocabulary: 0.2455
+    ai-vocabulary: 0.2532
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
-    negative-parallelism: 0.2455
+    negative-parallelism: 0.2532
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -3194,16 +3194,16 @@ candidates:
   set: held-out
   xml_sha256: 5a539573b27eb1eeb8554bf7843d842e1e32babf5058f42e55b3523cbfc807f8
   status: used
-  text_sha256: 426fbde221051dc7ac99c23cf510a0145f32f0cb0d68a604685583348f973ed8
-  words: 5643
+  text_sha256: ae81c55b2b86790db059779f134cf2b61bb74f74b75d57e7da26433b982f8eb7
+  words: 5597
   rates:
-    ai-vocabulary: 1.0633
+    ai-vocabulary: 1.072
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.5316
+    rule-of-three: 0.536
     negative-parallelism: 0.0
-    plays-a-role: 0.3544
-    copula-avoidance: 0.1772
+    plays-a-role: 0.3573
+    copula-avoidance: 0.1787
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -3257,13 +3257,13 @@ candidates:
   set: tune
   xml_sha256: 956005cf8950a0b8be86d71bc9cd509e99a5182fad33ab20471085fc04a181ea
   status: used
-  text_sha256: 30f0d02dc5e8951af32590ca5e462f6e33afd771e0a84a04e8c2dc989e57e386
-  words: 3389
+  text_sha256: 63474eeea8c5b6289dc62c94ccda8c430b230c3782530df4d5e89f4ed26646f8
+  words: 3235
   rates:
-    ai-vocabulary: 1.1803
+    ai-vocabulary: 1.2365
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.4754
+    rule-of-three: 1.5456
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -3278,16 +3278,16 @@ candidates:
   set: held-out
   xml_sha256: 6b1ed1921f061b724f6b6082224451c9230c0fdce2b993d5d9897a1df8d0a5fa
   status: used
-  text_sha256: e3f6808bf3f699460bf254c6293a6843957096de1ce16b3adec4c14ac6253dd8
-  words: 7676
+  text_sha256: dfcd2080bceeaf9fd4a41678eb935ee2495767ae886c1688fcdaac0160f7337e
+  words: 7546
   rates:
-    ai-vocabulary: 0.5211
+    ai-vocabulary: 0.5301
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.0844
-    negative-parallelism: 0.2606
+    rule-of-three: 2.1203
+    negative-parallelism: 0.265
     plays-a-role: 0.0
-    copula-avoidance: 0.1303
+    copula-avoidance: 0.1325
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -3321,13 +3321,13 @@ candidates:
   set: tune
   xml_sha256: 8134e1cf0f63b4a0b648ee99d7b595a3538b5b28acc8931ea8652e991580ec0c
   status: used
-  text_sha256: a82f3078287692af371407c36d40022954cd691b644d46879609f2008e55a40d
-  words: 2025
+  text_sha256: 117349501481f057d9988a41fb1292486b0434a9b5706a331fe51b28a942d4e7
+  words: 1914
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
-    boldface: 0.4938
-    rule-of-three: 0.4938
+    boldface: 0.5225
+    rule-of-three: 0.5225
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -3343,8 +3343,8 @@ candidates:
   set: tune
   xml_sha256: 9db161ea5ddba5c5012664004a6a1aedbebba52bbbfb4ad64ec78a9dfbbe7d8d
   status: used
-  text_sha256: ad451b093bff2d8e75db9d3b66dbdf80489fc39a7d851da52393a628fc7b2cad
-  words: 3137
+  text_sha256: ea8f67c0864fc733948b001fab551614bce10374a90d722a72cae4710bfd03d1
+  words: 3125
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
@@ -3364,14 +3364,14 @@ candidates:
   set: tune
   xml_sha256: 8940e9d8a5879d268b765a602490c151c6f71b42c0743b321cf5e92c81e607a8
   status: used
-  text_sha256: 94d8dc8c210ac6ac226b621c49117df648bf08648439841fb86cb1e8aa17ee88
-  words: 7263
+  text_sha256: 937045b7fce6423261562501074c6812282b54def85602409073539f3e868481
+  words: 7047
   rates:
-    ai-vocabulary: 0.4131
-    em-dash: 0.1377
+    ai-vocabulary: 0.4257
+    em-dash: 0.1419
     boldface: 0.0
-    rule-of-three: 0.6884
-    negative-parallelism: 0.1377
+    rule-of-three: 0.7095
+    negative-parallelism: 0.1419
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -3385,13 +3385,13 @@ candidates:
   set: held-out
   xml_sha256: 08f48a3bed3a85130d8f748381fa006e0e7e27d2cf6283655aa1b1258a491874
   status: used
-  text_sha256: ffaf320a82f81a13acf7ab435e4579dccc5a6fbfe03c95e23039514408e9a3e7
-  words: 3074
+  text_sha256: 7fe031a7e52c6e3087792beff93514266225847c808c922f75e1b69f49ae5213
+  words: 2912
   rates:
-    ai-vocabulary: 0.3253
+    ai-vocabulary: 0.3434
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.9759
+    rule-of-three: 1.0302
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -3427,15 +3427,15 @@ candidates:
   set: tune
   xml_sha256: 796f2817cb384a5ea7a3594ec7eea3cf700e3e4cb40ca990c1aca39ff02b73d9
   status: used
-  text_sha256: 76aba3706322364c4db7d6fe203e5f4c78567bc72a6283b7633adc09a8cb3735
-  words: 2243
+  text_sha256: 9202ae0018313ad562379ea59027ad43ef591ef36fbac496762a6ac64b99f315
+  words: 2135
   rates:
-    ai-vocabulary: 0.4458
+    ai-vocabulary: 0.4684
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.2292
+    rule-of-three: 2.3419
     negative-parallelism: 0.0
-    plays-a-role: 0.4458
+    plays-a-role: 0.4684
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -3448,14 +3448,14 @@ candidates:
   set: tune
   xml_sha256: e21533535815c18420742e328a844c75358cae5080fb0763c282decbaac5a5a6
   status: used
-  text_sha256: cd4814ee10350c1f009f1f4bb0ba749223afc0e9453b8ad33e834c36a1ab25f4
-  words: 6420
+  text_sha256: e8673a35be94127ba63b569dac402a6c140c396e90da61aafdbf35cf64ae2779
+  words: 6083
   rates:
-    ai-vocabulary: 1.7134
+    ai-vocabulary: 1.8083
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.4673
-    negative-parallelism: 0.3115
+    rule-of-three: 0.4932
+    negative-parallelism: 0.3288
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -3469,13 +3469,13 @@ candidates:
   set: tune
   xml_sha256: 2bcb96b983d0d85cdc45341250f62c9c3ee1b6142577bd43a22309ab1d3336d7
   status: used
-  text_sha256: 878c9946d5df0bb4d86537d6764e5677ea7f110611f991578c59533ab578ce5d
-  words: 5576
+  text_sha256: 1e2fa0a6366bd1a0ed9b18f9a48d88507a7b1afe214fbd029a5216f1dd8f1a06
+  words: 5520
   rates:
-    ai-vocabulary: 1.2554
-    em-dash: 0.538
+    ai-vocabulary: 1.2681
+    em-dash: 0.5435
     boldface: 0.0
-    rule-of-three: 0.1793
+    rule-of-three: 0.1812
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -3490,16 +3490,16 @@ candidates:
   set: held-out
   xml_sha256: 46fa4aa30e7f52e3c53c4f83725ddadbb75510f4ee5ba7c2207839637f6ca77c
   status: used
-  text_sha256: b55c8526d4968bc87023ce11753340370c396863661c262228931341e677c332
-  words: 4742
+  text_sha256: b26544c778e2693deeeee57112d87406a475c314548168bf4eed3fb914495dd7
+  words: 4399
   rates:
-    ai-vocabulary: 0.2109
+    ai-vocabulary: 0.2273
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.8435
+    rule-of-three: 0.682
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.4218
+    copula-avoidance: 0.4546
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -3511,14 +3511,14 @@ candidates:
   set: tune
   xml_sha256: 7f862060d406a34d21d821e742e3b4da2b6e581d151e5ab6f78df9b1b8a5ec28
   status: used
-  text_sha256: 0728c5c9cbb8f9d3646cfe2a3ab4971a0290a8b1917cbfe755303dcecce141ff
-  words: 6853
+  text_sha256: c073d988a0b99389127d2940ed6247f75de540ecc07b9a2b5cbf1189027c8b3f
+  words: 6722
   rates:
-    ai-vocabulary: 0.2918
-    em-dash: 1.4592
+    ai-vocabulary: 0.2975
+    em-dash: 1.4877
     boldface: 0.0
-    rule-of-three: 0.5837
-    negative-parallelism: 0.1459
+    rule-of-three: 0.5951
+    negative-parallelism: 0.1488
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -3532,14 +3532,14 @@ candidates:
   set: tune
   xml_sha256: e14cea3dacd7f7fe540cd9b05ba3d5c8c6fba0f315d0c635f82098af774083a5
   status: used
-  text_sha256: 1c8f8561f3acc9aab936e2dd0282f2650614a0b6d7ceed99970d8e96508910b5
-  words: 4049
+  text_sha256: bfa8bd040fe2e6301908f25c8517f5e03b59fa075b0d4fe096649611df14983f
+  words: 3732
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.7409
+    em-dash: 0.5359
     boldface: 0.0
-    rule-of-three: 1.9758
-    negative-parallelism: 0.247
+    rule-of-three: 2.1436
+    negative-parallelism: 0.268
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -3574,15 +3574,15 @@ candidates:
   set: tune
   xml_sha256: a83246324abfa9c2c1e290fbc843a8892a22b3866dfbe7c1afcd12c2e188f05b
   status: used
-  text_sha256: e2b0b8e1f776d8efd445d76dcae249ae6ea5e4f49b75cf27ac726cbdf8a00868
-  words: 4649
+  text_sha256: f6fd657c79c5d2621abd5023e2e78fef138015d0e1627481b7b052b8b133a1bd
+  words: 4619
   rates:
-    ai-vocabulary: 0.8604
-    em-dash: 0.2151
+    ai-vocabulary: 0.866
+    em-dash: 0.2165
     boldface: 0.0
-    rule-of-three: 1.0755
+    rule-of-three: 1.0825
     negative-parallelism: 0.0
-    plays-a-role: 0.4302
+    plays-a-role: 0.433
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -3596,13 +3596,13 @@ candidates:
   set: tune
   xml_sha256: a79612c4ef167d0cd96d3bbaa71815f6e99526d5878e0853b34e9d923ef11f37
   status: used
-  text_sha256: f3f4712fde3763a27c04e06324d7b67211ea585458403db3059e6180f1a1e471
-  words: 2822
+  text_sha256: 4924bbf69ab493ba76af551b88424066dddd031db8cbc11c1434210e4136bd81
+  words: 2784
   rates:
-    ai-vocabulary: 0.3544
+    ai-vocabulary: 0.3592
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.7087
+    rule-of-three: 0.7184
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -3618,13 +3618,13 @@ candidates:
   set: tune
   xml_sha256: 242a521343f675c24a0511ab374b66151e4aa487477cc1ebf69e8a4ec6c851a6
   status: used
-  text_sha256: 50e29dd1371947e8cf14b6f18ee1313aa07d213848d69b105c33a190f01e2ded
-  words: 5611
+  text_sha256: 9d0c58b5f82b1b36c0ecfd72b9a15bb358c6eb461396b65bff30c0ecca172461
+  words: 5522
   rates:
-    ai-vocabulary: 0.1782
+    ai-vocabulary: 0.1811
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.4258
+    rule-of-three: 1.4488
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -3639,13 +3639,13 @@ candidates:
   set: tune
   xml_sha256: 1858f67dd3d62ab63f2b444402d7c711523c0a4a9ce899a2ab1b2ba522cafd57
   status: used
-  text_sha256: 0ed989b98da66d03f1f54a3f5c92c2a0559e2fcc6e6a7da9981067adf9739501
-  words: 3645
+  text_sha256: b14cc312220abc1c6441e267f49cdd01c6055feda5a423ff0d0882bc644ee2a3
+  words: 3622
   rates:
-    ai-vocabulary: 0.5487
+    ai-vocabulary: 0.5522
     em-dash: 0.0
-    boldface: 0.5487
-    rule-of-three: 0.2743
+    boldface: 0.5522
+    rule-of-three: 0.2761
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -3660,14 +3660,14 @@ candidates:
   set: tune
   xml_sha256: fa205575159f6417cb68299cc63c52963ec6c89a6e91289abe816a6f852b7f4d
   status: used
-  text_sha256: 24ad44186f333b9a5e194ae2336a090949e8d4b288321bc11be26550aca84d11
-  words: 5432
+  text_sha256: 7f373b567b2999b044911b730b7d4128952e0263e4790df50ffcda473c8da7fe
+  words: 5300
   rates:
-    ai-vocabulary: 0.1841
+    ai-vocabulary: 0.1887
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.9455
-    negative-parallelism: 0.1841
+    rule-of-three: 3.0189
+    negative-parallelism: 0.1887
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -3682,13 +3682,13 @@ candidates:
   set: held-out
   xml_sha256: c11c3012400332e14aa76d96e51b8a5634194ce27e20c710e370a8432796b2a2
   status: used
-  text_sha256: 8f035608eada0dadbf5cf2ab3cdfce3b9298c185ed8112dd138ab84d5e47a1a5
-  words: 2629
+  text_sha256: db7046920ac7725cc65c2c617f3e9f1057a0540a1e1818b06859fdf4c154e80e
+  words: 2488
   rates:
-    ai-vocabulary: 1.1411
+    ai-vocabulary: 0.8039
     em-dash: 0.0
-    boldface: 0.3804
-    rule-of-three: 1.9019
+    boldface: 0.4019
+    rule-of-three: 2.0096
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -3725,16 +3725,16 @@ candidates:
   set: held-out
   xml_sha256: ef1df63a30d7bc8fe618faff8bb00df2831b2136fe36e402ce50bd3e0dab9b2d
   status: used
-  text_sha256: b879be181ca897b839078cf3d88bcdd76cdd18cf0f336dc380a67c258796a3e6
-  words: 7939
+  text_sha256: 1a73e28a2f2b236d09205b2583cf73163039465cecfe4f77b90e50247c28a25d
+  words: 7847
   rates:
-    ai-vocabulary: 0.5038
+    ai-vocabulary: 0.5097
     em-dash: 0.0
-    boldface: 0.8817
-    rule-of-three: 4.9125
+    boldface: 0.8921
+    rule-of-three: 4.5877
     negative-parallelism: 0.0
-    plays-a-role: 0.126
-    copula-avoidance: 0.126
+    plays-a-role: 0.1274
+    copula-avoidance: 0.1274
   failures: 0
   phrase_findings: 2
   vague_findings: 0
@@ -3770,13 +3770,13 @@ candidates:
   set: tune
   xml_sha256: 594c12dbd57dcd1d5d7c99da2faf346e252c7103e9d29f70057938b22b896a89
   status: used
-  text_sha256: cb4378ae5dd417426e24b68a42ac87532e9e1d88ac987eaba41d875f6ddbdbc8
-  words: 4871
+  text_sha256: 7f34c6f113fbce7e2b26c288a72bee74ea2a14467621a24f6134102dcaf79bc3
+  words: 4801
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.6159
+    em-dash: 0.6249
     boldface: 0.0
-    rule-of-three: 0.2053
+    rule-of-three: 0.2083
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -3833,13 +3833,13 @@ candidates:
   set: tune
   xml_sha256: c9eb742f9b375cd78db822c5d9c153bb39820b95c1fc97dea82cb850f436a6e6
   status: used
-  text_sha256: b0b86a659a6a1e9fc4de73ba5209db74fc9ec29fe71f94fe9365101b027d3918
-  words: 3284
+  text_sha256: b450a25d4e29aba38a784b3b6371f6d45852e86174913c3948e87fa9b82f4a68
+  words: 3260
   rates:
-    ai-vocabulary: 0.609
-    em-dash: 0.3045
+    ai-vocabulary: 0.6135
+    em-dash: 0.3067
     boldface: 0.0
-    rule-of-three: 1.218
+    rule-of-three: 1.227
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -3854,12 +3854,12 @@ candidates:
   set: tune
   xml_sha256: 1e53f34aceb4a9759e3212415aced9df34edf1046c79d7062e3b14c0295111b7
   status: used
-  text_sha256: 9e066c129d0e92ea50443393a7fd45335ddca65123eceb049c02bdba4589e63d
-  words: 7461
+  text_sha256: f44774ba57c4a791739769eab7e70485837c9dc5eac68a467f0a5459affc061b
+  words: 7352
   rates:
-    ai-vocabulary: 1.0722
+    ai-vocabulary: 1.0881
     em-dash: 0.0
-    boldface: 0.6702
+    boldface: 0.6801
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -3876,16 +3876,16 @@ candidates:
   set: held-out
   xml_sha256: 8e84385853106536aa42aa89aa7e86303f4e705caffbdf40b5ef4bab2285550a
   status: used
-  text_sha256: 5cdd69620e683b5d56e416c9307b9174db3708025e597cc6b3f759a6b46fdbcb
-  words: 4742
+  text_sha256: 46a7772487888241262c40f76a03e176edca4d50cf86d54ec961563a6f6e71b5
+  words: 4737
   rates:
-    ai-vocabulary: 1.0544
+    ai-vocabulary: 1.0555
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.4218
+    rule-of-three: 0.4222
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.2109
+    copula-avoidance: 0.2111
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -3897,15 +3897,15 @@ candidates:
   set: tune
   xml_sha256: 1b66ddb77dcdd0084570a1dd708920e90ffe9bca77b2eb21b829034977a7cdc2
   status: used
-  text_sha256: bd351a3a410142225b9eb7c79e9757c59667124612ccd80b5aed64b3d2ef28d1
-  words: 2971
+  text_sha256: 4a158578363aa3f6b24834ad6edee050c98458a5774754c61eb6a9a0052619fb
+  words: 2858
   rates:
-    ai-vocabulary: 1.0098
+    ai-vocabulary: 1.0497
     em-dash: 0.0
-    boldface: 0.3366
+    boldface: 0.3499
     rule-of-three: 0.0
     negative-parallelism: 0.0
-    plays-a-role: 1.0098
+    plays-a-role: 1.0497
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -3939,13 +3939,13 @@ candidates:
   set: held-out
   xml_sha256: e70fd5e4d897f70e309adeefcd3e44a8ae6f49e7742739c386f6b3ba2f717fe9
   status: used
-  text_sha256: cc0f0a3f288194f190591710995d676b39eb96fd65ed3b05426b187bb92989bb
-  words: 6783
+  text_sha256: 65cde9bd6fed8a63485fa7c0ed6bfe815a6897aa9ac96f4e6453c9e1d7eec688
+  words: 6692
   rates:
-    ai-vocabulary: 1.6217
-    em-dash: 0.1474
-    boldface: 0.5897
-    rule-of-three: 1.1794
+    ai-vocabulary: 1.6438
+    em-dash: 0.1494
+    boldface: 0.5977
+    rule-of-three: 1.1955
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -3961,15 +3961,15 @@ candidates:
   set: tune
   xml_sha256: 9592781fd39a6ed5094032fae7b5e5d6a7d9eadbd01bf6e5b8019773137da06d
   status: used
-  text_sha256: 3053157e8c38a1406f872e2a2ce2ca6de69fb06dffd7eedde0bf869911e3c944
-  words: 5365
+  text_sha256: 5915f450a61073bcd468bc2f71f8b0f2f3cca93aad9bb1b47f167f54d359ed1d
+  words: 5336
   rates:
-    ai-vocabulary: 0.3728
+    ai-vocabulary: 0.3748
     em-dash: 0.0
-    boldface: 5.219
-    rule-of-three: 0.3728
+    boldface: 5.2474
+    rule-of-three: 0.3748
     negative-parallelism: 0.0
-    plays-a-role: 0.3728
+    plays-a-role: 0.3748
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -3982,12 +3982,12 @@ candidates:
   set: tune
   xml_sha256: 42f38c4b77bfd74732fb7d8ce93eafd7cf22ff288f10ee57da074049fe89bb26
   status: used
-  text_sha256: ffda9212d7d02d7f38db6165b809bea7c4866ecda13710978bbe8231596c3f32
-  words: 3601
+  text_sha256: 798953229bcae9e1c387f067d7a5e28193602910fa643f624651ff336a113389
+  words: 3558
   rates:
-    ai-vocabulary: 1.3885
+    ai-vocabulary: 1.4053
     em-dash: 0.0
-    boldface: 1.1108
+    boldface: 1.1242
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -4024,13 +4024,13 @@ candidates:
   set: tune
   xml_sha256: d80dc055427d52a679cdba4789c688fb979568f4e2dffc0bd06607c83a203169
   status: used
-  text_sha256: e76a26af08844d16751c8eaa0e86caa2cbffc899282ce7bf06c6a88e544b08c0
-  words: 2160
+  text_sha256: 23d15c510f6f92f1a4c936350cfb487d8e097499fb53a226b5c90b19db4f9d01
+  words: 2124
   rates:
-    ai-vocabulary: 2.3148
+    ai-vocabulary: 2.354
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.463
+    rule-of-three: 0.4708
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4046,14 +4046,14 @@ candidates:
   set: held-out
   xml_sha256: 61c0baa53fac9ce53a794dd9568a64f1f26f292e502bc4baf7c9122d1a908823
   status: used
-  text_sha256: cfa9a14ec9bedcf4bd974e3f8b9b7069a8be8f6421840152c310dfdd96520e54
-  words: 3432
+  text_sha256: ee0c7f00dadbd7006ca8e1dce6b606730d0c2a8a1218d26dd4a6d6a5a9c2a52f
+  words: 3261
   rates:
-    ai-vocabulary: 2.0396
+    ai-vocabulary: 1.2266
     em-dash: 0.0
-    boldface: 2.0396
-    rule-of-three: 1.7483
-    negative-parallelism: 0.5828
+    boldface: 2.1466
+    rule-of-three: 1.8399
+    negative-parallelism: 0.6133
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -4067,13 +4067,13 @@ candidates:
   set: tune
   xml_sha256: 01cd1fe6a464ef163f938bc113c3a0655fba4e9a2401f247137e97314abce977
   status: used
-  text_sha256: 65a4a7c38b62c0c3de7a9f370b329d27d410679adccfbfee6ecd12fb3aa7e1ad
-  words: 6384
+  text_sha256: 376b43c2d51773cef0b8c0a62da3d33580853f2a606a058dad7f088a07aa3363
+  words: 6179
   rates:
-    ai-vocabulary: 0.1566
+    ai-vocabulary: 0.0
     em-dash: 0.0
-    boldface: 0.4699
-    rule-of-three: 0.1566
+    boldface: 0.4855
+    rule-of-three: 0.1618
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4131,13 +4131,13 @@ candidates:
   set: tune
   xml_sha256: f4e386d8317878dee1c52773ee2ec36cfb3be2551908a831a46c618c2dba8307
   status: used
-  text_sha256: 485600ea9cf6c2955db6abe10745e1e96d246f7c31923bb7b3aaff604fd94e6f
-  words: 4700
+  text_sha256: 4784e9c6a4d68da9fba3eac391d8e999a3bc3cc9ace9f5749ffbee5c69c43aca
+  words: 4641
   rates:
-    ai-vocabulary: 0.6383
+    ai-vocabulary: 0.6464
     em-dash: 0.0
-    boldface: 0.2128
-    rule-of-three: 0.2128
+    boldface: 0.2155
+    rule-of-three: 0.2155
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4195,14 +4195,14 @@ candidates:
   set: tune
   xml_sha256: 5c69c9e6b8af6964ae5cabe50d698972d7ade0e8c08a163f805176373bf8be34
   status: used
-  text_sha256: a1ff1837a36e58bb500da9682a9cfc24b7e982518fba763ac8e5d1599f9c5176
-  words: 7434
+  text_sha256: fbe6293b2ce51dd8be72620441a1eb9643add542d6054c563d5acb07b07b1c82
+  words: 7330
   rates:
-    ai-vocabulary: 0.269
+    ai-vocabulary: 0.2729
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.3452
-    negative-parallelism: 0.4036
+    rule-of-three: 1.3643
+    negative-parallelism: 0.4093
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -4259,13 +4259,13 @@ candidates:
   set: tune
   xml_sha256: 49c92b4285aea6645a7d4a7d77c41076c72edd1a170ed3172d19bd0ce8a3bfc3
   status: used
-  text_sha256: 937dea30154e92c057c16fdfa139fe73629a4fc0d31a75999aee0aac5533163a
-  words: 3421
+  text_sha256: 1199f5bfc4a8662d549efe8f8064b5ae3fd4d30d694d0174d91dfbec5f03e195
+  words: 3354
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.5846
+    rule-of-three: 0.5963
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4302,13 +4302,13 @@ candidates:
   set: tune
   xml_sha256: 952acdddbfd7ac3bd0a31eb26721acc33becf1cd4a76a20c09299ba20c2625b0
   status: used
-  text_sha256: 2adb5c40fe8e14d46af4976ac9681c5e2657228e31f0e8591d5f7ba87a83ca97
-  words: 3970
+  text_sha256: 0fc3707b5a41344eabb24ece9bc3aabb13a29c44f9c0b3a3c7b4defb26560ad8
+  words: 3898
   rates:
-    ai-vocabulary: 0.5038
-    em-dash: 0.7557
+    ai-vocabulary: 0.5131
+    em-dash: 0.7696
     boldface: 0.0
-    rule-of-three: 0.5038
+    rule-of-three: 0.5131
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4325,16 +4325,16 @@ candidates:
   set: tune
   xml_sha256: 3be38771b7a6e8990c57083aa36646d622cb62e121f0960ae7a00f1c401e0510
   status: used
-  text_sha256: adf750c3a5cdc8fa6477d3cfa6c13ffc18252e7a86a5c51d12f0790f99c81c09
-  words: 9451
+  text_sha256: 77382c37a5f70eb2f822a8a1945563a5c6ec9aa6db36ff8b30673f52d46b09f4
+  words: 9422
   rates:
-    ai-vocabulary: 0.6349
-    em-dash: 0.1058
-    boldface: 0.2116
-    rule-of-three: 0.6349
+    ai-vocabulary: 0.6368
+    em-dash: 0.1061
+    boldface: 0.2123
+    rule-of-three: 0.6368
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.529
+    copula-avoidance: 0.5307
   failures: 0
   phrase_findings: 1
   vague_findings: 0
@@ -4347,15 +4347,15 @@ candidates:
   set: tune
   xml_sha256: 6425cda1c608fb4462e0dffd26fde5a6f8ea610621b264b5165046dba9f1a952
   status: used
-  text_sha256: 3096a3a178d0475657a0d6fb984a2290e3c3b657f8ba07843d35f54fb708fbc8
-  words: 9548
+  text_sha256: 42195e03c3b64d023a034b2aacea13f8293907c80ae8f60a4e794302cc5353c2
+  words: 9524
   rates:
-    ai-vocabulary: 1.3615
+    ai-vocabulary: 1.365
     em-dash: 0.0
-    boldface: 0.6284
-    rule-of-three: 1.0473
-    negative-parallelism: 0.7331
-    plays-a-role: 0.1047
+    boldface: 0.63
+    rule-of-three: 1.05
+    negative-parallelism: 0.735
+    plays-a-role: 0.105
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 4
@@ -4371,14 +4371,14 @@ candidates:
   set: tune
   xml_sha256: 3a5f6e206a591845052ad5d5ace86849533b9b3bf04009c6c3771bfb74dd23fd
   status: used
-  text_sha256: 87e8c662ab7d0d2b9ad10a36c57e0d748d0cc401e29abcf2555fe3d6f730c8d8
-  words: 4773
+  text_sha256: 5f300f492935c42a11f7d2475ce4d41e7fc88e0a6bf939c658ae4602c2997fa1
+  words: 4203
   rates:
-    ai-vocabulary: 0.419
-    em-dash: 0.838
+    ai-vocabulary: 0.4759
+    em-dash: 0.9517
     boldface: 0.0
-    rule-of-three: 1.0476
-    negative-parallelism: 0.2095
+    rule-of-three: 1.1896
+    negative-parallelism: 0.2379
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -4393,13 +4393,13 @@ candidates:
   set: held-out
   xml_sha256: d42925b9d60a1e4da261c525e73de7d504ad439cc6a299c0f825baf658ed7034
   status: used
-  text_sha256: ed47b4c8514ec3ca5b425f397a476e2a9910cc459d0caca67cf427855297555a
-  words: 2467
+  text_sha256: cfbf9ad6437d2e80b2a10507d209e4b5c622126ec4b3fab824b179e67ed1f72f
+  words: 2463
   rates:
-    ai-vocabulary: 0.8107
+    ai-vocabulary: 0.812
     em-dash: 0.0
-    boldface: 0.4054
-    rule-of-three: 4.0535
+    boldface: 0.406
+    rule-of-three: 4.0601
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4435,14 +4435,14 @@ candidates:
   set: tune
   xml_sha256: 1287d80935c7e72cc4f52a0f8ebfafd68ef7cb8ed3b570b0f91e5274fdca8dc4
   status: used
-  text_sha256: 5f95ae4585fb49d9407b18f3478c6dae0bec4ce7989932e3c89b2afc5a0c60f6
-  words: 6643
+  text_sha256: 4ea5bc65feeead68c4b12e64dc333ca8e159ee3ddbd6f9bb0a2b2e4a1bf0d262
+  words: 6562
   rates:
-    ai-vocabulary: 0.9032
+    ai-vocabulary: 0.9144
     em-dash: 0.0
-    boldface: 1.8064
+    boldface: 1.8287
     rule-of-three: 0.0
-    negative-parallelism: 0.1505
+    negative-parallelism: 0.1524
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -4456,15 +4456,15 @@ candidates:
   set: held-out
   xml_sha256: 4f2acf82fa7cffe30e936424abf49491f2b9e37b7caf630ec6099f70650adf4e
   status: used
-  text_sha256: ac780048a68c20fffa8402de26eb39792a018e325aaa53682e76ba9f23532988
-  words: 3465
+  text_sha256: 032213a1d3dc2f276edebb60b5b75034787783323842f32e61b87038ebc87eeb
+  words: 3381
   rates:
-    ai-vocabulary: 0.8658
+    ai-vocabulary: 0.8873
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.2886
-    negative-parallelism: 0.5772
-    plays-a-role: 0.2886
+    rule-of-three: 0.2958
+    negative-parallelism: 0.5915
+    plays-a-role: 0.2958
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -4478,15 +4478,15 @@ candidates:
   set: tune
   xml_sha256: c3430531d561a5756c316ebc972ad819a13c8acc263443bcfe92e6f4366991dd
   status: used
-  text_sha256: a464b75458fd57d2e8716582a16e3f5934c0c175be5826e7bb09e5a7c1bdda0b
-  words: 8975
+  text_sha256: 97522e254d8b1fbc6e3c677ef76be5685ec0e6f13d2fc840e2e88b256203f74a
+  words: 8708
   rates:
-    ai-vocabulary: 0.5571
-    em-dash: 0.1114
+    ai-vocabulary: 0.5742
+    em-dash: 0.1148
     boldface: 0.0
-    rule-of-three: 3.1198
+    rule-of-three: 3.2154
     negative-parallelism: 0.0
-    plays-a-role: 0.1114
+    plays-a-role: 0.1148
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -4500,13 +4500,13 @@ candidates:
   set: tune
   xml_sha256: ed76a3217fc5d813d5d97b11a45650fd885960597500db74609545ca87fbc471
   status: used
-  text_sha256: d4a1419840a1fa5a646de8ef0a78422d473f7552bf6ad8e303ffddd81da80dd2
-  words: 3018
+  text_sha256: d059757f834a26d3446eb9e154ceff896334c482e48fbbf5b0e1ebb374276d2b
+  words: 2850
   rates:
-    ai-vocabulary: 0.3313
-    em-dash: 0.6627
+    ai-vocabulary: 0.3509
+    em-dash: 0.7018
     boldface: 0.0
-    rule-of-three: 2.6508
+    rule-of-three: 2.4561
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4521,13 +4521,13 @@ candidates:
   set: tune
   xml_sha256: d9d408d9f04be5337b37662aa4916b6440938348c9774aea3d10ff30b77342dd
   status: used
-  text_sha256: 989e452c29a1adb90e9293fdf3de800fdedad228d1c7afecc47c76a7e07e2262
-  words: 3626
+  text_sha256: 09ad7c88655990cc3d464e96c98ec017406c4991081d74c527815484f0c351de
+  words: 3425
   rates:
-    ai-vocabulary: 0.5516
+    ai-vocabulary: 0.5839
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.3789
+    rule-of-three: 1.4599
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4565,13 +4565,13 @@ candidates:
   set: tune
   xml_sha256: 158dc730266d6ded6731469e19edc03119f89ac1a6c5beec3ee598e6ff3d4a41
   status: used
-  text_sha256: 30910cad6cab12860386c9d45a0cf9fd1604cbb12a5f828299571c02a1f7a0c3
-  words: 5889
+  text_sha256: 94ffe6b20ac3ef46fe8cb9c208fdb7d2b50a3a38f713787ce03d8306783ef9b1
+  words: 5766
   rates:
-    ai-vocabulary: 0.1698
+    ai-vocabulary: 0.1734
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 4.2452
+    rule-of-three: 4.3358
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4586,15 +4586,15 @@ candidates:
   set: tune
   xml_sha256: d5687e69a81e95b6d0e5e954cc53973a70e3ebfe156dc398f88883509df6f858
   status: used
-  text_sha256: 0282749cc90a062692be1989fb1ee752fbd96bff9a8f35cfef4ec9461877045e
-  words: 5757
+  text_sha256: 47135350fd65fcb29996d9f2d2d2c1420708cfbf0c4e413fb5cb2aad71c46bf3
+  words: 5603
   rates:
     ai-vocabulary: 0.0
-    em-dash: 1.737
+    em-dash: 1.7848
     boldface: 0.0
-    rule-of-three: 4.3425
+    rule-of-three: 4.4619
     negative-parallelism: 0.0
-    plays-a-role: 0.1737
+    plays-a-role: 0.1785
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -4607,14 +4607,14 @@ candidates:
   set: tune
   xml_sha256: 23768909d3942635d71ded895ec259dd2d13f3010254381fdf6a92c68a7c04c8
   status: used
-  text_sha256: 8c3a10338ea43159c39d32223241339ba489ee2c252739fe7cf563e2ece25d6e
-  words: 11753
+  text_sha256: b020d3b69e29f13feb47e1d6a102cac9e5137c32dfedb616e3f5cf259c18f81a
+  words: 11650
   rates:
-    ai-vocabulary: 0.7658
-    em-dash: 0.0851
-    boldface: 0.0851
-    rule-of-three: 1.1912
-    negative-parallelism: 0.0851
+    ai-vocabulary: 0.7725
+    em-dash: 0.0858
+    boldface: 0.0858
+    rule-of-three: 1.2017
+    negative-parallelism: 0.0858
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -4630,15 +4630,15 @@ candidates:
   set: held-out
   xml_sha256: f01eb188f1407afcc3d53f7394f39efef913d2b23d1cf9d2c271cafd6cad7d6a
   status: used
-  text_sha256: 5b36c030e3e2f77675e2aa19f4b61c3dac053fede4fe92cac0ebe779645727e7
-  words: 4798
+  text_sha256: 7e3f6d18a95032df21111747c936d6cdbad2c0fa179064a5bc5985bcf47934bd
+  words: 4734
   rates:
-    ai-vocabulary: 0.4168
+    ai-vocabulary: 0.4225
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.4589
+    rule-of-three: 1.4787
     negative-parallelism: 0.0
-    plays-a-role: 0.4168
+    plays-a-role: 0.4225
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -4651,14 +4651,14 @@ candidates:
   set: held-out
   xml_sha256: c7d8084f34f5090eff87567390b09fb6d2e0b9435b612052b2c28582ce56638b
   status: used
-  text_sha256: d72fc0ef0d97deb53307193b180df4f136efff0e6d71bc80f40b537e673c71de
-  words: 5224
+  text_sha256: c07e1b20b87cb101f9cf0211474d506b63fdf6c4bef18d9afbbb21e24b29f90f
+  words: 4992
   rates:
-    ai-vocabulary: 4.0199
-    em-dash: 3.4456
+    ai-vocabulary: 4.2067
+    em-dash: 3.2051
     boldface: 0.0
-    rule-of-three: 0.3828
-    negative-parallelism: 0.3828
+    rule-of-three: 0.4006
+    negative-parallelism: 0.4006
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -4675,15 +4675,15 @@ candidates:
   set: held-out
   xml_sha256: 3e135ae891242adec26dff68c02ceb4d1db689c3047f94d7010229880a967264
   status: used
-  text_sha256: c5aa2e9945a5b99c5fd8ff30da2b56ef7681cc5373171b31857069a7e9841c60
-  words: 6292
+  text_sha256: a0cf986d12c3f8fdeff9c9e2b551a7ff9e8bda14b7a2720a36029cc217187006
+  words: 6283
   rates:
-    ai-vocabulary: 0.4768
+    ai-vocabulary: 0.4775
     em-dash: 0.0
-    boldface: 2.225
-    rule-of-three: 0.6357
+    boldface: 2.2282
+    rule-of-three: 0.6366
     negative-parallelism: 0.0
-    plays-a-role: 0.1589
+    plays-a-role: 0.1592
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -4696,16 +4696,16 @@ candidates:
   set: tune
   xml_sha256: 8d03b34f4df78decb57c50d9df4a9c2d9c227df73e4d1c1ff11dc4057a237370
   status: used
-  text_sha256: 11461d497ded5afb895e013f456268d3932fcecb7bbd9cdf4e7f902a44f13688
-  words: 6478
+  text_sha256: 86416257c50049d366f3e8889996e984a4187ab92fb95ccc21e07d23c46567ed
+  words: 6412
   rates:
-    ai-vocabulary: 0.4631
+    ai-vocabulary: 0.4679
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 3.0874
+    rule-of-three: 3.1192
     negative-parallelism: 0.0
-    plays-a-role: 0.1544
-    copula-avoidance: 0.4631
+    plays-a-role: 0.156
+    copula-avoidance: 0.4679
   failures: 0
   phrase_findings: 1
   vague_findings: 0
@@ -4718,12 +4718,12 @@ candidates:
   set: tune
   xml_sha256: 3bca9c05131f711756f5dbf40497cc3ac320fe201e22a40018846fe5e8fc7048
   status: used
-  text_sha256: eab755b0d8ba99c3b0fc4c1fe65871cf1687679320fdc9b8f8bf2f065845007f
-  words: 4050
+  text_sha256: cb50816bb6640f90d910db41c4e6c9ec6c1dcac9c1924363f5274d08f514a181
+  words: 3904
   rates:
-    ai-vocabulary: 0.2469
+    ai-vocabulary: 0.2561
     em-dash: 0.0
-    boldface: 1.9753
+    boldface: 2.0492
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -4760,14 +4760,14 @@ candidates:
   set: tune
   xml_sha256: ea5678c268c12b2fbf96c0e981ada309a6998628fba6d41d56b4a38ea88851fa
   status: used
-  text_sha256: 3f37129611de5667b2a25db88260b52bbb130bdb4eccae05e7b66aaacf81431e
-  words: 5745
+  text_sha256: 55515c035892d577d736ceb98d29b57e3dd2688c09c9b9924570f8f7596d773c
+  words: 5722
   rates:
-    ai-vocabulary: 2.4369
-    em-dash: 0.5222
-    boldface: 0.1741
-    rule-of-three: 0.1741
-    negative-parallelism: 0.1741
+    ai-vocabulary: 2.4467
+    em-dash: 0.5243
+    boldface: 0.1748
+    rule-of-three: 0.1748
+    negative-parallelism: 0.1748
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -4804,15 +4804,15 @@ candidates:
   set: tune
   xml_sha256: 499a393684411a80673e6fb96b2f6d89262c7cb8a12c1b49795e5e056041070e
   status: used
-  text_sha256: ba272c1ab564a2117043009ecc8fac5395b853a02006a5e387b25ed83e8f2a9c
-  words: 2672
+  text_sha256: c69b0f00cb115b5e652fe2e0263e1fd539f5a29d2512ba65842dbe816a0dcd78
+  words: 2624
   rates:
-    ai-vocabulary: 2.2455
+    ai-vocabulary: 2.2866
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.1228
+    rule-of-three: 0.7622
     negative-parallelism: 0.0
-    plays-a-role: 0.3743
+    plays-a-role: 0.3811
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -4825,13 +4825,13 @@ candidates:
   set: tune
   xml_sha256: 95e9e44299c7726db9fd38f1246a5b4dcdbb05ee5853b7d692cbfbef75b1254a
   status: used
-  text_sha256: 9a0e47bbb317da46974b592c11dd7b00e2ec4884a5ead2c189de94c5c90a476b
-  words: 3245
+  text_sha256: 5dda304626df2e216138a7e2b4bbf0cd5424891763ba99cbf25de5d3a8bfe0dd
+  words: 3196
   rates:
-    ai-vocabulary: 0.6163
+    ai-vocabulary: 0.6258
     em-dash: 0.0
-    boldface: 9.245
-    rule-of-three: 0.6163
+    boldface: 9.3867
+    rule-of-three: 0.6258
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4845,35 +4845,21 @@ candidates:
   published: '2020-08-21'
   set: tune
   xml_sha256: 070189810ebaf885eb191ce82713165fd2f4b0e2e7a32e4adf92a77d9a8a19e6
-  status: used
-  text_sha256: ec6471aff2a3c9d9b43e5303fa3258ae765cdc00cf3321cdb9299fff5fb9c53c
-  words: 1852
-  rates:
-    ai-vocabulary: 0.0
-    em-dash: 1.0799
-    boldface: 0.0
-    rule-of-three: 5.3996
-    negative-parallelism: 0.0
-    plays-a-role: 0.0
-    copula-avoidance: 0.0
-  failures: 0
-  phrase_findings: 0
-  vague_findings: 0
-  other_warnings: 0
-  fired: {}
+  status: too-short
+  words: 882
 - pmcid: PMC7545231
   doi: 10.1002/cre2.301
   published: '2020-07-11'
   set: tune
   xml_sha256: 44978e6a7394f580679a5e98328ef7e3e7d9cd4662fb7f65a7679954d8ef0cae
   status: used
-  text_sha256: d186544a445a5ebccf8e59e5e557ede1762d3af0b126134d5d714d7adc7812b9
-  words: 4293
+  text_sha256: 045016999fcb28a1ee7a7ec77c06f4d4153211e6aaaecbbe35fd5b39a55f07fe
+  words: 4266
   rates:
-    ai-vocabulary: 0.4659
+    ai-vocabulary: 0.4688
     em-dash: 0.0
-    boldface: 0.2329
-    rule-of-three: 2.3294
+    boldface: 0.0
+    rule-of-three: 2.3441
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4888,13 +4874,13 @@ candidates:
   set: tune
   xml_sha256: 68bf394c44a2fdfa50e3c2a2e0402b0c29853e2d546b54cbafd478c13c108c55
   status: used
-  text_sha256: c5c2e00319c2ba45959916f7863ee6573a92b2fcf9e0818c877b6f9923ef5085
-  words: 3182
+  text_sha256: a4bc07f96b4d5021883db1d2dd2f19290a177703fa4ce321c7de2dbf70bb0788
+  words: 2989
   rates:
-    ai-vocabulary: 0.6285
+    ai-vocabulary: 0.6691
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.5141
+    rule-of-three: 2.6765
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4909,13 +4895,13 @@ candidates:
   set: tune
   xml_sha256: f62648e1443533498f7164d6e32d75db67db70b2808b7d4c3dd5bfc8e51a3405
   status: used
-  text_sha256: b7fa802c01100ab61bbfbfe14adc269cf4f7ad051b4a5fc4407fc20cf037aa09
-  words: 8764
+  text_sha256: fad7320f89a3535880d4da4894738cc94db10ccc9f17682b87d54d6935277026
+  words: 8616
   rates:
-    ai-vocabulary: 0.6846
-    em-dash: 1.8257
-    boldface: 1.141
-    rule-of-three: 0.9128
+    ai-vocabulary: 0.6964
+    em-dash: 1.6249
+    boldface: 1.1606
+    rule-of-three: 0.8124
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4972,13 +4958,13 @@ candidates:
   set: held-out
   xml_sha256: 69771ebe6096ec7bd491995f7753ccd4d24d028ff87bbc08cb26c98441f8f1fc
   status: used
-  text_sha256: e42f7f5c40d2e137f0ced69fa342ed22cbb443714cd5d7826eaef52450ea8eb4
-  words: 6062
+  text_sha256: 9fe073fbb6a1733961fff2b0c58257cd3901efb70edbaeb5d78e9a3e73b4c1f9
+  words: 5747
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
-    boldface: 2.3095
-    rule-of-three: 0.3299
+    boldface: 2.4361
+    rule-of-three: 0.348
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -4993,7 +4979,7 @@ candidates:
   set: held-out
   xml_sha256: c4e5e83033c0a96b945b94b3757543a65cc5200b4eeb614aff4588ae8024dc43
   status: used
-  text_sha256: 369a7f7565f0c634e26995b182fbff8eb79f829bf5e14ce04c210ca64d76d96b
+  text_sha256: 4e8f50b8d6bb9cf65bbf39ff00e05fcc8327baf1581262b8dcd1c13426befb53
   words: 5702
   rates:
     ai-vocabulary: 0.5261
@@ -5036,13 +5022,13 @@ candidates:
   set: tune
   xml_sha256: 117b1910dcba741f82a291ddc7c764b578b44ccf06d1c76abe453a99aa6c4d7f
   status: used
-  text_sha256: b8a8e7af2a78e162e7108777eabc6b4636413ff7f334752432fb9db05fde7d08
-  words: 2327
+  text_sha256: 657c7d1bb21a87d7e7606f55652866310dbc06cf5d0400ab6a5a81abe8364d5a
+  words: 2278
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 3.0082
+    rule-of-three: 3.0729
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -5057,14 +5043,14 @@ candidates:
   set: tune
   xml_sha256: ec72000ab3b9431a5249d26a4bd65aa56a7c40633d1a10bf027158956f93dbb4
   status: used
-  text_sha256: 496bbadf2e7db34825f5e18e20857c4ba44306e9b4f25d134ff19e0985ed1533
-  words: 3373
+  text_sha256: a5b0d2fc14bd78449d2e7eee64ecddf6f11e16d525b8c9f654ad108e940001ea
+  words: 3272
   rates:
-    ai-vocabulary: 1.1859
-    em-dash: 1.1859
+    ai-vocabulary: 1.2225
+    em-dash: 1.2225
     boldface: 0.0
-    rule-of-three: 1.7788
-    negative-parallelism: 0.2965
+    rule-of-three: 1.8337
+    negative-parallelism: 0.3056
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -5123,15 +5109,15 @@ candidates:
   set: tune
   xml_sha256: 0ccc59296c24186d72c9aa0876f945d4628cd3c6b456b432c5217bbd1102f46d
   status: used
-  text_sha256: 16ad0d184de3d541ac0b544a2808f0de4d97c083e88535dc79d4b6ce69095c23
-  words: 7421
+  text_sha256: aa7482db74a96b7c9787f4a30e7b5b31abf4b1d451f9b68a06c605cee08ec61f
+  words: 7212
   rates:
-    ai-vocabulary: 0.9433
-    em-dash: 0.2695
+    ai-vocabulary: 0.9706
+    em-dash: 0.2773
     boldface: 0.0
-    rule-of-three: 0.2695
+    rule-of-three: 0.2773
     negative-parallelism: 0.0
-    plays-a-role: 0.1348
+    plays-a-role: 0.1387
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -5144,13 +5130,13 @@ candidates:
   set: tune
   xml_sha256: 9413271acf8bcebf7403908d71667e0b6809f3b3f5a9d25f16b21cd5a49707be
   status: used
-  text_sha256: b33d11d190d963bc29d4f93e96a78560a0a017efefd98f7a88a003b60b00181b
-  words: 2191
+  text_sha256: f42453005a075520126ec8a0d3cd8d6456049f97f7f9042a65a9b327ff1fa08f
+  words: 2162
   rates:
-    ai-vocabulary: 0.4564
+    ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.4564
+    rule-of-three: 0.4625
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -5165,16 +5151,16 @@ candidates:
   set: tune
   xml_sha256: 8f773348284f477043e4e7f906ecc0b361ab78fbb05caf9de9105f97d04bf0ae
   status: used
-  text_sha256: a0c7a66989efc2256e9222116cfc7a6ab7f8110a8079afeb811e4935c59b7d41
-  words: 4838
+  text_sha256: eac9e1bebf419cc62456a9d744bc5eb1a45e4628ae5814a5f90c4611643fb534
+  words: 4586
   rates:
-    ai-vocabulary: 1.4469
-    em-dash: 0.2067
+    ai-vocabulary: 1.5264
+    em-dash: 0.2181
     boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.2067
+    copula-avoidance: 0.2181
   failures: 0
   phrase_findings: 1
   vague_findings: 0
@@ -5208,14 +5194,14 @@ candidates:
   set: tune
   xml_sha256: 5a10bfaa60a97d104eca89fb1e092b24e8aad4d75d85409e1f8f6b03ec977c6b
   status: used
-  text_sha256: ae590d33aeca23520d095e069c635b6745aee3159a04cee5d66552bbf44a931b
-  words: 3116
+  text_sha256: 46f611a9e003458b60193599f2afb9a91a864185f4e39a356ddd515585be7f86
+  words: 3069
   rates:
-    ai-vocabulary: 0.3209
+    ai-vocabulary: 0.3258
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.6046
-    negative-parallelism: 0.3209
+    rule-of-three: 1.6292
+    negative-parallelism: 0.3258
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -5229,16 +5215,16 @@ candidates:
   set: held-out
   xml_sha256: 368e7ea694097ebb4e8218ec476dd8d4a10145534c6d3214bd49f99a0111b72d
   status: used
-  text_sha256: e801f6ce16ecda67f7da1cfebc21ceac49d843f906550d91696dbe159d216822
-  words: 3654
+  text_sha256: cbdd85e88bd6d46002fdfacb54de2bd44ee6e32fd092dc195796c723210d6ef4
+  words: 3566
   rates:
-    ai-vocabulary: 0.5473
+    ai-vocabulary: 0.5609
     em-dash: 0.0
-    boldface: 0.5473
-    rule-of-three: 1.0947
+    boldface: 0.5609
+    rule-of-three: 1.1217
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.2737
+    copula-avoidance: 0.2804
   failures: 0
   phrase_findings: 1
   vague_findings: 0
@@ -5272,16 +5258,16 @@ candidates:
   set: tune
   xml_sha256: c08c2042597e853b563f14bee2d19529846ee5f65f2baf0b940af25ff70baa3f
   status: used
-  text_sha256: df93e51fab8aeb102de280b8e82feced21bb5f3695251cd160b3710d68d06da9
-  words: 5639
+  text_sha256: 19c3b09f984a5da10f57123c62415aaf36360fad0102979f176c4ff7cc8cff97
+  words: 5614
   rates:
-    ai-vocabulary: 0.7093
+    ai-vocabulary: 0.7125
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.064
+    rule-of-three: 1.0688
     negative-parallelism: 0.0
-    plays-a-role: 0.1773
-    copula-avoidance: 0.7093
+    plays-a-role: 0.1781
+    copula-avoidance: 0.7125
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -5293,14 +5279,14 @@ candidates:
   set: tune
   xml_sha256: 26195579ae97dfdc2fffeca178ab378844416e24590a57f6aa3c39fcf5e302b7
   status: used
-  text_sha256: 0a210a15c260718d3cf20495150033794cc3d908867e4db79b621dc68c19bdc6
-  words: 3371
+  text_sha256: fbc82e3adc38294f7a0c18d54767f96dfb42146d641b526510441872d7b8e53d
+  words: 3197
   rates:
-    ai-vocabulary: 0.8899
-    em-dash: 2.9665
+    ai-vocabulary: 0.6256
+    em-dash: 3.1279
     boldface: 0.0
-    rule-of-three: 1.7799
-    negative-parallelism: 0.2966
+    rule-of-three: 1.8768
+    negative-parallelism: 0.3128
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -5314,16 +5300,16 @@ candidates:
   set: tune
   xml_sha256: 61051e697aef0f79ec4d42f77990f03155b81b32e66417d029d6bc26b79bce13
   status: used
-  text_sha256: 0f32f9a2dbe9e49b9ad100e0a0432f70c2b68572fe171f68392f6ccc03bed2ef
-  words: 5213
+  text_sha256: 7dab57d974c83f74191da9ce35b2e053016c7629a88ae893093d3ac58ad11b1e
+  words: 5071
   rates:
-    ai-vocabulary: 1.151
-    em-dash: 0.5755
+    ai-vocabulary: 1.1832
+    em-dash: 0.5916
     boldface: 0.0
-    rule-of-three: 3.4529
+    rule-of-three: 3.5496
     negative-parallelism: 0.0
-    plays-a-role: 0.1918
-    copula-avoidance: 0.1918
+    plays-a-role: 0.1972
+    copula-avoidance: 0.1972
   failures: 0
   phrase_findings: 0
   vague_findings: 1
@@ -5419,13 +5405,13 @@ candidates:
   set: tune
   xml_sha256: 80ff4f1cd58417efdc7b2ebe61097422137c189f32be0d07893b9767b1a91f88
   status: used
-  text_sha256: f14676598793b630b4698be7cc5912d4ad2fe8f5bfe63e1589a6aa288c93be7d
-  words: 3322
+  text_sha256: da31f97939cc5bd8938c9e716d4dde60cf3c7f498c821e82cc0e0f25b68ec0bc
+  words: 3198
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.9031
+    em-dash: 0.9381
     boldface: 0.0
-    rule-of-three: 1.2041
+    rule-of-three: 1.2508
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -5461,13 +5447,13 @@ candidates:
   set: held-out
   xml_sha256: 9e1975ceb6fb4708bc40c287840db269668e6a10525d72c985c93bf7d0104440
   status: used
-  text_sha256: 94d4f323b480950d79840c51dcf454b564d014bd270d887178985fb062729686
-  words: 4826
+  text_sha256: 222f06b32db584cc78e022bc392a00cc60448b4109b0f40c5dbdf6370a3c0b36
+  words: 4594
   rates:
-    ai-vocabulary: 1.0361
+    ai-vocabulary: 1.0884
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.4144
+    rule-of-three: 0.4354
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -5524,15 +5510,15 @@ candidates:
   set: tune
   xml_sha256: af117965f341da4345b6b9932e7cf9eaac923dd54d7c41a9bbe4a0476da83a9a
   status: used
-  text_sha256: ca578fe7f6f895caf74668ff84d77b188dba72b1e970a3fb39b7919f4c8eb402
-  words: 3383
+  text_sha256: 4f355bcfa306b5050291e3322ec9da4653578699a6b7eefc22ee54ec852a42a9
+  words: 3359
   rates:
-    ai-vocabulary: 0.2956
+    ai-vocabulary: 0.2977
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.5912
+    rule-of-three: 0.5954
     negative-parallelism: 0.0
-    plays-a-role: 0.2956
+    plays-a-role: 0.2977
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -5545,12 +5531,12 @@ candidates:
   set: tune
   xml_sha256: 89a9116d634d740eca2ef7bec2afeaa31f4571014b55ad70ac15373d2b786026
   status: used
-  text_sha256: be9f5b9fe5a25707970828217345f0f8c7529b6defaddb7c67e8da9ac3884c56
-  words: 10878
+  text_sha256: 45eff0c71a6b62e4b03e7c379220b0405e5d313e3bb1675d60e2d9478db50509
+  words: 10752
   rates:
-    ai-vocabulary: 0.6435
-    em-dash: 2.3901
-    boldface: 0.1839
+    ai-vocabulary: 0.651
+    em-dash: 2.4182
+    boldface: 0.186
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -5566,15 +5552,15 @@ candidates:
   set: tune
   xml_sha256: 39c79b4bfefe311cb62b30e98701569192e344f1ba3dc37b9ccd95c27b0ae9cd
   status: used
-  text_sha256: b764e71d7ef48a049cc3874eb1bac53593291e85781b9be58cbb5da7c9a59ab8
-  words: 3963
+  text_sha256: f5eb146882ac0ffb5444758926f6936766eb8ad499f7d394089776858ee778f6
+  words: 3934
   rates:
-    ai-vocabulary: 0.2523
+    ai-vocabulary: 0.2542
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.757
+    rule-of-three: 0.7626
     negative-parallelism: 0.0
-    plays-a-role: 0.2523
+    plays-a-role: 0.2542
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -5587,13 +5573,13 @@ candidates:
   set: tune
   xml_sha256: a11d57346ed3602f975d1a1ba441ec0b84ad4ad5931448ef1a4ba7d79efac73f
   status: used
-  text_sha256: eb0c0b92c0d859cc7c610505fd320530b9bff8dd9dff6f7547f00ad3d5cb5227
-  words: 5877
+  text_sha256: 1fa483d5ff3d672653135e6cc662f4237385d99a4bd58c7620b15b2a97f1da2e
+  words: 5874
   rates:
-    ai-vocabulary: 0.5105
-    em-dash: 0.3403
+    ai-vocabulary: 0.5107
+    em-dash: 0.3405
     boldface: 0.0
-    rule-of-three: 0.8508
+    rule-of-three: 0.8512
     negative-parallelism: 0.1702
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -5608,14 +5594,14 @@ candidates:
   set: tune
   xml_sha256: 37e5132764729522baabc6730b1898dc570e7e1d6f9e1993c30727db97fa90ff
   status: used
-  text_sha256: aa98f49306d499f16f9f6e1f858a4de80234ef1965eea3415c0bc50b8cfd1f06
-  words: 7121
+  text_sha256: ef95749c5dfce427f9983d801dc2e18587821fada06cf25293fb9aa149872296
+  words: 6833
   rates:
-    ai-vocabulary: 0.4213
+    ai-vocabulary: 0.439
     em-dash: 0.0
-    boldface: 0.1404
-    rule-of-three: 0.2809
-    negative-parallelism: 0.1404
+    boldface: 0.1463
+    rule-of-three: 0.2927
+    negative-parallelism: 0.1463
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -5693,11 +5679,11 @@ candidates:
   set: tune
   xml_sha256: 31be1e00cecbb341e7d7a260ee0c83a78da16852343bb3d3ce777959f126d250
   status: used
-  text_sha256: 7401b6f6042801f581b2b99d78f9121b3c219d67bdfaf37717ef92d7b8acdd9e
-  words: 3704
+  text_sha256: d8e1a526666c54cfa697c91b7f6afe5e3fefe6b6b65abb01e3f0e53b78e4038b
+  words: 3534
   rates:
-    ai-vocabulary: 1.3499
-    em-dash: 0.54
+    ai-vocabulary: 1.4148
+    em-dash: 0.5659
     boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
@@ -5715,13 +5701,13 @@ candidates:
   set: tune
   xml_sha256: 956149f65705293ede45163200f7938a2d5033750ab6dc84568108876e37692a
   status: used
-  text_sha256: f34a2d92fd5d967cf62bd8edff3aec2902186718a8f6181db2ff1bd7b67058c5
-  words: 3989
+  text_sha256: ca9c27e4b6f3afb8f79fd987d7ec7b48e8b01c37b0ce61a94ccef167ae6bd10e
+  words: 3778
   rates:
-    ai-vocabulary: 0.7521
+    ai-vocabulary: 0.7941
     em-dash: 0.0
-    boldface: 2.0055
-    rule-of-three: 1.2534
+    boldface: 2.1175
+    rule-of-three: 1.3235
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -5736,10 +5722,10 @@ candidates:
   set: tune
   xml_sha256: a9d389e0c17c02ceccab0de393cd95cd11e6b48d51700380a474b0a5a9524aa9
   status: used
-  text_sha256: f79467e1f6e575617cea98a8666d72c89cc88b433e1d563ecf0aa095e5cbef65
-  words: 3125
+  text_sha256: 2707e221f9be1acd43ab9b0f43a3b5a9d8f9178c69815cdb646ba1fc30883cf1
+  words: 2613
   rates:
-    ai-vocabulary: 0.96
+    ai-vocabulary: 1.1481
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
@@ -5778,13 +5764,13 @@ candidates:
   set: tune
   xml_sha256: ed1e2ba27dd3c29f2661edfc1afcd7ee19fbfa0cb3db1342f5effc7d917866f4
   status: used
-  text_sha256: 8e46df1d3afe1ca024f7ca892f426d1113494e38c89648cebafe34dbdff7657d
-  words: 4059
+  text_sha256: f3a4756b66a219708e9f6698c6a2f567f98043d4f62197c6118e40881faea0b5
+  words: 3966
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.9564
+    rule-of-three: 3.0257
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -5799,13 +5785,13 @@ candidates:
   set: tune
   xml_sha256: a8d0fbd29b30f464a5afdbde84ac8192f6c502bba716ed9bdb9eb2c17a1c12cb
   status: used
-  text_sha256: 8f0601dd149dea22dfe436aa36b9f580620b744cfd96ed39e079aa4f935ea0b5
-  words: 4800
+  text_sha256: e4059b9327773bb849071666de33a4f44925490433d58b84048275252efadeaa
+  words: 4675
   rates:
-    ai-vocabulary: 0.2083
-    em-dash: 0.4167
+    ai-vocabulary: 0.2139
+    em-dash: 0.4278
     boldface: 0.0
-    rule-of-three: 2.2917
+    rule-of-three: 2.139
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -5820,15 +5806,15 @@ candidates:
   set: held-out
   xml_sha256: ca49f168a02242324406ad5d9ff2e7d774ae01bcbc8549f4c1fe826b867b4e04
   status: used
-  text_sha256: e11c266b84e354048b33dda939c85ce0f7a482fe73bb0c88bb004f542e39d1da
-  words: 2903
+  text_sha256: 1a800e5858ed3342d7b728090c45dc3dee1c446d406aef146275e571dae0b04b
+  words: 2853
   rates:
-    ai-vocabulary: 0.6889
+    ai-vocabulary: 0.701
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 5.856
+    rule-of-three: 5.9586
     negative-parallelism: 0.0
-    plays-a-role: 0.3445
+    plays-a-role: 0.3505
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -5884,16 +5870,16 @@ candidates:
   set: tune
   xml_sha256: 7854a9d99e2973f98a544d26280feeb913e2c0c0fa6ae6717159e123f25fc5f7
   status: used
-  text_sha256: b4fced9e26f38c67917d9c1f5bcfb3468c23a47f3e40a591c0754ba8c8f8f70b
-  words: 4289
+  text_sha256: f9968c5c36d52a90c44fd1b4d319c2238e9aa2d3ba9a7dcf02ee309a5149f078
+  words: 4136
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.9326
+    rule-of-three: 0.9671
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.4663
+    copula-avoidance: 0.4836
   failures: 0
   phrase_findings: 2
   vague_findings: 0
@@ -5906,14 +5892,14 @@ candidates:
   set: tune
   xml_sha256: 00c9542744a2f670950ed79bdb040dae462d3fe305d7ff01bc017ae1d44cc163
   status: used
-  text_sha256: af7559f886659b1d90a8705ce599f3d4afaf2876c899538d9c40a7167655fad2
-  words: 3389
+  text_sha256: fa22d9fc4fc163f8ea6f4e8a4e48808dcfc368ba7953b8f324765deac3aba711
+  words: 3212
   rates:
-    ai-vocabulary: 0.2951
+    ai-vocabulary: 0.3113
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 3.8359
-    negative-parallelism: 0.2951
+    rule-of-three: 4.0473
+    negative-parallelism: 0.3113
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -5928,14 +5914,14 @@ candidates:
   set: held-out
   xml_sha256: c379bfe5e4398981822553a0b5c964f34cd08539d6d88c31fbee288f7113b8d4
   status: used
-  text_sha256: 7b9c7d00dffdcf0af0453badfb5ccb2cd844ed2958ca5c6821e3de544a6720eb
-  words: 3220
+  text_sha256: f2ada5ca2a6945a8ef1c2b11016fe411097ca394a3bc9bc7b8869cc4dd87b0b3
+  words: 3181
   rates:
-    ai-vocabulary: 0.9317
+    ai-vocabulary: 0.9431
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.6211
-    negative-parallelism: 0.3106
+    rule-of-three: 0.6287
+    negative-parallelism: 0.3144
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -5971,13 +5957,13 @@ candidates:
   set: tune
   xml_sha256: 12651f462077b0d87afce5015aea9a41d3c381aa3e4710706a30cba111630731
   status: used
-  text_sha256: 8ce0f161b501339e3695bd7fc37e1df4fcfc46a7e56f38a8aa612ab72a4d944d
-  words: 4948
+  text_sha256: 961ecaebf2b270740fb58caa174952f5ff33bafd98046649a17738d3d4fb06a6
+  words: 4907
   rates:
-    ai-vocabulary: 1.2126
+    ai-vocabulary: 1.2227
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.2126
+    rule-of-three: 1.2227
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -5993,13 +5979,13 @@ candidates:
   set: held-out
   xml_sha256: 54ffb479115781f88a7d9aefe2cdea9554f2312a47cdc8493fd5f0295beda956
   status: used
-  text_sha256: e8c897f2714cd988fac7d5dcf517360ada10a26eb91a1cf46e99f338a9a31320
-  words: 4616
+  text_sha256: 3902f13d06fd78bdc680940d6b391f8c327bc893f38231abbee7c06eef47f593
+  words: 4441
   rates:
-    ai-vocabulary: 0.6499
+    ai-vocabulary: 0.6755
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.0832
+    rule-of-three: 0.9007
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6014,13 +6000,13 @@ candidates:
   set: tune
   xml_sha256: 64c87ffd91940d7dd17826cc1eb395dc96aedb2fa001674d728373fae539e9b6
   status: used
-  text_sha256: 568017828da5b2c618ee231286344593d6b64c7e0f5eb14f83313b9e1e88c0c6
-  words: 3049
+  text_sha256: 84342a831083265e9e243ed449df7c9181b7a89e421284a785e62ee2b18ef5ff
+  words: 2966
   rates:
-    ai-vocabulary: 0.328
+    ai-vocabulary: 0.3372
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.6399
+    rule-of-three: 1.6858
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6035,13 +6021,13 @@ candidates:
   set: tune
   xml_sha256: f225ebf63ed342fa605b9019591e95a56cf0e1cf20ea8980e4fe26b5e9d4afa4
   status: used
-  text_sha256: 3593af714b2b4a29e117ae50065010e9f5323c1974752a9a4bd49e782a44325e
-  words: 5452
+  text_sha256: 9dd6842b4184f68651f50f8cefd54e125ac1218599f7b217a1fae0c57e718979
+  words: 5424
   rates:
-    ai-vocabulary: 0.5503
+    ai-vocabulary: 0.5531
     em-dash: 0.0
-    boldface: 7.7036
-    rule-of-three: 2.3844
+    boldface: 7.7434
+    rule-of-three: 2.3968
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6056,15 +6042,15 @@ candidates:
   set: tune
   xml_sha256: c35ffd2c9f1c67dc6c118971da240d4a6c372f7455a67a3791a4bb138fce3612
   status: used
-  text_sha256: 89f57c4edc37b1bd8bffa9a255c5efa1d145afc06193736360ff393e5887129d
-  words: 4032
+  text_sha256: 6630ab32b3a40988ce1013096a926aa7f71c51975c7a72b40f2f3529fc377397
+  words: 3943
   rates:
-    ai-vocabulary: 1.2401
-    em-dash: 0.9921
+    ai-vocabulary: 1.2681
+    em-dash: 1.0145
     boldface: 0.0
-    rule-of-three: 1.7361
+    rule-of-three: 1.7753
     negative-parallelism: 0.0
-    plays-a-role: 0.248
+    plays-a-role: 0.2536
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -6078,13 +6064,13 @@ candidates:
   set: held-out
   xml_sha256: 1013557bb7558a0744f1585c34f6d9805f7bd112cf3b4facec75d823f3416bed
   status: used
-  text_sha256: 86794f993acab340026e92e5c1ee8de98564c6cce816d54fdf45b0ad3e20006a
-  words: 1870
+  text_sha256: 716a18948f344a0a303ce5d7261d57c0e95d45b9fac403cdeb678bda6d3d87a9
+  words: 1832
   rates:
-    ai-vocabulary: 0.5348
+    ai-vocabulary: 0.5459
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.139
+    rule-of-three: 2.1834
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6099,13 +6085,13 @@ candidates:
   set: tune
   xml_sha256: 856941f593061afc28be46ca72b429654d1dfac213538f73b03d8d7360b92187
   status: used
-  text_sha256: 603199f260e356e2306730c95ab70b1531870b8e0084f7054858dbf8d11a9c7a
-  words: 4202
+  text_sha256: fafbc00938aba6efc07dd916b771673c4c088efd4c4970d64db6e1e3119afd0c
+  words: 4097
   rates:
-    ai-vocabulary: 0.7139
+    ai-vocabulary: 0.7322
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.9039
+    rule-of-three: 1.4645
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6141,13 +6127,13 @@ candidates:
   set: tune
   xml_sha256: 6870aa9ec24dae3eafddd9705e775dc7e062f42616076ec608222bf1c21f924a
   status: used
-  text_sha256: f835894c0142437cc6e6fbfee5e33a4505a5f972ba8267612908faa642b9bfd4
-  words: 2671
+  text_sha256: 99519863ef86fcc5fbed66bcceda0eb150ea6c2049913a493b41bb918c4f926f
+  words: 2610
   rates:
-    ai-vocabulary: 0.7488
+    ai-vocabulary: 0.7663
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.1232
+    rule-of-three: 1.1494
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6165,13 +6151,13 @@ candidates:
   set: tune
   xml_sha256: 69e91f37e8f6e5ec7b1b3d29a70ca25ece49b5bb5c05fca91747d6839620f052
   status: used
-  text_sha256: 434db5d8349bc6393ced343d57a463cb8ded4db296eb8f7c0e6b6b2d78124e47
-  words: 2825
+  text_sha256: f00e9e9933edf1d3954adb640d200d366486983175e64d254c8d994af1017364
+  words: 2783
   rates:
-    ai-vocabulary: 0.354
+    ai-vocabulary: 0.3593
     em-dash: 0.0
-    boldface: 2.8319
-    rule-of-three: 3.8938
+    boldface: 2.8746
+    rule-of-three: 3.9526
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6208,16 +6194,16 @@ candidates:
   set: tune
   xml_sha256: ebe19be229bf9023540b397332afbc984f924c540308cd3ae70962070e5bded7
   status: used
-  text_sha256: 92ced1b141df6c82a2c9f50e57d02042cd88115fdb9d6026f3578fff8d9c3686
-  words: 6821
+  text_sha256: 4a17601d53f424fdc2486f9f0ae35e45173c5212d9d652d6fec0683f035d6546
+  words: 6653
   rates:
-    ai-vocabulary: 0.733
+    ai-vocabulary: 0.7515
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.7593
-    negative-parallelism: 0.1466
+    rule-of-three: 1.8037
+    negative-parallelism: 0.1503
     plays-a-role: 0.0
-    copula-avoidance: 0.1466
+    copula-avoidance: 0.1503
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -6229,16 +6215,16 @@ candidates:
   set: tune
   xml_sha256: 497fc32c2186825193fc57a8e470de6fe31b869a8be030668044dfa59d0be1e9
   status: used
-  text_sha256: 559890adbbbbf385f9cfcca831ed2cfb05db28a968057e3f8fe42a556df6cbc1
-  words: 3764
+  text_sha256: 0613b2534d44ec30e068e8819556038ddafbb06ba46504f9b1053a82f5af736e
+  words: 3675
   rates:
-    ai-vocabulary: 1.8597
-    em-dash: 0.5313
+    ai-vocabulary: 1.6327
+    em-dash: 0.5442
     boldface: 0.0
-    rule-of-three: 4.2508
-    negative-parallelism: 0.2657
+    rule-of-three: 4.0816
+    negative-parallelism: 0.2721
     plays-a-role: 0.0
-    copula-avoidance: 0.2657
+    copula-avoidance: 0.2721
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -6292,13 +6278,13 @@ candidates:
   set: tune
   xml_sha256: 6a687de24dc232a8f587b7e6ffe837ac804d1332ad35a3210002abb6a029b9e6
   status: used
-  text_sha256: 8a37b5e5b8bc05679e339083eb59bdeda869dd624b22f72b859eef441a00a6fe
-  words: 4918
+  text_sha256: 03dea3ffe69766cc9f55f770b32b64643d1212f16fc2f44ca2dcdec7f74efddf
+  words: 4815
   rates:
-    ai-vocabulary: 0.61
-    em-dash: 0.61
+    ai-vocabulary: 0.6231
+    em-dash: 0.6231
     boldface: 0.0
-    rule-of-three: 3.2534
+    rule-of-three: 3.3229
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6313,15 +6299,15 @@ candidates:
   set: tune
   xml_sha256: 9e1aae017bc7f07aaf8afda597eeb3f33295d5a283045b4d84cb8cc680bdbe59
   status: used
-  text_sha256: 6015dfa290a2ed120ade274f6252d7de9502199b1c58c144f99a1c82a4ac39e4
-  words: 4015
+  text_sha256: 0ae814eb86c997630172e8b887894abd9b603d369e43048ed665e0dd3258064c
+  words: 3893
   rates:
-    ai-vocabulary: 0.7472
+    ai-vocabulary: 0.7706
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 3.736
+    rule-of-three: 3.8531
     negative-parallelism: 0.0
-    plays-a-role: 0.2491
+    plays-a-role: 0.2569
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -6376,13 +6362,13 @@ candidates:
   set: held-out
   xml_sha256: 81d6559d4f8a2516873c529afcc8535e2748852a29c1e28cc253bb58227bc344
   status: used
-  text_sha256: f1776c7e306a8e9a17ea74b93b695a142cca1bcae63c7b9ec9d2cdfd44870a39
-  words: 6420
+  text_sha256: f1579a0ba73852bd6ff6602d6c3f5e718cfd189dc5b64835ad804570096d74d3
+  words: 6408
   rates:
-    ai-vocabulary: 0.3115
+    ai-vocabulary: 0.3121
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 3.1153
+    rule-of-three: 3.1211
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6397,13 +6383,13 @@ candidates:
   set: tune
   xml_sha256: f146025b8fdb6f7c6d16893e18ae621b141a4c0226b8124aaa5d6de99416161c
   status: used
-  text_sha256: fe722193ae9adaa0183e457ca1e72b62af5b14752ceeb3a9114adc943a95edc4
-  words: 2461
+  text_sha256: 33036101023230031a8c10c606225d451d56c5f1dd1749b1cd26cb326909a4e5
+  words: 2367
   rates:
-    ai-vocabulary: 0.4063
+    ai-vocabulary: 0.4225
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.438
+    rule-of-three: 2.5349
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6418,15 +6404,15 @@ candidates:
   set: tune
   xml_sha256: a9bcca56119ba5fb4d74d1709f3b72807da5c1f35df892cc7dbc2df166ca697d
   status: used
-  text_sha256: d56bc36c8a49b0a9ec6488400b92e74977426bd2cb27145ef8c05d75f89268c6
-  words: 2412
+  text_sha256: 66628505e1055f75a8eb2d3807289e9c1b762a622be2a02946461d5b5f6cffb2
+  words: 2325
   rates:
-    ai-vocabulary: 0.8292
+    ai-vocabulary: 0.8602
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.8292
+    rule-of-three: 0.8602
     negative-parallelism: 0.0
-    plays-a-role: 0.4146
+    plays-a-role: 0.4301
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -6460,13 +6446,13 @@ candidates:
   set: held-out
   xml_sha256: d7487aec55af1012025b9193047cf36dc7af28059ef7f6b59c8605c3d88e6b5c
   status: used
-  text_sha256: 62d3b1a06bfe4cc279d2207d2d5ea81e35ce70f68a9a0e417969b7699968753e
-  words: 5460
+  text_sha256: 3c7fc52321c0df3186bb564121b27793e7f237a2d0ab6fb85108abcb464aa503
+  words: 5383
   rates:
-    ai-vocabulary: 0.5495
+    ai-vocabulary: 0.5573
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.5495
+    rule-of-three: 0.3715
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6481,13 +6467,13 @@ candidates:
   set: tune
   xml_sha256: 1cfddbf2fe0e82b2842362a4797c91cdd2c9ba3010b12c4b3ecd27f2d890a9cd
   status: used
-  text_sha256: 5e1073739680ec47ed6f6e15c0f5cecdb385fa3c77263d836c2a34e8ba79209c
-  words: 6031
+  text_sha256: 9feb30cf39acbfb6b56375a0f92f350f33c23a77476e9716d113e8a1acb7f9b7
+  words: 5667
   rates:
-    ai-vocabulary: 0.4974
-    em-dash: 0.1658
-    boldface: 0.9949
-    rule-of-three: 2.3213
+    ai-vocabulary: 0.5294
+    em-dash: 0.1765
+    boldface: 0.0
+    rule-of-three: 2.4704
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6502,13 +6488,13 @@ candidates:
   set: tune
   xml_sha256: dbca84303620f78bf169d64973e070047f4407e20d8788cad36f5a2f5e2e3ebe
   status: used
-  text_sha256: d365e6d37f7f6f28ca3dc1233c34d3f94911805220d6511333d6678605d57999
-  words: 3676
+  text_sha256: 8bbf1f646aeb07010b29ae7129efe88fdcb06ef85c3b26ab89850fe6f05dc56c
+  words: 3622
   rates:
-    ai-vocabulary: 1.0881
-    em-dash: 1.0881
+    ai-vocabulary: 1.1044
+    em-dash: 1.1044
     boldface: 0.0
-    rule-of-three: 2.1763
+    rule-of-three: 2.2087
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6523,13 +6509,13 @@ candidates:
   set: held-out
   xml_sha256: 1938f5f3675949a5bc66449a53dd943e8eb8f7e9b3a6b4408a8b94cd222658ff
   status: used
-  text_sha256: 641d1ebd8a8499e846b0e85fb0f6636d47ac23a6d14570824aac6bbc2160ffb1
-  words: 5743
+  text_sha256: ca77e65f4d0f6a1bbab4ae56ebf8bc2be1243134a89258da1914e99e47da1373
+  words: 5700
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.3483
+    em-dash: 0.3509
     boldface: 0.0
-    rule-of-three: 1.2189
+    rule-of-three: 1.2281
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6566,13 +6552,13 @@ candidates:
   set: tune
   xml_sha256: c3b83f175edaac627193f8f512548fa3e48ef34ab4833096b70c0cf946438643
   status: used
-  text_sha256: ffc661033d020221273b3e0845a98ef5137e95db90640969cc63076e463eb6ec
-  words: 3092
+  text_sha256: 22f56d9148000e25d9496b7d767ef11961740abca9cafa33982a1c9eed505e8e
+  words: 2988
   rates:
-    ai-vocabulary: 2.2639
+    ai-vocabulary: 2.3427
     em-dash: 0.0
-    boldface: 5.4981
-    rule-of-three: 1.9405
+    boldface: 5.6894
+    rule-of-three: 2.008
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6587,13 +6573,13 @@ candidates:
   set: tune
   xml_sha256: 1947290fc870d17390487fa38892fa5e08425218e8807b279c880fa19ddf9267
   status: used
-  text_sha256: ea6d8370a9ad20c17927d19074f05f646c33801caea5a93d73f374811cdfb735
-  words: 2662
+  text_sha256: c1744768eb5f6e725fac9c1e6c908efd07f9aa8fc64d07463c3dce25189efaa9
+  words: 2643
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.7513
+    em-dash: 0.7567
     boldface: 0.0
-    rule-of-three: 0.7513
+    rule-of-three: 0.7567
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6651,14 +6637,14 @@ candidates:
   set: tune
   xml_sha256: 21a4934bccddcd5e365aba058e5854474e4ec49a301b4ea6007a11ca6d049b5c
   status: used
-  text_sha256: 7ea0cb4ddfd7bba4cf8250485cf64758635c5fd5e2bd39ca93df5302ef7f4de3
-  words: 9578
+  text_sha256: 8f93633e632811d084e54f75247a61f14133ef21a69998f099f1a45061a3608c
+  words: 9549
   rates:
-    ai-vocabulary: 1.0441
-    em-dash: 0.8352
-    boldface: 2.819
-    rule-of-three: 0.9397
-    negative-parallelism: 0.1044
+    ai-vocabulary: 1.0472
+    em-dash: 0.8378
+    boldface: 2.8275
+    rule-of-three: 0.9425
+    negative-parallelism: 0.1047
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -6715,15 +6701,15 @@ candidates:
   set: tune
   xml_sha256: d87229ce6f7bd96ba6a8c276387fedad5e32ffee8faec1666b510d96a287d3c0
   status: used
-  text_sha256: 76c0f315be9f494f69ba53b5517cff91e1ed696d156ce759be858c37dc1e6771
-  words: 6171
+  text_sha256: 55ee656ede7a7a7ebbc6d80163ecbde97248bd9bdf7ec88792c99edabc0efa54
+  words: 6064
   rates:
-    ai-vocabulary: 0.6482
+    ai-vocabulary: 0.6596
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 3.403
+    rule-of-three: 3.4631
     negative-parallelism: 0.0
-    plays-a-role: 0.162
+    plays-a-role: 0.1649
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -6737,16 +6723,16 @@ candidates:
   set: tune
   xml_sha256: 5add27f8d223218f3d5f6db2780e2b935985767d69bfc12b417817ba82b80683
   status: used
-  text_sha256: cffcd1aabb4f8129704bc5dc1f7cd21863269825cab7cfc9bb272957a0f49984
-  words: 2765
+  text_sha256: 40408cb03b16067510ba876ee99d0120d8c6a9bab927bd9ba13d268ced423fde
+  words: 2667
   rates:
-    ai-vocabulary: 1.8083
+    ai-vocabulary: 1.8748
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.4467
+    rule-of-three: 1.4998
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.3617
+    copula-avoidance: 0.375
   failures: 1
   phrase_findings: 0
   vague_findings: 0
@@ -6779,13 +6765,13 @@ candidates:
   set: tune
   xml_sha256: f83c778457011367931386849e9c57375379c2e20153f867a2e8d043e1059f77
   status: used
-  text_sha256: d2bfc1e9c5c89f3f77adc8a636cb2979603ae57519437d02fdecab3b31431f6d
-  words: 3636
+  text_sha256: 563b7f8f98d1277638800e95aa4cb1ca443a251ca903bf820c87f18e244a6561
+  words: 3559
   rates:
-    ai-vocabulary: 0.8251
+    ai-vocabulary: 0.8429
     em-dash: 0.0
-    boldface: 1.9252
-    rule-of-three: 2.7503
+    boldface: 1.9668
+    rule-of-three: 2.8098
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6800,13 +6786,13 @@ candidates:
   set: tune
   xml_sha256: b01d2a56c9d9809756b4cf2ce5ab5d06b6f2fc3cb0065ce7f5cc526ea57d1dc6
   status: used
-  text_sha256: 274cadaae08a4dbe6150ddc640a01bed53011b57cebe1f987fad2592dceca05f
-  words: 3562
+  text_sha256: afb825a9576add92a4c164111fc0cdcea14995af0b8e5554c8715e1284590fe7
+  words: 3552
   rates:
-    ai-vocabulary: 0.5615
+    ai-vocabulary: 0.5631
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.8422
+    rule-of-three: 0.8446
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6821,13 +6807,13 @@ candidates:
   set: tune
   xml_sha256: bd97f8206ac0c25d52cfb7561dc2bc4c2bf0851329945f4375660a24efb208dd
   status: used
-  text_sha256: fe110daefc4320d3ad698ca0edc8ec11b6f18e1d53d7e32a893071f4bc1a36b1
-  words: 2727
+  text_sha256: 33e566ae1a1f7b2d04841b1b8c49c3736d52df63803e857aef7de514543ca347
+  words: 2711
   rates:
-    ai-vocabulary: 0.3667
+    ai-vocabulary: 0.3689
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.7334
+    rule-of-three: 0.7377
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6884,13 +6870,13 @@ candidates:
   set: held-out
   xml_sha256: 1a639d86ba326881c873624e9ec5fa1b50340346a82bc54207b538b9b9c5273c
   status: used
-  text_sha256: e20df9d7432ffdb26a9d1bd8819b4ecec196ab8918377921136c835744432bf5
-  words: 3724
+  text_sha256: e826a32846b19b40820c732c9ac6b7197d1b762aeaa9d31161dacbb5c7ef6a97
+  words: 3610
   rates:
-    ai-vocabulary: 0.2685
+    ai-vocabulary: 0.277
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.8056
+    rule-of-three: 0.831
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -6926,15 +6912,15 @@ candidates:
   set: tune
   xml_sha256: 885e1cea8df1c2c310a7cf0c2f785c6ce301672c71c7c478021539c0bfa5db58
   status: used
-  text_sha256: ed75a15b101aed4e41f9f8fcff0b30040f7b083f5bf4761699360ac72bf8074c
-  words: 4653
+  text_sha256: 918a4a8d670ffcb89ccb766f6fdccfaa57ccd31bb55ea8217b75afef22e22adc
+  words: 4603
   rates:
-    ai-vocabulary: 0.4298
+    ai-vocabulary: 0.4345
     em-dash: 0.0
-    boldface: 1.2895
-    rule-of-three: 3.4386
+    boldface: 1.3035
+    rule-of-three: 3.2587
     negative-parallelism: 0.0
-    plays-a-role: 0.2149
+    plays-a-role: 0.2172
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -6954,12 +6940,12 @@ candidates:
   set: tune
   xml_sha256: 785ea0214442664a11d01496a90d13ede1827086bc5e1dd53efeddc11a17e1c1
   status: used
-  text_sha256: 382c7e6a4b7a1e380c3f86aa7002dfa601d54280aa13cd0f1a1ff6d04c9db149
-  words: 6867
+  text_sha256: 6c770c151eb2f42bff0d70eccffe267742491bb1938d6dd7d1d25de77598dd43
+  words: 6753
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.2912
-    boldface: 0.8737
+    em-dash: 0.2962
+    boldface: 0.5923
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
@@ -6975,13 +6961,13 @@ candidates:
   set: tune
   xml_sha256: 9e6ac0a94b86cf5116aadf6996afd9430712a58a625872481223f29387e85272
   status: used
-  text_sha256: 4aeac40d25232cd64c0e4751e5de172d8d3af229d8e0552014843f27f490bcfc
-  words: 5934
+  text_sha256: 576b6407086a4a857fff059efa6a33247e6418e34f266f4a3ce9594470c913bb
+  words: 5879
   rates:
-    ai-vocabulary: 0.8426
-    em-dash: 0.5056
-    boldface: 0.5056
-    rule-of-three: 3.0334
+    ai-vocabulary: 0.8505
+    em-dash: 0.5103
+    boldface: 0.5103
+    rule-of-three: 3.0617
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7039,13 +7025,13 @@ candidates:
   set: tune
   xml_sha256: c39055eef86f2c1d431312906d3c451c28bb68c24a24c5d863ba23f656a93f10
   status: used
-  text_sha256: 85ca5b045ed0b807d7c1a1aed324828c3ce7ef60b4b7e195db63a48ccc49fb77
-  words: 4470
+  text_sha256: 829a761672eb572a529f8c5cbd8fa6ceefe9353ff8657f33d6e9e0e9bc9c2ba0
+  words: 4266
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.4474
+    rule-of-three: 0.4688
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7060,16 +7046,16 @@ candidates:
   set: held-out
   xml_sha256: 6ed580775346f3da417f1dc02e4a6db94e94acc5c865e0a3b420927c0cd2d46c
   status: used
-  text_sha256: b69870a496d7c76950f29d507bb904fdccf27014900493befb92e83b6c6d532a
-  words: 3960
+  text_sha256: f19970af15dfc82cbc895b97a8291add4d2370772abb6a071a08239aa2d4c0ac
+  words: 3955
   rates:
-    ai-vocabulary: 0.5051
-    em-dash: 0.2525
+    ai-vocabulary: 0.5057
+    em-dash: 0.2528
     boldface: 0.0
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.2525
+    copula-avoidance: 0.2528
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -7081,15 +7067,15 @@ candidates:
   set: tune
   xml_sha256: 57cb32b3eb7adc2bb41f3b7dec8e77bb3a554d9849de69e80f2fc16224221d3f
   status: used
-  text_sha256: 1494c9deac6a84f529ef16082631c9f8e4e38c2efc54a6dc33921b93c46e5c8f
-  words: 6481
+  text_sha256: 7cec0b199fa25b8f52c8dd92258781c7e169790e8d19397280315c8e8b74804b
+  words: 6440
   rates:
-    ai-vocabulary: 1.3887
-    em-dash: 0.1543
-    boldface: 0.7715
-    rule-of-three: 4.0117
+    ai-vocabulary: 1.3975
+    em-dash: 0.1553
+    boldface: 0.7764
+    rule-of-three: 4.0373
     negative-parallelism: 0.0
-    plays-a-role: 0.6172
+    plays-a-role: 0.6211
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 2
@@ -7125,15 +7111,15 @@ candidates:
   set: tune
   xml_sha256: bcb49cd1f8da8a11ebd025881a01be0e1d27d985a2b3ffc79ef0f909b46045da
   status: used
-  text_sha256: 552efc8eea4ec9c4798bd242c994b2eb040be7b76d011caefce7d7d983f4ea79
-  words: 5178
+  text_sha256: b934c114c67cea89facea6e58cc0ec824aa6a5f300d07267204b093d04f06dd3
+  words: 5164
   rates:
-    ai-vocabulary: 0.7725
-    em-dash: 1.7381
+    ai-vocabulary: 0.7746
+    em-dash: 1.7428
     boldface: 0.0
-    rule-of-three: 1.545
-    negative-parallelism: 0.5794
-    plays-a-role: 0.3862
+    rule-of-three: 1.5492
+    negative-parallelism: 0.5809
+    plays-a-role: 0.3873
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -7147,13 +7133,13 @@ candidates:
   set: held-out
   xml_sha256: fb4b9dac267da98f89ff66469ecadbaf18b4a3342a32eb74b64f025472b7114f
   status: used
-  text_sha256: 35ffda2b8a50121a8efd9c474dc7bf2517616824b3fa7fb68c7ce083b6dd8533
-  words: 8236
+  text_sha256: d74cc4c8ae82d5bccc2c18d3e3e76f16c21af91ac89a21c016101efa20da7c46
+  words: 7947
   rates:
-    ai-vocabulary: 0.8499
-    em-dash: 0.2428
-    boldface: 5.221
-    rule-of-three: 0.1214
+    ai-vocabulary: 0.8808
+    em-dash: 0.2517
+    boldface: 0.2517
+    rule-of-three: 0.1258
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7168,13 +7154,13 @@ candidates:
   set: tune
   xml_sha256: 3c9b7323a81d5288ca2f5d61d2263983fbaa672ba496b2618ee91c1f20b31781
   status: used
-  text_sha256: 3ecac54e0424a6719c3c2c76ceefb35eaa3b216f81efb3007d591229363c7c7b
-  words: 8084
+  text_sha256: c4c10b4e5afcd62a1dd0c2b288f416fb9c0e8ff44a70cebc6f06e33700a9ab2e
+  words: 7155
   rates:
     ai-vocabulary: 0.0
-    em-dash: 17.3182
+    em-dash: 4.6122
     boldface: 0.0
-    rule-of-three: 3.8347
+    rule-of-three: 3.7736
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7189,16 +7175,16 @@ candidates:
   set: held-out
   xml_sha256: c5d3bcd66e2bc62451cba0c1a836726c733767e57d568273c59cc554911156f0
   status: used
-  text_sha256: a81c3714c84b1cb3eb5e2ffd1db4bbab5ccd9a599b1bb0030aac3d91bcbf0fe4
-  words: 4623
+  text_sha256: 7d0b816d812e9c7ce601f0686e84fb543adc88c2f8b2c65ce5e5dffe97b57f22
+  words: 4616
   rates:
-    ai-vocabulary: 3.2446
-    em-dash: 0.2163
-    boldface: 0.6489
+    ai-vocabulary: 3.2496
+    em-dash: 0.2166
+    boldface: 0.6499
     rule-of-three: 0.0
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.2163
+    copula-avoidance: 0.2166
   failures: 0
   phrase_findings: 1
   vague_findings: 0
@@ -7211,14 +7197,14 @@ candidates:
   set: tune
   xml_sha256: 159abbd29756629375d8806fe27c4fd308ed15306502352caa1447dc57998060
   status: used
-  text_sha256: a707f14eda34bd69272f1db206a742f20979a1cd14e1690be9bb510f96e837f6
-  words: 8123
+  text_sha256: 079cf934172f0a8d5ffee9c3f229f07bf13bcaac8c5cb1ef9df545ce29c5a9fc
+  words: 7868
   rates:
-    ai-vocabulary: 2.8315
-    em-dash: 0.6155
+    ai-vocabulary: 2.9232
+    em-dash: 0.6355
     boldface: 0.0
-    rule-of-three: 0.7386
-    negative-parallelism: 0.2462
+    rule-of-three: 0.6355
+    negative-parallelism: 0.2542
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -7232,13 +7218,13 @@ candidates:
   set: tune
   xml_sha256: c377a3567339315232106628617179516fc6d145c368df8d1fe3b124fe6a19d7
   status: used
-  text_sha256: 61c1273ed5d38eb65b81c7e9478a61add6e8f0d8269109ce49aa0ddd142c0348
-  words: 6126
+  text_sha256: a72b0d660ebb92d91f22a71004aa92018dcf010436d6024fbdb708dae27dba95
+  words: 6059
   rates:
-    ai-vocabulary: 0.653
-    em-dash: 0.3265
+    ai-vocabulary: 0.6602
+    em-dash: 0.3301
     boldface: 0.0
-    rule-of-three: 1.7956
+    rule-of-three: 1.8155
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7253,15 +7239,15 @@ candidates:
   set: tune
   xml_sha256: df6dd8d6d1097a21d594e0ab53cc6818525fbd09d426826e9450badb2972b227
   status: used
-  text_sha256: b890b3bc3593b562b3f787216475793c699b8a40fe6c2237aceac41ee78541a7
-  words: 7087
+  text_sha256: 7cd5a24a0b201cf50c04551230511039e4650a35f0303c5f76f54dfc82f37e56
+  words: 6322
   rates:
-    ai-vocabulary: 1.8343
-    em-dash: 0.7055
+    ai-vocabulary: 2.0563
+    em-dash: 0.7909
     boldface: 0.0
-    rule-of-three: 6.773
-    negative-parallelism: 0.1411
-    plays-a-role: 0.8466
+    rule-of-three: 5.0617
+    negative-parallelism: 0.1582
+    plays-a-role: 0.9491
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -7274,15 +7260,15 @@ candidates:
   set: tune
   xml_sha256: 8b0b85f6290bd7d25118a2e3abab8c6fdd248a23de7cbcfcbeb6a4c92abc734a
   status: used
-  text_sha256: 5f92af0c4a2048a61133fc8a49e17c3e68e3c8cab0a09c9509972c7bea91ec06
-  words: 5846
+  text_sha256: 99d23232b6bb47c6b481a0b4f577ab030c0526b5e896ec1cf0fba7004afe4ec3
+  words: 5780
   rates:
-    ai-vocabulary: 0.8553
+    ai-vocabulary: 0.8651
     em-dash: 0.0
-    boldface: 0.1711
-    rule-of-three: 0.1711
+    boldface: 0.173
+    rule-of-three: 0.173
     negative-parallelism: 0.0
-    plays-a-role: 0.1711
+    plays-a-role: 0.173
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -7337,13 +7323,13 @@ candidates:
   set: held-out
   xml_sha256: f9cc6aa20cfb86a95f6f31231fc5124ed7e2d3f4abbd5b257e930898124b0cc0
   status: used
-  text_sha256: 14e8a9e4c3440c518701791111d25e2b16dbdf86ddc528febc074b723515997c
-  words: 2709
+  text_sha256: c1c7adc528004924614c200eb68e86ec360f576ec14b6399dd11fcf9715fa981
+  words: 2600
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.7383
-    boldface: 0.3691
-    rule-of-three: 1.4766
+    em-dash: 0.7692
+    boldface: 0.0
+    rule-of-three: 1.5385
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7358,16 +7344,16 @@ candidates:
   set: tune
   xml_sha256: b25c0f33d70459f49c1fc412d614a2f8feb27500d42c2645df161f4b18ce73e6
   status: used
-  text_sha256: a2b90d392b125702bf47db44e871f60c95e0a15d8cad426569c7d33f059213ec
-  words: 6388
+  text_sha256: 001954c943b4eb2160f8155c93f02da7c253a3643a5e3840a8597186e63244d9
+  words: 6374
   rates:
-    ai-vocabulary: 0.1565
-    em-dash: 0.1565
+    ai-vocabulary: 0.1569
+    em-dash: 0.1569
     boldface: 0.0
-    rule-of-three: 1.2523
+    rule-of-three: 1.2551
     negative-parallelism: 0.0
     plays-a-role: 0.0
-    copula-avoidance: 0.1565
+    copula-avoidance: 0.1569
   failures: 0
   phrase_findings: 1
   vague_findings: 0
@@ -7380,15 +7366,15 @@ candidates:
   set: tune
   xml_sha256: c005f6c00eed55a806a52a31f60e8f445635b32e5e24757b775771cc494643df
   status: used
-  text_sha256: aaad460261486795cce9663a611236f0ae7c1ec0a47c4ac2e71c0f39b159608b
-  words: 7184
+  text_sha256: caed5fae177dca0df2310cc3aab1486f7fada45f9911baf5f8cb07d2edb6f9a8
+  words: 7003
   rates:
-    ai-vocabulary: 0.9744
+    ai-vocabulary: 0.9996
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.9744
-    negative-parallelism: 0.2784
-    plays-a-role: 0.2784
+    rule-of-three: 0.9996
+    negative-parallelism: 0.2856
+    plays-a-role: 0.2856
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -7464,14 +7450,14 @@ candidates:
   set: tune
   xml_sha256: b63fa4b773eb2876c42baaeef3833b01ac1cf94135e0ea40eb9aee6710191214
   status: used
-  text_sha256: 57f6e9957d621bce11f3b88f8091f1c6c71fdb05a114d5d34818ed3f3bcb865e
-  words: 6105
+  text_sha256: b61b87fc9222d30418d8571d4b525fa44c14ebccf85436f49c2dd0605d5c48ae
+  words: 6036
   rates:
-    ai-vocabulary: 1.638
+    ai-vocabulary: 1.6567
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.6552
-    negative-parallelism: 0.1638
+    rule-of-three: 0.6627
+    negative-parallelism: 0.1657
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -7486,14 +7472,14 @@ candidates:
   set: held-out
   xml_sha256: 3a0ee892d3c449198f6035e5dee925a3bb98d30b10ad01f6ff0b5d14a3b927a5
   status: used
-  text_sha256: a18d366b7f4584471b1639b6065ee955da7815d98ee59a94bb8316f4b7b34582
-  words: 6455
+  text_sha256: ec8bcffdc84a43e760b4be4987549dce9d0ff5beda15d89b8066da529e2bb41a
+  words: 6323
   rates:
-    ai-vocabulary: 0.1549
+    ai-vocabulary: 0.1582
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
-    negative-parallelism: 0.1549
+    negative-parallelism: 0.1582
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -7507,13 +7493,13 @@ candidates:
   set: tune
   xml_sha256: fda864297395837f2adcaff8c822755334a4d4254aad05cd483eadc410773121
   status: used
-  text_sha256: a15d01d4fe80c343ff464ef3ebb5df73750258b68b7d9df4543e1677129b365d
-  words: 4624
+  text_sha256: a28a2b8a6168ae5ebe323251ab16e8e705cd416db2c936161e9732476539dea1
+  words: 4536
   rates:
-    ai-vocabulary: 0.2163
-    em-dash: 0.4325
+    ai-vocabulary: 0.2205
+    em-dash: 0.4409
     boldface: 0.0
-    rule-of-three: 1.5138
+    rule-of-three: 1.5432
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7528,16 +7514,16 @@ candidates:
   set: tune
   xml_sha256: f2032a25b57e53ab81dfdaba77a17f5ee0e87217dadbf272d6e8ad56147b62ed
   status: used
-  text_sha256: 366ab5108a94a16ea76804ca28dacf4fb7b21d9c00ad4ca1f13e480e7d60b8c4
-  words: 9229
+  text_sha256: ab61465b734e2686dc42eea1ee710b7858a6501d2e13a25d994e37f2c78bb8e2
+  words: 9223
   rates:
-    ai-vocabulary: 1.3002
+    ai-vocabulary: 1.3011
     em-dash: 0.0
-    boldface: 0.5418
-    rule-of-three: 1.6253
+    boldface: 0.5421
+    rule-of-three: 1.6264
     negative-parallelism: 0.1084
-    plays-a-role: 0.3251
-    copula-avoidance: 0.3251
+    plays-a-role: 0.3253
+    copula-avoidance: 0.3253
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -7549,14 +7535,14 @@ candidates:
   set: tune
   xml_sha256: af33b950c7968d3a666cc14935b3b2d20ebdb993d95424ab6a8eeba16efc269c
   status: used
-  text_sha256: 7105e9e385cd017f6bfd65e950c7e05fb79588b874e376a0f7ed5036207d3c1f
-  words: 3925
+  text_sha256: b210de22c3e96591b69d9fc687b7200b016bcba1a0b6cf3d940ed3cda8854123
+  words: 3604
   rates:
-    ai-vocabulary: 0.2548
+    ai-vocabulary: 0.2775
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.293
-    negative-parallelism: 0.2548
+    rule-of-three: 2.2198
+    negative-parallelism: 0.2775
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -7571,14 +7557,14 @@ candidates:
   set: tune
   xml_sha256: ee3a9cd26af00fd448f7af6d84bd4a37076c094468e39e21b2bda9e0c741f353
   status: used
-  text_sha256: 8fc946fbcf78a47c79a869df7185767a00fd2f4a045266e706e6ded7b9a24178
-  words: 4189
+  text_sha256: 893c6ef99946ce4902aa8674d3ed078eaac720366c1c046f77f89a56211d5645
+  words: 3989
   rates:
-    ai-vocabulary: 0.2387
-    em-dash: 0.4774
+    ai-vocabulary: 0.2507
+    em-dash: 0.5014
     boldface: 0.0
-    rule-of-three: 0.2387
-    negative-parallelism: 0.2387
+    rule-of-three: 0.2507
+    negative-parallelism: 0.2507
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -7592,13 +7578,13 @@ candidates:
   set: held-out
   xml_sha256: e1ef68c939de33996e4f8776602c3a181a109bd1b112412dce061121006d2b5b
   status: used
-  text_sha256: b194e07d58fdf643360353391012a4e422e5b31a66bc3cb48a9a99eb99666b55
-  words: 4283
+  text_sha256: 349128c3f2c604b54fbaade350ae64b39fc103fe6479a48392b68a4a60fce08e
+  words: 4146
   rates:
-    ai-vocabulary: 3.5022
+    ai-vocabulary: 3.6179
     em-dash: 0.0
-    boldface: 0.2335
-    rule-of-three: 3.7357
+    boldface: 0.2412
+    rule-of-three: 3.8591
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7613,13 +7599,13 @@ candidates:
   set: tune
   xml_sha256: b0109a7ef58239968d615dcd8264785f56b13349262a7d7aef9a6aec348c1fcc
   status: used
-  text_sha256: c702206ffa9f1cdf4456229d942a30734d8a0f6aec1cf657a91f5da0142b27fc
-  words: 5187
+  text_sha256: 9961e35e124a2de2e5b8558449a9c14987795bb76bf34c0338be35067fc70ae2
+  words: 5103
   rates:
-    ai-vocabulary: 0.3856
+    ai-vocabulary: 0.3919
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.3856
+    rule-of-three: 0.3919
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7656,13 +7642,13 @@ candidates:
   set: tune
   xml_sha256: 5512456b1aceb58c83ccf8a5c69cefd9a30bcb92a31d3d977b72742d604b3239
   status: used
-  text_sha256: d979a2d0cb09c87cb8bd8d278d66338995df689d6554bcb712ceb6a8e7934d4f
-  words: 1800
+  text_sha256: 368644c2ee99b88e10ea545092c0b8f7e372490c771a28cdf8d4723aaa969ccd
+  words: 1606
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.5556
+    em-dash: 0.6227
     boldface: 0.0
-    rule-of-three: 0.5556
+    rule-of-three: 0.6227
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7677,16 +7663,16 @@ candidates:
   set: tune
   xml_sha256: 697771de86f44dc1ab8adcc37db38131f1f70ccfe9701778fffd088bcd9e5b2a
   status: used
-  text_sha256: 3537c03afc97931d464931b8ccbcafa57262ec6d250835efa54e4a86330bbdb6
-  words: 5660
+  text_sha256: 484680965a4a5f040316f008a0aa4004c6c6048b23bf96382d62be0e72113017
+  words: 5639
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.7067
-    boldface: 35.8657
-    rule-of-three: 0.8834
-    negative-parallelism: 0.1767
+    em-dash: 0.7093
+    boldface: 35.6446
+    rule-of-three: 0.8867
+    negative-parallelism: 0.1773
     plays-a-role: 0.0
-    copula-avoidance: 0.1767
+    copula-avoidance: 0.1773
   failures: 1
   phrase_findings: 0
   vague_findings: 0
@@ -7698,13 +7684,13 @@ candidates:
   set: tune
   xml_sha256: 794a12c868e44a5164813c02e2c74551d622e62adab69036cebf876a3824a49f
   status: used
-  text_sha256: 7f2f00ff4bed68bda957dc480f72c9e515f4ec8f4122cc0e85aaf93b541f2185
-  words: 5063
+  text_sha256: d327c21ce555d7b84e9df794e2a0756bc3f14b3924827069120e13f05dc71b0e
+  words: 4834
   rates:
-    ai-vocabulary: 0.1975
+    ai-vocabulary: 0.2069
     em-dash: 0.0
-    boldface: 0.79
-    rule-of-three: 1.1851
+    boldface: 0.4137
+    rule-of-three: 0.8275
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7719,13 +7705,13 @@ candidates:
   set: tune
   xml_sha256: 1af6cb960cc70560a4e05893b2262acf9a5234a6ac97d85b0978ed43e75c55c5
   status: used
-  text_sha256: b6a6b94e3c8e7fdde36e9471b066446d09c56b3fb40296eb6c8a614fe97a885a
-  words: 4235
+  text_sha256: d9fb8ae7a1c9ae2d2718500fd6d223367e0f613209a355f06dd574fb63952943
+  words: 4112
   rates:
-    ai-vocabulary: 0.4723
-    em-dash: 0.4723
+    ai-vocabulary: 0.4864
+    em-dash: 0.4864
     boldface: 0.0
-    rule-of-three: 0.2361
+    rule-of-three: 0.2432
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7740,13 +7726,13 @@ candidates:
   set: tune
   xml_sha256: 43ae3f4b82d74929bf18387ca04169992e4bfcfd59a70a444d5e7c8bef26fc54
   status: used
-  text_sha256: 89f3d845ef392f6a96789af5a21db48d2064c1d4dede29a6f43105be4369976e
-  words: 8023
+  text_sha256: ddcd72caef8d8e22fe06e7d2fc3e18b80b663a989bcdfd1def31668cc51d7224
+  words: 7850
   rates:
-    ai-vocabulary: 0.4986
-    em-dash: 2.1189
+    ai-vocabulary: 0.5096
+    em-dash: 2.1656
     boldface: 0.0
-    rule-of-three: 0.3739
+    rule-of-three: 0.2548
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7761,15 +7747,15 @@ candidates:
   set: tune
   xml_sha256: 03578ba71a974e699831dca37af0439a2d98a822c9f87c2b2dbffd718de04dec
   status: used
-  text_sha256: c9c1e3ba9e681c0c4006279a55ffffd4aed8f38f2456677a2d969d2854e54384
-  words: 4048
+  text_sha256: 0c451d7f53897ee434f7cf79eba7ee8a2bead57e02b6a55b9a3883431025f3bd
+  words: 3718
   rates:
     ai-vocabulary: 0.0
-    em-dash: 0.247
+    em-dash: 0.269
     boldface: 0.0
-    rule-of-three: 0.9881
+    rule-of-three: 0.5379
     negative-parallelism: 0.0
-    plays-a-role: 0.247
+    plays-a-role: 0.269
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -7782,13 +7768,13 @@ candidates:
   set: tune
   xml_sha256: 5a10dfde159f99ec1937b4b9612409f88ef6037bd724468473d71c2b7f63a918
   status: used
-  text_sha256: 0939693c13139be5261693060f576567245bbb87c187895b0aff0510eedbe818
-  words: 7081
+  text_sha256: 2f132f756bb2c9fcc87d9fabe82aea932efa449100ef0333910804a16ef5bb6e
+  words: 6976
   rates:
-    ai-vocabulary: 0.2824
-    em-dash: 0.5649
-    boldface: 0.4237
-    rule-of-three: 0.7061
+    ai-vocabulary: 0.2867
+    em-dash: 0.5734
+    boldface: 0.43
+    rule-of-three: 0.7167
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7803,15 +7789,15 @@ candidates:
   set: held-out
   xml_sha256: 1f004042386dde0993442e36f5c9b2c01984c21edf6acf51061c3fbe2ad9514c
   status: used
-  text_sha256: 29f3a0d24c95f2e326757fd7212afa694fa01383a30f924847745aa49dd3f28f
-  words: 3764
+  text_sha256: 9741cc0ada472f612de91304288b77efeb8a99313a005dc296a85c5fa4847fb2
+  words: 3644
   rates:
-    ai-vocabulary: 0.797
+    ai-vocabulary: 0.8233
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.0627
+    rule-of-three: 1.0977
     negative-parallelism: 0.0
-    plays-a-role: 0.2657
+    plays-a-role: 0.2744
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -7894,14 +7880,14 @@ candidates:
   set: tune
   xml_sha256: 6a58b3a68efa71f3736113442ef0e5ec0b18638df739497ce1453a0ad9baebab
   status: used
-  text_sha256: 8fecf24c50463010325896e177b31a95cc1e424fc2ea9450a4179755124289cd
-  words: 2489
+  text_sha256: 413fdc77bff353ba356d8570bbf3ed741310c561d3b84a3bea819c6c9eee6f5d
+  words: 2451
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0
-    negative-parallelism: 0.4018
+    negative-parallelism: 0.408
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -7936,13 +7922,13 @@ candidates:
   set: held-out
   xml_sha256: ede44e9ebf72d3949040b8f1ecec8a31e07b2d763b15bc488284cf864f98edf7
   status: used
-  text_sha256: 5809a984dfdfc9efb81e528f32f5afff794d50fa0126245e411c125f754e2946
-  words: 2674
+  text_sha256: 29898a0637d28e5a1d8201f9be9cd20958c966fd72ee702e725c430d4dd2cea6
+  words: 2519
   rates:
-    ai-vocabulary: 0.374
+    ai-vocabulary: 0.397
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 0.374
+    rule-of-three: 0.397
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -7957,14 +7943,14 @@ candidates:
   set: held-out
   xml_sha256: 7ad72d0c8e2f47cd2197e535e146ca17380e90bd52259b0b5a204e2aca265825
   status: used
-  text_sha256: 596e1a8af9f47f9959f55cef4bc6e879378e68d023506576fc7d8497704a86f3
-  words: 4940
+  text_sha256: 1ac1e1a772c7d80b57f7eee44ae0f4c975420db2c79367db30c391405a8a22c3
+  words: 4705
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 3.2389
-    negative-parallelism: 0.2024
+    rule-of-three: 2.763
+    negative-parallelism: 0.2125
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -7999,13 +7985,13 @@ candidates:
   set: held-out
   xml_sha256: cbdcaff06fd68330d2db8d5e924fa4438e9932a7a3ea4cef6651a2cf7dfb94d5
   status: used
-  text_sha256: e2d91b6b9905ec0b111b91eb258f57c24340c926d931ad0a35c0e0d59907559c
-  words: 5505
+  text_sha256: 4097081bc4c5138552e43e6c4e4a9342dab23f9ecb18e4ad2727b6e802c0397d
+  words: 5293
   rates:
-    ai-vocabulary: 0.1817
-    em-dash: 4.723
+    ai-vocabulary: 0.1889
+    em-dash: 2.2671
     boldface: 0.0
-    rule-of-three: 3.4514
+    rule-of-three: 3.5896
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -8020,13 +8006,13 @@ candidates:
   set: tune
   xml_sha256: 3b80c0cc905450f1c298f1e4c0db0b193bd0ef930a9913748ebae5a62f72969b
   status: used
-  text_sha256: e8a48d46f3155b5332445c7953ae080ebd4d1a1da20eb2ebc397d04122a75135
-  words: 3684
+  text_sha256: 3ac6e5235e18c6e81aa97f19a470d1f38f7c4a9f8492419a3f704292cec77f9a
+  words: 3646
   rates:
     ai-vocabulary: 0.0
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.6287
+    rule-of-three: 1.6456
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -8084,15 +8070,15 @@ candidates:
   set: held-out
   xml_sha256: e451c3b580f01f30c7fa66e168aa4dae6fe37535d1de360dc5b564ec0f7f1140
   status: used
-  text_sha256: b0a08371e0a92f6d9b1fd118b91636bf2554149247203ac3dbed67cae74e5fd2
-  words: 3847
+  text_sha256: 5adec42f4aafb62a2189605a333566dc36559e08b79b278aab28dbc955d41227
+  words: 3779
   rates:
-    ai-vocabulary: 0.7798
+    ai-vocabulary: 0.7939
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 1.8196
+    rule-of-three: 1.8523
     negative-parallelism: 0.0
-    plays-a-role: 0.2599
+    plays-a-role: 0.2646
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 1
@@ -8106,15 +8092,15 @@ candidates:
   set: tune
   xml_sha256: 8faf533ed6aea985a498456ff8d12aa743f90e190796dfd2572cdb5546f01717
   status: used
-  text_sha256: 7760aaacb5deee4739c5e14da63a2fe93880d4692b5d7fb09793e41fc36460c5
-  words: 5258
+  text_sha256: 0b612a47f2dc378c36cc1364b97ca3568a59e8032d7f132692735f2dc13deaf3
+  words: 5223
   rates:
-    ai-vocabulary: 0.1902
+    ai-vocabulary: 0.1915
     em-dash: 0.0
-    boldface: 0.5706
-    rule-of-three: 2.8528
-    negative-parallelism: 0.3804
-    plays-a-role: 0.3804
+    boldface: 0.5744
+    rule-of-three: 2.8719
+    negative-parallelism: 0.3829
+    plays-a-role: 0.3829
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 0
@@ -8127,15 +8113,15 @@ candidates:
   set: tune
   xml_sha256: 2a72ae590c2f264864a6be9f96c2af21235401e5ac2ed1faf800b3580003dd09
   status: used
-  text_sha256: 7849ee9b53ff1d7e3e1e47288fd3e6fae22cc370db4d1d488325edb8e7ee7e61
-  words: 5855
+  text_sha256: be78eecf9ad5753cc9c8c295cc7736c4a4fbec02e3610ee148ae1478f36c57be
+  words: 5730
   rates:
-    ai-vocabulary: 0.854
-    em-dash: 0.3416
-    boldface: 1.3664
-    rule-of-three: 1.0248
+    ai-vocabulary: 0.8726
+    em-dash: 0.349
+    boldface: 1.3962
+    rule-of-three: 1.0471
     negative-parallelism: 0.0
-    plays-a-role: 0.5124
+    plays-a-role: 0.5236
     copula-avoidance: 0.0
   failures: 0
   phrase_findings: 2
@@ -8149,16 +8135,16 @@ candidates:
   set: tune
   xml_sha256: 7eec9a9f259cf8cd49dc3858deb351f7861ffee42009d5822e3832db8fd98b95
   status: used
-  text_sha256: 3a7d5c8037e38704d14fd1976f607f0203dd07f1998627b00922ed90e0ccabee
-  words: 9577
+  text_sha256: 8150dee137802cf71b03789ef6b97367c2105a1dc1feeb4199344c60b981f9a9
+  words: 9519
   rates:
-    ai-vocabulary: 0.8353
-    em-dash: 0.8353
-    boldface: 1.4618
-    rule-of-three: 0.2088
+    ai-vocabulary: 0.8404
+    em-dash: 0.8404
+    boldface: 1.4707
+    rule-of-three: 0.2101
     negative-parallelism: 0.0
-    plays-a-role: 0.1044
-    copula-avoidance: 0.2088
+    plays-a-role: 0.1051
+    copula-avoidance: 0.2101
   failures: 0
   phrase_findings: 0
   vague_findings: 0
@@ -8170,14 +8156,14 @@ candidates:
   set: held-out
   xml_sha256: c3d9b7e3cf5fdec421a9830ad4eefdc4620b36cb32278e725da7520ab4beff10
   status: used
-  text_sha256: b9b28875713ba9a32170192f01c13b72aa7636e05e43cd32c3449e9c9ca0c02e
-  words: 2305
+  text_sha256: 7e80bf268e26b3ceaebb5a9cbb25c9fae15de838cc9400fee9dbacf42f5bf9e7
+  words: 2157
   rates:
-    ai-vocabulary: 0.4338
+    ai-vocabulary: 0.4636
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 6.9414
-    negative-parallelism: 0.4338
+    rule-of-three: 7.4177
+    negative-parallelism: 0.4636
     plays-a-role: 0.0
     copula-avoidance: 0.0
   failures: 0
@@ -8191,13 +8177,13 @@ candidates:
   set: tune
   xml_sha256: ce1c8810894d72c751bce5aa036c5919f89d2460ca1be1d4ee39cc672c76882e
   status: used
-  text_sha256: 1fd60ffe7174eac4614fc81770a8ae3a6d63a2156d698ea1e62e219d3cca81a5
-  words: 6482
+  text_sha256: ad4b66b03858c69c4b2758798aaed25362313387f38cf31472617a2f2bf2f5a4
+  words: 6440
   rates:
-    ai-vocabulary: 1.697
-    em-dash: 0.3085
-    boldface: 0.6171
-    rule-of-three: 2.4684
+    ai-vocabulary: 1.7081
+    em-dash: 0.3106
+    boldface: 0.6211
+    rule-of-three: 2.3292
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -8234,13 +8220,13 @@ candidates:
   set: tune
   xml_sha256: d80357b231091fec5f3719f9a4d832cf0a42d4f0fb873500c26754dd86fe04eb
   status: used
-  text_sha256: 4f91c164a3f67c918daa12c989aa1a9580a2563e7f41eee139fd62681d200407
-  words: 2977
+  text_sha256: 6c8e6677d266d9ee353dce1f8ac6c2e4d05ce6f6c0da4cf11bd4910a789d1a78
+  words: 2846
   rates:
-    ai-vocabulary: 0.3359
+    ai-vocabulary: 0.3514
     em-dash: 0.0
     boldface: 0.0
-    rule-of-three: 2.0155
+    rule-of-three: 1.7569
     negative-parallelism: 0.0
     plays-a-role: 0.0
     copula-avoidance: 0.0
@@ -8319,10 +8305,10 @@ candidates:
   set: tune
   xml_sha256: 19a8f4a28f0ba412bb0001bec360b99346d2dc43b6de5850f4c090f2343c3d15
   status: used
-  text_sha256: 58b128c8234a850270604611270ec1ff6d6c1107b3c818b16950e6949508133c
-  words: 4481
+  text_sha256: 4e0b0989c4d1b736d472f4e3e30834b82f1ca2052ce346e554b11784e6f53d8c
+  words: 4217
   rates:
-    ai-vocabulary: 1.1158
+    ai-vocabulary: 1.1857
     em-dash: 0.0
     boldface: 0.0
     rule-of-three: 0.0

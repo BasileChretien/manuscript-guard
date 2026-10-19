@@ -6742,8 +6742,9 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `opacity` that hide text, a `tspan`'s tail, and a width of 100% with no `viewBox` (read
   as 16 units) are not read as a browser would; `@media` and `@supports` apply always, a
   child combinator matches as a descendant, and `font-size` and the `font` shorthand are
-  not ordered. A run of `{` before one `}` is read again from each brace. In PDF, two forms
-  whose resources name each other are followed until Python's recursion limit raises; a
+  not ordered. A run of `{` before one `}` is read again from each brace. In PDF, forms whose
+  resources name each other in a ring, of two or more, or name the page's own, are followed
+  until Python's recursion limit raises; a
   `MediaBox` written as a number or a name, which page is first, an inline image's `EI`
   inside its data, and a form decoded once per use are not handled.
 - **Study designs and their plan sections.** A section is found by words of its heading:
@@ -6800,8 +6801,9 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
 - **Placeholders.** "47,XXX reports" (a count in the forty thousands) is read as a
   karyotype, the karyotypes 69,XXX and 92,XXXX as gaps; a bracketed translated title that
   opens with an instruction's verb, or holds a to-come word in capitals, fails in a cited
-  entry; "[Your ...]" is not read in a caption, nor "fill in later" or "replace later" just
-  before a pipe table's `|`.
+  entry; "[Your ...]" is not read in a caption, nor "fill in later" or "replace later"
+  followed on its line by anything but a stop, a bracket, a colon, a semicolon or a comma: a
+  pipe table's `|`, "?", "!", a quotation mark, a dash or an asterisk.
 - **Scripts the gates do not read.** Front matter and image captions are not counted; a
   citation key that opens with a CJK character is counted as prose; 々, 〆, 〇, CJK Extensions
   G to I, the compatibility supplement, Hangul Jamo Extended A and B and half-width Hangul

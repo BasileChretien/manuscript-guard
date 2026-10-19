@@ -2060,6 +2060,51 @@ def test_two_authors_named_alike_are_approved_apart(project: Path) -> None:
     assert _approvals_said(project) == []
 
 
+def test_an_approval_covers_the_title_page_the_authors_put_their_names_to(
+    project: Path,
+) -> None:
+    """Round 1 of #284, Basile's choice of 2026-10-20: a new title, or an author added, left
+    every approval of the old one standing, since the digest held the prose and the results
+    alone. What `paper.yaml` prints and the whole of `authors.yaml` now count; the rest of
+    `paper.yaml` does not, nor a comment, nor an approval written before."""
+    from manuscript_guard.cli import main
+
+    both = ("0000-0002-1825-0097", "0000-0001-5109-3700")
+    for author in both:
+        assert main(["approve", str(project), "--as", author]) == 0
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    commented = text.replace("target_journal:", "# a comment\ntarget_journal:")
+    paper.write_text(commented, "utf-8")
+    assert _approvals_said(project) == []
+    paper.write_text(text.replace('short_title: "Hepatic injury with example-drug"',
+                                  'short_title: "Hepatic injury"'), "utf-8")  # fmt: skip
+    assert _approvals_said(project) == [
+        ("approval-stale", "Ada Example"), ("approval-stale", "Blaise Sample")
+    ]
+    from manuscript_guard.approvals import check_approvals
+
+    said = [f.message for f in check_approvals(load_project(project)[0]).findings]
+    assert all(m.endswith("and its title page has changed since") for m in said), said
+    for author in both:
+        assert main(["approve", str(project), "--as", author]) == 0
+    authors = project / "authors.yaml"
+    authors.write_text(authors.read_text(encoding="utf-8").replace(
+        "family: Sample", "family: Sample-Smith"), encoding="utf-8")  # fmt: skip
+    said = _approvals_said(project)
+    assert ("approval-stale", "Ada Example") in said, said
+    # An approval written before the title page was held to is judged as it was given.
+    for author in both:
+        assert main(["approve", str(project), "--as", author]) == 0
+    for path in (project / "approvals").glob("*.yaml"):
+        kept = path.read_text(encoding="utf-8").splitlines()
+        earlier = [line for line in kept if not line.startswith("front_sha256")]
+        path.write_text("\n".join(earlier) + "\n", encoding="utf-8")
+    paper.write_text(text.replace('short_title: "Hepatic injury with example-drug"',
+                                  'short_title: "Another"'), "utf-8")  # fmt: skip
+    assert _approvals_said(project) == []
+
+
 # ------------------------------------------------ the unit written after a binding
 
 

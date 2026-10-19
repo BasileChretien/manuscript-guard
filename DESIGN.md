@@ -3202,7 +3202,14 @@ folder is not committed, so a fresh checkout says `verify` has not run in it, wh
 "All authors approved the final manuscript" was a sentence of the covering letter, typed.
 `manuscript-guard approve --as <author>` now records an author's approval in
 `approvals/<author>.yaml`, one file per author, with the digest of what decides the built
-document, the prose and the results, as `check` reads it to say a build is current. The
+document, the prose and the results, as `check` reads it to say a build is current, and the
+digest of the title page the authors put their names to (`front_sha256`): what `paper.yaml`
+prints, its title, running title, keywords and whether it is a demonstration, and the whole
+of `authors.yaml`, read as data, so that a comment changes nothing. The rest of
+`paper.yaml`, the journal, the stage, the review models, prints nothing and stales no
+approval; nor does a figure's file, whose bytes a re-render changes (Basile's choice,
+2026-10-20, round 1 of #284: a new title or an author added left every approval standing).
+An approval written before has no `front_sha256` and is judged by the manuscript alone. The
 author is found by ORCID iD, e-mail address, full name or family name in `authors.yaml`.
 `submit` warns where an author has no approval (`approval-missing`) or approved a manuscript
 that has changed since (`approval-stale`). It warns and does not refuse: whether to send

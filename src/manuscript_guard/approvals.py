@@ -4,8 +4,9 @@
 true or not. So an author's approval is recorded where it can be held to something:
 `manuscript-guard approve --as <author>` writes `approvals/<author>.yaml`, one file per
 author, with the digest of what decides the built document, the prose and the results, as
-`check` reads it to say a build is current (`gates.review.document_digest`). An approval is a
-person's statement, so the hooks put to the person an agent's attempt to write one.
+`check` reads it to say a build is current (`gates.review.document_digest`), and the digest of
+the title page the authors put their names to (`front_digest`). An approval is a person's
+statement, so the hooks put to the person an agent's attempt to write one.
 
 `submit` then says which authors have not approved, and which approved a manuscript that has
 changed since. It warns and does not refuse: whether to send without an approval is the
@@ -14,6 +15,8 @@ corresponding author's decision, and an approval given by e-mail is still one.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import unicodedata
 from datetime import date
@@ -27,6 +30,21 @@ from manuscript_guard.findings import WARN, Finding, Report
 
 DIRECTORY = "approvals"
 SCHEMA = "manuscript-guard/approval/1"
+#: What `paper.yaml` holds that the title page prints. The rest of it, the journal, the
+#: stage, the review models, prints nothing and stales no approval.
+PRINTED = ("title", "short_title", "keywords", "demonstration")
+
+
+def front_digest(project: Project) -> str:
+    """The title page as the authors approve it: what `paper.yaml` prints and the whole of
+    `authors.yaml`, read as data, so that a comment or a re-indented line changes nothing
+    (round 1 of #284: a new title, or an author added, left every approval of the old one
+    standing)."""
+    paper = project.paper if isinstance(project.paper, dict) else {}
+    authors = project.authors if isinstance(project.authors, dict) else {}
+    front = {"paper": {key: paper.get(key) for key in PRINTED}, "authors": authors}
+    text = json.dumps(front, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 class NoSuchAuthor(Exception):
@@ -93,6 +111,7 @@ def approve(project: Project, author: dict, note: str | None = None) -> Path:
         "author": name_of(author),
         "approved_on": date.today().isoformat(),
         "document_sha256": document_digest(project),
+        "front_sha256": front_digest(project),
     }
     if author.get("orcid"):
         record["orcid"] = str(author["orcid"])
@@ -114,7 +133,7 @@ def check_approvals(project: Project) -> Report:
     """A warning for each author with no approval, or one given to an earlier manuscript."""
     from manuscript_guard.gates.review import document_digest
 
-    current = document_digest(project)
+    current, front = document_digest(project), front_digest(project)
     report = Report()
     for author in authors_of(project):
         path = project.root / DIRECTORY / f"{slug_of(author)}.yaml"
@@ -137,10 +156,15 @@ def check_approvals(project: Project) -> Report:
                          "they run `manuscript-guard approve` as themselves")  # fmt: skip
             )
             continue
-        if document["document_sha256"] != current:
+        # An approval written before the title page was held to has no `front_sha256`, and is
+        # judged by the manuscript alone, as it was given.
+        recorded = document.get("front_sha256")
+        changed = ("it" if document["document_sha256"] != current else
+                   "its title page" if recorded and recorded != front else None)  # fmt: skip
+        if changed:
             report = report.with_findings(
                 _finding("approval-stale", f"{name_of(author)} approved the manuscript on "
-                         f"{document['approved_on']}, and it has changed since", path,
+                         f"{document['approved_on']}, and {changed} has changed since", path,
                          "they read it again and approve it as it stands")  # fmt: skip
             )
     return report

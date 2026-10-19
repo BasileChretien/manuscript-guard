@@ -20,6 +20,11 @@
       "pattern": "^[0-9a-f]{64}$",
       "description": "What decides the built document when the author approved it: the manuscript's prose and the results."
     },
+    "front_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The title page the author approved: what paper.yaml prints (title, running title, keywords, whether the paper is a demonstration) and the whole of authors.yaml, read as data. An approval written without it is judged by document_sha256 alone."
+    },
     "note": {
       "type": "string",
       "description": "Anything the author says with the approval, a condition included."

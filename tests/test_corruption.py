@@ -2701,6 +2701,15 @@ def test_a_share_naming_what_nothing_emits_beside_its_other_count_says_so(
         "results.whole.female.pct names results.whole.femal.n as what it belongs to, which "
         "nothing emits"
     ]
+    # Round 2 of #343: the name nothing emits, bound in the sentence, is said once, as the
+    # binding that resolves to nothing.
+    del document["values"]["whole.cohort.n"]
+    document["values"]["whole.female.pct"]["of"] = "whole.female.n"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    codes = [f.code for f in gate_report(project).findings
+             if f.code in ("quoted-alone", "unresolved-binding")]  # fmt: skip
+    assert codes == ["unresolved-binding"]
 
 
 @pytest.mark.parametrize(

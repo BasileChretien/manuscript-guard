@@ -271,7 +271,10 @@ def _declared(sidecar: Path, section: str) -> list[tuple[str, str]]:
     except yaml.YAMLError:
         return []
     out = []
-    for item in document.get(section, []) or []:
+    # A section that is no list, `allow_estimates: 5`, holds no entry: iterating it raised,
+    # and the gate errored (round 1 of #288).
+    items = document.get(section) if isinstance(document, dict) else None
+    for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict) or "value" not in item:
             continue
         why = str(item.get("why", "")).strip()

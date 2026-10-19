@@ -695,6 +695,10 @@ mg_freeze_plan <- function(project_root, script) {
   # Python: rawToChar() stops on a NUL, after the results were written (round 1 of #271).
   bytes <- readBin(plan, "raw", file.info(plan)$size)
   if (any(bytes == as.raw(0))) return(invisible(NULL))
+  # Without a byte-order mark, as in Python and as G12 reads the plan (round 1 of #271).
+  if (length(bytes) >= 3 && identical(bytes[1:3], as.raw(c(0xef, 0xbb, 0xbf)))) {
+    bytes <- bytes[-(1:3)]
+  }
   text <- rawToChar(bytes)
   Encoding(text) <- "UTF-8"
   if (!validUTF8(text)) return(invisible(NULL))
@@ -924,6 +928,11 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       # A number has no digits of its own: 27.0 is "27" here and "27.0" in Python.
       stop("dictionary ", name, ": give the release as text, as the dictionary writes it ",
            "(\"27.0\", not 27.0)", call. = FALSE)
+    }
+    if (!is.null(release) && (length(release) != 1 || is.na(release))) {
+      # One release, as Python's one string: c("B3", "C3") or NA passed as text (round 2 of
+      # #287).
+      stop("dictionary ", name, ": give one release, as text", call. = FALSE)
     }
     read <- NULL
     if (!is.null(release_file)) {

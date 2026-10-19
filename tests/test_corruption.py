@@ -442,6 +442,15 @@ def test_a_figure_that_estimates_while_it_draws_is_warned(
     assert _estimates_said(project) == said
 
 
+def test_a_draw_from_a_generator_the_script_made_is_not_read_as_pinned(project: Path) -> None:
+    """A known gap (round 1 of #288): `rng.normal` is a method of the generator, not under
+    `np.random.`, so an unseeded generator's draws are not warned. DESIGN.md says so."""
+    script = project / "figures" / "forest.py"
+    added = "rng = np.random.default_rng()\nnoise = rng.normal(size=3)\n"
+    script.write_text(script.read_text(encoding="utf-8") + "\n" + added, encoding="utf-8")
+    assert _estimates_said(project) == []
+
+
 def test_an_estimate_with_its_reason_beside_the_figure_is_not_warned(project: Path) -> None:
     script = project / "figures" / "forest.py"
     script.write_text(
@@ -457,6 +466,17 @@ def test_an_estimate_with_its_reason_beside_the_figure_is_not_warned(project: Pa
         encoding="utf-8",
     )
     assert _estimates_said(project) == ["frame.sample"]
+
+
+def test_an_allowlist_section_that_is_no_list_allows_nothing(project: Path) -> None:
+    """Round 1 of #288: `allow_estimates: 5` was iterated, raised, and the gate errored."""
+    script = project / "figures" / "forest.py"
+    script.write_text(script.read_text(encoding="utf-8") + '\nsns.barplot(data=frame)\n',
+                      encoding="utf-8")  # fmt: skip
+    sidecar = project / "figures" / "forest.guard.yaml"
+    sidecar.write_text(sidecar.read_text(encoding="utf-8") + "\nallow_estimates: 5\n",
+                       encoding="utf-8")  # fmt: skip
+    assert _estimates_said(project) == ["sns.barplot"]
 
 
 @pytest.mark.parametrize(
@@ -1901,6 +1921,38 @@ def test_impact_follows_results_into_results_and_a_deleted_file_to_its_readings(
     assert not only.empty and "    A on x" in as_text(only)
 
 
+def test_impact_refuses_a_folder_and_a_name_that_is_no_file(
+    project: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """Round 1 of #280: a folder, or a name mistyped, was answered as a file no record
+    names, exit 0, which reads as "nothing depends on it"."""
+    from manuscript_guard.cli import main
+
+    assert main(["impact", str(project / "manuscript")]) == 2
+    assert "is a folder" in capsys.readouterr().err
+    assert main(["impact", str(project / "analysis" / "01_disproportionalty.py")]) == 2
+    assert "does not exist, and no record names it" in capsys.readouterr().err
+    (project / "manuscript" / "supplementary" / "S1_code_lists.md").unlink()
+    assert main(["impact", str(project / "manuscript" / "supplementary" / "S1_code_lists.md"),
+                 "--json"]) == 0  # fmt: skip
+    # A deleted input whose results hold one table nothing binds yet is named by those
+    # results, and answered with them (asked in round 1 of #351: `empty` counts results).
+    first = project / "results" / "01_disproportionality.json"
+    document = json.loads(first.read_text(encoding="utf-8"))
+    document["provenance"]["generated_by"] = "analysis/03_tables.py"
+    document["provenance"]["inputs"] = [{"path": "data/gone.csv", "sha256": "0" * 64}]
+    document["tables"] = {"unbound": document["tables"]["two_by_two"]}
+    document["values"] = {}
+    for key in ("steps", "variables", "models", "code_lists"):
+        document.pop(key, None)
+    third = project / "results" / "03_tables.json"
+    third.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(third)
+    capsys.readouterr()
+    assert main(["impact", str(project / "data" / "gone.csv"), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["results"] == ["results/03_tables.json"]
+
+
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 def test_impact_with_no_file_lists_what_changed_since_the_last_commit(
     project: Path, monkeypatch: pytest.MonkeyPatch
@@ -1927,6 +1979,30 @@ def test_impact_with_no_file_lists_what_changed_since_the_last_commit(
     named = project / "manuscript" / ("r" + chr(0xE9) + "sum" + chr(0x8003) + ".md")
     named.write_text("New.\n", encoding="utf-8")
     assert named.name in {Path(one["file"]).name for one in _impact(project)}
+    # Round 2 of #280: on a UTF-8 locale the name above passes without the encoding, so the
+    # encoding git's names are read in is asked of the call itself.
+    import manuscript_guard.impact as impact
+
+    asked = []
+    real = impact.subprocess.run
+
+    def run(*args, **kwargs):
+        asked.append(kwargs.get("encoding"))
+        return real(*args, **kwargs)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(impact.subprocess, "run", run)
+        _impact(project)
+    assert asked and set(asked) == {"utf-8"}
+    # A file moved with `git mv` is two files to what depends on them: the old name's
+    # readings are stale as much as the new name's, and rename detection lists only the new.
+    named.unlink()
+    git("mv", "manuscript/supplementary/S1_code_lists.md", "manuscript/supplementary/S1.md")
+    files = {one["file"]: one for one in _impact(project)}
+    assert {"manuscript/supplementary/S1_code_lists.md", "manuscript/supplementary/S1.md"} <= set(
+        files
+    ), files
+    assert files["manuscript/supplementary/S1_code_lists.md"]["readings"]
 
 
 # ------------------------------------------------------------- the authors' approvals
@@ -3490,6 +3566,21 @@ def test_a_plan_rewrapped_says_what_it_said(project: Path) -> None:
     assert _plan_said(project) == []
 
 
+def test_a_plan_kept_with_its_byte_order_mark_and_rewrapped_says_what_it_said(
+    project: Path,
+) -> None:
+    """Round 1 of #271: the emitters kept a plan's byte-order mark, which G12 strips when it
+    reads the plan, and a plan re-wrapped then no longer read as the copy."""
+    frozen = project / "design" / "plan.frozen.yaml"
+    record = json.loads(frozen.read_text(encoding="utf-8"))
+    record["plan"] = "﻿" + record["plan"]
+    frozen.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    plan.write_bytes(("﻿" + text.replace(". ", ".\n")).encode("utf-8"))
+    assert _plan_said(project) == []
+
+
 def test_the_kept_plan_is_never_written_again(project: Path) -> None:
     from conftest import run_analysis
 
@@ -3649,6 +3740,35 @@ def test_a_planned_results_section_that_names_no_key_is_a_warning(project: Path)
     words = "## Planned results\n\nThe cases, the ratio and the share that were serious.\n\n"
     plan.write_text(text[:start] + words + text[end:], encoding="utf-8")
     assert _planned_said(project) == [("planned-results-unkeyed", "")]
+
+
+def test_a_deviations_heading_that_names_the_planned_results_is_not_the_list(
+    project: Path,
+) -> None:
+    """Round 1 of #305: "Changes to the planned results" was read as the plan's list, named
+    no key, and the plan was said to list its results by none."""
+    _plan_edited(project, "## Deviations from the plan", "## Changes to the planned results")
+    assert _planned_said(project) == []
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    start, end = text.index("## Planned results\n"), text.index("## Sample size")
+    plan.write_text(text[:start] + text[end:], encoding="utf-8")
+    assert _planned_said(project) == []
+    # Round 1 of #351: where the planned results come first, the heading is the list's.
+    words = "## Planned results and amendments\n\nThe cases and the ratio.\n\n"
+    plan.write_text(text[:start] + words + text[end:], encoding="utf-8")
+    assert _planned_said(project) == [("planned-results-unkeyed", "")]
+
+
+def test_a_planned_group_of_tables_or_models_is_looked_for_among_them(project: Path) -> None:
+    """Round 1 of #305: `table.*` was looked for among the values, found nothing, and the
+    tables the analysis emitted were said to be missing."""
+    groups = "- `table.*`: the tables\n- `model.*`: the models\n- `case.pct_serious`"
+    _plan_edited(project, "- `case.pct_serious`", groups)
+    assert _planned_said(project) == []
+    _plan_edited(project, "- `model.*`: the models", "- `model.crude.*`: the crude models")
+    assert _planned_said(project) == [("planned-result-missing",
+                                       "- `model.crude.*`: the crude models")]  # fmt: skip
 
 
 # ------------------------------------------------- the unit of analysis
@@ -16079,6 +16199,10 @@ def _coded_with(root: Path, **releases: str) -> None:
     ("sentence", "typed"),
     [
         ("Events were coded with MedDRA version 26.1.", ["'26.1'"]),
+        # Round 1 of #287: with a "v" before it.
+        ("Events were coded with MedDRA v26.1.", ["'26.1'"]),
+        # Round 1 of #351: a "v" that ends a word is no "v" before the release.
+        ("Events were coded with MedDRA Rev26.1.", []),
         ("Drugs were coded with WHODrug Global B3 March 2025.", ["'Global B3 March 2025'"]),
         ("Diagnoses were coded with ICD-10 2019 codes.", ["'2019'"]),
         ("Events were coded with MedDRA version {{results.dictionary.meddra}}.", []),

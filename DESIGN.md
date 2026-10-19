@@ -1888,10 +1888,11 @@ pharmacovigilance paper the release of MedDRA decides which preferred terms exis
 `dictionary`, in both emitters, and digests the file it names as an input, so that a new
 release is a change G1 sees. MedDRA's ASCII release states its version in
 `meddra_release.asc`, the first `$`-separated field of its first line, and the emitter reads
-it from there; another dictionary's release is given, and checked against nothing. G2 fails a
-declared release typed where the dictionary is named within a few words before it on its
-line (`typed-dictionary-release`), and only there: "2019" is the release of ICD-10 and the
-year of many other things.
+it from there; another dictionary's release is given, and checked against nothing, and R
+refuses one that is not a single value. G2 fails a declared release typed where the
+dictionary is named within a few words before it on its line (`typed-dictionary-release`),
+with or without a `v` before it ("MedDRA v26.1"), and only there: "2019" is the release of
+ICD-10 and the year of many other things.
 
 ## The label beside an interval or a spread is the one emitted
 
@@ -3092,11 +3093,15 @@ backticks: `ror.point`, or `results.ror.point` as the manuscript binds it, or a 
 item's first blank line, and a span with no dot is code, not a key; a key with no dot of its
 own is written bound, `results.dose`. Once the stage is past
 `design`, G12 warns where a key listed there names no value, table or model the analysis
-emitted (`planned-result-missing`), or names only values emitted with `quoted=False`
+emitted (`planned-result-missing`; `table.*` and `model.*` name the tables and the models),
+or names only values emitted with `quoted=False`
 (`planned-result-unquoted`), unless the Deviations section names the key: dropping a
 promised result is a deviation, and saying so is the remedy. A section that names no key at
 all is a warning of its own (`planned-results-unkeyed`). A plan without the section says
-nothing to hold the results to and gets no finding.
+nothing to hold the results to and gets no finding. A heading that is also the Deviations
+section's heads the Deviations where the words of a change come first, "Changes to the
+planned results", and the list where the planned results do, "Planned results and
+amendments".
 
 **The plan is frozen when the first results are written.** A plan rewritten after the
 results are known is the pattern of a hypothesis fitted to its results, and it can be told
@@ -3107,7 +3112,9 @@ because the results folder is cleared and written again on every run, and a copy
 would be frozen again on the changed plan. Written as JSON, which is YAML too, so that R needs
 no package to write it. G12 warns (`plan-changed-after-results`) when the plan's words differ
 from the copy's and its Deviations section says what it said then: changed with nothing said.
-A plan re-wrapped without a word changed is unchanged. Results with no copy, written before
+A plan re-wrapped without a word changed is unchanged, and so is one saved with or without a
+byte order mark: both emitters keep the plan without the mark, and G12 compares it without
+one. Results with no copy, written before
 the emitters kept one, are a note. The worked example commits its copy beside its plan, as it
 commits its results. Until it did, every run of its analysis left the copy in a file git
 neither tracked nor ignored, which the next `git add -A` would have committed; a test now
@@ -4154,7 +4161,10 @@ be run again, read again or signed again?" had no answer in one place.
 
 `manuscript-guard impact <file>` walks it from a file and prints every dependant, with
 `--json` for a machine; with no file it takes the files changed since a commit (`--since`,
-HEAD by default) and the files git does not track yet. It is derived only: it keeps no record
+HEAD by default) and the files git does not track yet; a file moved is listed under both its
+names, since what named the old one is stale too. A folder is refused, and so is a name that
+is no file and that no record names, a slip of the keyboard; a file deleted that a record
+still names is answered. It is derived only: it keeps no record
 of its own, so it cannot go stale, and nobody fills it in. It says what depends on a file,
 not whether the dependant has changed; that is the gates' once the analysis has run again.
 
@@ -6290,7 +6300,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   `ror.point`, the crude one, passes. Keys are read from the list items' first code spans
   only; a result the section describes in words is not checked, and a section with one key
   and ten results in words says nothing of the ten. A Deviations section that names a key,
-  whatever it says of it, stands down that key's warning.
+  whatever it says of it, stands down that key's warning. A heading that names both,
+  "Planned results and amendments", or a list nested under the Deviations heading, is
+  read as the list and as the Deviations, so its items stand down their own keys' warnings
+  (rounds 2 and 3 of #351; telling the two apart made other plans warned of).
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the
@@ -6627,7 +6640,11 @@ Added by the adversarial review, verified and **not** fixed:
   (`kdeplot`) are not. A method of the same name on another object is taken for one: any
   `.sample(` or `.std(`. Any seed call in the script (`np.random.seed`, `default_rng(7)`,
   `random.seed`, `set.seed`) is taken to settle every random call in it, though
-  `np.random.seed` does not seed Python's `random` module. A seaborn bootstrap is settled
+  `np.random.seed` does not seed Python's `random` module. A draw from a generator the script
+  made, `rng = np.random.default_rng()` and then `rng.normal()`, is a method of that object
+  and not under `np.random.`, so it is not read even unseeded; a test pins it. The figure's
+  sheet lists what is allowed under `allow_estimates`, and a section there that is no list
+  allows nothing. A seaborn bootstrap is settled
   only by its own `seed=`. `geom_smooth`, `stat_summary` and `dropna` have no argument that
   quiets them: each needs a reason under `allow_estimates`, or the computation moved into
   the analysis.

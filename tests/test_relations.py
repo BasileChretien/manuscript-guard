@@ -140,6 +140,19 @@ def test_terms_all_near_nought_are_not_equal_by_being_small() -> None:
     assert report.findings == ()
 
 
+def test_a_ratio_is_held_to_its_result_not_to_its_denominator() -> None:
+    """Round 1 of #340: a tolerance of 1e-9 of the largest number made 2e-3 of a
+    denominator of 2,000,000, and a rate of 0.0007 passed for 700 over it, which is
+    0.00035."""
+    rate = {"r.rate": _value("r.rate", 0.0007, "0.0007"), "r.events": _value("r.events", 700, "700"),
+            "r.py": _value("r.py", 2_000_000, "2,000,000")}  # fmt: skip
+    report = _check({"kind": "ratio", "key": "r.rate", "of": ["r.events", "r.py"]}, values=rate)
+    assert ("relation-broken", FAIL) in _codes(report)
+    rate["r.rate"] = _value("r.rate", 700 / 2_000_000, "0.00035")
+    report = _check({"kind": "ratio", "key": "r.rate", "of": ["r.events", "r.py"]}, values=rate)
+    assert report.findings == ()
+
+
 def test_a_bound_is_no_rounding_even_within_half_a_unit() -> None:
     """Round 1 of #293: "<0.001" over 0.0009 was read as 0.001 rounded, and the printed
     arithmetic warned."""
@@ -320,6 +333,13 @@ def test_numpy_s_whole_numbers_and_truth_values_are_taken(scratch: Path) -> None
     results, report = load_results(scratch / "results")
     assert report.ok, report.findings
     assert type(results.values["flow.prisma.stage.1"].value) is int
+    # An array of step numbers is taken, as R takes c(1, 3); an array of truth values is
+    # no truth value, and is refused with the emitter's words (round 1 of #340).
+    em.flow("steps", **counts, overlapping=numpy.array([1]))
+    assert em._flows["steps"]["overlapping"] == [1]
+    for given in (numpy.array([True, False]), numpy.array([True])):
+        with pytest.raises(ValueError, match="overlapping is True, False"):
+            em.flow("refused", **counts, overlapping=given)
 
 
 def test_a_flow_two_fragments_record_is_the_first_s(scratch: Path) -> None:

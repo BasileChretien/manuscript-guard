@@ -5917,9 +5917,11 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers
   that might add up. That is the price of checking nothing by guesswork.
 - **A relation between values is exact, so a value emitted rounded fails it.** Whole numbers
-  are compared exactly and floats to their last bits: 1e-9 of the largest number in the
-  relation, which before round 1 of #293 was also 1e-9 absolute, so terms all near nought
-  were equal by being small. A script that emits `round(rate, 1)` instead of the rate
+  are compared exactly and floats to their last bits: a sum or a difference to 1e-9 of its
+  largest term, and a ratio to 1e-9 of its result. Before round 1 of #293 the tolerance was
+  also 1e-9 absolute, so terms all near nought were equal by being small; a ratio held to
+  its largest term, its denominator, let a rate twice the true one pass (round 1 of #340).
+  A script that emits `round(rate, 1)` instead of the rate
   breaks a ratio that holds, and is told to emit the value unrounded and let the display
   round it.
 - **The printed arithmetic reads the first number of each display.** A display that is not a

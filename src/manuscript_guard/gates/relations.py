@@ -88,7 +88,10 @@ def _relation(relation: dict, values: dict[str, Value]) -> list[Finding]:
     computed = _apply(kind, parts, scale)
     # A sum or a difference of whole numbers is whole and exact; a ratio's is a float.
     exact = kind != "ratio" and all(_whole(values[name].value) for name in (key, *of))
-    size = max(abs(number) for number in numbers)
+    # A sum's or a difference's float error scales with its terms; a ratio's with its
+    # result, which the relative tolerance already allows (round 1 of #340: the largest
+    # term of a ratio is its denominator, and 0.0007 passed for 700 over 2,000,000).
+    size = 0.0 if kind == "ratio" else max(abs(number) for number in numbers)
     if computed is None or not _equal(result, computed, exact, size):
         said = "undefined, the denominator being 0" if computed is None else _say(computed)
         return [
@@ -111,9 +114,10 @@ def _takes(kind: str) -> str:
 
 
 def _equal(result: float, computed: float, exact: bool, size: float) -> bool:
-    """Equal, or within `TOLERANCE` of the largest number in the relation: a difference
-    near nought is as near as its terms allow, and terms all near nought are not equal by
-    being small (round 1 of #293, where the tolerance was absolute)."""
+    """Equal, or within `TOLERANCE` of the result or of `size`, a sum's or a difference's
+    largest term: a difference near nought is as near as its terms allow, and terms all
+    near nought are not equal by being small (round 1 of #293, where the tolerance was
+    absolute)."""
     if exact:
         return result == computed
     return math.isclose(result, computed, rel_tol=TOLERANCE, abs_tol=TOLERANCE * size)

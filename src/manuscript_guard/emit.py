@@ -501,7 +501,10 @@ def _overlapping(key: str, overlapping: object, steps: int) -> bool | list[int]:
     NumPy's truth values and whole numbers are taken as Python's (round 2 of #293)."""
     if _truth_value(overlapping):
         return bool(overlapping)
-    named = list(overlapping) if isinstance(overlapping, (list, tuple, set, frozenset)) else []
+    # A NumPy array of step numbers is taken as R takes c(1, 3) (round 1 of #340).
+    listed = isinstance(overlapping, (list, tuple, set, frozenset)) or getattr(
+        overlapping, "ndim", None) == 1  # fmt: skip
+    named = list(overlapping) if listed else []
     if not named or any(not _whole_number(n) or not 1 <= n <= steps for n in named):
         raise ValueError(
             f"flow {key!r}: overlapping is True, False, or the numbers of the steps whose "
@@ -511,8 +514,12 @@ def _overlapping(key: str, overlapping: object, steps: int) -> bool | list[int]:
 
 
 def _truth_value(given: object) -> bool:
-    """A truth value, Python's or NumPy's, whose dtype is of kind "b"."""
-    return isinstance(given, bool) or getattr(getattr(given, "dtype", None), "kind", "") == "b"
+    """A truth value, Python's or NumPy's: a scalar whose dtype is of kind "b", not an
+    array of them (round 1 of #340)."""
+    return isinstance(given, bool) or (
+        getattr(getattr(given, "dtype", None), "kind", "") == "b"
+        and getattr(given, "ndim", None) == 0
+    )
 
 
 def _whole_number(given: object) -> bool:

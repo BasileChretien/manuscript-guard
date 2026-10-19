@@ -79,13 +79,29 @@ def folder(project: Project) -> Path:
 def style_name(named: str) -> str | None:
     """The repository's name for what a profile's `references.csl` says: the name itself, or
     the name at the end of a zotero.org/styles URL. None for anything else, which `style`
-    cannot fetch: a name with a slash, `..` or a capital, or another site's URL."""
+    cannot fetch: a name with a slash, `..` or a capital, another site's URL, or a file's
+    name, `vancouver.csl`, which was asked for as `vancouver.csl.csl` (round 1 of #322)."""
     named = named.strip()
     for prefix in ZOTERO_STYLES:
         if named.startswith(prefix):
             named = named[len(prefix) :]
             break
+    if is_file_name(named):
+        return None
     return named if _NAME.fullmatch(named) else None
+
+
+def is_file_name(named: str) -> bool:
+    """Whether a profile names a style by a file's name, with its `.csl`."""
+    return named.strip().lower().endswith(".csl")
+
+
+def name_of_file(named: str) -> str | None:
+    """The repository's name a file's name stands for, `vancouver` for `vancouver.csl`; None
+    where what is left is no such name either, `styles/vancouver` or `Vancouver` (round 1 of
+    #349: those were offered, and refused in turn)."""
+    named = named.strip()
+    return style_name(named[:-4]) if is_file_name(named) else None
 
 
 def profile_style(document: dict) -> str:

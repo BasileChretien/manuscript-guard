@@ -649,7 +649,9 @@ Zotero. The offline build, which is what CI and a co-author without Zotero get, 
 pandoc's default style unless `--csl` named a file. `manuscript-guard style` now fetches the
 style once from the repository's own files and keeps it in the project, under
 `profiles/journals/styles/`. A name is asked for at the repository's root, where its
-independent styles are, and then under `dependent/`. A dependent style holds no formatting of
+independent styles are, and then under `dependent/`. A name with `.csl`, a file's, is
+refused with the name to give instead, and G4 says the same (round 1 of #322: it was asked
+for as `vancouver.csl.csl`). A dependent style holds no formatting of
 its own and names the style it formats like (`<link rel="independent-parent">`), so that
 style is fetched from the root and kept beside it. A record, `<name>.yaml`, holds each
 file's address, the SHA-256 of its bytes, the licence it names, the day, and the style's
@@ -2900,8 +2902,13 @@ and the profile said so only in its free-text notes. The profile now says it (`b
 double`, or `triple`), and the build looks for the authors in the document it made: their
 names, ORCID iDs and e-mail addresses from `authors.yaml`, and the institutions of their
 affiliations. It reads the text, the notes, the comments, the headers and the footers, the
-text a tracked change deleted, the text of the figures, Word's author fields, the author of
-each tracked change and comment, and the list of people Word keeps. A name found is a
+text a tracked change deleted, the text of the figures, Word's author fields and its company
+field, the author of each tracked change and comment, the list of people Word keeps, the
+address behind a link and the code of a field that holds one (`HYPERLINK`,
+`INCLUDEPICTURE`, `INCLUDETEXT`, and `LINK` or `DDE` for a table pasted as a link to its
+file), a `mailto:` or an ORCID iD behind words (round 1 of
+#273). Not a citation's field code, which holds the cited work's data: a self-citation
+of a thesis names the author's school there (round 1 of #349). A name found is a
 `BUILD` failure (`blind-document-names-author`): `build` writes the document, says so and
 exits 1, and `submit` does not assemble the pack. `submit --document` reads the copy it is
 given, which is the one that comes back from a co-author with Word's fields filled in.
@@ -2912,10 +2919,15 @@ space between the words and either apostrophe, since pandoc prints a typed one c
 initial is not read: "A Cross-sectional study" does not name Anna Cross, nor "Ward A" Alice
 Ward. The family name alone is not, because many are ordinary words; an institution is the
 part of an affiliation between its commas that has three words or more, in any case, because
-a city or a country names many other things. The reference list, a paragraph whose style is
-named "Bibliography", is not read: the journals that review blind mostly ask for the
-authors' own work to be cited in the third person, not taken out, and a self-citation
-prints their names there.
+a city or a country names many other things. So an institution of two words ("Example
+Institute") is not looked for, and an initial with its stop before a word that is a family
+name reads as that author, "Panel A. Example" as Ada Example
+(`test_what_the_blind_check_reads_wrongly_is_pinned`). The reference list, a paragraph
+whose style is named "Bibliography", is not read, nor the addresses it links to, wherever
+else they are linked, by a link or a field (so a link Word adds in the body to one of them
+is not read either; the list prints that address anyway): the journals that review blind
+mostly ask for the authors' own work to be cited in the third person, not taken out, and a
+self-citation prints their names there.
 
 ## The submission pack writes nothing twice
 
@@ -2934,7 +2946,8 @@ The manifest records every file with its sha256, because six months later "which
 did the journal actually get" has no reliable answer otherwise. It also says what made the
 pack: the version of manuscript-guard that checked it (`checked_with`), so that a later fix
 can say which packs to check again; the project's commit, and whether anything in the
-project's folder outside `build/` differed from it (`tree`); the day the journal's profile
+project's folder outside `build/` differed from it (`tree`, each file of a folder git
+has not been given counted, round 1 of #250); the day the journal's profile
 and each reporting checklist were read from their sources; and every review finding a
 person chose to leave as it was, with the reason and who decided (`overrides`, from
 `overridden` and `overridden_by` in the review records). Where a record names nobody,
@@ -4886,7 +4899,8 @@ able to build something to read, so ordinary work warns and a resubmission fails
 **The letter is checked like the manuscript.** It goes to the journal with the paper, and
 `response` and `rebutted` were printed in it word for word: "the adjusted OR is now 2.31
 (95% CI 1.40 to 3.80)" typed into a reply went out unchecked, the core rule with a hole in a
-document we send. G2 now reads the authors' own words in each round as it reads prose, in a
+document we send. G2 now reads the authors' own words in each round, the `note` of each
+change as well (round 1 of #266), as it reads prose, in a
 section of their own, so the Methods' conventions, an alpha among them, do not pass a
 reply's "p < 0.001". A reply binds its results with `{{results.<key>}}` and `{{lit.<key>}}`,
 which the letter fills in; a typed one is `reply-unbound-number`, which fails at submission,

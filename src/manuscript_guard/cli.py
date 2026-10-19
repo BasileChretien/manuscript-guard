@@ -2524,10 +2524,13 @@ def cmd_style(args: argparse.Namespace) -> int:
         return 2
     name = journal_style.style_name(named)
     if name is None:
+        # Round 1 of #322: "vancouver.csl" was asked for as vancouver.csl.csl.
+        stem = journal_style.name_of_file(named)
+        file_named = f" (without its `.csl`: {stem!r})" if stem else ""
         print(
             f"manuscript-guard: {named!r} is not the name of a style in the CSL style "
-            "repository, nor its zotero.org/styles URL; pass a style file to the build with "
-            "`--csl FILE` instead",
+            f"repository{file_named}, nor its zotero.org/styles URL; pass a style file to the "
+            "build with `--csl FILE` instead",
             file=sys.stderr,
         )
         return 2

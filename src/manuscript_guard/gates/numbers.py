@@ -506,11 +506,17 @@ def replies(document: object, number: int) -> list[tuple[str, str]]:
         for point in points if isinstance(points, list) else []:
             if not isinstance(point, dict):
                 continue
+            where = f"round {number}, {reviewer.get('id')} point {point.get('id')}"
             for field in ("response", "rebutted"):
                 text = point.get(field)
                 if isinstance(text, str) and text.strip():
-                    where = f"round {number}, {reviewer.get('id')} point {point.get('id')}"
                     found.append((f"{where}, `{field}`", text))
+            # A changed entry's note is printed in the letter too (round 1 of #266).
+            changed = point.get("changed")
+            for at, entry in enumerate(changed if isinstance(changed, list) else []):
+                note = entry.get("note") if isinstance(entry, dict) else None
+                if isinstance(note, str) and note.strip():
+                    found.append((f"{where}, `changed[{at}].note`", note))
     return found
 
 

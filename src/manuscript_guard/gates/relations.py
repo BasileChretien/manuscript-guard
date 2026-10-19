@@ -38,10 +38,6 @@ GATE = "G8"
 #: How near two floats are taken to be equal. The values are the analysis's own, unrounded,
 #: so a relation between them holds to the last bits the arithmetic leaves.
 TOLERANCE = 1e-9
-#: How far, as a share of its largest term, a sum or a difference may stand from its
-#: result: a sum of n floats is out by about n times 2.2e-16 of its largest, so this allows
-#: thousands of terms, and no rounding at a printed place (round 2 of #340).
-_TERMS = 1e-12
 #: The first number in a display, with its thousands separators and its sign.
 _NUMBER = re.compile(r"[-\N{MINUS SIGN}]?\d[\d,]*(?:\.\d+)?")
 #: A bound before a display's number: "<0.001" prints no rounding of the value.
@@ -92,11 +88,7 @@ def _relation(relation: dict, values: dict[str, Value]) -> list[Finding]:
     computed = _apply(kind, parts, scale)
     # A sum or a difference of whole numbers is whole and exact; a ratio's is a float.
     exact = kind != "ratio" and all(_whole(values[name].value) for name in (key, *of))
-    # A sum's or a difference's float error scales with its terms; a ratio's with its
-    # result, which the relative tolerance already allows (round 1 of #340: the largest
-    # term of a ratio is its denominator, and 0.0007 passed for 700 over 2,000,000).
-    size = 0.0 if kind == "ratio" else max(abs(number) for number in numbers)
-    if computed is None or not _equal(result, computed, exact, size):
+    if computed is None or not _equal(result, computed, exact):
         said = "undefined, the denominator being 0" if computed is None else _say(computed)
         return [
             _finding(
@@ -117,14 +109,13 @@ def _takes(kind: str) -> str:
     return f"a {kind} is of {expected}"
 
 
-def _equal(result: float, computed: float, exact: bool, size: float) -> bool:
-    """Equal, or within `TOLERANCE` of the result, or `_TERMS` of `size`, a sum's or a
-    difference's largest term: a difference near nought is as near as its terms allow, and
-    terms all near nought are not equal by being small (round 1 of #293, where the
-    tolerance was absolute)."""
+def _equal(result: float, computed: float, exact: bool) -> bool:
+    """Equal, or within `TOLERANCE` of the result or of nought. Terms all below it are
+    equal by being small, a Known gap: a tolerance taken from the terms instead let a wrong
+    ratio pass, or a rounded difference, or failed a true one, as #340 found."""
     if exact:
         return result == computed
-    return math.isclose(result, computed, rel_tol=TOLERANCE, abs_tol=_TERMS * size)
+    return math.isclose(result, computed, rel_tol=TOLERANCE, abs_tol=TOLERANCE)
 
 
 def _apply(kind: str, parts: list, scale):

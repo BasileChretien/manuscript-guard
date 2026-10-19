@@ -126,37 +126,38 @@ def test_a_display_that_is_not_a_rounding_of_its_value_is_left_to_the_values() -
     assert report.findings == ()
 
 
-def test_terms_all_near_nought_are_not_equal_by_being_small() -> None:
-    """Round 1 of #293: the tolerance was absolute, so 1e-12 passed as the sum of 1e-12 and
-    2e-12. It is relative to the largest number in the relation, which still lets a
-    difference near nought be as near as its terms allow."""
+def test_terms_all_near_nought_are_equal_by_being_small() -> None:
+    """A Known gap, as DESIGN.md writes it (round 1 of #293): within 1e-9 of nought, 1e-12
+    passes as the sum of 1e-12 and 2e-12. A tolerance taken from the terms instead let a
+    wrong ratio or a rounded difference pass, or failed a true difference (#340)."""
     tiny = {"t.a": _value("t.a", 1e-12, "0"), "t.b": _value("t.b", 2e-12, "0"),
             "t.sum": _value("t.sum", 1e-12, "0")}  # fmt: skip
     report = _check({"kind": "sum", "key": "t.sum", "of": ["t.a", "t.b"]}, values=tiny)
-    assert _codes(report) == [("relation-broken", FAIL)]
+    assert report.findings == ()
     cancel = {"t.a": _value("t.a", 0.3, "0.3"), "t.b": _value("t.b", 0.1 + 0.2, "0.3"),
               "t.diff": _value("t.diff", 0.0, "0.0")}  # fmt: skip
     report = _check({"kind": "difference", "key": "t.diff", "of": ["t.a", "t.b"]}, values=cancel)
     assert report.findings == ()
 
 
-def test_a_difference_emitted_rounded_fails_however_large_its_terms() -> None:
-    """Round 2 of #340: held to 1e-9 of its largest term, 1.2e-3 here, a difference emitted
-    rounded to three places passed, where main's 1e-9 failed it. Held to 1e-12 of it, as
-    float arithmetic over thousands of terms leaves, it fails, and the true one passes."""
-    terms = {"t.a": _value("t.a", 1234567.891234, "1,234,567.891"),
+@pytest.mark.parametrize("places", [3, 6])
+def test_a_difference_emitted_rounded_fails_however_large_its_terms(places: int) -> None:
+    """Rounds 2 and 3 of #340: a tolerance taken from the largest term, near 1.2e6 here,
+    let a difference rounded to three places, then to six, pass. Within 1e-9, it fails, and
+    the true one passes."""
+    true = 1234567.8912346 - 1234560.0
+    terms = {"t.a": _value("t.a", 1234567.8912346, "1,234,567.891"),
              "t.b": _value("t.b", 1234560.0, "1,234,560.0"),
-             "t.d": _value("t.d", 7.891, "7.891")}  # fmt: skip
+             "t.d": _value("t.d", round(true, places), "7.891")}  # fmt: skip
     difference = {"kind": "difference", "key": "t.d", "of": ["t.a", "t.b"]}
     assert ("relation-broken", FAIL) in _codes(_check(difference, values=terms))
-    terms["t.d"] = _value("t.d", 1234567.891234 - 1234560.0, "7.891")
+    terms["t.d"] = _value("t.d", true, "7.891")
     assert _check(difference, values=terms).findings == ()
 
 
 def test_a_ratio_is_held_to_its_result_not_to_its_denominator() -> None:
-    """Round 1 of #340: a tolerance of 1e-9 of the largest number made 2e-3 of a
-    denominator of 2,000,000, and a rate of 0.0007 passed for 700 over it, which is
-    0.00035."""
+    """Round 1 of #340: a tolerance taken from the largest number, a ratio's denominator
+    of 2,000,000, let a rate of 0.0007 pass for 700 over it, which is 0.00035."""
     rate = {"r.rate": _value("r.rate", 0.0007, "0.0007"),
             "r.events": _value("r.events", 700, "700"),
             "r.py": _value("r.py", 2_000_000, "2,000,000")}  # fmt: skip

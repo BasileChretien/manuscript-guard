@@ -2097,9 +2097,17 @@ def test_an_approval_covers_the_title_page_the_authors_put_their_names_to(
     from manuscript_guard.approvals import check_approvals
 
     said = [f.message for f in check_approvals(load_project(project)[0]).findings]
-    assert all(m.endswith("and its title page has changed since") for m in said), said
+    assert all(m.endswith("and its title page or its declarations have changed since")
+               for m in said), said  # fmt: skip
     for author in both:
         assert main(["approve", str(project), "--as", author]) == 0
+    # Round 2 of #355: a competing interest is declared in the authors' names too.
+    declared = authors.read_text(encoding="utf-8")
+    assert '"None declared."' in declared
+    authors.write_text(declared.replace('"None declared."', '"Fees from a comparator\'s maker."',
+                                        1), "utf-8")  # fmt: skip
+    assert len(_approvals_said(project)) == 2, _approvals_said(project)
+    authors.write_text(declared, encoding="utf-8")
     authors.write_text(authors.read_text(encoding="utf-8").replace(
         "family: Sample", "family: Sample-Smith"), encoding="utf-8")  # fmt: skip
     said = _approvals_said(project)

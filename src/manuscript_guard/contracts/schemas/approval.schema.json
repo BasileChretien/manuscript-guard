@@ -23,7 +23,7 @@
     "front_sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
-      "description": "The title page the author approved, as submit prints it but for its word counts: the title, the running title, the authors with their degrees and affiliations, the corresponding author, the ORCID iDs and the keywords. What it does not print, a role, the CRediT roles, the funding, is not in it. An approval written without it is judged by document_sha256 alone."
+      "description": "What submit prints in the authors' names, as it prints it: the title page but for its word counts (the title, the running title, whether the paper is a demonstration, the authors with their degrees, affiliations and equal-contribution marks, the corresponding author with an e-mail, the ORCID iDs, the keywords), the CRediT statement and the declarations of funding and competing interests. A role named to sign a warning is not in it. An approval written without it is judged by document_sha256 alone."
     },
     "note": {
       "type": "string",

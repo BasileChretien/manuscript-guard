@@ -32,18 +32,28 @@ SCHEMA = "manuscript-guard/approval/1"
 
 
 def front_digest(project: Project) -> str:
-    """The title page as the authors approve it, as `submit` prints it but for its word
-    counts, which the manuscript decides (round 1 of #284: a new title, or an author added,
-    left every approval of the old one standing). What it does not print, a role, the
-    CRediT roles, the funding, stales nothing (round 1 of #355). A title page that cannot be
-    built, with no `authors.yaml` or one the schema refuses, is the same empty page."""
-    from manuscript_guard.build.submission import SubmissionError, printed_front
+    """What `submit` prints in the authors' names: the title page but for its word counts,
+    which the manuscript decides, the CRediT statement and the declarations (round 1 of #284:
+    a new title, or an author added, left every approval of the old one standing). What none
+    of them prints, a role named to sign a warning, stales nothing (round 1 of #355). A part
+    that cannot be built from the data, with no `authors.yaml` or a field it needs missing,
+    is an empty part."""
+    from manuscript_guard.build.submission import (
+        SubmissionError,
+        credit_statement,
+        declarations,
+        printed_front,
+    )
 
-    try:
-        printed = printed_front(project)
-    except (SubmissionError, KeyError, TypeError, AttributeError, IndexError):
-        printed = ""
-    return hashlib.sha256(printed.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256()
+    for part in (printed_front, credit_statement, declarations):
+        try:
+            printed = part(project)
+        except (SubmissionError, KeyError, TypeError, AttributeError, IndexError):
+            printed = ""
+        # Kept apart, so that text moved from one part to the next is a change.
+        digest.update(printed.encode("utf-8", "surrogatepass") + b"\x00")
+    return digest.hexdigest()
 
 
 class NoSuchAuthor(Exception):
@@ -158,12 +168,13 @@ def check_approvals(project: Project) -> Report:
         # An approval written before the title page was held to has no `front_sha256`, and is
         # judged by the manuscript alone, as it was given.
         recorded = document.get("front_sha256")
-        changed = ("it" if document["document_sha256"] != current else
-                   "its title page" if recorded and recorded != front else None)  # fmt: skip
+        changed = ("it has" if document["document_sha256"] != current else
+                   "its title page or its declarations have" if recorded and recorded != front
+                   else None)  # fmt: skip
         if changed:
             report = report.with_findings(
                 _finding("approval-stale", f"{name_of(author)} approved the manuscript on "
-                         f"{document['approved_on']}, and {changed} has changed since", path,
+                         f"{document['approved_on']}, and {changed} changed since", path,
                          "they read it again and approve it as it stands")  # fmt: skip
             )
     return report

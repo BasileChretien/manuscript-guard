@@ -3219,11 +3219,12 @@ folder is not committed, so a fresh checkout says `verify` has not run in it, wh
 `manuscript-guard approve --as <author>` now records an author's approval in
 `approvals/<author>.yaml`, one file per author, with the digest of what decides the built
 document, the prose and the results, as `check` reads it to say a build is current, and the
-digest of the title page the authors put their names to (`front_sha256`), as `submit`
-prints it but for its word counts, which the manuscript decides: the title, the running
-title, whether the paper is a demonstration, the authors with their degrees and
-affiliations, the corresponding author, the ORCID iDs and the keywords. What it does not
-print stales no approval: a comment, a role, the CRediT roles, the funding, the rest of
+digest of what `submit` prints in the authors' names (`front_sha256`): the title page but
+for its word counts, which the manuscript decides (the title, the running title, whether
+the paper is a demonstration, the authors with their degrees, affiliations and
+equal-contribution marks, the corresponding author, the ORCID iDs, the keywords), the
+CRediT statement and the declarations of funding and competing interests. What none of
+them prints stales no approval: a comment, a role named to sign a warning, the rest of
 `paper.yaml` (the journal, whose style the document prints, is left out on purpose), and
 a figure's file, whose bytes a re-render changes (Basile's choice, 2026-10-20, round 1 of
 #284: a new title or an author added left every approval standing; round 1 of #355: the

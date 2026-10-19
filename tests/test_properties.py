@@ -3684,6 +3684,14 @@ def _what_differs_is_looked_for_at_the_ends_only(patch: pytest.MonkeyPatch) -> N
 #: kind, a power, a slash, a symbol of the list, and words that open with a symbol's letters.
 _AFTER_A_BINDING = (
     (" mg", "mg"),
+    # Pandoc's escaped space, the entity of a no-break one, a comment, which is not
+    # printed, and the hair and figure spaces (round 1 of #279).
+    ("\\ mg", "mg"),
+    ("&nbsp;mg", "mg"),
+    ("&#160;g", "g"),
+    ("<!-- the dose --> mg", "mg"),
+    ("\N{HAIR SPACE}mg", "mg"),
+    ("\N{FIGURE SPACE}mg", "mg"),
     ("\N{NO-BREAK SPACE}\N{MICRO SIGN}g/kg", "\N{MICRO SIGN}g/kg"),
     ("\N{THIN SPACE}\N{GREEK SMALL LETTER MU}g", "\N{GREEK SMALL LETTER MU}g"),
     ("%", "%"),
@@ -4874,6 +4882,15 @@ def _a_unit_is_read_after_a_plain_space_only(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
 
 
+def _a_unit_is_read_after_a_space_character_only(patch: pytest.MonkeyPatch) -> None:
+    """The gap before round 1 of #279: spaces of three widths, and no escaped space,
+    entity, comment, hair or figure space."""
+    old = "[ \t\N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE}]"
+    assert bound_units_gate._SPACE in bound_units_gate._UNIT.pattern
+    pattern = bound_units_gate._UNIT.pattern.replace(bound_units_gate._SPACE, old)
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
 def _a_unit_is_read_inside_a_longer_word(patch: pytest.MonkeyPatch) -> None:
     pattern = bound_units_gate._UNIT.pattern.rsplit("(?!", 1)[0]
     patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
@@ -5196,6 +5213,10 @@ BROKEN = {
     ),
     "a unit is read after a plain space only": (
         _a_unit_is_read_after_a_plain_space_only,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
+    ),
+    "a unit is read after a space character only": (
+        _a_unit_is_read_after_a_space_character_only,
         test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
     ),
     "a unit is read inside a longer word": (

@@ -2736,6 +2736,49 @@ reviewer lets the call go on to the lock.
 The record itself is written by exclusive create, so two calls for one reader cannot both
 succeed.
 
+## What the panel finds of the defects we know
+
+A measurement on real inputs, with its date (item 53). `tools/panel_measure.py` puts the
+example's round-1 panel, its three reviewers and their remits, to four copies of the example,
+each three times, through the requests `review --run --dry-run` writes. The copies are the
+version that panel read, which had the four defects its records name, twice over; the fixed
+version; that first version cut to its title and abstract, for a reader who has read
+nothing; and the fixed version with two minor defects planted, an undefined "ICSR" and a
+Table 1 caption that no longer says its values are n (%). Each finding is settled by the
+words of `tools/data/panel-rubric.yaml`, written before any reply was read, where a major or
+minor finding uses one defect's words; the rest are adjudicated blind. The script writes the
+report; nothing in it is by hand.
+
+- **2026-10-19, Claude Opus 5.5, through Claude Code (`--safe-mode`, the panel's system
+  text as the whole system prompt, no tools), 45 readings, $4.10 at API prices, run under
+  a subscription.** No reading was refused unread. The blind findings were adjudicated by
+  the same model, which put all six controls of known grade right; no person checked it.
+
+  | Known defect | Raised, two sets of three | Rated major | Raised by the blank reader |
+  |---|---|---|---|
+  | No case definition | 3, 3 | 3, 3 | 3 of 3, all major |
+  | The 2 x 2 table's counts not given | 3, 2 | 0, 0 | 3 of 3, all major |
+  | Duplicate reports not mentioned | 2, 0 | 1, 0 | 3 of 3, 2 major |
+  | Record selection not described | 2, 3 | 2, 3 | 3 of 3, all major |
+
+  - A finding raised is not evidence that the manuscript was read. The reader given the
+    title and abstract alone raised every one of the four, nearly always as major, with
+    5.9 major findings a reading against 1.8 from the readers of the whole. The case
+    definition is, besides, the panel's own instructions' example of a finding.
+  - Severity is where the readings differ. The 2 x 2 table, major in the round-1 record, was
+    never rated major; duplicates went from two readings of three to none between two sets
+    of the same request, so a difference smaller than that between sets is noise.
+  - On the fixed version the readings gave 0.2 major findings each, and still raised the
+    2 x 2 table and record selection, as minor findings: these are counted by their words,
+    which cannot tell a finding about the table from one saying it is missing.
+  - Of the planted minor defects, the undefined acronym was raised in none of nine
+    readings and the caption in one, and neither was rated major: no over-escalation, and
+    little recall.
+  - The record's digest (`bcb8549c...`) is of a later version than the one the round-1
+    panel read: the records came with the fixes, and were stamped again with each change
+    after. The version read is the example's first, `e6a8cca6`. A first run on the later
+    version found none of the four, since they are fixed there, and is not reported.
+
 ## A document reviewed blind names none of its authors
 
 A journal whose review is double-blind asks for a manuscript that does not say who wrote it,

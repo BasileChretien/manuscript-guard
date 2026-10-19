@@ -24,7 +24,9 @@ choice or a judgement is neither, and says so:
    clone of the project whose input digests failed). Two would measure the toolkit as a
    whole. The review panel read against defects already known has been run once, on the
    example's own manuscript and not on a real paper ("What the panel finds of the defects
-   we know"). How often G6 fires on clean text written by people is proposed and not run.
+   we know"). How often G6 fires on clean text written by people has been measured once,
+   on 384 biomedical research articles of 2010 to 2022, and its rate thresholds set from it
+   ("The AI-writing lint measures rate, not presence"); no text written by a model was read.
 3. **The author used it on a real manuscript.**
 4. **Someone else did.**
 

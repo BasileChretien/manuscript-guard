@@ -165,10 +165,16 @@ def problems(
     for isbn in isbns:
         if not isbn_valid(isbn):
             malformed("ISBN", isbn.strip(), "has a check digit that does not add up")
-    # A field of labels and qualifiers alone, "online", holds none (round 1 of #345); one
-    # with a digit in it may hold an ISBN set aside in brackets, and is left as it was.
+    # A field of labels and qualifiers alone, "online", holds none (round 1 of #345). An ISBN
+    # written in brackets is set aside with them, and is read there (round 2).
     written = fields.get("isbn", "").strip()
-    if written and not any(isbn.strip() for isbn in isbns) and not re.search(r"\d", written):
+    bracketed = [re.sub(r"[\s-]", "", inner).upper() for inner in re.findall(r"\(([^()]*)\)",
+                                                                              written)]
+    in_brackets = [b for b in bracketed if re.fullmatch(r"\d{9}[\dX]|\d{13}", b)]
+    for isbn in in_brackets:
+        if not isbn_valid(isbn):
+            malformed("ISBN", isbn, "has a check digit that does not add up")
+    if written and not any(isbn.strip() for isbn in isbns) and not in_brackets:
         malformed("ISBN", written, "holds no ISBN, only what is written beside one")
 
     kind = fields.get("type", "").lower()
@@ -194,17 +200,28 @@ NOT_INHERITED = (
 )  # fmt: skip
 
 
+#: Where biber puts a parent's title, by the parent's type (BibLaTeX's manual, appendix B):
+#: a book's, a collection's, proceedings' or a reference work's is the part's `booktitle`, a
+#: periodical's the article's `journaltitle`, a multi-volume work's `maintitle`, which no
+#: type requires (round 3 of #345).
+TITLE_GOES_TO = {
+    "book": "booktitle", "collection": "booktitle", "proceedings": "booktitle",
+    "reference": "booktitle", "periodical": "journaltitle",
+}  # fmt: skip
+
+
 def inherited(parent: dict[str, str] | None) -> dict[str, str]:
     """What an entry takes from the one its `crossref` names: every field it lacks but the
-    title, as biber inherits from a book, a collection or proceedings (BibLaTeX's manual,
-    appendix B), the author of a book given to its chapter (round 2 of #345); and the
-    parent's title as its `booktitle`, which BibTeX's parent writes itself (round 1 of #249:
-    a hand-written `@inproceedings` was told it had no booktitle)."""
+    title, as biber inherits it (BibLaTeX's manual, appendix B), the author of a book given
+    to its chapter (round 2 of #345); and the parent's title where biber puts it, a book's as
+    the part's `booktitle`, which BibTeX's parent writes itself (round 1 of #249: a
+    hand-written `@inproceedings` was told it had no booktitle)."""
     if not parent:
         return {}
     fields = {name: value for name, value in parent.items() if name not in NOT_INHERITED}
-    if parent.get("title", "").strip() and not fields.get("booktitle", "").strip():
-        fields["booktitle"] = parent["title"]
+    goes_to = TITLE_GOES_TO.get(parent.get("type", "").lower())
+    if goes_to and parent.get("title", "").strip() and not fields.get(goes_to, "").strip():
+        fields[goes_to] = parent["title"]
     return fields
 
 

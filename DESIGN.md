@@ -921,8 +921,9 @@ needs in both formats a `.bib` file is written in: what BibTeX's standard styles
 (`journaltitle`, `date`). `sync-bib` writes BibLaTeX, which asks no publisher of a book
 and no note of an unpublished work, so neither is required. An entry takes the fields it
 lacks from the one its `crossref` names, the key matched exactly, as biber does: a book's
-author for its chapter, its editor, publisher and date, and its title as the part's
-`booktitle`, never as the part's own title. Each fails from
+author for its chapter, its editor, publisher and date, and its title where biber puts it,
+a book's, a collection's or proceedings' as the part's `booktitle`, a periodical's as the
+article's `journaltitle`, never as the part's own title. Each fails from
 internal-review (`identifier-malformed`, `reference-field-missing`), when the reference
 list is first printed for others to read; while drafting, an entry can still be a
 placeholder, and it is reported and deferred. Whether a DOI is registered, names the work

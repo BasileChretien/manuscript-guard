@@ -4794,6 +4794,11 @@ def test_an_isbn_written_in_brackets_alone_is_left_as_it_was() -> None:
     from manuscript_guard.gates.identifiers import problems
 
     assert problems("k", {"type": "misc", "isbn": "(978-0-306-40615-7)"}) == []
+    # Round 3: read there, with its check digit; and a digit in a label or in words in
+    # brackets is no ISBN.
+    for field in ("(978-0-306-40615-8)", "ISBN-13:", "(2nd ed., 1999)"):
+        found = problems("k", {"type": "misc", "isbn": field})
+        assert [code for code, _said in found] == ["identifier-malformed"], field
 
 
 def test_a_volume_of_its_word_alone_stays_a_volume() -> None:
@@ -4808,6 +4813,8 @@ def test_a_volume_of_its_word_alone_stays_a_volume() -> None:
     assert named("V.") != named(None) and named("Volume") != named(None)
     assert named("Vol. 1") == named("1") == named("v. 1") == named("Volume 1")
     assert [_volume(v) for v in ("Volume", "Vol.", "V.", "Vol.2")] == ["volume", "vol.", "v.", "2"]
+    # Round 3: a word with a digit straight after it.
+    assert named("Vol1") == named("1")
 
 
 def test_a_part_takes_from_its_crossref_all_but_the_title() -> None:
@@ -4824,6 +4831,15 @@ def test_a_part_takes_from_its_crossref_all_but_the_title() -> None:
     ]
     book = {"type": "book", "author": "Kant, I.", "title": "Werke", "year": "1900"}
     assert problems("c", {"type": "inbook", "title": "Kritik", "crossref": "b"}, book) == []
+    # Round 3: a periodical's title is the article's journal, and a multi-volume work's is
+    # no booktitle.
+    article = {"type": "article", "author": "A", "title": "T", "year": "2000", "crossref": "j"}
+    assert problems("a", article, {"type": "periodical", "title": "J"}) == []
+    chapter = {"type": "incollection", "author": "A", "title": "T", "year": "2000"}
+    found = problems("a", chapter, {"type": "mvcollection", "title": "J"})
+    assert [said for _code, said in found] == [
+        "@a: an @incollection entry needs its booktitle, and has none"
+    ]
 
 
 def test_a_part_takes_its_book_s_fields_from_its_crossref(project: Path) -> None:

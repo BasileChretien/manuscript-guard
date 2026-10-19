@@ -69,9 +69,8 @@ _INTERVAL = re.compile(
     # "= 2.6", " of 2.6", " was 2.6", ", 2.6": what stands between the name and its value.
     rf"(?:{_NOT_A_NAME}(?:[^\d\n()\[\]{{}}]|\n(?![ \t]*\n))){{0,24}}?"
     # An en dash straight before the estimate's digits, and after no digit, is its minus:
-    # "–1.4" (round 2 of #300). Between two numbers it joins bounds, which come later. A
-    # ratio is never negative, so before a ratio's estimate it is a dash, "OR–1.9" being
-    # 1.9, and is dropped below (rounds 1 and 2 of #336).
+    # "–1.4" (round 2 of #300). Between two numbers it joins bounds, which come later. Glued
+    # to a ratio's name it is a dash, "OR–1.9" being 1.9, and is dropped below (#336).
     rf"(?P<estimate>(?:(?<![\d.])\N{{EN DASH}}(?=\.?\d))?{_NUMBER})"
     rf"{_S}*[(\[,;]?{_S}*"
     # "exact 95% CI", "95% profile-likelihood CI": what the interval is, said before it.
@@ -161,12 +160,17 @@ def reported_intervals(text: str) -> list[ReportedInterval]:
             p = None
         quiet = _INTERVAL_QUIET.search(text, start, finish)
         p_quiet = _P_QUIET.search(text, start, finish)
+        estimate = match.group("estimate")
+        # An en dash glued to a ratio's name is a dash, "OR–1.9" (round 1 of #336); after a
+        # space it is a minus, a log ratio's "–0.4" (the post-budget round of #336).
+        if match.group("ratio") and estimate.startswith("\N{EN DASH}") and text[
+                match.start("estimate") - 1].isalpha():  # fmt: skip
+            estimate = estimate[1:]
         found.append(
             ReportedInterval(
                 kind="ratio" if match.group("ratio") else "difference",
                 name=" ".join((match.group("ratio") or match.group("difference")).split()),
-                estimate=(match.group("estimate").removeprefix("\N{EN DASH}")
-                          if match.group("ratio") else match.group("estimate")),  # fmt: skip
+                estimate=estimate,
                 low=low,
                 high=high,
                 level=match.group("level") or match.group("level2") or "",

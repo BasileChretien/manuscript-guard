@@ -227,6 +227,10 @@ def test_a_minus_written_as_an_en_dash_before_an_estimate_is_read() -> None:
     assert glued.estimate == "1.9" and not outside_interval(glued)
     minus = _one("MD\N{EN DASH}0.4 (95% CI -0.8 to -0.1).")
     assert minus.estimate == "\N{EN DASH}0.4" and not outside_interval(minus)
+    # After a space, before a ratio's name too, it is a minus: a log ratio's (the
+    # post-budget round of #336).
+    logged = _one("The log OR was \N{EN DASH}0.4 (95% CI -0.8 to -0.1).")
+    assert logged.estimate == "\N{EN DASH}0.4" and not outside_interval(logged)
 
 
 @pytest.mark.parametrize(

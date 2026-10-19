@@ -181,7 +181,7 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
     # The columns whose n a row of means named in one of its other cells, "3.1 (1.0), n =
     # 25": the means below are held to it, and are uncertain (round 2 of #331).
     from_means: set[int] = set()
-    for row in table:
+    for at, row in enumerate(table):
         placed = list(_columns(row))
         label = row[0].text if row else ""
         named = any(names(wanted, label) for wanted in labels)
@@ -195,8 +195,9 @@ def table_means(table: Table, labels: tuple[str, ...]) -> list[Mean]:
             if shaped is None:
                 set_here = _header(cell, column, over)
                 # A mean that names its n is a row of means too, read or not (round 1 of
-                # #336).
-                of_means = means or _names_its_n(text)
+                # #336); a cell of the first row, the header, is none, "0.5 (n = 40)" in a
+                # dose table being a header (the post-budget round of #336).
+                of_means = means or (at > 0 and _names_its_n(text))
                 from_means = (from_means | set_here) if of_means else (from_means - set_here)
                 continue
             if column not in over:

@@ -5442,7 +5442,8 @@ def test_a_mean_that_names_its_n_makes_the_means_below_it_uncertain(row: str) ->
     assert below.uncertain and "row of means" in below.uncertain
 
 
-@pytest.mark.parametrize("header", ["| | 2019 (n = 120) |", "| | 12 (n = 120) |"])
+@pytest.mark.parametrize("header", ["| | 2019 (n = 120) |", "| | 12 (n = 120) |",
+                                    "| | 0.5 (n = 120) |"])  # fmt: skip
 def test_a_year_or_a_count_beside_an_n_is_a_header_not_a_mean(header: str) -> None:
     """Round 2 of #336: a header's year, or a count, with an n beside it was taken for a
     mean naming its n, and the means below it were called uncertain."""

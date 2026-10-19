@@ -6137,8 +6137,8 @@ Added by the adversarial review, verified and **not** fixed:
   and "ratio of means" stop a "difference" before them, which is not read across them
   (round 2 of #300); a longer name keeps the two apart anyway, since a name and its
   estimate stand at most 24 characters apart. An en dash straight before an estimate's
-  digits, after no digit, is read as its minus, "MD–0.4" too, except before a ratio's, which
-  is never negative: "OR–1.9" is 1.9 (rounds 1 and 2 of #336).
+  digits, after no digit, is read as its minus, "MD–0.4" and a log ratio's "–0.4" too,
+  except glued to a ratio's name: "OR–1.9" is 1.9 (#336).
 - **An n (%) is held to its denominator only where the table writes both, in one cell, in
   a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
   count and its share in columns of their own, nor a share whose denominator only a caption
@@ -6177,7 +6177,9 @@ Added by the adversarial review, verified and **not** fixed:
   mean in a sentence is not read, nor a median, nor a mean whose thousands are grouped. A
   cell that is a mean and names its n, "3.1 (1.0), n = 25", or any other cell of a row of
   means that names one, sets the n for the column below, and the means held to it are
-  uncertain, whether its own row is read or not (round 1 of #336). Its n is its column header's, so a mean over those
+  uncertain, whether its own row is read or not (round 1 of #336); a mean naming its n has a
+  spread or a point, and is not in the table's first row, so a header "2019 (n = 120)" or
+  "0.5 (n = 40)" is a header (#336). Its n is its column header's, so a mean over those
   with data is listed as not fitting where its n is smaller; the message gives the nearest n
   it fits, and the reader decides. A mean of several items per person is read in `audit` as
   a mean of one number each: every mean possible for n is possible for n times the items, so

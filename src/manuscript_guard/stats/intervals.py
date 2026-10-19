@@ -56,14 +56,23 @@ _DIFFERENCE = (
     r"(?<![\w-])(?:MD|RD|ARD|SMD|WMD)(?![\w-])"
     r"|(?i:\b(?:mean|risk|absolute|standardi[sz]ed mean)?\s?differences?\b)"
 )
+#: Ratios this does not read, whose intervals need not be symmetric on the log scale (an
+#: SMR's exact Poisson interval), but whose names a difference does not cross either.
+_UNREAD = (
+    r"(?<![\w-])(?:SMR|SIR)(?![\w-])"
+    r"|(?i:\bstandardi[sz]ed\s+(?:mortality|incidence)\s+ratios?\b"
+    r"|\bratios?\s+of\s+(?:geometric\s+)?means\b)"
+)
 #: Where no other estimate's name begins: "No difference in mortality, HR 0.83" names an HR,
-#: and the difference is no estimate of it (round 1 of #300).
-_NOT_A_NAME = rf"(?!{_RATIO}|{_DIFFERENCE})"
+#: and the difference is no estimate of it (round 1 of #300); nor does it of an SMR (round 2).
+_NOT_A_NAME = rf"(?!{_RATIO}|{_DIFFERENCE}|{_UNREAD})"
 _INTERVAL = re.compile(
     rf"(?:(?P<ratio>{_RATIO})|(?P<difference>{_DIFFERENCE}))"
     # "= 2.6", " of 2.6", " was 2.6", ", 2.6": what stands between the name and its value.
     rf"(?:{_NOT_A_NAME}(?:[^\d\n()\[\]{{}}]|\n(?![ \t]*\n))){{0,24}}?"
-    rf"(?P<estimate>{_NUMBER})"
+    # An en dash straight before the estimate's digits, and after no digit, is its minus:
+    # "–1.4" (round 2 of #300). Between two numbers it joins bounds, which come later.
+    rf"(?P<estimate>(?:(?<![\d.])\N{{EN DASH}}(?=\.?\d))?{_NUMBER})"
     rf"{_S}*[(\[,;]?{_S}*"
     # "exact 95% CI", "95% profile-likelihood CI": what the interval is, said before it.
     rf"{_METHOD}(?:(?P<level>\d{{2}}(?:\.\d)?){_S}?%{_S}*)?{_METHOD}"
@@ -194,7 +203,7 @@ def alpha_of(level: str) -> float | None:
 
 def _value(printed: str) -> Decimal | None:
     try:
-        return Decimal(printed.replace("\N{MINUS SIGN}", "-"))
+        return Decimal(printed.replace("\N{MINUS SIGN}", "-").replace("\N{EN DASH}", "-"))
     except InvalidOperation:
         return None
 

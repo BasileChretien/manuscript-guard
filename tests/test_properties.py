@@ -964,13 +964,24 @@ def _reported_tests(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
     plans: list[tuple[int, str]] = []
     for index in range(len(_TEST_FORMS)):
         plans += [(index, kind) for kind in ("moderate", "large", "far", "near", "quiet")]
-    plans += [(-1, "next sentence"), (-1, "two statistics")]
+    plans += [(-1, "next sentence"), (-1, "two statistics"), (-1, "middle dot"),
+              (-1, "decimal comma")]  # fmt: skip
     shapes = draw(st.permutations(("e", "x10", "<")))
     sentences: list[tuple[str, tuple[Any, ...] | None]] = []
     for number, (index, plan) in enumerate(draw(st.permutations(plans))):
         if plan == "next sentence":
             s, df, _p = statistic("t", _MODERATE)
             sentences.append((f"t({df[0]}) = {s}. {words().capitalize()} p = .40", None))
+            continue
+        if plan in ("middle dot", "decimal comma"):
+            # A decimal written with a middle dot, in the P, or a comma, in the statistic:
+            # not read at all, rather than read as its whole part (round 1 of #285).
+            s, df, p = statistic("t", _MODERATE)
+            if plan == "middle dot":
+                printed = f"{p:.3f}".replace(".", "\N{MIDDLE DOT}")
+                sentences.append((f"t({df[0]}) = {s}, p = {printed}", None))
+            else:
+                sentences.append((f"t({df[0]}) = {s.replace('.', ',')}, p = {p:.3f}", None))
             continue
         if plan == "two statistics":
             first, first_df, _p = statistic("t", _MODERATE)
@@ -1058,6 +1069,22 @@ def _less_than_is_read_as_equal_to(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reported, "_SIGNS", {**reported._SIGNS, "<": "="})
 
 
+def _a_decimal_comma_is_read_as_a_whole_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    pattern = reported._STATISTIC.pattern.replace(reported._DECIMAL_ON, r"(?![\d]|\.\d)")
+    assert pattern != reported._STATISTIC.pattern
+    patch.setattr(reported, "_STATISTIC", re.compile(pattern))
+
+
+def _a_middle_dot_is_read_as_the_end_of_a_p(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    pattern = reported._P.pattern.replace(r"[\N{MIDDLE DOT},]\d", r"\d")
+    assert pattern != reported._P.pattern
+    patch.setattr(reported, "_P", re.compile(pattern))
+
+
 def _a_test_that_is_not_the_textbook_one_is_judged(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import reported
 
@@ -1135,6 +1162,8 @@ _NOT_PLAIN_INTERVAL = (
 _DIFFERENCE_BEFORE = (
     "there was no difference, ", "with no difference in mortality, ", "the difference: ",
 )  # fmt: skip
+#: Ratios the reader does not read, whose names a difference before them does not cross.
+_UNREAD_RATIOS = ("SMR", "SIR", "the standardised mortality ratio", "a ratio of means of")
 _NOT_PLAIN_P = (
     "after Bonferroni adjustment, ", "one-sided, ", "with P values adjusted for multiple testing, ",
 )  # fmt: skip
@@ -1217,10 +1246,27 @@ def _planted_intervals(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
                              "outside")
             ]  # fmt: skip
     plans += [(0, plan) for plan in ("next interval", "interaction", "next sentence")]
-    plans += [(7, "hyphens"), (0, "reversed"), (0, "after difference")]
+    plans += [(7, "hyphens"), (0, "reversed"), (0, "after difference"), (0, "unread ratio"),
+              (0, "en dash")]  # fmt: skip
     sentences: list[tuple[str, tuple[Any, ...] | None]] = []
     for index, plan in draw(st.permutations(plans)):
         kind, form, level = _INTERVAL_FORMS[index]
+        if plan == "unread ratio":
+            # A difference before a ratio this does not read is not read across its name
+            # (round 2 of #300): nothing is found.
+            e, low, high, _p = ratio("symmetric", "95")
+            name = draw(st.sampled_from(_UNREAD_RATIOS))
+            sentences.append((f"No difference in mortality, {name} {shown(e)} (95% CI "
+                              f"{shown(low)} to {shown(high)}), P = 0.40", None))  # fmt: skip
+            continue
+        if plan == "en dash":
+            # A minus written as an en dash before the estimate (round 2 of #300).
+            e, h = -thousandths(600, 900), thousandths(100, 500)
+            e_, low_, high_ = f"\N{EN DASH}{abs(e):.2f}", shown(e - h), shown(e + h)
+            sentences.append((f"The mean difference was {e_} (95% CI {low_} to {high_})",
+                              (len("The "), "difference", e_, low_, high_, "95", None, None,
+                               False, False)))  # fmt: skip
+            continue
         if kind == "ratio":
             plain = plan in ("next interval", "outside", "after difference")
             e, low, high, p = ratio("symmetric" if plain else plan, level)
@@ -1387,6 +1433,23 @@ def _a_name_s_words_run_across_another_name(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(intervals, "_INTERVAL", re.compile(pattern))
 
 
+def _a_difference_runs_across_a_ratio_it_does_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    without = rf"(?!{intervals._RATIO}|{intervals._DIFFERENCE})"
+    pattern = intervals._INTERVAL.pattern.replace(intervals._NOT_A_NAME, without)
+    assert pattern != intervals._INTERVAL.pattern
+    patch.setattr(intervals, "_INTERVAL", re.compile(pattern))
+
+
+def _an_en_dash_before_an_estimate_is_no_minus(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import intervals
+
+    dash = r"(?:(?<![\d.])\N{EN DASH}(?=\.?\d))?"
+    assert dash in intervals._INTERVAL.pattern
+    patch.setattr(intervals, "_INTERVAL", re.compile(intervals._INTERVAL.pattern.replace(dash, "")))
+
+
 def _bounds_that_cannot_be_read_for_sure_are_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import intervals
 
@@ -1530,8 +1593,9 @@ def test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n(
     case, each mean is found with its column header's n, alone, with its SD in brackets or
     after a plus-minus sign, negative with a minus sign. It can be the mean of n whole
     numbers where some total over n is within half a unit of its last place, either end,
-    two places for 2.50; it is not assessable where n is 10 to the power of its places or
-    more; and it is uncertain where its row's label carries a footnote marker or an n. A row
+    two places for 2.50; it is not assessable where every mean printed to its places is
+    possible for n, for 10 to the power of the places or more and for 80 and 96 at two; and
+    it is uncertain where its row's label carries a footnote marker or an n. A row
     not named, a table whose header names no n, a fenced listing and a sentence are not
     read."""
     from manuscript_guard.stats.granularity import possible, table_means
@@ -1584,6 +1648,13 @@ def _every_mean_is_assessable(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import granularity
 
     patch.setattr(granularity, "assessable", lambda mean, n, items=1: True)
+
+
+def _a_mean_is_assessable_below_the_power_of_its_places(patch: pytest.MonkeyPatch) -> None:
+    """The rule before round 1 of #331: 80 and 96 at two places read as assessable."""
+    from manuscript_guard.stats import granularity
+
+    patch.setattr(granularity, "_some_mean_is_none", lambda count, places_: count < 10**places_)
 
 
 def _a_named_label_is_matched_in_its_case(patch: pytest.MonkeyPatch) -> None:
@@ -5002,6 +5073,14 @@ BROKEN = {
         _less_than_is_read_as_equal_to,
         test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
     ),
+    "a statistic written with a decimal comma is read as its whole part": (
+        _a_decimal_comma_is_read_as_a_whole_number,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a P written with a middle dot is read as its whole part": (
+        _a_middle_dot_is_read_as_the_end_of_a_p,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
     "a test its sentence calls one-sided or adjusted is judged as two-sided": (
         _a_test_that_is_not_the_textbook_one_is_judged,
         test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
@@ -5066,6 +5145,14 @@ BROKEN = {
         _a_name_s_words_run_across_another_name,
         test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
     ),
+    "a difference runs across the name of a ratio the reader does not read": (
+        _a_difference_runs_across_a_ratio_it_does_not_read,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
+    "an en dash before an estimate is not its minus": (
+        _an_en_dash_before_an_estimate_is_no_minus,
+        test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
+    ),
     "bounds joined by hyphens after a negative one, or the wrong way round, are read": (
         _bounds_that_cannot_be_read_for_sure_are_read,
         test_an_estimate_and_its_interval_are_found_where_they_stand_and_judged,
@@ -5088,6 +5175,10 @@ BROKEN = {
     ),
     "every mean is assessable, whatever its n": (
         _every_mean_is_assessable,
+        test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a mean is assessable wherever n is under 10 to the power of its places": (
+        _a_mean_is_assessable_below_the_power_of_its_places,
         test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
     ),
     "a named label is matched in the case the auditor typed": (

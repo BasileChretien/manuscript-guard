@@ -37,7 +37,8 @@ One check needs no outputs. Each t, F, chi-squared or z statistic with a P after
 its sentence is held to that P: the P the statistic gives is worked out over every value
 their printed digits allow, and a P that does not follow is listed apart, with whether it
 falls on the other side of 0.05. A one-sided, adjusted or exact test the sentence names
-is not judged, and `--strict` does not count these. Each named estimate with a confidence
+is not judged, and `--strict` does not count these. A number written with a middle dot or a
+comma for its point, "0·62", is not read, so such a paper has none of its tests judged. Each named estimate with a confidence
 interval after it is held to it the same way: an estimate outside its own interval, a
 ratio whose interval is lopsided on the log scale, and an interval that excludes its null beside a P above one less its level, or
 includes it beside one below, are listed with them.

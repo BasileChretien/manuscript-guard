@@ -882,6 +882,11 @@ two of them and on which line: numbers, which are most often line numbers or a c
 figures read into the sentence, or words, which are the quote's own omission or a column,
 a footnote or a running header. Or it names the word split by a hyphen, or, where the
 words stand together, the first place the punctuation or a symbol differs, "2·6" for "2.6".
+A difference in white space alone beside punctuation, "drug-\ninduced", is not named; an
+HTML entity is named as numbers or words; a word split at the edge of an interruption is
+named by one half; nothing between two words is named where the first word was retyped or
+a word is missing; a line number equal to the quote's next number is read as the later of
+the two; and a PDF is read again for each quote that fails in it (round 1 of #301).
 Where only some are there, it says how many, and the quote's next word against what the
 source has in its place. The line is the file's own for a text file or a page, and is not
 given for a PDF, whose lines are its reader's. This is said and decides nothing: the quote
@@ -6081,11 +6086,21 @@ Added by the adversarial review, verified and **not** fixed:
   a rule that flags them is a rule that gets the gate switched off.
 - **A P is held to its statistic only in a sentence that writes both, for four kinds of
   test.** t, F, chi-squared and z are read; r, U, H, W and the rest are not. A test in a
-  table, its statistic in one column and its P in another, is not read, and neither is a P
-  written before its statistic, "P = .03 (t(23) = 2.45)". A sentence ends at a stop before a
+  table, its statistic in one column and its P in another, is not read. A statistic takes
+  the next P in its sentence, before the next statistic, so where each P stands before its
+  own, "P = .022 (t(23) = 2.45); P = .40 (t(30) = 0.85)", the first statistic is judged
+  with the second's P and reported (round 1 of #285, where this said such a P was not
+  read; `test_a_p_written_before_its_statistic_is_read_as_the_next_one_s`). A number written
+  with a middle dot or a comma for its point, "0·62" or "0,62", is not read at all, so a
+  paper set that way has none of its tests judged. A P above 1 is not judged. A sentence ends at a stop before a
   capital or a bracket, so "et al. (2019)" ends one, and a word before it that says the
   test is not the textbook one is not seen. Such a word stands the test down wherever it is
-  in the sentence, about this test or not: "exact" or "corrected" said of anything. Degrees
+  in the sentence, about this test or not: "exact" or "corrected" said of anything, and
+  "adjusted", so "adjusted for age, z = 2.10, P = .40" is not judged, though a Wald z of an
+  adjusted model is the textbook one (pinned by
+  `test_adjusted_said_of_anything_stands_a_test_down`). Dunnett's and Games-Howell's
+  procedures are among those words; others are not. A quote two ledger values rest on is
+  judged once. Degrees
   of freedom with a thousands separator, "F(1, 1,234)", are not read. Decimal degrees of
   freedom are read over their digits by the corners of that range, which is exact where the
   P moves one way with each. A t or a z is read as two-sided unless its sentence says
@@ -6101,7 +6116,22 @@ Added by the adversarial review, verified and **not** fixed:
   the level near it, and are reported unless the sentence calls the test exact or
   likelihood-based, or the P adjusted for multiplicity. A word that stands an interval or
   its P down does so wherever it is in the sentence, as for the tests. A P given before its
-  interval, or in a table column of its own, is not read.
+  interval, or in a table column of its own, is not read. Each of these is pinned by
+  `test_what_the_interval_reader_gets_wrong_is_pinned` (rounds 1 and 2 of #300):
+  - a P in a later clause is taken as the estimate's, the search stopping only at another
+    interval's name: in "OR 1.9 (95% CI 1.2-3.0) but not in women (OR 1.1, P = 0.40)" the
+    first OR is judged with 0.40;
+  - "HR" for heart rate, or "RR" for respiratory rate, is read as a ratio held to 1;
+  - an interval whose level is not printed is taken as 95%, so a paper that states 90% once
+    in its Methods is judged at 0.05;
+  - "the difference in hazard ratios" is read as a hazard ratio;
+  - a word that says a P is another's, "heterogeneity" or "interaction", stands it down
+    when it follows within 40 characters, whatever it is about.
+
+  An SMR, an SIR, a standardised mortality or incidence ratio and a ratio of means are not
+  read, since their exact intervals need not be symmetric on the log scale; their names
+  stop a "difference" before them, which is not read across them (round 2 of #300). An en
+  dash straight before an estimate's digits, after no digit, is read as its minus.
 - **An n (%) is held to its denominator only where the table writes both, in one cell, in
   a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
   count and its share in columns of their own, nor a share whose denominator only a caption
@@ -6127,11 +6157,19 @@ Added by the adversarial review, verified and **not** fixed:
   marker after it, or with no comma before its "%" ("SpO2 %"), is not a measure.
   Categories whose counts add up to an old denominator are let off as shares of it. "No. of
   patients (%)" and "% (n)" are not read as saying shares. A nested Word table is read as
-  text in its cell.
+  text in its cell. A measure in percent whose mean is above 100, "Predicted FEV1, % | 104
+  (15)" under a header that says n (%), is read as a share and listed, since only a number
+  up to 100 is barred as a measure. What may stand beside a characteristic's own label
+  takes a lone "P", "<", "0" or "1", so a second header row "| Characteristic | | | P |" is
+  read as a label, and refuses a negative SMD, a P with a footnote marker and "NS", beside
+  which the label is read as a header (round 3 of #314). A span is held to the 63 columns a
+  Word table has.
 - **A mean of whole numbers is checked only where the author says it is one, and only
   as a mean.** `audit` reads only the table rows `--whole-numbers` names, and in them only a
-  cell shaped as a mean, with its SD or not; a mean in a sentence is not read, nor a median,
-  nor a mean whose thousands are grouped. Its n is its column header's, so a mean over those
+  cell shaped as a mean, with its SD or not, a nought before its point or not (".47"); a
+  mean in a sentence is not read, nor a median, nor a mean whose thousands are grouped. A
+  cell of a row of means that names an n, "3.1 (1.0), n = 25", sets the n for the column
+  below, and the means held to it are uncertain. Its n is its column header's, so a mean over those
   with data is listed as not fitting where its n is smaller; the message gives the nearest n
   it fits, and the reader decides. A mean of several items per person is read in `audit` as
   a mean of one number each: every mean possible for n is possible for n times the items, so

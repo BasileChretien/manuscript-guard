@@ -83,6 +83,9 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
     verified = 0
     unverifiable = 0
     failed = 0
+    # A quote two values rest on is the same sentence of the source: its numbers are judged
+    # once, under the first key (round 1 of #285).
+    judged: set[str] = set()
 
     for key, value in sorted(literature.values.items()):
         detail = value.detail or {}
@@ -152,7 +155,9 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
             continue
 
         verified += 1
-        report = report.merge(_tests_in_quote(key, value, quote))
+        if quote not in judged:
+            judged.add(quote)
+            report = report.merge(_tests_in_quote(key, value, quote))
         report = report.merge(_whole_number_mean(key, value, detail))
         beside = words_beside(quote, value.display)
         if len(beside) < WORDS_BESIDE:
@@ -242,7 +247,9 @@ def _whole_number_mean(key: str, value, detail: dict) -> Report:
     declared = detail.get("mean_of_whole_numbers")
     if not isinstance(declared, dict):
         return Report()
-    n, items = declared["n"], declared.get("items", 1)
+    # Whole counts, though YAML may give "28.0", which the schema takes for an integer
+    # (round 1 of #331: the float reached the arithmetic and raised).
+    n, items = int(declared["n"]), int(declared.get("items", 1))
     mean = as_mean(value.display)
     verdict = None if mean is None else possible(mean, n, items)
     if verdict is True:
@@ -262,12 +269,18 @@ def _whole_number_mean(key: str, value, detail: dict) -> Report:
         ))  # fmt: skip
     if mean is None:
         why = f"{value.display!r} is not printed as a decimal number"
+        # The mean can be tested, written alone (round 1 of #331: the hint said there was
+        # nothing to do).
+        hint = "record the mean alone as the value's display, \"3.47\", to have it tested"
     else:
         shown = places(mean)
         why = (
             f"any mean printed to {shown} place{'' if shown == 1 else 's'} can be one of "
             f"{n * items} whole numbers"
         )
+        hint = "nothing to do; the test has power only where some mean printed to those " \
+            "places is no whole total over n, which needs fewer numbers than 10 to the power " \
+            "of the places"  # fmt: skip
     return Report((
         Finding(
             gate=GATE,
@@ -275,9 +288,7 @@ def _whole_number_mean(key: str, value, detail: dict) -> Report:
             severity=INFO,
             message=f"{key}: whether it can be a mean of whole numbers is not assessable: {why}",
             path=value.source,
-            hint="nothing to do; the test has power only where some mean printed to those "
-            "places is no whole total over n, which needs fewer numbers than 10 to the power "
-            "of the places",
+            hint=hint,
         ),
     ))  # fmt: skip
 

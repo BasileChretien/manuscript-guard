@@ -5917,12 +5917,16 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   A subgroup total nobody declared is not checked, and nothing searches the prose for numbers
   that might add up. That is the price of checking nothing by guesswork.
 - **A relation between values is exact, so a value emitted rounded fails it.** Whole numbers
-  are compared exactly and floats to their last bits (a relative 1e-9). A script that emits
-  `round(rate, 1)` instead of the rate breaks a ratio that holds, and is told to emit the
-  value unrounded and let the display round it.
+  are compared exactly and floats to their last bits: 1e-9 of the largest number in the
+  relation, which before round 1 of #293 was also 1e-9 absolute, so terms all near nought
+  were equal by being small. A script that emits `round(rate, 1)` instead of the rate
+  breaks a ratio that holds, and is told to emit the value unrounded and let the display
+  round it.
 - **The printed arithmetic reads the first number of each display.** A display that is not a
-  rounding of its own value ("<0.001", a rate printed per 1,000 of a value held per person,
-  "1.2 × 10⁻³") is left out of it, and the relation is then held to the values alone. A
+  rounding of its own value ("<0.001", whatever its value, a rate printed per 1,000 of a
+  value held per person, "1.2 × 10⁻³") is left out of it, and the relation is then held to
+  the values alone. What Decimal arithmetic leaves in its last digits, 100 over 3 times 3
+  being 99.99...9, is no rounding of the printed numbers (round 1 of #293). A
   share held as a fraction and printed as a percentage is read as a percentage. The warning
   is meant to fire routinely: percentages rounded one by one often miss 100, and the text
   may say so rather than change a number.
@@ -5932,6 +5936,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   named in `overlapping`, which waives the sum of that step's reasons but not its total; the
   reasons are still each at most what the step removed, and together at least that. The flow diagram is not yet
   drawn from the record: a figure script reads the counts from the results like any other.
+  A flow two fragments record is the first's, as its counts are, and `duplicate-key` says so
+  of the second's (round 1 of #293, where the second record was held to the first's counts).
+  Python's `relation()` refuses an `of` that is one key written as a string, which it read
+  as its letters (in R a string is a vector of one key), and either emitter refuses a name
+  that is no results key; NumPy's whole numbers and truth values are taken as Python's, as
+  R takes any whole numeric.
 - **A UTF-16 input without a BOM is normalised as if it were 8-bit text.** Its 0x0D and 0x0A
   bytes can belong to ordinary characters, so an edit that swaps one such character for
   another (U+4E0D for U+4E0A) can leave the digest unchanged and pass G1. Exports that write

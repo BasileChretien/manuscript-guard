@@ -1212,7 +1212,17 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       stop("relation '", key, "': the kinds are ", paste(names(arity), collapse = ", "),
            call. = FALSE)
     }
+    # as.character drops the names a named vector carries, so a named `of` is still an
+    # array of keys; and a key that is none of the results' is refused here, not at
+    # `write`, as the Python `relation()` refuses it (round 1 of #293).
     of <- as.character(of)
+    keys <- c(as.character(key), of)
+    bad <- keys[!grepl("^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$", keys)]
+    if (!is.character(key) || length(key) != 1L || length(bad) > 0L) {
+      stop("relation '", paste(key, collapse = ", "), "': '",
+           if (length(bad) > 0L) bad[[1]] else paste(key, collapse = ", "),
+           "' is no results key", call. = FALSE)
+    }
     expected <- arity[[kind]]
     if (expected > 0L && length(of) != expected) {
       stop("relation '", key, "': a ", kind, " is of ", expected, " key(s), not ", length(of),
@@ -1228,8 +1238,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
                              scale > 0)) {
       stop("relation '", key, "': a ratio's scale is a positive number", call. = FALSE)
     }
-    # unname: a named vector, as sapply returns, would be written as a JSON object.
-    entry <- list(kind = kind, key = key, of = as.list(unname(of)))
+    entry <- list(kind = kind, key = key, of = as.list(of))
     if (!is.null(scale)) entry$scale <- scale
     state$relations[[length(state$relations) + 1L]] <- entry
     invisible(NULL)

@@ -126,6 +126,41 @@ def test_a_display_that_is_not_a_rounding_of_its_value_is_left_to_the_values() -
     assert report.findings == ()
 
 
+def test_terms_all_near_nought_are_not_equal_by_being_small() -> None:
+    """Round 1 of #293: the tolerance was absolute, so 1e-12 passed as the sum of 1e-12 and
+    2e-12. It is relative to the largest number in the relation, which still lets a
+    difference near nought be as near as its terms allow."""
+    tiny = {"t.a": _value("t.a", 1e-12, "0"), "t.b": _value("t.b", 2e-12, "0"),
+            "t.sum": _value("t.sum", 1e-12, "0")}  # fmt: skip
+    report = _check({"kind": "sum", "key": "t.sum", "of": ["t.a", "t.b"]}, values=tiny)
+    assert _codes(report) == [("relation-broken", FAIL)]
+    cancel = {"t.a": _value("t.a", 0.3, "0.3"), "t.b": _value("t.b", 0.1 + 0.2, "0.3"),
+              "t.diff": _value("t.diff", 0.0, "0.0")}  # fmt: skip
+    report = _check({"kind": "difference", "key": "t.diff", "of": ["t.a", "t.b"]}, values=cancel)
+    assert report.findings == ()
+
+
+def test_a_bound_is_no_rounding_even_within_half_a_unit() -> None:
+    """Round 1 of #293: "<0.001" over 0.0009 was read as 0.001 rounded, and the printed
+    arithmetic warned."""
+    near = {"risk.control": _value("risk.control", 0.0009, "<0.001"),
+            "risk.treated": _value("risk.treated", 0.5009, "0.5009"),
+            "risk.difference": _value("risk.difference", 0.5, "0.5000")}  # fmt: skip
+    report = _check({"kind": "difference", "key": "risk.difference",
+                     "of": ["risk.treated", "risk.control"]}, values=near)  # fmt: skip
+    assert report.findings == ()
+
+
+def test_the_last_digits_of_decimal_arithmetic_are_no_rounding() -> None:
+    """Round 1 of #293: 100 over 3, times 3, is 99.99...9 to 28 digits, and a whole 100
+    printed as itself was warned of."""
+    whole = {"w.key": _value("w.key", 100, "100"), "w.a": _value("w.a", 100, "100"),
+             "w.b": _value("w.b", 3, "3")}  # fmt: skip
+    report = _check({"kind": "ratio", "key": "w.key", "of": ["w.a", "w.b"], "scale": 3},
+                    values=whole)  # fmt: skip
+    assert report.findings == ()
+
+
 @pytest.mark.parametrize(
     ("relation", "said"),
     [
@@ -232,6 +267,11 @@ def test_overlapping_reasons_waive_their_sum_and_keep_the_total(scratch: Path) -
         (("sum", "a", ["b"]), {"scale": 1000}, "only a ratio"),
         (("ratio", "a", ["b", "c"]), {"scale": 0}, "positive number"),
         (("ratio", "a", ["b", "c"]), {"scale": float("nan")}, "positive number"),
+        # Round 1 of #293: one key as a string was read as its letters, and a key that is
+        # no results key was refused only at `write`.
+        (("at_most", "a", "cohort.n"), {}, r"a list of keys, \['cohort.n'\] for one"),
+        (("sum", "a", ["Cohort N"]), {}, "'Cohort N' is no results key"),
+        (("sum", "a b", ["b"]), {}, "'a b' is no results key"),
     ],
 )
 def test_the_emitter_refuses_a_relation_it_cannot_write(
@@ -263,6 +303,42 @@ def test_overlap_named_for_one_step_leaves_the_others_exact(scratch: Path) -> No
 def test_an_overlap_that_names_no_step_is_refused(scratch: Path, overlapping: object) -> None:
     with pytest.raises(ValueError, match="numbers of the steps whose reasons overlap, from 1 to 3"):
         _emitter(scratch).flow("prisma", **PRISMA, overlapping=overlapping)
+
+
+def test_numpy_s_whole_numbers_and_truth_values_are_taken(scratch: Path) -> None:
+    """Round 2 of #293: a count or a step number from NumPy, and NumPy's True, were
+    refused, where R takes any whole numeric; they are written as Python's."""
+    numpy = pytest.importorskip("numpy")
+    em = _emitter(scratch)
+    counts = {"stages": {label: numpy.int64(n) for label, n in PRISMA["stages"].items()},
+              "exclusions": [{reason: numpy.int64(n) for reason, n in step.items()}
+                             for step in PRISMA["exclusions"]]}  # fmt: skip
+    em.flow("prisma", **counts, overlapping=[numpy.int64(1)])
+    em.flow("again", **counts, overlapping=numpy.True_)
+    assert em._flows["prisma"]["overlapping"] == [1] and em._flows["again"]["overlapping"] is True
+    em.write()
+    results, report = load_results(scratch / "results")
+    assert report.ok, report.findings
+    assert type(results.values["flow.prisma.stage.1"].value) is int
+
+
+def test_a_flow_two_fragments_record_is_the_first_s(scratch: Path) -> None:
+    """Round 1 of #293: the second record was checked against the first's counts, which
+    are the ones kept; `duplicate-key` says so of the second's."""
+    (scratch / "analysis" / "other.py").write_text("# other\n", encoding="utf-8")
+    first = _emitter(scratch)
+    first.flow("consort", **CONSORT)
+    first.write()
+    second = Emitter(scratch / "analysis" / "other.py", root=scratch)
+    second.flow("consort", stages={"A": 500, "B": 400, "C": 300},
+                exclusions=[{"x": 100}, {"y": 100}])  # fmt: skip
+    second.write()
+    results, report = load_results(scratch / "results")
+    assert "duplicate-key" in {f.code for f in report.findings}
+    # The record kept is the one whose counts were kept, whichever fragment was read first.
+    kept = "other.json" if results.values["flow.consort.stage.1"].value == 500 else "run.json"
+    assert results.flows["consort"]["source"] == scratch / "results" / kept
+    assert check_relations(results).findings == ()
 
 
 def test_an_overlapping_step_with_no_reasons_accounts_for_nothing(scratch: Path) -> None:

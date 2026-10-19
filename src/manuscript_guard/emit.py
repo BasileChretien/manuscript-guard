@@ -20,6 +20,7 @@ import contextlib
 import hashlib
 import importlib.metadata
 import json
+import numbers
 import platform
 import re
 import subprocess
@@ -466,6 +467,8 @@ _PARAMETER_KEY = re.compile(r"[a-z0-9_]+(?:\.[a-z0-9_]+)*")
 
 #: A model's key names its values and its table, and a table key takes no dots.
 _TABLE_SAFE_KEY = re.compile(r"[a-z][a-z0-9_]*")
+#: A results key, as the results schema writes it.
+_RESULT_KEY = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*")
 #: The relations an analysis can declare, and how many keys each is of (0: one or more).
 RELATIONS = {"sum": 0, "difference": 2, "ratio": 2, "at_most": 1, "in_order": 1}
 
@@ -494,18 +497,27 @@ def flow_problem(
 
 
 def _overlapping(key: str, overlapping: object, steps: int) -> bool | list[int]:
-    """True, False, or the step numbers in order, each once; anything else is refused."""
-    if isinstance(overlapping, bool):
-        return overlapping
-    numbers = list(overlapping) if isinstance(overlapping, (list, tuple, set, frozenset)) else []
-    if not numbers or any(
-        isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= steps for n in numbers
-    ):
+    """True, False, or the step numbers in order, each once; anything else is refused.
+    NumPy's truth values and whole numbers are taken as Python's (round 2 of #293)."""
+    if _truth_value(overlapping):
+        return bool(overlapping)
+    named = list(overlapping) if isinstance(overlapping, (list, tuple, set, frozenset)) else []
+    if not named or any(not _whole_number(n) or not 1 <= n <= steps for n in named):
         raise ValueError(
             f"flow {key!r}: overlapping is True, False, or the numbers of the steps whose "
             f"reasons overlap, from 1 to {steps}"
         )
-    return sorted(set(numbers))
+    return sorted({int(n) for n in named})
+
+
+def _truth_value(given: object) -> bool:
+    """A truth value, Python's or NumPy's, whose dtype is of kind "b"."""
+    return isinstance(given, bool) or getattr(getattr(given, "dtype", None), "kind", "") == "b"
+
+
+def _whole_number(given: object) -> bool:
+    """A whole number, Python's or NumPy's, that is no truth value."""
+    return isinstance(given, numbers.Integral) and not _truth_value(given)
 
 
 #: What a variable can be meant to be. The data hold numbers and strings, and cannot say
@@ -1702,6 +1714,15 @@ class Emitter:
         """
         if kind not in RELATIONS:
             raise ValueError(f"relation {key!r}: the kinds are {', '.join(RELATIONS)}")
+        # One key given as a string was read as its letters, "cohort.n" as eight keys
+        # (round 1 of #293); and a key that is none of the results' is refused here, not
+        # at `write`.
+        if isinstance(of, (str, bytes)):
+            raise ValueError(f"relation {key!r}: `of` is a list of keys, [{of!r}] for one")
+        of = list(of)
+        for name in (key, *of):
+            if not isinstance(name, str) or not _RESULT_KEY.fullmatch(name):
+                raise ValueError(f"relation {key!r}: {name!r} is no results key")
         expected = RELATIONS[kind]
         if expected and len(of) != expected:
             raise ValueError(f"relation {key!r}: a {kind} is of {expected} key(s), not {len(of)}")
@@ -1715,7 +1736,7 @@ class Emitter:
             or not 0 < scale < float("inf")
         ):
             raise ValueError(f"relation {key!r}: a ratio's scale is a positive number")
-        entry: dict = {"kind": kind, "key": key, "of": [str(k) for k in of]}
+        entry: dict = {"kind": kind, "key": key, "of": [str(name) for name in of]}
         if scale is not None:
             entry["scale"] = scale
         self._relations.append(entry)
@@ -1759,8 +1780,12 @@ class Emitter:
             )
         counts = [*stages.values(), *(n for step in exclusions for n in step.values()),
                   *(arms or {}).values()]  # fmt: skip
-        if any(isinstance(n, bool) or not isinstance(n, int) or n < 0 for n in counts):
+        if any(not _whole_number(n) or n < 0 for n in counts):
             raise ValueError(f"flow {key!r}: every count is a whole number, none below 0")
+        # NumPy's whole numbers as Python's, as R takes any whole numeric (round 2 of #293).
+        stages = {label: int(n) for label, n in stages.items()}
+        exclusions = [{reason: int(n) for reason, n in step.items()} for step in exclusions]
+        arms = {label: int(n) for label, n in arms.items()} if arms else arms
         overlapping = _overlapping(key, overlapping, len(stages) - 1)
         problem = flow_problem(list(stages.values()),
                                [list(step.values()) for step in exclusions],

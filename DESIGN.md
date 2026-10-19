@@ -919,9 +919,10 @@ whatever labels and qualifies them (`ISBN-13: ...`, `ISBN 13:`, `eISBN`, `(pbk.)
 needs in both formats a `.bib` file is written in: what BibTeX's standard styles require
 (btxdoc) and BibLaTeX also requires (its manual, section 2.1.1), under either's name
 (`journaltitle`, `date`). `sync-bib` writes BibLaTeX, which asks no publisher of a book
-and no note of an unpublished work, so neither is required. An entry takes what it lacks
-from the one its `crossref` names, the parent's title as its `booktitle` as BibLaTeX has
-it. Each fails from
+and no note of an unpublished work, so neither is required. An entry takes the container's
+fields it lacks from the one its `crossref` names, the key matched exactly as biber matches
+it: the parent's title as its `booktitle`, as BibLaTeX has it, and the editor, publisher
+and date, never the part's own author or title. Each fails from
 internal-review (`identifier-malformed`, `reference-field-missing`), when the reference
 list is first printed for others to read; while drafting, an entry can still be a
 placeholder, and it is reported and deferred. Whether a DOI is registered, names the work
@@ -7113,8 +7114,9 @@ Closed since, and why each mattered:
   first three digits are no ISBN prefix. An ISBN-10 that opens with 978 or 979, followed in
   the same field by another ISBN, or by a word that is neither a label nor one of the
   qualifiers set aside ("9781234563 reprint"), and parted from it by a space only, is read
-  as the start of an ISBN-13 and reported. A field named `type` is not read: the entry's
-  own type is kept under that name.
+  as the start of an ISBN-13 and reported. A field named `type` is kept beside the entry's
+  own type, which stays under that name: G7 reads the entry's, the data statement either
+  (a `@misc` with `type = {dataset}` is a dataset), and a co-author is shown the field.
 - **Two keys for one work are found by an identifier or a title, and only among what is
   cited.** Two entries of one work with no identifier in common and titles that differ, a
   preprint and its article, or a translation, are not found. A title of fewer than four

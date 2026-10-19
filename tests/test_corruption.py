@@ -2456,6 +2456,23 @@ def test_a_dataset_cited_by_its_key_is_named_by_its_doi(project: Path) -> None:
     ) == [("data-identifier-missing", "fail")]
 
 
+def test_a_dataset_written_as_misc_with_its_type_field_is_named_by_its_doi(
+    project: Path,
+) -> None:
+    """Round 1 of #345: BibTeX has no `@dataset`, and a hand-kept file writes one as `@misc`
+    with `type = {dataset}`; the reader that kept the entry's own type dropped the field."""
+    bib = project / "literature" / "references.bib"
+    dataset = ("@misc{fictionalHepaticCohort2021,\n  type = {dataset},\n"
+               "  doi = {10.5281/zenodo.1234567},\n")  # fmt: skip
+    bib.write_text(
+        bib.read_text(encoding="utf-8").replace(
+            "@article{fictionalHepaticCohort2021,\n", dataset, 1
+        ),
+        encoding="utf-8",
+    )
+    assert _data_statement(project, "Data are in Zenodo [@fictionalHepaticCohort2021].") == []
+
+
 @pytest.mark.parametrize(
     ("before", "heading"),
     [
@@ -4754,16 +4771,61 @@ def test_an_isbn_10_opening_978_before_another_word_is_pinned() -> None:
     assert [code for code, _said in found] == ["identifier-malformed"]
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        # Round 1 of #345: a field of qualifiers alone holds no ISBN, and was emptied.
+        ("isbn", "online"),
+        ("isbn", "(print)"),
+        # A scheme that lost its colon is no dressing to take off.
+        ("doi", "doi10.1000/x"),
+    ],
+)
+def test_what_is_set_aside_beside_an_identifier_is_no_identifier(field: str, value: str) -> None:
+    from manuscript_guard.gates.identifiers import problems
+
+    found = problems("k", {"type": "misc", field: value})
+    assert [code for code, _said in found] == ["identifier-malformed"], found
+
+
+def test_a_volume_of_its_word_alone_stays_a_volume() -> None:
+    """Round 1 of #345: "V." (five) became no volume, and the book merged with the one
+    cited with none."""
+    from manuscript_guard.gates.duplicates import identifiers_of
+
+    def named(volume: str | None) -> set:
+        fields = {"type": "book", "isbn": "0-306-40615-2"}
+        return identifiers_of({**fields, "volume": volume} if volume else fields)
+
+    assert named("V.") != named(None) and named("Volume") != named(None)
+    assert named("Vol. 1") == named("1") == named("v. 1")
+
+
+def test_a_part_takes_its_container_from_its_crossref_and_not_its_title() -> None:
+    """Round 1 of #345: every field of the parent was taken under its own name, so a paper
+    with no title of its own met "needs its title" with the proceedings' name."""
+    from manuscript_guard.gates.identifiers import problems
+
+    parent = {"type": "proceedings", "title": "The meeting", "year": "2020",
+              "author": "Somebody"}  # fmt: skip
+    found = problems("k", {"type": "inproceedings", "crossref": "p"}, parent)
+    assert [said for _code, said in found] == [
+        "@k: an @inproceedings entry needs its author, and has none",
+        "@k: an @inproceedings entry needs its title, and has none",
+    ]
+
+
 def test_a_part_takes_its_book_s_fields_from_its_crossref(project: Path) -> None:
     """Round 1 of #249: a hand-written `@inproceedings` that takes its booktitle from the
-    `@proceedings` its `crossref` names was told it had none."""
+    `@proceedings` its `crossref` names was told it had none. The key is matched exactly, as
+    biber matches it (round 1 of #345)."""
     bib = project / "literature" / "references.bib"
     bib.write_text(
         bib.read_text(encoding="utf-8")
         + "\n@inproceedings{part2020,\n  author = {A},\n  title = {A paper},\n"
-        "  crossref = {Proc2020},\n}\n\n@proceedings{proc2020,\n  title = {The meeting},\n"
+        "  crossref = {proc2020},\n}\n\n@proceedings{proc2020,\n  title = {The meeting},\n"
         "  year = {2020},\n}\n\n@inproceedings{orphan2020,\n  author = {B},\n"
-        "  title = {Another paper},\n  crossref = {nowhere},\n  year = {2020},\n}\n",
+        "  title = {Another paper},\n  crossref = {Proc2020},\n  year = {2020},\n}\n",
         encoding="utf-8",
     )
     assert [message for _code, message in _bib_findings(project)] == [
@@ -4779,6 +4841,8 @@ def test_a_field_named_type_leaves_the_entry_s_type(tmp_path: Path) -> None:
     bib = tmp_path / "references.bib"
     bib.write_text("@inbook{k,\n  type = {Chapter},\n  author = {A},\n}\n", encoding="utf-8")
     assert read_entries(bib)["k"]["type"] == "inbook"
+    # Round 1 of #345: the field is kept beside it, for the readers that want it.
+    assert read_entries(bib)["k"]["type_field"] == "Chapter"
 
 
 # One work cited under two keys: the reference list prints it twice.

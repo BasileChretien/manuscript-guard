@@ -25,11 +25,12 @@ BIB_FILE = "references.bib"
 #: A DOI as Crossref and DataCite issue them: the directory "10.", a registrant code of
 #: four to nine digits (dotted subcodes allowed), a slash, and a suffix with no space.
 _DOI = re.compile(r"10\.\d{4,9}(?:\.\d+)*/\S+")
-#: What a DOI is often written with: a scheme, with its colon or without, a resolver, with
-#: its scheme or without and with `www.` or `dx.` (round 1 of #249), a trailing stop. The
-#: resolver is tried first, so that the "doi" of "doi.org/" is not taken for the scheme.
+#: What a DOI is often written with: a scheme, with its colon or a space after it, a
+#: resolver, with its scheme or without and with `www.` or `dx.` (round 1 of #249), a
+#: trailing stop. The resolver is tried first, so that the "doi" of "doi.org/" is not taken
+#: for the scheme; "doi10." has lost its colon and is left as it is (round 1 of #345).
 _DOI_DRESSING = re.compile(
-    r"^(?:(?:https?://)?(?:www\.|dx\.)?doi\.org/|doi\s*:?\s*)", re.IGNORECASE
+    r"^(?:(?:https?://)?(?:www\.|dx\.)?doi\.org/|doi(?:\s*:\s*|\s+))", re.IGNORECASE
 )
 _PMID = re.compile(r"\d{1,9}")
 _PMCID = re.compile(r"PMC\d{1,9}", re.IGNORECASE)
@@ -160,9 +161,13 @@ def problems(
     if arxiv and not _ARXIV.fullmatch(re.sub(r"(?i)^arxiv:", "", arxiv)):
         malformed("arXiv identifier", arxiv, 'has neither of its forms, "2101.01234" or '
                   '"hep-th/9901001"')  # fmt: skip
-    for isbn in _isbns(fields.get("isbn", "")):
+    isbns = _isbns(fields.get("isbn", ""))
+    for isbn in isbns:
         if not isbn_valid(isbn):
             malformed("ISBN", isbn.strip(), "has a check digit that does not add up")
+    # A field of labels and qualifiers alone, "online", holds none (round 1 of #345).
+    if fields.get("isbn", "").strip() and not any(isbn.strip() for isbn in isbns):
+        malformed("ISBN", fields["isbn"].strip(), "holds no ISBN, only what is written beside one")
 
     kind = fields.get("type", "").lower()
     given = {**inherited(parent), **{name: v for name, v in fields.items() if v.strip()}}
@@ -178,29 +183,34 @@ def problems(
     return found
 
 
+#: What a part takes from the work that holds it: the fields that describe the container,
+#: never the part's own author or title (round 1 of #345: a paper with no title of its own
+#: took the proceedings' name for one).
+CONTAINER_FIELDS = (
+    "booktitle", "editor", "publisher", "year", "date", "school", "institution", "journal",
+    "journaltitle", "organization", "address", "location", "series", "volume", "isbn",
+)  # fmt: skip
+
+
 def inherited(parent: dict[str, str] | None) -> dict[str, str]:
-    """What an entry takes from the one its `crossref` names: each field of the same name,
-    and the parent's title as its `booktitle`, as BibLaTeX inherits it from a book, a
-    collection or proceedings (its manual, appendix B); BibTeX's parent writes `booktitle`
-    itself (round 1 of #249: a hand-written `@inproceedings` was told it had no booktitle)."""
+    """What an entry takes from the one its `crossref` names: the container's fields, and the
+    parent's title as its `booktitle`, as BibLaTeX inherits it from a book, a collection or
+    proceedings (its manual, appendix B); BibTeX's parent writes `booktitle` itself (round 1
+    of #249: a hand-written `@inproceedings` was told it had no booktitle)."""
     if not parent:
         return {}
-    fields = {name: value for name, value in parent.items() if name not in ("type", "crossref")}
-    if fields.get("title", "").strip() and not fields.get("booktitle", "").strip():
-        fields["booktitle"] = fields["title"]
+    fields = {name: parent[name] for name in CONTAINER_FIELDS if name in parent}
+    if parent.get("title", "").strip() and not fields.get("booktitle", "").strip():
+        fields["booktitle"] = parent["title"]
     return fields
 
 
 def parent_of(fields: dict[str, str], entries: dict[str, dict[str, str]]) -> dict | None:
-    """The entry `fields` names in its `crossref`, matched as BibTeX matches keys, without
-    regard to case. None where it names none, or one the file does not hold."""
+    """The entry `fields` names in its `crossref`, matched exactly, as biber matches keys
+    (round 1 of #345: a key in other capitals was taken for it, and the build does not).
+    None where it names none, or one the file does not hold."""
     named = fields.get("crossref", "").strip()
-    if not named:
-        return None
-    if named in entries:
-        return entries[named]
-    folded = {key.casefold(): entry for key, entry in entries.items()}
-    return folded.get(named.casefold())
+    return entries.get(named) if named else None
 
 
 def check_identifiers(project: Project) -> Report:

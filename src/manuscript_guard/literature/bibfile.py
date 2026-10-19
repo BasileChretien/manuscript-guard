@@ -10,6 +10,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+#: Where a field named `type` is kept: the entry's own type is under `type`, which every
+#: reader of this file looks it up by.
+TYPE_FIELD = "type_field"
+
 
 def read_entries(path: Path) -> dict[str, dict[str, str]]:
     """Every entry of a `.bib` file: the fields as they are written.
@@ -46,11 +50,13 @@ def read_entries(path: Path) -> dict[str, dict[str, str]]:
         for piece in _pieces(text[start.end() : index - 1]):
             name, sign, value = piece.partition("=")
             name = name.strip().lower()
-            # A field named `type`, the kind of a thesis or a chapter, would take the place of
-            # the entry's own type, which every reader of this file looks up under that key
-            # (round 2 of #261); the entry's type is the one kept.
-            if not sign or not name.isidentifier() or name == "type":
+            if not sign or not name.isidentifier():
                 continue
+            # A field named `type`, the kind of a thesis, a chapter or a dataset written as
+            # `@misc`, took the place of the entry's own type (round 2 of #261), and is kept
+            # beside it, for the readers that want it (round 1 of #345: it was dropped).
+            if name == "type":
+                name = TYPE_FIELD
             value = value.strip()
             if (value[:1], value[-1:]) in {("{", "}"), ('"', '"')}:
                 value = value[1:-1]

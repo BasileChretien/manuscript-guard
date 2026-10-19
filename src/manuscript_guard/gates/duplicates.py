@@ -81,8 +81,10 @@ def identifiers_of(fields: dict[str, str]) -> set[tuple[str, str]]:
     return found
 
 
-#: The word a volume is often written with: "Vol. 1", "Volume 1", "v. 1".
-_VOLUME_WORD = re.compile(r"^(?:vol(?:ume)?\.?|v\.)\s*", re.IGNORECASE)
+#: The word a volume is often written with: "Vol. 1", "Volume 1", "v. 1". Taken off only
+#: before something, so that "V." (five) or a volume of the word alone stays one (round 1 of
+#: #345).
+_VOLUME_WORD = re.compile(r"^(?:vol(?:ume)?\.?|v\.)\s*(?=\S)", re.IGNORECASE)
 
 
 def _volume(written: str) -> str:

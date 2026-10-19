@@ -3363,11 +3363,15 @@ other than the one run.
 finished project starts in one. 12 of the 15 do: `tools/run_skill_evals.py` puts a copy of
 the worked example beside the cases in the copy of the suite it runs, as `evals/_project/`.
 Each such case's `case.yaml` names a `scaffold.sh` that copies it into the folder the run
-starts in, and the command is given `--scaffold`. The copy leaves out `AGENTS.md`, the
-project's instructions to an agent, which state the toolkit's rules: with it, the arm
-without the plugin could read what several criteria ask for, and the difference between
-the arms would no longer be what a skill adds (round 1 of #338). Three cases still start
-empty, and the near-miss cases too:
+starts in, and the command is given `--scaffold`. The copy names no skill: it leaves out
+`AGENTS.md`, the project's instructions to an agent, and its YAML files lose their comments,
+where the profiles said which skill writes them (rounds 1 and 2 of #338; Basile chose
+this over keeping them and saying so). With them, the arm without the plugin could read what
+several criteria ask for. A file whose data would read otherwise without its comments is
+refused. What the project is made of, its bindings and its emitter calls, still shows the
+toolkit in use to either arm, as any project made with it would, so the difference between
+the arms is what a skill adds to a model reading such a project. Three routing cases still
+start empty, and so do the near misses and the requests no skill is for:
 - project-setup starts a project, and may give the `init` command where it has no shell to
   run it;
 - manuscript-writing carries its own paragraph, and invents no finding, since its prompt

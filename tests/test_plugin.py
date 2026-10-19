@@ -559,12 +559,23 @@ def test_the_staged_example_leaves_out_a_build_and_an_agent_s_instructions(
     (repo / "plugin" / ".claude-plugin").mkdir(parents=True)
     (repo / "evals").mkdir()
     for name in ("paper.yaml", "build/manuscript.docx", "AGENTS.md", "CLAUDE.md",
-                 ".claude/settings.json", "analysis/__pycache__/x.pyc"):  # fmt: skip
+                 ".claude/settings.json", "analysis/__pycache__/x.pyc",
+                 "manuscript/AGENTS.md", "manuscript/.claude/x.json"):  # fmt: skip
         (repo / "example" / name).parent.mkdir(parents=True, exist_ok=True)
-        (repo / "example" / name).write_text("x", encoding="utf-8")
-    project = _evals_script().stage(repo, tmp_path / "staged") / "evals" / "_project"
+        (repo / "example" / name).write_text("x: 1\n", encoding="utf-8")
+    script = _evals_script()
+    project = script.stage(repo, tmp_path / "staged") / "evals" / "_project"
     assert sorted(p.relative_to(project).as_posix() for p in project.rglob("*")) == [
-        "analysis", "paper.yaml"]  # fmt: skip
+        "analysis", "manuscript", "paper.yaml"]  # fmt: skip
+    # A YAML file loses its comments, and is refused where a "#" line is the data's own.
+    (repo / "example" / "paper.yaml").write_text(
+        "# the journal-profile skill writes this\ntitle: T  # kept\n", encoding="utf-8")
+    project = script.stage(repo, tmp_path / "again") / "evals" / "_project"
+    assert (project / "paper.yaml").read_text(encoding="utf-8") == "title: T  # kept\n"
+    (repo / "example" / "paper.yaml").write_text("note: |\n  # a line of the note\n",
+                                                 encoding="utf-8")  # fmt: skip
+    with pytest.raises(SystemExit, match="reads otherwise"):
+        script.stage(repo, tmp_path / "refused")
 
 
 def _evals_script():
@@ -596,6 +607,14 @@ def test_the_suite_is_run_from_a_copy_of_the_plugin_with_it_inside(tmp_path: Pat
     assert (staged / "_project" / "paper.yaml").is_file()
     assert (REPO / "example" / "AGENTS.md").is_file()
     assert not (staged / "_project" / "AGENTS.md").exists()
+    # Nor does any comment name a skill, as the example's profiles did (round 2 of #338).
+    named = re.compile("|".join(map(re.escape, sorted(skill_names()))) + r"|\bskills?\b", re.I)
+    for path in sorted((staged / "_project").rglob("*")):
+        if path.is_file() and path.suffix in (".yaml", ".yml", ".md", ".py", ".bib", ".lock"):
+            # A record's schema, "manuscript-guard/figure-review/1", is its data's name.
+            text = re.sub(r"manuscript-guard/[a-z-]+/\d+", "", path.read_text(encoding="utf-8"))
+            said = named.search(text)
+            assert said is None, (path, said)
     docs = (REPO / "docs" / "agent-tools.md").read_text(encoding="utf-8")
     assert "python tools/run_skill_evals.py --" in docs
     assert not re.search(r"claude plugin eval\s+\S*plugin\b", docs), "a command with no case"

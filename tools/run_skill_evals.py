@@ -18,9 +18,11 @@ A routing case whose prompt speaks of a finished project, "my analysis script", 
 draft", starts in a copy of the worked example: the copy of the suite carries one,
 `evals/_project/`, and the case's `scaffold.sh` copies it into the empty folder the run
 starts in. The command is given `--scaffold` for that, since the scripts are this
-repository's own. The copy leaves out the project's instructions to an agent, `AGENTS.md`,
-which state the toolkit's rules, so that the arm without the plugin learns them from
-nothing but the model (round 1 of #338). The near-miss cases start empty, as before.
+repository's own. The copy names no skill: it leaves out the project's instructions to an
+agent, `AGENTS.md`, and the comments of its YAML files, which say which skill does what
+(rounds 1 and 2 of #338; Basile's choice). What the project is made of, its bindings and
+its emitter calls, still shows the toolkit in use, to either arm, as any project made with
+it would. The near-miss cases and the requests no skill is for start empty, as before.
 
 A run is paid at API prices, or counts against a subscription's usage. Run one case once
 first to measure it (`-- --case <name> --runs 1 --ablation none`).
@@ -37,6 +39,8 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 REPO = Path(__file__).resolve().parent.parent
 #: What `claude plugin eval` is always given: the copy's suite, a local report, the trust a
 #: copy of this repository's own plugin needs to run without asking each time, and leave to
@@ -51,13 +55,26 @@ LEFT_OUT = ("build", "__pycache__", "AGENTS.md", "CLAUDE.md", ".claude")
 
 def stage(repo: Path, into: Path) -> Path:
     """A copy of `repo`'s plugin with the suite inside it, its past results left out, and
-    the worked example beside the cases, without `LEFT_OUT`."""
+    the worked example beside the cases, without `LEFT_OUT` and its YAML comments."""
     plugin = into / "plugin"
     shutil.copytree(repo / "plugin", plugin)
     shutil.copytree(repo / "evals", plugin / "evals", ignore=shutil.ignore_patterns("results"))
-    shutil.copytree(repo / "example", plugin / "evals" / PROJECT,
-                    ignore=shutil.ignore_patterns(*LEFT_OUT))  # fmt: skip
+    project = plugin / "evals" / PROJECT
+    shutil.copytree(repo / "example", project, ignore=shutil.ignore_patterns(*LEFT_OUT))
+    for path in sorted(project.rglob("*.y*ml")):
+        _uncommented(path)
     return plugin
+
+
+def _uncommented(path: Path) -> None:
+    """`path` without its whole-line comments, refused where its data then reads otherwise:
+    a line opening with "#" inside a block of text is the text's (round 2 of #338)."""
+    text = path.read_bytes().decode("utf-8")
+    kept = "".join(line for line in text.splitlines(keepends=True)
+                   if not line.lstrip().startswith("#"))  # fmt: skip
+    if yaml.safe_load(kept) != yaml.safe_load(text):
+        raise SystemExit(f"{path}: its data reads otherwise without its comments")
+    path.write_bytes(kept.encode("utf-8"))
 
 
 def arguments(argv: list[str]) -> list[str]:

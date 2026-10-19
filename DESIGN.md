@@ -1749,7 +1749,13 @@ a p value is one of. G2 reads which bindings sit together in a sentence, and not
 the sentence says: a p value quoted in a sentence that binds no estimate of it, or a share in
 one that binds neither of its counts, is `quoted-alone`; an estimate emitted with an
 interval and quoted in no sentence with both its bounds is `interval-not-quoted-whole`. Both
-are warnings: a paper may rightly give a p value again a line after its estimate.
+are warnings: a paper may rightly give a p value again a line after its estimate. Sentences
+end where the labels of a spread read them to end (`sentence_stops`): the stop of "s.d.",
+"s.e." or "s.e.m." before a number or a word in lower case ends none, so "(s.e. 0.21), P =
+..." keeps its P with its estimate. A statistic whose `of` or `over` names a key no fragment
+emits is told so, once per quote, rather than told it is quoted alone. And the schema holds
+what the emitters refuse, so that a fragment written by hand cannot step around these
+checks: `over` and `family` only with `of`, and never both on one value.
 
 Multiple comparisons are declared, never guessed. `correction("secondary", "holm")` says how
 a family is corrected, and "none" is a declaration too, with its reason. G8 warns on a
@@ -6152,6 +6158,15 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   only; a result the section describes in words is not checked, and a section with one key
   and ten results in words says nothing of the ten. A Deviations section that names a key,
   whatever it says of it, stands down that key's warning.
+- **A statistic is held to what it belongs to by which bindings share its sentence, and by
+  nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
+  each, though a paper quotes the one it means. An interval quoted whole only in a table the
+  analysis emits is asked for again, since a table's cells are text and bind no key. A
+  caption, a supplement or a Discussion that gives a P again on its own is warned of, as a
+  sentence of the Results would be. And a key declared `same_as` the estimate stands for
+  nothing of it here: "Overall it was {{results.headline}}, P = {{results.or.p}}" is quoted
+  alone. All are warnings, and `test_what_quoted_alone_does_not_read_is_pinned` holds them as
+  they are.
 - **The feasibility results are asked for by their names only.** Any one result under
   `feasibility.` quiets `feasibility-not-run`: nothing checks that the counts cover the
   plan's variables or its selection steps, or that the script read the data the analysis

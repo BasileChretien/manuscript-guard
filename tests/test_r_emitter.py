@@ -748,6 +748,7 @@ em$value("or.p", 0.012, digits = 3, of = "or.point", family = "secondary")
 em$value("female.pct", 52.1, digits = 1, of = "female.n", over = "cohort.n")
 em$correction("secondary", "holm")
 em$correction("exploratory", "none", reason = "hypothesis-generating")
+em$correction("tertiary", "bonferroni", reason = "")
 em$write()
 """
 
@@ -760,12 +761,15 @@ em.value("or.p", 0.012, digits=3, of="or.point", family="secondary")
 em.value("female.pct", 52.1, digits=1, of="female.n", over="cohort.n")
 em.correction("secondary", "holm")
 em.correction("exploratory", "none", reason="hypothesis-generating")
+em.correction("tertiary", "bonferroni", reason="")
 em.write()
 """
 
 
 def test_r_and_python_say_alike_what_a_statistic_belongs_to(tmp_path: Path) -> None:
-    """Item 13: `of`, `over`, `family` and the corrections, the same from either language."""
+    """Item 13: `of`, `over`, `family` and the corrections, the same from either language;
+    an empty reason left out by both, since the schema refuses one (round 1 of #267: R
+    wrote it)."""
     import runpy
 
     root = _parameter_project(tmp_path)
@@ -782,7 +786,7 @@ def test_r_and_python_say_alike_what_a_statistic_belongs_to(tmp_path: Path) -> N
     def written() -> dict:
         path = root / "results" / "belongs.json"
         document = json.loads(path.read_text(encoding="utf-8"))
-        validate(document, "results", path)
+        assert validate(document, "results", path).ok
         return {"values": document["values"], "corrections": document["corrections"]}
 
     from_r = written()

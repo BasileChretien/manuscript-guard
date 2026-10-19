@@ -598,6 +598,8 @@ _TOGETHER = (
     "{{results.or.ci_high}}; P = {{results.or.p}}), and {{results.female.n}} of "
     "{{results.cohort.n}} ({{results.female.pct}}%) were women."
 )
+#: A P value after "s.e.", in its estimate's sentence (round 2 of #327).
+_AFTER_SE = "Its ratio, {{results.or.point}} (s.e. 0.21), P = {{results.or.p}}."
 #: Each kind of statistic in a sentence of its own, without what it belongs to.
 _APART = ("Then P was {{results.hr.p}}.", "Men were {{results.male.pct}}%.")
 
@@ -607,7 +609,7 @@ def _quoted_apart(draw: st.DrawFn) -> str:
     """A text that quotes each kind of statistic with what it belongs to, and each again in
     a sentence without it: the planted sentences first, in an order drawn, so that nothing
     drawn after them can put them in a comment it left open."""
-    planted = draw(st.permutations([_TOGETHER, *_APART]))
+    planted = draw(st.permutations([_TOGETHER, _AFTER_SE, *_APART]))
     gaps = [draw(st.sampled_from((" ", "\n", "\n\n"))) for _ in planted[1:]]
     after = zip(gaps, planted[1:], strict=True)
     return planted[0] + "".join(gap + sentence for gap, sentence in after) + "\n\n" + draw(texts())
@@ -4445,7 +4447,16 @@ def _a_level_after_the_letters_is_not_read(patch: pytest.MonkeyPatch) -> None:
 def _every_stop_is_in_one_sentence(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import numbers
 
-    patch.setattr(numbers, "_SENTENCE_END", re.compile(r"(?!)"))
+    patch.setattr(numbers, "sentence_stops", lambda _read: [])
+
+
+def _a_stop_after_s_e_ends_a_quote_s_sentence(patch: pytest.MonkeyPatch) -> None:
+    """G2's quotes before round 2 of #327: every stop and a space ended a sentence, so a P
+    value after "s.e." was cut from its estimate."""
+    from manuscript_guard.gates import numbers
+
+    patch.setattr(numbers, "sentence_stops", lambda read: [
+        match.start() for match in numbers._SENTENCE_END.finditer(read)])  # fmt: skip
 
 
 def _a_share_is_held_to_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -5548,6 +5559,10 @@ BROKEN = {
     ),
     "every stop is read in one sentence": (
         _every_stop_is_in_one_sentence,
+        test_a_statistic_is_alone_only_in_a_sentence_without_what_it_belongs_to,
+    ),
+    "a stop after s.e. ends a quote's sentence": (
+        _a_stop_after_s_e_ends_a_quote_s_sentence,
         test_a_statistic_is_alone_only_in_a_sentence_without_what_it_belongs_to,
     ),
     "a share is held to nothing": (

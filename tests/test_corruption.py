@@ -2379,6 +2379,17 @@ def test_a_quoted_revision_the_journal_already_read_fails(project: Path) -> None
     assert _said(_g13(project), "quoted-text-not-new") == [("quoted-text-not-new", "fail")]
 
 
+def test_a_quote_of_the_printed_sentence_against_its_markup_is_pinned() -> None:
+    """Known gaps (round 1 of #266): a quote is compared with the Markdown less its `*`,
+    backticks and comments, so emphasis written with underscores, or a citation, keeps a
+    quote of the sentence as it prints from matching it."""
+    from manuscript_guard.gates.revision import as_quoted
+
+    assert "The ratio rose" in as_quoted("The *ratio* rose.")
+    assert "The ratio rose" not in as_quoted("The _ratio_ rose.")
+    assert "as reported (1)" not in as_quoted("as reported [@key].")
+
+
 def test_a_quoted_revision_in_another_section_fails(project: Path) -> None:
     _round_with(project, [_point(
         response="We now say so in the Abstract.",
@@ -3385,6 +3396,17 @@ def test_a_count_after_a_list_of_tables_is_a_count(project: Path) -> None:
     _add_to_results(project, "In Tables 1 and 2, 30 patients were excluded.")
     assert "unclassified-number" in codes(gate_report(project))
     assert _pointer_findings(project) == []
+
+
+def test_a_count_after_a_range_of_tables_read_as_a_table_is_pinned() -> None:
+    """Known gaps (round 3 of #256): after a range a comma goes on with the list, as it must
+    for "Tables S1-S3, S5", so "In Tables 1-3, 30 patients" reads Table 30."""
+    from manuscript_guard.gates.pointers import pointers_in
+
+    said = pointers_in("In Tables 1-3, 30 patients were excluded.", Path("x"))
+    assert [p.number for p in said] == [1, 2, 3, 30]
+    said = pointers_in("Tables S1-S3, S5 list the codes.", Path("x"))
+    assert [p.number for p in said] == [1, 2, 3, 5]
 
 
 def test_a_serial_comma_ends_no_list_of_tables(project: Path) -> None:
@@ -6541,6 +6563,10 @@ def test_a_paper_s_title_written_as_a_heading_is_not_its_methods(
         "\n\n## Results\n\nAn alpha of 0.07 was used.\n"
     )
     assert methods_in(text) == "\n\nNo alpha here.\n\n"
+    # Round 3 of #246: numbered in brackets, in bold or with an ampersand, the Methods were
+    # not read as named, and the heading before them that only holds the word was taken.
+    for methods in ("(2) Methods", "**2. Methods**", "Materials & methods"):
+        assert methods_in(text.replace("## Methods", f"## {methods}")) == "\n\nNo alpha here.\n\n"
     main = main_md(project)
     body = main.read_text(encoding="utf-8").split("---\n", 2)
     demoted = body[2].replace("\n# ", "\n## ")

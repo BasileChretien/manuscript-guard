@@ -1853,6 +1853,37 @@ def test_a_section_g4_counts_present_is_a_section_the_gates_read(
         assert (counted > 0) == is_one, (text, named, counted)
 
 
+#: A heading that holds "methods" and stands where the Methods could, without being named as
+#: them: read after a heading that is.
+_OTHER_METHODS = ("Limitations of existing methods", "Why earlier methods fall short",
+                  "A comparison of methods")  # fmt: skip
+
+
+@st.composite
+def _papers_with_other_methods(draw) -> list[tuple[str, str]]:
+    """Every name of the Methods with every heading that only holds the word standing before
+    it, at its level, with words drawn for the two."""
+    filler = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+    return [
+        (f"# Introduction\n\n{filler}.\n\n# {other}\n\nBasil {filler}.\n\n# {methods}\n\n"
+         f"Coriander {filler}.\n\n# Results\n\n{filler}.\n", methods)  # fmt: skip
+        for methods in _THE_METHODS
+        for other in _OTHER_METHODS
+    ]
+
+
+@holds(30, _papers_with_other_methods())
+def test_the_methods_named_as_such_are_read_before_a_heading_that_only_holds_the_word(
+    papers: list[tuple[str, str]],
+) -> None:
+    """Round 3 of #246: G9 reads the first heading `methods_sections` gives, and a heading
+    read as the Methods by its name comes first, wherever "Limitations of existing methods"
+    stands. Only a corruption case held the order."""
+    for text, _methods in papers:
+        read = methods_gate.methods_in(text)
+        assert read is not None and "Coriander" in read and "Basil" not in read, (text, read)
+
+
 # ------------------------------------------- a number a summary gives and the paper does not
 
 #: What a paper calls its Results, and what it may call a section that is not them.
@@ -1891,6 +1922,14 @@ def _papers_with_summaries(draw: st.DrawFn) -> list[tuple[str, str | None, set[s
             structured = draw(st.booleans()) != bool(column % 2)
             given = "{{results.a}} {{results.d}}"
             opening = f"\n\n## Results\n\n{given} " if structured else f"\n\n{given} "
+            # A Background and a Methods of the abstract's own, each giving a key there alone
+            # (`g`, `t`): the abstract's Methods are not the paper's (round 1 of #272). Not
+            # under a "Summary" no profile names, which is taken for a title over the paper:
+            # DESIGN.md has that among its Known gaps.
+            children = structured and abstract != "Summary"
+            if children:
+                opening = (f"\n\n## Background\n\n{words()} {{{{results.g}}}}.\n\n## Methods\n\n"
+                           f"{words()} {{{{results.t}}}}.{opening}")  # fmt: skip
             text = (
                 f"# {abstract}{opening}{words()} {{{{results.b}}}} {{{{results.m}}}}.\n\n"
                 f"# Introduction\n\n{words()}.\n\n"
@@ -1906,6 +1945,7 @@ def _papers_with_summaries(draw: st.DrawFn) -> list[tuple[str, str | None, set[s
                 unreported = {"c"} | (set() if reports else {"e", "s"})
                 if summary:
                     unreported |= {"a", "d"} | (set() if reports else {"b"})
+                    unreported |= {"g", "t"} if children else set()
                 for paper in (text, _under_a_title(text, _RESULTS_TITLE)):
                     papers.append((paper, named, unreported))
     return papers
@@ -2428,14 +2468,17 @@ _POINTED = re.compile(r"points at (?P<kind>table|figure) (?P<s>S)?(?P<n>\d+),")
 
 
 @st.composite
-def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, int]]]:
+def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, int]], int]:
     """A main text and a supplement placing tables and figures, and citing each of the main
     text's in order; and pointers planted at what neither carries, one of each kind in
     every example: past the main text's tables, in a list, past the supplement's tables in
-    the supplement's own words, and past the figures. The main text's tables and the
-    supplement's are placed by binding only, so they are counted; the main text's figures
-    include one placed by hand, so they are not, and a pointer past them is not said. What
-    the counted pointers point at is the third part."""
+    the supplement's own words, past the main text's figures, and one past the supplement's
+    figures. The main text's tables and the supplement's are placed by binding only, so they
+    are counted; the main text's figures include one placed by hand, so they are not, and a
+    pointer past them is not said. The supplement's figures are placed by binding, and as
+    many again sent as files, the fourth part, which paper.yaml declares: a pointer to the
+    last of those passes, and one past it is said (round 2 of #256: no example held a count
+    of figures). What the counted pointers point at is the third part."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
@@ -2444,8 +2487,9 @@ def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, i
         (False, "table"): draw(st.integers(2, 3)),
         (False, "figure"): draw(st.integers(1, 2)),
         (True, "table"): draw(st.integers(1, 2)),
-        (True, "figure"): draw(st.integers(0, 1)),
+        (True, "figure"): draw(st.integers(1, 2)),
     }
+    as_files = draw(st.integers(1, 2))
     parts: dict[bool, list[str]] = {False: ["# Results\n"], True: ["# Supplementary\n"]}
     for (supplementary, kind), count in counts.items():
         for number in range(1, count + 1):
@@ -2473,25 +2517,34 @@ def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, i
     form = draw(st.sampled_from(_SUPPLEMENTARY))
     parts[False].append(f"{words().capitalize()} {form % ('Table', beyond)}.\n")
     planted.add(("table", True, beyond))
-    return "\n".join(parts[False]), "\n".join(parts[True]), planted
+    last = counts[True, "figure"] + as_files
+    for number in (last, last + 1):
+        form = draw(st.sampled_from(_SUPPLEMENTARY))
+        parts[False].append(f"{words().capitalize()} {form % ('Figure', number)}.\n")
+    planted.add(("figure", True, last + 1))
+    return "\n".join(parts[False]), "\n".join(parts[True]), planted, as_files
 
 
 @holds(100, _planted_pointers())
 def test_a_pointer_names_what_the_document_carries_or_is_said(
-    planted: tuple[str, str, set[tuple[str, bool, int]]],
+    planted: tuple[str, str, set[tuple[str, bool, int]], int],
 ) -> None:
     """A pointer to a table or a figure is held to the tables and figures each document
-    places, whichever way it places them: one pointing past them is said, a list read whole,
-    and one that points at what is there passes, cited in the order it is placed."""
+    places, whichever way it places them, and those paper.yaml says go as files: one
+    pointing past them is said, a list read whole, and one that points at what is there
+    passes, cited in the order it is placed."""
     import tempfile
 
     from manuscript_guard.contracts import load_project
     from manuscript_guard.gates.pointers import check_pointers
 
-    main, supplement, expected = planted
+    main, supplement, expected, as_files = planted
     with tempfile.TemporaryDirectory() as folder:
         root = Path(folder)
-        (root / "paper.yaml").write_text("title: A paper\n", encoding="utf-8")
+        (root / "paper.yaml").write_text(
+            f"title: A paper\ndisplays:\n  supplementary_figures_as_files: {as_files}\n",
+            encoding="utf-8",
+        )
         manuscript = root / "manuscript"
         (manuscript / "supplementary").mkdir(parents=True)
         (manuscript / "main.md").write_text(main, encoding="utf-8")
@@ -2969,6 +3022,12 @@ def test_every_placeholder_is_found_and_nothing_that_looks_like_one(
 
         added = Counter(match for _typed, match in expected)
         assert found(planted) == found(text) + added, (manuscript, planted)
+    # A slot that is a cited entry's whole field, `doi = {[DOI]}`, is read as the field is,
+    # whole and with nothing around it (round 2 of #262).
+    for written, match in PLACEHOLDERS:
+        alone = [m.group(0) for rule, m in artefacts_in(rules, written, manuscript=False)
+                 if rule["id"].startswith("placeholder")]  # fmt: skip
+        assert alone == [match], (written, alone)
 
 
 # ------------------------------------------------------------------------- a rewording
@@ -3912,6 +3971,36 @@ def test_a_limit_is_stated_by_its_number_and_by_no_longer_one(
         assert journal_quotes_gate._states(quote, value) is stated, (quote, value)
 
 
+@st.composite
+def _quotes_on_pages(draw: st.DrawFn) -> list[tuple[str, str, bool]]:
+    """A journal's page and a quote of it: the quote there as words of its own, in another
+    case, and after itself inside a longer number; and the quote only as the end or the
+    start of a longer number or word. One of each in every example, among words drawn."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    quote = f"{draw(st.integers(10, 999))} {draw(st.sampled_from(('words', 'references')))}"
+    digit = draw(st.integers(1, 9))
+    cases = [
+        (f"{words()} {quote} {words()}.", quote, True),
+        (f"{words()} {quote.upper()}.", quote, True),
+        (f"{words()} {digit}{quote}, then {quote} {words()}.", quote, True),
+        (f"{words()} {digit}{quote} {words()}.", quote, False),
+        (f"{words()} {quote}s {words()}.", quote, False),
+    ]
+    return draw(st.permutations(cases))
+
+
+@holds(100, _quotes_on_pages())
+def test_a_quote_is_on_its_page_as_the_words_it_is(cases: list[tuple[str, str, bool]]) -> None:
+    """Round 2 of #297: a profile's quote is on its page as words of its own, in any case:
+    "50 words" is in "250 words" as characters, and is not what the page says, but a later
+    "50 words" on the same page is."""
+    for page, quote, there in cases:
+        assert journal_quotes_gate._on_page(page, quote) is there, (page, quote)
+
+
 # ---------------------------------------------------------------------- an ISBN's check digit
 
 
@@ -4098,6 +4187,16 @@ def _figure_scripts(draw: st.DrawFn) -> list[tuple[str, str, list[tuple[int, str
                     )
                 plans.append((f"# {call}(d)", False))
                 plans.append((f'label = "{call}(d)"', False))
+                # Round 1 of #288: not only flat calls. An argument that turns it off given
+                # inside a nested call turns nothing off, and given after one it does; a
+                # comparison, `==`, names no argument.
+                for name, values in rule.unless.items():
+                    inner = f"g({name}{equals}{values[0]})"
+                    plans.append((f"{call}(d, x{equals}{inner})", not (rule.seeded and seeded)))
+                    plans.append((f"{call}(g(d, y), {name}{equals}{values[0]})", False))
+                if rule.stated:
+                    compared = f"{call}(d, {rule.stated} == 7)"
+                    plans.append((compared, not (rule.seeded and seeded)))
             lines = [draw(st.sampled_from(_FIGURE_FILLER[language]))]
             if seeded:
                 lines.append(draw(st.sampled_from(_SEED_CALLS[language])))
@@ -4108,6 +4207,15 @@ def _figure_scripts(draw: st.DrawFn) -> list[tuple[str, str, list[tuple[int, str
                 if found:
                     expected.append((len(text), line.split("(")[0]))
                 lines.append(line)
+            # And a script that ends inside a call, its bracket open and an argument's value
+            # not yet typed: still a call, and its argument not given.
+            stated = [rule for rule in rules()[language] if rule.stated and not rule.seeded]
+            rule = draw(st.sampled_from(stated or list(rules()[language])))
+            call = _called(draw, rule, language)
+            text = "\n".join(lines) + "\n"
+            lines.append(f"{call}(d, {rule.stated}{equals}" if rule.stated else f"{call}(d,")
+            if not (rule.seeded and seeded):
+                expected.append((len(text), call))
             scripts.append((language, "\n".join(lines) + "\n", expected))
     return scripts
 
@@ -4132,6 +4240,66 @@ def _an_argument_that_turns_an_estimate_off_is_not_read(patch: pytest.MonkeyPatc
 
     arguments = figure_estimates._arguments
     patch.setattr(figure_estimates, "_arguments", lambda code, at: ({}, arguments(code, at)[1]))
+
+
+def _arguments_read(patch: pytest.MonkeyPatch, *, depth: int = 1, compared: bool = False) -> None:
+    """`_arguments` with its named arguments read at any depth up to `depth`, and a
+    comparison, `==`, read as a name given a value where `compared`."""
+    from manuscript_guard.gates import figure_estimates
+
+    def read(code, opening):
+        arguments, stack, index, given = {}, [")"], opening + 1, False
+        while index < len(code) and stack:
+            text = code[index].text
+            if code[index].kind == "code" and text in figure_estimates._CLOSES:
+                stack.append(figure_estimates._CLOSES[text])
+            elif code[index].kind == "code" and text == stack[-1]:
+                stack.pop()
+            elif len(stack) <= depth:
+                given = given or len(stack) == 1
+                following = code[index + 1 : index + 3]
+                if (code[index].kind == "code" and figure_estimates._is_name(text)
+                        and following[:1] and following[0].text == "="
+                        and (compared or len(following) < 2 or following[1].text != "=")
+                        and index + 2 < len(code)):  # fmt: skip
+                    arguments[text] = code[index + 2].text
+            index += 1
+        return arguments, given
+
+    patch.setattr(figure_estimates, "_arguments", read)
+
+
+def _a_named_argument_of_a_nested_call_is_the_call_s(patch: pytest.MonkeyPatch) -> None:
+    _arguments_read(patch, depth=2)
+
+
+def _a_comparison_names_an_argument(patch: pytest.MonkeyPatch) -> None:
+    _arguments_read(patch, compared=True)
+
+
+def _a_call_left_open_is_no_call(patch: pytest.MonkeyPatch) -> None:
+    # A call counted only once its bracket closes, as a pattern `name\(.*?\)` counts one.
+    from manuscript_guard.gates import figure_estimates
+
+    found = figure_estimates.calls_in
+
+    def closes(code, at: int) -> bool:
+        depth = 0
+        for token in code[at:]:
+            if token.kind == "code" and token.text in "([{":
+                depth += 1
+            elif token.kind == "code" and token.text in ")]}":
+                depth -= 1
+                if depth == 0:
+                    return True
+        return False
+
+    def closed(tokens):
+        code = [token for token in tokens if token.kind not in ("comment", "docstring")]
+        at = {token.start: index for index, token in enumerate(code)}
+        return [call for call in found(tokens) if closes(code, at[call.start] + 1)]
+
+    patch.setattr(figure_estimates, "calls_in", closed)
 
 
 def _a_call_is_known_only_by_the_last_part_of_its_name(patch: pytest.MonkeyPatch) -> None:
@@ -4638,6 +4806,34 @@ def _a_links_text_is_a_slot(patch: pytest.MonkeyPatch) -> None:
     _placeholder_rule(patch, "placeholder-slot", lambda p: p[: p.rindex("(?!")])
 
 
+def _filler_ends_only_at_a_stop_a_blank_line_or_the_end(patch: pytest.MonkeyPatch) -> None:
+    def without_a_list_item(pattern: str) -> str:
+        item = r"[-*+][ \t]|\d+[.)][ \t]|"
+        assert item in pattern, "the rule no longer ends at a list item this way"
+        return pattern.replace(item, "")
+
+    _placeholder_rule(patch, "placeholder-filler", without_a_list_item)
+
+
+def _an_instruction_marked_or_linked_is_a_link_s_text(patch: pytest.MonkeyPatch) -> None:
+    # The lookahead the slot rule ends with, as the instruction rule had it in round 2 of #262.
+    _placeholder_rule(patch, "placeholder", lambda p: p + r"(?![(\[{])")
+
+
+def _a_field_wholly_in_brackets_is_read_without_them(patch: pytest.MonkeyPatch) -> None:
+    # As `_untranslated` read a cited entry's field, until round 2 of #262.
+    from manuscript_guard.gates import writing
+
+    read = writing.artefacts_in
+
+    def unbracketed(rules, text, *, manuscript):
+        if not manuscript and text.startswith("[") and text.endswith("]"):
+            text = text[1:-1]
+        return read(rules, text, manuscript=manuscript)
+
+    patch.setattr(writing, "artefacts_in", unbracketed)
+
+
 def _a_deviation_is_read_with_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import design
 
@@ -4715,6 +4911,25 @@ def _a_figure_placed_by_hand_is_counted_anyway(patch: pytest.MonkeyPatch) -> Non
     patch.setattr(pointers, "_BY_HAND", {**pointers._BY_HAND, "figure": re.compile(r"(?!)")})
 
 
+def _a_figure_sent_as_a_file_is_not_counted(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "AS_FILES", {key: "unread" for key in pointers.AS_FILES})
+
+
+def _one_figure_more_is_counted_than_the_supplement_carries(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    placed = pointers.placed_in
+
+    def one_more(text: str):
+        found = placed(text)
+        figures = ("figure",) if "figure" in found.bound else ()
+        return type(found)(found.bound + figures, found.by_hand)
+
+    patch.setattr(pointers, "placed_in", one_more)
+
+
 def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import section_names
 
@@ -4758,6 +4973,19 @@ def _methods_found_without_the_paper_s_structure(patch: pytest.MonkeyPatch, keep
 
 def _a_title_over_the_paper_is_its_methods(patch: pytest.MonkeyPatch) -> None:
     _methods_found_without_the_paper_s_structure(patch, "above")
+
+
+def _the_methods_are_taken_in_the_order_they_stand(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import journal
+    from manuscript_guard.text import section_names
+
+    found = section_names.methods_sections
+
+    def in_order(sections, abstract_title=None):
+        return sorted(found(sections, abstract_title), key=lambda section: section.line)
+
+    patch.setattr(methods_gate, "methods_sections", in_order)
+    patch.setattr(journal, "methods_sections", in_order)
 
 
 def _the_abstract_s_methods_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
@@ -4984,6 +5212,26 @@ def _a_title_over_the_paper_is_its_results(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reported_gate.Walk, "_opens", lambda self, section, methods: False)
 
 
+def _an_abstract_over_a_background_is_a_title_over_the_paper(patch: pytest.MonkeyPatch) -> None:
+    # The test a Results heading is put to, over the opening of the paper, put to the
+    # abstract as well: the Lancet's "Summary" with no profile, made every abstract's.
+    from manuscript_guard.text.sections import subsections
+
+    place = reported_gate.Walk._place
+
+    def titled(self: reported_gate.Walk) -> object:
+        for section in self.chain:
+            at = next(i for i, kept in enumerate(self.kept) if kept is section)
+            below = subsections(self.kept, at)[1:]
+            if section.names_abstract(self.named) and any(
+                reported_gate._OPENING.match(other.title) for other in below
+            ):
+                return None
+        return place(self)
+
+    patch.setattr(reported_gate.Walk, "_place", titled)
+
+
 def _the_methods_report_nothing(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reported_gate, "methods_sections", lambda sections, named=None: [])
 
@@ -5060,6 +5308,36 @@ def _a_limit_is_read_after_a_space_between_thousands(patch: pytest.MonkeyPatch) 
     patch.setattr(journal_quotes_gate, "_GROUP_BEFORE", re.compile(r"(?!)"))
 
 
+def _a_group_of_three_before_a_space_is_a_thousand(patch: pytest.MonkeyPatch) -> None:
+    # As the rule was before round 4 of #297: "900 150" a thousand and more, not 150.
+    patch.setattr(journal_quotes_gate, "_GROUP_BEFORE",
+                  re.compile(r"(?:\A|[^0-9.,])[0-9]{1,3} \Z"))  # fmt: skip
+
+
+def _a_quote_is_on_its_page_as_characters(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature.sources import normalise
+
+    def inside(page: str, quote: str) -> bool:
+        return normalise(quote).lower() in normalise(page).lower()
+
+    patch.setattr(journal_quotes_gate, "_on_page", inside)
+
+
+def _a_quote_is_looked_for_once_on_its_page(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature.sources import normalise
+
+    def first(page: str, quote: str) -> bool:
+        haystack, needle = normalise(page).lower(), normalise(quote).lower()
+        at = haystack.find(needle)
+        if at < 0:
+            return False
+        before = haystack[at - 1] if at else ""
+        after = haystack[at + len(needle) : at + len(needle) + 1]
+        return not (before.isalnum() or after.isalnum())
+
+    patch.setattr(journal_quotes_gate, "_on_page", first)
+
+
 def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
 
@@ -5130,6 +5408,10 @@ BROKEN = {
     ),
     "the headings of one file are not carried into the next": (
         _the_headings_of_a_file_are_not_carried_into_the_next,
+        test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "an abstract with a Background of its own is a title over the paper": (
+        _an_abstract_over_a_background_is_a_title_over_the_paper,
         test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
     ),
     "a paper's title over it all is its Results": (
@@ -5415,6 +5697,18 @@ BROKEN = {
     "a limit is read after a space between thousands": (
         _a_limit_is_read_after_a_space_between_thousands,
         test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a group of three digits before a space is a thousand": (
+        _a_group_of_three_before_a_space_is_a_thousand,
+        test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a quote is on its page as characters": (
+        _a_quote_is_on_its_page_as_characters,
+        test_a_quote_is_on_its_page_as_the_words_it_is,
+    ),
+    "a quote is looked for once on its page": (
+        _a_quote_is_looked_for_once_on_its_page,
+        test_a_quote_is_on_its_page_as_the_words_it_is,
     ),
     "a claim keeps its line breaks": (
         _a_claim_keeps_its_line_breaks,
@@ -5768,8 +6062,32 @@ BROKEN = {
         _a_links_text_is_a_slot,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
     ),
+    "filler before a list item is not read": (
+        _filler_ends_only_at_a_stop_a_blank_line_or_the_end,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "an instruction marked or linked is not read": (
+        _an_instruction_marked_or_linked_is_a_link_s_text,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "a cited entry's field wholly in brackets is read without them": (
+        _a_field_wholly_in_brackets_is_read_without_them,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
     "an argument that turns a figure's estimate off is not read": (
         _an_argument_that_turns_an_estimate_off_is_not_read,
+        test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
+    ),
+    "a named argument of a call nested in a figure's call is its own": (
+        _a_named_argument_of_a_nested_call_is_the_call_s,
+        test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
+    ),
+    "a comparison in a figure's call names an argument": (
+        _a_comparison_names_an_argument,
+        test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
+    ),
+    "a call whose bracket is left open is no call": (
+        _a_call_left_open_is_no_call,
         test_a_call_that_estimates_is_found_unless_it_is_told_not_to,
     ),
     "a call that estimates is known only by the last part of its name": (
@@ -5824,6 +6142,14 @@ BROKEN = {
         _a_figure_placed_by_hand_is_counted_anyway,
         test_a_pointer_names_what_the_document_carries_or_is_said,
     ),
+    "a figure sent as a file is not counted": (
+        _a_figure_sent_as_a_file_is_not_counted,
+        test_a_pointer_names_what_the_document_carries_or_is_said,
+    ),
+    "a document's figures are counted one too many": (
+        _one_figure_more_is_counted_than_the_supplement_carries,
+        test_a_pointer_names_what_the_document_carries_or_is_said,
+    ),
     "the Methods are read by the name G9 had for them": (
         _the_methods_are_read_by_their_old_name,
         test_a_section_g4_counts_present_is_a_section_the_gates_read,
@@ -5839,6 +6165,10 @@ BROKEN = {
     "the abstract's own Methods are the paper's": (
         _the_abstract_s_methods_are_the_paper_s,
         test_a_section_g4_counts_present_is_a_section_the_gates_read,
+    ),
+    "the Methods are taken in the order they stand, not by name first": (
+        _the_methods_are_taken_in_the_order_they_stand,
+        test_the_methods_named_as_such_are_read_before_a_heading_that_only_holds_the_word,
     ),
     "a number's sign is no part of it": (
         _a_sign_is_no_part_of_its_number,

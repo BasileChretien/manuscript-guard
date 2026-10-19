@@ -1360,8 +1360,9 @@ paper's identifiers and the digests of what was read, never its text.
     them, "Noncommercial" or "No Derivative Works", is not.
   - G6 counted the em dash itself, so a Markdown manuscript that typed one as `---`, which
     pandoc prints as one, showed it none. Three hyphens count as an em dash now, two do
-    not, and neither does a line of dashes, a rule or a table's. Measured again with that
-    rule, the corpus gives the same thresholds, since it was read with the dash written out.
+    not, and neither does a line of dashes, a rule or a table's, inline code, nor a pipe
+    table's row, since the papers' tables were left out. Measured again with that rule, the
+    corpus gives the same thresholds, since it was read with the dash written out.
   - Of all 384, the other phrase rules warn on fewer: an "-ing" tail asserting significance
     on 9.4%, a hedge on a hedge on 7.6%, "it is important to note" on 5.2%, the rest on
     under 3% each. A vague attribution with no citation near it is reported on 4.2%.
@@ -9125,7 +9126,10 @@ Closed since, and why each mattered:
   often each warns on people. The held-out check informed the choice of counting two
   of them by rate, so its 98.9% is not independent of that choice. A percentile of 291 is
   set by the three or four papers at the top: the em-dash threshold was 13.9 while one
-  paper's table notes were counted, and is 4.7 without them.
+  paper's table notes were counted, and is 4.7 without them. The papers were measured with
+  their tables left out, and so is a pipe table's row in a manuscript, but not a simple or a
+  multiline table's; and an em dash typed as `---` at the start of a line that holds only
+  masked text after it, `--- [^1]`, is taken for a rule's line (round 1 of #352).
 - **A small count is found where it is bound, by its value.** A count printed in an emitted
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number

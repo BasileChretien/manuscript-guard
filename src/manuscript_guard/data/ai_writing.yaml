@@ -237,9 +237,13 @@ density:
     # Typed or as pandoc prints three hyphens, `word---word`: the papers measured were read
     # with the dash written out, so the threshold holds for both. Not two hyphens, an en dash,
     # nor four; and not a line of dashes, pipes and colons, which is a rule or a table's.
+    # Nor inline code, printed as typed, nor a pipe table's row: the papers were measured
+    # with their tables left out, and a table's "---" is "not applicable" (round 1 of #352).
     pattern: '—|(?<!-)---(?!-)'
     exempt:
       - '(?m)^[ \t]*[-|:+][-|:+ \t]*$'
+      - '`[^`\n]*`'
+      - '(?m)^[ \t]*\|.*$'
     why: >-
       Em dashes are legitimate punctuation and heavily overused by models. A high rate is
       worth a look; a few are fine.

@@ -2978,7 +2978,7 @@ def test_every_placeholder_is_found_and_nothing_that_looks_like_one(
 #: does not: two hyphens, four, and a line of dashes, a rule or a table's.
 _EM_DASHES = ("\N{EM DASH}", "---", " --- ", " \N{EM DASH} ")
 _NO_EM_DASHES = ("--", " -- ", "----", "\n\n---\n\n", "\n\n|---|:---:|\n\n", "\n\n--- ---\n\n",
-                 "\n\n+---+---+\n\n")  # fmt: skip
+                 "\n\n+---+---+\n\n", " `---` ", "\n\n| a | --- |\n\n")  # fmt: skip
 
 
 @st.composite

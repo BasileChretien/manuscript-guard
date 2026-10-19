@@ -3136,6 +3136,9 @@ def test_an_em_dash_typed_as_three_hyphens_is_counted(project: Path) -> None:
     assert "em-dash" in rates(sentence * 4 + filler)
     assert "em-dash" not in rates(sentence.replace("---", "--") * 4 + filler)
     assert "em-dash" not in rates(filler + rules * 6)
+    # Round 1 of #352: nor inline code, printed as typed, nor a table's "not applicable".
+    assert "em-dash" not in rates(filler + "Records were split on the `---` line. " * 5)
+    assert "em-dash" not in rates(filler + "\n\n" + "| Drug A | --- |\n" * 20)
 
 
 # ------------------------------------------------- the environment the results were made in

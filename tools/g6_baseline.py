@@ -232,8 +232,9 @@ NO_TABLES = ROOT / "tools" / "data" / "g6-no-tables.lua"
 def to_markdown(path: Path, pandoc: str) -> str | None:
     """`path`'s JATS as pandoc's JATS reader writes it in Markdown, its tables left out;
     None where it cannot, in two minutes. Without `smart`, which writes an em dash as "---"
-    and an en dash as "--", where G6 counts the dashes themselves (round 1 of #339: the
-    first measurement saw an em dash in 18 of 384 papers)."""
+    and an en dash as "--": each dash is then written as the character it is (round 1 of
+    #339: the first measurement, before G6 counted "---", saw an em dash in 18 of 384
+    papers)."""
     try:
         run = subprocess.run(
             [pandoc, "-f", "jats", "-t", "markdown-smart", "--wrap=none",

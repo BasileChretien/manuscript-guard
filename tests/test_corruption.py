@@ -2060,6 +2060,28 @@ def test_two_authors_named_alike_are_approved_apart(project: Path) -> None:
     assert _approvals_said(project) == []
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_submit_says_which_authors_have_not_approved(project: Path, capsys) -> None:
+    """Round 1 of #284: `submit` prints the authors with no approval, and nothing asserted
+    it; the pack is assembled all the same, since sending is the corresponding author's
+    call."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    document = str(project / "build" / "manuscript.docx")
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
+    said = capsys.readouterr().out
+    assert said.count("has not approved the manuscript") == 2, said
+    assert "Ada Example has not" in said and "Blaise Sample has not" in said
+    assert 'manuscript-guard approve --as "Ada Example"' in said
+    for author in ("0000-0002-1825-0097", "0000-0001-5109-3700"):
+        assert main(["approve", str(project), "--as", author]) == 0
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
+    assert "approved" not in capsys.readouterr().out
+
+
 # ------------------------------------------------ the unit written after a binding
 
 

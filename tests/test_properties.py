@@ -2032,6 +2032,9 @@ def _typed_releases(draw: st.DrawFn) -> tuple[str, list[tuple[Value, ...]], list
     plans = []
     for name, (release, named) in _DICTIONARIES.items():
         plans += [(name, release, way, True) for way in named]
+        # Round 1 of #287: a release of digits typed with a "v" before it, "MedDRA v26.1".
+        if release[0].isdigit():
+            plans.append((name, draw(st.sampled_from("vV")) + release, named[0], True))
         plans += [
             (name, release, "", False),
             (name, release, "m" + name + "ed ", False),
@@ -2071,6 +2074,22 @@ def _a_dictionary_is_named_inside_a_longer_word(patch: pytest.MonkeyPatch) -> No
         numbers_gate, "_named_in",
         lambda words, name: name in re.sub(r"[^a-z0-9]+", "_", words.lower()),
     )  # fmt: skip
+
+
+def _a_release_with_a_v_before_it_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    def old(text: str, dictionaries: list[Value]) -> list:
+        found = []
+        for value in dictionaries:
+            name = value.key.removeprefix("dictionary.")
+            pattern = re.compile(r"(?<![\w.])" + re.escape(value.display) + r"(?!\w|\.\d)")
+            for match in pattern.finditer(text):
+                line = text.rfind("\n", 0, match.start()) + 1
+                words = text[max(line, match.start() - numbers_gate.NAMED_WITHIN) : match.start()]
+                if numbers_gate._named_in(words, name):
+                    found.append((match.start(), match.end(), value))
+        return sorted(found, key=lambda place: place[0])
+
+    patch.setattr(numbers_gate, "typed_releases", old)
 
 
 def _a_dictionary_is_named_anywhere_before_on_its_line(patch: pytest.MonkeyPatch) -> None:
@@ -5622,6 +5641,10 @@ BROKEN = {
     ),
     "a dictionary is named by a longer word that holds its name": (
         _a_dictionary_is_named_inside_a_longer_word,
+        test_a_dictionary_release_is_found_typed_where_its_name_stands_before_it,
+    ),
+    "a release with a v before it is not read": (
+        _a_release_with_a_v_before_it_is_not_read,
         test_a_dictionary_release_is_found_typed_where_its_name_stands_before_it,
     ),
     "a dictionary is named anywhere before its release on the line": (

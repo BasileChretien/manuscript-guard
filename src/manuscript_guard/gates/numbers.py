@@ -905,7 +905,10 @@ def typed_releases(text: str, dictionaries: list[Value]) -> list[tuple[int, int,
     found = []
     for value in dictionaries:
         name = value.key.removeprefix("dictionary.")
-        pattern = re.compile(r"(?<![\w.])" + re.escape(value.display) + r"(?!\w|\.\d)")
+        # With a "v" before it or not: "MedDRA v26.1" (round 1 of #287).
+        pattern = re.compile(
+            r"(?<![\w.])(?:[vV](?=\d))?" + re.escape(value.display) + r"(?!\w|\.\d)"
+        )
         for match in pattern.finditer(text):
             line = text.rfind("\n", 0, match.start()) + 1
             if _named_in(text[max(line, match.start() - NAMED_WITHIN) : match.start()], name):

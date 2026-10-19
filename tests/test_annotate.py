@@ -238,6 +238,11 @@ def test_the_figure_sheet_lists_the_exemptions_the_figure_declares(project: Path
     sheet = figure_sheet(projekt, results)
     assert "x-axis tick, and the line of no effect" in sheet, sheet
     assert "No exemptions are declared" not in sheet
+    # Round 1 of #288: a statistic the script estimates, allowed with its reason, is listed.
+    extra = "\nallow_estimates:\n  - value: barplot\n    why: the bars show the raw means\n"
+    sidecar.write_text(sidecar.read_text(encoding="utf-8") + extra, encoding="utf-8")
+    sheet = figure_sheet(projekt, results)
+    assert "| barplot | estimated by the figure's script | the bars show the raw means |" in sheet
 
 
 def test_the_figure_sheet_says_so_when_nothing_is_exempt(project: Path) -> None:

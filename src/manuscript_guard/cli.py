@@ -1843,6 +1843,13 @@ def cmd_impact(args: argparse.Namespace) -> int:
     """
     from manuscript_guard.impact import NoChanges, as_json, as_text, changed_files, impact_of
 
+    # A folder was answered as one file no record names (round 1 of #280): its files are
+    # what the records name, so it is refused rather than said to have nothing on it.
+    for path in args.files:
+        if path.is_dir():
+            print(f"manuscript-guard: {path} is a folder; name the files in it, or name "
+                  "none to take those changed since the last commit", file=sys.stderr)  # fmt: skip
+            return 2
     start = args.files[0].parent if args.files else Path.cwd()
     project, _ = load_project(start)
     _namespace, results, literature, _ = load_namespace(project)
@@ -1860,6 +1867,15 @@ def cmd_impact(args: argparse.Namespace) -> int:
                 print(f"nothing has changed since {args.since}")
             return 0
     impacts = [impact_of(project, results, literature, path) for path in files]
+    # A name that is no file and that no record names is a slip of the keyboard, which was
+    # answered as a file nothing depends on (round 1 of #280). A file deleted that a record
+    # still names is answered: what depended on it is the question.
+    named = zip(args.files, impacts, strict=True) if args.files else ()
+    for path, impact in named:
+        if not path.exists() and impact.empty:
+            print(f"manuscript-guard: {path} does not exist, and no record names it",
+                  file=sys.stderr)  # fmt: skip
+            return 2
     if args.json:
         print(as_json(impacts))
         return 0

@@ -6138,8 +6138,8 @@ Added by the adversarial review, verified and **not** fixed:
   (round 2 of #300); a longer name keeps the two apart anyway, since a name and its
   estimate stand at most 24 characters apart. An en dash straight before an estimate's
   digits, after no digit, is read as its minus, "MD–0.4" and a log ratio's "–0.4" too,
-  except glued to a ratio's name: "OR–1.9" is 1.9 (#336). Glued to any letter it is a dash,
-  so "log OR was–0.4", with no space, is read as 0.4, outside its interval, as on main
+  except glued to a ratio's name: "OR–1.9" is 1.9 (#336). After a ratio's name, glued to any
+  letter it is a dash, so "log OR was–0.4", with no space, is read as 0.4, outside its interval, as on main
   (pinned by `test_an_en_dash_glued_to_any_word_before_a_ratio_is_a_dash`).
 - **An n (%) is held to its denominator only where the table writes both, in one cell, in
   a pipe table or a Word table.** A grid or a simple Markdown table is not read, nor a
@@ -6181,8 +6181,9 @@ Added by the adversarial review, verified and **not** fixed:
   means that names one, sets the n for the column below, and the means held to it are
   uncertain, whether its own row is read or not (round 1 of #336); a mean naming its n has a
   spread or a point, and is not in the table's first row, so a header "2019 (n = 120)" or
-  "0.5 (n = 40)" in the first row is a header (#336). In a second header row it is taken
-  for a mean naming its n: the n is right, and the means below are called uncertain (pinned
+  "0.5 (n = 40)" in the first row is a header (#336). In a second header row, a decimal
+  beside an n, "0.5 (n = 40)", is taken for a mean naming its n, though "2019 (n = 120)" is
+  not: the n is right, and the means below are called uncertain (pinned
   by `test_a_header_of_two_rows_marks_the_means_below_uncertain`). Its n is its column header's, so a mean over those
   with data is listed as not fitting where its n is smaller; the message gives the nearest n
   it fits, and the reader decides. A mean of several items per person is read in `audit` as

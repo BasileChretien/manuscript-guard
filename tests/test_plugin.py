@@ -501,6 +501,52 @@ def test_the_routing_cases_are_whole_and_name_only_our_skills() -> None:
     assert routed == names, sorted(names - routed)
 
 
+#: The routed cases that start in an empty folder: one starts a project, one carries its own
+#: paragraph. Every other one speaks of a project, and starts in a copy of the example.
+EMPTY_CASES = frozenset({"route-project-setup", "route-manuscript-writing"})
+
+
+def test_a_case_that_speaks_of_a_project_starts_in_a_copy_of_the_example(
+    tmp_path: Path,
+) -> None:
+    """The 2026-10-19 run: 53 of the 59 outcomes that failed failed in an empty folder,
+    where "my analysis script" was nowhere to be read. Each such case names a scaffold, by
+    the keys the eval documentation gives, and the scaffold copies the worked example that
+    `stage` puts beside the cases into the folder the run starts in."""
+    routed = sorted(path for path in EVALS.iterdir() if path.name.startswith("route-"))
+    scaffolded = {path.name for path in routed if (path / "case.yaml").is_file()}
+    assert scaffolded == {path.name for path in routed} - EMPTY_CASES
+    scripts = set()
+    for name in sorted(scaffolded):
+        case = yaml.safe_load((EVALS / name / "case.yaml").read_text(encoding="utf-8"))
+        assert case == {"schema_version": "1.1", "name": name,
+                        "context": {"scaffold_script": "scaffold.sh"}}, name  # fmt: skip
+        scripts.add((EVALS / name / "scaffold.sh").read_bytes())
+    [script] = scripts
+    assert b"\r" not in script
+    if os.name == "nt":
+        # Which bash is first on PATH there may be WSL's, which reads no Windows path.
+        pytest.skip("the scaffold is run under a POSIX shell")
+    plugin = _evals_script().stage(REPO, tmp_path / "staged")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    shell = shutil.which("bash")
+    if shell is None:
+        pytest.skip("bash is not installed")
+    case = plugin / "evals" / "route-methods-writer"
+    done = subprocess.run([shell, str(case / "scaffold.sh")], cwd=workspace,
+                          capture_output=True, text=True)  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    assert (workspace / "analysis" / "01_disproportionality.py").is_file()
+    # Run from a suite that was not staged, the scaffold says how to run it.
+    shutil.rmtree(plugin / "evals" / "_project")
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    done = subprocess.run([shell, str(case / "scaffold.sh")], cwd=empty,
+                          capture_output=True, text=True)  # fmt: skip
+    assert done.returncode != 0 and "tools/run_skill_evals.py" in done.stderr
+
+
 def _evals_script():
     import importlib.util
 
@@ -520,10 +566,13 @@ def test_the_suite_is_run_from_a_copy_of_the_plugin_with_it_inside(tmp_path: Pat
     script = _evals_script()
     plugin = script.stage(REPO, tmp_path)
     assert (plugin / ".claude-plugin" / "plugin.json").is_file()
-    assert sorted(p.name for p in (plugin / "evals").iterdir() if p.is_dir()) == sorted(
-        p.name for p in EVALS.iterdir() if p.is_dir() and p.name != "results"
-    )
-    assert not (plugin / "evals" / "results").exists()
+    staged = plugin / "evals"
+    cases = sorted(p.name for p in staged.iterdir() if p.is_dir() and p.name != "_project")
+    assert cases == sorted(p.name for p in EVALS.iterdir() if p.is_dir() and p.name != "results")
+    assert not (staged / "results").exists()
+    # The worked example beside the cases, for their scaffolds, without a build.
+    assert (staged / "_project" / "paper.yaml").is_file()
+    assert not (staged / "_project" / "build").exists()
     docs = (REPO / "docs" / "agent-tools.md").read_text(encoding="utf-8")
     assert "python tools/run_skill_evals.py --" in docs
     assert not re.search(r"claude plugin eval\s+\S*plugin\b", docs), "a command with no case"
@@ -540,7 +589,7 @@ def test_the_suite_s_command_keeps_its_report_and_results_and_needs_arguments(
     assert passed == ["--model", "opus", "--runs", "1"]
     run = script.command("claude", tmp_path / "plugin", passed, tmp_path / "results")
     assert run[:4] == ["claude", "plugin", "eval", str(tmp_path / "plugin")]
-    assert {"--no-publish", "--trust-plugin"} <= set(run)
+    assert {"--no-publish", "--trust-plugin", "--scaffold"} <= set(run)
     assert run[run.index("--eval-dir") + 1] == "evals"
     assert run[run.index("--output-dir") + 1] == str((tmp_path / "results").resolve())
     assert run.count("--output-dir") == 1
@@ -567,6 +616,7 @@ def test_a_run_leaves_its_results_in_the_repository_and_says_where(
     (repo / "plugin" / ".claude-plugin").mkdir(parents=True)
     (repo / "plugin" / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
     (repo / "evals" / "a-case").mkdir(parents=True)
+    (repo / "example").mkdir()
     seen: list[list[str]] = []
 
     def run(command: list[str], cwd: Path):

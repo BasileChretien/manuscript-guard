@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: route-co-author-checking
+context:
+  scaffold_script: scaffold.sh

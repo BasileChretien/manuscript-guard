@@ -14,6 +14,11 @@ chooses the folder:
 
     python tools/run_skill_evals.py -- --ablation with-without --runs 3 --model <model>
 
+A case whose prompt speaks of a project, "my analysis script", "the draft", starts in a
+copy of the worked example: the copy of the suite carries one, `evals/_project/`, and the
+case's `scaffold.sh` copies it into the empty folder the run starts in. The command is
+given `--scaffold` for that, since the scripts are this repository's own.
+
 A run is paid at API prices, or counts against a subscription's usage. Run one case once
 first to measure it (`-- --case <name> --runs 1 --ablation none`).
 """
@@ -30,16 +35,22 @@ from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-#: What `claude plugin eval` is always given: the copy's suite, a local report, and the
-#: trust a copy of this repository's own plugin needs to run without asking each time.
-FIXED = ("--eval-dir", "evals", "--no-publish", "--trust-plugin")
+#: What `claude plugin eval` is always given: the copy's suite, a local report, the trust a
+#: copy of this repository's own plugin needs to run without asking each time, and leave to
+#: run the cases' own scaffold scripts.
+FIXED = ("--eval-dir", "evals", "--no-publish", "--trust-plugin", "--scaffold")
+#: Where in the copy of the suite the worked example is, for the cases' scaffold scripts.
+PROJECT = "_project"
 
 
 def stage(repo: Path, into: Path) -> Path:
-    """A copy of `repo`'s plugin with the suite inside it, its past results left out."""
+    """A copy of `repo`'s plugin with the suite inside it, its past results left out, and
+    the worked example beside the cases, without what a build wrote."""
     plugin = into / "plugin"
     shutil.copytree(repo / "plugin", plugin)
     shutil.copytree(repo / "evals", plugin / "evals", ignore=shutil.ignore_patterns("results"))
+    shutil.copytree(repo / "example", plugin / "evals" / PROJECT,
+                    ignore=shutil.ignore_patterns("build", "__pycache__"))  # fmt: skip
     return plugin
 
 

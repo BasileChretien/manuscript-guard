@@ -3359,6 +3359,20 @@ other than the one run.
     reads a suite only from inside the plugin. `tools/run_skill_evals.py` now runs it from
     a copy.
 
+**After that run** (Basile's choice, 2026-10-19), a routing case whose prompt speaks of a
+project starts in one. 13 of the 15 do: `tools/run_skill_evals.py` puts a copy of the
+worked example beside the cases in the copy of the suite it runs, as `evals/_project/`.
+Each such case's `case.yaml` names a `scaffold.sh` that copies it into the folder the run
+starts in, and the command is given `--scaffold`. Two cases still start empty:
+project-setup starts a project, and manuscript-writing carries its own paragraph. Their
+criteria ask only for what the case gives:
+- manuscript-writing invents no finding, since its prompt gives none;
+- project-setup may give the `init` command where it has no shell to run it.
+
+One run of one scaffolded case (methods-writer, Claude Haiku, no baseline arm, $0.01 at API
+prices) started in a folder holding the example, and passed. No run of the whole suite has
+been made since, so what each skill adds is still not measured.
+
 ## Auditing existing papers, and saying what the audit is worth
 
 `check` works because manuscript source contains bindings: a results-derived number cannot

@@ -226,6 +226,14 @@ def test_a_record_that_cannot_be_read_is_listed_and_the_pack_is_assembled(
     assert {"round": 1, "reviewer": "biostatistician", "unreadable": "a record"} in (
         manifest["overrides"]
     )
+    # Round 2 of #250: a panel that cannot be read is listed by its file, its round's
+    # overrides with it.
+    panel = project / "review" / "panel-2.yaml"
+    panel.write_text(panel.read_text(encoding="utf-8") + "reviewers: [\n", encoding="utf-8")
+    pack = assemble_pack(projekt, document, checked=False)
+    manifest = yaml.safe_load(pack.manifest.read_text(encoding="utf-8"))
+    assert {"round": 2, "unreadable": "panel-2.yaml"} in manifest["overrides"]
+    assert not [o for o in manifest["overrides"] if o.get("finding") == "r2-de-01"]
 
 
 def test_git_s_output_is_read_as_utf_8_whatever_the_locale(monkeypatch) -> None:
@@ -244,10 +252,12 @@ def test_git_s_output_is_read_as_utf_8_whatever_the_locale(monkeypatch) -> None:
     assert (asked["encoding"], asked["errors"]) == ("utf-8", "replace")
 
 
-def test_a_pack_outside_git_says_so(project: Path) -> None:
+def test_a_pack_outside_git_says_so(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #250: the assertion stood inside an `if` and said nothing where the test
+    folder happened to be in a repository. Git is pointed at no repository here."""
+    monkeypatch.setenv("GIT_DIR", str(project / "no-repository"))
     manifest = _pack_manifest(project)
-    if manifest["commit"].startswith("none"):
-        assert manifest["tree"] == "unknown"
+    assert manifest["commit"].startswith("none") and manifest["tree"] == "unknown", manifest
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
@@ -272,6 +282,13 @@ def test_the_manifest_records_the_commit_and_whether_the_tree_differs(project: P
     main.write_text(main.read_text(encoding="utf-8") + "\nOne more line.\n", encoding="utf-8")
     manifest = _pack_manifest(project)
     assert (manifest["commit"], manifest["tree"]) == (head, "1 file(s) changed or not committed")
+    # Round 1 of #250: a folder git has not been given counted as one file.
+    notes = project / "notes"
+    notes.mkdir()
+    (notes / "a.md").write_text("a\n", encoding="utf-8")
+    (notes / "b.md").write_text("b\n", encoding="utf-8")
+    manifest = _pack_manifest(project)
+    assert (manifest["commit"], manifest["tree"]) == (head, "3 file(s) changed or not committed")
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

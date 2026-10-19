@@ -709,13 +709,24 @@ def _first_family(authors: str) -> str:
     return family.strip().lower()
 
 
+def _doi_of(written: str) -> str:
+    """A DOI as the gates read it, whatever it is dressed in, `doi:`, `http://dx.doi.org/`
+    or a stop after it, in one case (round 2 of #350: only `https://doi.org/` was taken off,
+    and the entry with the DOI written otherwise lost to a duplicate without one)."""
+    from manuscript_guard.gates.identifiers import normal_doi
+
+    return normal_doi(written).lower()
+
+
 def _the_work(work, fields: dict[str, str]) -> bool:
-    """Whether a `.bib` entry is the work a citation field names: by its DOI, or by its
-    title, and then by its year and first author wherever both say them. A title alone
-    was too little: two works whose titles share only "COVID-19" in Latin letters were one."""
-    doi = work.doi.lower().removeprefix("https://doi.org/")
-    if doi:
-        return fields.get("doi", "").lower().removeprefix("https://doi.org/") == doi
+    """Whether a `.bib` entry is the work a citation field names: by its DOI where both give
+    one, or else by its title, and then by its year and first author wherever both say them.
+    A title alone was too little: two works whose titles share only "COVID-19" in Latin
+    letters were one. An entry with no DOI is matched by its title (round 2 of #298: it was
+    never found where the field gave a DOI)."""
+    doi, known = _doi_of(work.doi), _doi_of(fields.get("doi", ""))
+    if doi and known:
+        return known == doi
     title = _plain_title(work.title)
     if not title or _plain_title(fields.get("title", "")) != title:
         return False
@@ -727,8 +738,14 @@ def _the_work(work, fields: dict[str, str]) -> bool:
 
 
 def _said_inserted(work, entries: dict[str, dict[str, str]]) -> str:
-    """What the import says of a work a co-author cited with their reference manager."""
-    key = next((key for key, fields in entries.items() if _the_work(work, fields)), None)
+    """What the import says of a work a co-author cited with their reference manager. The
+    entry with the field's DOI first, wherever it stands: a duplicate with no DOI above it was
+    taken for the work (round 1 of #350)."""
+    doi = _doi_of(work.doi)
+    key = next((key for key, fields in entries.items()
+                if doi and _doi_of(fields.get("doi", "")) == doi), None)  # fmt: skip
+    if key is None:
+        key = next((key for key, fields in entries.items() if _the_work(work, fields)), None)
     said = f"{work} was cited in Word with a reference manager, whose field the build does not read"
     if key is not None:
         return f"{said}: cite it in the .md as [@{key}]"
@@ -1843,6 +1860,13 @@ def cmd_impact(args: argparse.Namespace) -> int:
     """
     from manuscript_guard.impact import NoChanges, as_json, as_text, changed_files, impact_of
 
+    # A folder was answered as one file no record names (round 1 of #280): its files are
+    # what the records name, so it is refused rather than said to have nothing on it.
+    for path in args.files:
+        if path.is_dir():
+            print(f"manuscript-guard: {path} is a folder; name the files in it, or name "
+                  "none to take those changed since the last commit", file=sys.stderr)  # fmt: skip
+            return 2
     start = args.files[0].parent if args.files else Path.cwd()
     project, _ = load_project(start)
     _namespace, results, literature, _ = load_namespace(project)
@@ -1860,6 +1884,15 @@ def cmd_impact(args: argparse.Namespace) -> int:
                 print(f"nothing has changed since {args.since}")
             return 0
     impacts = [impact_of(project, results, literature, path) for path in files]
+    # A name that is no file and that no record names is a slip of the keyboard, which was
+    # answered as a file nothing depends on (round 1 of #280). A file deleted that a record
+    # still names is answered: what depended on it is the question.
+    named = zip(args.files, impacts, strict=True) if args.files else ()
+    for path, impact in named:
+        if not path.exists() and impact.empty:
+            print(f"manuscript-guard: {path} does not exist, and no record names it",
+                  file=sys.stderr)  # fmt: skip
+            return 2
     if args.json:
         print(as_json(impacts))
         return 0
@@ -2491,10 +2524,13 @@ def cmd_style(args: argparse.Namespace) -> int:
         return 2
     name = journal_style.style_name(named)
     if name is None:
+        # Round 1 of #322: "vancouver.csl" was asked for as vancouver.csl.csl.
+        stem = journal_style.name_of_file(named)
+        file_named = f" (without its `.csl`: {stem!r})" if stem else ""
         print(
             f"manuscript-guard: {named!r} is not the name of a style in the CSL style "
-            "repository, nor its zotero.org/styles URL; pass a style file to the build with "
-            "`--csl FILE` instead",
+            f"repository{file_named}, nor its zotero.org/styles URL; pass a style file to the "
+            "build with `--csl FILE` instead",
             file=sys.stderr,
         )
         return 2

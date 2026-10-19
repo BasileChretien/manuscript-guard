@@ -200,7 +200,9 @@ def response_letter(project: Project) -> str | None:
                 if rebutted:
                     lines += [f"We have not made this change: {rebutted}", ""]
                 for entry in point.get("changed") or []:
-                    note = f" — {entry['note']}" if entry.get("note") else ""
+                    # Filled in as the reply is, since G2 holds its numbers to the results
+                    # (round 1 of #349: a binding went to the journal as typed).
+                    note = f" — {filled(str(entry['note']))}" if entry.get("note") else ""
                     if entry["kind"] == "text":
                         place = f" ({entry['section']})" if entry.get("section") else ""
                         quote = filled(str(entry["quote"]))
@@ -773,7 +775,8 @@ def _commit(project: Project) -> dict[str, str]:
     outside = [] if not build.is_relative_to(root) else [
         f":(exclude){build.relative_to(root).as_posix()}"
     ]
-    status = _git(root, "status", "--porcelain", "--", ".", *outside)
+    # Each file of a folder git has not been given, not the folder as one (round 1 of #250).
+    status = _git(root, "status", "--porcelain", "--untracked-files=all", "--", ".", *outside)
     if status is None:
         return {"commit": head.strip(), "tree": "unknown: git could not say"}
     changed = len([line for line in status.splitlines() if line.strip()])

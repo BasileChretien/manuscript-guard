@@ -815,7 +815,8 @@ def test_r_and_python_keep_the_plan_alike(tmp_path: Path) -> None:
     (root / "design").mkdir()
     plan = root / "design" / "plan.md"
     written = "# Analysis plan\r\n\r\n## Outcome\r\n\r\nHepatic injury, \u00e9tude.\r\n"
-    plan.write_bytes(written.encode())
+    # With the byte-order mark Notepad writes, which neither keeps (round 1 of #271).
+    plan.write_bytes(b"\xef\xbb\xbf" + written.encode())
     script = root / "analysis" / "frozen.R"
     script.write_text(FROZEN_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
                       encoding="utf-8")  # fmt: skip
@@ -831,6 +832,7 @@ def test_r_and_python_keep_the_plan_alike(tmp_path: Path) -> None:
     from_python = json.loads(frozen.read_text(encoding="utf-8"))
     keep = ("schema", "by", "sha256", "plan")
     assert {k: from_r[k] for k in keep} == {k: from_python[k] for k in keep}
+    assert from_python["plan"] == written, "kept without its byte-order mark"
 
 
 @pytest.mark.parametrize(
@@ -956,6 +958,9 @@ def test_r_software_is_the_version_the_session_loaded(tmp_path: Path) -> None:
          "does not open with a MedDRA version"),
         # Round 1 of #287: 27.0 was recorded as "27", the text printing "MedDRA version 27".
         ('em$dictionary("MedDRA", 27.0)', "give the release as text"),
+        # Round 2 of #287: two releases, or NA as text, are not one release.
+        ('em$dictionary("WHODrug", c("B3", "C3"))', "give one release"),
+        ('em$dictionary("WHODrug", NA_character_)', "give one release"),
     ],
 )
 def test_r_refuses_what_python_refuses(tmp_path: Path, call: str, refusal: str) -> None:

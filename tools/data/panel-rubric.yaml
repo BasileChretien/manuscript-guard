@@ -1,0 +1,94 @@
+schema: manuscript-guard/panel-rubric/1
+
+# What tools/panel_measure.py scores the review panel against (item 53), written before any
+# reply was read. Each defect says where it can be seen, which reviewers' remits ask about it,
+# and the words that settle a finding as raising it without a person. A finding that matches
+# no defect's words, or more than one's, goes to the blind adjudication file instead.
+#
+# The four known defects are the major findings of the example's round-1 panel
+# (example/review/round-1/), all fixed later. The manuscript that panel read is the example's
+# first, at commit e6a8cca6: the records came with the fixes, and the digest they give now is
+# of a later version that has them. The two planted defects are minor
+# ones put into the current example, beside its fixed text, to count how often a minor defect
+# is rated major.
+
+defects:
+  - id: case-definition
+    kind: known-major
+    seen_in: [pre-fix]
+    asked: [pharmacoepidemiologist]
+    about: No case definition; "hepatic injury" is used without saying which terms make a case.
+    words:
+      - 'case definition'
+      - 'defin\w*\s+(?:of\s+)?(?:a\s+|the\s+)?(?:case|outcome|event)s?\b'
+      - '(?:which|what)\s+(?:MedDRA\s+)?(?:terms|preferred terms|codes)'
+      - '\bSMQ\b|standardi[sz]ed\s+MedDRA\s+quer'
+      - 'preferred[- ]terms?'
+
+  - id: duplicates
+    kind: known-major
+    seen_in: [pre-fix]
+    asked: [pharmacoepidemiologist]
+    about: Duplicate reports are not mentioned.
+    words:
+      - 'duplicat'
+
+  - id: contingency-table
+    kind: known-major
+    seen_in: [pre-fix]
+    asked: [biostatistician]
+    about: The 2 x 2 table's four cell counts are not reported, so the estimate cannot be recomputed.
+    words:
+      - 'contingency table'
+      - '2\s*[x×]\s*2'
+      - 'cell counts?'
+      - 'four (?:cells|counts)'
+      - '\ba,\s*b,\s*c,?\s*(?:and\s+)?d\b'
+
+  - id: record-selection
+    kind: known-major
+    seen_in: [pre-fix]
+    asked: [checklist-auditor]
+    about: DEMO-OBS item 3; how records were selected is not described.
+    words:
+      - '\bitem\s+3\b'
+      - '(?:record|report)s?\s+(?:were\s+|was\s+)?selected|selection\s+of\s+(?:the\s+)?(?:records|reports)'
+      - '(?:record|report)\s+selection'
+
+  - id: undefined-acronym
+    kind: planted-minor
+    seen_in: [minor]
+    asked: [pharmacoepidemiologist, biostatistician, checklist-auditor]
+    about: '"ICSR" is used in the Methods and never defined.'
+    words:
+      - '\bICSRs?\b'
+
+  - id: caption-incomplete
+    kind: planted-minor
+    seen_in: [minor]
+    asked: [pharmacoepidemiologist, biostatistician, checklist-auditor]
+    about: Table 1's caption no longer says its values are n (%).
+    words:
+      - 'Table\s+1\b[^.]*(?:caption|legend|title|n\s*\(%\)|percentages?|values)'
+      - '(?:caption|legend|title)\s+(?:of|for|to)\s+Table\s+1\b'
+
+# Findings of known grade, mixed into the blind adjudication file to measure the adjudicator.
+controls:
+  - where: Methods
+    finding: The paper never says which MedDRA terms count as hepatic injury, so the numerator cannot be checked.
+    defect: case-definition
+  - where: Methods
+    finding: One case can reach the database from a patient, a doctor and the manufacturer; nothing says such reports were merged.
+    defect: duplicates
+  - where: Results
+    finding: The four counts behind the reporting odds ratio are not given, so a reader cannot recompute it.
+    defect: contingency-table
+  - where: Results
+    finding: Table 1 does not say whether its numbers are counts, percentages or means.
+    defect: caption-incomplete
+  - where: Methods
+    finding: An abbreviation in the second paragraph is never spelt out.
+    defect: undefined-acronym
+  - where: Discussion
+    finding: The Discussion reads a disproportionality signal as evidence that the drug causes liver injury.
+    defect: none

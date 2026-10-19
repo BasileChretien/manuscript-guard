@@ -14171,6 +14171,10 @@ def test_a_reader_named_by_a_reviewer_s_second_slot_is_read(project: Path) -> No
     said = _design_said(project)
     assert ("design-major-open", "warn") in said, said
     assert ("design-reading-unnamed", "warn") not in said
+    # Round 2 of #348: a slot that names no reader asks for the plain record still.
+    del document["reviewers"][0]["readers"]
+    panel.write_text(yaml.safe_dump(document), encoding="utf-8")
+    assert ("design-review-missing", "warn") in _design_said(project)
 
 
 def test_a_design_reading_giving_one_id_to_two_findings_is_said(project: Path) -> None:

@@ -179,18 +179,21 @@ def _once_each(reviewers: list[dict]) -> list[dict]:
     """The panel's reviewers, one entry for each id: one record answers every slot sharing
     its id, so it is not read again, and its overrides not listed twice (round 1 of #313).
     The entry names the readers of every such slot, so that a reader named only by a later
-    one is still read (round 1 of #348)."""
+    one is still read (round 1 of #348). A slot that names none still asks for the plain
+    record (round 2 of #348)."""
     merged: dict = {}
     for reviewer in reviewers:
         name = reviewer["id"]
-        if name not in merged:
-            merged[name] = dict(reviewer)
-            continue
-        readers = list(merged[name].get("readers") or ())
-        readers += [r for r in reviewer.get("readers") or () if r not in readers]
-        if readers:
-            merged[name]["readers"] = readers
+        entry = merged.setdefault(name, {**reviewer, "readers": []})
+        named = reviewer.get("readers") or ()
+        entry["readers"] += [r for r in named if r not in entry["readers"]]
+        entry[_PLAIN] = entry.get(_PLAIN, False) or not named
     return list(merged.values())
+
+
+#: Set on a reviewer merged from several slots where one names no reader, so that its
+#: plain record is asked for as that slot alone would ask for it.
+_PLAIN = "_plain_record_asked"
 
 
 def _asked(
@@ -204,7 +207,9 @@ def _asked(
     name = reviewer["id"]
     readers = [str(reader) for reader in reviewer.get("readers") or ()]
     plain = design_record_path(project, number, name)
-    asked: list[str | None] = [None] if plain.is_file() or not readers else []
+    asked: list[str | None] = (
+        [None] if plain.is_file() or not readers or reviewer.get(_PLAIN) else []
+    )
     report = Report()
     known: dict[str, str] = {}
     for reader in readers:

@@ -125,8 +125,17 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
         report = report.merge(checked)
         if not checked.ok or not isinstance(panel, dict):
             continue
+        repeated = _repeated([reviewer["id"] for reviewer in panel["reviewers"]])
+        if repeated:
+            report = report.with_findings(_finding(
+                "design-duplicate-reviewer",
+                f"design round {number}: {', '.join(repeated)} appears more than once in the "
+                "panel, so one record answers each of its remits", path, severity=severity,
+                hint="give each reviewer a distinct id; two reviewers with the same remit are "
+                "one reviewer",
+            ))  # fmt: skip
         fresh_round = True
-        for reviewer in panel["reviewers"]:
+        for reviewer in _once_each(panel["reviewers"]):
             said, filed = _readings(project, number, reviewer, current, severity)
             report = report.merge(said)
             for who, label, read, fresh, opened in filed:
@@ -161,15 +170,46 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
     )  # fmt: skip
 
 
-def _asked(project: Project, number: int, reviewer: dict) -> tuple[list[str | None], Report]:
+def _repeated(names: list) -> list:
+    """The names given more than once, each once, sorted."""
+    return sorted({name for name in names if names.count(name) > 1}, key=str)
+
+
+def _once_each(reviewers: list[dict]) -> list[dict]:
+    """The panel's reviewers, one entry for each id: one record answers every slot sharing
+    its id, so it is not read again, and its overrides not listed twice (round 1 of #313).
+    The entry names the readers of every such slot, so that a reader named only by a later
+    one is still read (round 1 of #348). A slot that names none still asks for the plain
+    record (round 2 of #348)."""
+    merged: dict = {}
+    for reviewer in reviewers:
+        name = reviewer["id"]
+        entry = merged.setdefault(name, {**reviewer, "readers": []})
+        named = reviewer.get("readers") or ()
+        entry["readers"] += [r for r in named if r not in entry["readers"]]
+        entry[_PLAIN] = entry.get(_PLAIN, False) or not named
+    return list(merged.values())
+
+
+#: Set on a reviewer merged from several slots where one names no reader, so that its
+#: plain record is asked for as that slot alone would ask for it.
+_PLAIN = "_plain_record_asked"
+
+
+def _asked(
+    project: Project, number: int, reviewer: dict, severity: str = WARN
+) -> tuple[list[str | None], Report]:
     """Whose readings of one remit the round asks for: the reviewer's plain record, unless
     the panel names readers and there is none, and each reader the panel names. And what is
     wrong with the names: a reader whose name has no letter or digit, or two that would be
-    filed as one."""
+    filed as one, said as G11 says a reader it cannot file, a failure at submission (round 1
+    of #315: it was always a warning)."""
     name = reviewer["id"]
     readers = [str(reader) for reader in reviewer.get("readers") or ()]
     plain = design_record_path(project, number, name)
-    asked: list[str | None] = [None] if plain.is_file() or not readers else []
+    asked: list[str | None] = (
+        [None] if plain.is_file() or not readers or reviewer.get(_PLAIN) else []
+    )
     report = Report()
     known: dict[str, str] = {}
     for reader in readers:
@@ -183,7 +223,7 @@ def _asked(project: Project, number: int, reviewer: dict) -> tuple[list[str | No
             f"design round {number}: {name}'s reader {reader!r} "
             + (f"would be filed as {known[slug]}'s reading" if slug else
                "has no letter or digit to name its file"),
-            design_panel_path(project, number), severity=WARN,
+            design_panel_path(project, number), severity=severity,
             hint="a reader is known by the letters and digits of its name; name each so "
             "that they differ in those, and list each once",
         ))  # fmt: skip
@@ -199,7 +239,7 @@ def _readings(
     open. A file beside the record that the panel names no reader for is said and not
     read, as G11 leaves one."""
     name = reviewer["id"]
-    asked, report = _asked(project, number, reviewer)
+    asked, report = _asked(project, number, reviewer, severity)
     filed = []
     for reader in asked:
         label = name if reader is None else f"{name} ({reader})"
@@ -232,7 +272,7 @@ def override_signables(project: Project) -> list[Signable]:
         panel = _read(path)
         if not validate(panel, "panel", path, gate=GATE).ok:
             continue
-        for reviewer in panel["reviewers"]:
+        for reviewer in _once_each(panel["reviewers"]):
             name = reviewer["id"]
             for reader in _asked(project, number, reviewer)[0]:
                 record = design_record_path(project, number, name, reader)
@@ -326,6 +366,17 @@ def _reading(
                     f"review --seal {name} --design --round {number}{named}`"))
         for f in sealed.findings
     ))  # fmt: skip
+    # An override is signed by its finding's id, so two findings of one id share one
+    # sign-off, and either answers for the other (round 1 of #313).
+    repeated = _repeated([f.get("id") for f in document.get("findings") or [] if f.get("id")])
+    if repeated:
+        report = report.with_findings(_finding(
+            "design-finding-id-repeated",
+            f"design round {number}: {label} gives {', '.join(map(str, repeated))} to more "
+            "than one finding", path, severity=severity,
+            hint="number each finding of a reading once: an answer and a sign-off are held to "
+            "the finding by its id",
+        ))  # fmt: skip
     opened = 0
     for finding in document.get("findings") or []:
         if finding.get("severity") == "major" and not _answered(finding):

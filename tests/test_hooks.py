@@ -970,6 +970,25 @@ def test_an_approval_written_by_an_agent_is_put_to_the_author(
     assert run("guard-write", payload, capsys) is None
 
 
+def test_an_approval_written_by_a_codex_patch_is_put_to_the_author(
+    project: Path, capsys
+) -> None:
+    """Round 1 of #284: a patch from Codex that adds a file under approvals/ was not tested;
+    it names its files in its headers, not in a `file_path`."""
+    patch = "\n".join(["*** Begin Patch", "*** Add File: approvals/ada-example.yaml",
+                       "+author: Ada Example", "*** End Patch"])  # fmt: skip
+    payload = {
+        "session_id": "019a-test", "transcript_path": None, "cwd": str(project),
+        "hook_event_name": "PreToolUse", "model": "gpt-test", "turn_id": "turn-1",
+        "permission_mode": "default", "tool_name": "apply_patch", "tool_use_id": "call-1",
+        "tool_input": {"command": patch},
+    }  # fmt: skip
+    result = run("guard-write", payload, capsys)
+    # Codex cannot show an "ask", so the call is refused, with the same reason.
+    assert decision(result) == "deny", result
+    assert "manuscript-guard approve" in reason(result)
+
+
 @pytest.mark.parametrize(
     "command",
     [

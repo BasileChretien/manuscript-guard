@@ -663,6 +663,20 @@ def test_a_finding_whose_place_is_null_is_filed_without_one(
     ]
 
 
+def test_a_finding_whose_ask_is_null_is_filed_without_one(
+    unreviewed: Path, providers: Providers
+) -> None:
+    """Round 2 of #276: a null `ask` was tested where the reply is parsed, and not where
+    the reading is filed."""
+    findings = [{"severity": "minor", "where": None, "ask": None, "finding": "Say synthetic."}]
+    providers.default = lambda request: answer(reply_text(findings=findings))
+    assert run(unreviewed, "--yes") == 0
+    document = read_structured(readings(unreviewed)[0])
+    assert document["findings"] == [
+        {"id": "r1-01", "severity": "minor", "finding": "Say synthetic."}
+    ]
+
+
 # ------------------------------------------------------------- what the provider says of itself
 
 
@@ -942,6 +956,9 @@ def test_a_round_the_panel_still_waits_on_is_not_said_to_be_on_file(
     assert providers.requests == []
     assert "nothing to send" in out and "not complete" in out and MODEL_B in out
     assert "`readers`" in out, "it says how a reader who will not report is released"
+    # Round 1 of #316: the command to file a reading names its round, which `--record`
+    # otherwise takes as the first.
+    assert "--round 1 --reading <who>" in " ".join(out.split())
 
 
 def test_a_run_that_asks_fewer_readers_than_the_panel_names_says_so(

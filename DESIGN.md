@@ -3064,7 +3064,14 @@ statistician under a key that names the reader. A reader the panel names who has
 `design-reading-misfiled` and not counted; and a file beside the record whose reader the
 panel does not name is said (`design-reading-unnamed`) and not read. Until this, a design
 panel's named readers were not read at all, and a remit read by two models counted one
-reading.
+reading. As in G11, a reviewer the panel lists twice is said (`design-duplicate-reviewer`)
+and read once, with the readers every one of its entries names and its plain record where
+one names none, so that one record does not
+answer two remits nor its overrides go to the statistician twice; a reading that gives one id to two findings is said
+(`design-finding-id-repeated`), since an answer and a sign-off are held to a finding by its
+id; and two readers whose names would be filed as one, or a name with no letter or digit,
+are `design-reader-unnamed`. All three fail at submission, as G11's do (rounds 1 of #308,
+#313 and #315).
 
 An override of a design-round major, a reason given for leaving the objection standing, is
 the statistician's to accept, not the author's alone (`sign_offs`): G12 warns
@@ -3173,7 +3180,9 @@ findings' at the project's stage, as before. It is printed text only: `check --j
 unchanged.
 
 `verify` now records its last full run in the build folder (`build/verify.json`): when, how
-many values it reproduced of how many, and a digest of the results fragments it re-ran.
+many values it reproduced of how many, and a digest of the results fragments it re-ran. A
+software version found other on the re-run is among the values and not among those
+reproduced, in the record as in what `verify` prints (round 2 of #306).
 `check` says that run, and says the results have changed since where they have. A run of
 some scripts only (`--only`) is not recorded, since it did not re-run the analysis. The
 folder is not committed, so a fresh checkout says `verify` has not run in it, which is true.

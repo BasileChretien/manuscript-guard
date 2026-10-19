@@ -300,6 +300,7 @@ def test_no_single_push_leaving_main_at_the_commit_releases_nothing_and_fails(pu
         decision.replaced_by(AFTER, pushes)
 
 
+@needs_git  # it reads a commit with `git show` (round 1 of #310)
 def test_a_forced_push_read_from_the_record_is_one_whose_commit_before_cannot_be_read():
     """The record gives a forced push the commit it replaced, which no branch holds, so it is
     not in the checkout: the run stops, as it did when the push itself named that commit."""

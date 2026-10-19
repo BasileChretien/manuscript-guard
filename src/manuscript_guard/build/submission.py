@@ -772,7 +772,8 @@ def _commit(project: Project) -> dict[str, str]:
     outside = [] if not build.is_relative_to(root) else [
         f":(exclude){build.relative_to(root).as_posix()}"
     ]
-    status = _git(root, "status", "--porcelain", "--", ".", *outside)
+    # Each file of a folder git has not been given, not the folder as one (round 1 of #250).
+    status = _git(root, "status", "--porcelain", "--untracked-files=all", "--", ".", *outside)
     if status is None:
         return {"commit": head.strip(), "tree": "unknown: git could not say"}
     changed = len([line for line in status.splitlines() if line.strip()])

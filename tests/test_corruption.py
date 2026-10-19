@@ -2417,6 +2417,21 @@ def test_what_must_not_reach_a_journal_in_a_reply_fails(
     assert _said(_g13(project), code) == [(code, "fail")]
 
 
+def test_a_note_on_a_change_is_read_as_the_reply_is(project: Path) -> None:
+    """Round 1 of #266: a changed entry's `note` is printed in the letter after the change,
+    and neither G13's reply checks nor G2 read it."""
+    changed = [{"kind": "text", "quote": "A new sentence.", "note": "TODO: say where."}]
+    _round_with(project, [_point(response="We now say so.", changed=changed)])
+    assert _said(_g13(project), "response-artefact") == [("response-artefact", "fail")]
+    changed[0]["note"] = "as the reviewer asked, from line 120"
+    _round_with(project, [_point(response="We now say so.", changed=changed)])
+    from manuscript_guard.gates.numbers import replies
+
+    document = {"reviewers": [{"id": "r", "points": [{"id": "1", "changed": changed}]}]}
+    assert replies(document, 1) == [("round 1, r point 1, `changed[0].note`",
+                                     "as the reviewer asked, from line 120")]  # fmt: skip
+
+
 @pytest.mark.parametrize(
     "reply",
     [
@@ -7975,6 +7990,27 @@ _CORE_NS = (
             "<w:p><w:r><w:t>As B. O\N{RIGHT SINGLE QUOTATION MARK}Sample said.</w:t></w:r></w:p>",
             {}, [("Blaise O'Sample", "the text")], id="an apostrophe printed curly",
         ),
+        # Round 1 of #273: a link's address, a field's code and Word's company field.
+        pytest.param(
+            "", {"word___rels__document.xml.rels": "<Relationships xmlns='http://schemas."
+                 "openxmlformats.org/package/2006/relationships'><Relationship Id='rId9' "
+                 "Type='hyperlink' Target='mailto:ada.example@invalid.example' "
+                 "TargetMode='External'/></Relationships>"},
+            [("the e-mail address ada.example@invalid.example", "the address of a link")],
+            id="a link's address",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:instrText xml:space='preserve'> HYPERLINK \"https://orcid.org/"
+            "0000-0002-1825-0097\" </w:instrText></w:r></w:p>", {},
+            [("the ORCID iD 0000-0002-1825-0097", "a field's code")], id="a field's code",
+        ),
+        pytest.param(
+            "", {"docProps__app_xml": "<Properties xmlns='http://schemas.openxmlformats.org/"
+                 "officeDocument/2006/extended-properties'><Company>Example University "
+                 "Graduate School of Medicine</Company></Properties>"},
+            [("Example University Graduate School of Medicine",
+              "the document's company (Company)")], id="Word's company field",
+        ),
     ],
 )  # fmt: skip
 def test_a_document_reviewed_blind_names_no_author_anywhere_word_keeps_one(
@@ -7990,6 +8026,21 @@ def test_a_document_reviewed_blind_names_no_author_anywhere_word_keeps_one(
             "family: Sample", "family: \"O'Sample\""), encoding="utf-8")  # fmt: skip
     document = _word(tmp_path / "manuscript.docx", body, **parts)
     assert _named(project, document) == sorted(said)
+
+
+def test_what_the_blind_check_reads_wrongly_is_pinned(project: Path, tmp_path: Path) -> None:
+    """Known gaps (#273): an institution named in two words is not looked for, and an
+    initial with its stop before a word that is an author's family name reads as that
+    author, "Panel A. Example" as Ada Example."""
+    _blind(project)
+    authors = project / "authors.yaml"
+    authors.write_text(authors.read_text(encoding="utf-8").replace(
+        "Department of Clinical Pharmacology, Example University Graduate School of Medicine",
+        "Example Institute"), encoding="utf-8")  # fmt: skip
+    body = "<w:p><w:r><w:t>Data from the Example Institute were used.</w:t></w:r></w:p>"
+    assert _named(project, _word(tmp_path / "a.docx", body)) == []
+    body = "<w:p><w:r><w:t>Panel A. Example of the design.</w:t></w:r></w:p>"
+    assert _named(project, _word(tmp_path / "b.docx", body)) == [("Ada Example", "the text")]
 
 
 def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(

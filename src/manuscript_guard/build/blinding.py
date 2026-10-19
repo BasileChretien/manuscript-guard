@@ -47,6 +47,10 @@ _CORE = {
 }
 #: The parts of a document that hold text a reader sees.
 _TEXT_PART = re.compile(r"word/(?:document|footnotes|endnotes|comments|header\d*|footer\d*)\.xml")
+#: The relationships of those parts, where a link keeps its address.
+_RELS_PART = re.compile(r"word/_rels/[^/]+\.xml\.rels")
+_RELATIONSHIP = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
+_COMPANY = "{http://schemas.openxmlformats.org/officeDocument/2006/extended-properties}Company"
 #: A space of any kind, a line break inside a paragraph included.
 _SPACE = r"\s+"
 
@@ -198,6 +202,17 @@ def _places(document: Path) -> list[tuple[str, str]]:
                 places.append(("the text", "\n".join(_paragraphs(root, listed))))
                 authors = {node.get(f"{_W}author") for node in root.iter()} - {None}
                 places += [("the author of a tracked change or a comment", a) for a in authors]
+                # A field's code, a HYPERLINK's address or a citation's, is not printed and
+                # is in the file (round 1 of #273).
+                codes = [node.text for node in root.iter(f"{_W}instrText") if node.text]
+                if codes:
+                    places.append(("a field's code", "".join(codes)))
+            elif _RELS_PART.fullmatch(name):
+                # A link's address: a mailto: or an ORCID iD behind words (round 1 of #273).
+                targets = [node.get("Target", "") for node in read_part(archive, name).iter()
+                           if node.tag == _RELATIONSHIP and node.get("TargetMode") == "External"]
+                if targets:
+                    places.append(("the address of a link", "\n".join(targets)))
             elif name.startswith("word/media/") and name.lower().endswith(".svg"):
                 figure = f"a figure ({name[len('word/media/') :]})"
                 places.append((figure, _svg_text(read_member(archive, name))))
@@ -205,6 +220,10 @@ def _places(document: Path) -> list[tuple[str, str]]:
             for node in read_part(archive, "docProps/core.xml"):
                 if node.tag in _CORE and node.text:
                     places.append((_CORE[node.tag], node.text))
+        if "docProps/app.xml" in names:
+            for node in read_part(archive, "docProps/app.xml"):
+                if node.tag == _COMPANY and node.text:
+                    places.append(("the document's company (Company)", node.text))
         if "word/people.xml" in names:
             root = read_part(archive, "word/people.xml")
             held = [value for node in root.iter() for value in (node.text, *node.attrib.values())]

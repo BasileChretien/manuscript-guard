@@ -226,6 +226,20 @@ def test_a_name_that_is_no_style_of_the_repository_is_not_asked_for(
     assert "manuscript-guard:" in capsys.readouterr().err
 
 
+def test_a_style_named_as_a_file_is_not_asked_for_with_its_suffix(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """Round 1 of #322: "vancouver.csl" was a name, and was asked for as vancouver.csl.csl."""
+    from manuscript_guard.journal_style import style_name
+
+    assert style_name("vancouver.csl") is None and style_name("vancouver") == "vancouver"
+    name_style(project, f"{DEPENDENT}.csl")
+    table = _stand_in(monkeypatch, repository())
+    assert main(["style", str(project)]) == 2
+    assert table.sent == []
+    assert f"without its `.csl`: {DEPENDENT!r}" in " ".join(capsys.readouterr().err.split())
+
+
 def test_style_says_what_it_kept_and_asks_once(project: Path, monkeypatch, capsys) -> None:
     name_style(project, DEPENDENT)
     table = _stand_in(monkeypatch, repository())

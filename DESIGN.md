@@ -1019,7 +1019,9 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   cite one, and a PMID PubMed types as a notice (`reference-not-the-work`). A registered title that holds less than 85% of the cited
   title's words (`reference-title-mismatch`): the cited title is held to the registered
   one with its subtitle and to its original-language title, so a subtitle the entry left
-  out costs nothing; markup, TeX, case, accents and punctuation are folded (a tag or a
+  out costs nothing, and to PubMed's where PubMed gives the work the entry's own DOI, the
+  English title of a paper Crossref registered in another language (round 1 of #253); of
+  Crossref's titles only the first is kept, so a further one is not compared; markup, TeX, case, accents and punctuation are folded (a tag or a
   command is part of the word it marks, `PM<sub>2.5</sub>` and `PM\textsubscript{2.5}`
   being "PM2.5", and an accent command keeps its letter), British
   spellings are read as American through G14's list, and no word is dropped for being
@@ -6255,6 +6257,15 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   A raw block, ```` ```{=openxml} ````, is blanked although pandoc passes its text into the
   document. An indented code block is not blanked, so a pattern written for a phrase can be
   met by a line of code; one anchored on a heading cannot.
+- **Some tests of the literature are narrower than the rule they hold.** The words beside a
+  quoted value are drawn with each value once, between spaces, and never inside a word with
+  a digit: a value quoted twice, or within "CYP3A14", and a quote in a script written
+  without spaces, are held by corruption cases only, or not at all (round 1 of #278). A
+  Zotero field in a returned document is tested in one shape, with its run properties and
+  its result in one run: a field with no `rPr`, a result over several runs, a
+  `w:fldSimple` and a `formattedCitation` are not (round 1 of #281). A narrative
+  citation's name written as hex on the command line is tested with Latin names only
+  (round 3 of #296).
 
 Added by the adversarial review, verified and **not** fixed:
 
@@ -9002,9 +9013,12 @@ Closed since, and why each mattered:
   the DOI of a dataset the statement cites by its key: an entry of type `dataset` only, so a
   `@misc` that holds a dataset and says nothing of it is not read as one. A forbidden
   phrasing is matched as the profile writes it, without regard to case, and its `unless`
-  anywhere in the statement accepts it. The statement is the section under its heading, its subsections included, the
-  outermost where several headings match; a statement written as a paragraph with no heading
-  of its own is not read. A link to a repository with any path after its name, a branch's as
+  anywhere in the statement accepts it. The statement is the section under its heading, its
+  subsections included, the outermost where several headings match and the first of several
+  at one level, so a numbered Methods subsection on data sharing is read where the statement
+  stands under a Declarations heading at the same level
+  (`test_a_statement_heading_level_with_a_methods_subsection_is_pinned`); a statement
+  written as a paragraph with no heading of its own is not read. A link to a repository with any path after its name, a branch's as
   much as a release's, is taken for a fixed version, and a bare repository is warned of even
   where the statement names its archive too. A dataset's DOI counts as cited when an entry of
   `references.bib` holds it, whether the text cites that entry or not. A regular expression

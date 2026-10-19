@@ -2613,6 +2613,22 @@ def test_the_statement_is_found_under_its_heading_however_written(
     assert said("Data are held by the team.") == [("data-identifier-missing", "fail")]
 
 
+def test_a_statement_heading_level_with_a_methods_subsection_is_pinned(project: Path) -> None:
+    """Known gaps (round 2 of #269): of two matching headings at one level, the first is
+    read, so a numbered Methods subsection on data sharing is taken for the statement where
+    the statement stands under a Declarations heading at the same level."""
+    _data_statement(project, "Data are held by the team.")
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace("# Results", "## 2.4 Data sharing between sites\n\nThe sites shared "
+                        "records weekly.\n\n# Results", 1)  # fmt: skip
+    text = text.replace("# Data availability\n\nData are held by the team.",
+                        "# Declarations\n\n## Availability of data and materials\n\nThe "
+                        "dataset is in GEO, GSE123456.", 1)  # fmt: skip
+    path.write_text(text, encoding="utf-8")
+    assert _data_findings(project) == [("data-identifier-missing", "fail")]
+
+
 def test_a_dataset_doi_the_reference_list_cites_passes(project: Path) -> None:
     bib = project / "literature" / "references.bib"
     opening = "@article{fictionalHepaticCohort2021,\n"
@@ -4746,6 +4762,20 @@ def test_a_title_in_british_spelling_matches_its_american_registration(project: 
     assert "reference-title-mismatch" not in _g7_codes(project)
 
 
+@pytest.mark.parametrize(("pubmed_doi", "fails"), [(_LOOKED_DOI, False), (None, True)])
+def test_pubmed_s_title_of_the_same_work_is_a_candidate(
+    project: Path, pubmed_doi: str | None, fails: bool
+) -> None:
+    """Round 1 of #253: a paper Crossref registered under its title in another language,
+    and PubMed under the English one the entry cites, was said to name another title.
+    PubMed's title counts where PubMed gives the work the entry's own DOI."""
+    crossref = {**_CROSSREF, "title": "Lésions hépatiques dans une cohorte nationale fictive"}
+    pubmed = {"status": "found", "title": "Hepatic injury in a fictional national cohort, "
+              "2010-2019", **({"doi": pubmed_doi} if pubmed_doi else {})}  # fmt: skip
+    _looked_up(project, pmid="31000001", crossref=crossref, pubmed=pubmed)
+    assert ("reference-title-mismatch" in _g7_codes(project)) is fails
+
+
 def test_a_title_in_another_script_is_not_compared(project: Path) -> None:
     _looked_up(project, crossref={**_CROSSREF, "title": "架空のコホートにおける肝障害"})
     assert "reference-title-mismatch" not in _g7_codes(project)
@@ -6036,6 +6066,9 @@ def test_a_quote_not_in_its_source_says_what_stands_in_the_way(
     [
         ("A signal was detected for the class as a whole (ROR 2.6, 95% CI 2.1-3.2).", False),
         ("the class as a whole (ROR 2.6", False),
+        # Round 1 of #278: the threshold itself, four words beside the value and three.
+        ("as a whole (ROR 2.6", False),
+        ("a whole (ROR 2.6", True),
         ("whole (ROR 2.6", True),
         ("ROR 2.6", True),
         ("2.6", True),

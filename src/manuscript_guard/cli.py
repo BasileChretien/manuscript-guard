@@ -710,12 +710,15 @@ def _first_family(authors: str) -> str:
 
 
 def _the_work(work, fields: dict[str, str]) -> bool:
-    """Whether a `.bib` entry is the work a citation field names: by its DOI, or by its
-    title, and then by its year and first author wherever both say them. A title alone
-    was too little: two works whose titles share only "COVID-19" in Latin letters were one."""
+    """Whether a `.bib` entry is the work a citation field names: by its DOI where both give
+    one, or else by its title, and then by its year and first author wherever both say them.
+    A title alone was too little: two works whose titles share only "COVID-19" in Latin
+    letters were one. An entry with no DOI is matched by its title (round 2 of #298: it was
+    never found where the field gave a DOI)."""
     doi = work.doi.lower().removeprefix("https://doi.org/")
-    if doi:
-        return fields.get("doi", "").lower().removeprefix("https://doi.org/") == doi
+    known = fields.get("doi", "").lower().removeprefix("https://doi.org/")
+    if doi and known:
+        return known == doi
     title = _plain_title(work.title)
     if not title or _plain_title(fields.get("title", "")) != title:
         return False

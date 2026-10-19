@@ -188,6 +188,13 @@ def test_a_field_or_tag_that_is_no_citation_is_none(code: str) -> None:
          {"title": "A {Study} of Hepatic Injury", "year": "2021", "author": "Fictional, Anne"},
          "k"),
         ({"doi": "https://doi.org/10.1/ABC"}, {"doi": "10.1/abc", "title": "x"}, "k"),
+        # Round 2 of #298: an entry with no DOI is found by its title, year and author.
+        ({"doi": "10.1/abc", "title": "A study of hepatic injury", "year": "2021",
+          "author": "Fictional"},
+         {"title": "A {Study} of Hepatic Injury", "year": "2021", "author": "Fictional, Anne"},
+         "k"),
+        ({"doi": "10.1/abc", "title": "A study of hepatic injury"},
+         {"doi": "10.1/xyz", "title": "A study of hepatic injury"}, None),
     ],
 )  # fmt: skip
 def test_a_work_cited_in_word_is_matched_to_a_key_only_when_it_is_that_work(

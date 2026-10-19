@@ -437,6 +437,11 @@ def _identity(citekey, fields, answers, path, excuse) -> list[Finding]:
         " ".join(filter(None, (registered.get("title"), registered.get("subtitle")))),
         registered.get("original_title", ""),
     ]
+    # PubMed's title of the same work, where PubMed gives it the entry's own DOI: the English
+    # title of a paper Crossref registered in another language (round 1 of #253: PubMed was
+    # no candidate where Crossref had answered).
+    if registered is not pubmed and pubmed.get("doi") and pubmed.get("doi") == doi_of(fields):
+        candidates.append(pubmed.get("title", ""))
     best = _best(title, candidates) if title and registered else None
     if best and best[0] < TITLE_HELD:
         found.append(_finding(

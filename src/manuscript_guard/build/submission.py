@@ -200,7 +200,9 @@ def response_letter(project: Project) -> str | None:
                 if rebutted:
                     lines += [f"We have not made this change: {rebutted}", ""]
                 for entry in point.get("changed") or []:
-                    note = f" — {entry['note']}" if entry.get("note") else ""
+                    # Filled in as the reply is, since G2 holds its numbers to the results
+                    # (round 1 of #349: a binding went to the journal as typed).
+                    note = f" — {filled(str(entry['note']))}" if entry.get("note") else ""
                     if entry["kind"] == "text":
                         place = f" ({entry['section']})" if entry.get("section") else ""
                         quote = filled(str(entry["quote"]))

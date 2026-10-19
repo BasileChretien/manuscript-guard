@@ -96,6 +96,14 @@ def is_file_name(named: str) -> bool:
     return named.strip().lower().endswith(".csl")
 
 
+def name_of_file(named: str) -> str | None:
+    """The repository's name a file's name stands for, `vancouver` for `vancouver.csl`; None
+    where what is left is no such name either, `styles/vancouver` or `Vancouver` (round 1 of
+    #349: those were offered, and refused in turn)."""
+    named = named.strip()
+    return style_name(named[:-4]) if is_file_name(named) else None
+
+
 def profile_style(document: dict) -> str:
     """What the profile's `references.csl` says, stripped; empty where it names none."""
     references = document.get("references") if isinstance(document, dict) else None

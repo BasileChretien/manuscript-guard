@@ -10,16 +10,21 @@ addresses, and the names of their institutions are looked for:
 - in the text of each figure it holds, and of each figure the manuscript places;
 - in the author fields Word keeps (`dc:creator`, `cp:lastModifiedBy`), in the author of each
   tracked change and comment (`w:author`), and in the list of the people who edited it
-  (`word/people.xml`), which Word writes the moment a co-author opens the document.
+  (`word/people.xml`), which Word writes the moment a co-author opens the document;
+- in what the document holds and does not print: the address of each link, the code of each
+  field that holds an address (`HYPERLINK`, `INCLUDEPICTURE`, `INCLUDETEXT`), and the
+  company Word keeps (`Company`). Not a citation's field code, which holds the cited work's
+  data, as a self-citation's reference does.
 
 The build checks the document it made, and `submit` the one it packs, which may be a copy a
 co-author edited in Word: that is where the author fields come from.
 
-A reference list is not read. The journals that review blind mostly ask for the authors' own
-work to be cited in the third person, not taken out, and a self-citation then prints their
-names there. A name is looked for as a person writes it: the given and the family name, and
-an initial with the family name either way round, with any space between. A family name
-alone is not, since many are words ("Young", "Long"), nor is an institution's city or country.
+A reference list is not read, its links included. The journals that review blind mostly ask
+for the authors' own work to be cited in the third person, not taken out, and a
+self-citation then prints their names there. A name is looked for as a person writes it:
+the given and the family name, and an initial with the family name either way round, with
+any space between. A family name alone is not, since many are words ("Young", "Long"), nor
+is an institution's city or country.
 """
 
 from __future__ import annotations
@@ -51,6 +56,11 @@ _TEXT_PART = re.compile(r"word/(?:document|footnotes|endnotes|comments|header\d*
 _RELS_PART = re.compile(r"word/_rels/[^/]+\.xml\.rels")
 _RELATIONSHIP = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
 _COMPANY = "{http://schemas.openxmlformats.org/officeDocument/2006/extended-properties}Company"
+_R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+#: The fields whose code holds an address or a path: a link, a picture or a text taken in.
+#: Not a citation's (`ADDIN ZOTERO_ITEM`, `ADDIN EN.CITE`), whose code holds the cited
+#: work's data, a self-citation's publisher included (round 1 of #349).
+_ADDRESSED = re.compile(r"\s*(?:HYPERLINK|INCLUDEPICTURE|INCLUDETEXT)\b", re.IGNORECASE)
 #: A space of any kind, a line break inside a paragraph included.
 _SPACE = r"\s+"
 
@@ -187,6 +197,13 @@ _HINTS = {
     "the comments, or remove their authors with Word's Inspect Document, before it is sent",
     "the people who edited it": "remove the personal information with Word's Inspect "
     "Document before it is sent",
+    # Round 1 of #349: these three had the text's hint, and building again clears none.
+    "the address of a link": "change the link's address or take the link out, in the "
+    "manuscript or in Word (Remove Hyperlink), before it is sent",
+    "a field's code": "change the field's address or take the field out; Alt+F9 shows the "
+    "codes in Word",
+    "the document's company": "clear the Company with Word's Inspect Document, and in the "
+    "reference document's properties if the build takes it from there, before it is sent",
 }
 
 
@@ -196,26 +213,32 @@ def _places(document: Path) -> list[tuple[str, str]]:
     with open_archive(document) as archive:
         names = archive.namelist()
         listed = _bibliography_styles(archive) if "word/styles.xml" in names else set()
+        cited: dict[str, set[str]] = {}
         for name in names:
             if _TEXT_PART.fullmatch(name):
                 root = read_part(archive, name)
                 places.append(("the text", "\n".join(_paragraphs(root, listed))))
                 authors = {node.get(f"{_W}author") for node in root.iter()} - {None}
                 places += [("the author of a tracked change or a comment", a) for a in authors]
-                # A field's code, a HYPERLINK's address or a citation's, is not printed and
-                # is in the file (round 1 of #273).
-                codes = [node.text for node in root.iter(f"{_W}instrText") if node.text]
+                # A field's code holding an address is not printed and is in the file (round
+                # 1 of #273); the reference list's are its own, as its text is.
+                codes, cited[name] = _addresses(root, listed)
                 if codes:
-                    places.append(("a field's code", "".join(codes)))
-            elif _RELS_PART.fullmatch(name):
-                # A link's address: a mailto: or an ORCID iD behind words (round 1 of #273).
-                targets = [node.get("Target", "") for node in read_part(archive, name).iter()
-                           if node.tag == _RELATIONSHIP and node.get("TargetMode") == "External"]
-                if targets:
-                    places.append(("the address of a link", "\n".join(targets)))
+                    places.append(("a field's code", "\n".join(codes)))
             elif name.startswith("word/media/") and name.lower().endswith(".svg"):
                 figure = f"a figure ({name[len('word/media/') :]})"
                 places.append((figure, _svg_text(read_member(archive, name))))
+        for name in names:
+            if not _RELS_PART.fullmatch(name):
+                continue
+            # A link's address: a mailto: or an ORCID iD behind words (round 1 of #273). Not
+            # a reference list's link, read after its part, which says which they are.
+            part = name.replace("word/_rels/", "word/").removesuffix(".rels")
+            targets = [node.get("Target", "") for node in read_part(archive, name).iter()
+                       if node.tag == _RELATIONSHIP and node.get("TargetMode") == "External"
+                       and node.get("Id") not in cited.get(part, ())]  # fmt: skip
+            if targets:
+                places.append(("the address of a link", "\n".join(targets)))
         if "docProps/core.xml" in names:
             for node in read_part(archive, "docProps/core.xml"):
                 if node.tag in _CORE and node.text:
@@ -243,13 +266,40 @@ def _bibliography_styles(archive) -> set[str]:
     }
 
 
+def _in_reference_list(paragraph: ET.Element, listed: set[str]) -> bool:
+    style = paragraph.find(f"{_W}pPr/{_W}pStyle")
+    return style is not None and style.get(f"{_W}val") in {"Bibliography", *listed}
+
+
+def _addresses(root: ET.Element, listed: set[str]) -> tuple[list[str], set[str]]:
+    """The codes of the fields that hold an address, outside the reference list; and the
+    identifiers of the reference list's links, whose addresses are its own. A field's code
+    is read from its `begin` to its `separate` or `end`, within one paragraph."""
+    codes: list[str] = []
+    cited: set[str] = set()
+    for paragraph in root.iter(f"{_W}p"):
+        if _in_reference_list(paragraph, listed):
+            cited |= {link.get(f"{_R}id") for link in paragraph.iter(f"{_W}hyperlink")} - {None}
+            continue
+        code: list[str] | None = None
+        for node in paragraph.iter():
+            if node.tag == f"{_W}fldSimple":
+                codes.append(node.get(f"{_W}instr", ""))
+            elif node.tag == f"{_W}fldChar":
+                if code is not None:
+                    codes.append("".join(code))
+                code = [] if node.get(f"{_W}fldCharType") == "begin" else None
+            elif node.tag == f"{_W}instrText" and code is not None:
+                code.append(node.text or "")
+    return [code for code in codes if _ADDRESSED.match(code)], cited
+
+
 def _paragraphs(root: ET.Element, listed: set[str] = frozenset()) -> list[str]:
     """Each paragraph's text, deleted text included, a reference list's left out. A tab or a
     break inside a paragraph is a space, so a name split by one is still found."""
     out = []
     for paragraph in root.iter(f"{_W}p"):
-        style = paragraph.find(f"{_W}pPr/{_W}pStyle")
-        if style is not None and style.get(f"{_W}val") in {"Bibliography", *listed}:
+        if _in_reference_list(paragraph, listed):
             continue
         pieces = []
         for node in paragraph.iter():

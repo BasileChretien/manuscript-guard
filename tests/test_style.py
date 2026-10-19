@@ -238,6 +238,11 @@ def test_a_style_named_as_a_file_is_not_asked_for_with_its_suffix(
     assert main(["style", str(project)]) == 2
     assert table.sent == []
     assert f"without its `.csl`: {DEPENDENT!r}" in " ".join(capsys.readouterr().err.split())
+    # Round 1 of #349: what is left without the `.csl` is offered only where it is a name.
+    for named in ("styles/vancouver.csl", "Vancouver.CSL"):
+        name_style(project, named)
+        assert main(["style", str(project)]) == 2
+        assert "without its" not in capsys.readouterr().err
 
 
 def test_style_says_what_it_kept_and_asks_once(project: Path, monkeypatch, capsys) -> None:

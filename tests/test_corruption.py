@@ -2430,6 +2430,21 @@ def test_a_note_on_a_change_is_read_as_the_reply_is(project: Path) -> None:
     document = {"reviewers": [{"id": "r", "points": [{"id": "1", "changed": changed}]}]}
     assert replies(document, 1) == [("round 1, r point 1, `changed[0].note`",
                                      "as the reviewer asked, from line 120")]  # fmt: skip
+    # Through G2 itself, and round 1 of #349: a binding in the note is filled in the letter,
+    # as the reply's are, where it was printed as typed.
+    changed[0]["note"] = "the ROR is now 2.31"
+    _round_with(project, [_point(response="We now say so.", changed=changed)])
+    assert any("2.31" in m and "changed[0].note" in m for m in _reply_numbers(project))
+    changed[0]["note"] = "the ROR is now {{results.ror.point}}"
+    _round_with(project, [_point(response="We now say so.", changed=changed)])
+    assert _reply_numbers(project) == []
+    from manuscript_guard.build.submission import response_letter
+    from manuscript_guard.contracts import load_namespace
+
+    projekt, _ = load_project(project)
+    point = load_namespace(projekt)[0]["results.ror.point"].display
+    letter = response_letter(projekt)
+    assert f"the ROR is now {point}" in letter and "{{" not in letter
 
 
 @pytest.mark.parametrize(
@@ -6702,6 +6717,10 @@ def test_a_journal_style_the_project_does_not_keep_is_said(project: Path) -> Non
     assert _style_said(project) == [("journal-style-not-stored", "warn")]
     keep_style(project, DEPENDENT)
     assert _style_said(project) == []
+    # Round 1 of #322: a file's name is said to be one (round 1 of #349: untested).
+    name_style(project, f"{DEPENDENT}.csl")
+    [said] = [f for f in _journal(project).findings if f.code == "journal-style-not-stored"]
+    assert "a name with `.csl` is a file's" in said.message
 
 
 def test_a_kept_style_edited_since_is_said_and_not_used(project: Path) -> None:
@@ -7882,6 +7901,9 @@ def test_a_refused_build_into_the_build_directory_itself_does_not_crash(
 # ------------------------------------------------- a document reviewed blind names no author
 
 _W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+_R_NS = (
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+)
 
 
 def _blind(root: Path, kind: str = "double") -> None:
@@ -8000,9 +8022,18 @@ _CORE_NS = (
             id="a link's address",
         ),
         pytest.param(
-            "<w:p><w:r><w:instrText xml:space='preserve'> HYPERLINK \"https://orcid.org/"
-            "0000-0002-1825-0097\" </w:instrText></w:r></w:p>", {},
+            "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText "
+            "xml:space='preserve'> HYPERLINK \"https://orcid.org/</w:instrText></w:r><w:r>"
+            "<w:instrText>0000-0002-1825-0097\" </w:instrText></w:r><w:r><w:fldChar "
+            "w:fldCharType='separate'/></w:r><w:r><w:t>my record</w:t></w:r><w:r><w:fldChar "
+            "w:fldCharType='end'/></w:r></w:p>", {},
             [("the ORCID iD 0000-0002-1825-0097", "a field's code")], id="a field's code",
+        ),
+        pytest.param(
+            "<w:p><w:fldSimple w:instr=' HYPERLINK \"mailto:ada.example@invalid.example\" '>"
+            "<w:r><w:t>write</w:t></w:r></w:fldSimple></w:p>", {},
+            [("the e-mail address ada.example@invalid.example", "a field's code")],
+            id="a simple field's code",
         ),
         pytest.param(
             "", {"docProps__app_xml": "<Properties xmlns='http://schemas.openxmlformats.org/"
@@ -8026,6 +8057,22 @@ def test_a_document_reviewed_blind_names_no_author_anywhere_word_keeps_one(
             "family: Sample", "family: \"O'Sample\""), encoding="utf-8")  # fmt: skip
     document = _word(tmp_path / "manuscript.docx", body, **parts)
     assert _named(project, document) == sorted(said)
+
+
+def test_a_place_building_again_does_not_clear_says_how_to_clear_it(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round 1 of #349: a link's address, a field's code and the Company had the text's
+    hint, "build again", which clears none of them."""
+    from manuscript_guard.build.blinding import check_blinded
+
+    _blind(project)
+    company = ("<Properties xmlns='http://schemas.openxmlformats.org/officeDocument/2006/"
+               "extended-properties'><Company>Example University Graduate School of Medicine"
+               "</Company></Properties>")  # fmt: skip
+    document = _word(tmp_path / "a.docx", **{"docProps__app_xml": company})
+    [found] = check_blinded(load_project(project)[0], document).findings
+    assert "Inspect Document" in found.hint and "build again" not in found.hint
 
 
 def test_what_the_blind_check_reads_wrongly_is_pinned(project: Path, tmp_path: Path) -> None:
@@ -8066,6 +8113,25 @@ def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
         "<w:name w:val='Bibliography'/></w:style></w:styles>"
     )
     assert _named(project, _word(tmp_path / "a.docx", body, word__styles_xml=styles)) == []
+    # Round 1 of #349: a live citation's field code holds the cited work's data, a
+    # self-citation's publisher among it, and a link in the reference list is the list's.
+    cited = (
+        "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText> ADDIN "
+        "ZOTERO_ITEM CSL_CITATION {\"citationItems\":[{\"itemData\":{\"publisher\":\"Example "
+        "University Graduate School of Medicine\"}}]}</w:instrText></w:r><w:r><w:fldChar "
+        "w:fldCharType='separate'/></w:r><w:r><w:t>(1)</w:t></w:r><w:r><w:fldChar "
+        "w:fldCharType='end'/></w:r></w:p>"
+        f"<w:p {_R_NS}><w:pPr><w:pStyle w:val='Bibliography'/></w:pPr><w:hyperlink "
+        "r:id='rId5'><w:r><w:t>Example A. A thesis.</w:t></w:r></w:hyperlink></w:p>"
+    )
+    links = (
+        "<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'>"
+        "<Relationship Id='rId5' Type='hyperlink' Target='mailto:ada.example@invalid.example' "
+        "TargetMode='External'/></Relationships>"
+    )
+    rels = {"word___rels__document.xml.rels": links}
+    document = _word(tmp_path / "cited.docx", cited, **rels)
+    assert _named(project, document) == []
     named = "<w:p><w:r><w:t>As Ada Example showed.</w:t></w:r></w:p>"
     assert _named(project, _word(tmp_path / "b.docx", named)) == [("Ada Example", "the text")]
     _blind(project, "single")

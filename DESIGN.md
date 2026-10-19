@@ -2844,8 +2844,10 @@ names, ORCID iDs and e-mail addresses from `authors.yaml`, and the institutions 
 affiliations. It reads the text, the notes, the comments, the headers and the footers, the
 text a tracked change deleted, the text of the figures, Word's author fields and its company
 field, the author of each tracked change and comment, the list of people Word keeps, the
-address behind a link and the code of a field, a `mailto:` or an ORCID iD behind words
-(round 1 of #273). A name found is a
+address behind a link and the code of a field that holds one (`HYPERLINK`,
+`INCLUDEPICTURE`, `INCLUDETEXT`), a `mailto:` or an ORCID iD behind words (round 1 of
+#273). Not a citation's field code, which holds the cited work's data: a self-citation
+of a thesis names the author's school there (round 1 of #349). A name found is a
 `BUILD` failure (`blind-document-names-author`): `build` writes the document, says so and
 exits 1, and `submit` does not assemble the pack. `submit --document` reads the copy it is
 given, which is the one that comes back from a co-author with Word's fields filled in.
@@ -2859,8 +2861,8 @@ part of an affiliation between its commas that has three words or more, in any c
 a city or a country names many other things. So an institution of two words ("Example
 Institute") is not looked for, and an initial with its stop before a word that is a family
 name reads as that author, "Panel A. Example" as Ada Example
-(`test_what_the_blind_check_reads_wrongly_is_pinned`). The reference list, a paragraph whose style is
-named "Bibliography", is not read: the journals that review blind mostly ask for the
+(`test_what_the_blind_check_reads_wrongly_is_pinned`). The reference list, a paragraph
+whose style is named "Bibliography", is not read, nor its links: the journals that review blind mostly ask for the
 authors' own work to be cited in the third person, not taken out, and a self-citation
 prints their names there.
 

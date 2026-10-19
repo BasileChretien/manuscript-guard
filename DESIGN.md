@@ -3721,10 +3721,13 @@ share of 56.0%. "{{results.dose}} mg" printed "250 mg" of a dose emitted in micr
 nothing said so. G2 now reads the symbol written right after each binding, from the list of
 symbols G14 knows a number is not to run into, and `%` and `‰`, with a power after it or a
 slash and what it divides by, and warns (`unit-differs-from-emitted`) where it is not the unit
-emitted. Spellings of one unit are one: µg, μg and mcg; mL and ml; °C and ℃. A value emitted
-with no unit, or with one that is no symbol ("years"), has nothing to compare it with. The
-gap between the binding and its unit may be any space or one line break, which pandoc prints
-as a space; a blank line, or a word between, ends the unit's claim to the binding.
+emitted. Spellings of one unit are one: µg, μg and mcg; mL and ml; °C and ℃; a litre after
+a slash, mmol/l and mmol/L (round 1 of #279). A value emitted with no unit, or with one that
+is no symbol ("years"), has nothing to compare it with. The gap between the binding and its
+unit may be spaces of any width, pandoc's escaped space (`\ `), the entity of a no-break
+space in any of its spellings, an HTML comment, which is not printed and ends at its own
+`-->`, and one line break, which pandoc prints as a space; a blank line, or a word between,
+ends the unit's claim to the binding, also between two comments (round 1 of #341).
 
 ## A rule names values, not shapes
 
@@ -3999,13 +4002,24 @@ below it (`count-below-minimum`), naming the key, from the `internal-review` sta
 reads its own small counts while it drafts, and a panel sent to a model provider is already
 outside it. A count is a whole number the analysis emitted with no unit, that is neither a
 parameter, a software version nor a label; "3 years" is emitted with its unit and is no
-count of people, and nought is no small cell.
+count of people, and nought is no small cell. A display that holds the count back behind a
+bound, "<5" or "≤4", its bound a whole number or a decimal, alone or followed by a word,
+"<5 patients", passes only where the bound allows every count the custodian forbids: "<2"
+or "≤3" under a minimum of five still say the count is one, or at most three, and fail
+(round 3 of #275, round 1 of #341). A count the analysis emits as a decimal, 3.0, or with a
+unit naming people, "patients", is not taken for one (pinned by
+`test_what_the_count_reading_gets_wrong_is_pinned`).
 
 An input is declared restricted where the analysis declares it, in either emitter
 (`em.add_input(path, restricted=True)`, `em$add_input(path, restricted = TRUE)`), and the
 results record it. G1 fails while git tracks such a file (`restricted-input-tracked`), from
 the first stage: a pushed repository is a copy outside the custodian's hands. Git is asked
-with a time limit; where it cannot be asked, the finding is a warning.
+with a time limit, in English, whose words are read, for the path as written, not as a
+pattern ("data[1].csv" is not "data1.csv"), and whatever its case where git ignores case; a
+path outside the repository's work tree is not tracked by it (round 1 of #275). git's answer
+is read as UTF-8, so a restricted file whose name is in another script or carries an accent
+is found, where the system's code page could not read it (round 1 of #341). Where git
+cannot be asked, the finding is a warning.
 
 An input is declared synthetic the same way (`em.add_input(path, synthetic=True)`,
 `em$add_input(path, synthetic = TRUE)`): simulated data, a dummy extract, a test fixture, on
@@ -8719,8 +8733,12 @@ Closed since, and why each mattered:
 - **A unit after a binding is read from a list of symbols.** "mg" is read and "milligrams"
   is not, so a unit written out in words is compared with nothing; one-letter symbols other
   than g and h (m, L, s) are left out as G14 leaves them, so "{{results.length}} m" is not
-  read. Units that mean the same and are spelt apart ("mg/kg" against "mg kg-1") are taken
-  for two.
+  read. A divisor after a space, "mg kg-1", is not read: written, the unit is its first
+  symbol, so "mg kg-1" against an emitted "mg/kg" is said to differ, and emitted, it is
+  compared with nothing. A divisor written as a word, "mg/kg per day" against an emitted
+  "mg/kg/day", is said to differ too (round 1 of #279, where this entry said "mg/kg" and
+  "mg kg-1" were taken for two both ways; pinned by
+  `test_what_the_unit_reading_gets_wrong_is_pinned`).
 - **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
   `- Results` over an underline as a list item holding a heading titled "Results". The
   gates keep the marker in the title, so it ends the section above; "- Results" is read as
@@ -9001,9 +9019,11 @@ Closed since, and why each mattered:
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number
   with no unit that is no count of people (a number of sites, of years written without the
-  unit) fails as one: emit it with its unit. A restricted input that git ignores but that a
-  person copies elsewhere is not seen, and one that was committed and then removed stays in
-  the history, which only a rewrite takes out.
+  unit) fails as one: emit it with its unit. A count held back behind a bound is read where
+  a word or nothing follows the bound: "<2 (cases)" or "<+2" is read as no count and passes,
+  and "<2E1" as a bound of 2 (round 2 of #341). A restricted input that git ignores but that
+  a person copies elsewhere is not seen, and one that was committed and then removed stays
+  in the history, which only a rewrite takes out.
 - **A synthetic input is followed to the results the text binds, and no further.** G1 names
   a result of a run that read a synthetic input where the manuscript or the supplement binds
   it as `results.` or `table.`. A figure drawn from such a run and placed with `figure.` is

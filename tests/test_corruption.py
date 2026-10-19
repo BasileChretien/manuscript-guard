@@ -1441,6 +1441,37 @@ def test_a_count_below_the_custodians_minimum_is_not_printed(project: Path) -> N
     assert "count-below-minimum" in codes(report)
 
 
+@pytest.mark.parametrize("fields", [
+    {"value": 3.0, "display": "3"},  # a count emitted as a float
+    {"value": 3, "display": "3", "unit": "patients"},  # a count given a unit of people
+])  # fmt: skip
+def test_what_the_count_reading_gets_wrong_is_pinned(project: Path, fields: dict) -> None:
+    """A Known gap, as DESIGN.md writes it (round 1 of #275): a small count the emitter
+    recorded as a float, or with a unit naming people, is not taken for a count."""
+    _custodian(project, 5)
+    _value_has(project, "case.n_serious", **fields)
+    assert _small(project) == []
+
+
+@pytest.mark.parametrize(("display", "said"), [
+    ("<2", True), ("< 3", True), ("\N{LESS-THAN OR EQUAL TO}3", True), ("<=2", True),
+    ("<5", False), ("\N{LESS-THAN OR EQUAL TO}4", False), ("<=4", False), ("<10", False),
+    ("<1", False),  # nought, which is no small cell
+    # Round 1 of #341: a decimal or words after the bound, as the emitter takes a display.
+    ("<2 patients", True), ("< 2 cases", True), ("<2.0", True), ("<5 patients", False),
+    ("<4.5", False),
+])  # fmt: skip
+def test_a_count_held_back_by_a_bound_tighter_than_the_minimum_is_said(
+    project: Path, display: str, said: bool
+) -> None:
+    """Round 3 of #275: a comparator display passed whatever its bound, so "<2" under a
+    minimum of five, which says the count is one, printed no small count."""
+    _custodian(project, 5)
+    _value_has(project, "case.n_serious", value=1, display=display)
+    found = _small(project)
+    assert bool(found) is said, found
+
+
 def _git(root: Path, *args: str) -> None:
     import subprocess
 
@@ -1477,6 +1508,47 @@ def test_an_input_declared_restricted_is_not_tracked_by_git(project: Path) -> No
     assert tracked() == [f"{data} is declared restricted, and git tracks it"]
     report, _project, _chosen, _deferred = _run_gates(project, stage="design")
     assert "restricted-input-tracked" in codes(report)
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_a_restricted_input_is_found_in_git_by_its_own_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 1 of #275: the path was a pattern, so a tracked "data1.csv" stood for an
+    untracked "data[1].csv"; a path outside the work tree, or git in another language,
+    was "could not say"; and a name in another case was missed where git ignores case."""
+    from manuscript_guard.gates import custodian
+
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "core.ignorecase", "false")
+    for name in ("data1.csv", "data[1].csv", "Kept.csv"):
+        (tmp_path / name).write_text("a\n", encoding="utf-8")
+    _git(tmp_path, "add", "data1.csv", "Kept.csv")
+    assert custodian._tracked(tmp_path, "data1.csv") is True
+    assert custodian._tracked(tmp_path, "data[1].csv") is False
+    assert custodian._tracked(tmp_path, "../outside.csv") is False
+    assert custodian._tracked(tmp_path, "kept.csv") is False
+    _git(tmp_path, "config", "core.ignorecase", "true")
+    assert custodian._tracked(tmp_path, "kept.csv") is True
+    # A name in another script or with an accent is read as UTF-8 whatever the locale's
+    # code page: under cp932 or cp1252 the unquoted name raised (round 1 of #341).
+    for name in ("\N{KATAKANA LETTER DE}\N{KATAKANA LETTER SMALL TU}\N{KATAKANA LETTER TA}.csv",
+                 "\N{LATIN CAPITAL LETTER A WITH ACUTE}baco.csv"):  # fmt: skip
+        (tmp_path / name).write_text("a\n", encoding="utf-8")
+        _git(tmp_path, "add", name)
+        assert custodian._tracked(tmp_path, name) is True, name
+    # Asked in English, whatever the user's language, since its words are read.
+    seen: list[dict] = []
+    run = custodian.subprocess.run
+
+    def recorded(*args, **kwargs):
+        seen.append(kwargs["env"])
+        return run(*args, **kwargs)
+
+    monkeypatch.setenv("LANGUAGE", "fr")
+    monkeypatch.setattr(custodian.subprocess, "run", recorded)
+    assert custodian._tracked(tmp_path, "data[1].csv") is False
+    assert seen and all(env["LC_ALL"] == "C" and env["LANGUAGE"] == "C" for env in seen)
 
 
 def test_both_emitters_record_an_input_declared_restricted(tmp_path: Path) -> None:
@@ -1948,6 +2020,20 @@ def _units_said(root: Path) -> list[tuple[str, int]]:
         ("mg/kg", " mg/kg", False),
         ("years", " mg", False),  # no symbol emitted: nothing to compare
         (None, " mg", False),  # no unit emitted
+        # Round 1 of #279: a litre after a slash in either case, and what may stand between
+        # the binding and its unit, pandoc's escaped space, an entity, a comment and the
+        # narrow spaces, none of which hid the unit from the reading.
+        ("mmol/L", " mmol/l", False),
+        ("\N{MICRO SIGN}g", "\\ mg", True),
+        ("\N{MICRO SIGN}g", "&nbsp;mg", True),
+        ("\N{MICRO SIGN}g", "<!-- the dose --> mg", True),
+        ("\N{MICRO SIGN}g", "\N{HAIR SPACE}mg", True),
+        ("\N{MICRO SIGN}g", "\N{FIGURE SPACE}mg", True),
+        # Round 1 of #341: the other spellings of the entity are read, and no unit is read
+        # across the words between two comments.
+        ("\N{MICRO SIGN}g", "&#0160;mg", True),
+        ("\N{MICRO SIGN}g", "&NonBreakingSpace;mg", True),
+        ("\N{MICRO SIGN}g", "<!-- a --> patients were given <!-- b --> mg", False),
     ],
 )
 def test_a_unit_written_after_a_binding_is_the_one_emitted(
@@ -1965,6 +2051,50 @@ def test_a_unit_written_after_a_binding_is_the_one_emitted(
         path.write_text(text, encoding="utf-8")
     line = next(n for n, row in enumerate(text.splitlines(), 1) if "case.pct_serious" in row)
     assert _units_said(project) == ([("results.case.pct_serious", line)] if said else [])
+
+
+@pytest.mark.parametrize(("emitted", "written", "said"), [
+    # A divisor after a space is not read: the written unit is its first symbol, and an
+    # emitted one is compared with nothing.
+    ("mg/kg", " mg kg-1", True),
+    ("mg kg-1", " mg/kg", False),
+    # A divisor written as a word is not read either.
+    ("mg/kg/day", " mg/kg per day", True),
+])  # fmt: skip
+def test_what_the_unit_reading_gets_wrong_is_pinned(
+    project: Path, emitted: str, written: str, said: bool
+) -> None:
+    """Known gaps, as DESIGN.md writes them (round 1 of #279, where it said "mg/kg" and
+    "mg kg-1" were taken for two units both ways)."""
+    _unit_emitted(project, "case.pct_serious", emitted)
+    path = main_md(project)
+    binding = "{{results.case.pct_serious}}"
+    path.write_text(path.read_text(encoding="utf-8").replace(binding + "%", binding + written, 1),
+                    encoding="utf-8")  # fmt: skip
+    assert bool(_units_said(project)) is said
+
+
+@pytest.mark.parametrize(("written", "emitted"), [
+    ("\N{GREEK SMALL LETTER MU}g", "\N{MICRO SIGN}g"), ("mcg", "\N{MICRO SIGN}g"),
+    ("ml", "mL"), ("dl", "dL"), ("mmol/l", "mmol/L"), ("mg/dl", "mg/dL"),
+    ("\N{GREEK SMALL LETTER MU}L", "\N{MICRO SIGN}L"), ("\N{MICRO SIGN}l", "\N{MICRO SIGN}L"),
+    ("\N{GREEK SMALL LETTER MU}l", "\N{MICRO SIGN}L"),
+    ("\N{GREEK SMALL LETTER MU}m", "\N{MICRO SIGN}m"),
+    ("\N{GREEK SMALL LETTER MU}mol", "\N{MICRO SIGN}mol"),
+    ("\N{GREEK SMALL LETTER MU}M", "\N{MICRO SIGN}M"),
+    ("\N{GREEK SMALL LETTER MU}Sv", "\N{MICRO SIGN}Sv"),
+    ("\N{MASCULINE ORDINAL INDICATOR}C", "\N{DEGREE SIGN}C"),
+    ("\N{DEGREE CELSIUS}", "\N{DEGREE SIGN}C"),
+    ("\N{MASCULINE ORDINAL INDICATOR}F", "\N{DEGREE SIGN}F"),
+    ("cm\N{SUPERSCRIPT TWO}", "cm2"), ("cm^2^", "cm2"), ("cm\N{SUPERSCRIPT THREE}", "cm3"),
+    ("h\N{MINUS SIGN}1", "h-1"),
+])  # fmt: skip
+def test_every_spelling_of_one_unit_is_one_unit(written: str, emitted: str) -> None:
+    """Round 1 of #279: only mcg and mu were held, so an empty list of spellings passed."""
+    from manuscript_guard.gates.bound_units import same_unit
+
+    assert same_unit(written, emitted) is True
+    assert same_unit(written, "kg") is False
 
 
 # ------------------------------------- the table rule, applied to the file rather than the API

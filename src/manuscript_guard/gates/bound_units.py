@@ -24,9 +24,18 @@ from manuscript_guard.text.placeholders import parse
 
 GATE = "G2"
 
-#: What may stand between a binding and its unit: spaces of any width, and one line break,
-#: which pandoc prints as a space.
-_GAP = r"[ \t\u00a0\u2009\u202f]*(?:\r?\n[ \t\u00a0\u2009\u202f]*)?"
+#: What may stand between a binding and its unit: spaces of any width, pandoc's escaped
+#: space and the entity of a no-break one, an HTML comment, which is not printed, and one
+#: line break, which pandoc prints as a space (round 1 of #279).
+_SPACE = (
+    r"(?:[ \t\u00a0\u2009\u202f\N{HAIR SPACE}\N{FIGURE SPACE}]"
+    r"|\\ |&nbsp;|&NonBreakingSpace;|&#0*160;|&#[xX]0*[aA]0;"
+    # A comment ends at its own "-->" and at a blank line, so that no unit is read across
+    # the text between two comments, and adjacent ones cannot be split two ways (round 1
+    # of #341).
+    r"|<!--(?:(?!-->)(?!\n[ \t]*\n)[\s\S])*-->)"
+)
+_GAP = rf"{_SPACE}*(?:\r?\n{_SPACE}*)?"
 _SYMBOLS = (*UNITS, "%", "\u2030")
 _SYMBOL = "|".join(sorted(map(re.escape, _SYMBOLS), key=len, reverse=True))
 #: A power as it is typed: cm2, with a superscript two, cm^2^, s-1.
@@ -45,6 +54,8 @@ _SAME = {
     "\u00baC": "\u00b0C", "\u2103": "\u00b0C", "\u00baF": "\u00b0F",
     "\u2212": "-", "\u00b2": "2", "\u00b3": "3", "^": "",
 }  # fmt: skip
+#: A litre after a slash is one litre however it is cased: mmol/l is mmol/L.
+_PER_LITRE = re.compile(r"/l(?![^\W\d_])")
 _ONE_SYMBOL = re.compile(_SYMBOL)
 
 
@@ -81,7 +92,7 @@ def _canonical(unit: str) -> str:
     out = unit
     for spelt, one in sorted(_SAME.items(), key=lambda pair: len(pair[0]), reverse=True):
         out = out.replace(spelt, one)
-    return out
+    return _PER_LITRE.sub("/L", out)
 
 
 def check_bound_units(project: Project, results: Results) -> Report:

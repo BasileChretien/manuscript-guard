@@ -89,9 +89,10 @@ _ATTRIBUTION = re.compile(
     re.IGNORECASE,
 )
 #: Its further terms, as CC 3.0 titles them too, "Noncommercial", "No Derivative Works",
-#: "Share Alike" (round 2 of #339).
+#: "Share Alike" (round 2 of #339). Capitalised, as a licence's title writes them: a plain
+#: CC BY statement may say "for commercial and non-commercial purposes" (round 3).
 _FURTHER_TERM = re.compile(
-    r"(?i:Non[-\s]?Commercial|No[-\s]?Deriv|Share[-\s]?Alike)|\bNC\b|\bND\b|\bSA\b"
+    r"Non-?[Cc]ommercial|No[-\s]?Deriv|Share[-\s]?Alike|\bNC\b|\bND\b|\bSA\b"
 )
 
 

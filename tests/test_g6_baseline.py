@@ -86,6 +86,9 @@ def test_only_a_research_article_under_cc_by_is_used(kind: str, licence: str, st
          set()),
         ("under a Creative Commons Attribution-Noncommercial-No Derivative Works 3.0 Unported "
          "License", set()),
+        # Round 3 of #339: a plain CC BY statement that speaks of non-commercial use.
+        ("under the Creative Commons Attribution License, which permits unrestricted use for "
+         "commercial and non-commercial purposes", {"by"}),
     ],
 )  # fmt: skip
 def test_a_licence_stated_in_words_is_read(stated: str, licences: set[str]) -> None:

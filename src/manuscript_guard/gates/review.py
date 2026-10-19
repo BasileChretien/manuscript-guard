@@ -133,9 +133,10 @@ def document_digest(project: Project) -> str:
     return digest.hexdigest()
 
 
-#: The fields of a finding that are the reader's. The author answers a finding in the
-#: others (`resolution`, `resolved_on`, `overridden`, `overridden_by`), and those stay out
-#: of the seal.
+#: The fields of a finding that are the reader's, with its `ask` where it has one, which is
+#: sealed only there (`reading_digest`). The author answers a finding in the others
+#: (`resolution`, `resolved_on`, `overridden`, `overridden_by`), and those stay out of the
+#: seal.
 READER_FINDING_FIELDS = ("id", "severity", "where", "finding")
 
 

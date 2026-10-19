@@ -105,7 +105,7 @@ sentence that says what it is of, the measure, the population and the outcome.
 A quotation written into the prose, four words or more in quotation marks in a sentence
 that cites a work, is looked for in that work's stored source: `quotation-not-in-source`
 means it was not found there, and `quotation-unchecked` that no work the sentence cites
-has a stored source to look in.
+has a stored source that can be read: none is stored, or the one stored cannot be read.
 
 ## 4. When nobody can retrieve it
 

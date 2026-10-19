@@ -8035,6 +8035,31 @@ _CORE_NS = (
             [("the e-mail address ada.example@invalid.example", "a field's code")],
             id="a simple field's code",
         ),
+        # Round 2 of #349: a table pasted as a link to its file, a field nested in a link's
+        # code, and a link's field left open at the paragraph's end.
+        pytest.param(
+            "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText> LINK "
+            "Excel.Sheet.12 \"C:/Users/Ada Example/Documents/t.xlsx\" \"Sheet1\" "
+            "</w:instrText></w:r><w:r><w:fldChar w:fldCharType='separate'/></w:r><w:r><w:t>"
+            "a table</w:t></w:r><w:r><w:fldChar w:fldCharType='end'/></w:r></w:p>", {},
+            [("Ada Example", "a field's code")], id="a table linked to its file",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText> HYPERLINK "
+            "\"mailto:</w:instrText></w:r><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r>"
+            "<w:instrText> MERGEFIELD x </w:instrText></w:r><w:r><w:fldChar "
+            "w:fldCharType='end'/></w:r><w:r><w:instrText>ada.example@invalid.example\" "
+            "</w:instrText></w:r><w:r><w:fldChar w:fldCharType='separate'/></w:r><w:r><w:t>"
+            "write</w:t></w:r><w:r><w:fldChar w:fldCharType='end'/></w:r></w:p>", {},
+            [("the e-mail address ada.example@invalid.example", "a field's code")],
+            id="a field nested in a link's code",
+        ),
+        pytest.param(
+            "<w:p><w:r><w:fldChar w:fldCharType='begin'/></w:r><w:r><w:instrText> HYPERLINK "
+            "\"https://orcid.org/0000-0002-1825-0097\" </w:instrText></w:r></w:p>", {},
+            [("the ORCID iD 0000-0002-1825-0097", "a field's code")],
+            id="a link's field left open",
+        ),
         pytest.param(
             "", {"docProps__app_xml": "<Properties xmlns='http://schemas.openxmlformats.org/"
                  "officeDocument/2006/extended-properties'><Company>Example University "
@@ -8129,7 +8154,10 @@ def test_a_document_reviewed_blind_may_cite_its_authors_in_its_reference_list(
         "<Relationship Id='rId5' Type='hyperlink' Target='mailto:ada.example@invalid.example' "
         "TargetMode='External'/></Relationships>"
     )
-    rels = {"word___rels__document.xml.rels": links}
+    # Round 2 of #349: pandoc copies every link into the notes' part, under the same
+    # identifier or another, and the address is the reference list's there too.
+    rels = {"word___rels__document.xml.rels": links,
+            "word___rels__footnotes.xml.rels": links.replace("rId5", "rId9")}
     document = _word(tmp_path / "cited.docx", cited, **rels)
     assert _named(project, document) == []
     named = "<w:p><w:r><w:t>As Ada Example showed.</w:t></w:r></w:p>"

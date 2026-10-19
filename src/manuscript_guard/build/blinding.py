@@ -12,9 +12,9 @@ addresses, and the names of their institutions are looked for:
   tracked change and comment (`w:author`), and in the list of the people who edited it
   (`word/people.xml`), which Word writes the moment a co-author opens the document;
 - in what the document holds and does not print: the address of each link, the code of each
-  field that holds an address (`HYPERLINK`, `INCLUDEPICTURE`, `INCLUDETEXT`), and the
-  company Word keeps (`Company`). Not a citation's field code, which holds the cited work's
-  data, as a self-citation's reference does.
+  field that holds an address (`HYPERLINK`, `INCLUDEPICTURE`, `INCLUDETEXT`, `LINK`,
+  `DDE`), and the company Word keeps (`Company`). Not a citation's field code, which
+  holds the cited work's data, as a self-citation's reference does.
 
 The build checks the document it made, and `submit` the one it packs, which may be a copy a
 co-author edited in Word: that is where the author fields come from.
@@ -57,10 +57,13 @@ _RELS_PART = re.compile(r"word/_rels/[^/]+\.xml\.rels")
 _RELATIONSHIP = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
 _COMPANY = "{http://schemas.openxmlformats.org/officeDocument/2006/extended-properties}Company"
 _R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
-#: The fields whose code holds an address or a path: a link, a picture or a text taken in.
-#: Not a citation's (`ADDIN ZOTERO_ITEM`, `ADDIN EN.CITE`), whose code holds the cited
-#: work's data, a self-citation's publisher included (round 1 of #349).
-_ADDRESSED = re.compile(r"\s*(?:HYPERLINK|INCLUDEPICTURE|INCLUDETEXT)\b", re.IGNORECASE)
+#: The fields whose code holds an address or a path: a link, a picture or a text taken in,
+#: a table pasted as a link to its file (`LINK`, `DDE`, `DDEAUTO`, round 2 of #349). Not a
+#: citation's (`ADDIN ZOTERO_ITEM`, `ADDIN EN.CITE`), whose code holds the cited work's
+#: data, a self-citation's publisher included (round 1 of #349).
+_ADDRESSED = re.compile(
+    r"\s*(?:HYPERLINK|INCLUDEPICTURE|INCLUDETEXT|LINK|DDE|DDEAUTO)\b", re.IGNORECASE
+)
 #: A space of any kind, a line break inside a paragraph included.
 _SPACE = r"\s+"
 
@@ -228,17 +231,27 @@ def _places(document: Path) -> list[tuple[str, str]]:
             elif name.startswith("word/media/") and name.lower().endswith(".svg"):
                 figure = f"a figure ({name[len('word/media/') :]})"
                 places.append((figure, _svg_text(read_member(archive, name))))
+        # A link's address: a mailto: or an ORCID iD behind words (round 1 of #273). Not an
+        # address the reference list links to, wherever else it is linked: pandoc gives every
+        # link to one address one identifier, and copies the links into the notes' part too
+        # (round 2 of #349).
+        linked: dict[str, dict[str, str]] = {}
         for name in names:
-            if not _RELS_PART.fullmatch(name):
-                continue
-            # A link's address: a mailto: or an ORCID iD behind words (round 1 of #273). Not
-            # a reference list's link, read after its part, which says which they are.
-            part = name.replace("word/_rels/", "word/").removesuffix(".rels")
-            targets = [node.get("Target", "") for node in read_part(archive, name).iter()
-                       if node.tag == _RELATIONSHIP and node.get("TargetMode") == "External"
-                       and node.get("Id") not in cited.get(part, ())]  # fmt: skip
-            if targets:
-                places.append(("the address of a link", "\n".join(targets)))
+            if _RELS_PART.fullmatch(name):
+                part = name.replace("word/_rels/", "word/").removesuffix(".rels")
+                linked[part] = {
+                    node.get("Id", ""): node.get("Target", "")
+                    for node in read_part(archive, name).iter()
+                    if node.tag == _RELATIONSHIP and node.get("TargetMode") == "External"
+                }
+        listed_at = {
+            linked[part][at] for part, ids in cited.items() for at in ids
+            if at in linked.get(part, {})
+        }  # fmt: skip
+        for targets in linked.values():
+            shown = [target for target in targets.values() if target not in listed_at]
+            if shown:
+                places.append(("the address of a link", "\n".join(shown)))
         if "docProps/core.xml" in names:
             for node in read_part(archive, "docProps/core.xml"):
                 if node.tag in _CORE and node.text:
@@ -274,23 +287,33 @@ def _in_reference_list(paragraph: ET.Element, listed: set[str]) -> bool:
 def _addresses(root: ET.Element, listed: set[str]) -> tuple[list[str], set[str]]:
     """The codes of the fields that hold an address, outside the reference list; and the
     identifiers of the reference list's links, whose addresses are its own. A field's code
-    is read from its `begin` to its `separate` or `end`, within one paragraph."""
+    is read from its `begin` to its `separate` or `end`, within one paragraph; a field
+    nested in its code does not end it, and one left open at the paragraph's end is read
+    as far as it goes (round 2 of #349)."""
     codes: list[str] = []
     cited: set[str] = set()
     for paragraph in root.iter(f"{_W}p"):
         if _in_reference_list(paragraph, listed):
             cited |= {link.get(f"{_R}id") for link in paragraph.iter(f"{_W}hyperlink")} - {None}
             continue
-        code: list[str] | None = None
+        # Each field open, innermost last: its code so far, or None once it is read.
+        open_: list[list[str] | None] = []
         for node in paragraph.iter():
             if node.tag == f"{_W}fldSimple":
                 codes.append(node.get(f"{_W}instr", ""))
             elif node.tag == f"{_W}fldChar":
-                if code is not None:
-                    codes.append("".join(code))
-                code = [] if node.get(f"{_W}fldCharType") == "begin" else None
-            elif node.tag == f"{_W}instrText" and code is not None:
-                code.append(node.text or "")
+                kind = node.get(f"{_W}fldCharType")
+                if kind == "begin":
+                    open_.append([])
+                elif open_:
+                    if open_[-1] is not None:
+                        codes.append("".join(open_[-1]))
+                        open_[-1] = None
+                    if kind == "end":
+                        open_.pop()
+            elif node.tag == f"{_W}instrText" and open_ and open_[-1] is not None:
+                open_[-1].append(node.text or "")
+        codes += ["".join(code) for code in open_ if code is not None]
     return [code for code in codes if _ADDRESSED.match(code)], cited
 
 

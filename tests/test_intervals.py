@@ -193,3 +193,75 @@ def test_a_ratio_named_after_the_word_difference_is_read_as_a_ratio(text: str, n
     found = _one(text)
     assert (found.kind, found.name) == ("ratio", name)
     assert p_against(found) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "No difference in mortality, SMR 1.4 (95% CI 1.1 to 1.8), P = 0.40.",
+        "No difference in incidence, SIR 1.4 (95% CI 1.1 to 1.8), P = 0.40.",
+        "No difference, ratio of means 1.4 (95% CI 1.1 to 1.8), P = 0.40.",
+        # Names too long to stand within the gap: no difference reaches across them anyway
+        # (round 1 of #336).
+        "No difference: the standardised mortality ratio was 1.4 (95% CI 1.1 to 1.8), P = 0.40.",
+        "No difference, a ratio of geometric means of 1.4 (95% CI 1.1 to 1.8), P = 0.40.",
+    ],
+)
+def test_a_difference_is_not_read_across_a_ratio_it_does_not_judge(text: str) -> None:
+    """Round 2 of #300: a bare "difference" took the gap after it across an SMR, which is
+    no ratio this reads (its exact interval need not be symmetric on the log scale), and
+    judged the SMR against 0. The name stops the gap, and nothing is read."""
+    assert reported_intervals(text) == []
+
+
+def test_a_minus_written_as_an_en_dash_before_an_estimate_is_read() -> None:
+    """Round 2 of #300: "–1.4" lost its en dash to the words before it, and 1.4 was said to
+    lie outside its own interval, -2.0 to -0.8. Round 1 of #336: a ratio is never negative,
+    so before its estimate an en dash is a dash, and "OR–1.9" was read as -1.9, outside 1.2
+    to 3.0; round 2: before a difference's it is still its minus, "MD–0.4"."""
+    from manuscript_guard.stats.intervals import outside_interval
+
+    found = _one("The mean difference was \N{EN DASH}1.4 (95% CI -2.0 to -0.8).")
+    assert found.estimate == "\N{EN DASH}1.4" and not outside_interval(found)
+    glued = _one("OR\N{EN DASH}1.9 (95% CI 1.2 to 3.0).")
+    assert glued.estimate == "1.9" and not outside_interval(glued)
+    minus = _one("MD\N{EN DASH}0.4 (95% CI -0.8 to -0.1).")
+    assert minus.estimate == "\N{EN DASH}0.4" and not outside_interval(minus)
+    # After a space, before a ratio's name too, it is a minus: a log ratio's (the
+    # post-budget round of #336).
+    logged = _one("The log OR was \N{EN DASH}0.4 (95% CI -0.8 to -0.1).")
+    assert logged.estimate == "\N{EN DASH}0.4" and not outside_interval(logged)
+
+
+def test_an_en_dash_glued_to_any_word_before_a_ratio_is_a_dash() -> None:
+    """A Known gap, as main has it (the post-budget round of #336): glued to a word, not the
+    name, "was–0.4", a log ratio's minus is read as a dash, and its estimate as 0.4."""
+    from manuscript_guard.stats.intervals import outside_interval
+
+    found = _one("The log OR was\N{EN DASH}0.4 (95% CI -0.8 to -0.1).")
+    assert found.estimate == "0.4" and outside_interval(found)
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        # A P in a later clause is taken as the estimate's, the search stopping only at
+        # another interval's name.
+        ("The OR was 1.9 (95% CI 1.2-3.0) but not in women (OR 1.1, P = 0.40).", True),
+        # "HR" for heart rate is read as a hazard ratio, held to 1.
+        ("HR 72 (95% CI 68 to 76), P = 0.40.", True),
+        # An interval with no level printed is taken as 95%: as a 90% interval this agrees.
+        ("The ratio, OR 1.9 (CI 1.2 to 3.0), P = 0.07.", True),
+        # A difference between two hazard ratios is read as a hazard ratio.
+        ("The difference in hazard ratios between arms was 0.3 (95% CI -0.1 to 0.7), "
+         "P = 0.40.", True),
+        # A word saying the P is another's, within 40 characters after it, stands it down,
+        # and so does one between the interval and the P (round 1 of #336).
+        ("OR 1.9 (95% CI 1.2 to 3.0), P = 0.40, with no heterogeneity.", False),
+        ("OR 1.9 (95% CI 1.2 to 3.0) for interaction, P = 0.40.", False),
+    ],
+)  # fmt: skip
+def test_what_the_interval_reader_gets_wrong_is_pinned(text: str, said: bool) -> None:
+    """Known gaps, pinned (rounds 1 and 2 of #300): each is said, or not, as written in
+    DESIGN.md, so that a change to any of them is seen."""
+    assert (p_against(_one(text)) is not None) is said

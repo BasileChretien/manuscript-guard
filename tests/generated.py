@@ -1232,7 +1232,9 @@ def share_tables(draw: st.DrawFn) -> tuple[str, list[Shared]]:
             within = [draw(st.integers(10, n // 2)) for n in sizes]
             shares(f"{parent}, n (%)", within,
                    [_printed(c, n, places) for c, n in zip(within, sizes, strict=True)], sizes)
-            row(f"{parent} type", ["", ""], draw(st.sampled_from(P_VALUES[1:])))
+            # Its label with a P beside it or bare (round 3 of #314: always a P, so the bare
+            # label was held by a corruption case alone).
+            row(f"{parent} type", ["", ""], draw(st.sampled_from(P_VALUES)))
             # The run with the row after them does not add up to 100, so nothing says the
             # subtypes are shares where the header does not (round 3 of #314); where it does,
             # they are let off as shares of their own total.
@@ -1430,6 +1432,13 @@ def mean_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Meant]]:
     means = [_a_mean(odd[0], eighths, 2, ROUND_HALF_DOWN), _a_mean(odd[1], eighths, 2)]
     row(labels[1], means)
     found(means, [eighths, eighths])
+    # A table of 80 or 96, at which every mean printed to two places is possible though
+    # either is under 100: not assessable (round 2 of #331).
+    every = draw(st.sampled_from((80, 96)))
+    lines += ["", f"| {labels[2]} | All (n = {every}) |", "|---|---|"]
+    means = right([every], 2)
+    row(labels[2], means)
+    found(means, [every])
     # A table whose header names no n: its means are held to nothing.
     lines += ["", "| Outcome | Cases | Controls |", "|---|---|---|"]
     row(labels[0], right(sizes, 2))

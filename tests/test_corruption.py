@@ -5103,6 +5103,29 @@ def test_a_quote_whose_statistic_and_p_disagree_is_found(project: Path) -> None:
     assert report.counts["literature_verified"] == 2
 
 
+def test_a_quote_two_values_rest_on_is_judged_once(project: Path) -> None:
+    """Round 1 of #285: one quote backing two values reported its statistic and P twice,
+    once under each key. The source is the same sentence either way."""
+    said = (
+        "The crude incidence of drug-induced hepatic injury was 14 per 100 000 "
+        "person-years in 2019, t(23) = 2.45, p = .40."
+    )
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text(source.read_text(encoding="utf-8") + "\n" + said + "\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"][0]["quote"] = said
+    second = dict(document["entries"][0], key="background.reported_year", value=2019,
+                  display="2019")  # fmt: skip
+    second.pop("unit", None)
+    document["entries"].append(second)
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = _literature_report(project)
+    assert report.counts["literature_verified"] == 3
+    found = [f for f in report.findings if f.code == "quote-p-inconsistent"]
+    assert len(found) == 1, [f.message for f in found]
+
+
 def test_an_audited_paper_s_p_that_does_not_follow_is_listed_apart(tmp_path: Path) -> None:
     """`audit` reads a paper that was never bound, and needs no outputs for this."""
     from manuscript_guard.audit import audit, measure_discrimination, render
@@ -5364,6 +5387,8 @@ def _ledger_mean(project: Path, printed: str, declared: dict | None) -> None:
         ("3.47", {"n": 96}, ["quote-mean-not-assessable"]),
         ("3.47", {"n": 95}, []),
         ("3.47", None, []),
+        # A count YAML writes "28.0" is 28 (round 1 of #331: the float raised).
+        ("3.47", {"n": 28.0}, ["quote-mean-not-possible"]),
     ],
 )  # fmt: skip
 def test_a_ledger_mean_of_whole_numbers_is_held_to_its_n(
@@ -5399,6 +5424,114 @@ def test_a_ledger_mean_of_whole_numbers_needs_a_count(project: Path) -> None:
     """An n of none is refused by the schema, not read as a mean of nothing."""
     _ledger_mean(project, "3.47", {"n": 0})
     assert "schema-violation" in [f.code for f in _literature_report(project).findings]
+
+
+def test_a_ledger_mean_printed_with_more_than_itself_says_how_to_test_it(
+    project: Path,
+) -> None:
+    """Round 1 of #331: a display that is not a plain decimal, "3.47 (1.20)", is not
+    assessable, and the note said there was nothing to do; the mean can be tested if it is
+    recorded alone."""
+    said = "The 28 patients interviewed rated their pain 3.47 (1.20) on average."
+    source = project / "literature" / "sources" / "fictionalHepaticCohort2021.txt"
+    source.write_text(source.read_text(encoding="utf-8") + "\n" + said + "\n", encoding="utf-8")
+    path = project / "literature" / "ledger.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["entries"].append({
+        "key": "background.pain_mean", "value": "3.47 (1.20)", "display": "3.47 (1.20)",
+        "citekey": "fictionalHepaticCohort2021", "depth": "full-text",
+        "source_file": "sources/fictionalHepaticCohort2021.txt", "locator": "Results",
+        "quote": said, "mean_of_whole_numbers": {"n": 28},
+    })  # fmt: skip
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    [note] = [f for f in _literature_report(project).findings
+              if f.code == "quote-mean-not-assessable"]  # fmt: skip
+    assert "record the mean alone" in note.hint
+
+
+def test_not_assessable_is_worked_out_as_the_search_finds_it() -> None:
+    """Round 2 of #331: a mean is not assessable where every mean printed to its places is
+    possible for N. That is worked out, from the ties between totals, since the search took
+    seconds at four places; here the two agree for every N at one, two and three places."""
+    import math
+    from fractions import Fraction
+
+    from manuscript_guard.stats import granularity
+
+    def searched(count: int, places: int) -> bool:
+        scale = 10**places
+        half = Fraction(1, 2 * scale)
+        return count < scale and any(
+            math.ceil((Fraction(k, scale) - half) * count)
+            > math.floor((Fraction(k, scale) + half) * count)
+            for k in range(scale)
+        )
+
+    for places in (1, 2, 3):
+        counts = range(1, 10**places + 3) if places < 3 else range(480, 1003)
+        for count in counts:
+            assert granularity._some_mean_is_none(count, places) is searched(count, places), (
+                count, places)  # fmt: skip
+
+
+def test_a_mean_without_a_nought_and_a_mean_under_a_body_row_s_n_are_read() -> None:
+    """Round 1 of #331: ".47 (.12)" was not read. Round 2: a row of means whose other cell
+    names an n set it for the rows below, and their means were not uncertain."""
+    from manuscript_guard.stats.granularity import table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    text = ("| | Treated (n = 30) | Note |\n|---|---|---|\n"
+            "| Pain at 12 weeks | .47 (.12) | n = 25 |\n"
+            "| Pain at 24 weeks | 3.0 (1.0) | 3.1 (0.9) |\n")  # fmt: skip
+    [table] = markdown_tables(text)
+    found = [(m.mean, m.n, m.uncertain) for m in table_means(table, ("pain",))]
+    assert found[0] == (".47", 30, None)
+    assert found[1][:2] == ("3.0", 30) and found[1][2] is None
+    assert found[2][:2] == ("3.1", 25) and "row of means" in found[2][2]
+
+
+@pytest.mark.parametrize("row", [
+    "| Pain at 12 weeks | 3.1 (1.0), n = 25 |",
+    "| Age, years | 45.1 (9.0), n = 25 |",
+    "| Pain at 12 weeks | 3.1 (1.0) (n = 25) |",
+])  # fmt: skip
+def test_a_mean_that_names_its_n_makes_the_means_below_it_uncertain(row: str) -> None:
+    """Round 1 of #336: a cell that is a mean and its n set the n for the column below,
+    and those means were held to it as certain, where its row had no other mean or was not
+    a row read for means at all."""
+    from manuscript_guard.stats.granularity import table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    [table] = markdown_tables(f"| | Treated (n = 30) |\n|---|---|\n{row}\n| Pain | 3.0 (1.0) |\n")
+    below = table_means(table, ("pain",))[-1]
+    assert (below.mean, below.n) == ("3.0", 25)
+    assert below.uncertain and "row of means" in below.uncertain
+
+
+@pytest.mark.parametrize("header", ["| | 2019 (n = 120) |", "| | 12 (n = 120) |",
+                                    "| | 0.5 (n = 120) |"])  # fmt: skip
+def test_a_year_or_a_count_beside_an_n_is_a_header_not_a_mean(header: str) -> None:
+    """Round 2 of #336: a header's year, or a count, with an n beside it was taken for a
+    mean naming its n, and the means below it were called uncertain."""
+    from manuscript_guard.stats.granularity import table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    [table] = markdown_tables(f"{header}\n|---|---|\n| Pain | 3.0 (1.0) |\n")
+    [below] = table_means(table, ("pain",))
+    assert (below.mean, below.n, below.uncertain) == ("3.0", 120, None)
+
+
+def test_a_header_of_two_rows_marks_the_means_below_uncertain() -> None:
+    """A Known gap (the post-budget round of #336): only the first row is a header, so a
+    second header row, "0.5 (n = 40)", is taken for a mean naming its n. The n is right;
+    the means below are called uncertain."""
+    from manuscript_guard.stats.granularity import table_means
+    from manuscript_guard.text.tables import markdown_tables
+
+    [table] = markdown_tables("| | Dose (mg) |\n|---|---|\n| | 0.5 (n = 40) |\n"
+                              "| Pain | 3.0 (1.0) |\n")  # fmt: skip
+    [below] = table_means(table, ("pain",))
+    assert (below.mean, below.n) == ("3.0", 40) and "row of means" in below.uncertain
 
 
 _WHOLE_NUMBERS = (
@@ -5505,6 +5638,21 @@ def test_audit_whole_numbers_on_the_command_line(
 def _cell(text: str, *, span: int = 1) -> str:
     props = f'<w:tcPr><w:gridSpan w:val="{span}"/></w:tcPr>' if span > 1 else ""
     return f"<w:tc>{props}<w:p>{text}</w:p></w:tc>"
+
+
+@pytest.mark.parametrize(("value", "span"), [("3", 3), ("63", 63), ("999999999", 63),
+                                              ("0", 1), ("x", 1)])  # fmt: skip
+def test_a_cell_spans_no_more_columns_than_word_allows(value: str, span: int) -> None:
+    """Round 1 of #314: a span had no upper bound, and a crafted gridSpan of 999999999 built
+    a string of marks of about a gigabyte. Word allows a table 63 columns."""
+    import xml.etree.ElementTree as ET
+
+    from manuscript_guard.text import docx
+
+    namespace = docx.W.strip("{}")
+    cell = ET.fromstring(f'<w:tc xmlns:w="{namespace}"><w:tcPr><w:gridSpan w:val="{value}"/>'
+                         f"</w:tcPr></w:tc>")  # fmt: skip
+    assert docx._span(cell) == span
 
 
 def _run(text: str, *, raised: bool = False) -> str:

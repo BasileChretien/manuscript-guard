@@ -208,6 +208,9 @@ def test_a_p_is_judged_over_every_value_its_digits_allow(text, inconsistent, dec
         "F(1.4, 33.2) = 5.6, p = .09, Greenhouse-Geisser corrected",
         f"{CHI}2(1) = 4.5, p = .06 by Fisher's exact test",
         "a permutation t(23) = 2.45, p = .011",
+        # Round 1 of #285: two named procedures were missing.
+        "t(23) = 2.45, p = .09 against control by Dunnett's test",
+        "Games-Howell t(23.4) = 2.45, p = .09",
     ],
 )
 def test_a_test_the_sentence_says_is_not_the_textbook_one_is_not_judged(said) -> None:
@@ -220,3 +223,99 @@ def test_a_p_judged_at_the_level_the_analysis_declares() -> None:
     test = _one("t(23) = 1.90, p = .03")  # gives 0.070
     assert judge(test, 0.05).decision
     assert judge(test, 0.10).inconsistent and not judge(test, 0.10).decision
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Round 1 of #285: a decimal written with a middle dot or a comma was read as its
+        # whole part, "p<0·0001" as a P of 0, and the test was reported.
+        "t(23) = 2\N{MIDDLE DOT}45, p = 0\N{MIDDLE DOT}022",
+        "t(23) = 2.45, p < 0\N{MIDDLE DOT}0001",
+        "t(23) = 2,45, p = 0,022",
+        "t(23) = 2.45, p = 0,022",
+    ],
+)
+def test_a_decimal_point_that_is_no_full_stop_is_not_read(text) -> None:
+    assert reported_tests(text) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "statistic", "p"),
+    [
+        # Round 1 of #336: a number with its point already is no decimal-comma number, and a
+        # comma and a digit after it, a reference set inline in text from a PDF, left the
+        # test unread.
+        ("t(23) = 2.45, p = 0.40,12 and later.", "2.45", "0.40"),
+        ("t(23) = 2.45,12 p = 0.40.", "2.45", "0.40"),
+        # A middle dot before a power of ten is a times sign, and a comma after the power
+        # is the sentence's (round 2 of #336: nothing held the second).
+        ("t(23) = 6.10, p = 4\N{MIDDLE DOT}10^-6^.", "6.10", "4\N{MIDDLE DOT}10^-6^"),
+        ("t(23) = 6.10, p = 4\N{MIDDLE DOT}10^-6^,12 and later.", "6.10",
+         "4\N{MIDDLE DOT}10^-6^"),
+    ],
+)
+def test_a_comma_after_a_number_with_its_point_is_the_sentence_s(text, statistic, p) -> None:
+    [found] = reported_tests(text)
+    assert (found.statistic, found.p) == (statistic, p)
+
+
+def test_a_point_that_groups_thousands_in_a_decimal_comma_paper_is_read_as_a_point() -> None:
+    """A Known gap (round 2 of #336): in a paper that writes its decimals with a comma, a
+    point groups thousands, and "1.234,5" is read as 1.234. Such a paper writes its P with a
+    comma too, which is not read, so a test is formed only where its P has a point."""
+    assert [t.statistic for t in reported_tests("χ2(1) = 1.234,5, p = .40")] == ["1.234"]
+
+
+def test_a_p_cut_off_by_the_reach_is_not_read() -> None:
+    """Round 1 of #285: the P was looked for up to `REACH` characters on, and one whose
+    digits ran past that point was read cut, "0.0412" as "0.04"."""
+    from manuscript_guard.stats.reported import REACH
+
+    stat = "t(23) = 2.45, "
+    text = stat + "a" * (REACH - 11) + " p = 0.0412 later."
+    # The reach ends just after "0.04", inside the P's digits.
+    assert text.index("p = 0.04") + len("p = 0.04") == len("t(23) = 2.45") + REACH
+    assert reported_tests(text) == []
+
+
+@pytest.mark.parametrize("point", ["\N{MIDDLE DOT}", ","])
+def test_a_p_cut_before_its_middle_dot_or_comma_is_not_read(point: str) -> None:
+    """Round 1 of #336: cut at the reach, "p = 0" was read, and read again whole it was no
+    P at all, since its point is not read; the check of the cut raised."""
+    from manuscript_guard.stats.reported import REACH
+
+    text = "t(23) = 2.45, " + "a" * (REACH - 8) + f" p = 0{point}022 later."
+    assert text.index("p = 0") + len("p = 0") == len("t(23) = 2.45") + REACH
+    assert reported_tests(text) == []
+
+
+def test_a_p_above_1_is_not_judged() -> None:
+    """Round 1 of #285: "P = 2" gave a range from 1.95 down to 1."""
+    assert judge(_one("t(23) = 2.45, p = 2")) is None
+
+
+def test_a_p_that_cannot_be_computed_is_not_judged(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #285: a series that did not converge escaped, and the gate errored."""
+    from manuscript_guard.stats import reported
+    from manuscript_guard.stats.special import NotConverged
+
+    def never(*_args):
+        raise NotConverged("a continued fraction did not converge")
+
+    monkeypatch.setattr(reported, "_p", never)
+    assert judge(_one("t(23) = 2.45, p = .022")) is None
+
+
+def test_a_p_written_before_its_statistic_is_read_as_the_next_one_s() -> None:
+    """A known gap, pinned (round 1 of #285, in Known gaps): a statistic takes the next P in
+    its sentence, so where each P stands before its own statistic the first statistic is
+    judged with the second's P."""
+    found = reported_tests("P = .022 (t(23) = 2.45); P = .40 (t(30) = 0.85).")
+    assert [(test.statistic, test.p) for test in found] == [("2.45", ".40")]
+
+
+def test_adjusted_said_of_anything_stands_a_test_down() -> None:
+    """A known gap, pinned (round 1 of #285, in Known gaps): "adjusted for age" says the
+    P is not the textbook one, though a Wald z of an adjusted model is."""
+    assert _one("Adjusted for age, z = 2.10, P = .40").quiet == "Adjusted"

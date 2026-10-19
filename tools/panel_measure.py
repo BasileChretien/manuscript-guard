@@ -40,7 +40,7 @@ says which copy, reviewer or sample a finding came from, not even the finding's 
 adjudicator. Defects are those of `tools/data/panel-rubric.yaml`, written before any reply
 was read. Each defect is counted on every copy, in the replies of the reviewers whose remit
 the rubric says asks about it; the report marks the copies that do not show it, where a
-count is a false finding or, as often, another finding in the defect's words. Recall, and
+count is a false finding or another finding in the defect's words. Recall, and
 what is counted on the clean version, are reported, never precision, since planted defects
 have no real prevalence.
 

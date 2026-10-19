@@ -2764,9 +2764,11 @@ total. The script writes the report; nothing in it is by hand.
   a subscription.** No reading was refused unread. The blind findings, 313 with the
   controls, were adjudicated by the same model, which put all six controls of known grade
   right; no person checked it. Each count is of the three readings by the reviewer whose
-  remit the defect is in. The script's counts for the first two copies were then checked by
-  reading every finding they rest on; that reading was done by the agent session that ran
-  the measurement, not by a person. Where it differs, it is given beside the script's.
+  remit the defect is in. The script's counts for the first two copies were then checked in
+  both directions by the agent session that ran the measurement, not by a person: every
+  finding a count rests on was read, and so was every reading of the reviewer asked where a
+  count, or a rating as major, is absent. Where the reading differs, it is given beside the
+  script's.
 
   | Known defect | Raised, two sets of three | Rated major | Raised by the blank reader |
   |---|---|---|---|
@@ -2781,17 +2783,19 @@ total. The script writes the report; nothing in it is by hand.
     definition is the panel's own instructions' example of a finding, and record selection
     is asked for by item 3 of the checklist that reader was sent.
   - Read, every reading counted as raising one of the four on the version the panel read
-    has a finding that says it is missing, and every one counted as rating it major has
-    such a finding rated major, but one reading: its only finding counted for the 2 x 2
-    table is on the unit of analysis, which the table's words settle. Some readings have
-    other findings counted in a defect's words that are about something else, the age
-    bands of Table 1 under item 3 for one, which change no count. Each of the six
-    checklist-auditor readings has a major finding that item 3's record selection is not
-    described, five of them adjudicated blind. What differs between
-    readings is severity. The 2 x 2 table, major in the round-1 record, was rated major by
-    no reader of the whole and by every blank reader. Duplicates were rated major in three
-    readings of three, then in two, for the same request: a difference of one reading in
-    three is noise.
+    has a finding that says it is missing, but one reading, whose only finding counted for
+    the 2 x 2 table is on the unit of analysis, which the table's words settle. Every
+    reading counted as rating a defect major has such a finding rated major. No reading
+    where a count or a major rating is absent raises the defect, or rates it major, in
+    other words; where the 2 x 2 table is not counted, the reading praises the counts given
+    or says nothing of them. Some readings have other findings counted in a defect's words
+    that are about something else, the age bands of Table 1 under item 3 for one, which
+    change no count. Each of the six checklist-auditor readings has a major finding that
+    item 3's record selection is not described, five of them adjudicated blind. Beyond the
+    2 x 2 table, what differs between readings is severity. The 2 x 2 table, major in the
+    round-1 record, was rated major by no reader of the whole and by every blank reader.
+    Duplicates were rated major in three readings of three, then in two, for the same
+    request: a difference of one reading in three is noise.
   - A first adjudication, made before round 1 of #334, gave each finding one defect at
     most, and counted duplicates in two readings and then none. The pharmacoepidemiologist
     raises duplicates inside a finding about record selection, and that adjudicator had to

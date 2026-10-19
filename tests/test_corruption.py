@@ -2682,6 +2682,27 @@ def test_a_statistic_naming_what_nothing_emits_says_so(project: Path) -> None:
     ]
 
 
+def test_a_share_naming_what_nothing_emits_beside_its_other_count_says_so(
+    project: Path,
+) -> None:
+    """Round 1 of #343: a share whose `of` is misspelt, quoted beside its `over`, passed,
+    since the sentence held one of its names; no other gate reads `over`."""
+    paragraph = ("Of {{results.whole.cohort.n}} patients, {{results.whole.female.pct}}% were "
+                 "women.")  # fmt: skip
+    _with_whole(project, f"The ratio was {_ESTIMATE}. {paragraph}",
+                {"secondary": {"method": "holm"}})  # fmt: skip
+    fragment = project / "results" / "02_whole.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["whole.female.pct"]["of"] = "whole.femal.n"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    said = [f for f in gate_report(project).findings if f.code == "quoted-alone"]
+    assert [f.message for f in said] == [
+        "results.whole.female.pct names results.whole.femal.n as what it belongs to, which "
+        "nothing emits"
+    ]
+
+
 @pytest.mark.parametrize(
     ("added", "paragraph", "said"),
     [

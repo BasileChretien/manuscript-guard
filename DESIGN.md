@@ -1753,7 +1753,8 @@ are warnings: a paper may rightly give a p value again a line after its estimate
 end where the labels of a spread read them to end (`sentence_stops`): the stop of "s.d.",
 "s.e." or "s.e.m." before a number or a word in lower case ends none, so "(s.e. 0.21), P =
 ..." keeps its P with its estimate. A statistic whose `of` or `over` names a key no fragment
-emits is told so, once per quote, rather than told it is quoted alone. And the schema holds
+emits is told so, once per quote and whatever the sentence holds, rather than told it is
+quoted alone. And the schema holds
 what the emitters refuse, so that a fragment written by hand cannot step around these
 checks: `over` and `family` only with `of`, and never both on one value.
 
@@ -6166,7 +6167,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   sentence of the Results would be. And a key declared `same_as` the estimate stands for
   nothing of it here: "Overall it was {{results.headline}}, P = {{results.or.p}}" is quoted
   alone. All are warnings, and `test_what_quoted_alone_does_not_read_is_pinned` holds them as
-  they are.
+  they are. And a sentence that really ends at "s.e." followed by a binding or a word in
+  lower case runs on into the next, for the order of an interval's bounds as for the rest,
+  so a bound restated before it can hide a reversal after it (round 1 of #343).
 - **The feasibility results are asked for by their names only.** Any one result under
   `feasibility.` quiets `feasibility-not-run`: nothing checks that the counts cover the
   plan's variables or its selection steps, or that the script read the data the analysis

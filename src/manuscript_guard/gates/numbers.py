@@ -765,9 +765,11 @@ def quoted_whole(files: list[tuple[Path, str, list]], namespace: dict[str, Value
             if value is None or not value.of or value.spread:
                 continue
             belongs = [f"{value.namespace}.{name}" for name in (value.of, value.over) if name]
-            if set(belongs) & by_sentence[sentence]:
-                continue
+            # A name nothing emits is said whatever the sentence holds: a share whose `of` is
+            # misspelt, quoted beside its `over`, passed (round 1 of #343).
             missing = [name for name in belongs if name not in namespace]
+            if not missing and set(belongs) & by_sentence[sentence]:
+                continue
             report = report.with_findings(_alone(value, belongs, missing, path, line))
         for interval, ends in intervals.items():
             if any(set(ends.values()) <= refs for refs in by_sentence.values()):

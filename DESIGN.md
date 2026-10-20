@@ -913,8 +913,9 @@ them names the `.tex` line. `substituted` is the text with the values put in, as
 it today, and the gates that read it place a finding as they place one today. In LaTeX it writes
 each display with TeX's ten specials escaped and nothing else changed, so a `%` in `12.5%` does
 not start a comment and a `<` stays one character for G8's P. The response letter, which stays
-Markdown, takes the display as it is, and G13 looks for a response's quote with the escapes
-undone.
+Markdown, takes the display as it is. G13 looks for a response's quote in the reader's prose
+view of the substituted text, where `~` is a space, commands are blanked and every escape, the
+author's or the display's, is the character it stands for.
 
 The gates that read no part of the manuscript but its file list change only through
 `source_files`: G1's freshness, G3's figure checks, G10, G11 (its digests then cover the
@@ -949,7 +950,7 @@ NUL. Two additions keep the length:
 | Read as prose | Blanked |
 |---|---|
 | the body, `\begin{document}` to `\end{document}`, and the files input from it | the preamble of `main.tex` and the files input from it, except what the next row reads |
-| in the preamble, `\title`'s argument, read as the title in Markdown's front matter is and compared with paper.yaml's (`two-titles`); `\thanks`'s outside `\author`, read as a footnote is; the arguments of `\AtBeginDocument` and `\AtEndDocument`, read as the body is | the author block, `\author` with what it holds and `\date`: what authors.yaml holds for a Markdown project, which G2 does not read |
+| in the preamble, `\title`'s argument, read as the title in Markdown's front matter is and compared with paper.yaml's (`two-titles`); `\thanks`'s outside `\author`, read as a footnote is; the arguments of `\AtBeginDocument`, `\AtEndDocument`, `\AddToHook` and `\AfterEndPreamble`, read as the body is, or as the package is in an author's package | the author block, `\author` with what it holds, which is what authors.yaml holds for a Markdown project and G2 does not read; `\date`, which a Markdown build never prints (a known gap) |
 | the arguments of text commands: `\emph`, `\textbf`, `\footnote`, `\caption` and its short form, `\section` and its kin, `\href`'s text | command names and braces; `\label`, `\ref` and its kin, `\url`, `\href`'s address, `\includegraphics` |
 | a citation's notes, as Markdown's prefix and suffix are read | citation keys |
 | the letters, digits and signs in maths, in subscripts and superscripts too, as Markdown's `mask` keeps them in `$x_1 = 10^{-8}$` | maths' commands, braces and delimiters |
@@ -980,16 +981,15 @@ order is `printed_order`.
   is read under Methods. So does the environment that encloses the `\input`: a file input inside
   `abstract` is abstract, and one inside a `tabular` is table cells.
 - An `\input` in a comment, in a plain `\iffalse` block or in the `comment` environment is no
-  input. A file named only there is one that nothing inputs, below, and is read as one, where
-  definitions, `\makeatletter` and conditionals are accepted as in the preamble.
+  input. A file named only there is one that nothing inputs, below.
 - A package or class file in `manuscript/`, such as `\usepackage{macros}` with
   `manuscript/macros.sty` beside the entry file, is followed as a file input from the preamble.
   It is read as LaTeX reads a package, with `@` a letter. Its definitions are then read where
   they are written, below. In it, and in the preamble, both branches of a conditional other than
-  a plain `\iffalse` block are read,
-  since a package tests what is loaded. A package found anywhere else is
-  not the author's and is not read. `mgvalues.sty` is excluded by name: the tool writes it, its
-  definitions are the bindings, and `check` compares it with what `values` would write.
+  a plain `\iffalse` block are read, since a package tests what is loaded. A package found
+  anywhere else is not the author's and is not read. `mgvalues.sty` is excluded by name: the
+  tool writes it, its definitions are the bindings, and `check` compares it with what `values`
+  would write.
 - Refused:
   - a path that is not written out in full;
   - a path outside `manuscript/` or under a `_` folder;
@@ -999,8 +999,10 @@ order is `printed_order`.
     `\verbatiminput`, csvsimple's `\csvautotabular` and `\csvreader`, pgfplotstable's
     `\pgfplotstabletypeset` with a file name, datatool's `\DTLloaddb` and its displays, and
     pdfpages' `\includepdf`. A table is bound with `\mg{table.key}` instead.
-- A `.tex` file that nothing inputs is still read, as every `.md` file is, as body under no
-  heading, and warned about (`tex-not-input`).
+- A `.tex` file that nothing inputs is still read, as every `.md` file is, and warned about
+  (`tex-not-input`). It is read as body under no heading, where definitions, `\makeatletter`
+  (after which `@` is a letter) and conditionals are accepted as in the preamble, since such a
+  file may be a set of macros left out.
 
 **Environments.**
 - In `figure` and `table`, the caption is prose, and a typed number in a `tabular` is
@@ -1251,6 +1253,9 @@ The result is compiled and packed by the code above, and checked three times:
 - A class or package that changes how a character is read, beyond those refused, is not seen.
 - A package not in the refused list that prints a table or text from a data file is not seen:
   what it prints is read by no gate.
+- A profile's LaTeX template is read by no gate, so text or digits it prints after
+  `\begin{document}` are compared with nothing in `build --latex`.
+- `\date` is read by no gate, since a Markdown build prints no date to compare it with.
 - A word holding an accent command is not read by G14.
 - The author block is written in the class's own commands, and is not compared with
   authors.yaml. A number typed into the author block or `\date` is read by no gate.

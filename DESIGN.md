@@ -1078,9 +1078,12 @@ needed has, for a file never opened on this computer, only Zotero's text of it: 
 attachment's folder holds `.zotero-ft-cache` and nothing else. Of 193 items found by two
 title searches of the author's library, 69 had a file on this computer, 32 only that text,
 and 92 neither. So each attachment gives its file, where it is there and is a PDF, a saved
-page or plain text, or else Zotero's text of it as `<key>.txt` (Zotero keeps one for an EPUB
-too), or else a reason, and the works left with no copy are listed with theirs and what to do
-in Zotero. A work with a file saved under its name by hand is not listed. The other kinds G7
+page or plain text, or else, where the file is not here or is an EPUB, Zotero's text of it as
+`<key>.txt`, or else a reason, and the works left with no copy are listed with theirs and what
+to do in Zotero. Zotero's text is not taken for a table or a citation file, here or not,
+which Zotero may index too (round 2 of #361, and #364). A record entry whose file is gone is
+dropped by a run made while it is gone, so that a file saved later under its name stays the
+author's. A work with a file saved under its name by hand is not listed. The other kinds G7
 reads, a table or a citation file, are not taken: attached to an item in Zotero they are a
 supplement's data or the item's own reference, and G7 would read them as the work's text.
 
@@ -11054,7 +11057,9 @@ Open, recorded as each change landed:
   different files for them each run puts the other's in place, the copy being the command's
   each time (round 1 of #361). A refusal from Better BibTeX other than "not found", which
   may be its answer for a key two items carry (not probed), stops the run with what was
-  copied so far recorded, rather than listing that key and going on.
+  copied so far recorded, rather than listing that key and going on. A copy the author
+  deletes and saves again with the same bytes before the next run is still taken for the
+  command's, since the same bytes cannot be told apart (#364).
 - **`literature/sources/` is kept in git unless the author says otherwise.** `init` does not
   ignore it, so the copies `sync-sources` makes, of paywalled papers among them, are
   committed with the project, and published with it if the repository is public, including

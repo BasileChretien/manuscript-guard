@@ -354,19 +354,52 @@ def test_zoteros_text_is_taken_for_a_file_check_cannot_read(paper, tmp_path, mon
 
     assert outcome.status == copies.COPIED
     assert (sources(paper) / "book2012.txt").read_text("utf-8") == "Chapter one."
+    # Round 2 of #361: the line said the file was not on this computer, and it was.
+    assert "not on this computer" not in outcome.said and ".epub" in outcome.said
 
 
+@pytest.mark.parametrize("indexed", [False, True, "absent"], ids=["alone", "text", "only text"])
 @pytest.mark.parametrize("kind", [".csv", ".json", ".xml", ".bib", ".ris", ".nbib"])
-def test_a_data_or_citation_file_is_not_copied_as_the_work(paper, tmp_path, monkeypatch, kind):
+def test_a_data_or_citation_file_is_not_copied_as_the_work(
+    paper, tmp_path, monkeypatch, kind, indexed
+):
     """Round 1 of #361: G7 reads these suffixes, and a supplementary table or a citation file
-    attached in Zotero was copied as the work's text."""
+    attached in Zotero was copied as the work's text. Round 2: nor through Zotero's text of it,
+    which is taken only for a file not here or an EPUB."""
     zotero = Storage(tmp_path)
     cite(paper, "data2011")
-    fake = FakeBBT({1: {"data2011": [zotero.file("table" + kind, b"a,b\n1,2\n")]}})
-    (outcome,) = sync(paper, monkeypatch, fake)
+    attachment = zotero.file("table" + kind, b"a,b\n1,2\n")
+    if indexed:
+        (Path(attachment["path"]).parent / ".zotero-ft-cache").write_text("a b 1 2", "utf-8")
+    if indexed == "absent":  # #364: nor its text where the file is not on this computer
+        Path(attachment["path"]).unlink()
+    (outcome,) = sync(paper, monkeypatch, FakeBBT({1: {"data2011": [attachment]}}))
 
     assert outcome.status == copies.NO_COPY and kind in outcome.said
     assert not list(sources(paper).iterdir())
+
+
+def test_an_entry_whose_file_is_gone_does_not_make_a_new_file_the_commands(
+    paper, tmp_path, monkeypatch
+):
+    """Round 2 of #361: the command copied A, the author deleted it, Zotero stopped offering
+    it, the author saved A again by hand, and Zotero then offered C: the stale entry matched
+    the author's file, and C replaced it."""
+    zotero = Storage(tmp_path)
+    cite(paper, "smith2020")
+    held: dict[str, list] = {"smith2020": [zotero.file("a.pdf", PDF)]}
+    fake = FakeBBT({1: held})
+    sync(paper, monkeypatch, fake)
+    (sources(paper) / "smith2020.pdf").unlink()
+    held["smith2020"] = None
+    sync(paper, monkeypatch, fake)
+    assert "smith2020.pdf" not in record(paper)["files"], "the entry goes with its file"
+
+    (sources(paper) / "smith2020.pdf").write_bytes(PDF)
+    held["smith2020"] = [zotero.file("c.pdf", PDF + b"% another version\n")]
+    (outcome,) = sync(paper, monkeypatch, fake)
+    assert outcome.status == copies.KEPT
+    assert (sources(paper) / "smith2020.pdf").read_bytes() == PDF
 
 
 def test_a_dry_run_writes_nothing(paper, tmp_path, monkeypatch, capsys):

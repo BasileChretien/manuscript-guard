@@ -2078,6 +2078,81 @@ def test_two_authors_named_alike_are_approved_apart(project: Path) -> None:
     assert _approvals_said(project) == []
 
 
+def test_an_approval_covers_the_title_page_the_authors_put_their_names_to(
+    project: Path,
+) -> None:
+    """Round 1 of #284, Basile's choice of 2026-10-20: a new title, or an author added, left
+    every approval of the old one standing, since the digest held the prose and the results
+    alone. What the title page prints now counts; what it does not, a comment, a role, the
+    keywords written another way, does not (round 1 of #355), nor an approval written
+    before."""
+    from manuscript_guard.cli import main
+
+    both = ("0000-0002-1825-0097", "0000-0001-5109-3700")
+    for author in both:
+        assert main(["approve", str(project), "--as", author]) == 0
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    commented = text.replace("target_journal:", "# a comment\ntarget_journal:")
+    flowed = commented.replace("keywords:\n  - pharmacovigilance\n  - disproportionality\n  - "
+                               "hepatotoxicity", "keywords: [pharmacovigilance, "
+                               "disproportionality, hepatotoxicity]")  # fmt: skip
+    assert flowed != commented
+    paper.write_text(flowed, "utf-8")
+    authors = project / "authors.yaml"
+    listed = authors.read_text(encoding="utf-8")
+    named = listed.replace("  statistician: Sample\n",
+                           "  statistician: Sample\n  data_custodian: Example\n")  # fmt: skip
+    assert named != listed
+    authors.write_text(named, encoding="utf-8")
+    assert _approvals_said(project) == []
+    authors.write_text(listed, encoding="utf-8")
+    paper.write_text(text.replace('short_title: "Hepatic injury with example-drug"',
+                                  'short_title: "Hepatic injury"'), "utf-8")  # fmt: skip
+    assert _approvals_said(project) == [
+        ("approval-stale", "Ada Example"), ("approval-stale", "Blaise Sample")
+    ]
+    from manuscript_guard.approvals import check_approvals
+
+    def front_said() -> list[str]:
+        return [f.message for f in check_approvals(load_project(project)[0]).findings]
+
+    said = front_said()
+    assert len(said) == 2 and all(m.endswith(
+        "and its title page, CRediT statement or declarations have changed since")
+        for m in said), said  # fmt: skip
+    for author in both:
+        assert main(["approve", str(project), "--as", author]) == 0
+    # Rounds 2 and 3 of #355: a competing interest, a grant and a CRediT role are printed in
+    # the authors' names too.
+    declared = authors.read_text(encoding="utf-8")
+    for old, new in (('"None declared."', '"Fees from a comparator\'s maker."'),
+                     ('    competing_interests:', '    funding:\n      - "Grant 1"\n'
+                      '    competing_interests:'),
+                     ("      - Conceptualization\n", "      - Conceptualization\n"
+                      "      - Software\n")):  # fmt: skip
+        assert old in declared, old
+        authors.write_text(declared.replace(old, new, 1), "utf-8")
+        said = front_said()
+        front = "CRediT statement or declarations have changed since"
+        assert len(said) == 2 and all(m.endswith(front) for m in said), (new, said)
+    authors.write_text(declared, encoding="utf-8")
+    authors.write_text(authors.read_text(encoding="utf-8").replace(
+        "family: Sample", "family: Sample-Smith"), encoding="utf-8")  # fmt: skip
+    said = _approvals_said(project)
+    assert ("approval-stale", "Ada Example") in said, said
+    # An approval written before the title page was held to is judged as it was given.
+    for author in both:
+        assert main(["approve", str(project), "--as", author]) == 0
+    for path in (project / "approvals").glob("*.yaml"):
+        kept = path.read_text(encoding="utf-8").splitlines()
+        earlier = [line for line in kept if not line.startswith("front_sha256")]
+        path.write_text("\n".join(earlier) + "\n", encoding="utf-8")
+    paper.write_text(text.replace('short_title: "Hepatic injury with example-drug"',
+                                  'short_title: "Another"'), "utf-8")  # fmt: skip
+    assert _approvals_said(project) == []
+
+
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 def test_submit_says_which_authors_have_not_approved(project: Path, capsys) -> None:
     """Round 1 of #284: `submit` prints the authors with no approval, and nothing asserted

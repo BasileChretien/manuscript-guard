@@ -76,6 +76,23 @@ def _superscripts(author: dict, order: list[str]) -> str:
 
 def title_page(project: Project) -> str:
     """Everything the manuscript itself leaves out, in the order journals ask for it."""
+    lines = _front_lines(project)
+    counts = _counts(project)
+    lines += [
+        f"**Word count.** Abstract {counts.abstract_words}; main text "
+        f"{counts.main_text_words}. Tables {counts.tables}; figures {counts.figures}.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def printed_front(project: Project) -> str:
+    """What the title page prints of `paper.yaml` and `authors.yaml`: all of it but the word
+    counts, which the manuscript decides. An author's approval holds its digest (#284)."""
+    return "\n".join(_front_lines(project))
+
+
+def _front_lines(project: Project) -> list[str]:
     authors = project.authors
     if not authors:
         raise SubmissionError("authors.yaml is required for a title page")
@@ -145,14 +162,7 @@ def title_page(project: Project) -> str:
     keywords = project.keywords
     if keywords:
         lines += ["**Keywords.** " + "; ".join(keywords), ""]
-
-    counts = _counts(project)
-    lines += [
-        f"**Word count.** Abstract {counts.abstract_words}; main text "
-        f"{counts.main_text_words}. Tables {counts.tables}; figures {counts.figures}.",
-        "",
-    ]
-    return "\n".join(lines)
+    return lines
 
 
 def response_letter(project: Project) -> str | None:

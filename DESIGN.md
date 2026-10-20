@@ -11151,14 +11151,18 @@ Open, recorded as each change landed:
 - **The document of suggestions is built offline.** Its citations are formatted by the
   journal's style from `references.bib`, as `build --offline` formats them, whether the
   author builds live or not. It is for the author, never for a co-author or the journal.
-- **The round trip of suggestions was verified in Word on its parts.** In Word 16 over COM
-  on 2026-10-20: the changes appear as revisions by the reader's name; accepting and
-  rejecting each, Accept All and Reject All, keep the bookmark and the comment; a reply is
-  tied to its comment in `commentsExtended.xml`; the deletion accepted with the insertion
-  rejected removes both. The tests import documents edited the way Word was seen to edit
-  them (`tests/word_edits.py`), not documents Word saved, and the end-to-end import of a
-  document Word itself decided and saved was not run, because the author had Word open
-  with their own work at the time.
+- **The tests import documents edited the way Word edits them, not ones Word saved.** On
+  2026-10-20 a document of the example's round 8 was decided in Word 16 over COM and saved,
+  and `import --apply` of it merged the accepted words and answered both findings as the
+  tests expect; a copy with eight changes left open was refused. The two documents Word
+  saved are kept (`tests/data/word/`) and their reading is tested, but importing them needs
+  the example as it stood that day, so the import tests use `tests/word_edits.py`, which
+  makes Word's edits to a document built now. Those edits were each seen in Word.
+- **Round 2 of #367 recorded** that the pass choosing which documents to build looks for
+  every edit's words before the placement drops the empty ones and those past ten. An edit
+  of no words finds one match at every character of the manuscript, a list that is then
+  thrown away; and an edit to be dropped in a supplement paragraph has the supplement built,
+  then deleted. Both come out right.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

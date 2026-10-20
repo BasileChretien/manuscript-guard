@@ -95,7 +95,7 @@ def test_a_reply_whose_edits_cannot_be_placed_is_filed_all_the_same(
     )
 
 
-def test_an_edit_of_no_words_or_beyond_ten_is_dropped_where_it_is_placed() -> None:
+def test_an_edit_of_no_words_is_dropped_where_it_is_placed() -> None:
     from manuscript_guard.suggestions import refused_words
 
     assert refused_words("  ", "b") == "its old words are empty"
@@ -348,3 +348,28 @@ def test_a_round_whose_readings_suggest_nothing_makes_no_document(project: Path)
     assert code == 0
     assert "no reading the gate counts suggests an edit" in said
     assert not document_of(project).exists()
+
+
+WORD_SAVED = Path(__file__).parent / "data" / "word"
+
+
+def test_what_word_saved_is_read_as_decided() -> None:
+    """Documents Word 16 itself saved (2026-10-20, over COM), from round 8 of the example:
+    every suggestion decided, and one with all but the first left open. Word merged runs,
+    renumbered the comments and wrote a reply's parent in `commentsExtended.xml`; the person
+    who saved them is renamed `Ana Author`, and nothing else was changed."""
+    from manuscript_guard.suggestions import decisions
+    from manuscript_guard.tracked import offered_of, pending
+
+    decided, still = WORD_SAVED / "suggestions-decided.docx", WORD_SAVED / "suggestions-open.docx"
+    offered = offered_of(decided)
+    authors = {entry["author"] for entry in offered}
+    assert [entry["finding"] for entry in offered] == ["r8-pe-02"] * 4 + ["r8-pe-03"]
+    assert (pending(decided, authors), pending(still, authors)) == (0, 8)
+    found, told = decisions(decided, offered)
+    assert [d.state for d in found] == ["accepted", "refused", "accepted", "accepted", "refused"]
+    assert [[(r.author, r.text) for r in d.replies] for d in found] == [
+        [], [("Ana Author", "Kept: the sentence says there was no restriction.")], [], [],
+        [("Ana Author", "The aim reads as a question already.")],
+    ]  # fmt: skip
+    assert len(told) == 7

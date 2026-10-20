@@ -7076,8 +7076,8 @@ Open, recorded as each change landed:
   looking is worse than none, because it makes an unexamined figure look examined.
 - **Changing the digest algorithm invalidates every stored review.** There is no version
   field on `content_sha256` yet.
-- **The supplementary files are joined into one document.** Everything under
-  `manuscript/supplementary/` is built as one `supplementary.docx`, apart from the paper.
+- **The supplementary files are joined into one document.** Every Markdown source under
+  `manuscript/supplementary/` is built into one `supplementary.docx`, apart from the paper.
   A journal that asks for each additional file on its own gets them as one.
 - **A verified quote does not mean the value was read correctly.** The chain proves the
   sentence is in the source and the number is in the sentence. Whether that number means
@@ -11320,9 +11320,9 @@ Closed since, and why each mattered (an open gap goes above this line):
 - **The offline build applied no journal style unless `--csl` was given.**
   `manuscript-guard style` keeps the style the journal's profile names in
   `profiles/journals/styles/`, and the offline build formats citations with it
-  (item 51). What is left: a style that is not in the CSL style repository, or a
-  build before `style` has been run, still needs `--csl`; without it the build
-  uses pandoc's default and says so.
+  (item 51). What is left: a style that is not in the CSL style repository, a build
+  before `style` has been run, or a kept style edited since it was fetched still needs
+  `--csl`; without it the build uses pandoc's default and says so.
 
 ## Still open
 

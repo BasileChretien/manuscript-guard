@@ -5380,7 +5380,10 @@ def _the_ladder_is_read_upside_down(patch: pytest.MonkeyPatch) -> None:
     read = claims_module._ladder
     turned = {claims_module.STRONGER: claims_module.WEAKER}
     turned[claims_module.WEAKER] = claims_module.STRONGER
-    patch.setattr(claims_module, "_ladder", lambda was, now: turned.get(read(was, now), "moved"))
+    def ladder(was: list[int], now: list[int]) -> str:
+        return turned.get(read(was, now), claims_module.MOVED)
+
+    patch.setattr(claims_module, "_ladder", ladder)
 
 
 def _a_ladder_word_that_only_came_or_left_is_a_claim_moved(patch: pytest.MonkeyPatch) -> None:
@@ -5429,6 +5432,48 @@ def _a_comment_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
 
 def _the_texts_are_lined_up_by_place_alone(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(claims_module, "_chain", lambda anchors: [])
+
+
+def _a_stop_ends_no_sentence_of_a_claim(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "_STOP", re.compile("(?!)"))
+
+
+def _a_line_that_opens_a_block_opens_no_sentence(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "_BLOCK", re.compile("(?!)"))
+
+
+def _the_front_matter_is_read_as_one_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "front_matter_end", lambda text: 0)
+
+
+def _may_is_read_with_a_capital_where_it_opens_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    def capital(word: str, typed: str, opens: bool) -> bool:
+        return opens and typed[1:] == typed[1:].lower()
+
+    patch.setattr(claims_module, "_capital", capital)
+
+
+def _the_lowest_rung_kept_is_a_claim_made_weaker(patch: pytest.MonkeyPatch) -> None:
+    read = claims_module._ladder
+
+    def ladder(was: list[int], now: list[int]) -> str:
+        both = (Counter(was) - Counter(now)) and (Counter(now) - Counter(was))
+        if not both and was and now and min(was) == min(now):
+            return claims_module.WEAKER
+        return read(was, now)
+
+    patch.setattr(claims_module, "_ladder", ladder)
+
+
+def _a_split_sentence_is_compared_by_place(patch: pytest.MonkeyPatch) -> None:
+    stretch = claims_module._stretch
+
+    def by_place(was: list[Any], now: list[Any]) -> list[Any]:
+        if not was or not now or len(was) == len(now):
+            return stretch(was, now)
+        return [((one,), (other,)) for one, other in zip(was, now, strict=False)]
+
+    patch.setattr(claims_module, "_stretch", by_place)
 
 
 def _a_sentence_added_whole_is_read(patch: pytest.MonkeyPatch) -> None:
@@ -6676,6 +6721,30 @@ BROKEN = {
     ),
     "a sentence added whole is read as a claim made": (
         _a_sentence_added_whole_is_read,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a stop ends no sentence whose claim is read": (
+        _a_stop_ends_no_sentence_of_a_claim,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a line that opens a block opens no sentence whose claim is read": (
+        _a_line_that_opens_a_block_opens_no_sentence,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "the front matter is read for a claim as one line": (
+        _the_front_matter_is_read_as_one_line,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a month that opens a sentence is read as a claim's hedge": (
+        _may_is_read_with_a_capital_where_it_opens_a_sentence,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "the lowest rung of a claim kept is read as a claim made weaker": (
+        _the_lowest_rung_kept_is_a_claim_made_weaker,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a sentence split in two is compared for its claim by place": (
+        _a_split_sentence_is_compared_by_place,
         test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
     ),
     "a sign of comparison is no part of its number": (

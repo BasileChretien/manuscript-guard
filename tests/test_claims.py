@@ -85,6 +85,14 @@ def test_what_prints_no_prose_is_not_read() -> None:
     assert words(text) == []
 
 
+def test_a_letter_that_case_folds_into_a_listed_word_is_no_word() -> None:
+    """The pattern ignores case as Python does, which matches "i" to a dotless i and "s" to
+    a long s; the word found then is in no list, and is passed over rather than raising."""
+    dotless, dotted, long_s = chr(0x131), chr(0x130), chr(0x17F)
+    assert words(f"Use m{dotless}ght harm. {dotted}ncreased. {long_s}uggests.") == []
+    assert told("Use may harm.", f"Use m{dotless}ght harm.") == [(STRONGER, "'may' is gone")]
+
+
 def test_a_curly_apostrophe_is_read_as_a_straight_one() -> None:
     assert words("The groups didn\N{RIGHT SINGLE QUOTATION MARK}t differ.") == [
         ("didn't", NEGATED)

@@ -99,10 +99,13 @@ class Lists:
     rungs: tuple[str, ...]
     lower_case_only: frozenset[str]
 
-    def kind(self, word: str) -> str | int:
+    def kind(self, word: str) -> str | int | None:
+        """What `word` is, or None where it is none of the words: the pattern ignores case
+        as Python does, which matches "i" to a dotless i and "s" to a long s, and "might"
+        typed with a dotless i is no word of the list."""
         if word in self.kinds:
             return self.kinds[word]
-        return next(kind for ending, kind in self.endings if word.endswith(ending))
+        return next((kind for ending, kind in self.endings if word.endswith(ending)), None)
 
 
 def _phrase(word: str) -> str:
@@ -192,7 +195,9 @@ def _words(read: str, start: int, end: int) -> tuple[Word, ...]:
         adjective = " " not in word and word.endswith("ed")
         if adjective and _ARTICLE.search(read, max(start, match.start() - 8), match.start()):
             continue
-        found.append((word, known.kind(word)))
+        kind = known.kind(word)
+        if kind is not None:
+            found.append((word, kind))
     return tuple(found)
 
 

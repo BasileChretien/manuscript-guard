@@ -7,7 +7,8 @@ schema: manuscript-guard/claim-strength/1
 # Adapted from the Claim-Strength Contract of Yila-AI/awesome-research-skills,
 # skills/science-research-writing/references/certainty-and-claim-strength.md, read
 # 2026-10-20 at commit 0609e85b6dbfdae8a48ba66c332d340265d7b3e5, Apache License 2.0
-# (https://github.com/Yila-AI/awesome-research-skills). Its ladder is the six rungs below,
+# (https://github.com/Yila-AI/awesome-research-skills); the License's text is beside this
+# file, in claim_strength_LICENSE.txt. Its ladder is the six rungs below,
 # in its order, and its certainty markers are among the hedges, the negations and the
 # limits. The synonyms and the inflections are this project's, chosen on 2026-10-20;
 # ATTRIBUTION.md says what was changed.

@@ -214,9 +214,11 @@ reads to tell whether an edit changed how strongly a sentence claims. It is adap
 Skills](https://github.com/Yila-AI/awesome-research-skills) by the Yila-AI contributors, in
 `skills/science-research-writing/references/certainty-and-claim-strength.md`, read on
 2026-10-20 at commit `0609e85b6dbfdae8a48ba66c332d340265d7b3e5`. That repository is under the
-[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), and the document asks
-that the contract or its ladder be credited where it is reused or adapted. This is that
-credit.
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), whose text, as that
+repository ships it, is beside the data file in the package:
+`src/manuscript_guard/data/claim_strength_LICENSE.txt`. The repository has no NOTICE file.
+The document asks that the contract or its ladder be credited where it is reused or
+adapted, and this is that credit.
 
 Taken from it: the ladder's six rungs and their order, from "is consistent with" and "may
 suggest" through "is associated with", "predicts", "contributes to" and "affects" to

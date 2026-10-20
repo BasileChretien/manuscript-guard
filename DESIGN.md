@@ -10813,8 +10813,18 @@ Open, recorded as each change landed:
     split, with its "may" carried from one half to the other, is no change.
   - A sentence added or deleted whole is not read. A limitation dropped in a polish, "This
     may reflect confounding.", is told by nothing here, though its facts are held.
-  - A sentence that stands twice in a text lines nothing up, and is compared only where it
-    falls at the end of a stretch.
+  - A sentence that stands twice in a text lines nothing up. Where it ends a stretch it is
+    set aside as unchanged; in the middle of one it is compared with what stands at its
+    place.
+  - A stretch with as many sentences before as after is compared sentence by sentence in
+    order, so a sentence deleted and another added in one stretch pair each sentence with
+    its neighbour: "Kept. Use may be linked to harm. Age was associated with risk. Kept."
+    made "Kept. Age was linked to risk. Smoking increased risk. Kept." warns twice of a
+    claim made stronger.
+  - In a stretch compared whole, a finding is placed on the first sentence that holds a
+    word that came, and where that word stands in several of them, the first is taken: "A
+    may hold, and B holds." split into "A may hold." and "B may hold." is told on the
+    first.
   - Each line of the front matter is read as a sentence, so an abstract folded over several
     lines there is cut at each line. Rewrapped, its lines are compared as a stretch.
   - English only, as every gate.

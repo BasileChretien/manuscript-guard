@@ -361,7 +361,9 @@ def _judge(
                 WARN,
             )
         )
-        if record["identifiers"] != wanted:
+        # A search was made by the entry's title, author and year: judged against the entry
+        # as it is now, it would be held to words nobody searched for.
+        if record["identifiers"] != wanted or not wanted:
             return Report(tuple(found)), ""
     answers = record["sources"]
     late = [name for name, answer in answers.items() if answer["status"] == "unresolvable"]

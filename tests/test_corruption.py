@@ -5720,6 +5720,16 @@ def test_no_registry_has_it_is_said_only_where_it_can_be(
     assert said in _finding_of(project, "reference-unchecked").message
 
 
+def test_a_search_for_an_entry_changed_since_is_not_judged(project: Path) -> None:
+    """A search was made by the title, the author and the year as they were: held to a
+    title corrected since, its works would say the reference is in no registry."""
+    _searched(project)
+    _bib_field(project, "title", "A corrected title nobody has searched for yet")
+    found = _g7_codes(project)
+    assert found.get("lookup-entry-changed") == "warn"
+    assert not {c for c in found if c.startswith("reference-")}, found
+
+
 def test_a_work_of_the_title_in_another_year_is_not_the_one_cited(project: Path) -> None:
     _searched(project, pubmed_search=_hits({**_PUBMED_HIT, "year": 2015}),
               crossref_search=_hits())  # fmt: skip

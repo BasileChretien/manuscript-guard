@@ -357,8 +357,8 @@ def summary(record: dict[str, Any]) -> str:
         if said == sources.UNRESOLVABLE:
             said += f" ({answer['why']})"
         elif name.endswith("_search"):
-            held = len(answer.get("candidates", []))
-            said = f"{held} work(s) holding half the title or more"
+            alike = len(answer.get("candidates", []))
+            said = f"{alike} work(s) of a like title" if said == sources.FOUND else "none"
         elif name == "openalex" and answer.get("is_retracted"):
             said += ", retracted"
         parts.append(f"{names[name]} {said}")

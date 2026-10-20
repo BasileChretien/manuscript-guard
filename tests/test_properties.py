@@ -3065,6 +3065,66 @@ def test_every_placeholder_is_found_and_nothing_that_looks_like_one(
         assert alone == [match], (written, alone)
 
 
+# ------------------------------------------------------------------------ an em dash typed
+
+#: What G6 counts as an em dash, the character and three hyphens, spaced or not; and what it
+#: does not: two hyphens, four, and a line of dashes, a rule or a table's.
+_EM_DASHES = ("\N{EM DASH}", "---", " --- ", " \N{EM DASH} ")
+_NO_EM_DASHES = ("--", " -- ", "----", "\n\n---\n\n", "\n\n|---|:---:|\n\n", "\n\n--- ---\n\n",
+                 "\n\n+---+---+\n\n", " `---` ", "\n\n| a | --- |\n\n")  # fmt: skip
+
+
+@st.composite
+def _dashes_planted(draw: st.DrawFn) -> tuple[str, int]:
+    """Words, with every way of writing an em dash and every dash that is none between
+    them, in an order drawn each time; and how many em dashes that is."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    pieces = [(dash, 1) for dash in _EM_DASHES] + [(dash, 0) for dash in _NO_EM_DASHES]
+    text, count = words(), 0
+    for piece, counted in draw(st.permutations(pieces)):
+        text += piece + words()
+        count += counted
+    return text, count
+
+
+@holds(100, _dashes_planted())
+def test_an_em_dash_is_counted_however_it_is_typed(planted: tuple[str, int]) -> None:
+    """Known gaps of #339: the em dash's rate counted the character only, and a manuscript
+    that types three hyphens, which pandoc prints as one, showed none. Neither two hyphens,
+    an en dash, nor a line of dashes is one."""
+    from manuscript_guard.gates.writing import _hits, load_rules
+
+    text, count = planted
+    rule = next(rule for rule in load_rules().density if rule["id"] == "em-dash")
+    assert len(_hits(rule, text)) == count, text
+
+
+def _em_dash_rule(patch: pytest.MonkeyPatch, **changed) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    density = tuple({**rule, **changed} if rule["id"] == "em-dash" else rule
+                    for rule in rules.density)  # fmt: skip
+    patch.setattr(writing, "load_rules", lambda: replace(rules, density=density))
+
+
+def _an_em_dash_typed_is_not_counted(patch: pytest.MonkeyPatch) -> None:
+    _em_dash_rule(patch, pattern="\N{EM DASH}")
+
+
+def _a_rule_or_a_table_s_dashes_are_em_dashes(patch: pytest.MonkeyPatch) -> None:
+    _em_dash_rule(patch, exempt=[])
+
+
+def _any_run_of_hyphens_is_an_em_dash(patch: pytest.MonkeyPatch) -> None:
+    _em_dash_rule(patch, pattern="\N{EM DASH}|-{2,}")
+
+
 # ------------------------------------------------------------------------- a rewording
 
 #: A fact as a finding names it. A number by its figures and the mark after them: its
@@ -6210,6 +6270,18 @@ BROKEN = {
     "a link's text is read as a slot": (
         _a_links_text_is_a_slot,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "an em dash typed as three hyphens is not counted": (
+        _an_em_dash_typed_is_not_counted,
+        test_an_em_dash_is_counted_however_it_is_typed,
+    ),
+    "a rule's or a table's dashes are em dashes": (
+        _a_rule_or_a_table_s_dashes_are_em_dashes,
+        test_an_em_dash_is_counted_however_it_is_typed,
+    ),
+    "any run of hyphens is an em dash": (
+        _any_run_of_hyphens_is_an_em_dash,
+        test_an_em_dash_is_counted_however_it_is_typed,
     ),
     "filler before a list item is not read": (
         _filler_ends_only_at_a_stop_a_blank_line_or_the_end,

@@ -3287,6 +3287,33 @@ def test_the_phrasing_the_essay_lists_is_a_warning(project: Path, rule: str, pro
     assert _placeholders(report) == []
 
 
+def test_an_em_dash_typed_as_three_hyphens_is_counted(project: Path) -> None:
+    """Known gaps of #339: G6 counted the em dash itself, so a manuscript that typed it as
+    `---`, which pandoc prints as one, showed it none. Two hyphens are an en dash, and a line
+    of dashes is a rule or a table's."""
+    import shutil
+
+    from manuscript_guard.gates.writing import check_writing
+
+    shutil.rmtree(project / "manuscript" / "supplementary", ignore_errors=True)
+    main = project / "manuscript" / "main.md"
+    sentence = "The signal---weak at first---grew over the years of reporting. "
+    filler = "Reports were counted by drug and by event in each year of the study. " * 20
+    rules = "\n\n---\n\n| a | b |\n|---|:---:|\n| 1 | 2 |\n\n"
+
+    def rates(text: str) -> list[str]:
+        main.write_text(f"# Discussion\n\n{text}\n", encoding="utf-8")
+        report = check_writing(load_project(project)[0])
+        return [f.message.split(":")[0] for f in report.findings if f.code == "ai-cadence"]
+
+    assert "em-dash" in rates(sentence * 4 + filler)
+    assert "em-dash" not in rates(sentence.replace("---", "--") * 4 + filler)
+    assert "em-dash" not in rates(filler + rules * 6)
+    # Round 1 of #352: nor inline code, printed as typed, nor a table's "not applicable".
+    assert "em-dash" not in rates(filler + "Records were split on the `---` line. " * 5)
+    assert "em-dash" not in rates(filler + "\n\n" + "| Drug A | --- |\n" * 20)
+
+
 # ------------------------------------------------- the environment the results were made in
 
 

@@ -33,6 +33,11 @@ works it found no copy of. Zotero's copies came through the user's own access: t
 Connector in their browser, or Find Available PDF through their library's proxy. It writes
 over no file it did not write.
 
+Where the user already has a folder of PDFs named by DOI, such as the one a downloader like
+auto-paper-harvester writes, `manuscript-guard sync-sources --from <folder>` files them the
+same way, matched by the DOI in `references.bib`, and asks Zotero nothing. It refuses a file
+that is not a PDF, a sign-in page saved under a `.pdf` name, and says so.
+
 For each work it lists, use a browser the user is signed in to, where a tool that drives one
 is connected, so the user's institutional session applies and paywalled full texts are
 reachable. Saving the work into Zotero from there (the Zotero Connector) and running

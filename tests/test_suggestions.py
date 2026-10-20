@@ -11,6 +11,7 @@ Word 16 makes them.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -45,27 +46,66 @@ GOOD_REPLY = {
 }
 
 
-def test_a_reply_may_carry_edits_and_null_is_left_out() -> None:
+def test_a_reply_may_carry_edits_and_null_or_none_is_left_out() -> None:
+    """The prompt shows `edits` on every finding, and a model with no wording to offer
+    writes null or an empty list: each says what leaving the key out says (round 1 of #367:
+    the empty list refused the whole paid reading)."""
     from manuscript_guard.panel.reply import parse_reply
 
     assert parse_reply(json.dumps(GOOD_REPLY)) == GOOD_REPLY
-    left_out = json.loads(json.dumps(GOOD_REPLY))
-    left_out["findings"][0]["edits"] = None
-    assert "edits" not in parse_reply(json.dumps(left_out))["findings"][0]
+    for nothing in (None, []):
+        left_out = json.loads(json.dumps(GOOD_REPLY))
+        left_out["findings"][0]["edits"] = nothing
+        assert "edits" not in parse_reply(json.dumps(left_out))["findings"][0]
 
 
 @pytest.mark.parametrize(
     "edits",
     [
-        [],
-        [{"old": "a"}],
-        [{"old": "a", "new": "b", "why": "c"}],
         [{"old": "  ", "new": "b"}],
         [{"old": "a", "new": ""}],
         [{"old": f"a{i}", "new": "b"} for i in range(11)],
-        "a -> b",
     ],
-    ids=["empty", "no-new", "extra-key", "blank-old", "empty-new", "eleven", "a-string"],
+    ids=["blank-old", "empty-new", "eleven"],
+)
+def test_a_reply_whose_edits_cannot_be_placed_is_filed_all_the_same(
+    edits: list, project: Path, monkeypatch
+) -> None:
+    """An edit is optional, and one that cannot be written as a tracked change is dropped
+    when the document is made, where it is said why: a whole reading is not refused for it,
+    and what the reader wrote is filed as they wrote it."""
+    from test_review_run import Providers, answer, configure
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    reply = json.loads(json.dumps(GOOD_REPLY))
+    reply["findings"][0]["edits"] = edits
+    transport = Providers()
+    transport.default = lambda request: answer(json.dumps(reply))
+    monkeypatch.setattr(client, "default_transport", transport)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-0123456789SECRETA")
+    shutil.rmtree(project / "review")
+    configure(project, "openai/model-a")
+    assert main(["review", str(project), "--run", "--yes"]) == 0
+    filed = sorted((project / "review" / "round-1").glob("*.*.yaml"))
+    assert filed and all(
+        yaml.safe_load(path.read_text(encoding="utf-8"))["findings"][0]["edits"] == edits
+        for path in filed
+    )
+
+
+def test_an_edit_of_no_words_or_beyond_ten_is_dropped_where_it_is_placed() -> None:
+    from manuscript_guard.suggestions import refused_words
+
+    assert refused_words("  ", "b") == "its old words are empty"
+    assert refused_words("a", "") == "its new words are empty"
+
+
+@pytest.mark.parametrize(
+    "edits",
+    [[{"old": "a"}], [{"old": "a", "new": "b", "why": "c"}], "a -> b"],
+    ids=["no-new", "extra-key", "a-string"],
 )
 def test_a_reply_whose_edits_are_not_old_and_new_words_is_refused(edits: object) -> None:
     from manuscript_guard.panel.reply import ReplyRefused, parse_reply

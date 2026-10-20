@@ -2620,9 +2620,12 @@ identifier, every model reading is offered edits, the command is `review --sugge
 a refused edit is answered only by a reply in Word.
 
 **An edit belongs to a finding, and is the reader's.** A finding may carry `edits`, each the
-manuscript's words as they stand (`old`) and the words to put in their place (`new`), ten
-at most to a finding and ten written from a reading. The reply schema takes them, null read
-as left out as it is for `where` and `ask`; a design round's reader is not offered them,
+manuscript's words as they stand (`old`) and the words to put in their place (`new`), and
+ten at most are written from a reading. The reply schema takes them, null and an empty list
+read as left out, as null is for `where` and `ask`. They are optional, so a reply is not
+refused for one that cannot be placed: one that is empty, or past the ten, is dropped when
+the document is made, and said to be (round 1 of #367 found the empty list, which the prompt
+invites, refusing the whole paid reading). A design round's reader is not offered them,
 and a design reply that carries some is refused, since what it read was the plan. They are
 sealed with the reading where a finding has them (`SEALED_WHERE_GIVEN`), so every record
 sealed before edits existed keeps its seal, and an edit changed after filing is
@@ -11122,6 +11125,29 @@ Open, recorded as each change landed:
   and a refused edit then leaves its finding open. A reply is known only by
   `word/commentsExtended.xml`, which Word writes; an editor that writes none has no replies
   here. Nothing of this answers a finding wrongly: each leaves it open.
+- **What round 1 of #367's review recorded and left.** Each is non-blocking under the bar:
+  - *A failure of `tracked.write` is a traceback.* `write_round` turns a build's failure into
+    a message and not the writer's (a document with no comments part, or the check that
+    the written file reads as built and as edited), and the build is then left in
+    `build/suggestions/` without its changes. No plausible document reaches it: pandoc
+    always writes the comments part.
+  - *An accepted edit answers its finding beside a refused one.* In a finding with two
+    edits, one accepted and one refused with no reply, the acceptance is its `resolution`,
+    major or not; the refusal is named in it. Only a finding whose edits were all refused
+    needs a reply to be answered.
+  - *The ten a reading may have written are counted as suggested.* A reading whose first
+    ten edits all fail to place has its eleventh dropped for the cap, though none was
+    written.
+  - *An edit dropped when the document was made goes unmentioned.* A finding with one edit
+    written and accepted and another dropped is resolved by the first, and its resolution
+    does not say the second was never offered.
+  - *A reply in Word with no author is listed again as a co-author's comment*, since the
+    import's comment reader names such a comment "an unnamed reviewer" and the reader of
+    replies does not. Said twice, answered once.
+  - *The refusal of undecided suggestions rests on the document's list of them.* A tool that
+    dropped the `manuscript-guard-suggestions-*` properties and kept the source stamp would
+    have every panel change read as accepted. The `mg-s-` bookmarks would still be there to
+    refuse by; no tool is known to drop the one and keep the other.
 - **The document of suggestions is built offline.** Its citations are formatted by the
   journal's style from `references.bib`, as `build --offline` formats them, whether the
   author builds live or not. It is for the author, never for a co-author or the journal.

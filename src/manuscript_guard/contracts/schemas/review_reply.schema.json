@@ -58,16 +58,14 @@
           "finding": { "type": "string", "pattern": "\\S" },
           "edits": {
             "type": ["array", "null"],
-            "minItems": 1,
-            "maxItems": 10,
-            "description": "Null is read as left out. Wording for this finding: the manuscript's words exactly as they stand, enough of them to appear only once (old), and the words to put in their place (new). Words only: no number, citation, table or figure changes, nothing across two paragraphs.",
+            "description": "Null, or an empty list, is read as left out. Wording for this finding: the manuscript's words exactly as they stand, enough of them to appear only once (old), and the words to put in their place (new). Words only: no number, citation, table or figure changes, nothing across two paragraphs. Optional, and so not held to the rule for prose: an edit that is empty, or one past the ten a reading may have written, is dropped when the document of suggestions is made, and the reading is filed as it was written.",
             "items": {
               "type": "object",
               "required": ["old", "new"],
               "additionalProperties": false,
               "properties": {
-                "old": { "type": "string", "pattern": "\\S" },
-                "new": { "type": "string", "pattern": "\\S" }
+                "old": { "type": "string" },
+                "new": { "type": "string" }
               }
             }
           }

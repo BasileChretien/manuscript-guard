@@ -97,7 +97,9 @@ _MAY_BE_NULL = ("where", "ask", "edits")
 
 
 def _left_out(key: str, value: object) -> bool:
-    return key in _MAY_BE_NULL and value is None
+    # And no edits, an empty list: the prompt shows the key on every finding, and a model
+    # with no wording to offer writes `[]` (round 1 of #367: the whole reading was refused).
+    return key in _MAY_BE_NULL and value is None or key == "edits" and value == []
 
 
 def parse_reply(text: str, *, design: bool = False) -> dict:

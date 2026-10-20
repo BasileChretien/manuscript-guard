@@ -184,8 +184,9 @@ def _claimed_in_prose(project: Project, declared: set[str]) -> Report:
     return report
 
 
-def _for_design(project: Project, declared: set[str]) -> Report:
-    """Said where paper.yaml names a study design and none of its guidelines.
+def _for_design(project: Project, declared: set[str], wanted: list | None = None) -> Report:
+    """Said where paper.yaml names a study design and none of its guidelines, which are named
+    as paper.yaml writes them (`wanted`), not in the capitals they are compared in.
 
     The same table gives the plan's sections and the guidelines (`data/study_types.yaml`):
     a cohort study is reported with STROBE, or an extension of it such as RECORD, and a
@@ -202,7 +203,8 @@ def _for_design(project: Project, declared: set[str]) -> Report:
     names = [str(name).upper() for name in types[design]["guidelines"]]
     if any(given.startswith(name) for given in declared for name in names):
         return Report()
-    said = ", ".join(sorted(declared)) if declared else "none"
+    named = [str(name) for name in wanted] if wanted else sorted(declared)
+    said = ", ".join(sorted(named, key=str.upper)) if named else "none"
     return Report(
         (
             Finding(
@@ -221,7 +223,9 @@ def _for_design(project: Project, declared: set[str]) -> Report:
 def check_reporting(project: Project) -> Report:
     wanted = project.reporting_guidelines
     declared = {str(name).upper() for name in wanted}
-    claims = _claimed_in_prose(project, declared).merge(_for_design(project, declared))
+    claims = _claimed_in_prose(project, declared).merge(
+        _for_design(project, declared, list(wanted))
+    )
     if not wanted:
         return claims.with_counts(checklists=0)
 

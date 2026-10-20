@@ -133,8 +133,10 @@ def document_digest(project: Project) -> str:
     return digest.hexdigest()
 
 
-#: The fields of a finding that are the reader's. The author answers a finding in the
-#: others (`resolution`, `resolved_on`, `overridden`), and those stay out of the seal.
+#: The fields of a finding that are the reader's, with its `ask` where it has one, which is
+#: sealed only there (`reading_digest`). The author answers a finding in the others
+#: (`resolution`, `resolved_on`, `overridden`, `overridden_by`), and those stay out of the
+#: seal.
 READER_FINDING_FIELDS = ("id", "severity", "where", "finding")
 
 
@@ -831,7 +833,7 @@ def _check_seal(path: Path, document: dict, number: int, who: str, severity: str
             message=f"round {number}: {who}'s reading has been changed since it was sealed",
             path=path,
             hint="the seal covers what the reader wrote: the verdict, the summary, the "
-            "rejection tests, and each finding's id, severity, where and finding. Put them "
+            "rejection tests, and each finding's id, severity, where, finding and ask. Put them "
             "back as they were (`git diff` shows what changed), and answer a finding in "
             "`resolution:` or `overridden:` instead",
         )
@@ -907,7 +909,8 @@ def overrides(project: Project) -> list[dict]:
     made in place of the gate, which the submission manifest lists with the reason and who
     made each. Only readings the gate counts, as in `round_summaries`. A panel or a record
     that cannot be read is listed as such: G11 reports it, and a pack assembled with
-    `--skip-checks` despite it is still assembled."""
+    `--skip-checks` despite it is still assembled. So an entry is one of three: an
+    override, a panel that could not be read, or a record that could not be read."""
     found: list[dict] = []
     for number, path in panels(project):
         try:

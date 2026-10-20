@@ -144,8 +144,8 @@ def build_profile(
                 f"was written for: its rows have changed.\n"
                 f"    A revised checklist may have moved or renumbered items. Check "
                 f"{meta['source_url']}, update the recipe, and record the new rows_sha256 "
-                f"(`manuscript-guard transcribe` prints it). Use --allow-changed to "
-                f"transcribe anyway."
+                f"(take the old one out, and `manuscript-guard transcribe` prints it). Use "
+                f"--allow-changed to transcribe anyway."
             )
         items = transcribe(document, recipe, tables=[body])
         haystack = article_text(document)

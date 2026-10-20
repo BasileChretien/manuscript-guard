@@ -98,7 +98,14 @@ numbers are; do not guess it from a label.
 `quote-not-in-source` means the quote was retyped rather than copied, or the stored file is
 not the one it was taken from. `value-not-in-quote` means the sentence quoted does not
 actually state the number it is offered as evidence for — usually the quote is the sentence
-before or after the one wanted.
+before or after the one wanted. `quote-too-short` means fewer than four words stand beside
+the value in its quote, which shows only that the value is in the source: quote the
+sentence that says what it is of, the measure, the population and the outcome.
+
+A quotation written into the prose, four words or more in quotation marks in a sentence
+that cites a work, is looked for in that work's stored source: `quotation-not-in-source`
+means it was not found there, and `quotation-unchecked` that no work the sentence cites
+has a stored source that can be read: none is stored, or the one stored cannot be read.
 
 ## 4. When nobody can retrieve it
 

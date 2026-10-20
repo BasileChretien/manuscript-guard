@@ -12,8 +12,9 @@ text or the supplement, is checked only where every one of them is placed by its
 `{{table.<key>}}` or `{{figure.<key>}}`, in the order the files print: Table 1 is the first
 table the main text places, Table S1 the first the supplement places. Where a document
 places one by hand (a pipe, grid or simple table, an image, raw HTML), or places none
-because its figures go to the journal as files of their own, what its pointers name cannot
-be counted, and one note says so. The first version counted tables and images written by
+because its figures go to the journal as files of their own and `paper.yaml` does not
+declare them under `displays`, what its pointers name cannot be counted, and one note
+says so. The first version counted tables and images written by
 hand as well, and review found correct papers failed by every way of writing one it missed.
 
 The main text's tables and figures are also held to the order ICMJE asks for: each cited at

@@ -4,6 +4,13 @@ Thank you for looking. **This project is alpha and published to be criticised** 
 useful contribution right now is telling me where the reasoning is wrong, not a pull
 request against an interface that will change.
 
+## Issues
+
+Open an issue for a gate that passes what it should have caught, a false alarm, a crash,
+or a document that builds wrong, with the smallest manuscript or fragment that shows it
+and the output of `manuscript-guard check`. A security problem goes through the
+repository's **Security** tab instead, as SECURITY.md says.
+
 ## What is most welcome
 
 1. **A gate that is wrong.** Either direction: a number it flags that is not a defect, or a
@@ -85,8 +92,8 @@ When a release does not go through:
 - A run that failed is finished by re-running its failed jobs, on the Actions page. That
   builds the same commit, and makes the tag and the GitHub Release only where they are
   missing. So is a run GitHub cancelled, by re-running all its jobs: the tags are made one
-  release at a time, one waits behind the one that is going, and a third release in those
-  minutes cancels the one waiting.
+  release at a time, a second release's job, not its whole run, waits behind the one that
+  is going, and a third release in those minutes cancels the one waiting.
 - A run that says the commit it replaced cannot be read followed a forced push to `main`.
   It releases nothing, since nothing says that push raised the number. If it did, raise
   the number again in a commit of its own: that next number is the release, and the one

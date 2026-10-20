@@ -335,6 +335,13 @@ def test_an_offline_build_formats_with_the_kept_style_and_finds_its_parent_offli
     build would fail had pandoc gone to fetch it."""
     assert main(["build", str(project), "--offline"]) == 0
     assert "[[1]]" not in _printed(project / "build" / "manuscript.docx")
+    # Round 1 of #322: a style named and never fetched was said not to be kept as it was
+    # fetched.
+    name_style(project, DEPENDENT)
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline"]) == 0
+    out = " ".join(capsys.readouterr().out.split())
+    assert f"the journal's citation style {DEPENDENT} is not kept, so citations" in out, out
     keep_style(project, DEPENDENT)
     capsys.readouterr()
     assert main(["build", str(project), "--offline"]) == 0, capsys.readouterr()

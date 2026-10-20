@@ -94,10 +94,13 @@ Then run `manuscript-guard lookup --journals`. It asks the NLM Catalog whether e
 journal is currently indexed for MEDLINE, and DOAJ whether it is listed, and sends nothing
 of the manuscript. `check` then warns when the target journal is not indexed for MEDLINE
 (`journal-not-in-medline`), or is open access and not in DOAJ (`journal-not-in-doaj`).
+The target is the candidate whose `profile:` is `paper.yaml`'s `target_journal`, or that
+has its profile's name; with no `target_journal`, it is the journal the decision chose.
+Give the candidate `profile:` with the slug, or the check finds none and says so.
 Being listed is evidence against a predatory journal, not proof. A sound journal can be
-outside them, a new one or one outside medicine; then the author says why in the candidate's `outside_medline:` or
-`outside_doaj:`, in their words, and the warning becomes a note. Never write that reason
-for them.
+outside them, a new one or one outside medicine; then the author says why in the
+candidate's `outside_medline:` or `outside_doaj:`, in their words, and the warning becomes
+a note. Never write that reason for them.
 
 Search the journal's current pages rather than relying on memory. Scope statements, charges
 and turnaround times all move, and a recommendation built on a stale impression wastes the
@@ -145,7 +148,8 @@ checks, a running title or the cover letter's contents, goes under `manual:` wit
 so that none is dropped without a trace. `check` then:
 
 - fails a quote that is not on the stored page (`journal-quote-not-on-page`), and a limit
-  whose number its quote does not state (`journal-limit-not-in-quote`);
+  above 1 whose number its quote does not state (`journal-limit-not-in-quote`); a limit of
+  0 or 1 is held to the page only;
 - warns of the rules with no quote (`journal-rule-unquoted`), and of a quote for a rule the
   profile does not state;
 - warns that the page is not stored, or is not the text the profile recorded, and prints the
@@ -195,7 +199,8 @@ required_statements:
 references:
   style_name: Vancouver
   numbered: true
-  csl: elsevier-vancouver        # the CSL repository's name: Zotero's in a live build, kept by `style` for offline
+  # The CSL repository's name: Zotero's in a live build, kept by `style` for offline.
+  csl: elsevier-vancouver
 
 reporting_guidelines: [STROBE]
 
@@ -216,7 +221,8 @@ page_sha256: 3f9c...            # as check prints it, once the profile is read a
 
 quotes:                         # the stored page's words for each rule
   limits.abstract_words: "The abstract should not exceed 250 words."
-  required_statements.data-availability: "All research articles must include a Data Availability Statement."
+  required_statements.data-availability: >-
+    All research articles must include a Data Availability Statement.
 
 manual:                         # the page's rules no gate checks, quoted
   - rule: suggested reviewers

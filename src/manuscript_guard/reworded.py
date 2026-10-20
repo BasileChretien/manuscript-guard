@@ -278,7 +278,8 @@ def _sign(text: str, at: int) -> int:
 def _compared(text: str, at: int, typed: str) -> str:
     """The sign of a comparison typed at `at`, as it is compared, or "" where it is none.
 
-    A ">" is none where it is the head of an arrow, "5 -> 10", where it ends an HTML tag,
+    A ">" is none where it is the head of an arrow, "5 -> 10", "5 => 10", escaped as pandoc
+    writes it or typed full-width ("＝＞"), where it ends an HTML tag,
     and where it is the mark of a block quotation: at the start of its line, after nothing
     but other marks and spaces, with no line before it or a line before it that is blank or
     quoted too. A ">" that starts a line in the middle of a paragraph is the sign of a

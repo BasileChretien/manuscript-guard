@@ -1,8 +1,8 @@
 """G7: a quotation written into the prose is in the source it cites.
 
 G7 checks the literature ledger's quotes against the stored sources. A quotation written into
-a sentence of the manuscript was checked against nothing: "the agency judged the risk
-'acceptable in all but the frailest patients' [@agency2019]" could be misremembered, and
+a sentence of the manuscript was checked against nothing: 'the agency judged the risk
+"acceptable in all but the frailest patients" [@agency2019]' could be misremembered, and
 nothing would say so. So each quoted span of four words or more, inside quotation marks, in
 a sentence that cites a work, is looked for in that work's stored source under
 `literature/sources/`, named by its citation key, with the same `contains()` the ledger's
@@ -103,14 +103,18 @@ def check_prose_quotations(project: Project) -> Report:
     report = Report()
     for path in source_files(project.path("manuscript")):
         for quotation in quotations_in(read_text(path)):
-            stored = [s for s in (_source_of(sources, key) for key in quotation.keys) if s]
+            found = [(key, _source_of(sources, key)) for key in quotation.keys]
+            stored = [(key, source) for key, source in found if source]
             if not stored:
                 report = report.with_findings(_unchecked(path, quotation))
                 continue
-            texts = [_text(read, source) for source in stored]
-            if any(text is not None and contains(text, quotation.quote) for text in texts):
+            texts = [(key, _text(read, source)) for key, source in stored]
+            if any(text is not None and contains(text, quotation.quote) for _k, text in texts):
                 continue
-            if all(text is None for text in texts):
+            # Named only where a source was read: a work with none was not looked in (round
+            # 1 of #282: every cited key was named).
+            looked_in = [key for key, text in texts if text is not None]
+            if not looked_in:
                 report = report.with_findings(_unchecked(path, quotation))
                 continue
             report = report.with_findings(
@@ -119,7 +123,7 @@ def check_prose_quotations(project: Project) -> Report:
                     code="quotation-not-in-source",
                     severity=WARN,
                     message=f"the quotation {_shown(quotation.quote)} is not in the stored "
-                    f"source of {', '.join('@' + key for key in quotation.keys)}",
+                    f"source of {', '.join('@' + key for key in looked_in)}",
                     path=path,
                     line=quotation.line,
                     hint="copy the words from the source rather than from memory, or cite the "

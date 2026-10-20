@@ -85,7 +85,7 @@ def title_page(project: Project) -> str:
     lines = [f"# {paper['title']}", ""]
     if paper.get("demonstration") is True:
         # The paper says what its numbers are not: results of real data (item 42).
-        lines += ["**A demonstration.** The data this paper analyses are synthetic; its "
+        lines += ["**A demonstration.** The data of this paper are synthetic; its "
                   "results describe no real population.", ""]  # fmt: skip
 
     short = paper.get("short_title")
@@ -428,10 +428,10 @@ PANDOC_SECONDS = 60
 
 
 #: What an abstract may hold and still be written as plain text that says what the
-#: document says: words, their emphasis, sub- and superscripts, quotation marks, and a link
-#: that shows its own address. Anything else, a citation, a footnote, maths, code, an image,
-#: a table, a link with words of its own, is formatted by the build, and plain text written
-#: another way would not be what the document prints.
+#: document says: words, their emphasis, sub- and superscripts as `_script` writes them,
+#: quotation marks, and a link that shows its own address. Anything else, a citation, a
+#: footnote, maths, code, an image, a table, a link with words of its own, is formatted by
+#: the build, and plain text written another way would not be what the document prints.
 _PLAIN_INLINES = frozenset({
     "Str", "Space", "SoftBreak", "LineBreak", "Emph", "Strong", "Underline",
     "Superscript", "Subscript", "SmallCaps", "Span", "Quoted",
@@ -769,7 +769,8 @@ def _commit(project: Project) -> dict[str, str]:
     root = project.root
     head = _git(root, "rev-parse", "HEAD")
     if head is None:
-        return {"commit": "none: not a git repository, or git could not be run", "tree": "unknown"}
+        return {"commit": "none: not a git repository, one with no commit yet, or git could not "
+                "be run", "tree": "unknown"}
     build = project.path("build")
     outside = [] if not build.is_relative_to(root) else [
         f":(exclude){build.relative_to(root).as_posix()}"

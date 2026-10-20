@@ -71,11 +71,13 @@ than buried in a file nobody opens.
 
 ## Download links
 
-All fourteen recipes carry a direct `download_url`, and every one has been verified the only
-way worth doing: fetched into an empty directory and checked against the sha256 the recipe
-records, then transcribed. Thirteen fetched, thirteen checksums matched, thirteen profiles
-built; SANRA, the fourteenth, was added later and verified the same way against the form
-served by `down.asp?id=22862`. Anyone with the recipes and a network connection gets the same documents and the same
+All eighteen recipes carry a direct `download_url`. The first thirteen were verified the
+only way worth doing: fetched into an empty directory and checked against the sha256 the
+recipe records, then transcribed. Thirteen fetched, thirteen checksums matched, thirteen
+profiles built; SANRA, the fourteenth, was added later and verified the same way against
+the form served by `down.asp?id=22862`. STARD 2015, added with CHEERS 2022 and the two
+TRIPOD+AI recipes on 2026-10-16, was fetched and transcribed from the EQUATOR Network's
+Word checklist when it was written; the other three read their statement paper, below. Anyone with the recipes and a network connection gets the same documents and the same
 profiles.
 
 The two TRIPOD+AI recipes and the CHEERS 2022 recipe, added on 2026-10-16, read the statement

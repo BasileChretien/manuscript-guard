@@ -354,8 +354,8 @@ def _reading(
             f"design round {number}: {label} read a plan that has changed since", path,
             severity=WARN, context=f"read {document['reviewed_on']} by "
             f"{document['reviewed_by']}",
-            hint="the plan or the feasibility results changed after the reading; record a "
-            "further design round that reads the plan as it stands",
+            hint=f"the plan or the feasibility results changed after the reading; record a "
+            f"further design round in which {label} reads the plan as it stands",
         ))  # fmt: skip
     sealed = _check_seal(path, document, number, label, severity)
     report = report.with_findings(*(

@@ -84,7 +84,8 @@ COMMANDS = {
                   "it needs outputs to read against, which an empty project has not"),
     "bind": Zero("every unbound number in the manuscript", exits=2, argv=("bind", "{project}")),
     "build": Zero("the manuscript, once the gates pass",
-                  why="the gates run first, and an empty manuscript fails them"),
+                  why="the gates run first, and an empty manuscript fails them from the drafting "
+                      "stage"),
     "check": Zero("every gate", exits=1, argv=("check", "{project}", "--stage", "drafting")),
     "checker": Zero("the items a co-author is asked to check", exits=2,
                     argv=("checker", "build", "{project}")),

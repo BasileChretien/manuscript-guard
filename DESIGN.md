@@ -1120,10 +1120,11 @@ Seventeen checklists have recipes: STROBE (34 items), RECORD (13), RECORD-PE (15
 (41), SPIRIT 2025 (53), PRISMA 2020 (42) and its abstracts checklist (12), READUS-PV (32)
 and its abstracts checklist (12), TRIPOD in its three variants (31 development, 31
 validation, 37 both), TRIPOD+AI (52) and its abstracts checklist (13), STARD 2015 (34),
-CHEERS 2022 (28) and ARRIVE 2.0 (21). TRIPOD+AI, and CHEERS 2022, are read from tables of
-their statement papers, as Europe PMC serves its full text,
-because no checklist file of it is better than the paper; its recipe says so (`read_from`),
-and records a digest of the table's rows rather than of the file. The three TRIPOD 2015
+CHEERS 2022 (28) and ARRIVE 2.0 (21). TRIPOD+AI and CHEERS 2022 are read from tables of
+their statement papers, as Europe PMC serves their full text: no checklist file of
+TRIPOD+AI is better than its paper, and the file CHEERS's publisher offers did not answer
+an automated download. Each recipe says which it read (`read_from`), and records a digest
+of the table's rows rather than of the file. The three TRIPOD 2015
 recipes record that TRIPOD+AI replaced them (`superseded_by`), and G5 warns a project that
 names one. An eighteenth recipe is not a checklist: SANRA (6
 items), the scale an editor or a reviewer scores a narrative review with, which exists because
@@ -2441,7 +2442,8 @@ wrote is not. Until 2026-10-14 nothing held that line: the header of a filed rea
 "Nothing else here is yours to edit", and turning a `major` into `minor`, rewording a finding
 or deleting it made it stop binding, with nothing in `check` to say so. A reading now carries
 `reading_sha256`, a digest over the verdict, the summary, the rejection tests and each
-finding's `id`, `severity`, `where` and `finding`, serialised as a co-author item is. The
+finding's `id`, `severity`, `where` and `finding`, and its `ask` where it has one,
+serialised as a co-author item is. The
 answers (`resolution`, `resolved_on`, `overridden`) are not in it, and neither is
 `file_sha256`, which the review-panel skill tells a reader to trim to the files they read.
 G11 computes it again and reports `reading-altered` where it differs, as it reports the rest
@@ -2954,8 +2956,9 @@ has not been given counted, round 1 of #250); the day the journal's profile
 and each reporting checklist were read from their sources; and every review finding a
 person chose to leave as it was, with the reason and who decided (`overrides`, from
 `overridden` and `overridden_by` in the review records). Where a record names nobody,
-the manifest says "not recorded". `git` is given 30 seconds, with its file system monitor
-off, and a project outside git says so.
+the manifest says "not recorded". `git` is asked twice, the commit and the state of the
+folder, and given 30 seconds each time, with its file system monitor off; a project
+outside git says so.
 
 The abstract goes in as `abstract.txt` as well, for the box every submission system has for
 it: the section headed "Abstract" with every binding filled in by the value the build
@@ -2966,8 +2969,11 @@ footnote, an image, a table or a figure gets no `abstract.txt`, and `submit` say
 build formats a citation in the journal's style, or as a live Zotero field, and plain text
 written another way would not be what the document says. The main text is read whole
 through pandoc's own tree, so that a footnote defined at its end is a footnote, and the
-abstract is written only where everything in it is words, their emphasis, sub- and
-superscripts, quotation marks and a link that shows its own address; anything else, and a
+abstract is written only where everything in it is words, their emphasis, quotation marks,
+a link that shows its own address, and sub- and superscripts plain text can carry: digits
+and signs are kept as Unicode scripts, a subscript label ("C~max~") and an ordinal's
+superscript ("2^nd^") are written as their letters, and any other (`2^k^`, `e^x^`) leaves
+the abstract out, since written flat it would be another number; anything else, and a
 keywords label inside a paragraph, leaves it out with the reason. Two drafts that read the
 source by pattern each missed a form of citation or footnote, or cut a sentence that
 mentioned keywords, and a draft that read the abstract alone missed a footnote defined
@@ -3026,8 +3032,9 @@ outcome's events, the missing values of each planned variable, the date range, t
 duplicates. At the `design` stage, G12 warns (`feasibility-not-run`) where the plan's
 analysis section says something and no result is emitted under `feasibility.`. It is a
 warning, as the rest of this gate is: an author may know the data from a registry's own
-report. Once the analysis runs, its results say what the data hold, and the question is not
-asked again.
+report. It is asked at the `design` stage only: from the `analysis` stage on, the results
+say what the data hold, and it is not asked, whether anything was emitted under
+`feasibility.` or not.
 
 **A panel reads the plan before there are results.** A review panel reads the manuscript,
 which exists once the analysis has run; by then the design is spent, and a reviewer who says
@@ -3134,7 +3141,7 @@ one. Results with no copy, written before
 the emitters kept one, are a note. The worked example commits its copy beside its plan, as it
 commits its results. Until it did, every run of its analysis left the copy in a file git
 neither tracked nor ignored, which the next `git add -A` would have committed; a test now
-runs the example's analysis and `check` in a checkout of it and fails on any such file. The
+runs the example's analysis and `check` in a copy of its tracked files (skipped outside a git checkout) and fails on any such file. The
 test fixture deletes the copy along with the results, so that its run is a first run.
 
 **A plan says what its design needs.** The seven sections are the same for every plan, so a
@@ -3240,7 +3247,8 @@ the role, an id and the digest of what is signed. For G15 that is every warning 
 model: those of one code on one model are signed together, bound to their messages and to
 the card of each model they name. `manuscript-guard sign --as <person> --finding <id>` writes
 the digest to a file under `approvals/sign-offs/` named by the id, its letters with eight
-characters of its digest, after checking that `--as` names the person the role names. The finding is then reported as information that says who signed it and
+characters of the SHA-256 of the id itself, not of what is signed, after checking that
+`--as` names the person the role names. The finding is then reported as information that says who signed it and
 when, with what they said. A sign-off of something that has changed since, one by someone
 the roles no longer name, and one copied to another finding count for nothing: the warning
 stands, and its hint names who signs it and the command. Unsigned, a warning stays a
@@ -6856,6 +6864,198 @@ Added by the adversarial review, verified and **not** fixed:
   flattened list carried. That block is no longer tagged, so G13 reports the paragraph as no
   longer in the manuscript rather than checking the response against it.
 
+Recorded by review, judged contrived or rare by the reviewer that found each, and left
+(2026-10-19). Each is named so that it is not trusted beyond it:
+
+- **Review panels and their records.** A provider is judged by its name, so a router such as
+  OpenRouter or a local Ollama, which serves models of several families under one name, is
+  warned of as one provider (`round-one-provider`) though its models are not one family. A
+  remit that speaks of "chart review" or "medical charts" is taken to ask for the figures.
+  A superseded round's own new warnings are not lowered, only `review-stale` and
+  `review-uncovered`. An unreadable plain record drops the overrides of the named readings
+  beside it, and is called "a record". A design reading by a reviewer not on the panel, and
+  a design round folder with no panel, are passed over; a design reading is superseded by its
+  reviewer and reader, not by its remit, and a stale plain record only by a later plain
+  one. An override's digest is of the finding and the reason, not of `where`, `ask` or
+  `overridden_by`. A named design reading is opened at the path its name gives, so a file
+  system that tells case apart reads one filed under other capitals as missing, and two
+  files under one slug go unsaid (G11 finds both in a manuscript round); a misfiled reading is named by its slug where its overrides are
+  listed. A reader named O'Brien makes the printed hint unparsable. The design remit is
+  looked up outside the record's lock, and a panel that is a YAML list raises. `review
+  --design` passes over `--digest` and `--files`, and says nothing for a project with no
+  design round. The plan sent and its `plan_sha256` come from two reads.
+- **Sign-offs and approvals.** One authorisation is given per provider, so a cloud model
+  added later to a provider already authorised goes unasked, and a `-cloud` model added to
+  a local provider voids the sign-off with the message of any other change. No test calls
+  the backstop with a model that has no sign-off standing. The text "manuscript-guard
+  approve" in a search draws an extra prompt. An approval that cannot be parsed stops
+  `submit` after the pack is written, and one that breaks the schema is printed as a
+  failure and not acted on. Approvals are not guarded against `cp` or `rm` from a shell.
+  Two authors of one name with neither ORCID nor e-mail share a file, an e-mail differing
+  only in characters outside `[\w.@-]` folds into another, a duplicate ORCID is not
+  flagged, and a very long name or a device name (`Con`, `Nul`) can make no file. The
+  unsigned checklist in the pack does not say whether a sign-off was void or never made.
+- **The literature and its lookups.** Citation keys that differ only in case are filed
+  apart or not found, by the file system. `[x?]+` in pages takes Roman page numbers for a
+  placeholder; a Crossref `component` always fails, a cited supplementary item included;
+  `\textregistered` and `\textdegree` keep their names in a title, `{\'\i}t` reads as
+  `\it`, a footnote letter in `<sup>` joins the word before it, and a kind of notice
+  Crossref adds later passes. A quote in Chinese, Japanese, Korean or Thai, written without
+  spaces, counts one or two words and is always too short; a value quoted from a table row,
+  with no sentence, is warned of. A quotation in the prose with a citation or a binding
+  inside its marks, a block quotation's `>`, an unpaired straight `"` (5' 10") or
+  mismatched curly marks can be warned of wrongly. A data statement's DOI is cut at `<` in
+  a SICI DOI, and a closing `'`, `’` or `_` is kept on it.
+- **What `impact` reads.** Figure scripts are found in the scripts folder only, not below
+  it, figures only where a `results.` key exists, and a figure file, where no render record
+  names it, only by its script's stem and as `.svg`, `.pdf`, `.png`, `.tif`, `.tiff`, `.jpg`
+  or `.eps` (not `.jpeg`, `.gif` or `.webp`); answers are matched by file name, and readings G11 does not judge are
+  listed. `--since` placed before `--` can carry an option. A folder named lists only the
+  readings of the whole manuscript, and a file name that is not UTF-8 is shown with
+  replacement characters on Linux.
+- **Typed releases of a dictionary.** Any number equal to the release within 60 characters
+  after the dictionary's name is taken for it, and a second release overlapping the first
+  ("2025" in "Global B3 March 2025") draws a second finding. A slug with a doubled or
+  trailing underscore ("MedDRA®") is never found. A `release_file` outside the project
+  raises in Python at `write()` and is recorded by its absolute path in R, and R looks for
+  a relative one in its working directory first.
+- **Figure estimates.** `def std(values):` is read as a call; an `.Rmd` or `.qmd` is lexed
+  as R throughout, its Python chunks missed and "sample (" in its prose read; a form feed
+  counts as a line break for one count and not the other. `stripplot` is not marked seeded,
+  `geom_jitter(position = "jitter")` passes quietly, and R's `rt`, `rchisq`, `rlnorm`,
+  `rnbinom`, `rweibull` and `sample.int` are not among the draws.
+- **Figure files.** With no `widths_mm` in the profile and no `print_width_mm` beside the
+  figure, resolution, height and shrinking are not checked;
+  72 dpi written as a placeholder gives an absurd shrink, and EXIF's resolution is not
+  read. Any "Figure N" paragraph after the placeholder counts as its legend, a figure
+  placed twice is reported twice, the whole file is read for its header, a size, height or
+  shrink rounded for print can show the limit itself, and a header of zero pixels gives no
+  finding.
+- **Figures drawn as SVG or PDF.** In SVG, `rem` of an inherited size, `visibility` and
+  `opacity` that hide text, a `tspan`'s tail, and a width of 100% with no `viewBox` (read
+  as 16 units) are not read as a browser would; `@media` and `@supports` apply always, a
+  child combinator matches as a descendant, and `font-size` and the `font` shorthand are
+  not ordered. A run of `{` before one `}` is read again from each brace. In PDF, forms whose
+  resources name each other in a ring, of two or more, or name the page's own, are followed
+  until Python's recursion limit raises; a
+  `MediaBox` written as a number or a name, which page is first, an inline image's `EI`
+  inside its data, and a form decoded once per use are not handled.
+- **Study designs and their plan sections.** A section is found by words of its heading:
+  "Trial monitoring" answers interim analyses, a bare "Measures" answers the measure, and
+  "Risk interval", "Events of interest", "Definition of cases", "Case-finding",
+  "Comparison", "Reference database", "Control group", "Background population", "Signal
+  definition", "Cases/controls" (which finds controls and not cases) and "Case/control
+  selection" are not found. A guideline counts by its name's start, so PRISMA-P or an
+  abstracts checklist counts for PRISMA, and a trial protocol that declares SPIRIT 2025 is
+  told to declare CONSORT.
+- **Planned results.** A nested subsection also titled "Planned results" is read twice, a
+  dotted code span (`data.table`, `table1.csv`) is taken for a key, and a key copied with
+  its braces is skipped. At the analysis stage every planned key not yet emitted warns, by
+  design. A feasibility fragment that fails its schema is dropped, and the warning says
+  nothing was emitted.
+- **Checklists transcribed from a paper.** A `jats-table` recipe with no `rows_sha256`
+  transcribes unchecked; `table:` is read for a Word recipe too; an `.xml` fetch accepts a
+  page with `<article` in its first 4096 bytes; a recipe's name is matched in its case on
+  Windows. In a JATS table, a column span over an earlier row span, a nested table, rows of
+  `tr` outside `tbody`, a footnote's superscript in a cell, a byte-order mark or a
+  single-quoted PUBLIC literal before an external DOCTYPE, `<!DOCTYPE` inside CDATA or a
+  comment, and a NUL in the first kilobyte (called "not UTF-8") are not read as they are.
+  `transcribe` does not catch a source that cannot be read for its permissions or is a
+  folder.
+- **A journal's quoted rules.** "twenty-four" states 4, "3 500" states 3, "123 456" states
+  456, and a quote in Chinese or Japanese, or before a footnote digit glued to it, is
+  refused. An HTML entity, a soft hyphen or a word broken across lines in the stored page
+  is not folded. A page that is not UTF-8, or a folder, is called not stored. An empty
+  `abstract_headings` needs its quote where an empty `required_sections` does not, and a
+  negative limit is not held to its quote. A profile is not checked against its schema
+  before its target is read, and `journal --reread` says an unreadable profile names no
+  journal and diffs a missing page as empty. `references: "x"` raises in `style`, which the
+  schema already fails. A style named `x.yaml` would share a path with another's record.
+- **Journals on the shortlist.** A nine-character ISSN that is no ISSN ("1234 567X") is
+  kept, fails its schema and stops the lookup.
+- **Citations inserted in Word.** A narrative `@a` and a suppressed `[-@a]` share one
+  identity, and both are left out of the record when both appear; a field whose end lies in
+  a deletion and whose start does not is never closed; nested `EN.CITE` fields lose the
+  outer XML and a field split across paragraphs is not seen. Without the build's record,
+  the build's own Zotero fields are reported as a co-author's. Corporate, TeX-accented and
+  particled names lose the key suggestion, titles in NFC and NFD do not match, and deeply
+  nested CSL JSON could raise. `--csl` is passed over for a document built offline by
+  default or live. More than about 500 narrative citations make the command line too long
+  for Windows. A release before this one reads a record with `citations` as no record.
+- **Text structure.** On Linux, `Main.MD` is said to be an `.md` file that is not read. Of
+  several files, the Methods heading is chosen by name within each file, so an earlier
+  file's "Overview of existing methods" wins over a later "# Methods"; "II. Results" is not
+  set aside. A Lancet "# Summary" with no `abstract_title` is taken for the title, and a
+  Discussion's "Findings in context" or JAMA's "### Findings" reports. A pointer "in
+  Appendix 1" or "in Supplementary Material" after its number is not read as the
+  supplement's, "S" carries only across a range, and a reference-style image, a one-column
+  pipe table, a table set as an image and `\begin{tabular}` are not seen as placed by hand;
+  a caption directly under a heading line counts as a citation.
+- **Placeholders.** "47,XXX reports" (a count in the forty thousands) is read as a
+  karyotype, the karyotypes 69,XXX and 92,XXXX as gaps; a bracketed translated title that
+  opens with an instruction's verb, or holds a to-come word in capitals, fails in a cited
+  entry; "[Your ...]" is not read in a caption, nor "fill in later" or "replace later"
+  followed on its line by anything but a stop, a bracket, a colon, a semicolon or a comma: a
+  pipe table's `|`, "?", "!", a quotation mark, a dash or an asterisk.
+- **Scripts the gates do not read.** Front matter and image captions are not counted; a
+  citation key that opens with a CJK character is counted as prose; 々, 〆, 〇, CJK Extensions
+  G to I, the compatibility supplement, Hangul Jamo Extended A and B and half-width Hangul
+  are not among the blocks.
+- **The submission pack.** `**Keywords**` with no colon is not cut from `abstract.txt`; an
+  abstract heading inside a Div is not found and the abstract is left out without a word;
+  "Abstract screening" is taken for the Abstract's heading; an e-mail autolink is refused
+  as a link with words of its own. The build exits 0 where its own document is
+  `docx-unreadable` to the blind check.
+- **Blinding.** "J.-P. Example", "Van der Berg" at a sentence's start and an APA "A.
+  Example, 2019" in the text are not read as written; a figure in the supplement only is
+  reported against `manuscript.docx`; an SVG with an internal subset is read as empty with
+  no warning; a malformed `styles.xml` is `docx-unreadable` rather than read as
+  "Bibliography".
+- **Revision rounds.** With `paths.manuscript` at `.`, the submitted copy is part of the
+  manuscript; the copy is written after the round, so a manuscript that is not UTF-8 fails
+  once the round exists; a "Results" sub-heading in the Abstract answers `section:
+  Results`.
+- **Hooks.** An `attested.yaml` that cannot be read gives no prompt, and an Edit whose
+  `old_string` uses curly quotes may pass unasked (not confirmed live).
+- **The emitters.** R lists lockfiles in their case on Windows (`Requirements.txt` is not
+  seen); an empty lockfile's digest has not been compared between R and Python, nor R's
+  `validUTF8` with Python's decoder on overlong, surrogate and out-of-range forms. A path
+  given to R's `add_input` as a factor is recorded, and its `restricted` or `synthetic` mark
+  is lost, so G1 says nothing of a restricted file git tracks. A `.txt` input is digested
+  as its bytes, so a copy checked out with CRLF line ends reads as changed.
+- **The plan's sections.** A heading "### Standard deviation of the dose" is read by G12 as
+  a Deviations section.
+- **Inputs kept by Git LFS or git-annex.** Results written from an analysis run on an
+  unfetched pointer read as `input-changed`; a pointer's size written as "²" raises; a
+  large input is hashed twice.
+- **Assurance and verify.** A gate stopped by an unreadable manuscript is said to have read
+  nothing rather than not to have run, and G0's and the build's findings fall in no
+  dimension. Verification is stale against results fragments only, not scripts or data;
+  round folders are counted without their panel, the last round is not said stale, a folder
+  named with a superscript digit raises, and an error writing `build/verify.json` is a
+  traceback after `verify` printed. A results fragment whose `values` is a list raises
+  after the report, which its schema check fails already.
+- **The plugin's own tests.** A code-shaped string in a skill's text counts as a code it
+  names, a description's list of codes is read by shape, `--yes` is looked for in one
+  fragment, only `pip install` counts as an install, `venv/` is not skipped and `build/` is
+  at any depth, and `Invoke-Expression (...)` called on a download,
+  `WebClient.DownloadString`, `sudo -E bash` and `| python3` are not among the forms of a
+  download run. A grader's keys are checked against every type's together, a hook's refusal
+  messages are checked for the commands they name without the `mguard` alias, an
+  `input_match` is not required of every Skill grader, and the last sentence is found only
+  after ". " before a capital. The frozen-plan loop test is skipped where `git ls-files`
+  fails, and from an sdist inside another repository it copies nothing.
+- **Skills copied for other agents.** `--remove` takes away a user's folder identical to a
+  skill `install-skills` recorded; a link to a file counts as its target's content, and a
+  link to a folder or an empty folder inside a skill is not in its digest; an error partway
+  through `--remove` does not list what went; `--verify`
+  prints the remover's version for a stamp kept; an older release calls such a stamp newer.
+- **Test fixtures.** `_keeps_data`, called twice, writes `data_custodian` twice under
+  `roles:`; the generator always draws a P beside the subtypes' label, the bare label held
+  by a corruption case only; a header row of a bare "P", "<", "0" or "1" passes as a P
+  column, while a negative SMD, a P with a footnote and "NS" are refused; a docx `gridSpan`
+  has no upper bound.
+
 Closed since, and why each mattered:
 
 - **The header's title was read by line, and the warning of two titles was wrong on any
@@ -7374,7 +7574,8 @@ Closed since, and why each mattered:
   title's TeX accents and commands are read as letters: `Caf\'e` is two words.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
   citation, no reporting guideline, no analysis code, no fitted model or no revision round
-  has nothing for G3, G10, G7, G8r, G9, G15 or G13 to read, and each passes with its count
+  has nothing for G3, G10, G7, G8, G8r, G9, G12, G15 or G13 to read, and each passes with
+  its count
   at 0. The reason for each is written in `tests/test_reads_nothing.py`; a gate whose
   input is missing by mistake rather than by design is caught only where another finding
   depends on it (no results is G0's `no-results`, no manuscript is `manuscript-empty`).
@@ -7402,7 +7603,8 @@ Closed since, and why each mattered:
   asked; the record is as old as the day it was asked. A journal's being open access is the
   shortlist's word (`open_access: true`), not read from DOAJ. The target journal is matched
   to the shortlist by its profile's slug or its name, so a candidate named otherwise than
-  its profile is not found. The record's digest catches an edit, not someone who computes it
+  its profile is not found, and a note says only that (`journal-target-not-shortlisted`):
+  the decision is not taken for the target, since it may name another journal. The record's digest catches an edit, not someone who computes it
   again.
 - **A lookup record is kept beside what it describes, so it catches an edit, not a
   forger.** `answers_sha256` is in the record it digests: an answer edited by hand is
@@ -7441,9 +7643,10 @@ Closed since, and why each mattered:
   `check` does not read it.
 - **`review --seal` goes on its own, and is not told so of every flag.** It refuses
   `--record`, `--record-figure`, `--providers`, `--run` and `--dry-run`. `--digest` with it
-  is answered first and nothing is sealed, and `--verdict`, `--summary`, `--by`, `--remit`
-  and `--files` are passed over. The command `review --record` prints for sealing puts the
-  reader's name in double quotes, which a name holding `"` or `$` would break.
+  is answered first and nothing is sealed, and `--verdict`, `--summary`, `--by`, `--remit`,
+  `--files`, `--submission`, `--one-each` and `--yes` are passed over. The command
+  `review --record` prints for sealing puts the reader's name in double quotes, which a
+  name holding `"`, `$`, a backtick or, in bash, a backslash would break.
 - **A plain record is not checked against where it is filed.** A named reading must say
   the reader, the reviewer and the round its place says. `<reviewer>.yaml` is read as it
   always was: its `reviewer` and `round` fields are not compared with its place, so a
@@ -9186,7 +9389,10 @@ Closed since, and why each mattered:
   written first; nor can a plan changed between writing the analysis and running it. Any
   change to the Deviations section, a word or a date, satisfies the check, whatever it says.
   The copy is in version control like the plan, and a person can delete it; the next run then
-  freezes the plan as it is. A plan that is not UTF-8 text is not frozen until it is.
+  freezes the plan as it is. A plan that is not UTF-8 text, or that holds a NUL, is not
+  frozen until it is put right; one saved in UTF-16 with no byte-order mark decodes as
+  UTF-8 where its text is ASCII, so G12 does not say it is not UTF-8, and the
+  `plan-not-frozen` hint, that the emitter keeps it on the next write, is not true of it.
 - **G6's thresholds are measured on people only, in one field.** Each rate's threshold is
   the 99th percentile of 291 biomedical research articles of 2010 to 2022 (see "The
   AI-writing lint measures rate, not presence"), so about one paper by people in a hundred
@@ -9417,8 +9623,9 @@ Closed since, and why each mattered:
   figure typed against a letter is part of a name, so a threshold typed against the word
   before it with no space, `power80%` or `caliper0.2`, is read as a name and neither rule
   sees it either.
-- **Download links rot.** All fourteen work today, verified by a clean-room fetch and
-  transcribe, but two needed a second attempt and none of these addresses is stable. The
+- **Download links rot.** Each recipe's worked when it was written, the first thirteen and
+  SANRA verified by a clean-room fetch and transcribe, but two needed a second attempt and
+  none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible
   wrong transcription, which is the best that can be done about it.
 - **TARGET and CARE have no recipe.** TARGET (2025) sets items 6 and 7 side by side in one
@@ -9426,7 +9633,8 @@ Closed since, and why each mattered:
   item to a row: a recipe would drop item 7. Its statement states no open licence, so its
   recipe would be one to download and use, not to share. CARE (2013) writes its sub-items
   as "a)", each on a row of its own with bullet rows under some, which no recipe option
-  reads, and no copy of it carries a clean CC BY: The BMJ's and Global Advances' copies are
+  reads, and no copy of it carries a clean CC BY: BMJ Case Reports' and Global Advances'
+  copies are
   non-commercial and non-derivative, the copy in the Journal of Medical Case Reports names a
   licence by an address that is not one, and the CARE site's badge is CC BY-NC.
 - **A paper's table is read only from Europe PMC's JATS.** A statement paper without an open
@@ -10676,7 +10884,8 @@ Closed since, and why each mattered:
     read as a sign, and a quoted paragraph rewrapped before its own sign loses it. The ">"
     of a folded value in the front matter, `abstract: >`, is read as the sign of the first
     number under it; G2 asks for the abstract under a heading instead. "=>" is the head of
-    an arrow, though some authors type it for "≥": "age => 18" made "age 18" passes.
+    an arrow, though some authors type it for "≥": "age => 18" made "age 18" passes, and
+    so do the full-width "＝＞" and "=＞".
   - A number spelt out, "3" made "three", is reported as gone, and so is a thousands
     separator taken out. The edit may be harmless; nothing here decides that.
   - Where a fact stands more often or less often than it did, which of them came or went

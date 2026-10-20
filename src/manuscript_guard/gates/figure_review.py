@@ -39,7 +39,9 @@ REQUIRED_CHECKS = {
     "values-match-results": "every number shown matches the results file",
     "axes-labelled-and-scaled": "axes carry units, and any log or truncated scale is declared",
     "caption-agrees": "the caption describes the figure that is actually drawn",
-    "legend-and-marks-explained": "every mark, colour and series is accounted for",
+    "legend-and-marks-explained": "every mark, colour, line style and series is accounted "
+    "for, and the legend states n, what the error bars are, any smoothing and what each "
+    "significance marker means",
     "no-unexplained-number": "nothing appears that is neither a result nor part of the scale",
     "scale-not-misleading": "the visual encoding does not overstate the finding",
     "readable-and-accessible": "legible at print size, and not dependent on colour alone",

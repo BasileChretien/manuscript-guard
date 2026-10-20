@@ -1033,7 +1033,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     )
     if inserted:
         # Only the paragraphs compared, `known`, which goes by the names they have now: one
-        # that is not is said to be so below, and named in a refusal it had no file.
+        # that is not is said to be so below, and is named in a refusal as having no file.
         plan = _refused_inserted(
             plan,
             {
@@ -2342,8 +2342,8 @@ def cmd_submit(args: argparse.Namespace) -> int:
     blind = merge_all([check_blinded(project, path) for path in packed])
     if not blind.ok:
         print(blind.render(project.root))
-        print("\nThe document names an author, and the journal's review is blind. The pack is "
-              "not assembled.")  # fmt: skip
+        print("\nThe document names an author, or could not be read to tell, and the "
+              "journal's review is blind. The pack is not assembled.")  # fmt: skip
         return 1
 
     try:
@@ -2551,7 +2551,7 @@ def cmd_style(args: argparse.Namespace) -> int:
     print(
         f"stored {name}"
         + (f", and {parent['style']}, the style it depends on," if parent else "")
-        + f" in {where}/; an offline build formats with it"
+        + f" in {where}/{name}/; an offline build formats with it"
     )
     licence = record.get("licence") or (parent or {}).get("licence") or "see the files"
     print(
@@ -2568,15 +2568,19 @@ def _journal_style(project, args: argparse.Namespace) -> Path | None:
     if args.csl is not None or not getattr(args, "offline", False):
         return args.csl
     from manuscript_guard.gates.journal import _profile
-    from manuscript_guard.journal_style import profile_style, stored
+    from manuscript_guard.journal_style import profile_style, read_record, stored, style_name
 
     document = _profile(project)
     named = profile_style(document) if document is not None else ""
     found = stored(project, named) if named else None
     if named and found is None:
+        # One never fetched is not one changed since (round 1 of #322: both were said to be).
+        name = style_name(named)
+        kept = bool(name) and read_record(project, name) is not None
+        said = "is not kept as it was fetched" if kept else "is not kept"
         print(
-            f"the journal's citation style {named} is not kept as it was fetched, so citations "
-            "are in pandoc's default style; `manuscript-guard check` says why"
+            f"the journal's citation style {named} {said}, so citations are in pandoc's "
+            "default style; `manuscript-guard check` says why"
         )
     return None if found is None else found.path
 

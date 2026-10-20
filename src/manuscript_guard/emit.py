@@ -396,9 +396,10 @@ def freeze_plan(root: Path, script: Path | str) -> Path | None:
     finds it and leaves it.
 
     A plan that is not UTF-8 text, or that holds a NUL as one saved in UTF-16 does, is not
-    kept: G12 says it is not UTF-8 (`plan-not-utf8`), and the first run after it is put
-    right keeps it. R cannot hold a NUL in a string, and stopped there with the results
-    already written (round 1 of #271).
+    kept, and the first run after it is put right keeps it. G12 says a plan is not UTF-8
+    (`plan-not-utf8`) where its bytes do not decode; UTF-16 with no byte-order mark, of
+    ASCII text, decodes, NULs and all, and is not said to be. R cannot hold a NUL in a
+    string, and stopped there with the results already written (round 1 of #271).
     """
     plan, frozen = root / PLAN, root / FROZEN_PLAN
     if not plan.is_file() or frozen.exists():

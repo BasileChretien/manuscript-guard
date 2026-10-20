@@ -162,6 +162,10 @@ def test_a_design_run_files_a_design_reading_for_each_reviewer_and_model(
         assert document["reader"] in (MODEL_A, MODEL_B)
         assert "reading_sha256" in document and "manuscript_sha256" not in document
         assert [finding["id"] for finding in document["findings"]] == ["d1-01"]
+        # Round 1 of #316: the header named `review --run`.
+        assert path.read_text(encoding="utf-8").startswith(
+            "# Filed by `manuscript-guard review --design --run`"
+        )
     panel = yaml.safe_load((planned / "review" / "design" / "panel-1.yaml").read_text("utf-8"))
     assert panel["rationale"].startswith("Starter design panel")
     assert [reviewer["readers"] for reviewer in panel["reviewers"]] == [[MODEL_A, MODEL_B]] * 2

@@ -1005,8 +1005,9 @@ def _submission_refusal(root: Path, *, named_from: Path | None = None) -> str | 
 
 #: How long the session start and the stop wait for the gates. The agent tool stops a hook at
 #: the timeout hooks.json gives it, 60 s for both, and drops what it would have said. The
-#: 15 s left are for starting Python, noting the files and saying that the check did not
-#: finish. Noting the files has no limit of its own (DESIGN.md, Known gaps).
+#: 15 s left are for what comes before the gates (starting Python, the session start's notice,
+#: loading the project where its folders are not noted, noting the files) and for saying that
+#: the check did not finish. Noting the files has no limit of its own (DESIGN.md, Known gaps).
 CHECK_LIMIT = 45.0
 
 #: The gates a hook stopped waiting for. `main` ends the process without them.

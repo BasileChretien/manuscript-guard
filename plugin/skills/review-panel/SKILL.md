@@ -38,6 +38,30 @@ One remit is worth a reviewer of its own on most papers: **contradiction**. Wher
 say something was done and the Limitations, the Discussion or the registration say otherwise,
 neither section's reader notices, because each reads its own part.
 
+A paper that rests on its references needs a second: **citation support**. G7 checks that a
+quoted number is in its stored source, and the lookup that a cited work exists and was not
+retracted. Neither asks whether the work says what the sentence citing it says. A tool cited
+to the wrong paper passes all of them: a deep-learning epigenetic clock cited to another clock
+paper from the same year, on the same subject, both real.
+
+Read this remit by route A, in the session, and never by route B: `review --run` sends
+nothing under `literature/`, by design. If your tool can start a fresh agent, have that one
+read it, not the context that drafted the prose, which reads into a source what its own
+sentence meant. Give it an id such as `citation-support` and the remit "whether each cited
+work says what the sentence citing it says". Hold each sentence that cites a work against
+that work's stored source under `literature/sources/`, and report:
+
+- a named tool, method or finding cited to a paper that does not introduce it;
+- the wrong population, denominator, subgroup or year;
+- a claim stronger than the source: a hedge dropped, an association stated as a cause;
+- a review cited for a finding that belongs to a primary study.
+
+Numbers in the ledger are left to G7, which checks them better. A citation whose work has no
+stored source, or one nothing can read, is unchecked, never supported: list those citations
+in one `comment` finding, so that a reading with few findings is not taken for one that
+checked every citation. The reading does not replace a co-author's check of the same
+sentences (the co-author-checking skill). It is filed, sealed and answered like any other.
+
 Write it to `review/panel-<n>.yaml`, including *why* each reviewer is on it. Two reviewers
 with the same remit are one reviewer.
 
@@ -150,8 +174,9 @@ What each model is sent is the paper's title, keywords, journal and guideline, t
 profile and reporting checklist where the project has them, every manuscript file with its
 numbers and tables as a reader sees them, and that reviewer's role and remit. Figures are
 not sent, so a model's reading says nothing about them: G11 warns (`figures-not-seen`) when a
-model passes a remit that covers figures. The authors, the results files and the earlier
-rounds are not sent either.
+model passes a remit that covers figures. The authors, the results files, the stored
+sources under `literature/` and the earlier rounds are not sent either, so citation support
+is not a remit for a model read this way (step 1).
 
 The models of one provider share their blind spots. G11 warns (`round-one-provider`) when
 every reading of a round came from one provider; a model of another provider, or a person,

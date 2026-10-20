@@ -3372,7 +3372,9 @@ The original brief asked for skills **and hooks**. The skills came first and the
 outstanding for seven phases, which was the wrong order: a skill helps when you remember to
 invoke it, and a hook helps when you do not.
 
-Four hooks, chosen because each catches something at the only moment it is cheap to catch:
+Five hooks. One says where the manuscript stands when a session starts, and one says it again
+when a turn ends that changed what the gates read (below). The other three were chosen
+because each catches something at the only moment it is cheap to catch:
 
 - **Before a write**, refuse edits to `results/`, `build/` and generated checklist profiles.
   This is the direct mechanical form of "the latest results are always used": the file
@@ -3543,11 +3545,64 @@ in and in the UTF-8 the tool reads it as, and a test holds it to ASCII.
 **A hook blocks only what is unambiguous.** Writing a machine-written results file is always
 wrong. Prose that trips the AI-writing lint is not, so nothing in G6 is enforced this way.
 
+**At the end of a turn, the line the session started with.** An agent ends a turn by saying
+what it did, and "the Results now give the odds ratio" reads the same whether or not the
+gates agree. The stop hook puts their answer beside it: at the end of a turn that changed a
+file the gates read, the person is shown the session start's line, with the stage and how
+many findings fail and warn. It is shown, and that is all (`systemMessage`). The turn ends as
+it would have, with failures if there are any, since a drafting session ends with some, and
+the agent is not sent back to work, as a stop hook's `decision: block` would send it. The
+idea is phd-skills' (github.com/fcakyon/phd-skills): its stop hook has a model with a fresh
+context read the turn for claims that go beyond their evidence. This is the half of that
+which needs no model.
+
+Whether the turn changed anything is read from the files, not from the record of the turn
+that Claude Code hands a hook in `transcript_path`. That record names a file an edit wrote
+and not one a shell command wrote, and the analysis writes its results through a shell
+command; its format is Claude Code's own and undocumented, and Codex's is another. The
+session start notes each file of `manuscript`, `analysis`, `results`, `figures` and
+`literature`, wherever `paths:` puts them, and `paper.yaml` and `authors.yaml`: its size, the
+time it was written and the SHA-256 of its bytes. Each stop notes them again and compares. A
+file is read again only where its size or time has moved, so a stop at which nothing changed
+lists the folders and reads nothing, and a file saved with the same bytes is no change, as
+it is none to G1. Hidden files and Python's `__pycache__` are not looked at: an editor's lock
+file beside `main.md` is not the manuscript. The note is kept in the folder for temporary
+files, one for each session and project, so that a hook writes nothing in the author's
+project. It holds the folders `paths:` names as well, and the project is asked for them again
+only once `paper.yaml` has changed: asking loads the project's schemas, about half a second
+at the end of every turn. With them noted, a stop at which nothing changed costs Python's
+start and a listing, 0.2 to 0.4 s on the author's machine under other sessions' load. Where
+there is no note, because the session start was cut off or found no project at the folder it
+was sent from, the first stop notes the files and says nothing. A turn counts from the last
+stop, not from the person's message, so an edit made by hand between two turns is counted in
+the next one. Basile chose these on 2026-10-20, over every file of the project, size and time
+alone, the record of the turn, and a sixth hook at each message to note the files there.
+
+**A check that takes too long is said to have.** An agent tool stops a hook at the timeout
+`hooks.json` gives it, 60 s for the session start and for the stop, and drops what the hook
+would have said. The session start used to wait for the gates until then, and a project whose
+check took a minute started its sessions with no line, and nothing said why. Both now run the
+gates on a thread of their own and wait `CHECK_LIMIT`, 45 s. Past it they say that the check
+of the project did not finish and to run `manuscript-guard check`, and the process ends
+without waiting for the gates, which leaves time to start Python and look at the files.
+`tests/test_hooks.py` holds the limit ten seconds under each timeout.
+
+**Under `claude -p` the stop does nothing.** Nobody reads what a hook shows there, and the end
+of a scripted run is not held up for a check. Claude Code tells a hook so in two variables it
+does not document, seen with 2.1.303: `-p` sets `CLAUDE_CODE_SESSION_ATTENDED` to `0`, and
+`CLAUDE_CODE_ENTRYPOINT` to `sdk-cli` unless a Claude Code above it has set that already. A
+`claude -p` started from a desktop session keeps that session's `claude-desktop`, so either
+sign is enough. The same run showed that Claude Code delivers a stop hook's `systemMessage`,
+as a notice that names the hook ("Stop says: ..."), and goes no further with the turn. Codex
+has the event too (`codex-rs/hooks/src/events/stop.rs`, read 2026-10-20). It sends
+`session_id` and `cwd` as Claude Code does, shows `systemMessage` as a warning, and fails a
+hook whose answer holds a field it does not know: the stop answers with that one field.
+
 **The same hooks read Codex's input.** Codex runs hooks under the event names Claude Code
 uses, takes the same output, and matches a file edit under the names `Edit` and `Write`, so
-`plugin/hooks/hooks.json` is one file for both. Two of the four hooks, the session start and
-the submission guard, receive what they receive from Claude Code. The difference is a file
-edit, which the other two read. Codex makes it with one tool,
+`plugin/hooks/hooks.json` is one file for both. Three of the five hooks, the session start,
+the stop and the submission guard, read what they read from Claude Code's event in Codex's.
+The difference is a file edit, which the other two read. Codex makes it with one tool,
 `apply_patch`, and hands the hook the text of the patch in `tool_input.command`, with no
 `file_path`. The files are named in the patch's headers, relative to `cwd`, and one patch may
 write several.
@@ -7654,6 +7709,20 @@ Open, recorded as each change landed:
   script that was changed and moved out of `analysis/` gets no reminder, since it is read
   where it now is; and a file updated by one hunk and moved away by a later one is still
   named where it no longer is.
+- **The stop watches five folders and two files, and counts from the last stop.** A turn that
+  writes only elsewhere, a review record under `review/`, the plan under `design/`, an
+  approval or a journal's profile, ends with no line, though `check` reads those too and its
+  count may have moved. An edit the author makes by hand between two turns is counted in the
+  next, which then ends with the line whatever the agent did in it. A file whose size and time
+  are both as noted is not read again, so a write that keeps the size and lands within the
+  step the file system records times in (two seconds on FAT) is not seen. A note is not
+  removed when its session ends: one small file for each session and project stays in the
+  folder for temporary files, for the system to clear. Which sessions are `claude -p` is read
+  from two variables Claude Code does not document; if they go, the stop runs there as in a
+  session, checks at the end of a scripted turn, and shows its line to nobody. Under Codex
+  the stop is read from Codex's source and has not been seen in a session, and `codex exec`
+  is not told apart from a session. A check given up on after 45 s ends with the hook's
+  process, and a program it started, pandoc for one, runs on until its own limit.
 - **On Windows every hook misread a name outside ASCII.** The event was read from standard
   input as text, which on Windows is the system's ANSI code page, what Python gives a pipe,
   and not the console's (so `chcp 65001` changed nothing), and the tools write it as UTF-8

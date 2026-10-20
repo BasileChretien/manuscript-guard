@@ -320,9 +320,10 @@ should send you to them.
 | `submission-pack` | everything the journal asks for, and the covering letter |
 | `paper-audit` | a paper that was not written with this toolkit |
 
-Four hooks: one line on the project's state when a session starts, a refusal to edit files
-that are machine-written, a note on the numbers just saved in a manuscript file, and the
-submission check before a command that looks like a submission.
+Five hooks: one line on the project's state when a session starts, and again at the end of
+a turn that changed the manuscript or what it rests on; a refusal to edit files that are
+machine-written; a note on the numbers just saved in a manuscript file; and the submission
+check before a command that looks like a submission.
 
 ### Codex
 

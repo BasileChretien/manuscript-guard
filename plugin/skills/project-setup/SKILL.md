@@ -164,7 +164,7 @@ Each finding names a code. The code says where to go:
 ## 6. What the hooks do in a project
 
 Not every agent tool runs hooks, and one that does may ask you to approve them first. Where
-they run, four hooks act in any directory that has a `paper.yaml` above it. Where they do
+they run, five hooks act in any directory that has a `paper.yaml` above it. Where they do
 not, nothing below happens at the moment of the mistake. `check` still reports an edited or
 stale results file and an unbound number afterwards, and `submit` still refuses a manuscript
 that fails the submission check. Two things are then caught by nothing: a generated
@@ -189,6 +189,10 @@ check, so run `manuscript-guard check --submission` yourself before a manuscript
   with `--stage submission`. The refusal shows the first eight
   failures; `check --stage submission` runs the same check without the hook and lists them
   all.
+- At the end of a turn that changed a file in `manuscript/`, `analysis/`, `results/`,
+  `figures/` or `literature/`, or `paper.yaml` or `authors.yaml`, the line of the session's
+  start again, with the counts as they now are. It is shown to the person and not to the
+  agent, and blocks nothing.
 
 ## If you are a model doing this
 

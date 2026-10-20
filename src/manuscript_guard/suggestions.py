@@ -18,7 +18,9 @@ to go. An edit is dropped, and says why, unless every one of these holds:
   printed it. Pandoc's typesetting is read as what it is: a straight quote in `old` finds a
   curly one, `--` an en dash, a space a line break or a no-break space;
 - the edit is prose: `reworded`, comparing the paragraph before and after, finds nothing to
-  say of a binding, a citation or a typed number;
+  say of a binding, a citation or a typed number. What it says of how strongly a sentence
+  claims (`claims.py`) drops nothing: the edit is written, and its comment says so after
+  the finding, so that the author sees the move where they decide it;
 - accepted in Word, the edit comes back into the source as written. The paragraph as Word
   would return it is merged by `roundtrip.align`, the merge `import` makes, and the result
   must be the source with `old` replaced by `new`, line wrapping aside. A merge rebuilds an
@@ -35,7 +37,7 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 PER_READING = 10
@@ -106,6 +108,13 @@ class Placed:
     #: Where `old` is in its paragraph's source.
     start: int = 0
     end: int = 0
+    #: What `reworded` says the edit does to how strongly its sentence claims, if anything.
+    claim: str = ""
+
+    @property
+    def comment(self) -> str:
+        """The Word comment over the edit: its finding, and the move of a claim it makes."""
+        return f"{self.edit.comment} {self.claim}" if self.claim else self.edit.comment
 
 
 @dataclass
@@ -316,7 +325,7 @@ def _comes_back(
 ) -> str:
     """Why the paragraph `name`, with `edits` accepted in Word, would not come back into
     the source as written; empty if it would."""
-    from manuscript_guard.reworded import compare
+    from manuscript_guard.reworded import CLAIM_CODES, compare
     from manuscript_guard.roundtrip import align, anchors_apart
 
     # Both replaced from the last edit to the first, so that the offsets before hold.
@@ -337,9 +346,9 @@ def _comes_back(
     for start, end, new in sorted(spans, reverse=True):
         returned = returned[:start] + new + returned[end:]
     report = compare(source, expected)
-    if report.findings:
-        said = report.findings[0].message
-        return f"it is more than a change of words: {said}"
+    facts = [found for found in report.findings if found.code not in CLAIM_CODES]
+    if facts:
+        return f"it is more than a change of words: {facts[0].message}"
     apart = anchors_apart(source)
     if apart is None:
         return "its paragraph ends in a way import cannot merge into"
@@ -438,9 +447,25 @@ def _settled(context: _Context, placed: list[Placed]) -> list[Placed]:
         if why:
             out.append(_dropped(p, why))
             continue
+        p = replace(p, claim=_claim_moved(source, p))
         kept.setdefault(p.paragraph, []).append(p)
         out.append(p)
     return out
+
+
+def _claim_moved(source: str, placed: Placed) -> str:
+    """What the edit alone does to how strongly its paragraph's sentences claim, as its
+    comment adds it, or nothing. Basile chose on 2026-10-20 that such an edit be written
+    and say so, not dropped: a reviewer who asks for "associated" where the text says
+    "caused" means the move."""
+    from manuscript_guard.claims import moved
+
+    edited = source[: placed.start] + placed.edit.new.strip() + source[placed.end :]
+    said = [" ".join(found.message.split()) for found in moved(source, edited)]
+    if not said:
+        return ""
+    said = [one[0].upper() + one[1:] for one in said]
+    return "Note: " + "; ".join(said) + "."
 
 
 def _dropped(placed: Placed, why: str) -> Placed:
@@ -488,6 +513,7 @@ def _offered(placed: Placed, number: int) -> dict:
         "old": short_digest(placed.shown_old),
         "new": short_digest(placed.shown_new),
         "comment": short_digest(edit.comment),
+        "written": short_digest(placed.comment),
     }
 
 
@@ -572,7 +598,7 @@ def write_round(project, number: int, *, csl: Path | None, date: str) -> Outcome
         mine = [p for p in placed if not p.dropped and p.supplementary == supplementary]
         placements = [
             tracked.Placement(numbered[id(p)], p.paragraph, p.shown_old, p.shown_new,
-                              p.edit.author, date, p.edit.comment)  # fmt: skip
+                              p.edit.author, date, p.comment)  # fmt: skip
             for p in mine
         ]
         offered = [_offered(p, numbered[id(p)]) for p in mine]
@@ -629,7 +655,8 @@ def decisions(document: Path, offered: Sequence[dict]) -> tuple[list[Decision], 
         replies = []
         for comment in comments:
             ours = comment.author == entry["author"]
-            if ours and short_digest(comment.text) == entry["comment"]:
+            # The comment as Word holds it: the finding, and what the edit does to a claim.
+            if ours and short_digest(comment.text) == entry.get("written", entry["comment"]):
                 told.add((comment.author, comment.text))
                 for reply in tracked.replies_to(comment, comments, parents):
                     told.add((reply.author, reply.text))

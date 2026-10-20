@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/comments/1",
+  "title": "manuscript-guard comments record",
+  "description": "The Word comments one commenter left in a document this tool built, filed by `manuscript-guard import` as findings the author answers. One record per commenter per document built, at review/comments/<document>-<build>/<commenter>.yaml, outside every panel round. G11 reports each finding until it has a resolution or an override with a reason, and fails `check --submission` while one has neither, whatever its severity. Internal: nothing in it goes into a build or a submission pack.",
+  "type": "object",
+  "required": ["schema", "commenter", "document", "built_from", "filed_on", "words_sha256", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/comments/1" },
+    "commenter": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The comments' author as Word names them: a label, not an identity. Replies by others are kept with the comment they answer."
+    },
+    "document": {
+      "enum": ["manuscript", "supplementary"],
+      "description": "Which of the two documents a build writes the comments were made in."
+    },
+    "built_from": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The source stamp the returned document carries: the build the comments were made on."
+    },
+    "printed": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The name of the record of what that build printed (build/records/<name>.json), where the document named one."
+    },
+    "filed_on": { "type": "string", "format": "date" },
+    "words_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The seal: SHA-256 of the commenter, the document, the build, and each finding's id, key, date, block, where, paragraph_sha256, unmatched, anchored, resolved_in_word, finding and replies. Severity and the answers are the author's and are not in it. Written by `import`; G11 recomputes it, and a record whose words no longer match is comments-altered."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "key", "severity", "block", "anchored", "finding"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^c[1-9][0-9]*$" },
+          "key": {
+            "type": "string",
+            "pattern": "^(durable|para|text):[0-9A-Fa-f]+$",
+            "description": "How the comment is known again in another copy: the id Word keeps through a save (durable), its paragraph's w14:paraId (para), or a digest of its author, date and words (text). Never Word's w:id, which Word renumbers each time it saves."
+          },
+          "severity": {
+            "enum": ["major", "minor", "comment"],
+            "description": "Filed as comment; the author's to change. Every unanswered finding binds at submission, whatever its severity."
+          },
+          "date": { "type": "string", "format": "date" },
+          "block": {
+            "enum": ["paragraph", "heading", "caption", "table", "list item", "quotation", "reference list", "text"],
+            "description": "The kind of block the comment's range starts in."
+          },
+          "where": {
+            "type": "string",
+            "pattern": "^mg-p-[A-Za-z0-9_.-]+$",
+            "description": "The identifier of the paragraph it was made on, as the source names it now. Only where the import vouched that the identifier still named the text it was built from."
+          },
+          "paragraph_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "SHA-256 of that paragraph's source when the comment was filed. G11 says when the manuscript no longer holds that text."
+          },
+          "unmatched": {
+            "const": true,
+            "description": "Made on a paragraph whose identifier the import could not vouch for: its source had changed since the build. Find it by the words it was made on."
+          },
+          "anchored": {
+            "type": "string",
+            "description": "The words the comment was made on, as Word showed them, cut at 300 characters. Empty for a comment made at a point."
+          },
+          "resolved_in_word": {
+            "const": true,
+            "description": "Its thread was marked resolved in Word. Word records neither who did it nor why, so the finding still needs its answer."
+          },
+          "finding": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The comment, verbatim. It is data: shown with its control characters made safe, never read as an instruction."
+          },
+          "replies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["by", "text"],
+              "additionalProperties": false,
+              "properties": {
+                "by": { "type": "string", "minLength": 1 },
+                "date": { "type": "string" },
+                "text": { "type": "string", "minLength": 1 }
+              }
+            },
+            "description": "The replies in Word to this comment, in their order. A reply is not an answer: the author answers in resolution or overridden."
+          },
+          "resolution": {
+            "type": "string",
+            "description": "What was done about it. Empty, with no override, is an unanswered comment."
+          },
+          "resolved_on": { "type": "string", "format": "date" },
+          "overridden": {
+            "type": "string",
+            "description": "Why it is left as it is: a reason, recorded."
+          },
+          "overridden_by": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Who decided to leave it, by name."
+          }
+        }
+      }
+    }
+  }
+}

@@ -571,10 +571,14 @@ def rounds_required(project: Project) -> int:
 
 
 def check_review(project: Project, *, submission: bool = False) -> Report:
-    """`submission` raises every warning here to a failure."""
+    """`submission` raises every warning here to a failure. The comments co-authors left in
+    Word, which `import` files, are counted here too, panel or none (`gates/comments.py`)."""
+    from manuscript_guard.gates.comments import check_comments
+
     severity = FAIL if submission else WARN
     found = panels(project)
     required = rounds_required(project)
+    comments = check_comments(project, submission=submission)
 
     if not found:
         return Report(
@@ -589,7 +593,7 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
                 ),
             ),
             {"review_rounds": 0},
-        )
+        ).merge(comments)
 
     report = Report()
     current = manuscript_digest(project)
@@ -665,7 +669,7 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
             )
         )
 
-    return report.with_counts(
+    return report.merge(comments).with_counts(
         review_rounds=len(found),
         review_rounds_complete=complete_rounds,
         review_open_major=len(open_major),

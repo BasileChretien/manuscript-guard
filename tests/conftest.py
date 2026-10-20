@@ -106,26 +106,62 @@ def pytest_unconfigure(config: pytest.Config) -> None:
         _TERMINAL = None
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Mark `timing` each test that times a scan with `assert_linear`, and each that
-    `tests/data/timing_budgets.yaml` lists as a budget. CI runs the rest on parallel workers
-    (`-n auto -m "not timing"`) and these after them in one process (`-m timing`): a worker
-    running beside a timed test takes some of the time it measures."""
+def budgets() -> dict[str, set[str]]:
+    """What `tests/data/timing_budgets.yaml` lists as a budget: by file, the names of the
+    tests, or of the helpers the tests call, that hold one."""
     import yaml
 
     listed = yaml.safe_load((REPO / "tests" / "data" / "timing_budgets.yaml").read_text(
         encoding="utf-8"))["reads"]  # fmt: skip
-    budgets = {entry["where"] for entry in listed if entry.get("kind") == "budget"}
+    found: dict[str, set[str]] = {}
+    for entry in listed:
+        if entry.get("kind") == "budget":
+            path, _, name = entry["where"].partition("::")
+            found.setdefault(path, set()).add(name)
+    return found
+
+
+def clocked(module: Any, names: set[str]) -> set[str]:
+    """`names`, and each function of `module` that calls one of them, at any depth: a budget
+    may be held by a helper the tests call (`check_overhead` in test_robustness.py)."""
+    import inspect
+
+    calls = {
+        name: set(inspect.unwrap(value).__code__.co_names)
+        for name, value in vars(module).items()
+        if inspect.isfunction(inspect.unwrap(value))
+    }
+    found = set(names)
+    while more := {name for name, called in calls.items() if name not in found and called & found}:
+        found |= more
+    return found
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Mark `timing` each test that times a scan with `assert_linear`, and each that holds a
+    budget `tests/data/timing_budgets.yaml` lists, itself or through a helper it calls. CI
+    runs the rest on parallel workers (`-n auto -m "not timing"`) and these after them in one
+    process (`-m timing`): a worker running beside a timed test takes some of the time it
+    measures. Round 1 of #359: two budgets are held by helpers, and their fourteen callers
+    were left to the workers."""
+    listed, seen = budgets(), {}
     for item in items:
-        timed = "assert_linear" in getattr(item, "fixturenames", ())
-        if timed or item.nodeid.split("[", 1)[0] in budgets:
+        path, _, name = item.nodeid.split("[", 1)[0].partition("::")
+        function = getattr(item, "function", None)
+        timed = "assert_linear" in getattr(item, "fixturenames", ()) or name in listed.get(path, ())
+        if not timed and path in listed and function is not None:
+            if path not in seen:
+                seen[path] = clocked(item.module, listed[path])
+            timed = bool(seen[path] & ({function.__name__} | set(function.__code__.co_names)))
+        if timed:
             item.add_marker(TIMING)
 
 
 @pytest.fixture
 def stopped_if_stuck() -> Iterator[None]:
     """Stop the whole run if this test is still going after `STUCK_AFTER` seconds, and say
-    where it was.
+    where it was. On parallel workers it stops the worker, which xdist reports as crashed,
+    and the run goes on without it and fails.
 
     A generated input is one nobody chose, and now and then it is the one a pattern
     backtracks on for ever. A test stuck there holds its runner until the job's own limit,

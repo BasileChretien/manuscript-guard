@@ -46,7 +46,7 @@
     "reading_sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
-      "description": "The seal: SHA-256 of what the reader wrote, which is the verdict, the summary, the rejection tests, and each finding's id, severity, where and finding, with its ask where it has one (round 1 of #276). The answers (resolution, resolved_on, overridden) are not in it. Written by `review --run` when it files a reading, and by `review --seal` for one filed by hand once its findings are written. G11 recomputes it, and a reading whose words no longer match is reading-altered."
+      "description": "The seal: SHA-256 of what the reader wrote, which is the verdict, the summary, the rejection tests, and each finding's id, severity, where and finding, with its ask and its edits where it has them (round 1 of #276). The answers (resolution, resolved_on, overridden) are not in it. Written by `review --run` when it files a reading, and by `review --seal` for one filed by hand once its findings are written. G11 recomputes it, and a reading whose words no longer match is reading-altered."
     },
     "rejection_tests": {
       "type": "array",
@@ -122,6 +122,21 @@
             "description": "What the finding asks the authors to do, where it asks something: report what they already have (disclosure), compute a new number (computation), or collect new data (new-data). A computation is a new emitted result and a new reconciliation of the Methods with the code, so it is said."
           },
           "finding": { "type": "string", "minLength": 1 },
+          "edits": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "description": "Wording the reader suggests for this finding, each edit the manuscript's words exactly as they stand (`old`, appearing once in the manuscript's prose) and the words to put in their place (`new`). The reader's, and sealed with the reading where it is given. `manuscript-guard review --suggestions` writes each as a tracked change in a copy of the document, and drops one that would change a number, a binding or a citation, holds markup, or whose words are not found exactly once; `import` of that copy records what the author decided in Word.",
+            "items": {
+              "type": "object",
+              "required": ["old", "new"],
+              "additionalProperties": false,
+              "properties": {
+                "old": { "type": "string", "minLength": 1 },
+                "new": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
           "resolution": {
             "type": "string",
             "description": "What was done. An empty resolution on a major finding is an open finding."

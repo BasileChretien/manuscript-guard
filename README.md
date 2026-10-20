@@ -270,7 +270,7 @@ number in the file and the rule that classified it.
 | `style` | fetch the journal's citation style from the CSL style repository once, and keep it in `profiles/journals/styles/` for the offline build |
 | `methods` | check or record that the Methods were read against the code; `--explain` lists each claim beside the step that backs it |
 | `models` | print each fitted model as its card, with what G15 says of it |
-| `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` does the same for a design round, which reads the plan |
+| `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` does the same for a design round, which reads the plan; `--suggestions` writes the edits a round's findings suggest into a Word document as tracked changes, for you to accept or refuse there and `import` |
 | `checker` | send a co-author one file of things to confirm, and record what they answered |
 | `import` | bring a co-author's Word edits back into the manuscript source |
 | `reworded` | check that an edit changed the wording and no binding, citation or typed number |

@@ -940,6 +940,44 @@ def nearly_quoted(draw: st.DrawFn) -> dict[str, str]:
     return {"source": source[:at] + put + source[at:], "quote": quote}
 
 
+# ----------------------------------------------------------------------- suggested edits
+
+#: Words a reviewer's edit is made of, each as an edit types it and as pandoc prints it: a
+#: plain word, one that stands inside a longer one ("the" in "other", "port" in "reports"),
+#: and each thing pandoc typesets, an apostrophe, quotation marks, dashes and an ellipsis.
+EDIT_WORDS = (
+    ("the", "the"), ("other", "other"), ("reports", "reports"), ("port", "port"),
+    ("week", "week"), ("weeks", "weeks"), ("cohort", "cohort"),
+    ("drug's", "drug\N{RIGHT SINGLE QUOTATION MARK}s"),
+    ("'probable'", "\N{LEFT SINGLE QUOTATION MARK}probable\N{RIGHT SINGLE QUOTATION MARK}"),
+    ('"serious"', "\N{LEFT DOUBLE QUOTATION MARK}serious\N{RIGHT DOUBLE QUOTATION MARK}"),
+    ("1990--2000", "1990\N{EN DASH}2000"), ("so---it", "so\N{EM DASH}it"),
+    ("and...", "and\N{HORIZONTAL ELLIPSIS}"),
+)  # fmt: skip
+#: What stands between two of those words, as typed and as printed: Markdown reads a run of
+#: spaces with one line break in it as one space, and pandoc puts a no-break space after
+#: an abbreviation it knows.
+EDIT_GAPS = (
+    (" ", " "), ("  ", " "), ("\n", " "), (" \n  ", " "), ("\t", " "),
+    (" ", "\N{NO-BREAK SPACE}"),
+)  # fmt: skip
+
+
+@st.composite
+def suggested_edits(draw: st.DrawFn) -> dict[str, str]:
+    """A manuscript file and an edit: a few of its words, or words it may not hold, and
+    words to put in their place, some of them markup or two lines."""
+    text = draw(texts(tuple(typed for typed, _printed in EDIT_WORDS)))
+    words = text.split()
+    if words and draw(st.booleans()):
+        start = draw(st.integers(0, len(words) - 1))
+        old = " ".join(words[start : start + draw(st.integers(1, 3))])
+    else:
+        old = draw(st.sampled_from(tuple(typed for typed, _printed in EDIT_WORDS) + FILLER))
+    new = draw(st.sampled_from((*FILLER[:6], "*held*", "two\nlines", "{{results.x}}", " ")))
+    return {"text": text, "old": old, "new": new}
+
+
 # ---------------------------------------------------------------------------- spellings
 
 #: Words one English writes and the other does not, with a name's capital, in capitals,
@@ -1601,6 +1639,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
     ),
     "quote placement": nearly_quoted(),
+    "suggested edit": suggested_edits(),
     "spelling": st.fixed_dictionaries(
         {
             "text": texts(SPELT),

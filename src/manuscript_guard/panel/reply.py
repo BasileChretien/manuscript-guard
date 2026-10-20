@@ -7,10 +7,14 @@ truncated object is not closed, a verdict outside the vocabulary is not mapped t
 one, and a missing field is not filled in. Each of those would be this tool writing part of
 the review, and a review nobody wrote must not be filed.
 
-One thing is read as what it plainly says. A finding's `where` and `ask` may be left out, and
-a model that leaves a key out often writes `null` for it. Null says what absence says, so the
-key is taken as absent (round 1 of #276: the prompt showing `ask` drew a null, and the whole
-reply was refused). No other key may be null.
+One thing is read as what it plainly says. A finding's `where`, `ask` and `edits` may be left
+out, and a model that leaves a key out often writes `null` for it. Null says what absence
+says, so the key is taken as absent (round 1 of #276: the prompt showing `ask` drew a null,
+and the whole reply was refused). No other key may be null.
+
+A design round reads the plan, and its readers are not offered edits: one that suggests
+them anyway is refused, since an edit is to the manuscript's words and there are none in
+what it read.
 """
 
 from __future__ import annotations
@@ -89,15 +93,16 @@ def _checked(document: dict) -> dict:
 
 
 #: The keys of a finding a reply may write as null, meaning left out.
-_MAY_BE_NULL = ("where", "ask")
+_MAY_BE_NULL = ("where", "ask", "edits")
 
 
 def _left_out(key: str, value: object) -> bool:
     return key in _MAY_BE_NULL and value is None
 
 
-def parse_reply(text: str) -> dict:
-    """The reply as a validated dict, or `ReplyRefused`."""
+def parse_reply(text: str, *, design: bool = False) -> dict:
+    """The reply as a validated dict, or `ReplyRefused`. A design reading may suggest no
+    edits."""
     body = text.strip()
     fenced = _FENCED.fullmatch(body)
     if fenced is not None:
@@ -116,13 +121,19 @@ def parse_reply(text: str) -> dict:
     if not isinstance(document, dict):
         raise ReplyRefused("the reply is JSON, but not an object")
     try:
-        return _checked(document)
+        checked = _checked(document)
     except RecursionError:
         # Nesting that closes again parses. With the schema checked before anything walks
         # the reply, the jsonschema version this was written against refuses such a value
         # by its type without descending into it, and this is never reached. It is kept for
         # a version that does descend: the answer must be a refusal there too.
         raise ReplyRefused(TOO_DEEP) from None
+    if design and any("edits" in finding for finding in checked["findings"]):
+        raise ReplyRefused(
+            "the reply suggests edits, and a design round reads the plan: an edit is to the "
+            "manuscript's words, and there are none in what it read"
+        )
+    return checked
 
 
 __all__ = ["ReplyRefused", "parse_reply"]

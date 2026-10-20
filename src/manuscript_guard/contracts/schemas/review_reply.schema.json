@@ -55,7 +55,22 @@
             "enum": ["disclosure", "computation", "new-data", null],
             "description": "Null is read as left out. What the finding asks the authors to do, where it asks something: report what they already have (disclosure), compute a new number (computation), or collect new data (new-data). A computation is a new emitted result and a new reconciliation of the Methods with the code, so it is said."
           },
-          "finding": { "type": "string", "pattern": "\\S" }
+          "finding": { "type": "string", "pattern": "\\S" },
+          "edits": {
+            "type": ["array", "null"],
+            "minItems": 1,
+            "maxItems": 10,
+            "description": "Null is read as left out. Wording for this finding: the manuscript's words exactly as they stand, enough of them to appear only once (old), and the words to put in their place (new). Words only: no number, citation, table or figure changes, nothing across two paragraphs.",
+            "items": {
+              "type": "object",
+              "required": ["old", "new"],
+              "additionalProperties": false,
+              "properties": {
+                "old": { "type": "string", "pattern": "\\S" },
+                "new": { "type": "string", "pattern": "\\S" }
+              }
+            }
+          }
         }
       }
     }

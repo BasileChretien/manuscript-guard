@@ -831,6 +831,21 @@ def _quote_placement() -> Reading:
     return placed
 
 
+@reading("suggested edit")
+def _suggested_edit() -> Reading:
+    """Where a reviewer's suggested edit is found in a text, as typed or as pandoc printed
+    it, and whether its words are words: what `review --suggestions` places an edit by."""
+    from manuscript_guard.suggestions import found_in, refused_words
+
+    def placed(given: dict[str, str]) -> dict[str, Any]:
+        return {
+            "found": [list(span) for span in found_in(given["text"], given["old"])],
+            "refused": refused_words(given["old"], given["new"]),
+        }
+
+    return placed
+
+
 # -------------------------------------------------------------------- a whole project
 
 

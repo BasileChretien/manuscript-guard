@@ -5043,9 +5043,12 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
     _as_latex(project)
     cli._run_gates(project, stage="drafting")
     assert sorted(called) == sorted(_NOT_THE_MANUSCRIPT)
-    # One entry calls two checks, so the set is pinned name by name as well (round 2), and
-    # a check the runner gains must be put in one of the two tuples.
+    # One entry calls two checks, so the set is pinned name by name as well (round 2). A
+    # check an entry of the runner's table gains must be put in one of the two tuples, and
+    # the one the runner calls in its own body is `check_format` (round 3).
     assert set(_MARKDOWN_ONLY) == cli._NOT_READ_IN_LATEX
+    body = {name for name in cli._run_gates.__code__.co_names if name.startswith("check_")}
+    assert body == {"check_format"}
     runner = {
         name
         for code in cli._run_gates.__code__.co_consts
@@ -5068,7 +5071,7 @@ def test_a_main_tex_without_a_class_leaves_a_markdown_manuscript_markdown(projec
     assert not {"two-formats", "other-format-file", "not-read-in-latex"} & said
 
 
-@pytest.mark.parametrize("encoding", ["cp1252", "utf-16"])
+@pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])
 def test_a_latex_file_that_is_not_utf8_is_named_as_a_markdown_one_is(
     project: Path, encoding: str
 ) -> None:

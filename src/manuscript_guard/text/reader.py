@@ -8,7 +8,6 @@ reads nothing of a LaTeX manuscript and says so (`not-read-in-latex`).
 
 from __future__ import annotations
 
-import codecs
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,16 +32,19 @@ def latex_entry(manuscript_dir: Path) -> bool:
     """Whether `main.tex` is a LaTeX document's entry file: it declares its class. A file of
     that name without `\\documentclass` is a fragment, a header pandoc includes for instance,
     and a Markdown manuscript beside it stays one (round 1 of #370: such a file turned a
-    Markdown project into a LaTeX one, or refused it as two formats). One saved as UTF-16 is
-    read as such, so that it is a LaTeX entry and reported as not UTF-8, not taken for an
-    empty Markdown folder (round 2). A `\\documentclass` in a comment counts as one."""
+    Markdown project into a LaTeX one, or refused it as two formats). One saved as UTF-16 or
+    UTF-32, with a byte-order mark or without, is seen too, so that it is a LaTeX entry and
+    not taken for an empty Markdown folder (rounds 2 and 3). A `\\documentclass` in a comment
+    counts as one."""
     try:
         data = (manuscript_dir / ENTRY[LATEX]).read_bytes()
     except OSError:
         return False
-    if data[:2] in (codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE):
-        data = data.decode("utf-16", errors="replace").encode("utf-8")
-    return b"\\documentclass" in data
+    return any(_CLASS.encode(encoding) in data for encoding in _ENCODINGS)
+
+
+_CLASS = "\\documentclass"
+_ENCODINGS = ("utf-8", "utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be")
 
 
 @dataclass(frozen=True)

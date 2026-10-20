@@ -4954,6 +4954,73 @@ def test_a_manuscript_folder_the_gates_cannot_read_is_named(project: Path, empty
     assert "unquoted-result" not in codes(report), "the one finding, not one per result"
 
 
+def _as_latex(root: Path) -> Path:
+    """The example's manuscript as LaTeX: its entry file is `main.tex`, and no Markdown is
+    left where the gates read."""
+    folder = root / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+    entry = folder / "main.tex"
+    entry.write_text(
+        "\\documentclass{article}\n\\begin{document}\nOf 4100 reports, 12 were fatal.\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+    return entry
+
+
+def test_a_manuscript_in_two_formats_is_refused_at_every_stage(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    (project / "manuscript" / "main.tex").write_text("\\documentclass{article}\n", "utf-8")
+    for stage in ("design", "submission"):
+        report, _project, _stage, _deferred = _run_gates(project, stage=stage)
+        found = [f for f in report.failures if f.code == "two-formats"]
+        assert len(found) == 1, (stage, report.render(project))
+
+
+def test_markdown_in_a_latex_manuscript_is_refused(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    _as_latex(project)
+    notes = project / "manuscript" / "notes.md"
+    notes.write_text("Of 4100 reports, 12 were fatal.\n", encoding="utf-8")
+    (project / "manuscript" / "_drafts").mkdir()
+    (project / "manuscript" / "_drafts" / "old.md").write_text("Old.\n", encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    found = [f for f in report.failures if f.code == "other-format-file"]
+    assert [f.path for f in found] == [notes], report.render(project)
+
+
+def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: Path) -> None:
+    """Each gate that reads only Markdown would read nothing of a LaTeX manuscript and pass.
+    It does not run, and says so: a note while the paper is written, a failure at
+    submission. What it would have said of a folder with no Markdown is not said."""
+    from manuscript_guard.cli import _run_gates
+
+    _as_latex(project)
+    drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
+    expected = ["BUILD", "G1", "G13", "G14", "G15", "G2", "G4", "G6", "G7", "G8", "G8r", "G9"]
+    assert unread == expected, drafting.render(project)
+    assert "not-read-in-latex" not in codes(drafting)
+    said = {f.code for f in drafting.findings}
+    assert not {"manuscript-empty", "unquoted-result"} & said, drafting.render(project)
+    submission, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    failing = sorted(f.gate for f in submission.failures if f.code == "not-read-in-latex")
+    assert failing == expected, submission.render(project)
+
+
+def test_a_latex_file_that_is_not_utf8_is_named_as_a_markdown_one_is(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    entry.write_bytes("Caf\N{LATIN SMALL LETTER E WITH ACUTE}\n".encode("cp1252"))
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    found = [f for f in report.failures if f.code == "manuscript-unreadable"]
+    assert [f.path for f in found] == [entry], report.render(project)
+
+
 # -------------------------------------------------------------------------------------- G7
 # Citation integrity against a running Zotero, simulated: the fake answers as Better BibTeX
 # 9.0.64 does (see tests/test_zotero.py), so these run anywhere.

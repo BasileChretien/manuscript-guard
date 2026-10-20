@@ -845,10 +845,22 @@ duplicated key, where both keep the last.
 
 ## LaTeX manuscripts
 
-Status: designed 2026-10-20, nothing built. Where the design depends on what LaTeX does, the
-pull request that relies on it checks the statement against TeX Live and MiKTeX and records
-the measurement. On the author's machine, 2026-10-20: MiKTeX 24.4 and latexmk 4.88, with
-pdfLaTeX, LuaLaTeX, XeLaTeX, BibTeX and Biber on PATH.
+Status: designed 2026-10-20. Built: the first half of step 1, the format, the reader's file
+list, `two-formats`, `other-format-file` and `not-read-in-latex`. Where the design depends on
+what LaTeX does, the pull request that relies on it checks the statement against TeX Live and
+MiKTeX and records the measurement. On the author's machine, 2026-10-20: MiKTeX 24.4 and
+latexmk 4.88, with pdfLaTeX, LuaLaTeX, XeLaTeX, BibTeX and Biber on PATH.
+
+Not yet checked against the program it is about, each in the step that relies on it (the
+design's reviews named them, Basile chose to settle them there):
+- the natbib and biblatex commands listed, with their capitalised and starred forms (step 5);
+- MiKTeX's switch that turns its package installer off, and whether it honours `TEXMFHOME`
+  (step 9);
+- the commands pandoc writes under `link-citations`, and whether it still wraps a section in
+  `\hypertarget` (step 11);
+- how Overleaf resolves `\input` and figure paths (step 4, for the values file);
+- whether `check` writes nothing in a LaTeX project as it writes nothing in a Markdown one
+  (each step that moves a gate).
 
 LaTeX is used in two ways, built together. It is a source that an author writes and the gates
 check. It is also an output: the journal's `.tex` and a PDF, built from a Markdown source.
@@ -1248,6 +1260,14 @@ The result is compiled and packed by the code above, and checked three times:
 
 ### Known gaps, from the start
 
+- A `.tex` file in a Markdown manuscript is not refused, as a Markdown file in a LaTeX one is
+  (`other-format-file`): a project written before LaTeX was read may keep a `.tex` beside its
+  Markdown for pandoc's header, and refusing it would fail a paper that passed. It is read by
+  no gate. Whether to warn of it is left for later.
+- Until the second half of step 1, the commands other than `check` read a LaTeX manuscript as
+  a folder with no Markdown. `bind`, `lookup` and `build` stop on it, as on a folder with none;
+  `explain`, `audit`, `reworded`, `checker`, the panel's prompt and the hooks read nothing of
+  it.
 - An author's macro is not expanded where it is used, so a word its body prints there is in no
   sentence that G6 or G14 reads; its body is read once, at the definition.
 - A class or package that changes how a character is read, beyond those refused, is not seen.
@@ -1274,9 +1294,12 @@ The result is compiled and packed by the code above, and checked three times:
 Each step is one pull request, in this order, each under about 600 changed lines. After the
 fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
 
-1. The seam. `text/reader.py` and the Markdown reader; `source_files` through it; format
-   detection, `two-formats` and `other-format-file`; `not-read-in-latex`; the refusing commands.
-   Tests: the differential unchanged, rows in `test_reads_nothing.py`.
+1. The seam, in two pull requests. The first, built: `text/reader.py` with the format and the
+   files; G11's digests and the unreadable-file check through it; format detection,
+   `two-formats` and `other-format-file`; `not-read-in-latex`, given by `_run_gates` for each
+   check in `_NOT_READ_IN_LATEX`, a set each later step takes its check out of. The second:
+   the refusing commands, after the open pull requests that change the same commands. Tests:
+   the differential unchanged, the corruption cases, rows in `test_reads_nothing.py`.
 2. The scanner and `mask`. `scan.py`, `commands.py`, `mask.py`, the refusals under BUILD.
    Tests: `latex_texts()`, `latex mask` and `latex refusals`, their properties and `BROKEN`.
    The likeliest to pass 600 lines; if it does, comments and the preamble go first, then maths

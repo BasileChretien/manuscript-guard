@@ -252,9 +252,8 @@ def _passages(report: Report, project: Project) -> list[str]:
     """How many cited statements carry a passage of a work they cite, and how many passages a
     person judged against the sentence the manuscript has, as G7 counted them, and by whom.
     Neither a judgement a model's name signs, which G7 refuses, nor one of a stale passage is
-    counted (round 1 of #374: both were said to be recorded)."""
-    from manuscript_guard.gates.literature import _MODEL_NAME
-    from manuscript_guard.literature.passages import read_passages
+    counted, nor named (rounds 1 and 2 of #374: both were said to be recorded)."""
+    from manuscript_guard.gates.passages import current_judges
 
     total = report.counts.get("cited_statements", 0)
     if not total:
@@ -263,14 +262,13 @@ def _passages(report: Report, project: Project) -> list[str]:
     said = f"cited statements with a passage of a work they cite: {carrying} of {total}"
     judged = report.counts.get("passages_judged", 0)
     if judged:
-        passages, _report = read_passages(project.path("literature"))
-        people = sorted({
-            str(passage.judged_by) for passage in passages
-            if passage.support is not None and not _MODEL_NAME.search(passage.judged_by or "")
-        })  # fmt: skip
+        try:
+            people = current_judges(project)
+        except ContractError:  # a manuscript that cannot be read: `check` has said so
+            people = []
         said += (
-            f"; passages judged against their sentence by a person: {judged}, by "
-            f"{', '.join(people)}"
+            f"; passages judged against their sentence by a person: {judged}"
+            + (f", by {', '.join(people)}" if people else "")
         )
     return [said]
 

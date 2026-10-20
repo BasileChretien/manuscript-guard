@@ -64,6 +64,25 @@ def survey_of(project: Project) -> tuple[Survey, Report]:
     return survey(sources, cited_sentences(documents), passages), report
 
 
+def current_judges(project: Project) -> list[str]:
+    """Who judged a passage of a sentence the manuscript has, by a person's name: those
+    `passages_judged` counts, matched as `survey` matches them, and no source read (round 2
+    of #374: the names of stale judgements were given beside a count that left them out)."""
+    from manuscript_guard.gates.literature import _MODEL_NAME
+    from manuscript_guard.literature.passages import Belonging
+
+    passages, _report = read_passages(project.path("literature"))
+    judged = [passage for passage in passages if passage.support is not None
+              and not _MODEL_NAME.search(passage.judged_by or "")]  # fmt: skip
+    if not judged:
+        return []
+    belonging = Belonging(judged)
+    documents = [citing_document(path, read_text(path))
+                 for path in source_files(project.path("manuscript"))]  # fmt: skip
+    return sorted({str(passage.judged_by) for cited in cited_sentences(documents)
+                   for key in cited.keys for passage in belonging.of(cited, key)})  # fmt: skip
+
+
 def check_passages(project: Project, stage: str = DRAFTING) -> Report:
     """Each passage held to its source and its sentence, and the statements with none counted."""
     found, report = survey_of(project)

@@ -240,12 +240,12 @@ def _looked_for(
 ) -> tuple[str, tuple[str, ...], str | None]:
     """What the stored files of the passage's work say of it: verified where one holds it,
     with the files read and, where none does, what stands in the way."""
-    from manuscript_guard.gates.quotations import _ELIDED, quoted_in
+    from manuscript_guard.gates.quotations import _ELIDED, _SIC, quoted_in
 
-    if not passage_words(passage.passage):
-        # All elision, "[...]" or "...": no word to look for, which `quoted_in` finds
-        # anywhere (round 1 of #374).
-        return ABSENT, (), "it holds no word to look for"
+    if not any(c.isalnum() for c in _ELIDED.sub(" ", _SIC.sub(" ", passage.passage))):
+        # All elision, "[...]" or "...": nothing to look for, which `quoted_in` finds
+        # anywhere (round 1 of #374). A number is something (round 2).
+        return ABSENT, (), "it holds nothing but marks of words left out"
     files = stored_files(sources, passage.citekey)
     if not files:
         return NO_SOURCE, (), None

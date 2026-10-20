@@ -326,6 +326,21 @@ def test_check_says_how_many_passages_a_person_judged(
     assert "Claude" not in line
 
 
+def test_check_names_only_who_judged_a_current_passage(project: Path, capsys) -> None:
+    """Round 2 of #374: the count left a stale judgement out and the names did not."""
+    cohort = ("The cohort incidence of {{lit.background.reported_incidence}} per 100 000 "
+              "person-years is the only population-level figure available, and it predates "
+              "the marketing of example-drug.")  # fmt: skip
+    write(project, judged("supports"),
+          {**judged("supports", by="Bo Person"), "sentence": cohort, "citekey": COHORT,
+           "passage": "Incidence rose with age and did not differ meaningfully by sex"})
+    swap(project, "has been reported", "was reported")
+    main(["check", str(project)])
+    [line] = [line for line in capsys.readouterr().out.splitlines()
+              if "cited statements with a passage" in line]  # fmt: skip
+    assert line.endswith("by a person: 1, by Bo Person")
+
+
 @pytest.mark.parametrize(
     "broken",
     [

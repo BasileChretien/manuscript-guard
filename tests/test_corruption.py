@@ -1992,6 +1992,9 @@ def _recorded(project: Path, old: str, new: str) -> None:
         pytest.param(f'"{_SIGNAL}"', '"[...]"',
                      [("passage-not-in-source", "fail"), ("passage-too-short", "warn")],
                      id="nothing but an elision"),
+        # Round 2 of #374: a passage of no letter but in its source was said to hold no word.
+        pytest.param(f'"{_SIGNAL}"', '"2.6, 95%"', [("passage-too-short", "warn")],
+                     id="no letter but the source's"),
         pytest.param('    locator: "Abstract, Results"\n',
                      '    locator: "Abstract, Results"\n    support: supports\n'
                      '    judged_by: "Codex"\n    judged_on: 2026-10-20\n',

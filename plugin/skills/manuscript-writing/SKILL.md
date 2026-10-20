@@ -1,6 +1,6 @@
 ---
 name: manuscript-writing
-description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit), or when revising text that was drafted quickly. Not for the Methods against the code (use methods-writer), nor for putting a result into the text (use results-binding).
+description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit), when a claim needs a citation it does not have, or when revising text that was drafted quickly. Not for the Methods against the code (use methods-writer), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing prose that reads as written
@@ -40,7 +40,8 @@ shape of a claim.
 of these is the right verb. Usually "is" was.
 
 **Attribute or cut.** "Studies have shown", "experts argue", "it is widely accepted". Which
-studies? Cite them. If you cannot cite them, you do not know it.
+studies? Cite them, found as "When a claim needs a citation" says below. If no work says it,
+you do not know it: cut the claim, or say what is known.
 
 **Watch the rate, not the word.** "Robust", "crucial", "key", "comprehensive", "highlight"
 are ordinary words with legitimate uses. Six of them in a paragraph is the tell. The lint
@@ -62,6 +63,62 @@ now believe, and what would change their mind:
 > Disproportionality cannot establish incidence, and these data contain no denominator.
 > A cohort study with prescription counts would settle whether the excess reflects risk or
 > reporting.
+
+## When a claim needs a citation
+
+A claim needs one when `check` reports `vague-attribution`, when a `[citation needed]` slot
+stands in the text (it fails as a model artefact until it is filled), when a review panel's
+citation-support reading finds that a cited work does not say what its sentence says, and
+when the author asks. Never cite from memory. A reference recalled is often a real paper that
+says something else, or one that does not exist, and the author's name goes on it.
+
+1. **Search the registries** for the claim's topic, in a few words of your own:
+
+   ```bash
+   manuscript-guard search "isoniazid liver injury" --since 2018 --json
+   manuscript-guard search "isoniazid liver injury" --type systematic-review,meta-analysis
+   ```
+
+   The query leaves this machine as written, so it names a topic, never a sentence of the
+   manuscript or a result not yet published. `--type` narrows to review, systematic-review,
+   meta-analysis, guideline, rct, cohort or preprint, and `--sort newest` puts the latest
+   first. If your tool has its own search of PubMed or another scholarly index, use it as
+   well; each work you propose is still one a registry returned, with its DOI or PMID.
+
+2. **Choose two or three candidates for each claim**, and give the reason for each:
+   - the evidence the claim needs: a guideline for what is recommended, a recent systematic
+     review or meta-analysis for a body of evidence, the original study for a specific
+     finding (a review cited for a primary study's finding is what the citation-support
+     remit reports);
+   - the latest version: a later edition of a guideline, which no registry links to the
+     one before it, so search again with `--since` or `--sort newest`; a review updated
+     since;
+   - the published paper over its preprint: where a candidate shows a later version,
+     propose that one, by its DOI or PMID;
+   - nothing retracted, and nothing under an expression of concern unless that is the
+     point. "retracted: not known" is not "no": say so.
+
+   Read each candidate before you propose it, its abstract at least and the open copy where
+   there is one, and say what in it supports the claim. A title that matches is not a
+   reason. The order the command gives is the registries' relevance, not a judgement.
+
+3. **Put the candidates to the author, and wait.** Do not insert a citation the author did
+   not choose, and do not choose for them. Where none fits, say so: the claim may need to be
+   weakened or cut instead.
+
+4. **The author adds the chosen work to Zotero** with Add Item by Identifier (the wand in
+   Zotero's toolbar), from its DOI, or its PMID where it has none, and pins its citation key.
+   Zotero takes the record from the registry; nothing here writes into the library. Then the
+   sentence cites the key, and the work goes through the same checks as any other:
+
+   ```bash
+   manuscript-guard sync-bib       # its entry into references.bib
+   manuscript-guard lookup         # the registries asked about it once, and the answer kept
+   manuscript-guard sync-sources   # its PDF or saved page from Zotero, for G7 and co-authors
+   manuscript-guard check
+   ```
+
+   A number taken from it goes through the literature-verify skill.
 
 ## Abbreviations
 

@@ -81,8 +81,10 @@ class Credentials:
     openalex_key: str | None = None
 
     @classmethod
-    def from_environment(cls, project: Project) -> Credentials:
-        settings = project.setting("lookup") or {}
+    def from_environment(cls, project: Project | None) -> Credentials:
+        """From the environment, and from `lookup.contact` in `paper.yaml` where there is a
+        project: `search` runs outside one too."""
+        settings = (project.setting("lookup") if project is not None else None) or {}
         contact = os.environ.get(CONTACT, "").strip() or settings.get("contact")
         return cls(
             contact=contact or None,

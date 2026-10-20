@@ -268,6 +268,7 @@ number in the file and the rule that classified it.
 | `sync-bib` | rewrite `references.bib` from Zotero |
 | `sync-sources` | copy each cited work's PDF or saved page from Zotero into `literature/sources/`, or Zotero's text of it where the file is not on this computer or is an EPUB, and list the works with no copy; `--from` takes the PDFs of a folder named by DOI instead, as a downloader such as auto-paper-harvester saves them |
 | `lookup` | look up each cited DOI and PMID once, and keep what the registries said in `literature/lookups/`; `--journals` asks the NLM Catalog and DOAJ about each shortlisted journal's ISSN |
+| `search` | ask PubMed, Europe PMC and OpenAlex for works a claim could cite, each with its identifiers, kind, retraction status, later version and open copy; it proposes, the author chooses, and nothing is written |
 | `style` | fetch the journal's citation style from the CSL style repository once, and keep it in `profiles/journals/styles/` for the offline build |
 | `methods` | check or record that the Methods were read against the code; `--explain` lists each claim beside the step that backs it |
 | `models` | print each fitted model as its card, with what G15 says of it |

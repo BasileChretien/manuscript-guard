@@ -1987,6 +1987,15 @@ def _recorded(project: Path, old: str, new: str) -> None:
                      [("passage-not-in-source", "fail")], id="a piece inside a longer word"),
         pytest.param(_SIGNAL, "detected for the", [("passage-too-short", "warn")],
                      id="three words"),
+        # Round 1 of #374: a passage that is all elision leaves no word to look for, and was
+        # verified.
+        pytest.param(f'"{_SIGNAL}"', '"[...]"',
+                     [("passage-not-in-source", "fail"), ("passage-too-short", "warn")],
+                     id="nothing but an elision"),
+        pytest.param('    locator: "Abstract, Results"\n',
+                     '    locator: "Abstract, Results"\n    support: supports\n'
+                     '    judged_by: "Codex"\n    judged_on: 2026-10-20\n',
+                     [("judgement-not-human", "fail")], id="judged by an agent tool"),
         pytest.param("citekey: fictionalClassSignal2019",
                      "citekey: fictionalHepaticCohort2021",
                      [("passage-not-in-source", "fail")], id="recorded for the other work"),

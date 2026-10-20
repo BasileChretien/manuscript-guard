@@ -184,6 +184,29 @@ def test_a_passage_of_a_work_the_sentence_does_not_cite_is_stale(project: Path) 
     assert "no longer cites @fictionalAgencyReport" in stale.message
 
 
+def test_a_sentence_that_kept_its_words_and_gained_as_many_is_named_as_changed() -> None:
+    """Round 1 of #374: nearness was the words shared over the words of both sentences, so a
+    sentence of eight words rewritten with all eight and nine more was said to be gone."""
+    from manuscript_guard.checking.produce import CitedSentence
+    from manuscript_guard.literature.passages import CHANGED, Passage, survey
+
+    old = "Hepatic injury was more common in older women [@a]."
+    new = ("Hepatic injury was more common in older women, and markedly so among those "
+           "taking three or more drugs [@a].")  # fmt: skip
+    cited = [CitedSentence(Path("main.md"), 1, new, ("a",))]
+    passage = Passage(1, old, "a", "words", "p. 1")
+    [checked] = survey(Path("no sources"), cited, (passage,)).passages
+    assert (checked.stale, checked.near) == (CHANGED, cited[0])
+
+
+def test_a_binding_spaced_otherwise_is_the_same_binding() -> None:
+    """Round 1 of #374: the renderer reads `{{ lit.x }}` as `{{lit.x}}`."""
+    assert statement_words("A rate of {{ lit.background.rate }} [@a].") == statement_words(
+        "A rate of {{lit.background.rate}}"
+    )
+    assert statement_words("A rate of {{lit.a}}") != statement_words("A rate of {{lit.b}}")
+
+
 def test_the_words_folded_are_only_those_no_reader_would_tell_apart() -> None:
     assert statement_words("Risk rose [@a].") == statement_words("risk  rose")
     assert statement_words("As @a showed, risk rose.") != statement_words("As showed, risk rose")
@@ -275,6 +298,32 @@ def test_a_judgement_of_a_stale_passage_is_said_in_the_note_only(project: Path) 
     assert "passage-does-not-support" not in [f.code for f in findings]
     [stale] = [f for f in findings if f.code == "passage-stale"]
     assert "Ada Example's judgement (does-not) was of the old words" in stale.message
+
+
+@pytest.mark.parametrize(
+    ("judge", "reworded", "said"),
+    [
+        ("Ada Example", False, "passages judged against their sentence by a person: 1, by "
+         "Ada Example"),
+        # Round 1 of #374: a judgement G7 refuses, and one of words the manuscript no longer
+        # has, were said to be recorded.
+        ("Claude", False, None),
+        ("Ada Example", True, None),
+    ],
+)  # fmt: skip
+def test_check_says_how_many_passages_a_person_judged(
+    project: Path, judge: str, reworded: bool, said: str | None, capsys
+) -> None:
+    write(project, judged("supports", by=judge))
+    if reworded:
+        swap(project, "has been reported", "was reported")
+    main(["check", str(project)])
+    [line] = [line for line in capsys.readouterr().out.splitlines()
+              if "cited statements with a passage" in line]  # fmt: skip
+    assert ("judged" in line) is (said is not None)
+    if said:
+        assert line.endswith(said)
+    assert "Claude" not in line
 
 
 @pytest.mark.parametrize(

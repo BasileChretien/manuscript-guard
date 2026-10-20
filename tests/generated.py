@@ -615,8 +615,10 @@ def quotations(draw: st.DrawFn) -> tuple[str, str]:
 #: each is no difference to a reader, and none may be one to G7.
 FOLDED = (
     "citations dropped", "citations added", "capitals", "wrapped", "no final stop", "typed",
-    "no-break space", "space before a comma",
+    "no-break space", "space before a comma", "binding spaced",
 )  # fmt: skip
+#: The binding a planted claim holds, as the manuscript writes it.
+_CLAIMED = "{{results.cohort.n}}"
 #: How it is written and means another sentence, or another work, and belongs to none.
 UNFOLDED = ("last word changed", "word added", "work not cited")
 
@@ -635,6 +637,7 @@ def _written(sentence: str, group: str, how: str) -> str:
         "typed": lambda: typed(sentence),
         "no-break space": lambda: sentence.replace(" ", "\N{NO-BREAK SPACE}", 2),
         "space before a comma": lambda: sentence.replace(",", " ,", 1),
+        "binding spaced": lambda: sentence.replace(_CLAIMED, "{{ results.cohort.n }}"),
         "last word changed": lambda: sentence.replace(" age ", " sex "),
         "word added": lambda: sentence.replace(" rate ", " rate never "),
         "work not cited": lambda: sentence,
@@ -659,8 +662,8 @@ def passage_files(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str]
         verb = draw(st.sampled_from(("rose", "fell", "doubled", "persisted")))
         group = draw(st.sampled_from((f"[@k{n}]", f"[@k{n}; @shared]", f"[see @k{n}, p. 3]")))
         sentence = (
-            f"Claim {n}: in the {_OPEN}older{_CLOSE} cohort, the drug{_EN_DASH}induced injury "
-            f"rate {verb} with age {group}."
+            f"Claim {n}: in the {_OPEN}older{_CLOSE} cohort of {_CLAIMED}, the "
+            f"drug{_EN_DASH}induced injury rate {verb} with age {group}."
         )
         pieces.append(sentence)
         for how in FOLDED + UNFOLDED:

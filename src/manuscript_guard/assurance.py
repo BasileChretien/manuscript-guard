@@ -249,8 +249,11 @@ def _attested(project: Project) -> list[str]:
 
 
 def _passages(report: Report, project: Project) -> list[str]:
-    """How many cited statements carry a passage of a work they cite, as G7 counted them, and
-    the passages a person judged, by whom."""
+    """How many cited statements carry a passage of a work they cite, and how many passages a
+    person judged against the sentence the manuscript has, as G7 counted them, and by whom.
+    Neither a judgement a model's name signs, which G7 refuses, nor one of a stale passage is
+    counted (round 1 of #374: both were said to be recorded)."""
+    from manuscript_guard.gates.literature import _MODEL_NAME
     from manuscript_guard.literature.passages import read_passages
 
     total = report.counts.get("cited_statements", 0)
@@ -258,13 +261,16 @@ def _passages(report: Report, project: Project) -> list[str]:
         return []
     carrying = report.counts.get("cited_statements_with_passage", 0)
     said = f"cited statements with a passage of a work they cite: {carrying} of {total}"
-    passages, _report = read_passages(project.path("literature"))
-    judged = [passage for passage in passages if passage.support is not None]
+    judged = report.counts.get("passages_judged", 0)
     if judged:
-        people = sorted({str(passage.judged_by) for passage in judged})
+        passages, _report = read_passages(project.path("literature"))
+        people = sorted({
+            str(passage.judged_by) for passage in passages
+            if passage.support is not None and not _MODEL_NAME.search(passage.judged_by or "")
+        })  # fmt: skip
         said += (
-            f"; {len(judged)} passage{'' if len(judged) == 1 else 's'} judged against "
-            f"{'its sentence' if len(judged) == 1 else 'their sentences'}, by {', '.join(people)}"
+            f"; passages judged against their sentence by a person: {judged}, by "
+            f"{', '.join(people)}"
         )
     return [said]
 

@@ -1133,6 +1133,34 @@ def test_an_edit_under_a_standing_judgement_is_put_to_the_person(
     assert decision(run("guard-write", payload, capsys)) == ("ask" if asked else None)
 
 
+def test_taking_a_judgement_away_is_put_to_the_person(in_claude_code: Path, capsys) -> None:
+    """Round 1 of #374: only a judgement added or changed was asked about, so an agent could
+    clear `passage-does-not-support` by deleting the person's judgement."""
+    path = _judge(in_claude_code)
+    judged = _JUDGED.replace('    locator: "Abstract, Results"\n', "")
+    assert judged in path.read_text(encoding="utf-8")
+    payload = _writes(in_claude_code, "Edit", file_path=str(path), old_string=judged,
+                      new_string="")  # fmt: skip
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == "ask"
+    assert "Ada Example" in reason(result)
+
+
+def test_a_patch_drafting_a_passage_beside_a_commented_judgement_is_not_put_to_anyone(
+    project: Path, capsys
+) -> None:
+    """Round 1 of #374: the example shows the judgement's fields in a comment, and a patch to
+    its file was refused in Codex as though a judgement were there."""
+    assert '# judged_by: "A Person"' in _passages(project).read_text(encoding="utf-8")
+    patch = patch_of(
+        "*** Update File: literature/passages.yaml",
+        "@@",
+        '-    locator: "Abstract, Results"',
+        '+    locator: "Abstract, Results section"',
+    )
+    assert run("guard-write", codex_edit(project, patch), capsys) is None
+
+
 def test_drafting_a_passage_nobody_has_judged_is_the_agents_to_do(
     in_claude_code: Path, capsys
 ) -> None:

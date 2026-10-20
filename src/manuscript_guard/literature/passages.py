@@ -36,6 +36,7 @@ from manuscript_guard.literature.sources import (
     read_source,
     stored_files,
 )
+from manuscript_guard.text.placeholders import PLACEHOLDER
 from manuscript_guard.zotero.citations import bracketed
 
 PASSAGES_FILE = "passages.yaml"
@@ -131,10 +132,12 @@ def statement_words(sentence: str) -> str:
 
     A group (`[@a; @b, p. 4]`, read as `zotero/citations.py` reads one) is not words of the
     claim: a work added beside the one cited, or a page number changed, leaves a passage
-    where it was. A narrative citation is ("@smith2020 showed"), and stays."""
+    where it was. A narrative citation is ("@smith2020 showed"), and stays. A binding is
+    written as the renderer reads it, `{{ lit.x }}` as `{{lit.x}}` (round 1 of #374)."""
     text = unicodedata.normalize("NFC", sentence)
     for group in reversed(list(bracketed(text))):
         text = text[: group.start()] + " " + text[group.end() :]
+    text = PLACEHOLDER.sub(lambda found: f"{{{{{found['ns']}.{found['key']}}}}}", text)
     folded = _BEFORE_MARK.sub(r"\1", normalise(text).casefold())
     return folded.rstrip(" .!?")
 
@@ -239,6 +242,10 @@ def _looked_for(
     with the files read and, where none does, what stands in the way."""
     from manuscript_guard.gates.quotations import _ELIDED, quoted_in
 
+    if not passage_words(passage.passage):
+        # All elision, "[...]" or "...": no word to look for, which `quoted_in` finds
+        # anywhere (round 1 of #374).
+        return ABSENT, (), "it holds no word to look for"
     files = stored_files(sources, passage.citekey)
     if not files:
         return NO_SOURCE, (), None
@@ -279,8 +286,10 @@ def _why_stale(
     for cited, theirs in zip(sentences, words, strict=True):
         if passage.citekey not in cited.keys:
             continue
-        held = set(theirs.split())
-        shared = len(mine & held) / max(len(mine | held), 1)
+        # The share of the old sentence's words the new one holds, as `NEAR` says: a
+        # rewording that kept every word and added as many was said to be gone (round 1 of
+        # #374, which measured it against the words of both).
+        shared = len(mine & set(theirs.split())) / max(len(mine), 1)
         if shared > best:
             best, near = shared, cited
     return (CHANGED, near) if near is not None and best >= NEAR else (GONE, None)

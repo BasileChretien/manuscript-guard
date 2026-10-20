@@ -1208,11 +1208,14 @@ co-authors and the entry records for the author. A model's name may not sign it
 internal-review, since a draft others read should not hold a sentence a person judged its
 source does not support, and `partly` is a warning. A judgement of a stale passage was of
 words the manuscript no longer has: the stale note says so, and nothing else is said of it.
-The plugin's write guard puts to the person an agent's edit after which some judged entry is
-not one the file held before, word for word in its sentence, work, passage, judgement, judge
-and date: a judge named, or the words under a standing judgement changed. A locator or a note
-changed beside it is not put to them. A Codex patch holds only the lines it changes, so one
-to a file that holds a judgement is put to the person, and refused where the tool cannot ask.
+The plugin's write guard puts to the person an agent's edit after which the judged entries
+are not the ones the file held before, word for word in their sentence, work, passage,
+judgement, judge and date: a judge named, the words under a standing judgement changed, or a
+judgement taken away, which would otherwise clear a `does-not` unasked (round 1 of #374). A
+locator or a note changed beside it is not put to them. A Codex patch holds only the lines it
+changes, so one to a file that holds a judgement outside a comment is put to the person, and
+refused where the tool cannot ask. A passage that is all elision, `[...]`, holds no word to
+look for and is not in its source.
 
 **What a co-author is shown.** The checker's item for a cited sentence shows each passage
 that belongs to it, with its locator in the caption, as evidence whose words are in the
@@ -11189,8 +11192,9 @@ Open, recorded as each change landed:
 - **A supporting passage is in its work, and is not held to what its sentence says.** G7
   finds the words in the stored source; whether they say what the sentence says is the
   judgement it leaves to people, the author's in `passages.yaml` and the co-authors' in the
-  checker. A binding in a sentence is a word of it, `{{lit.x}}` as written, so a sentence
-  whose bound value changes keeps its passage, as its checker item keeps its answers. A
+  checker. A binding in a sentence is a word of it, `{{lit.x}}` by its key and not its
+  value, so a sentence whose bound value changes keeps its passage, as its checker item
+  keeps its answers. A
   sentence citing several works carries a passage when one of them has one, so `[@a; @b]`
   cited for two claims counts as carrying one with a's alone. A passage found only in
   `<key>.abstract.txt` is verified, and nothing says it rests on an abstract, as the
@@ -11199,7 +11203,11 @@ Open, recorded as each change landed:
   names as the sentence "it may now read" the one citing the work that shares the most of
   its words, half or more; a sentence split in two, or two merged, may be named wrongly,
   and nothing is decided by it. The write guard reads a Write or an Edit whole and a patch
-  by its lines, and not an edit made by a shell command, as for `attested_by`. G7 reads a
+  by its lines, and not an edit made by a shell command, as for `attested_by`, nor a patch
+  that deletes `passages.yaml`; and a rewording of the manuscript's sentence, which is no
+  edit of the file, leaves a judgement stale and its `does-not` with it, unasked. A model's
+  name is the deny-list G7 reads `attested_by` with, which knows the agent tools and models
+  by the names they are sold under and not every name an agent could sign. G7 reads a
   work's stored files once for the passages and once for the quotations in the prose, so a
   PDF goes through `pdftotext` twice a `check`.
 

@@ -5690,6 +5690,10 @@ def _a_space_before_a_comma_is_a_difference(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(passages_module, "_BEFORE_MARK", re.compile("(?!)( )"))
 
 
+def _a_binding_spaced_otherwise_is_a_difference(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(passages_module, "PLACEHOLDER", re.compile("(?!)"))
+
+
 def _a_sentence_is_matched_on_its_opening_words(patch: pytest.MonkeyPatch) -> None:
     folded = passages_module.statement_words
     patch.setattr(passages_module, "statement_words",
@@ -5721,6 +5725,10 @@ BROKEN = {
     ),
     "a citation group is words of the sentence": (
         _a_citation_group_is_words_of_the_sentence,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a binding spaced otherwise is a difference": (
+        _a_binding_spaced_otherwise_is_a_difference,
         test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
     ),
     "a space before a comma is a difference": (

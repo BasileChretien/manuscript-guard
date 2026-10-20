@@ -97,8 +97,19 @@ def check_passages(project: Project, stage: str = DRAFTING) -> Report:
         passages_failed=sum(c.found == ABSENT for c in checked),
         passages_unchecked=sum(c.found in (NO_SOURCE, UNREADABLE) for c in checked),
         passages_stale=sum(c.stale is not None for c in checked),
-        passages_judged=sum(c.passage.support is not None for c in checked),
+        # A judgement of the words the manuscript has, by a person: neither one of a stale
+        # passage nor one a model's name signs (round 1 of #374).
+        passages_judged=sum(_judged_now(c) for c in checked),
     )
+
+
+def _judged_now(checked: Checked) -> bool:
+    """Whether a passage holds a person's judgement of the sentence the manuscript has."""
+    from manuscript_guard.gates.literature import _MODEL_NAME
+
+    judge = checked.passage.judged_by or ""
+    return (checked.passage.support is not None and checked.stale is None
+            and not _MODEL_NAME.search(judge))  # fmt: skip
 
 
 def _findings(checked: Checked, path: Path) -> list[Finding]:
@@ -111,7 +122,8 @@ def _findings(checked: Checked, path: Path) -> list[Finding]:
             gate=GATE,
             code="passage-not-in-source",
             message=f"{passage.named}: the passage is not in the stored source of "
-            f"@{passage.citekey} ({', '.join(checked.looked_in)})"
+            f"@{passage.citekey}"
+            + (f" ({', '.join(checked.looked_in)})" if checked.looked_in else "")
             + (f"; {checked.why}" if checked.why else ""),
             path=path,
             context=context,

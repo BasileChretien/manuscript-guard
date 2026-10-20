@@ -702,9 +702,11 @@ def _judges(path: Path, payload: dict) -> str | None:
     Whether a passage supports its sentence is the judgement of the person `judged_by` names.
     G7 refuses a model's name there, and cannot tell a person's name typed by an agent from
     the person's own; nor a judgement left standing while an agent changes the sentence, the
-    work or the passage it was of. So an edit after which some judged entry is not one the
-    file held before, word for word, is put to the person. A patch, which holds only the
-    lines it changes, is put to them where it touches a judgement or the file has one."""
+    work or the passage it was of, nor one taken away (round 1 of #374: deleting the lines of
+    a `does-not` cleared its failure, unasked). So an edit after which the judged entries are
+    not the ones the file held before, word for word, is put to the person. A patch, which
+    holds only the lines it changes, is put to them where it touches a judgement or the file
+    has one."""
     if path.name != "passages.yaml":
         return None
     found = _relative_to_project(path)
@@ -727,19 +729,20 @@ def _judges(path: Path, payload: dict) -> str | None:
             return None
         names = "a judgement it touches or keeps"
     else:
-        judged = _judgements(after) - _judgements(before[0])
+        judged = _judgements(after) ^ _judgements(before[0])
         if not judged:
             return None
-        names = ", ".join(dict.fromkeys(str(entry[-2]) for entry in judged))
+        names = ", ".join(dict.fromkeys(str(entry[-2]) for entry in sorted(judged)))
     return (
-        f"{relative}: this edit records, or leaves standing over words it changes, a person's "
-        f"judgement of whether a passage supports its sentence ({names}). That is the "
-        f"person's judgement, and G7 cannot tell a name an agent typed from theirs."
+        f"{relative}: this edit records, takes away, or leaves standing over words it changes, "
+        f"a person's judgement of whether a passage supports its sentence ({names}). That is "
+        f"the person's judgement, and G7 cannot tell a name an agent typed from theirs."
     )
 
 
-#: A judge named in passages.yaml, in block or flow style.
-_JUDGED_BY = re.compile(r"""\bjudged_by["']?[ \t]*:""")
+#: A judge named in passages.yaml, in block or flow style, on a line that is not a comment:
+#: the example shows the fields in one (round 1 of #374).
+_JUDGED_BY = re.compile(r"""(?m)^(?![ \t]*#).*?\bjudged_by["']?[ \t]*:""")
 
 
 def _judgements(text: str) -> set[tuple]:

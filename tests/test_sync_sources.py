@@ -702,9 +702,10 @@ def test_a_file_two_cited_dois_could_be_of_is_weighed_against_one_of_their_own(
 def test_a_folder_in_the_folder_that_cannot_be_read_is_passed_over_and_said(
     paper, tmp_path, monkeypatch, capsys
 ):
-    """A download still holding its folder stopped the whole run (round 1)."""
-    cite(paper, "smith2020")
-    bib(paper, smith2020="10.1000/smith")
+    """A download still holding its folder stopped the whole run (round 1), and the work whose
+    folder it was was said to have no PDF (round 2)."""
+    cite(paper, "smith2020", "locked2020")
+    bib(paper, smith2020="10.1000/smith", locked2020="10.1000/locked")
     put(tmp_path / "papers", "10.1000_smith.pdf")
     locked = tmp_path / "papers" / "10.1000_locked"
     locked.mkdir()
@@ -721,6 +722,9 @@ def test_a_folder_in_the_folder_that_cannot_be_read_is_passed_over_and_said(
     assert (sources(paper) / "smith2020.pdf").read_bytes() == PDF
     out = capsys.readouterr().out
     assert "The folder's 10.1000_locked/ could not be read (Permission denied): no PDF" in out
+    listed = out.split("No copy for 1 cited work:")[1]
+    assert "@locked2020: the folder's 10.1000_locked/ could not be read" in listed
+    assert "no PDF named for its DOI" not in listed
 
 
 def test_a_doi_with_digits_of_another_script_is_recorded(paper, tmp_path):

@@ -1121,10 +1121,11 @@ of the three names is tried, without regard to case, at each of those places and
 is read. A DOI's folder holds the harvester's supplements as well, under other names, and
 they are not taken. A file that does not begin with `%PDF-` is refused and said: the
 harvester checks that what it saves is a PDF, but a page saved by hand, or by another tool,
-under a `.pdf` name is a sign-in or paywall page. A file named for two cited DOIs (`10.1000/a:b` and
-`10.1000/a;b` are both `10.1000_a_b`) is copied for neither; one DOI cited under two keys is
-copied for each. Two PDFs of one DOI that differ, its open copy and the browser's, are
-neither copied, as with Zotero. The works the folder had nothing for are listed with why: no
+under a `.pdf` name is a sign-in or paywall page. A file named for two cited DOIs
+(`10.1000/a:b` and `10.1000/a;b` are both `10.1000_a_b`) is copied for neither, and where it
+differs from a file one of them alone names (`10.1000/a(b)` is `10.1000_a_b_` through Chrome)
+that one is not copied either; one DOI cited under two keys is copied for each. Two PDFs of
+one DOI that differ, its open copy and the browser's, are neither copied, as with Zotero. The works the folder had nothing for are listed with why: no
 PDF named for the DOI, or no DOI to look for. The PDFs named for no cited DOI are counted, so
 that a folder named by title, or the wrong folder, shows. The record says `from: folder` and
 the DOI the file was matched by, and no path. A file one source wrote is not replaced from

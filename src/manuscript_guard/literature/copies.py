@@ -399,7 +399,7 @@ def _about_folder(offered: Offer) -> list[str]:
         f"The folder's {one}: no PDF in it was looked at."
         for one in offered.unread
     ]
-    if not offered.pdfs:
+    if not offered.pdfs and not offered.unread:
         lines.append(
             "The folder holds no PDF where a DOI names one: <name>.pdf, <name>/<name>.pdf "
             "or _browser_fallback/<name>.pdf."

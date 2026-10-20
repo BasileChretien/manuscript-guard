@@ -13,7 +13,8 @@ of the work's entry in `literature/references.bib` as G7 reads it (`doi_of`: und
 lower case). A file name cannot hold every character a DOI can, and the harvester writes the
 others as `_` in three ways (`names`); each is tried, without regard to case, as a DOI is
 matched. What is not a PDF, a sign-in or paywall page saved under a `.pdf` name, is refused
-and said. A file whose name spells two cited DOIs is copied for neither.
+and said. A file whose name spells two cited DOIs is copied for neither, and where it differs
+from a file one of them alone names, that one is not copied either.
 """
 
 from __future__ import annotations
@@ -194,7 +195,7 @@ def _match(found: list[Found], dois: set[str]) -> tuple[Named, int]:
 
 
 def _choose(
-    doi: str, own: list[Found], shared: list[tuple[Found, list[str]]]
+    doi: str, own: list[Found], shared: list[tuple[Found, list[str]]], locked: dict[str, str]
 ) -> tuple[tuple[Found, str, int] | None, list[str]]:
     """The one PDF of a DOI, as (file, SHA-256, size), or None, and why each other file was
     not taken. Two PDFs that differ are neither taken. A file another cited DOI's name is also
@@ -218,7 +219,9 @@ def _choose(
             "is not guessed"
         )
     elif not why:
-        why.append(f"the folder has no PDF named for its DOI, {doi}")
+        held = [locked[name] for name in sorted(names(doi) | {BROWSER.lower()}) if name in locked]
+        why.append(f"the folder's {held[0]}" if held else
+                   f"the folder has no PDF named for its DOI, {doi}")  # fmt: skip
     return None, why
 
 
@@ -234,9 +237,10 @@ def offer(project: Project, folder: Path) -> Offer:
         raise FolderUnreadable(f"{folder} could not be read ({exc.strerror or exc})") from exc
     dois, why = _cited_dois(project, cited_keys(project))
     (own, shared), unmatched = _match(found, set(dois.values()))
+    locked = {said.split("/", 1)[0].lower(): said for said in unread}
     chosen: dict[str, list[Candidate]] = {}
     for doi in sorted(set(dois.values())):
-        pdf, reasons = _choose(doi, own.get(doi, []), shared.get(doi, []))
+        pdf, reasons = _choose(doi, own.get(doi, []), shared.get(doi, []), locked)
         for key in (key for key, its in dois.items() if its == doi):
             if pdf is not None:
                 one, sha, size = pdf

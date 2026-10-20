@@ -11,8 +11,8 @@ What it takes, for each attachment Better BibTeX lists for the key:
 
 * the file, where it is on this computer and is a PDF, a saved page or plain text;
 * else Zotero's text of it, `.zotero-ft-cache` in the attachment's folder, which Zotero keeps
-  for a file it indexed, whether the file is not downloaded here or is of another kind (an
-  EPUB), filed as `<key>.txt`;
+  for a file it indexed, where the file is not downloaded here or is an EPUB, filed as
+  `<key>.txt`; never for a table or a citation file;
 * else nothing, and the reason is said.
 
 The other kinds G7 reads, a table or a citation file, are not taken: attached to an item in
@@ -22,7 +22,8 @@ which the supplement is not a thing to guess. A file under `literature/sources/`
 command did not write, or that was changed since it wrote it, is never written over; one it
 wrote, and that is as it wrote it, is replaced when Zotero's copy has changed. A file found in
 place with Zotero's bytes is left out of the record, so it stays the author's (round 1 of
-#361). Nothing is deleted. What it wrote is recorded in `literature/sources.yaml`: each file's
+#361), and an entry whose file is gone is dropped at the start of a run. Nothing is
+deleted. What it wrote is recorded in `literature/sources.yaml`: each file's
 name, the work, the SHA-256 and size of what was written, and whether it is the file or
 Zotero's text. The record holds no path on anyone's computer.
 """
@@ -47,6 +48,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.literature.sources import (
     HTML_SUFFIXES,
     PDF_SUFFIXES,
+    TEXT_SUFFIXES,
     filed_name,
     stored_files,
 )
@@ -65,6 +67,8 @@ TAKEN = frozenset(PDF_SUFFIXES | HTML_SUFFIXES | {".txt"})
 #: The kinds on this computer whose Zotero text is taken in their place: a book's text, and
 #: not a table's or a citation file's, which Zotero may index too (round 2 of #361).
 TEXT_IN_PLACE_OF = frozenset({".epub"})
+#: A table or a citation file: neither it nor Zotero's text of it is taken, here or not (#364).
+NOT_THE_WORK = frozenset(TEXT_SUFFIXES) - TAKEN
 
 COPIED = "copied"
 UPDATED = "updated"
@@ -165,6 +169,9 @@ def candidates(key: str, held: list[Attachment]) -> tuple[list[Candidate], list[
         here = path.is_file()
         text = path.parent / ZOTERO_TEXT
         about = "from Zotero"
+        if suffix in NOT_THE_WORK:
+            why.append(f"a {suffix} file, not taken as the work's text")
+            continue
         if here and suffix in TAKEN:
             origin, kind, name = path, "zotero", filed_name(key, suffix)
         elif (not here or suffix in TEXT_IN_PLACE_OF) and text.is_file():

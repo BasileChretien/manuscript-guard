@@ -358,7 +358,7 @@ def test_zoteros_text_is_taken_for_a_file_check_cannot_read(paper, tmp_path, mon
     assert "not on this computer" not in outcome.said and ".epub" in outcome.said
 
 
-@pytest.mark.parametrize("indexed", [False, True], ids=["alone", "with Zotero's text"])
+@pytest.mark.parametrize("indexed", [False, True, "absent"], ids=["alone", "text", "only text"])
 @pytest.mark.parametrize("kind", [".csv", ".json", ".xml", ".bib", ".ris", ".nbib"])
 def test_a_data_or_citation_file_is_not_copied_as_the_work(
     paper, tmp_path, monkeypatch, kind, indexed
@@ -371,6 +371,8 @@ def test_a_data_or_citation_file_is_not_copied_as_the_work(
     attachment = zotero.file("table" + kind, b"a,b\n1,2\n")
     if indexed:
         (Path(attachment["path"]).parent / ".zotero-ft-cache").write_text("a b 1 2", "utf-8")
+    if indexed == "absent":  # #364: nor its text where the file is not on this computer
+        Path(attachment["path"]).unlink()
     (outcome,) = sync(paper, monkeypatch, FakeBBT({1: {"data2011": [attachment]}}))
 
     assert outcome.status == copies.NO_COPY and kind in outcome.said

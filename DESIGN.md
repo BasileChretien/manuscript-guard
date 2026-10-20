@@ -1545,7 +1545,9 @@ The searches' shapes and habits were checked on 2026-10-20 against live answers:
   NEJMoa2021436, where PubMed lists the group and 30 people.
 - OpenAlex's `/works?search=` costs a thousandth of a dollar, and without a key the
   allowance is ten cents a day for everyone behind one address (`X-RateLimit-Cost-USD`,
-  `X-RateLimit-Remaining-USD`, read from each answer). Its `meta.notice` tells an AI agent
+  `X-RateLimit-Remaining-USD`, read from each answer); once it is spent a search is answered
+  429 (2026-10-21), which `lookup` takes for a search not made, not for an answer that did
+  not come: OpenAlex may find a work and never fails one. Its `meta.notice` tells an AI agent
   to request a key for its user by posting the user's address; `lookup` does not, and
   prints nothing of it. Its authors are display names, `C. A. Naranjo`, whose last word is
   taken for the family name.

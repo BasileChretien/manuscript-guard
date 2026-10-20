@@ -262,7 +262,14 @@ def openalex(q: Query, ask: Ask, where: Where) -> dict[str, Any] | None:
         text, search.Filters(limit=ROWS), where.credentials,
         search.Services(openalex=where.openalex),
     )  # fmt: skip
-    read = search._openalex_results(sources._ask(ask, request), ROWS)
+    answer = sources._ask(ask, request)
+    if isinstance(answer, Response) and answer.status == 429:
+        # OpenAlex says 429 once the allowance is spent (seen 2026-10-21, the day after a
+        # measurement spent it): no search was made, which is not an answer that did not
+        # come. OpenAlex may find a work and never fails one, so nothing waits on it.
+        where.allowance.remaining = 0.0
+        return None
+    read = search._openalex_results(answer, ROWS)
     if isinstance(read, search.Answer):
         return {"status": UNRESOLVABLE, "why": read.why or SHAPE, "asked": [text]}
     results, _count = read

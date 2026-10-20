@@ -717,6 +717,22 @@ def test_openalex_is_searched_only_while_its_allowance_lasts(searched: Path) -> 
     assert "openalex_search" in second["sources"], "with a key, the allowance is its own"
 
 
+def test_an_allowance_openalex_says_is_spent_is_no_answer_missing(searched: Path) -> None:
+    """A 429 once the allowance is spent: the search was not made, and the reference is
+    judged by PubMed and Crossref, not left waiting for an answer that will not come."""
+    asked: list[str] = []
+
+    def spent(request: Request) -> Response:
+        asked.append(request.params.get("search", ""))
+        return Response(429, {"X-RateLimit-Remaining-USD": "0"}, b"{}")
+
+    _run(searched, _searches(openalex=spent))
+    for key in ("fictionalHepaticCohort2021", "fictionalClassSignal2019"):
+        assert "openalex_search" not in read_record(_loaded(searched), key)["sources"]
+    assert len(asked) == 1, "and it is not asked again in that run"
+    assert {p.skipped for p in lookup.plan(_loaded(searched))} == {"up to date"}
+
+
 def test_crossref_s_searches_are_paced_from_their_own_pool() -> None:
     """A search is answered from Crossref's list pool at one a second, and a DOI from the
     single-record pool at five: one does not hold the other up."""

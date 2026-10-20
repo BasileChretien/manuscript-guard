@@ -1596,6 +1596,113 @@ the other, which is the rule that the command never writes over what it did not 
 applied between its two sources: one paper downloaded twice can differ in its bytes, where a
 publisher stamps each download, and each run would otherwise put its own copy back.
 
+## A reference is proposed from a registry, and chosen by the author
+
+Three things say that a claim needs a citation: G6's `vague-attribution` ("studies have
+shown" with nothing cited near it), a `[citation needed]` slot, which fails as a placeholder,
+and a review panel's citation-support remit, which finds a cited work that does not say what
+its sentence says. Each says where; none says what to cite. An agent asked to fill the gap
+from what it remembers proposes a work that may not exist, or exists and says something else,
+and the lookup catches only the first, after the citation is in.
+
+`manuscript-guard search "<query>"` asks open registries that need no account, and lists
+what they hold: PubMed (ESearch, by its relevance, then ESummary for each PMID it found) and
+Europe PMC (its search, with each work's core record) for biomedical work, and OpenAlex
+(`/works?search=`) for every field. Each candidate is a registry's record: its DOI, PMID and
+PMCID, title, year, journal and first author; its kinds as the registries type it (guideline,
+systematic review, meta-analysis, review, randomized controlled trial, observational study,
+preprint, and the notices); whether it was retracted, and on whose word; a later version a
+registry links; an open copy; and the citation counts OpenAlex and Europe PMC give. It can be
+narrowed by year (`--since`), kind (`--type`: review, systematic-review, meta-analysis,
+guideline, rct, cohort or preprint, several joined by OR) and language (`--language`, in two
+letters), and reordered by year or by citations (`--sort`). `--json` is for an agent, and
+`--dry-run` says what would be asked and sends nothing.
+
+**It proposes, and decides nothing.** It reads nothing of the manuscript and writes no file.
+The query is sent as typed, so it is the author's or the agent's words for a topic; a query
+over 300 characters is refused, since a passage of the manuscript pasted in would leave the
+machine with it. The answer is not kept: the work the author chooses goes into the author's
+Zotero, and from there through `sync-bib`, `lookup`, `sync-sources` and G7 like any other
+reference. Nothing a gate reads comes from a search.
+
+Crossref's own search is not asked. `query.bibliographic` matches a citation string, and a
+topic finds little there. Crossref is asked only about the preprints shown, by DOI, for the
+published version each became (`relation.is-preprint-of`) and for a retraction or withdrawal.
+
+**Merged, and ordered by the registries.** A work two registries return is one candidate.
+The same DOI is the same work; a PMID joins two answers only where no DOI tells them apart,
+since PubMed's record of a preprint and the journal's record of the paper it became are two
+works with two DOIs. The order is the registries' own relevance, merged by reciprocal rank
+(each registry's rank r adds 1/(60 + r), the constant of Cormack, Clarke and Büttcher, SIGIR
+2009), so a work near the top of two answers stands above one at the top of one. Each
+registry is asked for as many works as are shown, ten unless `--limit` says otherwise, and
+then OpenAlex is asked once more, by DOI, about the first 50 works it did not itself return,
+for `is_retracted`, `cited_by_count` and an open copy.
+
+A retraction is any registry's word: PubMed's "Retracted Publication" or a "Retraction in"
+link, the same from Europe PMC, OpenAlex's `is_retracted`, or Crossref's retraction,
+withdrawal or removal of a preprint. A record at PubMed or Europe PMC with neither mark is
+that registry saying no, and is shown as "retracted: no" with its name; "not known" is shown
+only where no registry that answered said either way, never as "no". A Crossref that did not
+answer is said, and is not read as having found nothing (round 1 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of" or "Update
+in", or Crossref's `is-preprint-of`, and all three are asked because they do not agree: on
+2026-10-20 a medRxiv preprint had PubMed's link to its journal version and none at Crossref,
+and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with whose word
+it is.
+
+A registry asked for a kind it does not type is not asked. OpenAlex types a review and a
+preprint and nothing finer, so with a systematic review, a meta-analysis, a guideline, a
+trial or a cohort among the kinds it is not asked, and the output says so, rather than a
+review standing in for a meta-analysis. `cohort` is MeSH's Cohort Studies (`cohort
+studies[mh]`, `MESH:"Cohort Studies"`), an indexing term and not a publication type, so the
+works it finds are not marked as cohorts.
+
+The shapes were read from the services' documentation and from live answers on 2026-10-20:
+
+- ESearch, in JSON: `esearchresult.count` as a string, `idlist`, `querytranslation`. An
+  error is `ERROR` inside `esearchresult`, with HTTP 200 ("Empty Term" for a query of
+  brackets). A word that matches nothing is left out and the rest searched, and only
+  `errorlist.phrasesnotfound` says so; the command names the word, since the search was not
+  the one asked for. The year is `datetype=pdat&mindate=<year>&maxdate=3000`, and `eng[la]`,
+  `fre[la]`, `jpn[la]` are read as the languages.
+- ESummary, in JSON: `result.uids`, and for each PMID `title`, `fulljournalname`,
+  `sortpubdate`, `authors[]` with `name` and `authtype`, `lang`, `pubtype` ("Systematic
+  Review", "Meta-Analysis", "Practice Guideline", "Preprint", "Retracted Publication"),
+  `articleids` (`doi`, `pmc`, and `pmcid` written "pmc-id: PMC…;", with an embargo date where
+  there is one), and `references[]` with `reftype` ("Retraction in", "Update in", "Erratum
+  in", "Comment in"), `refsource` and `pmid`. `pmcrefcount` counts citing papers in PMC only,
+  and is not shown.
+- Europe PMC, `search?format=json&resultType=core`: `hitCount` as a number and
+  `resultList.result[]`, each with `id`, `source` (`MED`; `PPR` for a preprint), `pmid`,
+  `pmcid`, `doi`, `title`, `pubYear` as a string, `journalInfo.journal.title` (a preprint's
+  server in `bookOrReportDetails.publisher`), `authorString` and `authorList`,
+  `pubTypeList.pubType`, `citedByCount`, `isOpenAccess` ("Y" or "N"),
+  `fullTextUrlList.fullTextUrl[]` with `availabilityCode` (`OA`, `F` for free, `S` for a
+  subscription), `language`, and `commentCorrectionList.commentCorrection[]` with `type`
+  ("Retraction in", "Preprint of"), `source`, `id` and `reference`. A query it cannot read,
+  "(((" or a field it does not have, is answered with `hitCount` 0 and no error. A preprint
+  has no `language`, so a language filter leaves out every preprint it holds. The year is
+  `PUB_YEAR:[<year> TO 3000]`, the language `LANG:"eng"`.
+- OpenAlex, `/works?search=&filter=&select=`: `meta.count` and `results[]`, each with `doi`
+  and `ids.pmid` written as URLs, `type` (`article`, `review`, `preprint`, `retraction`,
+  ...), `language` in two letters, `is_retracted`, `cited_by_count`, `open_access.is_oa` and
+  `oa_url`, `primary_location.source.display_name` and `authorships`. A filter it does not
+  know is HTTP 400. `filter=doi:<a>|<b>` asks about several DOIs in one request. Without a
+  key, its answers say, a search costs $0.001 and a request by DOI $0.0001 of a $0.10 daily
+  allowance shared by everyone at the network address, and a key raises that to $1 a day;
+  the command says when it asked without one. The same `meta.notice` asks an AI agent to
+  request a key on its user's behalf by sending the user's address to OpenAlex. Nothing
+  here does, and the notice is not printed.
+- Crossref's `/works?query.bibliographic=` refuses a `select` it has no field for
+  (`subtype`) with HTTP 400 and `"status": "failed"`. It is not used.
+
+The contact address and the keys are the lookup's: `MANUSCRIPT_GUARD_CONTACT`, or else
+`lookup.contact` in the `paper.yaml` of the project the command runs in, or that `--root`
+names; `NCBI_API_KEY`; `OPENALEX_API_KEY`. Each goes where its service asks for it and is never
+printed, and an answer that would print one is refused. Requests are paced as the lookup's
+are. The command exits 0 when a registry answered, with nothing found included, 1 when none
+asked did, and 2 when the query cannot be asked.
+
 ## A quotation in the prose is in its source
 
 G7 checks the ledger's quotes against the stored sources. A quotation written into a sentence
@@ -7889,6 +7996,23 @@ Open, recorded as each change landed:
   carry is not in the record, and the record is as old as the day it was asked. Requests
   are paced at fixed intervals rather than by the limits each answer states in its
   headers.
+- **`search` orders by the registries' relevance, which knows nothing of the claim.** A work
+  at the top can be off the point, or weak evidence for it; whether it supports the claim is
+  the author's to judge with the work read. The kinds are the registries' indexing, which
+  lags: a recent paper often has no publication type in PubMed until MEDLINE indexes it, so
+  `--type` leaves it out, and a systematic review not yet indexed as one is a review or
+  nothing. With a kind finer than a review, OpenAlex is not asked, and work in the fields
+  PubMed and Europe PMC do not cover is not searched. No registry links a guideline to the
+  edition that replaced it (the 2016 ESC heart failure guideline has no link to 2021's in
+  PubMed, 2026-10-20), so the latest edition is found by searching again with `--since`, not
+  shown beside the old one: `--sort newest` only reorders the works each registry gave by its
+  relevance, and a newer edition outside them stays outside. A retraction is as current as each registry, and a candidate
+  only PubMed found and OpenAlex does not know rests on PubMed's word. Europe PMC answers a
+  query it cannot read with no work, which reads as nothing found there. The query is sent
+  as typed: the 300-character limit stops a pasted paragraph, not a sentence of unpublished
+  results written as a query. A PMID joins a record with no DOI to a work with one, so where
+  OpenAlex gives a preprint the PMID of the paper it became, PubMed's DOI-less record of that
+  paper is shown as the preprint (round 1 of #369; not seen in the answers probed).
 - **The title comparison is one-sided and by words.** A registered title that holds every
   cited word and many more passes, and so does one whose words are the same in another
   order. A notice a publisher deposited as a journal article, with no `update-to`, is read

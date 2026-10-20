@@ -2519,6 +2519,78 @@ def cmd_lookup(args: argparse.Namespace) -> int:
     return 0
 
 
+#: The longest query sent: a search is for a topic, and a passage of the manuscript pasted
+#: in would leave the machine with it.
+MAX_QUERY = 300
+
+
+def _search_filters(args: argparse.Namespace):
+    """The filters as asked, or the reason they cannot be used."""
+    from manuscript_guard.lookup.search import LANGUAGES, MAX_LIMIT, TYPES, Filters
+
+    types = tuple(dict.fromkeys(t.strip() for given in args.type or [] for t in given.split(",")
+                                if t.strip()))  # fmt: skip
+    unknown = [t for t in types if t not in TYPES]
+    if unknown:
+        return f"no type {', '.join(map(repr, unknown))}; the types are {', '.join(TYPES)}"
+    language = args.language.strip().lower() if args.language else None
+    if language and language not in LANGUAGES:
+        return (f"no language {args.language!r}; give it in two letters, one of "
+                f"{', '.join(sorted(LANGUAGES))}")  # fmt: skip
+    if args.since is not None and not 1000 <= args.since <= 9999:
+        return f"--since takes a year, not {args.since}"
+    if not 1 <= args.limit <= MAX_LIMIT:
+        return f"--limit takes 1 to {MAX_LIMIT}, not {args.limit}"
+    return Filters(since=args.since, types=types, language=language, limit=args.limit)
+
+
+def cmd_search(args: argparse.Namespace) -> int:
+    """Ask open registries for works a claim could cite. It proposes; it writes nothing."""
+    import json
+
+    from manuscript_guard.contracts.project import find_root
+    from manuscript_guard.lookup import proposals
+    from manuscript_guard.lookup.run import Credentials
+
+    query = " ".join(args.query.split())
+    if not query:
+        print("manuscript-guard: nothing to search for: the query is empty", file=sys.stderr)
+        return 2
+    if len(query) > MAX_QUERY:
+        print(
+            f"manuscript-guard: a query of {len(query)} characters is not sent: write the "
+            f"topic in at most {MAX_QUERY}, not a passage of the manuscript",
+            file=sys.stderr,
+        )
+        return 2
+    filters = _search_filters(args)
+    if isinstance(filters, str):
+        print(f"manuscript-guard: {filters}", file=sys.stderr)
+        return 2
+    project = None
+    try:
+        find_root(args.root or Path.cwd())
+    except ContractError:
+        if args.root is not None:
+            raise
+    else:
+        project, _ = load_project(args.root or Path.cwd())
+    credentials = Credentials.from_environment(project)
+    if args.dry_run:
+        for name, request in proposals.planned(query, filters, credentials, proposals.Services()):
+            print(f"{proposals.NAMES[name]}: would ask {request.shown}")
+        print("then PubMed for what each PMID it finds is, OpenAlex about the works it did not "
+              "return, and Crossref about each preprint; nothing was sent")  # fmt: skip
+        return 0
+    result = proposals.run(query, filters, sort=args.sort, credentials=credentials)
+    said = (json.dumps(proposals.as_json(result), indent=2, ensure_ascii=False)
+            if args.json else proposals.render(result))  # fmt: skip
+    if any(secret in said for secret in credentials.secrets):
+        raise RuntimeError("the search's answer would have printed a key or the contact address")
+    print(said)
+    return 0 if proposals.answered(result) else 1
+
+
 def cmd_style(args: argparse.Namespace) -> int:
     """Fetch the target journal's citation style from the CSL style repository, and keep it
     in the project for the offline build."""
@@ -3619,6 +3691,40 @@ def build_parser() -> argparse.ArgumentParser:
         help="ask the NLM Catalog and DOAJ about each journal of journals/shortlist.yaml instead",
     )
     lookup.set_defaults(func=cmd_lookup)
+
+    search = sub.add_parser(
+        "search",
+        help="ask PubMed, Europe PMC and OpenAlex for works a claim could cite; it proposes, "
+        "and writes nothing",
+    )
+    search.add_argument("query", help="the topic, in a few words; it is sent as written")
+    search.add_argument("--since", type=int, metavar="YEAR", help="works published from YEAR")
+    search.add_argument(
+        "--type",
+        action="append",
+        metavar="TYPE",
+        help="review, systematic-review, meta-analysis, guideline, rct, cohort or preprint; "
+        "several are joined by OR (repeat, or separate with commas)",
+    )
+    search.add_argument("--language", metavar="CODE", help="in two letters, e.g. en")
+    search.add_argument("--limit", type=int, default=10, help="how many to show (default 10)")
+    search.add_argument(
+        "--sort",
+        choices=("relevance", "newest", "cited"),
+        default="relevance",
+        help="the order: the registries' relevance (default), year, or citation count",
+    )
+    search.add_argument("--json", action="store_true", help="the candidates as JSON")
+    search.add_argument(
+        "--dry-run", action="store_true", help="say what would be asked, and send nothing"
+    )
+    search.add_argument(
+        "--root",
+        type=Path,
+        help="the paper project whose `lookup.contact` is sent; by default the one this "
+        "folder is in, if any",
+    )
+    search.set_defaults(func=cmd_search)
 
     style = sub.add_parser(
         "style",

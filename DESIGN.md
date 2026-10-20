@@ -3230,7 +3230,19 @@ folder is not committed, so a fresh checkout says `verify` has not run in it, wh
 "All authors approved the final manuscript" was a sentence of the covering letter, typed.
 `manuscript-guard approve --as <author>` now records an author's approval in
 `approvals/<author>.yaml`, one file per author, with the digest of what decides the built
-document, the prose and the results, as `check` reads it to say a build is current. The
+document, the prose and the results, as `check` reads it to say a build is current, and the
+digest of what `submit` prints in the authors' names (`front_sha256`): the title page but
+for its word counts, which the manuscript decides (the title, the running title, whether
+the paper is a demonstration, the authors with their degrees and equal-contribution
+marks, the affiliations, the equal-contribution note, the corresponding author's block,
+the ORCID iDs, the keywords), the
+CRediT statement and the declarations of funding and competing interests. What none of
+them prints stales no approval: a comment, a role named to sign a warning, the rest of
+`paper.yaml` (the journal, whose style the document prints, is left out on purpose), and
+a figure's file, whose bytes a re-render changes (Basile's choice, 2026-10-20, round 1 of
+#284: a new title or an author added left every approval standing; round 1 of #355: the
+whole of `authors.yaml` was held, and a role added to sign a warning staled them all).
+An approval written before has no `front_sha256` and is judged by the manuscript alone. The
 author is found by ORCID iD, e-mail address, full name or family name in `authors.yaml`.
 `submit` warns where an author has no approval (`approval-missing`) or approved a manuscript
 that has changed since (`approval-stale`). It warns and does not refuse: whether to send

@@ -4,8 +4,10 @@
 true or not. So an author's approval is recorded where it can be held to something:
 `manuscript-guard approve --as <author>` writes `approvals/<author>.yaml`, one file per
 author, with the digest of what decides the built document, the prose and the results, as
-`check` reads it to say a build is current (`gates.review.document_digest`). An approval is a
-person's statement, so the hooks put to the person an agent's attempt to write one.
+`check` reads it to say a build is current (`gates.review.document_digest`), and the digest of
+what `submit` prints in the authors' names, the title page, the CRediT statement and the
+declarations (`front_digest`). An approval is a person's statement, so the hooks put to the
+person an agent's attempt to write one.
 
 `submit` then says which authors have not approved, and which approved a manuscript that has
 changed since. It warns and does not refuse: whether to send without an approval is the
@@ -14,6 +16,7 @@ corresponding author's decision, and an approval given by e-mail is still one.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import unicodedata
 from datetime import date
@@ -27,6 +30,31 @@ from manuscript_guard.findings import WARN, Finding, Report
 
 DIRECTORY = "approvals"
 SCHEMA = "manuscript-guard/approval/1"
+
+
+def front_digest(project: Project) -> str:
+    """What `submit` prints in the authors' names: the title page but for its word counts,
+    which the manuscript decides, the CRediT statement and the declarations (round 1 of #284:
+    a new title, or an author added, left every approval of the old one standing). What none
+    of them prints, a role named to sign a warning, stales nothing (round 1 of #355). A part
+    that cannot be built from the data, with no `authors.yaml` or a field it needs missing,
+    is an empty part."""
+    from manuscript_guard.build.submission import (
+        SubmissionError,
+        credit_statement,
+        declarations,
+        printed_front,
+    )
+
+    digest = hashlib.sha256()
+    for part in (printed_front, credit_statement, declarations):
+        try:
+            printed = part(project)
+        except (SubmissionError, KeyError, TypeError, AttributeError, IndexError):
+            printed = ""
+        # Kept apart, so that text moved from one part to the next is a change.
+        digest.update(printed.encode("utf-8", "surrogatepass") + b"\x00")
+    return digest.hexdigest()
 
 
 class NoSuchAuthor(Exception):
@@ -93,6 +121,7 @@ def approve(project: Project, author: dict, note: str | None = None) -> Path:
         "author": name_of(author),
         "approved_on": date.today().isoformat(),
         "document_sha256": document_digest(project),
+        "front_sha256": front_digest(project),
     }
     if author.get("orcid"):
         record["orcid"] = str(author["orcid"])
@@ -114,7 +143,7 @@ def check_approvals(project: Project) -> Report:
     """A warning for each author with no approval, or one given to an earlier manuscript."""
     from manuscript_guard.gates.review import document_digest
 
-    current = document_digest(project)
+    current, front = document_digest(project), front_digest(project)
     report = Report()
     for author in authors_of(project):
         path = project.root / DIRECTORY / f"{slug_of(author)}.yaml"
@@ -137,10 +166,17 @@ def check_approvals(project: Project) -> Report:
                          "they run `manuscript-guard approve` as themselves")  # fmt: skip
             )
             continue
-        if document["document_sha256"] != current:
+        # An approval written before the title page was held to has no `front_sha256`, and is
+        # judged by the manuscript alone, as it was given.
+        recorded = document.get("front_sha256")
+        changed = ("it has" if document["document_sha256"] != current else
+                   "its title page, CRediT statement or declarations have" if recorded and
+                   recorded != front
+                   else None)  # fmt: skip
+        if changed:
             report = report.with_findings(
                 _finding("approval-stale", f"{name_of(author)} approved the manuscript on "
-                         f"{document['approved_on']}, and it has changed since", path,
+                         f"{document['approved_on']}, and {changed} changed since", path,
                          "they read it again and approve it as it stands")  # fmt: skip
             )
     return report

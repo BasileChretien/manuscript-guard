@@ -913,7 +913,8 @@ them names the `.tex` line. `substituted` is the text with the values put in, as
 it today, and the gates that read it place a finding as they place one today. In LaTeX it writes
 each display with TeX's ten specials escaped and nothing else changed, so a `%` in `12.5%` does
 not start a comment and a `<` stays one character for G8's P. The response letter, which stays
-Markdown, takes the display as it is.
+Markdown, takes the display as it is, and G13 looks for a response's quote with the escapes
+undone.
 
 The gates that read no part of the manuscript but its file list change only through
 `source_files`: G1's freshness, G3's figure checks, G10, G11 (its digests then cover the
@@ -948,7 +949,7 @@ NUL. Two additions keep the length:
 | Read as prose | Blanked |
 |---|---|
 | the body, `\begin{document}` to `\end{document}`, and the files input from it | the preamble of `main.tex` and the files input from it, except what the next row reads |
-| in the preamble, `\title`'s argument, read as the title in Markdown's front matter is and compared with paper.yaml's (`two-titles`); `\thanks`'s, wherever it stands, read as a footnote is; the arguments of `\AtBeginDocument` and `\AtEndDocument`, which LaTeX prints | `\author` and `\date`: names, affiliations and a date, which G2 reads nowhere in a Markdown project |
+| in the preamble, `\title`'s argument, read as the title in Markdown's front matter is and compared with paper.yaml's (`two-titles`); `\thanks`'s outside `\author`, read as a footnote is; the arguments of `\AtBeginDocument` and `\AtEndDocument`, read as the body is | the author block, `\author` with what it holds and `\date`: what authors.yaml holds for a Markdown project, which G2 does not read |
 | the arguments of text commands: `\emph`, `\textbf`, `\footnote`, `\caption` and its short form, `\section` and its kin, `\href`'s text | command names and braces; `\label`, `\ref` and its kin, `\url`, `\href`'s address, `\includegraphics` |
 | a citation's notes, as Markdown's prefix and suffix are read | citation keys |
 | the letters, digits and signs in maths, in subscripts and superscripts too, as Markdown's `mask` keeps them in `$x_1 = 10^{-8}$` | maths' commands, braces and delimiters |
@@ -961,7 +962,7 @@ stay in `mask`, as they do in `$...$` in Markdown today, because blanking `$\bet
 let a typed estimate pass G2. That keeps the agreement test's promise below: the digits the PDF
 prints are the ones `mask` keeps, `$10^{-8}$` and `$R^2$` among them. Markdown's `mask` keeps
 `\beta` and the braces as well, and the LaTeX one blanks them, so `10^{-8}` reads as `10^`, a
-NUL, `-8` and a NUL. How G2's tokenizer reads such a power is settled in step 2 by corruption
+NUL, `-8` and a NUL. How G2's tokenizer reads such a power is settled in step 4 by corruption
 cases on maths, and held by the agreement test from step 9.
 
 **A command not in the table** has its name blanked and its arguments read. This errs towards
@@ -979,12 +980,13 @@ order is `printed_order`.
   is read under Methods. So does the environment that encloses the `\input`: a file input inside
   `abstract` is abstract, and one inside a `tabular` is table cells.
 - An `\input` in a comment, in a plain `\iffalse` block or in the `comment` environment is no
-  input. A file named only there is one that nothing inputs, below, and is read as one, with
-  what the preamble accepts accepted in it.
+  input. A file named only there is one that nothing inputs, below, and is read as one, where
+  definitions, `\makeatletter` and conditionals are accepted as in the preamble.
 - A package or class file in `manuscript/`, such as `\usepackage{macros}` with
   `manuscript/macros.sty` beside the entry file, is followed as a file input from the preamble.
   It is read as LaTeX reads a package, with `@` a letter. Its definitions are then read where
-  they are written, below. In it, and in the preamble, both branches of a conditional are read,
+  they are written, below. In it, and in the preamble, both branches of a conditional other than
+  a plain `\iffalse` block are read,
   since a package tests what is loaded. A package found anywhere else is
   not the author's and is not read. `mgvalues.sty` is excluded by name: the tool writes it, its
   definitions are the bindings, and `check` compares it with what `values` would write.
@@ -1021,9 +1023,7 @@ expanded, because an expansion is text at a place the file does not hold, with n
 give a finding.
 
 Refused:
-- a definition, in a file of the author's, of any command the reader reads, `\mg` among them.
-  In check 2 of `build --latex`, the template's definitions are the template's, not the
-  author's;
+- a definition, in a file of the author's, of any command the reader reads, `\mg` among them;
 - `\def` with delimited parameters;
 - anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
   `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
@@ -1176,14 +1176,14 @@ It passes:
 
 The result is compiled and packed by the code above, and checked three times:
 1. The gates read the Markdown, as today.
-2. The LaTeX reader reads pandoc's output and refuses what it refuses. Raw TeX that the Word
+2. The LaTeX reader reads the body pandoc writes without the template (`-t latex` without
+   `--standalone`) under the author's rules, and refuses what it refuses. Raw TeX that the Word
    writer drops (`tex-in-the-text`) reaches the `.tex` and takes effect, so a definition or an
-   `\input` in it is caught here.
-3. The digits the reader's `mask` keeps in the body of the output, `\begin{document}` to
-   `\end{document}`, must be the ones G2 read in the source's body, with the bound values put
-   in, in order. A difference refuses the build. The source's front matter and the output's
-   preamble are left out on both sides: the template writes the title page there from
-   paper.yaml and authors.yaml, and G2 does not read authors.yaml. The
+   `\input` in it is caught here. The template is the profile's or pandoc's, not the author's.
+3. The digits the reader's `mask` keeps in that body must be the ones G2 read in the source's
+   body, with the bound values put in, in order. A difference refuses the build. The title
+   page, which the template writes from paper.yaml and authors.yaml wherever the class puts
+   it, and the source's front matter are on neither side. The
    commands pandoc writes for layout are in the reader's table with the arguments that are not
    prose: both of `\setcounter`'s, a column's width in `\real{0.33}`, and the anchor of
    `\hypertarget`, whose second argument is the content it wraps and is read. Where citeproc
@@ -1253,7 +1253,7 @@ The result is compiled and packed by the code above, and checked three times:
   what it prints is read by no gate.
 - A word holding an accent command is not read by G14.
 - The author block is written in the class's own commands, and is not compared with
-  authors.yaml. A number typed into `\author` or `\date` is read by no gate.
+  authors.yaml. A number typed into the author block or `\date` is read by no gate.
 - The Word round trip, `annotate`, `reworded` and `audit` do not read `.tex`.
 - The profile's statement patterns are written for Markdown headings. For a LaTeX source they
   are matched against `printed_view`, which writes each heading as a `#` line.
@@ -1290,7 +1290,7 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    cases on the twin.
 7. G6 and G14. `words`, accents, both gates moved. Tests: `latex words`, planted terms and
    spellings.
-8. `substituted`, with values in their escaped form; G5, G8, G9, G13 and G15 moved. Tests:
+8. `substituted`, with TeX's specials escaped; G5, G8, G9, G13 and G15 moved. Tests:
    each gate's cases on the twin, and a display holding `%` through G8.
 9. The PDF. `build/latex.py`, the log, the comparison of headings through the `.aux`, CI's
    TeX Live and `MANUSCRIPT_GUARD_REQUIRE_LATEX`. Tests: `test_latex_agreement.py`.

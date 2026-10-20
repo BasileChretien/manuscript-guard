@@ -103,7 +103,9 @@ live Zotero fields by default, `--offline` for citeproc), `sync-bib` (rewrite
 `references.bib` from Zotero), `lookup` (each cited DOI and PMID asked of the registries
 once, the answers kept in `literature/lookups/`; `--dry-run` sends nothing; the tests answer
 from a loopback server; `--journals` asks the NLM Catalog and DOAJ about each ISSN of
-`journals/shortlist.yaml`, kept in `journals/lookups/`), `style` (the journal's citation
+`journals/shortlist.yaml`, kept in `journals/lookups/`), `search` (works a claim could cite,
+asked of PubMed, Europe PMC and OpenAlex and merged; it proposes, writes nothing and keeps
+nothing, and the author chooses), `style` (the journal's citation
 style fetched once from the CSL style repository, with its parent where it is dependent,
 and kept in `profiles/journals/styles/` for the offline build), `explain` (how every
 number in a file was classified),

@@ -39,7 +39,7 @@ The hooks call `manuscript-guard-hook`, so the pip package has to be on the `PAT
 Claude Code sees. Outside a manuscript-guard project they find no `paper.yaml` and do
 nothing, but for the submission guard where a command names a project (below).
 
-**Four hooks**, and what each is for:
+**Five hooks**, and what each is for:
 
 | Hook | What it does |
 |---|---|
@@ -47,6 +47,13 @@ nothing, but for the submission guard where a command names a project (below).
 | before a write | Refuses edits to `results/`, `build/` and generated checklist profiles. These are written by something else, and editing one desynchronises it. Puts to you an edit of `literature/attested.yaml` that names an attester, or changes one, and an edit of an author's approval or a named person's sign-off under `approvals/` |
 | after a write | For a manuscript file, classifies the numbers just saved and names any bound to nothing, while you are still in the paragraph. For an analysis file, says the results are now stale and the Methods may no longer describe the code |
 | before a submission-shaped shell command | Runs the submission check and blocks if it fails, or if a file of the project cannot be used and the check cannot run. Puts to you a `review --run --yes`, which would send the manuscript without asking, an `approve`, which only the author approving can run, and a `sign`, which only the person `authors.yaml` names for the role can run |
+| end of a turn | When the turn changed a file in `manuscript/`, `analysis/`, `results/`, `figures/` or `literature/`, or `paper.yaml` or `authors.yaml`, shows you the session start's line again, beside what the agent says it did. Blocks nothing: a turn ends with failing findings as it did before. Says nothing after a turn that changed none of them, and nothing under `claude -p` |
+
+The line at the end of a turn compares the files with how the last turn, or the start of
+the session, left them. A file saved with the same bytes is no change, and an edit you make
+by hand between two turns is counted in the next one. The comparison is kept in your folder
+for temporary files, one small file for each session and project: nothing is written in the
+project.
 
 **Four decisions are put to you, not taken by the agent.** Sending the manuscript to model
 providers without being asked, `review --run --yes`, naming who attested a value read in a
@@ -81,7 +88,9 @@ crashes on a half-configured project gets removed, taking the guards that worked
 A project file that cannot be used, because it does not parse or is not UTF-8, is not
 unexpected: `check` names it in a sentence, and the submission guard and the session start
 pass that sentence on. A manuscript file that is not UTF-8 is a failing finding of the check
-like any other, and the guard blocks on it. Outside a project they say nothing, with one
+like any other, and the guard blocks on it. The session start and the end of a turn wait 45
+seconds for the check, and then say that it did not finish, rather than be cut off by the
+agent tool at 60 and say nothing. Outside a project they say nothing, with one
 exception: the submission guard holds a command to a project the command names by a path,
 as `cd paper && manuscript-guard submit` does when it is sent from the folder above.
 
@@ -126,7 +135,7 @@ description.
 ## Codex
 
 Codex installs the same plugin from this repository, with the same fifteen skills and the
-same four hooks. After the pip package:
+same five hooks. After the pip package:
 
 ```bash
 codex plugin marketplace add BasileChretien/manuscript-guard
@@ -151,7 +160,7 @@ so once.
 
 **Codex runs a hook only after you have trusted it.** By Codex's documentation, it warns at
 the start of a session that hooks are waiting for review, and `/hooks` is where you read and
-trust them: there are four, each a `manuscript-guard-hook` command. Until you do, nothing is
+trust them: there are five, each a `manuscript-guard-hook` command. Until you do, nothing is
 caught at the moment of the mistake. `check` and `build` run every gate either way.
 
 | Hook | Under Codex |
@@ -160,6 +169,7 @@ caught at the moment of the mistake. `check` and `build` run every gate either w
 | before a write | Codex edits files by applying a patch, which may write several files. A patch that adds or changes a file in `results/`, `build/` or a generated checklist profile, or moves a file into one, is refused whole, and the reason names those files. A patch that only deletes one is not refused |
 | after a write | Each manuscript file in the patch that holds an unbound number, and each analysis file, gets its line |
 | before a submission-shaped shell command | As above, except a `review --run --yes`, which is refused (below) |
+| end of a turn | As above, shown as a warning. Under `codex exec` too: nothing there tells it apart from a session |
 
 **Under Codex the two decisions are refused, not asked.** Codex reads a hook's "ask" and does
 not support it yet: by its documentation it marks the hook as failed and lets the call go
@@ -183,7 +193,8 @@ every pull request; the upgrade taking an installed copy from one release to the
 the hooks answering input shaped as Codex's source builds it. Not seen, because it needs a
 login: a Codex session in which a skill is loaded, a hook is trusted or a hook fires. That
 includes the session-start notice, which depends on Codex telling the hook where the plugin
-is, as its documentation says it does.
+is, as its documentation says it does, and the line at the end of a turn, which is read from
+Codex's source.
 
 ## Gemini CLI, Mistral Vibe, Kimi Code CLI and other agent tools
 
@@ -232,8 +243,8 @@ unbound number is reported when one of them next runs.
 
 | | Skills | `AGENTS.md` | Hooks |
 |---|---|---|---|
-| Claude Code | plugin | read where there is no `CLAUDE.md` | four |
-| Codex | plugin | read | four, once you have trusted them |
+| Claude Code | plugin | read where there is no `CLAUDE.md` | five |
+| Codex | plugin | read | five, once you have trusted them |
 | Gemini CLI | copy | read once a setting lists it | none |
 | Mistral Vibe | copy | read in a folder you have trusted | none |
 | Kimi Code CLI | copy | not confirmed | none |

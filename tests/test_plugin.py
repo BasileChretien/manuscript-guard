@@ -242,9 +242,10 @@ def test_codex_installs_the_plugin_from_the_manifests_claude_code_reads(tmp_path
 
 # One hooks.json serves Claude Code and Codex, so it holds only what both read. These are the
 # events and the fields of a handler that the file uses and that both were checked to read
-# (Codex's hooks page and Claude Code's, read 2026-10-02). The two share more than these;
-# another is checked against both before it is added here.
-SHARED_EVENTS = {"PreToolUse", "PostToolUse", "SessionStart"}
+# (Codex's hooks page and Claude Code's, read 2026-10-02; `Stop` in Codex's source,
+# codex-rs/hooks/src/events/stop.rs, and seen in Claude Code 2.1.303, 2026-10-20). The two
+# share more than these; another is checked against both before it is added here.
+SHARED_EVENTS = {"PreToolUse", "PostToolUse", "SessionStart", "Stop"}
 SHARED_FIELDS = {"type", "command", "timeout", "statusMessage"}
 # Both count a timeout in seconds. The longest hook here is the submission check; a figure
 # far above it is taken for milliseconds.
@@ -277,6 +278,10 @@ def hooks_file_problems(config: dict) -> list[str]:
                     problems.append(f"{handler}: matcher {group.get('matcher')!r}")
                 if handler == ["guard-submission"] and names != SHELL_TOOLS:
                     problems.append(f"{handler}: matcher {group.get('matcher')!r}")
+                # Codex matches a stop against nothing and Claude Code ignores a matcher
+                # there, so one written would read as a limit that holds in neither.
+                if event == "Stop" and "matcher" in group:
+                    problems.append(f"{handler}: matcher {group.get('matcher')!r}")
     return problems
 
 
@@ -289,7 +294,7 @@ def test_the_hooks_file_holds_only_what_both_tools_read():
         for group in groups
         for hook in group["hooks"]
     }
-    assert handlers == set(HANDLERS), "the cases below are about these four"
+    assert handlers == set(HANDLERS), "the cases below are about these five"
 
 
 @pytest.mark.parametrize(
@@ -307,6 +312,8 @@ def test_the_hooks_file_holds_only_what_both_tools_read():
         ("session-start", {"timeout": 60000}, "timeout 60000"),
         ("guard-write", {"async": True}, "fields"),
         ("session-start", {"commandWindows": "x"}, "fields"),
+        ("stop", {"matcher": "manuscript"}, "matcher 'manuscript'"),
+        ("stop", {"timeout": 60000}, "timeout 60000"),
     ],
 )
 def test_the_hooks_file_check_catches_what_one_tool_would_not_read(handler, change, said):

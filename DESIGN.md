@@ -1264,10 +1264,15 @@ The result is compiled and packed by the code above, and checked three times:
   (`other-format-file`): a project written before LaTeX was read may keep a `.tex` beside its
   Markdown for pandoc's header, and refusing it would fail a paper that passed. It is read by
   no gate. Whether to warn of it is left for later.
-- Until the second half of step 1, the commands other than `check` read a LaTeX manuscript as
-  a folder with no Markdown. `bind`, `lookup` and `build` stop on it, as on a folder with none;
-  `explain`, `audit`, `reworded`, `checker`, the panel's prompt and the hooks read nothing of
-  it.
+- Until the second half of step 1, the commands other than `check` do not yet know a LaTeX
+  manuscript (round 1 of #370):
+  - `bind`, `lookup` and `build` stop on it, as on a folder with no Markdown, and so does the
+    panel's prompt ("no manuscript to review");
+  - `explain manuscript/main.tex` reads the file as Markdown and labels its numbers;
+  - `audit`, `reworded` and `checker` read only Markdown;
+  - `review` and `respond --open` digest the `.tex` files, as G11 does, but `respond --open`
+    keeps no copy of them;
+  - the hooks run the gates, so they see `not-read-in-latex` as `check` does.
 - An author's macro is not expanded where it is used, so a word its body prints there is in no
   sentence that G6 or G14 reads; its body is read once, at the definition.
 - A class or package that changes how a character is read, beyond those refused, is not seen.

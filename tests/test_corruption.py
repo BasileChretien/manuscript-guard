@@ -5011,11 +5011,58 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     assert failing == expected, submission.render(project)
 
 
+#: The checks that read the manuscript only as Markdown, and those that do not read it.
+_MARKDOWN_ONLY = (
+    "check_numbers", "check_bound_units", "check_small_cells", "check_citations",
+    "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
+    "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
+    "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
+)  # fmt: skip
+_NOT_THE_MANUSCRIPT = (
+    "check_review", "check_freshness", "check_figures", "check_figure_reviews",
+    "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
+    "check_consistency", "check_restricted_inputs", "check_relations",
+)  # fmt: skip
+
+
+def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pinned check by check, not gate by gate (round 1 of #370): a check left out of the set
+    shares its gate with one still in it, so the gates' names did not change."""
+    from manuscript_guard import cli
+    from manuscript_guard.findings import Report
+
+    called: list[str] = []
+
+    def recorder(name: str):
+        return lambda *_args, **_kwargs: called.append(name) or Report()
+
+    for name in _MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT:
+        monkeypatch.setattr(cli, name, recorder(name))
+    _as_latex(project)
+    cli._run_gates(project, stage="drafting")
+    assert sorted(called) == sorted(_NOT_THE_MANUSCRIPT)
+
+
+def test_a_main_tex_without_a_class_leaves_a_markdown_manuscript_markdown(project: Path) -> None:
+    """A header pandoc includes may be called `main.tex`: it declares no class, so it is no
+    entry file, and the Markdown beside it is read as before (round 1 of #370)."""
+    from manuscript_guard.cli import _run_gates
+
+    header = project / "manuscript" / "main.tex"
+    header.write_text("\\usepackage{booktabs}\n", "utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    said = {f.code for f in report.findings}
+    assert not {"two-formats", "other-format-file", "not-read-in-latex"} & said
+
+
 def test_a_latex_file_that_is_not_utf8_is_named_as_a_markdown_one_is(project: Path) -> None:
     from manuscript_guard.cli import _run_gates
 
     entry = _as_latex(project)
-    entry.write_bytes("Caf\N{LATIN SMALL LETTER E WITH ACUTE}\n".encode("cp1252"))
+    text = "\\documentclass{article}\nCaf\N{LATIN SMALL LETTER E WITH ACUTE}\n"
+    entry.write_bytes(text.encode("cp1252"))
     report, _project, _stage, _deferred = _run_gates(project, stage="design")
     found = [f for f in report.failures if f.code == "manuscript-unreadable"]
     assert [f.path for f in found] == [entry], report.render(project)

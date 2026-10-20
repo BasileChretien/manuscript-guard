@@ -17,7 +17,7 @@ from __future__ import annotations
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import Finding, Report
 from manuscript_guard.gates.numbers import source_files
-from manuscript_guard.text.reader import ENTRY, LATEX, MARKDOWN, manuscript_format
+from manuscript_guard.text.reader import ENTRY, LATEX, MARKDOWN, latex_entry, manuscript_format
 
 GATE = "G0"
 
@@ -26,7 +26,7 @@ def check_format(project: Project) -> Report:
     """`two-formats` for a folder with both entry files; `other-format-file` for each Markdown
     file the gates would read in a LaTeX manuscript."""
     folder = project.path("manuscript")
-    if (folder / ENTRY[MARKDOWN]).is_file() and (folder / ENTRY[LATEX]).is_file():
+    if (folder / ENTRY[MARKDOWN]).is_file() and latex_entry(folder):
         return Report(
             (
                 Finding(

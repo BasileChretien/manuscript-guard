@@ -13,10 +13,13 @@ from manuscript_guard.text.reader import LATEX, MARKDOWN, Reader, manuscript_for
 
 
 def _write(folder: Path, *names: str) -> None:
+    """Each file named; `main.tex` as a document's entry file, `fragment/main.tex` as a file
+    of that name without a class, written to `main.tex`."""
     for name in names:
-        path = folder / name
+        body = "\\documentclass{article}\n" if name == "main.tex" else "x\n"
+        path = folder / name.removeprefix("fragment/")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("x\n", encoding="utf-8")
+        path.write_text(body, encoding="utf-8")
 
 
 @pytest.mark.parametrize(
@@ -27,6 +30,10 @@ def _write(folder: Path, *names: str) -> None:
         (("main.tex", "methods.tex"), LATEX),
         # Both: Markdown, as every project was, and G0 refuses the folder (`two-formats`).
         (("main.md", "main.tex"), MARKDOWN),
+        # A `main.tex` that declares no class is a fragment, not an entry file (round 1 of
+        # #370): a header pandoc includes leaves a Markdown manuscript Markdown.
+        (("fragment/main.tex",), MARKDOWN),
+        (("intro.md", "fragment/main.tex"), MARKDOWN),
         # No entry file: Markdown, so a folder of `.md` files reads as it always has.
         (("intro.md",), MARKDOWN),
         (("intro.tex",), MARKDOWN),

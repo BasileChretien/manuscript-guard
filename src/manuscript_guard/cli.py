@@ -103,7 +103,9 @@ def _run_gates(
 
     Every gate always runs. What the stage changes is which findings *fail*: someone still
     writing the analysis is told about the unreviewed figures, but not stopped by them.
-    Nothing is skipped, and the caller reports what was deferred.
+    Nothing is skipped, and the caller reports what was deferred. The one exception is a
+    LaTeX manuscript: a check not yet taught LaTeX does not run, and its gate reports
+    `not-read-in-latex` instead, which fails at submission.
 
     Two things here used to be wrong, and both made the tool claim more than it checked.
 

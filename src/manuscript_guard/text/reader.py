@@ -24,8 +24,19 @@ def manuscript_format(manuscript_dir: Path) -> str:
     """LaTeX where the entry file is `main.tex` and there is no `main.md`; Markdown otherwise,
     which every project was before LaTeX was read. A folder holding both is Markdown here and
     refused by G0 (`two-formats`)."""
-    latex = (manuscript_dir / ENTRY[LATEX]).is_file()
+    latex = latex_entry(manuscript_dir)
     return LATEX if latex and not (manuscript_dir / ENTRY[MARKDOWN]).is_file() else MARKDOWN
+
+
+def latex_entry(manuscript_dir: Path) -> bool:
+    """Whether `main.tex` is a LaTeX document's entry file: it declares its class. A file of
+    that name without `\\documentclass` is a fragment, a header pandoc includes for instance,
+    and a Markdown manuscript beside it stays one (round 1 of #370: such a file turned a
+    Markdown project into a LaTeX one, or refused it as two formats)."""
+    try:
+        return b"\\documentclass" in (manuscript_dir / ENTRY[LATEX]).read_bytes()
+    except OSError:
+        return False
 
 
 @dataclass(frozen=True)

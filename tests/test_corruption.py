@@ -1995,6 +1995,10 @@ def _recorded(project: Path, old: str, new: str) -> None:
         # Round 2 of #374: a passage of no letter but in its source was said to hold no word.
         pytest.param(f'"{_SIGNAL}"', '"2.6, 95%"', [("passage-too-short", "warn")],
                      id="no letter but the source's"),
+        # The post-budget round of #374: as words of their own, not inside a longer number.
+        pytest.param(f'"{_SIGNAL}"', '"6, 95%"',
+                     [("passage-not-in-source", "fail"), ("passage-too-short", "warn")],
+                     id="a number inside a longer one"),
         pytest.param('    locator: "Abstract, Results"\n',
                      '    locator: "Abstract, Results"\n    support: supports\n'
                      '    judged_by: "Codex"\n    judged_on: 2026-10-20\n',
@@ -5110,6 +5114,7 @@ _MARKDOWN_ONLY = (
     "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
     "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
     "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
+    "check_passages",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",

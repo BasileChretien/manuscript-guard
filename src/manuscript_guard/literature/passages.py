@@ -240,12 +240,12 @@ def _looked_for(
 ) -> tuple[str, tuple[str, ...], str | None]:
     """What the stored files of the passage's work say of it: verified where one holds it,
     with the files read and, where none does, what stands in the way."""
-    from manuscript_guard.gates.quotations import _ELIDED, _SIC, quoted_in
+    from manuscript_guard.gates.quotations import _ELIDED, _SIC, _as_words, quoted_in
 
-    if not any(c.isalnum() for c in _ELIDED.sub(" ", _SIC.sub(" ", passage.passage))):
+    if not passage_words(passage.passage):
         # All elision, "[...]" or "...": nothing to look for, which `quoted_in` finds
         # anywhere (round 1 of #374). A number is something (round 2).
-        return ABSENT, (), "it holds nothing but marks of words left out"
+        return ABSENT, (), "it holds nothing to look for"
     files = stored_files(sources, passage.citekey)
     if not files:
         return NO_SOURCE, (), None
@@ -261,7 +261,12 @@ def _looked_for(
     if not readable:
         return UNREADABLE, (), "; ".join(str(text) for _path, text in texts)
     names = tuple(path.name for path, _text in readable)
-    if any(quoted_in(text, passage.passage) for _path, text in readable):
+    # With nothing left out, as words of their own, as each piece of an elided one is: "6,
+    # 95%" is no part of "2.6, 95%" (the post-budget round of #374).
+    whole = normalise(_SIC.sub("", passage.passage)).lower()
+    if any(quoted_in(text, passage.passage) if _ELIDED.search(passage.passage)
+           else _as_words(normalise(text).lower(), whole, 0) >= 0
+           for _path, text in readable):  # fmt: skip
         return VERIFIED, names, None
     why = None
     if len(readable) == 1 and not _ELIDED.search(passage.passage):
@@ -378,8 +383,8 @@ def rendered(listed: dict) -> str:
 
 def passage_words(passage: str) -> int:
     """How many words a passage holds, less what marks words left out: a word is a run
-    between spaces with a letter in it, as for a quotation in the prose."""
+    between spaces with a letter or a digit in it, so that "2.6, 95%" is two."""
     from manuscript_guard.gates.quotations import _ELIDED, _SIC
 
     kept = _ELIDED.sub(" ", _SIC.sub(" ", passage))
-    return sum(any(c.isalpha() for c in word) for word in kept.split())
+    return sum(any(c.isalnum() for c in word) for word in kept.split())

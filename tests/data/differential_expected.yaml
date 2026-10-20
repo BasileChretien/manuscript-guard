@@ -37,8 +37,8 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G8 counts the relations and flows the analysis declared, `relations_checked`, which
-      is 0 in a project that declares none
+      G6 counts the words to the reviewers or to a model it found in the manuscript,
+      `writing_residue`, which is 0 in a manuscript that has none
   - reading: numbers
     why: >-
       a step, a panel or a box takes a number up to 20 and an item up to 99, so a count

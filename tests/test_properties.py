@@ -44,6 +44,8 @@ from generated import (
     LOWERED,
     NOTATED,
     PLACEHOLDERS,
+    RESIDUE,
+    RESIDUE_LOOKALIKES,
     SOURCE_GAPS,
     SOURCE_WORDS,
     TEMPORARY_LINKS,
@@ -3118,6 +3120,45 @@ def test_every_placeholder_is_found_and_nothing_that_looks_like_one(
         assert alone == [match], (written, alone)
 
 
+# ------------------------------------------------------- words to the reviewers, left in
+
+
+@st.composite
+def _planted_residue(draw: st.DrawFn) -> tuple[str, str]:
+    """A text, and the same with every residue G6 reads and everything that reads like one
+    and is prose, each put in at a place drawn. Every kind in every example."""
+    text = draw(texts())
+    pieces = text.split(" ")
+    for planted in [written for written, _rule, _found in RESIDUE] + list(RESIDUE_LOOKALIKES):
+        pieces.insert(draw(st.integers(0, len(pieces))), planted)
+    return text, " ".join(pieces)
+
+
+@holds(200, _planted_residue())
+def test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one(
+    drawn: tuple[str, str],
+) -> None:
+    """Whatever the text, each residue put into it is found once, by its rule and with its
+    words, a hard wrap read as a space; and nothing that only reads like one is: not a name,
+    the contributions, the acknowledgements, a dossier, a retrotransposon, an invitation,
+    nor a phrase that a blank line cuts in two."""
+    from collections import Counter
+
+    from manuscript_guard.gates.writing import load_rules, residue_in
+
+    text, planted = drawn
+    rules = load_rules()
+
+    def found(written: str) -> Counter[tuple[str, str]]:
+        return Counter(
+            (rule["id"], " ".join(match.group(0).split()))
+            for rule, match in residue_in(rules, written)
+        )
+
+    added = Counter((rule, words) for _written, rule, words in RESIDUE)
+    assert found(planted) == found(text) + added, planted
+
+
 # ------------------------------------------------------------------------ an em dash typed
 
 #: What G6 counts as an em dash, the character and three hyphens, spaced or not; and what it
@@ -5031,6 +5072,64 @@ def _an_instruction_marked_or_linked_is_a_link_s_text(patch: pytest.MonkeyPatch)
     _placeholder_rule(patch, "placeholder", lambda p: p + r"(?![(\[{])")
 
 
+def _residue_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
+    """The residue rule `rule_id` as `change` makes it, given the rule and returning it."""
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    residue = tuple(change(rule) if rule["id"] == rule_id else rule for rule in rules.residue)
+    assert residue != rules.residue, f"{rule_id} is not a residue rule"
+    patch.setattr(writing, "load_rules", lambda: replace(rules, residue=residue))
+
+
+def _the_reviewers_are_one_reviewer(patch: pytest.MonkeyPatch) -> None:
+    # The end of a word after "the reviewer", which keeps "the reviewers" out of it.
+    def plural_too(rule: dict) -> dict:
+        one = r"(?:reviewer|referee|editor(?:-in-chief)?)\b(?!"
+        assert one in rule["pattern"], "the rule no longer ends one reviewer this way"
+        return {**rule, "pattern": rule["pattern"].replace(one, one[:-5] + "(?!")}
+
+    _residue_rule(patch, "reviewer-answered", plural_too)
+
+
+def _a_blank_line_ends_no_phrase(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import writing
+
+    patch.setattr(writing, "_paragraphs", lambda text: [(0, len(text))])
+
+
+def _the_acknowledgements_are_read(patch: pytest.MonkeyPatch) -> None:
+    def without_thanks(rule: dict) -> dict:
+        return {**rule, "exempt": [e for e in rule["exempt"] if "grateful" not in e]}
+
+    _residue_rule(patch, "earlier-version-unnamed", without_thanks)
+
+
+def _the_contributions_are_read(patch: pytest.MonkeyPatch) -> None:
+    def without_contributions(rule: dict) -> dict:
+        return {**rule, "exempt": [e for e in rule["exempt"] if "approv" not in e]}
+
+    _residue_rule(patch, "earlier-version-unnamed", without_contributions)
+
+
+def _a_dossier_is_a_submission(patch: pytest.MonkeyPatch) -> None:
+    def without_its_end(rule: dict) -> dict:
+        end = r"(?!\s+(?:to|of|for)\b)"
+        assert end in rule["pattern"], "the rule no longer ends a submission this way"
+        return {**rule, "pattern": rule["pattern"].replace(end, "")}
+
+    _residue_rule(patch, "earlier-version-unnamed", without_its_end)
+
+
+def _lines_in_capitals_are_lines(patch: pytest.MonkeyPatch) -> None:
+    def in_any_case(rule: dict) -> dict:
+        return {**rule, "pattern": "(?i)" + rule["pattern"]}
+
+    _residue_rule(patch, "lines-cited-alone", in_any_case)
+
+
 def _a_field_wholly_in_brackets_is_read_without_them(patch: pytest.MonkeyPatch) -> None:
     # As `_untranslated` read a cited entry's field, until round 2 of #262.
     from manuscript_guard.gates import writing
@@ -6407,6 +6506,30 @@ BROKEN = {
     "a cited entry's field wholly in brackets is read without them": (
         _a_field_wholly_in_brackets_is_read_without_them,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "the reviewers are read as one reviewer": (
+        _the_reviewers_are_one_reviewer,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
+    ),
+    "a blank line ends no residue": (
+        _a_blank_line_ends_no_phrase,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
+    ),
+    "the acknowledgements are read for residue": (
+        _the_acknowledgements_are_read,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
+    ),
+    "the contributions are read for residue": (
+        _the_contributions_are_read,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
+    ),
+    "a dossier sent to an agency is a submission": (
+        _a_dossier_is_a_submission,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
+    ),
+    "lines in capitals are lines": (
+        _lines_in_capitals_are_lines,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
     ),
     "an argument that turns a figure's estimate off is not read": (
         _an_argument_that_turns_an_estimate_off_is_not_read,

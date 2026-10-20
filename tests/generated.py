@@ -1013,6 +1013,49 @@ LOOKALIKES = (
     "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]",
 )  # fmt: skip
 
+#: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
+#: G6 that finds it and the words it finds: one of each rule, a phrase cut by a hard wrap,
+#: and the plural beside the singular. And what reads like them and is prose: a name, the
+#: contributions, the acknowledgements with a title's stop in them, a regulatory dossier, a
+#: retrotransposon, an invitation, and a phrase cut by a blank line. What the residue
+#: reading must tell apart.
+RESIDUE = (
+    ("As requested by Reviewer 2, we added a table.", "reviewer-answered",
+     "As requested by Reviewer 2"),
+    ("In reply to the\nreviewer, we added a table.", "reviewer-answered",
+     "In reply to the reviewer"),
+    ("In response to the reviewers' comments, a table was added.", "reviewers-answered",
+     "In response to the reviewers"),
+    ("Done. As requested, we added the dates.", "as-requested", "As requested,"),
+    ("In our original submission, the cohort was larger.", "earlier-version",
+     "our original submission"),
+    ("The revised manuscript reports the median.", "earlier-version-unnamed",
+     "The revised manuscript"),
+    ("We have now clarified the exposure.", "we-have-now", "We have now clarified"),
+    ("We have expanded the Discussion.", "text-edited", "We have expanded the Discussion"),
+    ("It is on page 4, lines 120-125.", "lines-cited", "page 4, lines 120"),
+    ("It was moved (lines 120-125).", "lines-cited-alone", "(lines 120-125)"),
+    ("The revised text is highlighted in yellow.", "changes-marked",
+     "The revised text is highlighted in"),
+    # After a stop, since "in" before either is the stricter rule's.
+    ("Done. Tracked changes were accepted.", "tracked-changes", "Tracked changes"),
+    ("See the response letter.", "response-letter", "See the response letter"),
+    ("Done. The response letter lists them.", "response-letter-unnamed", "response letter"),
+    ("I have shortened the abstract.", "model-addressed", "I have shortened the abstract"),
+)  # fmt: skip
+RESIDUE_LOOKALIKES = (
+    "Risk was scored with the Revised Cardiac Risk Index.",
+    "All authors approved the revised manuscript.",
+    "The authors are grateful to Dr. Simon and Dr. Sampaio for their critical review in the "
+    "original manuscript.",
+    "The original submission of the dossier to the agency was rejected.",
+    "Methylation of the element (LINE 1) was stable.",
+    "It was written in response to the editor's invitation.",
+    "To address this concern, we used an active comparator.",
+    "Reviewer 1 and Reviewer 2 independently extracted the data.",
+    "as suggested by\n\nReviewer 2 independently, a heading and a paragraph.",
+)  # fmt: skip
+
 
 #: A statistic in each of the ways one is written, typed and bound, and a number with
 #: its unit: what the notation reading must count apart.
@@ -1615,6 +1658,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "placeholders": texts(
         tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
     ),
+    "residue": texts(tuple(written for written, _rule, _found in RESIDUE) + RESIDUE_LOOKALIKES),
     "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),

@@ -266,7 +266,7 @@ All deterministic, all runnable in CI without Claude.
 | G3 | Figures | a number in a figure's output or in its source is not traceable to results |
 | G4 | Journal profile | word counts, structure, reference style, required statements |
 | G5 | Reporting checklist | a checklist item is unaddressed |
-| G6 | AI-writing lint | banned constructions and cadence tells |
+| G6 | AI-writing lint | banned constructions and cadence tells; words to the reviewers left in the paper |
 | G7 | Citation integrity | unpinned or unresolvable citation key; literature claim with no stored source |
 | G8 | Cross-artifact consistency | a quantity differs between abstract, results, table and figure |
 | G9 | Methods drift | analysis code changed since the Methods text was last reconciled; per step, a step or the text pointing at it changed since the pair was read |
@@ -1980,6 +1980,60 @@ future of ... lies in"), text about the text ("In this section, we will discuss"
 instruction to whoever fills the text in ("the user should add"). Each is a warning. Not
 "not widely available" or "not widely reported", which a paper says of a drug or an adverse
 event.
+
+**Words written to the reviewers and left in the paper are the residue of a revision**
+(`revision-residue`, 2026-10-20). "As requested by Reviewer 2, we added", "in the previous
+version of this manuscript", "we have now clarified", "page 4, lines 120-125", "the revised
+text is highlighted in yellow", "see the response letter"; and a model's words to its user,
+"as you requested", "I have shortened the abstract", "Below is the revised Discussion".
+They belong in the response to the reviewers, and the paper's reader never saw the review.
+The idea and part of the lists are Writing Guard's `process_residue` rules
+(ATTRIBUTION.md). The rules read the manuscript and its supplement only, in the prose the
+phrase rules read, so a comment, a listing or a citation holds none, and one paragraph at
+a time. They never read `revision/` nor the letter `respond` writes from it: that is where
+these words belong, and G13 lets a reply say them.
+
+A residue is reported wherever it stands, as an artefact is, and not counted by rate: one
+is enough to be read by the journal. Basile chose on 2026-10-20 between two kinds. A rule
+that answers one reviewer or the editor, or points at this manuscript, its earlier version,
+its lines, its marked changes or its letter, or holds a model's words to its user, warns
+while the paper is written and revised and fails at submission, as G13 and G11 do: the
+residue harms nobody until the journal reads it. The rest warn at every stage: the
+reviewers together or one not named ("in response to the reviewers' comments"), a
+manuscript's earlier version not said to be this one's ("the revised manuscript"), tracked
+changes, lines in brackets, a response letter not said to be the authors'. A paper about
+peer review writes those of the manuscripts it studied, and must not be stopped.
+
+What the rules leave alone was found by running them over the 399 papers of the G6 corpus
+and over the commonest ways a pharmacology or epidemiology paper writes the same words, and
+each is a passing case in `tests/test_writing.py`:
+- "revised" in a name, "the Revised Cardiac Risk Index", "the 1987 ACR revised criteria",
+  "the Clinical Interview Schedule-Revised", "10th revision";
+- the contributions, "drafted the initial manuscript", "revised the original manuscript",
+  "approved this version of the manuscript", read as a verb of writing before the noun;
+- the acknowledgements, "comments on an earlier version of this manuscript", "two
+  anonymous reviewers for their helpful comments", "grateful to Dr. Sampaio for their
+  critical review in the original manuscript", read from the thanks to the end of the
+  sentence, the stop of a title or an initial ending none;
+- a journal's notices, "the publisher, the editors and the reviewers", "the handling
+  editor declared a shared affiliation", and an invitation, "at the invitation of the
+  editor";
+- a systematic review's readers, "Reviewer 1 and Reviewer 2 independently extracted the
+  data", "resolved by a third reviewer", "discrepancies noted by the second reviewer": a
+  reviewer is one reviewer only with "the" or a number, and answered only with a request,
+  a reply or a suggestion;
+- and prose: "To address this concern, we used an active comparator", which 38 of the 399
+  papers write in some form and Writing Guard takes; "To avoid confusion"; "the original
+  submission of the dossier to the agency"; "we now report"; "(LINE 1)", a retrotransposon.
+
+Read as at submission, the 399 papers gave no failure, and two warnings: "(LINE 1)", which
+the rule for lines in brackets no longer takes, and "as suggested by one of the reviewers
+of our paper", words to a reviewer that reached print. Europe PMC listed 25 open-access
+research articles for the phrase "as suggested by the reviewer", and the text of their XML
+held it in 21: 17 only in the peer-review reports published with them, four in the article
+itself, each as a reply to a reviewer ("as suggested by the reviewer earlier, triglycerides
+and heart rate"). A sample chosen for the phrase says nothing of how common it is, only
+that the residue reaches print.
 
 **How often it warns on papers written by people** is measured, and the rate thresholds
 come from that measurement (item 54). `tools/g6_baseline.py` drew 400 open-access research
@@ -9826,6 +9880,23 @@ Open, recorded as each change landed:
   frozen until it is put right; one saved in UTF-16 with no byte-order mark decodes as
   UTF-8 where its text is ASCII, so G12 does not say it is not UTF-8, and the
   `plan-not-frozen` hint, that the emitter keeps it on the next write, is not true of it.
+- **The residue of a revision is found by its words, in English, in the manuscript's prose
+  only.** A reply worded otherwise passes: "Reviewer 2 was right that", "we agree with the
+  reviewer", "this point is now made". Writing Guard's list in Chinese was not taken. A
+  residue in a figure, a table's caption or a cited entry is not read, nor one in a
+  comment, which is never printed. The rules that fail at submission leave no way to keep
+  the sentence, so a paper that means to answer a reviewer in print rewords it. "The
+  reviewer" with a request is taken for the journal's, so a chart review whose own reader
+  is "the reviewer" fails on "following the reviewer's recommendation, the case was
+  excluded", and a systematic review on "as suggested by the second reviewer". The
+  contributions are known by a verb of writing within 60 characters before "manuscript",
+  "draft", "version" or "submission", so "we revised the original submission to add" is
+  not read; the acknowledgements by their thanks to the end of the sentence, so a residue
+  later in a sentence of thanks is not read by the rules of an earlier version. "The
+  revised manuscript" warns in a statement of contributions that does not say who
+  approved it. Lines in brackets, "(lines 245-250)", only warn, since a program's listing
+  is pointed at so. "In response to the editor's invitation" passes, and so would an
+  answer to the editor that names an invitation, a call or a note.
 - **G6's thresholds are measured on people only, in one field.** Each rate's threshold is
   the 99th percentile of 291 biomedical research articles of 2010 to 2022 (see "The
   AI-writing lint measures rate, not presence"), so about one paper by people in a hundred

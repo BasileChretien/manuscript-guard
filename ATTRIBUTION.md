@@ -116,6 +116,50 @@ reason about it again.
 If you fork this and decide otherwise, confirm the current terms first — the notes above are
 a snapshot of one afternoon's reading, and none of them replaces the guideline's own words.
 
+# Rules adapted from other projects
+
+## Writing Guard: the residue of a revision
+
+The `residue` rules of `src/manuscript_guard/data/ai_writing.yaml`, which G6 reads for words
+written to the reviewers or to a model and left in the manuscript, take their idea and part
+of their lists from the `process_residue` rules of [Writing
+Guard](https://github.com/xmutfyh/dsh-plugin-writing-guard) (`src/rules.ts`, read on
+2026-10-20 on its `master` branch). Taken from it: that the words of a reply to the
+reviewers are an error in the paper and none in the letter; "as requested", "as suggested
+by" and "in response to" the reviewer; "we have (now) updated, modified, corrected,
+clarified, expanded, rewritten, replaced or revised"; "the previous, original or earlier
+version, manuscript, draft or submission"; and that "revised" in a name, the Revised
+Cardiac Risk Index, is no residue. None of its patterns is copied: each was written again
+and narrowed against 399 papers by people (DESIGN.md). Its "to address the concern" and its
+defensive purpose, "to avoid confusion", were not taken, since papers by people write them
+as prose.
+
+Writing Guard is under the MIT licence:
+
+```text
+MIT License
+
+Copyright (c) 2026 dsh-plugin-writing-guard contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 # Third-party data
 
 One file in the package is made from somebody else's work and **is** redistributed:

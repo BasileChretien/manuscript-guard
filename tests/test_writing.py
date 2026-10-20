@@ -290,3 +290,257 @@ def test_a_finding_under_a_comment_still_shows_its_prose(project: Path) -> None:
     (finding,) = report.findings
     assert finding.line == 7
     assert finding.context == "We delve into the mechanisms."
+
+
+# ------------------------------------------------- words to the reviewers, left in the paper
+
+#: Each residue that answers one reviewer or the editor, points at this manuscript, or was
+#: written by a model to its user, with the rule that must find it. Each warns until
+#: submission and fails there.
+SAID_TO_ONE = [
+    ("As requested by Reviewer 2, we added a sensitivity analysis.", "reviewer-answered"),
+    ("As suggested by the reviewer, we now report the median.", "reviewer-answered"),
+    ("In response to the reviewer's comment, we clarified the exposure.", "reviewer-answered"),
+    ("Following Reviewer 1's suggestion, the forest plot was redrawn.", "reviewer-answered"),
+    ("To address the second reviewer\N{RIGHT SINGLE QUOTATION MARK}s concern, we repeated it.",
+     "reviewer-answered"),
+    ("We thank the reviewer for this helpful comment.", "reviewer-answered"),
+    ("We are grateful to the referee for raising this point.", "reviewer-answered"),
+    ("At the request of the editor, the abstract was shortened.", "reviewer-answered"),
+    ("As the reviewer rightly pointed out, the cohort was small.", "reviewer-answered"),
+    ("Reviewer #3 asked whether the dose was recorded.", "reviewer-answered"),
+    ("This analysis was suggested by Referee B.", "reviewer-answered"),
+    ("In reply to the\nreviewer, we added a table.", "reviewer-answered"),
+    ("In our original submission, the cohort was larger.", "earlier-version"),
+    ("This revised manuscript reports the median.", "earlier-version"),
+    ("Compared with the previous version of this manuscript, Table 2 is new.",
+     "earlier-version"),
+    ("The definition differs from an earlier draft of our manuscript.", "earlier-version"),
+    ("We have now clarified the definition of exposure.", "we-have-now"),
+    ("We now have added a paragraph on missing data.", "we-have-now"),
+    ("We\N{RIGHT SINGLE QUOTATION MARK}ve now toned down the conclusion.", "we-have-now"),
+    ("We have expanded the Discussion to cover confounding.", "text-edited"),
+    ("We have rephrased the sentence on causality.", "text-edited"),
+    ("This has now been clarified.", "text-edited"),
+    ("The sentence has been amended accordingly.", "text-edited"),
+    ("A paragraph has been added to the Limitations.", "text-edited"),
+    ("These points have now been discussed.", "text-edited"),
+    ("The definition is on page 4, lines 120\N{EN DASH}125.", "lines-cited"),
+    ("See lines 245-250 of the revised manuscript.", "lines-cited"),
+    ("The revised text is highlighted in yellow.", "changes-marked"),
+    ("New sentences are shown in red.", "changes-marked"),
+    ("All changes are shown in track changes.", "changes-marked"),
+    ("Details are given in our response to Reviewer 2.", "reviewer-answered"),
+    ("Details are given in our response letter.", "response-letter"),
+    ("See the response letter for the full table.", "response-letter"),
+    ("Our point-by-point reply to the reviewers explains why.", "response-letter"),
+    ("As you requested, the abstract is now shorter.", "model-addressed"),
+    ("I have shortened the abstract to two hundred words.", "model-addressed"),
+    ("I\N{RIGHT SINGLE QUOTATION MARK}ve rewritten the Discussion to be concise.",
+     "model-addressed"),
+    ("Below is the revised Introduction:", "model-addressed"),
+    ("Per your instructions, the tables were merged.", "model-addressed"),
+    ("I have incorporated all your suggestions.", "model-addressed"),
+]  # fmt: skip
+
+#: Each residue that a paper about peer review also writes of the papers it studied, with
+#: its rule. Each warns at every stage.
+SAID_TO_ANY = [
+    ("In response to the reviewers' comments, a sensitivity analysis was added.",
+     "reviewers-answered"),
+    ("As suggested by one of the reviewers, the radiograph lacked detail.",
+     "reviewers-answered"),
+    ("Following reviewer comments, the scale was shortened.", "reviewers-answered"),
+    ("The reviewer's comment concerned the dose.", "reviewers-answered"),
+    ("We thank the reviewers for raising this point.", "reviewers-answered"),
+    ("As requested, we added the dates.", "as-requested"),
+    ("The revised manuscript reports the median.", "earlier-version-unnamed"),
+    ("In the original submission, the cohort was larger.", "earlier-version-unnamed"),
+    ("In the previous version of the manuscript, Table 2 was longer.",
+     "earlier-version-unnamed"),
+    ("The definition was moved (lines 120\N{EN DASH}125).", "lines-cited-alone"),
+    ("Tracked changes were accepted before it was sent.", "tracked-changes"),
+    ("The response letter lists every change.", "response-letter-unnamed"),
+    ("A point-by-point response accompanies this paper.", "response-letter-unnamed"),
+]  # fmt: skip
+
+#: What the residue rules must not take: most are sentences of papers by people, from the
+#: corpus `tools/g6_baseline.py` reads, cut down; the rest are the commonest ways a
+#: pharmacology or epidemiology paper writes the same words. Names; the authors' own words
+#: for their methods; contributions; acknowledgements; a journal's notices; and prose.
+NOT_SAID_TO_ANYONE = [
+    "Perioperative risk was scored with the Revised Cardiac Risk Index.",
+    "Pulmonary embolism was assessed with the revised Geneva score.",
+    "Patients fulfilled the 1987 ACR revised criteria.",
+    "Depression was measured with the Clinical Interview Schedule-Revised (CIS-R).",
+    "Diagnoses were coded with the International Classification of Diseases, 10th revision.",
+    "The study followed the Declaration of Helsinki of 1975, as revised in 2008.",
+    "Reads were aligned with the revised Cambridge Reference Sequence.",
+    "Risk was estimated with the revised Framingham Stroke Risk Profile.",
+    "The REVISION trial will report next year.",
+    "Revision of the femoral component was rare.",
+    "In the revised protocol, we asked participants for permission.",
+    "Our revised estimate of the mating rate was higher.",
+    "The final revised version contains fifteen statements.",
+    "In the original version, items were rated on a five-point scale.",
+    "The previous version of MedDRA coded this term differently.",
+    "The previous version of this review included twelve trials.",
+    "This is an update of a review first published in 2015.",
+    "In this update, we included five new trials.",
+    "This updated meta-analysis adds three trials.",
+    "We corrected for multiple comparisons.",
+    "The original study enrolled children.",
+    "Previous studies reported a lower rate.",
+    "This original article reports a cohort.",
+    "The original submission of the dossier to the agency was rejected.",
+    "HJ drafted the initial manuscript.",
+    "JL revised the original manuscript.",
+    "RW wrote the first draft of the manuscript, and all authors contributed to revisions.",
+    "All authors read and approved the final manuscript.",
+    "All authors approved the revised manuscript.",
+    "All authors approved this version of the manuscript.",
+    "All authors contributed to the article and approved the submitted version.",
+    "YG critically revised the manuscript for important intellectual content.",
+    "EGB made major revisions to the first draft.",
+    "Writing \N{EN DASH} original draft: LC.",
+    "We thank two anonymous reviewers for their helpful and constructive comments.",
+    "We are grateful for the comments from reviewers on earlier drafts of this manuscript.",
+    "We thank Dr. Smith for comments on an earlier version of this manuscript.",
+    "The authors are grateful to Dr. Simon and Dr. Sampaio for their critical review in the "
+    "original manuscript.",
+    "We thank the handling editor, subject editor, and two anonymous reviewers for their "
+    "constructive and helpful comments.",
+    "We thank the Editor and an anonymous reviewer for their helpful comments.",
+    "We thank the reviewer for the helpful comments.",
+    "We thank X and Y for their comments on a previous draft of this paper.",
+    "The views are not necessarily those of the publisher, the editors and the reviewers.",
+    "Academic Editor: Yaacov Barak",
+    "A copy of the consent is available for review by the Editor-in-Chief of this journal.",
+    "The handling editor declared a shared affiliation with the authors at the time of review.",
+    "This review was written at the invitation of the editor.",
+    "This commentary was written in response to the editor's invitation.",
+    "To address this concern, we used an active comparator.",
+    "To address this issue, we estimated the extent of misclassification.",
+    "To avoid confusion, we refer to the second cohort as the validation set.",
+    "In response to treatment, the rash resolved.",
+    "In response to our survey, most respondents felt less able to influence policy.",
+    "In response to this experience, we added text to the preparation task.",
+    "Two studies published during the revision of this manuscript asked the same question.",
+    "In the present manuscript, we show that the cells form a barrier.",
+    "After we posted a preprint of an earlier version of this paper, two groups wrote to us.",
+    "Using this technique, we now report a novel coactivator.",
+    "We now investigated invasion of the wild-type strain.",
+    "Risk groups were defined as recommended by the European Centre for Disease Prevention "
+    "and Control.",
+    "The species grouped as suggested by its morphology.",
+    "As proposed by Gauthier et al., the genus was nested within the family.",
+    "Two reviewers independently screened titles and abstracts.",
+    "Disagreements were resolved by a third reviewer.",
+    "Reviewer 1 and Reviewer 2 independently extracted the data.",
+    "Discrepancies noted by the second reviewer were discussed.",
+    "Disagreements were resolved as decided by the third reviewer.",
+    "The reviewers remark that controlled studies do not exist.",
+    "The quotation is from the interview guide (p. 59).",
+    "Line 1: hydroxylase; M: marker.",
+    "The global methylation (LINE 1) remained stable.",
+    "Vectors were propagated in the E1-complementing cell line 293.",
+    "First-line therapy was metformin.",
+    "In the first round of the Delphi survey, forty experts responded.",
+    "The first mailing comprises a cover letter and a questionnaire.",
+    "The receptor binding domain was highlighted in yellow.",
+    "Amino acid changes are highlighted in red.",
+    "We have expanded on previous work by modelling the dose.",
+    "We have rewritten the package in C++.",
+    "We have clarified the role of CYP3A4 in this interaction.",
+    "We have now shown that the effect persists.",
+    "In this guideline, we have included statements on renal dosing.",
+    "These have been discussed in the Introduction.",
+    "\N{LEFT DOUBLE QUOTATION MARK}I have too much work to do,\N{RIGHT DOUBLE QUOTATION MARK} "
+    "one nurse said.",
+    "\N{LEFT DOUBLE QUOTATION MARK}I have seen too many patients die."
+    "\N{RIGHT DOUBLE QUOTATION MARK}",
+    "Has your daughter started her periods yet?",
+    "as suggested by\n\nReviewer 2 independently, a heading and a paragraph.",
+]  # fmt: skip
+
+
+def _residue(text: str) -> list[str]:
+    from manuscript_guard.gates.writing import load_rules, residue_in
+
+    return [rule["id"] for rule, _match in residue_in(load_rules(), text)]
+
+
+@pytest.mark.parametrize(("sentence", "rule"), SAID_TO_ONE + SAID_TO_ANY)
+def test_words_to_the_reviewers_are_found_once(sentence: str, rule: str) -> None:
+    assert _residue(sentence) == [rule]
+
+
+@pytest.mark.parametrize("sentence", NOT_SAID_TO_ANYONE)
+def test_what_reads_like_words_to_the_reviewers_and_is_prose_passes(sentence: str) -> None:
+    assert _residue(sentence) == []
+
+
+def test_which_residue_fails_at_submission_is_marked() -> None:
+    from manuscript_guard.gates.writing import load_rules
+
+    marked = {rule["id"] for rule in load_rules().residue if rule.get("self_reference")}
+    assert marked == {rule for _sentence, rule in SAID_TO_ONE}
+    assert marked.isdisjoint(rule for _sentence, rule in SAID_TO_ANY)
+
+
+def _residue_said(project: Path, text: str, *, submission: bool) -> list[tuple[str, int]]:
+    import shutil
+
+    shutil.rmtree(project / "manuscript" / "supplementary", ignore_errors=True)
+    (project / "manuscript" / "main.md").write_text(text, encoding="utf-8")
+    projekt, _ = load_project(project)
+    report = check_writing(projekt, submission=submission)
+    return [(f.severity, f.line) for f in report.findings if f.code == "revision-residue"]
+
+
+def test_a_residue_warns_while_drafting_and_fails_at_submission(project: Path) -> None:
+    """Basile, 2026-10-20: the words that answer one reviewer fail at submission and warn
+    before it; those a paper about peer review writes too warn at every stage."""
+    text = (
+        "# Methods\n\nAs requested by Reviewer 2, we added a sensitivity analysis.\n\n"
+        "The revised manuscript reports the median.\n"
+    )
+    assert _residue_said(project, text, submission=False) == [("warn", 3), ("warn", 5)]
+    assert _residue_said(project, text, submission=True) == [("fail", 3), ("warn", 5)]
+
+
+def test_a_residue_in_a_comment_or_a_listing_is_not_read(project: Path) -> None:
+    """A comment is the author's note to themself and is never printed; a listing is code."""
+    text = (
+        "# Methods\n\n<!-- As requested by Reviewer 2, we added this. -->\n\n"
+        "```\n# in response to the reviewer's comment\n```\n\nThe cohort was small.\n"
+    )
+    assert _residue_said(project, text, submission=True) == []
+
+
+def test_an_artefact_is_not_said_again_as_a_residue(project: Path) -> None:
+    """"Here is the revised Methods" fails as the assistant's voice already."""
+    report = written(project, "# Methods\n\nHere is the revised Methods section.\n")
+    assert [f.code for f in report.findings] == ["model-artefact"]
+
+
+def test_check_fails_at_submission_on_a_residue_and_counts_it(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "# Data availability",
+            "We have now clarified the definition of exposure.\n\n# Data availability",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    submitted, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    said = {
+        stage: [f.severity for f in report.findings if f.code == "revision-residue"]
+        for stage, report in (("drafting", drafting), ("submission", submitted))
+    }
+    assert said == {"drafting": ["warn"], "submission": ["fail"]}
+    assert submitted.counts["writing_residue"] == 1

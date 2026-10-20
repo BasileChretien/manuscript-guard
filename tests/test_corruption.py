@@ -3420,6 +3420,62 @@ def test_what_a_cited_reference_holds_and_is_no_placeholder_passes(
     assert _placeholders(_g6(project)) == []
 
 
+# ------------------------------------------- words to the reviewers, left in the manuscript
+
+
+def _residue_said(root: Path, *, submission: bool) -> list[str]:
+    from manuscript_guard.gates import check_writing
+
+    project, _ = load_project(root)
+    report = check_writing(project, submission=submission)
+    return [f.severity for f in report.findings if f.code == "revision-residue"]
+
+
+@pytest.mark.parametrize(
+    "residue",
+    [
+        "As requested by Reviewer 2, we added a sensitivity analysis.",
+        "In response to the reviewer's comment, we clarified the exposure.",
+        "In the previous version of this manuscript, the cohort was larger.",
+        "We have now clarified the definition of exposure.",
+        "The definition is given on page 4, lines 120-125.",
+        "I have shortened the Discussion to two paragraphs.",
+    ],
+)
+def test_words_to_the_reviewers_in_the_manuscript_fail_at_submission(
+    project: Path, residue: str
+) -> None:
+    """A revision's words to the reviewers, or a model's to its user, reached the manuscript
+    and no gate read them: the artefacts G6 knew were a chat tool's markup and placeholders.
+    They warn while the paper is revised and fail at submission (Basile, 2026-10-20)."""
+    _with_paragraph(project, residue)
+    assert _residue_said(project, submission=False) == ["warn"]
+    assert _residue_said(project, submission=True) == ["fail"]
+
+
+def test_words_to_the_reviewers_in_the_supplement_fail_too(project: Path) -> None:
+    supplement = project / "manuscript" / "supplementary" / "appendix.md"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_text("# Appendix\n\nAs suggested by the reviewer, we added Table S9.\n",
+                          encoding="utf-8")  # fmt: skip
+    assert _residue_said(project, submission=True) == ["fail"]
+
+
+def test_the_letter_to_the_reviewers_is_not_read_for_residue(project: Path) -> None:
+    """The response is where these words belong: G6 never reads the round's file nor the
+    letter `respond` writes from it, and G13 lets the letter say them."""
+    reply = ("As requested by Reviewer 2, we have now clarified this in the revised "
+             "manuscript (page 4, lines 120-125).")  # fmt: skip
+    _round_with(project, [_point(response=reply, rebutted="No change was needed.")])
+    from manuscript_guard.cli import main
+
+    assert main(["respond", str(project)]) in (0, 1)
+    assert (project / "build" / "response-to-reviewers.md").is_file()
+    assert _residue_said(project, submission=True) == []
+    codes_said = ("response-leak", "response-placeholder", "response-artefact")
+    assert _said(_g13(project), *codes_said) == []
+
+
 def test_a_placeholder_on_an_entrys_first_line_is_found_on_it(project: Path) -> None:
     """Round 1 of #262: a field written on the entry's line was put on the next entry's."""
     bib = project / "literature" / "references.bib"

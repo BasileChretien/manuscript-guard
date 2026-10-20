@@ -95,6 +95,276 @@ artefacts:
     pattern: '(?i)^\s*(?:certainly|sure|of course|here(?:[''’]s| is) (?:the|a|an)\b)'
     why: Chat-assistant register, left in the manuscript
 
+# Words written to the reviewers, or to a model, that end up in the paper: "As requested by
+# Reviewer 2, we added ...", "In the previous version of this manuscript ...", "We have now
+# clarified ...", "I have shortened the abstract". They belong in the response to the
+# reviewers, which `respond` writes and G6 never reads: the paper's reader never saw the
+# review. Each is reported wherever it stands, as an artefact is, and not counted by rate,
+# since one is enough. Taken, and narrowed, from the `process_residue` rules of Writing Guard
+# (ATTRIBUTION.md).
+#
+# Two kinds (Basile, 2026-10-20). A rule marked `self_reference` matches only words that
+# answer one reviewer or the editor, that point at this manuscript, its earlier version or
+# its lines, or that a model wrote to its user: they warn while the paper is written and
+# fail at submission. The others match what a paper about peer review also writes of the
+# papers it studied, "the revised manuscript", "in response to the reviewers' comments":
+# they warn at every stage. A rule reads one paragraph at a time, in the prose as the phrase
+# rules read it, so that nothing in a comment, a listing or a citation is reported.
+#
+# What they must not take, each kept as a passing case and most from published papers
+# (tests/test_writing.py): a name, "the Revised Cardiac Risk Index", "the 1987 ACR revised
+# criteria", "the 10th revision"; the authors' contributions, "drafted the initial
+# manuscript", "revised the original manuscript"; the acknowledgements, "comments on an
+# earlier version of this manuscript", "two anonymous reviewers for their helpful comments";
+# a journal's notices, "the editors and the reviewers"; and prose, "To address this concern,
+# we", "previous studies", "we now report", "Reviewer 1 and Reviewer 2 independently
+# extracted the data". Not "to address the concern" nor "to avoid confusion", which Writing
+# Guard takes: 38 of 399 papers by people say "to address this issue" or its like.
+#
+# A `{{name}}` in a pattern stands for the words of that name below, in a group of its own.
+# Every pattern that uses them is verbose, `(?x)`, so their spaces and line ends are not read.
+residue_words:
+  # One reviewer, or the editor: "the reviewer", "the second referee", "Reviewer #2",
+  # "Referee B". A reviewer is singular here only with "the" or a number, since "a third
+  # reviewer resolved disagreements" is how a systematic review's Methods are written.
+  one: |-
+    the\s+(?:(?:first|second|third|fourth|fifth|other|statistical|clinical|methodological|
+      academic|associate|handling|guest|deputy|senior|section)\s+)?
+      (?:reviewer|referee|editor(?:-in-chief)?)\b(?!['’]s\s+(?:invitation|call|note|choice))
+    |(?:reviewer|referee)\s*(?:\#\s*|no\.?\s*)?(?:\d{1,2}|(?-i:[IVX]{1,4}|[A-D]))\b
+    |(?:reviewer|referee)\s+(?:one|two|three|four|five)\b
+  # More than one, or one not named: "the reviewers", "one of the reviewers", "an anonymous
+  # referee", "reviewer comments".
+  many: |-
+    (?:the|our)\s+(?:\w+\s+)?(?:reviewers|referees|editors)\b
+    |(?:one|each|both|all|two|three|four|several|some|many|either|neither|other)\s+
+      (?:of\s+(?:the|our)\s+)?(?:\w+\s+)?(?:reviewers?|referees?)\b
+    |an?\s+(?:\w+\s+)?(?:reviewer|referee)\b
+    |(?:reviewers?|referees?)\b
+  # What a reviewer says.
+  speech: |-
+    comments?|suggestions?|requests?|concerns?|points?|quer(?:y|ies)|questions?|remarks?
+    |recommendations?|criticisms?|critiques?|feedback|observations?|advice|input
+  # An answer, which needs no word for what was said: "in response to the reviewer".
+  answer: |-
+    in\s+(?:response|reply|answer)\s+to|(?:our\s+)?(?:response|reply|answer)\s+to
+    |respond(?:ing)?\s+to|repl(?:y|ying|ied)\s+to|to\s+address
+    |at\s+the\s+(?:request|suggestion|behest)\s+of
+    |on\s+the\s+(?:advice|suggestion|recommendation|request)\s+of
+  # A word that says nothing of an answer without what was said: "following the reviewer's
+  # suggestion", where "following the reviewers' training" is a review's Methods.
+  after: |-
+    following|per|as\s+per|according\s+to|addressing|to\s+answer|answering|in\s+line\s+with
+    |based\s+on|prompted\s+by|after
+  # What was done at someone's word: "as suggested by", "pointed out by". Not "noted by"
+  # alone, which a review writes of its second reader.
+  by: |-
+    (?:as\s+(?:requested|suggested|recommended|proposed|advised|asked|pointed\s+out|noted|raised
+      |indicated|mentioned|highlighted)
+    |(?:requested|suggested|recommended|proposed|advised|pointed\s+out|raised))\s+by
+  # What the authors did to the text.
+  edited: |-
+    added|amended|changed|clarified|corrected|deleted|edited|expanded|modified|moved|rephrased
+    |reworded|rewritten|removed|revised|shortened|softened|toned\s+down|updated|nuanced|tempered
+  # A part of the text. Not "statements", which a consensus paper adds and includes.
+  part: |-
+    text|sentences?|wording|paragraphs?|section|subsection|passages?|phrases?|discussion
+    |introduction|abstract|title|limitations?|methods\s+section|results\s+section|conclusions?
+    |manuscript|clarifications?|explanations?|footnotes?|terminology|keywords
+    |figure\s+legends?|table\s+legends?|captions?
+
+residue:
+  - id: reviewer-answered
+    self_reference: true
+    # "In response to the reviewer's comment", "as suggested by Reviewer 2", "following the
+    # editor's request", "as the reviewer pointed out", "the reviewer rightly asked whether",
+    # "we thank the reviewer for this point". Not the thanks of the acknowledgements, "for
+    # the helpful comments", in the plural.
+    pattern: |-
+      (?ix)\b(?:
+        {{answer}}\s+{{one}}
+        |{{after}}\s+{{one}}['’]s\s+(?:\w+\s+)?{{speech}}\b
+        |{{by}}\s+{{one}}
+        |as\s+{{one}}\s+(?:\w+\s+)?(?:suggested|requested|recommended|pointed\s+out|noted|asked
+          |proposed|advised|mentioned|indicated|wondered|commented)\b
+        |{{one}}\s+(?:(?:rightly|correctly|kindly|also|further|helpfully)\s+)?
+          (?:asked\s+(?:us|whether|why|for|that|to|if|how)|requested|suggested|recommended
+          |pointed\s+out|raised\s+(?:a|an|the|this|that)|wondered|questioned\s+(?:whether|why|the|our))\b
+        |(?:thank(?:s|ing)?|grateful|indebted)\s+(?:to\s+)?{{one}}\s+for\s+(?:(?:this|that|the|his|her|their)\s+(?:\w+\s+)?
+          (?:comment|suggestion|point|question|remark|observation|query|concern)\b
+          |raising|pointing|bringing|highlighting|noting)
+      )
+    why: An answer to one reviewer or to the editor, which the paper's reader never saw
+  - id: reviewers-answered
+    # The same of the reviewers together, of one not named, or of one reviewer's words with
+    # nothing done about them: "in response to the reviewers' comments", "as suggested by
+    # one of the reviewers", "the reviewer's comment". A paper about peer review writes these
+    # of the reviews it studied, so they warn.
+    pattern: |-
+      (?ix)\b(?:
+        {{answer}}\s+{{many}}
+        |{{after}}\s+{{many}}(?:['’]s?)?\s+(?:\w+\s+)?{{speech}}\b
+        |{{by}}\s+{{many}}
+        |as\s+{{many}}\s+(?:\w+\s+)?(?:suggested|requested|recommended|pointed\s+out|noted|asked
+          |proposed|advised|mentioned|indicated|wondered|commented)\b
+        |{{one}}['’]s\s+(?:\w+\s+)?{{speech}}\b
+        |thank(?:s|ing)?\s+(?:to\s+)?{{many}}\s+for\s+(?:(?:this|that)\s+(?:\w+\s+)?
+          (?:comment|suggestion|point|question|remark|observation|query|concern)\b
+          |raising|pointing|bringing|highlighting|noting)
+      )
+    why: An answer to the reviewers, unless the paper is about peer review
+  - id: as-requested
+    # A sentence that opens on a request and names nobody: "As requested, we ...".
+    pattern: '(?m)(?:^|(?<=[.!?;:]\s))[ \t]*As\s+(?:requested|suggested|recommended|advised|agreed)\s*,'
+    why: An answer to a request, which the paper's reader never made
+  - id: earlier-version
+    self_reference: true
+    # This manuscript before it was revised: "our original submission", "this revised
+    # manuscript", "in the previous version of this manuscript". Not "comments on an earlier
+    # version of this manuscript", which is the acknowledgements, and not "an earlier
+    # version of this paper", which a preprint was.
+    pattern: |-
+      (?ix)\b(?:
+        (?:our|this)\s+(?:original|initial|first|previous|earlier|prior|former|revised|resubmitted
+          |amended)\s+(?:submission|resubmission)(?!\s+(?:to|of|for)\b)
+        |(?:our|this)\s+(?:original|initial|revised|resubmitted|amended)\s+(?:manuscript|draft)
+        |(?:in|from|than|unlike|compared\s+(?:with|to)|relative\s+to)\s+(?:the|an?|our)\s+
+          (?:original|initial|first|previous|earlier|prior|former|last|revised)\s+(?:version|draft)s?
+          \s+of\s+(?:this|our)\s+(?:manuscript|submission)
+        |this\s+version\s+of\s+(?:the|this|our)\s+manuscript
+      )\b
+    exempt: &written
+      # The authors' contributions: "drafted the initial manuscript", "approved this version
+      # of the manuscript".
+      - '(?i)\b(?:wrote|write|written|writing|draft(?:ed|ing)?|prepar(?:ed|ing)|revis(?:ed|ing)|edit(?:ed|ing)|review(?:ed|ing)|read|approv(?:ed|ing)|commented\s+on|contributed\s+to|made\s+(?:\w+\s+)?revisions\s+(?:to|of)|gave\s+(?:\w+\s+)?approval\s+(?:of|to))\b(?:[^.;:\n]|\n(?![ \t]*\n)){0,60}?\b(?:manuscripts?|drafts?|versions?|submissions?|papers?)\b'
+      # The acknowledgements, to the end of their sentence, where the stop of a title or an
+      # initial ends none: "grateful to Dr. Sampaio for their critical review in the
+      # original manuscript".
+      - '(?i)\b(?:thank(?:s|ed|ful)?|grateful|gratitude|indebted|acknowledge[sd]?)\b(?:[^.\n]|\n(?![ \t]*\n)|(?<=\b(?:Dr|Mr|Ms|Mx|St|Jr|Sr|al))\.|(?<=\b(?:Mrs|Drs))\.|(?<=\bProf)\.|(?<=\b[A-Z])\.){0,300}'
+    why: This manuscript's earlier version, which the paper's reader never saw
+  - id: earlier-version-unnamed
+    # A manuscript's earlier version not said to be this one's: "the revised manuscript",
+    # "the original submission", "in the previous draft". What a paper about peer review
+    # writes of the manuscripts it studied, so they warn. Not "the original version", nor
+    # "the revised version", which a scale or a questionnaire has, nor "the original
+    # submission of the dossier to the agency", which a paper on regulation writes.
+    pattern: |-
+      (?ix)\b(?:
+        the\s+(?:revised|resubmitted|amended)\s+(?:manuscript|submission|draft)(?!\s+(?:to|of|for)\b)
+        |the\s+(?:original|initial|first|previous|earlier|prior|former)\s+(?:submission|resubmission)
+          (?!\s+(?:to|of|for)\b)
+        |(?:in|from|than|unlike|compared\s+(?:with|to)|relative\s+to)\s+(?:the|an?)\s+
+          (?:original|initial|first|previous|earlier|prior|former|last)\s+(?:manuscript|draft)s?
+        |(?:in|from|than|unlike|compared\s+(?:with|to)|relative\s+to)\s+(?:the|an?)\s+
+          (?:original|initial|first|previous|earlier|prior|former|last|revised)\s+(?:version|draft)s?
+          \s+of\s+the\s+(?:manuscript|submission)
+        |the\s+revised\s+version\s+of\s+the\s+manuscript
+      )\b
+    exempt: *written
+    why: A manuscript's earlier version, unless the paper is about peer review
+  - id: we-have-now
+    self_reference: true
+    # "We have now clarified", "we now have added", "we've now rephrased": the cadence of a
+    # reply. Not what a paper finds, "we have now shown", nor "we now report".
+    pattern: |-
+      (?ix)\bwe(?:\s+have\s+now|\s+now\s+have|['’]ve\s+now)\s+(?:also\s+|further\s+|additionally\s+|briefly\s+)?
+        (?:added|amended|changed|clarified|corrected|deleted|edited|elaborated|emphasi[sz]ed|mentioned
+        |modified|moved|rephrased|replaced|reworded|rewritten|removed|revised|shortened|softened
+        |specified|toned\s+down|acknowledged|discussed|stated|reorgani[sz]ed|restructured|condensed
+        |cited|tempered|nuanced)\b
+    why: A change to the text described to whoever asked for it
+  - id: text-edited
+    self_reference: true
+    # A change to a part of the text: "we have expanded the Discussion", "this has now been
+    # clarified", "the sentence has been amended accordingly", "a paragraph has been added to
+    # the Limitations". Not "These have been discussed in the Introduction", a pointer.
+    pattern: |-
+      (?ix)\b(?:
+        we\s+have\s+(?:also\s+|further\s+|therefore\s+|accordingly\s+|thus\s+|hence\s+|now\s+)?
+          (?:{{edited}}|extended|restructured|reorgani[sz]ed|condensed|streamlined|simplified|inserted
+          |adapted|adjusted)\s+
+          (?:(?:the|this|that|these|those|our|a|an|one|two|three|several|some|new|further|additional
+          |more|brief|short|relevant|corresponding|following|entire|whole)\s+){0,2}(?:{{part}})\b
+        |(?:this|these|the\s+(?:{{part}}))\s+(?:has|have)\s+(?:now\s+|also\s+)?been\s+(?:{{edited}})\s+
+          (?:accordingly|throughout|in\s+(?:the|this|our)\s+(?:revised\s+)?(?:{{part}}|paper|methods|results))\b
+        |(?:this|these)\s+(?:(?:points?|issues?|aspects?|limitations?|statements?)\s+)?(?:has|have)\s+now
+          \s+been\s+(?:{{edited}}|included|incorporated|specified|mentioned|discussed|acknowledged|addressed|stated|explained
+          |emphasi[sz]ed)\b
+        |(?:a|an|one|two|the|new|further|additional|brief|short)\s+(?:\w+\s+)?(?:sentences?|paragraphs?
+          |statements?|clarifications?|explanations?|notes?|sections?|subsections?|passages?|caveats?)
+          \s+(?:has|have)\s+(?:now\s+|also\s+)?been\s+(?:added|inserted|included)\s+(?:to|in|into)\s+
+          (?:the|this|our)\s+(?:revised\s+)?(?:{{part}}|paper|methods|results)\b
+      )
+    why: A change to the text described to whoever asked for it
+  - id: lines-cited
+    self_reference: true
+    # A place in the manuscript's numbered lines: "page 12, lines 245-250", "lines 245-250
+    # of the revised manuscript". Not "(p. 240)", a quotation's page.
+    pattern: |-
+      (?ix)\b(?:page|pg\.?|p\.?)\s*\d+\s*[,;]?\s*(?-i:[Ll]ines?|ll?\.)\s*\d+
+      |\b(?-i:[Ll]ines?)\s+\d+(?:\s*(?:[-–—]|to|and)\s*\d+)?\s+(?:of|in)\s+(?:the|this|our)\s+
+        (?:revised\s+|tracked\s+|clean\s+|marked[-\s]up\s+)?(?:manuscript|text|version|document|submission|file)\b
+    why: A place in the reviewers' copy, which the paper's reader does not have
+  - id: lines-cited-alone
+    # Lines in brackets with nothing to say whose: "(lines 245-250)". A program's listing
+    # may be pointed at so. Not in capitals: "(LINE 1)" is a retrotransposon.
+    pattern: '\((?:[Ss]ee\s+)?(?:[Ll]ines?|ll\.)\s+\d+(?:\s*(?:[-–—]|to|and)\s*\d+)?\)'
+    why: A place in the reviewers' copy, unless it is a listing's
+  - id: changes-marked
+    self_reference: true
+    # "The revised text is highlighted in yellow", "shown in track changes". Not "the RBD
+    # was highlighted in yellow", nor "amino acid changes are shown in red".
+    pattern: |-
+      (?ix)\b(?:the\s+)?(?:revised|new|added|amended|changed|edited|inserted)\s+(?:text|passages?
+        |sentences?|wording|paragraphs?|parts?\s+of\s+the\s+(?:text|manuscript))\s+(?:is|are|has\s+been
+        |have\s+been|was|were)\s+(?:now\s+)?(?:highlighted|marked|shown|indicated|underlined|colou?red
+        |tracked|written|printed)\s+(?:in|with|using|as|by)\b
+      |\b(?:in|with|using|as|via)\s+track(?:ed)?[-\s]changes?\b
+    why: Changes marked for the reviewers, which the printed paper does not show
+  - id: tracked-changes
+    pattern: '(?i)\btrack(?:ed)?[-\s]changes?\b'
+    why: Changes marked for the reviewers, unless the paper is about editing
+  - id: response-letter
+    self_reference: true
+    # "our response to Reviewer 2", "our point-by-point reply to the comments", "see the
+    # response letter". Not "a cover letter", which a survey posts to its participants.
+    pattern: |-
+      (?ix)\b(?:
+        our\s+(?:point[-\s]by[-\s]point\s+)?(?:response|reply|rebuttal|answer)s?\s+(?:letter\s+|document\s+)?
+          (?:to|for)\s+(?:the\s+)?(?:\w+\s+)?(?:reviewers?|referees?|editors?)
+        |our\s+(?:response|rebuttal|reply)\s+(?:letter|document)
+        |our\s+rebuttal
+        |(?:see|in)\s+(?:the|our)\s+(?:accompanying\s+|attached\s+)?(?:response|rebuttal|reply)\s+(?:letter|document)
+      )\b
+    why: The letter to the reviewers, which the paper's reader does not have
+  - id: response-letter-unnamed
+    pattern: '(?i)\b(?:(?:response|rebuttal|reply)\s+(?:letter|document)s?|point[-\s]by[-\s]point\s+(?:response|reply|rebuttal)s?|(?:response|reply|rebuttal)s?\s+to\s+(?:the\s+)?(?:reviewers|referees|reviewer\s+comments))\b'
+    why: A letter to the reviewers, unless the paper is about peer review
+  - id: model-addressed
+    self_reference: true
+    # What a model says to whoever asked it: "as you requested", "per your instructions",
+    # "I have shortened the abstract", "Below is the revised Discussion". Not "I have
+    # forgotten", a participant's words.
+    pattern: |-
+      (?ix)\b(?:
+        as\s+you\s+(?:requested|asked|suggested|instructed|specified)
+        |(?:per|at|following|as\s+per)\s+your\s+(?:request|instructions?|suggestions?|feedback|comments?)
+        |(?:incorporated|integrated|addressed|implemented|applied|included)\s+(?:all\s+)?your\s+
+          (?:suggestions?|comments?|feedback|edits|changes|requests?)
+        |(?:changes|edits|revisions|corrections)\s+you\s+(?:requested|asked\s+for|suggested|wanted)
+        |(?-i:I)(?:['’]ve|\s+have)\s+(?:now\s+|also\s+|just\s+)?(?:revised|rewritten|rephrased|reworded|edited
+          |shortened|tightened|polished|restructured|reorgani[sz]ed|condensed|streamlined|simplified|updated
+          |corrected|adjusted|expanded|trimmed|refined|improved|removed|added)\s+
+          (?:the|your|this|that|each|a\s+few|some|all|these|those|several)\s+(?:\w+\s+)?
+          (?:text|paragraphs?|sections?|sentences?|drafts?|abstract|introduction|discussion|manuscript
+          |wording|versions?|passages?|conclusions?|title|methods|results)
+        |(?:below|here)\s+is\s+(?:the|a|an|your)\s+(?:\w+\s+)?(?:revised|rewritten|updated|edited|shortened
+          |polished|improved|corrected|condensed|expanded|tightened|refined|reworded|rephrased)
+        |here['’]s\s+(?:the|a|an|your)\s+(?:\w+\s+)?(?:revised|rewritten|updated|edited|shortened|polished
+          |improved|corrected|condensed|expanded|tightened|refined|reworded|rephrased)
+      )\b
+    why: Words a model wrote to its user, left in the paper
+
 # Constructions worth a second look wherever they appear. Warnings, not failures: each has
 # a defensible use, and an author who disagrees should be able to say so and move on.
 phrases:

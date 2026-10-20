@@ -784,6 +784,21 @@ def _placeholders() -> Reading:
     return placeholders
 
 
+@reading("residue")
+def _residue() -> Reading:
+    from manuscript_guard.gates.writing import load_rules, residue_in
+
+    def residue(text: str) -> list[list[Any]]:
+        """What G6's residue rules find in a text: each rule, whether it fails at
+        submission, where, and what it matched."""
+        return [
+            [rule["id"], bool(rule.get("self_reference")), match.start(), match.group(0)]
+            for rule, match in residue_in(load_rules(), text)
+        ]
+
+    return residue
+
+
 @reading("vector figure")
 def _vector_figure() -> Reading:
     """The texts and lines of an SVG figure as G4 reads them: each text's height and each

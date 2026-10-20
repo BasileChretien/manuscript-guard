@@ -190,6 +190,9 @@ BINDS_AT = {
     # A number typed into a reply to the reviewers: the letter is written while the
     # analysis is still being run again, and goes to the journal only at resubmission.
     "reply-unbound-number": SUBMISSION,
+    # Words to the reviewers left in the manuscript: G6 warns on them until submission, and
+    # fails there on those that answer one reviewer or point at this manuscript.
+    "revision-residue": SUBMISSION,
     "response-claims-nothing": SUBMISSION,
     "claimed-change-did-not-happen": SUBMISSION,
             "review-stale": SUBMISSION,

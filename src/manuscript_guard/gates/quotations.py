@@ -24,14 +24,11 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.literature.sources import (
-    HTML_SUFFIXES,
-    PDF_SUFFIXES,
-    TEXT_SUFFIXES,
     UnreadableSource,
     contains,
-    filed_name,
     normalise,
     read_source,
+    stored_files,
 )
 from manuscript_guard.text.masking import blank_comments
 
@@ -91,14 +88,8 @@ def quotations_in(text: str) -> list[Quotation]:
 
 
 def _sources_of(sources: Path, key: str) -> list[Path]:
-    """Every stored file of a work: its full text in each form kept, and its abstract,
-    `<key>.abstract.txt` as the literature skill names it (round 1 of #282: the first file
-    alone was read, so a quotation of a PDF beside an HTML abstract was said to be absent,
-    and an abstract so named was never found)."""
-    suffixes = sorted(TEXT_SUFFIXES | HTML_SUFFIXES | PDF_SUFFIXES)
-    names = [filed_name(key, s) for s in suffixes] + [filed_name(key, ".abstract" + s)
-                                                       for s in suffixes]  # fmt: skip
-    return [sources / name for name in names if (sources / name).is_file()]
+    """Every stored file of a work (`stored_files`, which `sync-sources` reads too)."""
+    return stored_files(sources, key)
 
 
 #: Where a writer left words of a source out: "[...]", "[. . .]", "[…]", "…" or "...".

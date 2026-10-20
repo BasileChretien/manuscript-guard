@@ -1053,6 +1053,51 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   dated in the future, one that is not a record, or one filed under another citekey fails
   from internal-review.
 
+## A cited work's copy is taken from Zotero
+
+G7 holds a quote to a stored source, and a co-author asked whether a cited paper says what a
+sentence says needs the paper. Both wanted a file under `literature/sources/` that someone
+had saved by hand. The author mostly has it already: Zotero keeps the PDF or the saved page
+of an item, saved from the author's own browser by the Zotero Connector or fetched by "Find
+Available PDF" from an open copy or through the library's proxy. That is the author's own
+access, used by the author's own tools; nothing here signs in anywhere or drives a browser.
+
+`manuscript-guard sync-sources` asks Better BibTeX's `item.attachments` about each key the
+manuscript cites, in the user's library and then in each group library, and copies what it
+finds into `literature/sources/<key>.<suffix>`, the name G7 reads (`stored_files`, shared
+with the gate). Better BibTeX 9.0.71 under Zotero 9.0.6 answers, as probed on 2026-10-20, a
+list of `{open, path}`: `open` is the attachment's `zotero://` link, which names it by its
+eight-character key, and `path` is where the file would be on this computer, or `false` for
+a link to a page or an attachment with no file; null for an item with no attachment; and the
+JSON-RPC error -32602 "<key> not found" for a key the library does not hold. The client
+keeps that error object on the exception (`ZoteroRefused.not_found`), so a key missing from
+the user's library goes on to the group libraries and any other refusal stops the command.
+
+`path` names a file that need not be there. A library synced to fetch files as they are
+needed has, for a file never opened on this computer, only Zotero's text of it: the
+attachment's folder holds `.zotero-ft-cache` and nothing else. Of 193 items found by two
+title searches of the author's library, 69 had a file on this computer, 32 only that text,
+and 92 neither. So each attachment gives its file, where it is there and is a PDF, a saved
+page or plain text, or else Zotero's text of it as `<key>.txt` (Zotero keeps one for an EPUB
+too), or else a reason, and the works left with no copy are listed with theirs and what to do
+in Zotero. A work with a file saved under its name by hand is not listed. The other kinds G7
+reads, a table or a citation file, are not taken: attached to an item in Zotero they are a
+supplement's data or the item's own reference, and G7 would read them as the work's text.
+
+Two rules keep the command from doing harm. Two different files that would take one name,
+an article and its supplement both PDFs, are neither of them copied: which one is the work's
+is not guessed, and the author is told to save it. And a file is replaced only if the
+command wrote it and it is as written: `literature/sources.yaml` records each file it wrote,
+with the work, the SHA-256 and size of what was written, whether it is Zotero's file or
+Zotero's text, Zotero's key of the attachment, and the day. A file not in the record, or
+whose bytes no longer match it, is the author's, and is left as it is, as `install-skills`
+leaves a folder it did not write. A file found in place with Zotero's bytes is not entered
+either: the first version entered it as unchanged, and a later change in Zotero then replaced
+the author's copy (round 1 of #361). Nothing is deleted. The record holds no path on anyone's
+computer, and lives beside `sources/` rather than in it, so that it can be kept where the
+sources are not. A record that is not one stops the command, since without it the command
+cannot tell its files from the author's; deleting it makes every file the author's.
+
 ## A quotation in the prose is in its source
 
 G7 checks the ledger's quotes against the stored sources. A quotation written into a sentence
@@ -10996,6 +11041,25 @@ Open, recorded as each change landed:
     simplest session alone.
   - The hard limit ends the whole run, not the one test: nothing else stops a pattern
     that is backtracking in C.
+- **`sync-sources` copies what Zotero holds, and does not judge it.** A PDF that is a
+  publisher's cover page, a paywall notice saved as a PDF, or the wrong paper attached to the
+  item is copied as the work's, and G7 then fails the quotes held to it, which is how it shows.
+  Zotero's text of a file is Zotero's extraction, to the limits set in its search settings,
+  so a passage past them is not in the copy. Zotero's text of an attachment is copied beside
+  another attachment's file, a supplement's beside the article, and G7 reads both as the
+  work's. A linked file that is not on this computer is listed as such even where Zotero has
+  its text: Zotero keeps that text in its own storage folder, not beside the linked file,
+  and the command looks only beside the file. Two cited keys that file under one name
+  (`a:b` and `a_b`) share one copy, as they share one source in G7, and where Zotero holds
+  different files for them each run puts the other's in place, the copy being the command's
+  each time (round 1 of #361). A refusal from Better BibTeX other than "not found", which
+  may be its answer for a key two items carry (not probed), stops the run with what was
+  copied so far recorded, rather than listing that key and going on.
+- **`literature/sources/` is kept in git unless the author says otherwise.** `init` does not
+  ignore it, so the copies `sync-sources` makes, of paywalled papers among them, are
+  committed with the project, and published with it if the repository is public, including
+  in its history if it is made public later. Leaving them out of git leaves CI unable to
+  hold a quote to its source. Which way a project goes is not yet decided here.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

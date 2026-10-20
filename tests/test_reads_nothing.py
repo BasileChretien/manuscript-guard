@@ -121,6 +121,8 @@ COMMANDS = {
     "submit": Zero("every gate at the submission stage, then the build", exits=1,
                    argv=("submit", "{project}")),
     "sync-bib": Zero("the citations in the manuscript", exits=2, argv=("sync-bib", "{project}")),
+    "sync-sources": Zero("the citations in the manuscript", exits=2,
+                         argv=("sync-sources", "{project}")),
     "transcribe": Zero("the reporting guidelines' sources",
                        why="a recipe whose source is missing is counted as failed (exit 1)"),
     "verify": Zero("the results fragments, re-run", exits=2, argv=("verify", "{project}")),

@@ -197,3 +197,14 @@ def filed_name(citekey: str, suffix: str) -> str:
     """The name a stored source should have: keyed to the citation, not to the download."""
     safe = re.sub(r"[^A-Za-z0-9_.-]", "_", citekey)
     return f"{safe}{suffix if suffix.startswith('.') else '.' + suffix}"
+
+
+def stored_files(sources: Path, citekey: str) -> list[Path]:
+    """Every stored file of a work: its full text in each form kept, and its abstract,
+    `<key>.abstract.txt` as the literature skill names it (round 1 of #282: the first file
+    alone was read, so a quotation of a PDF beside an HTML abstract was said to be absent,
+    and an abstract so named was never found)."""
+    suffixes = sorted(TEXT_SUFFIXES | HTML_SUFFIXES | PDF_SUFFIXES)
+    names = [filed_name(citekey, s) for s in suffixes] + [filed_name(citekey, ".abstract" + s)
+                                                           for s in suffixes]  # fmt: skip
+    return [sources / name for name in names if (sources / name).is_file()]

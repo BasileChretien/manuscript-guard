@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/sources/1",
+  "title": "manuscript-guard record of the sources copied from Zotero",
+  "description": "Each file `manuscript-guard sync-sources` wrote under literature/sources/, by its name there: the work it is a copy of, the SHA-256 and size of what was written, whether it is Zotero's file or Zotero's text of a file, and the day. It is how the command knows which files are its own to replace when Zotero's copy changes, and never writes over a file it did not write. It holds no path on anyone's computer.",
+  "type": "object",
+  "required": ["schema", "files"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/sources/1" },
+    "files": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z0-9_.-]+$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["key", "sha256", "bytes", "from", "copied"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "from": {
+            "enum": ["zotero", "zotero-text"],
+            "description": "`zotero`: the attachment's own file. `zotero-text`: Zotero's text of an attachment whose file is not on this computer, the `.zotero-ft-cache` beside where the file would be."
+          },
+          "attachment": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{8}$",
+            "description": "Zotero's key of the attachment, from its zotero:// link."
+          },
+          "copied": { "type": "string", "format": "date" }
+        }
+      }
+    }
+  }
+}

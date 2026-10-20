@@ -2452,6 +2452,22 @@ def cmd_sync_bib(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sync_sources(args: argparse.Namespace) -> int:
+    """Copy each cited work's PDF, saved page or text from Zotero into literature/sources/."""
+    from manuscript_guard.literature import copies
+    from manuscript_guard.zotero import ZoteroUnavailable
+
+    project, _ = load_project(args.path)
+    try:
+        outcomes = copies.sync(project, dry_run=args.dry_run)
+    except (ZoteroUnavailable, copies.NothingToCopy) as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    for line in copies.report(outcomes, dry_run=args.dry_run):
+        print(line)
+    return 0
+
+
 def cmd_lookup(args: argparse.Namespace) -> int:
     """Look up each cited reference's DOI and PMID, and write what came back."""
     from manuscript_guard.lookup import run as lookup
@@ -3565,6 +3581,15 @@ def build_parser() -> argparse.ArgumentParser:
     syncbib = sub.add_parser("sync-bib", help="rewrite references.bib from Zotero")
     syncbib.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     syncbib.set_defaults(func=cmd_sync_bib)
+
+    syncsources = sub.add_parser(
+        "sync-sources", help="copy each cited work's PDF or saved page from Zotero"
+    )
+    syncsources.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    syncsources.add_argument(
+        "--dry-run", action="store_true", help="say what would be copied, and copy nothing"
+    )
+    syncsources.set_defaults(func=cmd_sync_sources)
 
     lookup = sub.add_parser(
         "lookup", help="look up each cited DOI and PMID, and keep what the registries said"

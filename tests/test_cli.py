@@ -171,6 +171,7 @@ READS_THE_MANUSCRIPT = {
     "bind --apply": lambda root: ("bind", str(root), "--apply"),
     "methods": lambda root: ("methods", str(root)),
     "sync-bib": lambda root: ("sync-bib", str(root)),
+    "sync-sources": lambda root: ("sync-sources", str(root)),
     "build --skip-checks": lambda root: ("build", str(root), "--offline", "--skip-checks"),
     "submit --skip-checks": lambda root: ("submit", str(root), "--offline", "--skip-checks"),
 }

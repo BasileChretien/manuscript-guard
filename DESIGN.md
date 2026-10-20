@@ -2748,7 +2748,8 @@ this one too, the identifier test of `_identified` among them.
 **Where the words cannot be written, the paragraph is refused.** Old words no longer found
 once (the source changed since the document was made, imported with `--force`), printed
 words that are not the document's (the record's old words changed and sealed again), a
-record that is gone, or a write that would not read as Word shows it: the whole paragraph is
+record that is gone, values and citations with no place (the marked build could not be
+read), or a write that would not read as Word shows it: the whole paragraph is
 refused, with the reason, and the finding stays open. Merging it from Word's text instead
 would be the merge this design exists to avoid, and could flatten the markup the edit was
 offered beside. A suggestion refused in Word, or whose bookmark holds other words, writes
@@ -11166,8 +11167,11 @@ Open, recorded as each change landed:
   - *A write that cannot be made refuses the paragraph.* At import, an accepted
     suggestion whose words cannot be written exactly has its whole paragraph refused, the
     author's other edits there with it, since merging it from Word's text could flatten the
-    markup it was offered beside. Only a source changed since the document was made
-    (imported with `--force`) or a record changed or gone since reaches it.
+    markup it was offered beside. A source changed since the document was made (imported
+    with `--force`), a record changed or gone since, a mix of three or more edits accepted
+    in Word that was not tried (below), and a marked build `import` could not read, which
+    leaves no value or citation placed, each reach it. The last refuses such a paragraph on
+    main too, as unaligned.
   - *The write is held to this package's reading of Markdown.* "Reads as Word shows it" is
     `roundtrip._reads_as`, which the merge holds its own result to; where that reading and
     pandoc's disagree, written words could print otherwise than Word showed them. New words

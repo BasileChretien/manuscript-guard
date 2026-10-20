@@ -3251,10 +3251,9 @@ def _a_line_break_between_an_edit_s_words_is_no_space(patch: pytest.MonkeyPatch)
     patch.setattr(suggestions, "_SPACE", "[ \\t\\u00a0]+")
 
 
-def _stretch_of(word: tuple, tokens: list) -> int:
-    """Which stretch between two values a word of `laid_out` stands in: how many values
-    print before it."""
-    return sum(1 for _start, end in tokens if end <= word[4][0])
+#: The kinds of stretch the merge refuses to rebuild from Word's text once edited: a link's
+#: address, a hard line break and a comment are not in Word's text.
+_NOT_MERGED = frozenset({"link", "lines", "comment"})
 
 
 @holds(60, suggestion_paragraphs())
@@ -3264,12 +3263,13 @@ def test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes(
     """`import` writes a suggestion accepted in Word into the source where its old words
     are (`suggestions.write_in`), then merges against that whatever else the author changed
     in the paragraph. Every run of one or two words of every stretch is written over in
-    turn. In prose, emphasis or strong emphasis it is written, and only those words change,
-    in the source and in what Word shows; each value prints where it did, moved along; the
-    merge brings the paragraph back as written, and when the author also retyped a word
-    between other values, it keeps the stretch the suggestion was written in, markup and
-    all. Inside code or a link's text it is not written: Word shows those without their
-    markup, so the words there are not what the source holds."""
+    turn. In prose, in any emphasis, and beside a hard line break it is written, and only
+    those words change, in the source and in what Word shows: a comment repeating them is
+    not counted. Each value and citation prints where it did, moved along; the merge brings
+    the paragraph back as written, and when the author also retyped a word between other
+    values, it keeps the stretch the suggestion was written in, markup and all. Inside code,
+    a link's text or a comment, or across a hard line break, it is not written: Word shows
+    those without their markup, or the write would delete it."""
     from manuscript_guard.roundtrip import align, segments
     from manuscript_guard.suggestions import Words, write_in
 
@@ -3284,7 +3284,8 @@ def test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes(
         new = WRITTEN_WORDS[count % len(WRITTEN_WORDS)]
         old = " ".join(word for word, *_rest in run)
         written = write_in(source, printed, tokens, [Words(old, new)])
-        if not STRETCHES[run[0][1]][2]:
+        kind = run[0][1]
+        if not STRETCHES[kind][2] or (kind == "lines" and len(run) > 1):
             assert isinstance(written, str), (old, source)
             continue
         assert not isinstance(written, str), (old, written, source)
@@ -3296,13 +3297,12 @@ def test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes(
         assert [written.shown[a:b] for a, b in written.tokens] == renderings, (old, source)
         alone = align(written.bare, written.shown, written.shown, written.tokens)
         assert alone.rebuilt == written.bare, (old, source)
-        # The author retypes a word between other values, where no link is: a link's address
-        # is not in Word's text, and the merge refuses a stretch with one that was edited.
-        here = _stretch_of(run[0], tokens)
-        linked = {_stretch_of(word, tokens) for word in words if word[1] == "link"}
+        # The author retypes a word between other values, in a stretch the merge can rebuild.
+        here = run[0][5]
+        refused = {word[5] for word in words if word[1] in _NOT_MERGED}
         other = next(
             (word for word in words
-             if _stretch_of(word, tokens) not in {here, *linked} and word[1] != "code"),
+             if word[5] not in {here, *refused} and STRETCHES[word[1]][2]),
             None,
         )  # fmt: skip
         if other is None:
@@ -3332,6 +3332,24 @@ def _a_suggestion_is_written_inside_code_or_a_link(patch: pytest.MonkeyPatch) ->
         return "inside a binding or a citation" if found else ""
 
     patch.setattr(suggestions, "_in_the_way", tokens_only)
+
+
+def _a_suggestion_is_written_across_a_line_break(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    real = suggestions._in_the_way
+
+    def over_breaks(paragraph: str, start: int, end: int) -> str:
+        why = real(paragraph, start, end)
+        return "" if "line break" in why else why
+
+    patch.setattr(suggestions, "_in_the_way", over_breaks)
+
+
+def _words_in_a_comment_are_counted(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    patch.setattr(suggestions, "_uncommented", lambda text: text)
 
 
 def _emphasis_is_in_the_way_of_a_suggestion(patch: pytest.MonkeyPatch) -> None:
@@ -6580,6 +6598,14 @@ BROKEN = {
     ),
     "emphasis is in the way of a suggestion": (
         _emphasis_is_in_the_way_of_a_suggestion,
+        test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
+    ),
+    "a suggestion is written across a line break": (
+        _a_suggestion_is_written_across_a_line_break,
+        test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
+    ),
+    "words in a comment are counted with the paragraph's": (
+        _words_in_a_comment_are_counted,
         test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
     ),
     "a rule's or a table's dashes are em dashes": (

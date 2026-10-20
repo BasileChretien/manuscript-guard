@@ -990,16 +990,26 @@ PARAGRAPH_WORDS = (
 )  # fmt: skip
 #: Each kind of stretch a paragraph's words stand in: how it is typed around them, and
 #: whether a suggestion is written inside it. Emphasis is prose with marks around it, and
-#: Word shows the new words in it; code and a link's text Word shows without their markup.
+#: Word shows the new words in it; "lines" is prose with a hard line break between each two
+#: words, which a suggestion is written beside and not across. Code and a link's text Word
+#: shows without their markup, and a comment not at all: it also holds a copy of the
+#: paragraph's first word, which prints once.
 STRETCHES = {
     "plain": ("", "", True),
     "em": ("*", "*", True),
     "strong": ("**", "**", True),
+    "under": ("_", "_", True),
+    "lines": ("", "", True),
     "code": ("`", "`", False),
     "link": ("[", "](https://example.invalid/page)", False),
+    "comment": ("<!-- ", " -->", False),
 }
-#: What each value of the analysis prints, in the order the values stand.
+#: What each value of the analysis prints, in the order the values stand, and what each
+#: citation prints.
 RENDERED = ("12", "345", "6.7", "89", "1,234")
+CITED = ("(Doe 2019)", "(Roe 2020)", "(Poe 2021)", "(Moe 2022)")
+#: What a hard line break is typed as, and what lies between a stretch's other words.
+HARD_BREAK = "  \n"
 #: The words written in place of a run: shorter, longer, and two with a double space
 #: between them, which Word shows as one.
 WRITTEN_WORDS = ("plainly", "the revised wording here", "kept  apart", "so")
@@ -1008,19 +1018,24 @@ WRITTEN_WORDS = ("plainly", "the revised wording here", "kept  apart", "so")
 @st.composite
 def suggestion_paragraphs(draw: st.DrawFn) -> dict[str, Any]:
     """A paragraph holding every kind of stretch a suggestion can be written beside or
-    inside, in an order drawn each time: words alone, in emphasis, in strong emphasis, in
-    code and in a link's text, with values of the analysis between them. Each kind is there
-    at least once, and the paragraph ends with a value and words after it, so that some
-    words always stand before a value. As its stretches and the spaces between them, for
-    `laid_out` to type and print."""
-    kinds = ["plain", "em", "strong", "code", "link", "binding"]
-    kinds += draw(st.lists(st.sampled_from([*STRETCHES, "binding"]), max_size=3))
-    kinds = [*draw(st.permutations(kinds)), "binding", "plain"]
+    inside, in an order drawn each time: words alone, in each kind of emphasis, across hard
+    line breaks, in code, in a link's text and in a comment, with values of the analysis and
+    citations between them. Each kind is there at least once. The paragraph opens with words,
+    so that no comment opens it as a block, and ends with a value and words after it, so
+    that some words always stand before a value. As its stretches and the spaces between
+    them, for `laid_out` to type and print."""
+    tokens = ("binding", "cite")
+    kinds = [*STRETCHES, *tokens]
+    kinds += draw(st.lists(st.sampled_from([*STRETCHES, *tokens]), max_size=3))
+    # At most five values and four citations, which `RENDERED` and `CITED` print, and
+    # thirteen stretches of words, which forty words fill.
+    kinds = ["plain", *draw(st.permutations(kinds)), "binding", "plain"]
     words = iter(draw(st.permutations(PARAGRAPH_WORDS)))
-    stretches = [
-        [kind, [] if kind == "binding" else [next(words) for _ in range(draw(st.integers(1, 3)))]]
-        for kind in kinds
-    ]
+    stretches = []
+    for kind in kinds:
+        # Across a line break needs two words; every other kind takes one to three.
+        count = 0 if kind in tokens else draw(st.integers(2 if kind == "lines" else 1, 3))
+        stretches.append([kind, [next(words) for _ in range(count)]])
     space = st.sampled_from((" ", "\n"))
     return {
         "stretches": stretches,
@@ -1031,37 +1046,49 @@ def suggestion_paragraphs(draw: st.DrawFn) -> dict[str, Any]:
 
 def laid_out(paragraph: dict[str, Any]) -> tuple[str, str, list, list, list]:
     """A `suggestion_paragraphs` paragraph as typed in the source and as Word shows it:
-    `(source, printed, words, tokens, renderings)`. Each word is `(word, kind, stretch,
-    (start, end) in the source, (start, end) in what Word shows)`, and `tokens` is where each
-    value prints. Word shows a line break as a space, and code and a link by their text."""
+    `(source, printed, words, tokens, renderings)`. Each word is `(word, kind, its stretch's
+    place, (start, end) in the source, (start, end) in what Word shows or None, how many
+    values and citations stand before it)`, and `tokens` is where each value and citation
+    prints. Word shows a line break as a space, emphasis, code and a link by their text, and
+    a comment not at all."""
     source, printed = "", ""
     words, tokens, renderings = [], [], []
     inside = iter(paragraph["inside"])
+    first = paragraph["stretches"][0][1][0]
+    values = citations = 0
     for index, (kind, stretch) in enumerate(paragraph["stretches"]):
+        shows = kind != "comment"
         if index:
-            source += paragraph["between"][index - 1]
-            printed += " "
-        if kind == "binding":
-            rendering = RENDERED[len(tokens)]
-            source += "{{results.value_" + "abcde"[len(tokens)] + "}}"
+            # A space before a comment: at the start of a line it opens an HTML block.
+            source += paragraph["between"][index - 1] if shows else " "
+            printed += " " if shows else ""
+        if kind in ("binding", "cite"):
+            if kind == "binding":
+                rendering = RENDERED[values]
+                source += "{{results.value_" + "abcde"[values] + "}}"
+                values += 1
+            else:
+                rendering = CITED[citations]
+                source += "[@key_" + "abcd"[citations] + "]"
+                citations += 1
             tokens.append((len(printed), len(printed) + len(rendering)))
             renderings.append(rendering)
             printed += rendering
             continue
-        opening, closing, _prose = STRETCHES[kind]
+        opening, closing, prose = STRETCHES[kind]
         source += opening
         for at, word in enumerate(stretch):
             if at:
-                # A line break inside code or a link's text is left out: what it does there
-                # is not what this generator is about.
-                source += next(inside) if STRETCHES[kind][2] else " "
-                printed += " "
+                # A soft line break inside code or a link's text is left out: what it does
+                # there is not what this generator is about.
+                source += HARD_BREAK if kind == "lines" else next(inside) if prose else " "
+                printed += " " if shows else ""
             typed = (len(source), len(source) + len(word))
-            shown = (len(printed), len(printed) + len(word))
-            words.append((word, kind, index, typed, shown))
+            shown = (len(printed), len(printed) + len(word)) if shows else None
+            words.append((word, kind, index, typed, shown, len(tokens)))
             source += word
-            printed += word
-        source += closing
+            printed += word if shows else ""
+        source += f" {first}{closing}" if kind == "comment" else closing
     return source, printed, words, tokens, renderings
 
 

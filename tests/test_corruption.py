@@ -14999,6 +14999,7 @@ def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: 
             ("specifically has not", "has not"),
             ("Reports were included without", "Reports were taken without"),
             ("were included without restriction", "were included with no restriction"),
+            ("example-drug specifically", "the drug specifically"),
         ),
     )
     code, said = suggest(project)
@@ -15006,6 +15007,8 @@ def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: 
     reasons = {
         "the": "in the manuscript",
         "words that are nowhere": "not in the manuscript as it stands",
+        # Quoted as the reader was sent it, across the emphasis the source holds.
+        "example-drug specifically": "only as the build prints them, across emphasis",
         "has not been examined. Whether": "two paragraphs",
         "specifically has not": "across a line break",
         "Reports were included without": "same words",

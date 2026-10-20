@@ -279,6 +279,13 @@ def _in_source(context: _Context, edit: Edit) -> tuple[str, int, int] | str:
                 "its words are in the manuscript only with a value or a table the analysis "
                 "prints, which an edit does not change; quote the words around it"
             )
+        # What the reader was sent is the build as printed: `*P* value` reads "P value".
+        if any(pattern.search(text) for text in context.printed.values()):
+            return (
+                "its words are in the manuscript only as the build prints them, across "
+                "emphasis, code, a link or a citation, which an edit does not change; quote "
+                "the words beside it"
+            )
         return "its words are not in the manuscript as it stands"
     if len(matches) > 1:
         return (
@@ -372,8 +379,9 @@ def write_in(
     else in the paragraph is touched; `import` then merges whatever else the author changed
     in it against this, by its own rules (`merge.plan_import`).
 
-    Nothing is guessed. Each edit's old words are found once in the source and once in what
-    the build printed, and where the document recorded a digest of the printed ones, they
+    Nothing is guessed. Each edit's old words are found once in the source, its comments
+    left out, and once in what the build printed, and where the document recorded a digest
+    of the printed ones, they
     are those. They lie outside every binding, citation and inline construct and across no
     line break (`_in_the_way`), and no two edits change the same words. Written, the
     paragraph is a change of words to `reworded`, and it reads as Word shows it with the
@@ -387,10 +395,13 @@ def write_in(
     if apart is None:
         return "its paragraph ends in a way import cannot merge into"
     bare, anchors = apart
+    # Words in a comment print nowhere, and placing an edit does not count them either
+    # (`_searchable`): counted here, a comment repeating the words refused the write.
+    prose = _uncommented(bare)
     places = []
     for words in edits:
         pattern = pattern_of(words.old)
-        here = _once(pattern, bare, "as it stands")
+        here = _once(pattern, prose, "as it stands")
         if isinstance(here, str):
             return here
         why = _in_the_way(bare, here.start(), here.end())
@@ -435,6 +446,13 @@ def write_in(
     if not _reads_as(written, reading.protected, renderings, shown_text):
         return "written into the source, it would not read as Word shows it"
     return Written(written, anchors, shown_text, tuple(spans) if reading.protected else None)
+
+
+def _uncommented(text: str) -> str:
+    """`text` with its HTML comments blanked, offsets kept: words there print nowhere."""
+    from manuscript_guard.text.masking import blank_comments
+
+    return blank_comments(text)
 
 
 def _shifted(spans: list[tuple[int, int]], after: int, by: int) -> list[tuple[int, int]]:

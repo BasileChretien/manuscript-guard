@@ -352,8 +352,12 @@ def test_a_document_whose_record_of_suggestions_was_altered_is_not_imported(
         ("See [the protocol](https://example.org/p); the cohort was small.",
          "See the protocol; the cohort was small.", "the cohort", "the  group",
          "See [the protocol](https://example.org/p); the  group was small."),
+        ("The cohort was small. <!-- cohort was small? check -->", "The cohort was small.",
+         "cohort was small", "group was tiny",
+         "The group was tiny. <!-- cohort was small? check -->"),
     ],
-    ids=["beside-emphasis", "inside-emphasis", "inside-strong", "beside-code", "beside-link"],
+    ids=["beside-emphasis", "inside-emphasis", "inside-strong", "beside-code", "beside-link",
+         "repeated-in-a-comment"],
 )  # fmt: skip
 def test_a_suggestion_is_written_where_its_words_are_and_the_markup_stays(
     source: str, printed: str, old: str, new: str, written: str

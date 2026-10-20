@@ -431,6 +431,37 @@ def test_the_search_asks_each_registry_then_about_what_they_found() -> None:
     assert unquote(table.sent[5].base).endswith(PREPRINT)
 
 
+def test_crossref_that_did_not_answer_is_not_read_as_finding_nothing() -> None:
+    """Round 1 of #369: a 503 from Crossref was kept as `absent`, so a withdrawal only
+    Crossref carries read as "retracted: no" and nothing said the check had failed."""
+    result = _run(Table(crossref=_json(503, {})))
+    assert result.answers["crossref"].status == "unresolvable"
+    assert "Crossref, asked about the preprints: unresolvable (HTTP 503)" in proposals.render(
+        result
+    )
+    [preprint] = [c for c in result.candidates if c.doi == PREPRINT]
+    assert "crossref" not in preprint.retraction_checked_by
+    # A DOI Crossref does not know is not a failure: a preprint server may register at
+    # DataCite.
+    result = _run(Table(crossref=Response(404, {}, b"Resource not found.")))
+    assert result.answers["crossref"].status == "absent"
+
+
+def test_one_later_version_two_registries_give_is_said_once() -> None:
+    hits = [_hit("pubmed", 1, doi=PREPRINT, later=({"pmid": "9", "doi": "10.5/x"},)),
+            _hit("europepmc", 1, doi=PREPRINT, later=({"pmid": "9", "reference": "J. 2026"},)),
+            _hit("crossref", 0, doi=PREPRINT, later=({"doi": "10.5/x"},))]  # fmt: skip
+    [one] = proposals.candidate(hits).later_versions
+    assert one == {"pmid": "9", "doi": "10.5/x", "reference": "J. 2026",
+                   "said_by": ["pubmed", "europepmc", "crossref"]}  # fmt: skip
+
+
+def test_openalex_asked_without_a_key_is_said_when_only_asked_by_doi() -> None:
+    result = _run(Table(), Filters(types=("systematic-review",)))
+    assert result.answers["openalex"].status == "not asked"
+    assert "OpenAlex was asked without a key" in proposals.render(result)
+
+
 def test_the_limit_cuts_the_merged_list_and_says_how_many_more() -> None:
     # Each registry gives two; four works among the six, and two of them shown.
     result = _run(Table(), Filters(limit=2))

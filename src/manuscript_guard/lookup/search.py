@@ -554,10 +554,14 @@ def _openalex_hit(rank: int, item: dict[str, Any]) -> Hit:
 # ------------------------------------------------------------------------------ Crossref
 
 
-def crossref(doi: str, ask: Ask, services: Services, credentials: Credentials) -> Hit | None:
+def crossref(doi: str, ask: Ask, services: Services,
+             credentials: Credentials) -> Hit | Answer | None:  # fmt: skip
     """What Crossref says of a preprint: the published version it links, and a retraction.
-    None where it did not find the DOI: a preprint server's DOI may be DataCite's."""
+    None where it does not know the DOI, since a preprint server's DOI may be DataCite's;
+    an unresolvable Answer where no answer came, which is not the same (round 1 of #369)."""
     said = sources.crossref(doi, ask, services.crossref, credentials.contact)
+    if said["status"] == UNRESOLVABLE:
+        return _unresolvable(said["why"])
     if said["status"] != FOUND:
         return None
     retracting = {"retraction", "withdrawal", "removal"}

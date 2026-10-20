@@ -123,15 +123,27 @@ def _names(hits: list[Hit], keep: Callable[[Hit], bool]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(h.registry for h in hits if keep(h)))
 
 
+def _same(entry: dict[str, Any], one: dict[str, str]) -> bool:
+    """Two links to one later version: the same PMID, or the same DOI."""
+    return any(entry.get(k) and entry.get(k) == one.get(k) for k in ("pmid", "doi"))
+
+
 def _later(hits: list[Hit]) -> tuple[dict[str, Any], ...]:
-    found: dict[tuple, dict[str, Any]] = {}
+    """Each later version once, with what each registry gave of it (round 1 of #369: PubMed's
+    PMID and DOI and Europe PMC's PMID alone were two)."""
+    found: list[dict[str, Any]] = []
     for hit in hits:
         for one in hit.later:
-            key = (one.get("pmid"), one.get("doi"))
-            entry = found.setdefault(key, {**one, "said_by": []})
+            entry = next((e for e in found if _same(e, one)), None)
+            if entry is None:
+                entry = {"said_by": []}
+                found.append(entry)
+            for key, value in one.items():
+                entry.setdefault(key, value)
             if hit.registry not in entry["said_by"]:
                 entry["said_by"].append(hit.registry)
-    return tuple(found.values())
+    return tuple({**{k: v for k, v in e.items() if k != "said_by"}, "said_by": e["said_by"]}
+                 for e in found)  # fmt: skip
 
 
 def _disagree(hits: list[Hit], name: str, label: str) -> tuple[str, ...]:
@@ -231,8 +243,11 @@ def run(
     preprints = [c.doi for c in pool[: filters.limit] if "preprint" in c.kinds and c.doi]
     if preprints:
         said = [registries.crossref(doi, ask, services, credentials) for doi in preprints]
-        found = tuple(h for h in said if h is not None)
-        answers["crossref"] = Answer(FOUND if found else ABSENT, found, len(found))
+        found = tuple(h for h in said if isinstance(h, Hit))
+        failed = [a.why for a in said if isinstance(a, Answer)]
+        status = UNRESOLVABLE if failed else FOUND if found else ABSENT
+        why = f"{failed[0]}, for {len(failed)} of {len(said)}" if len(failed) > 1 else ""
+        answers["crossref"] = Answer(status, found, len(found), why=why or "".join(failed))
         hits += found
         pool = ranked([candidate(g) for g in merge(hits)], sort)
     return Result(query, filters, sort, answers, tuple(pool[: filters.limit]),
@@ -320,7 +335,8 @@ def render(result: Result) -> str:
             what = "the works it did not return" if name == "openalex_by_doi" else "the preprints"
             registry = "OpenAlex" if name == "openalex_by_doi" else "Crossref"
             out.append(f"{registry}, asked about {what}: unresolvable ({answer.why})")
-    if result.keyless and result.answers["openalex"].status != NOT_ASKED:
+    asked = result.answers["openalex"].status != NOT_ASKED or "openalex_by_doi" in result.answers
+    if result.keyless and asked:
         out.append("OpenAlex was asked without a key (OPENALEX_API_KEY), from the allowance "
                    "it shares between everyone at this network address.")  # fmt: skip
     out.append("")

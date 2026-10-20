@@ -81,8 +81,8 @@ says something else, or one that does not exist, and the author's name goes on i
 
    The query leaves this machine as written, so it names a topic, never a sentence of the
    manuscript or a result not yet published. `--type` narrows to review, systematic-review,
-   meta-analysis, guideline, rct, cohort or preprint, and `--sort newest` puts the latest
-   first. If your tool has its own search of PubMed or another scholarly index, use it as
+   meta-analysis, guideline, rct, cohort or preprint, and `--since` keeps the works of a
+   year and after. `--sort newest` only reorders what was found. If your tool has its own search of PubMed or another scholarly index, use it as
    well; each work you propose is still one a registry returned, with its DOI or PMID.
 
 2. **Choose two or three candidates for each claim**, and give the reason for each:
@@ -91,8 +91,8 @@ says something else, or one that does not exist, and the author's name goes on i
      finding (a review cited for a primary study's finding is what the citation-support
      remit reports);
    - the latest version: a later edition of a guideline, which no registry links to the
-     one before it, so search again with `--since` or `--sort newest`; a review updated
-     since;
+     one before it, so search again with `--since` set after the edition found; a review
+     updated since;
    - the published paper over its preprint: where a candidate shows a later version,
      propose that one, by its DOI or PMID;
    - nothing retracted, and nothing under an expression of concern unless that is the

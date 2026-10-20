@@ -1178,8 +1178,10 @@ for `is_retracted`, `cited_by_count` and an open copy.
 
 A retraction is any registry's word: PubMed's "Retracted Publication" or a "Retraction in"
 link, the same from Europe PMC, OpenAlex's `is_retracted`, or Crossref's retraction,
-withdrawal or removal of a preprint. A candidate no registry said anything of is "not known",
-never "no". A later version is PubMed's "Update in", Europe PMC's "Preprint of" or "Update
+withdrawal or removal of a preprint. A record at PubMed or Europe PMC with neither mark is
+that registry saying no, and is shown as "retracted: no" with its name; "not known" is shown
+only where no registry that answered said either way, never as "no". A Crossref that did not
+answer is said, and is not read as having found nothing (round 1 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of" or "Update
 in", or Crossref's `is-preprint-of`, and all three are asked because they do not agree: on
 2026-10-20 a medRxiv preprint had PubMed's link to its journal version and none at Crossref,
 and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with whose word
@@ -1231,9 +1233,9 @@ The shapes were read from the services' documentation and from live answers on 2
 - Crossref's `/works?query.bibliographic=` refuses a `select` it has no field for
   (`subtype`) with HTTP 400 and `"status": "failed"`. It is not used.
 
-The contact address and the keys are the lookup's: `lookup.contact` in the `paper.yaml` of
-the project the command runs in, or that `--root` names, else `MANUSCRIPT_GUARD_CONTACT`;
-`NCBI_API_KEY`; `OPENALEX_API_KEY`. Each goes where its service asks for it and is never
+The contact address and the keys are the lookup's: `MANUSCRIPT_GUARD_CONTACT`, or else
+`lookup.contact` in the `paper.yaml` of the project the command runs in, or that `--root`
+names; `NCBI_API_KEY`; `OPENALEX_API_KEY`. Each goes where its service asks for it and is never
 printed, and an answer that would print one is refused. Requests are paced as the lookup's
 are. The command exits 0 when a registry answered, with nothing found included, 1 when none
 asked did, and 2 when the query cannot be asked.
@@ -7481,12 +7483,15 @@ Open, recorded as each change landed:
   nothing. With a kind finer than a review, OpenAlex is not asked, and work in the fields
   PubMed and Europe PMC do not cover is not searched. No registry links a guideline to the
   edition that replaced it (the 2016 ESC heart failure guideline has no link to 2021's in
-  PubMed, 2026-10-20), so the latest edition is found with `--since` or `--sort newest`, not
-  shown beside the old one. A retraction is as current as each registry, and a candidate
+  PubMed, 2026-10-20), so the latest edition is found by searching again with `--since`, not
+  shown beside the old one: `--sort newest` only reorders the works each registry gave by its
+  relevance, and a newer edition outside them stays outside. A retraction is as current as each registry, and a candidate
   only PubMed found and OpenAlex does not know rests on PubMed's word. Europe PMC answers a
   query it cannot read with no work, which reads as nothing found there. The query is sent
   as typed: the 300-character limit stops a pasted paragraph, not a sentence of unpublished
-  results written as a query.
+  results written as a query. A PMID joins a record with no DOI to a work with one, so where
+  OpenAlex gives a preprint the PMID of the paper it became, PubMed's DOI-less record of that
+  paper is shown as the preprint (round 1 of #369; not seen in the answers probed).
 - **The title comparison is one-sided and by words.** A registered title that holds every
   cited word and many more passes, and so does one whose words are the same in another
   order. A notice a publisher deposited as a journal article, with no `update-to`, is read

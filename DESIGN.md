@@ -11107,7 +11107,12 @@ Open, recorded as each change landed:
   refused, and a PDF of the wrong paper, a cover page or a download cut short is copied, for
   G7 to show as it shows Zotero's. The two sources are told apart by what the record says
   wrote a file, so a file that both hold in the same bytes stays recorded as from the one
-  that copied it first.
+  that copied it first. A name is weighed only against the DOIs the manuscript cites: the
+  PDF of an uncited `10.1000/a;b` in a shared folder is taken for a cited `10.1000/a:b`,
+  since both are `10.1000_a_b`, and the name is all there is to tell them by (round 1;
+  contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
+  looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
+  backslash (round 1).
 
 Closed since, and why each mattered (an open gap goes above this line):
 

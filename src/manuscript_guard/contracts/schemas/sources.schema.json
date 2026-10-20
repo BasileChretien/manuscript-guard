@@ -30,7 +30,7 @@
           },
           "doi": {
             "type": "string",
-            "pattern": "^10\\.[0-9]{4,9}(\\.[0-9]+)*/\\S+$",
+            "pattern": "^10\\.\\d{4,9}(\\.\\d+)*/\\S+$",
             "description": "The DOI of the work's entry in references.bib, as G7 reads it (undressed, in lower case), that the folder's file was matched by."
           },
           "copied": { "type": "string", "format": "date" }

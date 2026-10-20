@@ -675,6 +675,65 @@ def test_a_name_two_cited_dois_spell_is_copied_for_neither(paper, tmp_path):
     assert not list(sources(paper).iterdir())
 
 
+@pytest.mark.parametrize("differs", [True, False], ids=["differs", "same-bytes"])
+def test_a_file_two_cited_dois_could_be_of_is_weighed_against_one_of_their_own(
+    paper, tmp_path, differs
+):
+    """`10.1000/a(b)` alone is `10.1000_a_b_` through Chrome; both it and `10.1000/a_b` are
+    `10.1000_a_b` otherwise (round 1: the shared file was passed over without a word)."""
+    cite(paper, "paren2020", "under2020")
+    bib(paper, paren2020="10.1000/a(b)", under2020="10.1000/a_b")
+    put(tmp_path / "papers", "_browser_fallback/10.1000_a_b_.pdf")
+    put(tmp_path / "papers", "10.1000_a_b.pdf", PDF + b"% another download\n" if differs else PDF)
+    project = load_project(paper)[0]
+    found = by_key(copies.sync(project, offered=downloads.offer(project, tmp_path / "papers")))
+
+    (paren,) = found["paren2020"]
+    if differs:
+        assert paren.status == copies.NO_COPY and "could be the PDF of any of" in paren.said
+        assert not (sources(paper) / "paren2020.pdf").exists()
+    else:
+        assert (sources(paper) / "paren2020.pdf").read_bytes() == PDF
+    (under,) = found["under2020"]
+    assert under.status == copies.NO_COPY, "a shared file is never taken alone"
+    assert not (sources(paper) / "under2020.pdf").exists()
+
+
+def test_a_folder_in_the_folder_that_cannot_be_read_is_passed_over_and_said(
+    paper, tmp_path, monkeypatch, capsys
+):
+    """A download still holding its folder stopped the whole run (round 1)."""
+    cite(paper, "smith2020")
+    bib(paper, smith2020="10.1000/smith")
+    put(tmp_path / "papers", "10.1000_smith.pdf")
+    locked = tmp_path / "papers" / "10.1000_locked"
+    locked.mkdir()
+    listed = Path.iterdir
+
+    def iterdir(self):
+        if self == locked:
+            raise PermissionError(13, "Permission denied")
+        return listed(self)
+
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    assert harvest(paper, tmp_path / "papers") == 0
+
+    assert (sources(paper) / "smith2020.pdf").read_bytes() == PDF
+    out = capsys.readouterr().out
+    assert "The folder's 10.1000_locked/ could not be read (Permission denied): no PDF" in out
+
+
+def test_a_doi_with_digits_of_another_script_is_recorded(paper, tmp_path):
+    """G7 reads any Unicode digit as one in a DOI, and the record's schema took only 0-9, so
+    the copy was written and its record refused (round 1)."""
+    wide = "".join(chr(0xFF10 + int(digit)) for digit in "1234")
+    cite(paper, "wide2020")
+    bib(paper, wide2020=f"10.{wide}/x")
+    put(tmp_path / "papers", "10._x.pdf")
+    assert harvest(paper, tmp_path / "papers") == 0
+    assert record(paper)["files"]["wide2020.pdf"]["doi"] == f"10.{wide}/x"
+
+
 def test_one_doi_cited_under_two_keys_is_copied_for_each(paper, tmp_path):
     cite(paper, "first2020", "again2020")
     bib(paper, first2020="10.1000/one", again2020="doi:10.1000/ONE")

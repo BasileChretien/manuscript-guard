@@ -394,19 +394,24 @@ FOLDER_ADVICE = (
 )
 
 
-def _unmatched(offered: Offer) -> list[str]:
+def _about_folder(offered: Offer) -> list[str]:
+    lines = [
+        f"The folder's {one}: no PDF in it was looked at."
+        for one in offered.unread
+    ]
     if not offered.pdfs:
-        return [
+        lines.append(
             "The folder holds no PDF where a DOI names one: <name>.pdf, <name>/<name>.pdf "
             "or _browser_fallback/<name>.pdf."
-        ]
-    if not offered.unmatched:
-        return []
-    many = offered.unmatched != 1
-    return [
-        f"{offered.unmatched} PDF{'s' if many else ''} in the folder {'are' if many else 'is'} "
-        f"named for no DOI the manuscript cites, and {'were' if many else 'was'} not copied."
-    ]
+        )
+    elif offered.unmatched:
+        many = offered.unmatched != 1
+        lines.append(
+            f"{offered.unmatched} PDF{'s' if many else ''} in the folder "
+            f"{'are' if many else 'is'} named for no DOI the manuscript cites, and "
+            f"{'were' if many else 'was'} not copied."
+        )
+    return lines
 
 
 def report(
@@ -431,7 +436,7 @@ def report(
     counted = ", ".join(parts) or "nothing copied"
     lines.append(f"{works} cited work{'' if works == 1 else 's'}: {counted}")
     if offered is not None:
-        lines.extend(_unmatched(offered))
+        lines.extend(_about_folder(offered))
     missing = [one for one in outcomes if one.status == NO_COPY]
     if missing:
         lines.append(f"No copy for {len(missing)} cited work{'' if len(missing) == 1 else 's'}:")

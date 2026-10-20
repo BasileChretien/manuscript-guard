@@ -55,13 +55,14 @@ class Found:
 
 @dataclass(frozen=True)
 class Offer:
-    """What the folder holds for each cited work, why a work was given nothing, and how many
-    of the folder's PDFs no cited DOI names."""
+    """What the folder holds for each cited work, why a work was given nothing, how many of
+    the folder's PDFs no cited DOI names, and the folders in it that could not be read."""
 
     chosen: dict[str, list[Candidate]]
     why: dict[str, list[str]]
     pdfs: int
     unmatched: int
+    unread: tuple[str, ...] = ()
 
     def candidates(self, key: str) -> tuple[list[Candidate], list[str]]:
         return self.chosen.get(key, []), self.why.get(key, [])
@@ -88,28 +89,38 @@ def _is_pdf_name(path: Path) -> bool:
     return path.suffix.lower() == ".pdf" and path.is_file()
 
 
-def found_in(folder: Path) -> list[Found]:
+def found_in(folder: Path) -> tuple[list[Found], list[str]]:
     """The PDFs of a folder at the places a DOI names them: `<name>.pdf` in it or in its
     `_browser_fallback`, and `<name>/<name>.pdf` or `<name>/article.pdf` in it. The other
-    files of a DOI's folder, its supplements, are not the work's."""
+    files of a DOI's folder, its supplements, are not the work's. A folder in it that cannot
+    be listed, one a download still holds, is passed over and said."""
     found: list[Found] = []
+    unread: list[str] = []
     for entry in sorted(folder.iterdir()):
         if _is_pdf_name(entry):
             found.append(Found(entry.stem.lower(), entry, entry.name))
-        elif entry.is_dir() and entry.name == BROWSER:
+            continue
+        if not entry.is_dir():
+            continue
+        try:
+            inside = sorted(entry.iterdir())
+        except OSError as exc:
+            unread.append(f"{entry.name}/ could not be read ({exc.strerror or exc})")
+            continue
+        if entry.name == BROWSER:
             found.extend(
                 Found(inner.stem.lower(), inner, f"{BROWSER}/{inner.name}")
-                for inner in sorted(entry.iterdir())
+                for inner in inside
                 if _is_pdf_name(inner)
             )
-        elif entry.is_dir():
+        else:
             found.extend(
                 Found(entry.name.lower(), inner, f"{entry.name}/{inner.name}")
-                for inner in sorted(entry.iterdir())
+                for inner in inside
                 if _is_pdf_name(inner)
                 and inner.name.lower() in {f"{entry.name.lower()}.pdf", LEGACY}
             )
-    return found
+    return found, unread
 
 
 def _begins_as_pdf(path: Path) -> bool:
@@ -157,52 +168,58 @@ def _cited_dois(project: Project, keys: list[str]) -> tuple[dict[str, str], dict
     return dois, why
 
 
-def _match(found: list[Found], dois: set[str]) -> tuple[dict[str, list[Found]],
-                                                        dict[str, list[str]], int]:  # fmt: skip
-    """The files each DOI names, why a DOI's file was not taken as its own because another
-    cited DOI names it too, and how many files no cited DOI names."""
+#: The files a DOI's name could be of: those it alone names, and those another cited DOI's
+#: name is also, each with every DOI that names it.
+Named = tuple[dict[str, list[Found]], dict[str, list[tuple[Found, list[str]]]]]
+
+
+def _match(found: list[Found], dois: set[str]) -> tuple[Named, int]:
+    """The files each cited DOI's name could be of, and how many files no cited DOI names."""
     spelt: dict[str, set[str]] = {}
     for doi in dois:
         for name in names(doi):
             spelt.setdefault(name, set()).add(doi)
-    files: dict[str, list[Found]] = {}
-    doubt: dict[str, list[str]] = {}
+    own: dict[str, list[Found]] = {}
+    shared: dict[str, list[tuple[Found, list[str]]]] = {}
     unmatched = 0
     for one in found:
         named = sorted(spelt.get(one.name, ()))
-        if not named:
-            unmatched += 1
-        elif len(named) > 1:
-            for doi in named:
-                doubt.setdefault(doi, []).append(
-                    f"the folder's {one.shown} could be the PDF of any of {', '.join(named)}, "
-                    "and which is not guessed"
-                )
-        else:
-            files.setdefault(named[0], []).append(one)
-    return files, doubt, unmatched
+        unmatched += not named
+        for doi in named:
+            if len(named) == 1:
+                own.setdefault(doi, []).append(one)
+            else:
+                shared.setdefault(doi, []).append((one, named))
+    return (own, shared), unmatched
 
 
 def _choose(
-    doi: str, files: list[Found], doubt: list[str]
+    doi: str, own: list[Found], shared: list[tuple[Found, list[str]]]
 ) -> tuple[tuple[Found, str, int] | None, list[str]]:
-    """The one PDF of a DOI, as (file, SHA-256, size), or None, and why each other file
-    was not taken. Two PDFs that differ are neither taken."""
-    read, why = _read(files)
+    """The one PDF of a DOI, as (file, SHA-256, size), or None, and why each other file was
+    not taken. Two PDFs that differ are neither taken. A file another cited DOI's name is also
+    is never taken alone, and one that differs from the DOI's own makes that doubtful too."""
+    doubtful = {one.path for one, _ in shared}
+    read, why = _read(own + [one for one, _ in shared])
     versions: dict[str, tuple[Found, str, int]] = {}
     for one, sha, size in read:
         versions.setdefault(sha, (one, sha, size))
-    why = doubt + why
+    if len(versions) == 1 and next(iter(versions.values()))[0].path not in doubtful:
+        return next(iter(versions.values())), why
+    why += [
+        f"the folder's {one.shown} could be the PDF of any of {', '.join(named)}, and which "
+        "is not guessed"
+        for one, named in shared
+    ]
     if len(versions) > 1:
         shown = ", ".join(one.shown for one, _, _ in read)
         why.append(
             f"{len(versions)} PDFs of its DOI that differ ({shown}), and which is the work's "
             "is not guessed"
         )
-        return None, why
-    if not versions and not why:
+    elif not why:
         why.append(f"the folder has no PDF named for its DOI, {doi}")
-    return next(iter(versions.values()), None), why
+    return None, why
 
 
 def offer(project: Project, folder: Path) -> Offer:
@@ -212,14 +229,14 @@ def offer(project: Project, folder: Path) -> Offer:
     try:
         if not folder.is_dir():
             raise FolderUnreadable(f"{folder} is not a folder")
-        found = found_in(folder)
+        found, unread = found_in(folder)
     except OSError as exc:
         raise FolderUnreadable(f"{folder} could not be read ({exc.strerror or exc})") from exc
     dois, why = _cited_dois(project, cited_keys(project))
-    files, doubt, unmatched = _match(found, set(dois.values()))
+    (own, shared), unmatched = _match(found, set(dois.values()))
     chosen: dict[str, list[Candidate]] = {}
     for doi in sorted(set(dois.values())):
-        pdf, reasons = _choose(doi, files.get(doi, []), doubt.get(doi, []))
+        pdf, reasons = _choose(doi, own.get(doi, []), shared.get(doi, []))
         for key in (key for key, its in dois.items() if its == doi):
             if pdf is not None:
                 one, sha, size = pdf
@@ -228,7 +245,7 @@ def offer(project: Project, folder: Path) -> Offer:
                                          about="from the folder", doi=doi)]  # fmt: skip
             if reasons:
                 why[key] = reasons
-    return Offer(chosen, why, len(found), unmatched)
+    return Offer(chosen, why, len(found), unmatched, tuple(unread))
 
 
 __all__ = ["BROWSER", "FolderUnreadable", "Found", "Offer", "found_in", "names", "offer"]

@@ -283,8 +283,8 @@ def _in_source(context: _Context, edit: Edit) -> tuple[str, int, int] | str:
         if any(pattern.search(text) for text in context.printed.values()):
             return (
                 "its words are in the manuscript only as the build prints them, across "
-                "emphasis, code, a link or a citation, which an edit does not change; quote "
-                "the words beside it"
+                "markup the build does not print (emphasis, code, a link, a citation, a line "
+                "break), which an edit does not change; quote the words beside it"
             )
         return "its words are not in the manuscript as it stands"
     if len(matches) > 1:

@@ -15008,7 +15008,7 @@ def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: 
         "the": "in the manuscript",
         "words that are nowhere": "not in the manuscript as it stands",
         # Quoted as the reader was sent it, across the emphasis the source holds.
-        "example-drug specifically": "only as the build prints them, across emphasis",
+        "example-drug specifically": "only as the build prints them, across markup",
         "has not been examined. Whether": "two paragraphs",
         "specifically has not": "across a line break",
         "Reports were included without": "same words",

@@ -862,7 +862,7 @@ Decided by Basile on 2026-10-20:
 - pdfLaTeX compiles unless the journal's profile names another engine.
 
 Taken as defaults, and open to change:
-- maths is read by G2 as Markdown's is, all but its commands and delimiters;
+- the digits and signs in maths are read by G2, as Markdown's are;
 - comments are removed from the submission copy;
 - the LaTeX twin of the example lives under `tests/data/`;
 - a `.bbl` is sent only where the profile asks for one;
@@ -901,18 +901,21 @@ hands it the `.bib`.
 | `headings(text, path)`, `sections(text, path)` | `heading_index`, `split_sections`, `footnote_index` | G2, G4, G5, G9, G15 |
 | `listings(text)` | `fenced_blocks` | G2's code check |
 | `bindings(text)` | `placeholders.parse` | G1's synthetic inputs, G2 and the custodian's counts, G4's figure files, G8, G9, G15, the build |
-| `substituted(text, values)` | `placeholders.substitute` | G8, G9, G13, the title page |
+| `substituted(text, values)` | `placeholders.substitute` | G8, G9, G13, `submit`'s response letter and abstract |
 | `citations(text, path)` | `zotero.find_citations` | G6, G7, `lookup` |
 | `count(text, abstract_title)` | `sections.measure` | G4, the title page |
 | `table_at(text, offset)` | a row opening with a pipe | G2's `hand-authored-table` |
 | `printed_view(text)` | `scannable` | G4's required statements |
 | `refusals(path, text)` | `refused_shapes` | `check` under BUILD, the build |
 
-Every view keeps the source's length and line breaks, so a finding from any of them names the
-`.tex` line. The gates that read no part of the manuscript but its file list change only through
-`source_files`: G1's freshness, G3's figure checks, G10, G11 (its digests then cover the `.tex`
-files) and G12. G1's synthetic-input check reads bindings and moves with them. The analysis plan
-stays Markdown.
+Every view but `substituted` keeps the source's length and line breaks, so a finding from any of
+them names the `.tex` line. `substituted` is the text with the values put in, as `substitute` gives
+it today, and the gates that read it place a finding as they place one today. In LaTeX it writes
+each value in its escaped form, as the values file does, so a `%` in a display such as `12.5%` does
+not start a comment. The gates that read no part of the manuscript but its file list change only
+through `source_files`: G1's freshness, G3's figure checks, G10, G11 (its digests then cover the
+`.tex` files) and G12. G1's synthetic-input check reads bindings and moves with them. The analysis
+plan stays Markdown.
 
 The gates that read the manuscript move to the reader one at a time, G1's synthetic-input check
 among them. Until a gate has moved, it reads nothing of a LaTeX project and says so in one
@@ -942,19 +945,21 @@ NUL. Two additions keep the length:
 | Read as prose | Blanked |
 |---|---|
 | the body, `\begin{document}` to `\end{document}`, and the files input from it | the preamble of `main.tex` and the files input from it, except what the next row reads |
-| in the preamble, the arguments of `\title`, `\author`, `\thanks` and `\date`, which LaTeX prints; `\title`'s is also compared with paper.yaml's (`two-titles`) | |
+| in the preamble, `\title`'s argument, read as the title in Markdown's front matter is and compared with paper.yaml's (`two-titles`) | `\author`, `\thanks` and `\date`, which hold what authors.yaml holds for Markdown, and which G2 does not read there either |
 | the arguments of text commands: `\emph`, `\textbf`, `\footnote`, `\caption` and its short form, `\section` and its kin, `\href`'s text | command names and braces; `\label`, `\ref` and its kin, `\url`, `\href`'s address, `\includegraphics` |
 | a citation's notes, as Markdown's prefix and suffix are read | citation keys |
-| everything in maths but its commands and delimiters, subscripts and superscripts included, as Markdown's `mask` keeps all of `$x_1 = 10^{-8}$` | maths' commands and delimiters |
+| the digits and signs in maths, in subscripts and superscripts too, as Markdown's `mask` keeps them in `$x_1 = 10^{-8}$` | maths' commands, braces and delimiters |
 | `\verb` and `\texttt`, read as a code span is | `verbatim`, `Verbatim`, `lstlisting`, read by G2's code check as fenced blocks are |
 | table cells | a `tabular`'s column specification, `\multicolumn`'s first two arguments, rules |
 | the arguments, optional ones too, of a command not in the table | comments (an unescaped `%` to the end of the line, the `comment` environment, a plain `\iffalse` … `\fi` block), the layout commands `text/tex.py` knows, everything after `\end{document}`, bindings whole |
 
-**Maths** is hidden from `words`, so G14 and G15 never read it as words. What it holds but its
-commands and delimiters stays in `mask`, as all of `$...$` does in Markdown today, because
-blanking `$\beta = 0.42$` would let a typed estimate pass G2. That keeps the agreement test's
-promise below: the digits the PDF prints are the ones `mask` keeps, `$10^{-8}$` and `$R^2$`
-among them.
+**Maths** is hidden from `words`, so G14 and G15 never read it as words. Its digits and signs
+stay in `mask`, as they do in `$...$` in Markdown today, because blanking `$\beta = 0.42$` would
+let a typed estimate pass G2. That keeps the agreement test's promise below: the digits the PDF
+prints are the ones `mask` keeps, `$10^{-8}$` and `$R^2$` among them. Markdown's `mask` keeps
+`\beta` and the braces as well, and the LaTeX one blanks them, so `10^{-8}` reads as `10^`, a
+NUL, `-8` and a NUL. How G2's tokenizer reads such a power is settled in step 2, against the
+agreement test.
 
 **A command not in the table** has its name blanked and its arguments read. This errs towards
 findings, as `masking.py` already does: a command the table lacks shows up as an unclassified
@@ -969,12 +974,16 @@ order is `printed_order`.
   input from the preamble is preamble. The headings in force there stand before the file's first
   character in `headings(text, path)`, so `p < 0.05` in a file input under `\section{Methods}`
   is read under Methods. So does the environment that encloses the `\input`: a file input inside
-  `abstract` is abstract, inside a `tabular` is table cells, and inside `comment` or a plain
-  `\iffalse` block is not read.
+  `abstract` is abstract, and one inside a `tabular` is table cells.
+- An `\input` in a comment, in a plain `\iffalse` block or in the `comment` environment is no
+  input. A file named only there is one that nothing inputs, below, and is read as one.
 - A package or class file in `manuscript/`, such as `\usepackage{macros}` with
   `manuscript/macros.sty` beside the entry file, is followed as a file input from the preamble.
-  Its definitions are then read where they are written, below. A package found anywhere else is
-  not the author's and is not read.
+  It is read as LaTeX reads a package, with `@` a letter. Its definitions are then read where
+  they are written, below. In it, both branches of a conditional are read, since a package tests
+  what is loaded, and so a number in either branch is found. A package found anywhere else is
+  not the author's and is not read. `mgvalues.sty` is excluded by name: the tool writes it, its
+  definitions are the bindings, and `check` compares it with what `values` would write.
 - Refused:
   - a path that is not written out in full;
   - a path outside `manuscript/` or under a `_` folder;
@@ -1000,18 +1009,20 @@ order is `printed_order`.
 **Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`, `\def` or
 `\DeclareMathOperator` is read where it is written, and its body is prose there, in the preamble
 too, and in a package file of the author's (above). So `\newcommand{\n}{4100}` is one
-unclassified number, at its definition. A use of the macro is read as an unknown command is:
-its name is blanked and its arguments are read. So with `\newcommand{\ci}[2]{95\% CI #1--#2}`,
-the `95` is found at the definition and each number of `\ci{1.2}{3.4}` at the use. Nothing is
+unclassified number, at its definition. The parameter tokens `#1` to `#9` in a body are blanked.
+A use of the macro is read as an unknown command is: its name is blanked and its arguments are
+read. So with `\newcommand{\ci}[2]{95\% CI #1--#2}`, the `95` is found at the definition and
+each number of `\ci{1.2}{3.4}` at the use. Nothing is
 expanded, because an expansion is text at a place the file does not hold, with no offset to
 give a finding.
 
 Refused:
-- a definition of any command the reader reads, `\mg` among them;
+- a definition, in a file of the author's, of any command the reader reads, `\mg` among them;
 - `\def` with delimited parameters;
 - anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
-  `\csname`, `\expandafter`, any conditional but a plain `\iffalse` block, and `babel` with a
-  language whose shorthands make a character active.
+  `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
+  active;
+- in the body, any conditional but a plain `\iffalse` block.
 
 **Characters.**
 - `--` and `---` stay as typed, as in Markdown.
@@ -1022,10 +1033,10 @@ Refused:
   not read and why: the file is UTF-8, so type the letter.
 - An `inputenc` other than `utf8` is refused.
 
-**Refused.** Each refusal is a finding under BUILD that fails at every stage, as
-`unclear-fence` does. Beyond those above, `tex-unbalanced` covers a group, an environment or
-maths left open or closed twice. Past a refusal the rest of the file is read as prose, so that nothing the
-reader did not understand is hidden.
+**Refused.** Each refusal is a finding under BUILD that fails at every stage, as `unclear-fence`
+does. Beyond those above, `tex-unbalanced` covers a group, an environment or maths left open or
+closed twice. Past a refusal the rest of the file is read as prose, so that nothing the reader did
+not understand is hidden.
 
 ### Bindings
 
@@ -1063,10 +1074,11 @@ from a stale file shows the old number.
 
 **Escaping** is a closed table in `build/latex_values.py`. It covers:
 - the ten specials;
-- `<`, `>` and `|`, written in maths mode, since pdfLaTeX's default OT1 encoding prints a typed
-  `<0.001` as `¡0.001`;
+- `<`, `>` and `|`, written with `\ensuremath`, since pdfLaTeX's default OT1 encoding prints a
+  typed `<0.001` as `¡0.001`;
 - for pdfLaTeX, the characters that values carry: −, –, ±, ×, ≤, ≥, ·, the no-break and thin
-  spaces, and Greek letters.
+  spaces, and Greek letters, the mathematical ones also with `\ensuremath`. A `$...$` would
+  close the maths that a binding stands in, as in `$p = \mg{results.p}$`.
 
 A value holding any other character outside Latin-1 is refused
 (`value-not-printable`), not guessed at. The pull request that builds the table compiles each
@@ -1103,8 +1115,10 @@ entry under OT1 and T1 and compares the printed text with the value.
 It compiles a copy in `build/latex/`, with a fresh `mgvalues.sty` and
 `literature/references.bib`; `build` never writes in `manuscript/`. Under TeX Live it sets
 `openout_any=p`, so nothing is written outside the copy, and `openin_any=p`, so no file is read
-by a path that leaves it. Files found through TeX's own search paths are still read, and
-`TEXINPUTS` is set to the copy so that an author's own folder of packages is not among them.
+by a path that leaves it. Files found through TeX's own search paths are still read. So
+`TEXINPUTS` names the copy before the standard trees, and `TEXMFHOME` points at an empty
+folder, so that an author's own folder of packages is not searched. Both settings are measured
+under TeX Live and MiKTeX in step 9.
 Under MiKTeX it turns the package installer off and names a missing package rather than
 fetching it mid-build. The log is read: an error is a `BuildError`, with its file and line
 mapped back to the source, and an undefined citation or reference fails at `submission`. The
@@ -1159,15 +1173,18 @@ The result is compiled and packed by the code above, and checked three times:
 2. The LaTeX reader reads pandoc's output and refuses what it refuses. Raw TeX that the Word
    writer drops (`tex-in-the-text`) reaches the `.tex` and takes effect, so a definition or an
    `\input` in it is caught here.
-3. The digits the reader's `mask` keeps in the output must be the ones G2 read in the source,
-   with the bound values put in, in order. A difference refuses the build. The commands pandoc
-   writes for layout (`\setcounter`, `\hypertarget`, a column's width in `\real{0.33}`) are in the
-   reader's table as commands whose arguments are not prose, so their digits are not counted.
-   Where citeproc writes the citations and the reference list as text, they are left out of the
-   comparison, found by the commands pandoc wraps them in. If pandoc's output does not mark
-   them, `build --latex` refuses a profile that names neither natbib nor biblatex, rather than
-   compare digits it cannot place. Which commands pandoc writes is measured in that pull
-   request, against the pinned pandoc.
+3. The digits the reader's `mask` keeps in the body of the output, `\begin{document}` to
+   `\end{document}`, must be the ones G2 read in the source, with the bound values put in, in
+   order. A difference refuses the build. The preamble, where the template writes the title
+   page from paper.yaml and authors.yaml, is left out, as G2 does not read authors.yaml. The
+   commands pandoc writes for layout are in the reader's table with the arguments that are not
+   prose: both of `\setcounter`'s, a column's width in `\real{0.33}`, and the anchor of
+   `\hypertarget`, whose second argument is the content it wraps and is read. Where citeproc
+   writes the citations and the reference list as text, they are left out of the comparison,
+   found by the commands pandoc wraps them in, which it writes under `link-citations`; the build
+   passes it. If pandoc's output does not mark them, `build --latex` refuses a profile that
+   names neither natbib nor biblatex, rather than compare digits it cannot place. Which commands
+   pandoc writes is measured in that pull request, against the pinned pandoc.
 
 ### Tests
 
@@ -1209,7 +1226,9 @@ The result is compiled and packed by the code above, and checked three times:
   - a group closes at the first brace;
   - `\verb` takes only `|` as its delimiter;
   - the preamble ends at the first `\begin`;
-  - an input file starts under no heading.
+  - an input file starts under no heading;
+  - a file named only by an `\input` in a comment is not read;
+  - a macro's use hides its arguments.
 - **Old against new.** In the pull request that adds a `latex` reading, the base lacks it, so
   the reading is passed over and written on the job's page; from the next pull request on, it is
   compared. The first pull request leaves every Markdown reading unchanged.
@@ -1252,11 +1271,11 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    and listings.
 3. Structure. Includes, `printed_order`, inherited headings, sections, the abstract. Tests:
    `latex sections`.
-4. Bindings and G2. `bindings`, `mgvalues.sty` and its escape table, `values` and its README
-   row, `values-file-stale`; G2 and the custodian's counts moved, and G1's synthetic-input
-   check. Tests: the twin, G2's corruption cases on it, `latex bindings`. The escape table's
-   compile test needs LaTeX, so it skips on CI until step 9 installs TeX Live, and its first
-   measurement is recorded in the pull request.
+4. Bindings and G2. `bindings`, `uncommented`, `table_at`, `mgvalues.sty` and its escape
+   table, `values` and its README row, `values-file-stale`; G2 and the custodian's counts
+   moved, and G1's synthetic-input check. Tests: the twin, G2's corruption cases on it,
+   `latex bindings`. The escape table's compile test needs LaTeX, so it skips on CI until step
+   9 installs TeX Live, and its first measurement is recorded in the pull request.
 5. Citations and G7. `cite.py`; G7, `lookup` and G6's citation positions moved; the twin's
    comparison with the example takes in the citations. Tests: `latex citations`, G7's cases on
    the twin.
@@ -1264,7 +1283,8 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    cases on the twin.
 7. G6 and G14. `words`, accents, both gates moved. Tests: `latex words`, planted terms and
    spellings.
-8. G5, G8, G9, G13 and G15 moved. Tests: each gate's cases on the twin.
+8. `substituted`, with values in their escaped form; G5, G8, G9, G13 and G15 moved. Tests:
+   each gate's cases on the twin, and a display holding `%` through G8.
 9. The PDF. `build/latex.py`, the log, the comparison of headings through the `.aux`, CI's
    TeX Live and `MANUSCRIPT_GUARD_REQUIRE_LATEX`. Tests: `test_latex_agreement.py`.
 10. The submission folder. Flattening, values written in, `.bib` and `.bbl`, figures, the

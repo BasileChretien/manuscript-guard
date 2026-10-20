@@ -37,6 +37,7 @@ import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 from manuscript_guard.gates import lookups as g7
 from manuscript_guard.gates import searched
@@ -264,7 +265,7 @@ def openalex(q: Query, ask: Ask, where: Where) -> dict[str, Any] | None:
     read = search._openalex_results(sources._ask(ask, request), ROWS)
     if isinstance(read, search.Answer):
         return {"status": UNRESOLVABLE, "why": read.why or SHAPE, "asked": [text]}
-    results, count = read
+    results, _count = read
     kept = [w for w in map(_openalex_work, results) if _kept(q, w.get("title"))]
     return {"status": FOUND if results else ABSENT, "asked": [text],
             **({"candidates": kept} if kept else {})}  # fmt: skip
@@ -284,7 +285,6 @@ def look_up(q: Query, ask: Ask, where: Where) -> dict[str, Any]:
 
 def listening(ask: Ask, allowance: Allowance, host: str) -> Callable[[Request], Response]:
     """`ask`, telling the allowance what each of OpenAlex's answers says of it."""
-    from urllib.parse import urlsplit
 
     def heard(request: Request) -> Response:
         response = ask(request)

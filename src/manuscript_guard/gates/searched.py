@@ -197,9 +197,11 @@ def _a_work(work: Work, cited_title: str) -> bool:
     return not work.notice and not (first in NOTICE_WORDS and first != _first_word(cited_title))
 
 
-#: Where a title's subtitle starts, after its main title: a colon, a full stop or a dash
-#: with a space after it ("X: a cohort study", "X. A randomized trial", "X - a review").
-_SUBTITLE = re.compile(r"(?<=\S)(?:[:.?!]|\s[-\u2013\u2014])\s")
+#: Where a title's subtitle starts, after its main title: a colon, a question or an
+#: exclamation mark, or a dash, with a space after it ("X: a cohort study", "Is X safe? A
+#: cohort study", "X - a review"). Not a full stop: "Complementary Use of U.S. FDA's
+#: Adverse Event Reporting System ..." is one title (the measurement of 2026-10-20).
+_SUBTITLE = re.compile(r"(?<=\S)(?:[:?!]|\s[-\u2013\u2014])\s")
 #: The flag a registry puts in front of a retracted work's title.
 _FLAG = re.compile(r"^\s*(?:retracted|withdrawn)\s*:\s*", re.IGNORECASE)
 
@@ -210,16 +212,33 @@ def main_title(title: str) -> str:
     return _SUBTITLE.split(title, maxsplit=1)[0]
 
 
+#: The fewest words a cited main title has for a registered title that holds only it to be
+#: taken for the cited one.
+_MAIN_WORDS = 4
+
+
 def alike(cited_title: str, titles: list[str]) -> float:
     """How alike the cited title is to the registered one, each way: the share of the cited
-    title's words the registered title holds, and the share of its main title's words the
-    cited one holds, the lower of the two, at the registered title that best matches."""
+    title's words the registered title holds, and the share of the registered title's words
+    the cited one holds, of its main title or of the whole, whichever is more; the lower of
+    the two shares, at the registered title that best matches.
+
+    Or the other way round, where the entry cites a subtitle the registry left out: the
+    registered title wholly in the cited one, and the cited main title in the registered
+    one. A guideline is printed with its task force in its title, which Crossref and PubMed
+    leave out (two in the measurement of 2026-10-20)."""
+    cited_main = main_title(cited_title)
+    long_enough = len(lookups.title_words(cited_main) or []) >= _MAIN_WORDS
     best = 0.0
     for title in (t for t in titles if t):
         there = lookups.title_held(cited_title, title)
-        back = lookups.title_held(main_title(title), cited_title)
-        if there is not None and back is not None:
-            best = max(best, min(there, back))
+        whole = lookups.title_held(_FLAG.sub("", title), cited_title)
+        main = lookups.title_held(main_title(title), cited_title)
+        back = [b for b in (whole, main) if b is not None]
+        if there is not None and back:
+            best = max(best, min(there, max(back)))
+        if long_enough and whole is not None:
+            best = max(best, min(lookups.title_held(cited_main, title) or 0.0, whole))
     return best
 
 
@@ -272,6 +291,10 @@ def _leads(cited: Authors, work: Work) -> bool:
 
 
 def _found(citekey, fields, cited, lead: list[Work], path, excuse) -> list[Finding]:
+    # An article and its own conference abstract can share title, year and first author:
+    # PubMed's article, then a journal article, is the one whose identifiers are offered.
+    lead = sorted(lead, key=lambda w: (w.source != "PubMed",
+                                       w.answer.get("type") not in (None, "journal-article")))
     offered = []
     for kind, value in (("DOI", next((w.doi for w in lead if w.doi), None)),
                         ("PMID", next((w.pmid for w in lead if w.pmid), None))):  # fmt: skip

@@ -1591,7 +1591,10 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   them first on it; a name the registry lists and the entry does not is never said, since a
   list cut at six, "and others" and "et al." leave names out on purpose. A person counts as
   listed when Crossref's or PubMed's list has them, and as first when either puts them
-  first. None of the cited people on the lists fails from internal-review
+  first. Where PubMed keeps no list of the work, a list every person of which the entry
+  names, and shorter than the entry's, stops short, as Crossref's of a paper of three
+  lists one (the measurement below), and the cited people after it are not said missing.
+  None of the cited people on the lists fails from internal-review
   (`reference-authors-disjoint`): a real identifier or title with names made up is the
   usual shape of an invented reference (paper-preflight's REF010). The first not first, or
   some of the others on no list, is a warning (`reference-authors-differ`; REF011's
@@ -1603,15 +1606,24 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   transcription (ü and ue, ö and oe, ä and ae; ß and ss), and two names agree when their
   last words do or when the words of one, its particles aside, are all in the other's:
   "van der Berg" is "Berg", "García Márquez" is "García", "O'Brien" is "OBrien" (preflight's
-  surname key). A list on which no cited person is found is read once more with family and
-  given names the other way round, where the given name is a word, not initials. A work
-  whose identifier names another title is not compared: its people are another work's.
+  surname key). A cited family name is also found among a listed person's given names where
+  those are two words or more and not initials: Crossref files George Davey Smith as given
+  "George Davey", family "Smith", and a paper of the measurement below cites him as "Davey,
+  SG". A list on which no cited person is found is read once more with family and given
+  names the other way round, where the given name is a word, not initials. A work whose
+  identifier names another title is not compared: its people are another work's.
 - *A reference with no identifier* (`gates/searched`). A work a search found is the one
   cited when its title holds 85% of the cited title's words or more and the cited title
-  holds 85% of the words of the work's main title, before a subtitle after a colon, a full
-  stop or a dash, and without a "RETRACTED:" in front; when one of its years is within one
-  of the cited year; and when the cited first author is first on its list (where either
-  side names no person, the authors are not compared). The rule is held both ways here, and
+  holds 85% of the words of the work's main title (before a subtitle after a colon, a
+  question mark or a dash, and without a "RETRACTED:" in front) or of its whole title, or,
+  where the entry cites a subtitle the registry left out, when the cited title holds 85% of
+  the registered one's words and the registered one 85% of the cited main title's, of four
+  words or more (guidelines are printed with their task force in their title, and Crossref
+  and PubMed leave it out); when one of its years is within one of the cited year; and
+  when the cited first author is first on its list (where either side names no person, the
+  authors are not compared). A full stop starts no subtitle: "Complementary Use of U.S.
+  FDA's Adverse Event Reporting System …" is one title, and was cut at "U.S." until the
+  measurement below found it. The rule is held both ways here, and
   one way for an identifier, because a search, unlike an identifier, finds every longer
   title that repeats the cited words: for "Dexamethasone in Hospitalized Patients with
   Covid-19" Crossref has "Faculty Opinions recommendation of Dexamethasone in Hospitalized
@@ -8169,7 +8181,15 @@ Open, recorded as each change landed:
   rests on PubMed and Crossref. The year rule takes the same title in the year before or
   after, so a guideline cited as its 2021 edition is found as the 2020 or the 2022 one
   where the year is not part of its title. The notice words are read on the registered
-  title's first word only, so "A correction to …" is read as a work.
+  title's first word only, so "A correction to …" is read as a work. Two works of one title
+  and one year by other people than those cited fail as an invented reference where the
+  cited one is real and in no registry; `lookup.not_indexed` then says so. An article and
+  its own conference abstract can share title, year and first author: the identifiers
+  offered are PubMed's, then a journal article's, which is the article where PubMed has it.
+  A made-up subtitle after a real main title of four words or more is read as one the
+  registry left out. A reference with an identifier is still held to the one-way rule, so
+  a guideline cited with its task force in its title, which the registries leave out, fails
+  as `reference-title-mismatch` once its DOI is added, as it did before.
 - **Authors are compared by family name, and leniently.** Two people of one family name
   are one person to G7, so a list that swaps a cited Wang for another Wang passes, and given
   names, initials and order after the first are not compared. The folding that reads
@@ -8177,9 +8197,13 @@ Open, recorded as each change landed:
   is known by its braces in the .bib, by the registry's saying so, or by a word only a
   group's name has, and a person whose family name is such a word ("Board", "Union") is
   taken for a group and not compared. OpenAlex's last word is taken for the family name, so
-  a double surname it prints whole is compared by its second part. A registry's list that
-  stops short, as Crossref's of an older work can, warns of the cited people it leaves out
-  where PubMed has no record of the work. The second reading, with family and given names
+  a double surname it prints whole is compared by its second part. A cited family name
+  found among a listed person's given names counts as that person, so a made-up "Thomas"
+  passes beside a listed Anne Thomas Smith. A name with ü before an e that a registry
+  prints without its dots ("Brüel" as "Bruel") is read as another person's, since "ue" is
+  also how ü is transcribed. A name made up and
+  added to a real list is not seen where PubMed keeps no list of the work and the list
+  Crossref or OpenAlex keeps holds every other cited person: it reads as a list cut short. The second reading, with family and given names
   the other way round, is tried only where the first finds nobody. DataCite's creators are
   not kept, so a dataset's authors are not compared. A record of version 1 has no authors
   and compares none until `lookup` asks again.

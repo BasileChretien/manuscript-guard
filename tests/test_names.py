@@ -94,13 +94,26 @@ def _people(*families: str) -> list[Name]:
     return [Name(family=f) for f in families]
 
 
+def test_a_double_surname_filed_among_the_given_names_is_one_person_s() -> None:
+    """Crossref files George Davey Smith as given "George Davey", family "Smith"; a paper of
+    the measurement of 2026-10-20 cites him as "Davey, SG"."""
+    assert authors.same("Davey", "Smith", "George Davey")
+    assert authors.same("Davey Smith", "Smith", "George Davey")
+    assert not authors.same("Davey", "Smith", "G. D.")
+    assert not authors.same("Davey", "Smith", "George")
+    cited = Authors((Name(family="Davey", given="SG"),))
+    said = authors.compare(cited, [[Name(family="Smith", given="George Davey")]])
+    assert said.first and not said.disjoint
+
+
 def test_every_cited_person_must_be_listed_and_the_first_first() -> None:
     cited = Authors(tuple(_people("Naranjo", "Busto")))
     assert authors.compare(cited, [_people("Naranjo", "Busto", "Sellers")]) == authors.Compared(
         compared=True, listed=("Naranjo", "Busto", "Sellers"))  # fmt: skip
     said = authors.compare(cited, [_people("Busto", "Naranjo")])
     assert said.compared and not said.disjoint and not said.first and not said.missing
-    said = authors.compare(Authors(tuple(_people("Naranjo", "Dupont"))), [_people("Naranjo")])
+    said = authors.compare(Authors(tuple(_people("Naranjo", "Dupont"))),
+                           [_people("Naranjo", "Busto")])  # fmt: skip
     assert said.first and said.missing == ("Dupont",)
     said = authors.compare(Authors(tuple(_people("Dupont", "Leclerc"))), [_people("Naranjo")])
     assert said.disjoint and not said.first
@@ -110,6 +123,19 @@ def test_a_name_listed_by_any_record_is_listed() -> None:
     cited = Authors(tuple(_people("Naranjo", "Busto")))
     said = authors.compare(cited, [_people("Naranjo"), _people("Naranjo", "Busto")])
     assert said.first and not said.missing
+
+
+def test_a_list_that_stops_short_says_nothing_of_the_names_after_it() -> None:
+    """Crossref lists one author of a paper the entry cites with three (the measurement of
+    2026-10-20); PubMed's list, which is complete, says who is missing."""
+    cited = Authors(tuple(_people("Hossain", "Mannan", "Mostafa")))
+    said = authors.compare(cited, [_people("Hossain")], [False])
+    assert said.first and not said.missing
+    said = authors.compare(cited, [_people("Hossain")], [True])
+    assert said.missing == ("Mannan", "Mostafa")
+    # A list as long as the entry's is no list cut short.
+    said = authors.compare(cited, [_people("Hossain", "Rahman", "Akter")], [False])
+    assert said.missing == ("Mannan", "Mostafa")
 
 
 def test_one_listed_person_answers_for_one_cited() -> None:

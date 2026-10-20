@@ -78,8 +78,12 @@ def name_words(family: str) -> tuple[str, ...]:
     return tuple(words)
 
 
-def same(cited: str, registered: str) -> bool:
-    """Whether two family names are one person's, by the lenient folding."""
+def same(cited: str, registered: str, given: str = "") -> bool:
+    """Whether two family names are one person's, by the lenient folding. `given` is the
+    registered person's given names: a registry can file the first part of a double surname
+    among them (Crossref's given "George Davey", family "Smith", for an entry's "Davey Smith,
+    G" or "Davey, SG"), so the cited family name's words may be found there too, where the
+    given names are two words or more and not initials."""
     mine, theirs = name_words(cited), name_words(registered)
     if not mine or not theirs:
         return False
@@ -87,7 +91,11 @@ def same(cited: str, registered: str) -> bool:
         return True
     small, large = (mine, theirs) if len(mine) <= len(theirs) else (theirs, mine)
     core = [w for w in small if w not in PARTICLES]
-    return bool(core) and set(core) <= set(large)
+    if core and set(core) <= set(large):
+        return True
+    names = [w for w in name_words(given) if len(w) > 1] if given else []
+    core = [w for w in mine if w not in PARTICLES]
+    return len(names) >= 2 and bool(core) and set(core) <= {*names, *theirs}
 
 
 def _people(names: Sequence[Name]) -> list[Name]:
@@ -110,7 +118,8 @@ def _paired(cited: list[Name], people: list[Name]) -> set[int]:
     found: set[int] = set()
     for index, person in enumerate(cited):
         hit = next((j for j, other in enumerate(people)
-                    if j not in taken and same(person.family, other.family)), None)  # fmt: skip
+                    if j not in taken and same(person.family, other.family, other.given)),
+                   None)  # fmt: skip
         if hit is not None:
             taken.add(hit)
             found.add(index)
@@ -130,25 +139,35 @@ class Compared:
     listed: tuple[str, ...] = ()
 
 
-def compare(cited: Authors, lists: Sequence[Sequence[Name]]) -> Compared:
-    """The entry's people against one work's lists, one per registry that has the work."""
+def compare(
+    cited: Authors, lists: Sequence[Sequence[Name]], complete: Sequence[bool] = ()
+) -> Compared:
+    """The entry's people against one work's lists, one per registry that has the work.
+    `complete` says of each list whether its registry lists every author (PubMed's does)."""
     mine = _people(cited.names)
-    lists = [p for p in (_people(names) for names in lists) if p]
-    if not mine or not lists:
+    flags = [*complete, *[False] * len(lists)][: len(lists)]
+    kept = [(p, c) for p, c in zip(map(_people, lists), flags, strict=True) if p]
+    if not mine or not kept:
         return Compared(compared=False)
     found: set[int] = set()
-    first = False
-    for people in lists:
+    first, short = False, False
+    for people, whole in kept:
         here = _paired(mine, people)
         if not here and _paired(mine, _swapped(people)):
             people = _swapped(people)
             here = _paired(mine, people)
         found |= here
-        first = first or same(mine[0].family, people[0].family)
-    listed = tuple(p.family for p in lists[0])
+        first = first or same(mine[0].family, people[0].family, people[0].given)
+        # A list each of whose people the entry names, and shorter than the entry's, stops
+        # short: Crossref lists one author of a paper of three (the measurement of
+        # 2026-10-20). Not where a complete list was kept, which says who is missing.
+        short = short or (not whole and len(here) == len(people) < len(mine))
+    listed = tuple(p.family for p in kept[0][0])
     if not found:
         return Compared(compared=True, disjoint=True, first=False, listed=listed)
     missing = tuple(p.family for i, p in enumerate(mine) if i not in found)
+    if short and first and not any(whole for _people, whole in kept):
+        missing = ()
     return Compared(compared=True, first=first, missing=missing, listed=listed)
 
 
@@ -178,7 +197,8 @@ def judged(
     """What G7 says of the cited people against one work's lists, each named by the
     registry that keeps it. `about` says which work: "the DOI's work". Where `may_fail` is
     False, none of them on a list is a warning: a list only OpenAlex keeps can be wrong."""
-    said = compare(cited, [names for _source, names in lists])
+    said = compare(cited, [names for _source, names in lists],
+                   [source == "PubMed" for source, _names in lists])  # fmt: skip
     if not said.compared:
         return []
     keeping = _joined([source for source, names in lists if _people(names)])

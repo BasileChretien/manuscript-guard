@@ -4338,8 +4338,10 @@ _ACCENTS = (("e", "{\\'e}", "\N{LATIN SMALL LETTER E WITH ACUTE}"),
             ("i", "{\\'i}", "\N{LATIN SMALL LETTER I WITH ACUTE}"))  # fmt: skip
 _PARTICLE_FORMS = ("van der", "de", "von", "da", "van")
 #: What G7 is to find one person in, and what it is to find another person in.
-_SAME_NAME = ("cased", "accented", "particle", "apostrophe", "umlaut", "hyphen", "suffix")
-_OTHER_NAME = ("a letter off", "another name")
+_SAME_NAME = ("cased", "accented", "particle", "apostrophe", "umlaut", "umlaut without its dots",
+              "hyphen", "suffix", "among the given names")
+_OTHER_NAME = ("a letter off", "another name", "initials are no name")
+_GIVEN = ("George", "Anna", "Maria", "Jose", "Wei", "Amara")
 
 
 @st.composite
@@ -4356,7 +4358,10 @@ def _renamed(draw: st.DrawFn) -> list[tuple[str, str, str]]:
     cut = draw(st.integers(1, len(family) - 1))
     letter = draw(st.sampled_from([c for c in "zqxj" if c not in family.casefold()]))
     case = draw(st.sampled_from((str.upper, str.lower, str.title)))
-    umlaut = family[:cut] + "\N{LATIN SMALL LETTER U WITH DIAERESIS}" + family[cut:]
+    # Not before an "e": without its dots "Süe" is "Sue", which the folding takes for "Sü"
+    # transcribed, and reads as another name (DESIGN.md, Known gaps).
+    dot = draw(st.sampled_from([i for i in range(1, len(family)) if family[i] != "e"]))
+    umlaut = family[:dot] + "\N{LATIN SMALL LETTER U WITH DIAERESIS}" + family[dot:]
     return [
         ("cased", family, case(family)),
         ("accented", family[:at] + tex + family[at + 1 :],
@@ -4365,29 +4370,87 @@ def _renamed(draw: st.DrawFn) -> list[tuple[str, str, str]]:
          draw(st.sampled_from((family, f"{particle.title()} {family}")))),
         ("apostrophe", f"O'{family}",
          draw(st.sampled_from((f"O{family}", f"O\N{RIGHT SINGLE QUOTATION MARK}{family}")))),
-        ("umlaut", umlaut, family[:cut] + "ue" + family[cut:]),
+        ("umlaut", umlaut, family[:dot] + "ue" + family[dot:]),
+        ("umlaut without its dots", umlaut, family[:dot] + "u" + family[dot:]),
         ("hyphen", f"{family}-{second}", draw(st.sampled_from((f"{family} {second}", second)))),
         ("suffix", f"{family} Jr.", family),
+        # A double surname a registry splits, its first part among the given names:
+        # Crossref's given "George Davey", family "Smith", for an entry's "Davey, SG".
+        ("among the given names", family, second, f"{draw(st.sampled_from(_GIVEN))} {family}"),
         ("a letter off", family, family[:cut] + letter + family[cut + 1 :]),
         ("another name", family, second),
+        ("initials are no name", family, second,
+         f"{family[0]}. {draw(st.sampled_from(_GIVEN))[0]}."),
     ]  # fmt: skip
 
 
 @holds(150, _renamed())
 def test_a_family_name_is_one_person_s_however_a_registry_writes_it(
-    drawn: list[tuple[str, str, str]],
+    drawn: list[tuple[str, ...]],
 ) -> None:
     """G7 holds a cited family name to a registry's by Basile's lenient folding (2026-10-20):
     case, accents written in TeX or in Unicode, a particle, an apostrophe, ü for ue, one part
-    of a double name and a suffix are one person's; a letter that differs, or another name,
-    is another person's."""
+    of a double name, a suffix and the first part of a double surname a registry filed among
+    the given names are one person's; a letter that differs, or another name, is another
+    person's."""
     from manuscript_guard.gates import authors
 
+    for kind, cited, registered, *forenames in drawn:
+        said = authors.same(cited, registered, *forenames)
+        assert said is (kind in _SAME_NAME), (kind, cited, registered, forenames)
+
+
+# ------------------------------------------------------- a title a search found, each way
+
+#: What G7 is to take for the cited title among a search's works, and what it is not.
+_SAME_SEARCHED = ("subtitle left out", "flagged", "typeset", "subtitle cited",
+                  "subtitle the registry left out")  # fmt: skip
+_OTHER_SEARCHED = ("longer title", "other words")
+
+
+@st.composite
+def _searched_titles(draw: st.DrawFn) -> list[tuple[str, str, str]]:
+    """A cited title of drawn words, and for each kind a title a search could return: the
+    same title as a registry writes it, and another work's that a search finds because it
+    holds the words. Every kind in every example."""
+    words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=10))
+    cited = " ".join(words)
+    subtitle = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=6)))
+    before = draw(st.lists(st.sampled_from(FILLER), min_size=len(words),
+                           max_size=len(words) + 3))  # fmt: skip
+    other = list(words)
+    for at in draw(st.permutations(range(len(words))))[: len(words) * 15 // 85 + 1]:
+        other[at] = "zygote" if other[at] != "zygote" else "quorum"
+    separator = draw(st.sampled_from((": ", " - ", "? ", " \N{EM DASH} ")))
+    case = draw(st.sampled_from((str.upper, str.title)))
+    return [
+        ("subtitle left out", cited, f"{cited}{separator}{subtitle}"),
+        ("flagged", cited, f"RETRACTED: {cited}"),
+        ("typeset", cited, case(cited).replace(" ", ", ", 1)),
+        ("subtitle cited", f"{cited}: {subtitle}", f"{cited}: {subtitle}"),
+        # A guideline printed with its task force in its title, which the registry leaves out.
+        ("subtitle the registry left out", f"{cited}: {subtitle}", cited),
+        ("longer title", cited, " ".join(before) + " " + cited),
+        ("other words", cited, " ".join(other)),
+    ]
+
+
+@holds(150, _searched_titles())
+def test_a_searched_title_is_the_cited_one_only_each_way(
+    drawn: list[tuple[str, str, str]],
+) -> None:
+    """For a reference with no identifier, G7 takes a work a search found for the cited one
+    only where each title holds 85% of the other's words: the registered title's main part
+    only, so that a subtitle the entry left out costs nothing; and a longer title that holds
+    every cited word, which a search finds and an identifier never names, is another work."""
+    from manuscript_guard.gates import lookups, searched
+
     for kind, cited, registered in drawn:
-        if kind in _SAME_NAME:
-            assert authors.same(cited, registered), (kind, cited, registered)
+        alike = searched.alike(cited, [registered])
+        if kind in _SAME_SEARCHED:
+            assert alike >= lookups.TITLE_HELD, (kind, cited, registered, alike)
         else:
-            assert not authors.same(cited, registered), (kind, cited, registered)
+            assert alike < lookups.TITLE_HELD, (kind, cited, registered, alike)
 
 
 # ------------------------------------------------------------- a figure that estimates itself
@@ -4923,7 +4986,17 @@ def _a_family_name_must_agree_whole(patch: pytest.MonkeyPatch) -> None:
     """The strict option Basile did not take: particles and all."""
     from manuscript_guard.gates import authors
 
-    patch.setattr(authors, "same", lambda a, b: authors.name_words(a) == authors.name_words(b))
+    def whole(a: str, b: str, given: str = "") -> bool:
+        return authors.name_words(a) == authors.name_words(b)
+
+    patch.setattr(authors, "same", whole)
+
+
+def _a_given_name_holds_no_part_of_a_family_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    same = authors.same
+    patch.setattr(authors, "same", lambda a, b, given="": same(a, b))
 
 
 def _an_accent_is_a_letter_of_its_own(patch: pytest.MonkeyPatch) -> None:
@@ -4950,13 +5023,45 @@ def _a_name_a_letter_off_is_the_name(patch: pytest.MonkeyPatch) -> None:
 
     same = authors.same
 
-    def near(a: str, b: str) -> bool:
+    def near(a: str, b: str, given: str = "") -> bool:
         x, y = " ".join(authors.name_words(a)), " ".join(authors.name_words(b))
         one_off = len(x) == len(y) and sum(i != j for i, j in zip(x, y, strict=True)) <= 1
-        return same(a, b) or one_off
+        return same(a, b, given) or one_off
 
     patch.setattr(authors, "same", near)
 
+
+def _a_searched_title_is_held_one_way(patch: pytest.MonkeyPatch) -> None:
+    """The rule G7 holds an identifier's title to."""
+    from manuscript_guard.gates import lookups, searched
+
+    patch.setattr(searched, "alike", lambda cited, titles: max(
+        (lookups.title_held(cited, t) or 0.0 for t in titles), default=0.0))  # fmt: skip
+
+
+def _the_whole_registered_title_is_held_back(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import searched
+
+    patch.setattr(searched, "main_title", lambda title: searched._FLAG.sub("", title))
+
+
+def _a_cited_subtitle_counts_against_it(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood before the measurement of 2026-10-20 found two guidelines cited
+    with the task force the registries leave out."""
+    from manuscript_guard.gates import lookups, searched
+
+    def alike(cited: str, titles: list[str]) -> float:
+        best = 0.0
+        for title in titles:
+            there = lookups.title_held(cited, title)
+            back = [b for b in (lookups.title_held(searched._FLAG.sub("", title), cited),
+                                lookups.title_held(searched.main_title(title), cited))
+                    if b is not None]  # fmt: skip
+            if there is not None and back:
+                best = max(best, min(there, max(back)))
+        return best
+
+    patch.setattr(searched, "alike", alike)
 
 
 def _an_isbn_10_is_not_read_as_its_isbn_13(patch: pytest.MonkeyPatch) -> None:
@@ -6420,7 +6525,7 @@ BROKEN = {
         _an_accent_is_a_letter_of_its_own,
         test_a_family_name_is_one_person_s_however_a_registry_writes_it,
     ),
-    "ue is not \N{LATIN SMALL LETTER U WITH DIAERESIS}": (
+    "ue is not u with a diaeresis": (
         _ue_is_not_u_umlaut,
         test_a_family_name_is_one_person_s_however_a_registry_writes_it,
     ),
@@ -6431,6 +6536,22 @@ BROKEN = {
     "a name a letter off is the name": (
         _a_name_a_letter_off_is_the_name,
         test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "a given name holds no part of a family name": (
+        _a_given_name_holds_no_part_of_a_family_name,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "a searched title is held one way": (
+        _a_searched_title_is_held_one_way,
+        test_a_searched_title_is_the_cited_one_only_each_way,
+    ),
+    "the whole registered title is held back to the cited one": (
+        _the_whole_registered_title_is_held_back,
+        test_a_searched_title_is_the_cited_one_only_each_way,
+    ),
+    "a subtitle the registry left out counts against the cited title": (
+        _a_cited_subtitle_counts_against_it,
+        test_a_searched_title_is_the_cited_one_only_each_way,
     ),
     "an ISBN-10 is not read as its ISBN-13": (
         _an_isbn_10_is_not_read_as_its_isbn_13,

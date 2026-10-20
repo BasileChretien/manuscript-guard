@@ -5843,8 +5843,12 @@ def test_a_reference_with_no_identifier_and_no_record_is_said_unlooked(project: 
     [
         ("Dupont, Marie and Leclerc, Paul", [{"family": "Fictional", "given": "Anne"}],
          "reference-authors-disjoint"),
-        ("Fictional, Anne and Dupont, Marie", [{"family": "Fictional", "given": "Anne"}],
+        ("Fictional, Anne and Dupont, Marie",
+         [{"family": "Fictional", "given": "Anne"}, {"family": "Leclerc"}],
          "reference-authors-differ"),
+        # Crossref's list stops short of the entry's, and each name on it is cited: an
+        # older record's list, not a name made up (the measurement of 2026-10-20).
+        ("Fictional, Anne and Dupont, Marie", [{"family": "Fictional", "given": "Anne"}], None),
         # Particles, accents, TeX and case: one person.
         ("van der M{\\\"u}ller, Anne and O'Brien, Bernard",
          [{"family": "M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller"}, {"family": "OBrien"}],

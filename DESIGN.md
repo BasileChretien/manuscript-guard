@@ -843,6 +843,469 @@ the abstract. Any other value, a number or `yes`, is refused rather than guessed
 PyYAML's composer and pandoc 3.9 were compared on each of these spellings, and on a
 duplicated key, where both keep the last.
 
+## LaTeX manuscripts
+
+Status: designed 2026-10-20, nothing built. Where the design depends on what LaTeX does, the
+pull request that relies on it checks the statement against TeX Live and MiKTeX and records
+the measurement. On the author's machine, 2026-10-20: MiKTeX 24.4 and latexmk 4.88, with
+pdfLaTeX, LuaLaTeX, XeLaTeX, BibTeX and Biber on PATH.
+
+LaTeX is used in two ways, built together. It is a source that an author writes and the gates
+check. It is also an output: the journal's `.tex` and a PDF, built from a Markdown source.
+
+Decided by Basile on 2026-10-20:
+- Source and output are built together.
+- The gates read `.tex` through a reader of our own, not through pandoc's LaTeX reader.
+- A binding is one command, `\mg{namespace.key}`, defined in a values file that the tool
+  writes and that is committed.
+- A command the reader does not know has its name blanked and its arguments read.
+- pdfLaTeX compiles unless the journal's profile names another engine.
+
+Taken as defaults, and open to change:
+- the letters, digits and signs in maths are read by G2, as Markdown's are;
+- comments are removed from the submission copy;
+- the LaTeX twin of the example lives under `tests/data/`;
+- a `.bbl` is sent only where the profile asks for one;
+- a project mixing the two formats is refused.
+
+Two things are settled by measurement in the pull requests that need them: how Overleaf
+resolves paths, and how CI installs TeX Live.
+
+### One format to a project
+
+The format is read from the entry file, `manuscript/main.md` or `manuscript/main.tex`, and
+nothing declares it in paper.yaml. A declaration would be a second place to say what the
+folder already says, and the two could disagree. A project holding both entry files is refused
+(`two-formats`, G0), and fails at every stage as `manuscript-unreadable` does. So is a file of
+the other format anywhere the gates read (`other-format-file`). Left alone, it would be text
+that no gate reads and no build prints. The supplement is in the project's format, its entry
+`manuscript/supplementary/main.tex`. With one format, each document has one build pipeline.
+
+### The reader is chosen once
+
+`text/reader.py` holds a `Reader` protocol and `reader_for(project)`. That returns the Markdown
+reader, or a LaTeX reader built once per run from the include tree. The Markdown reader wraps
+the functions the gates call today and changes nothing they return. The proof is the
+old-against-new test, with no entry in `differential_expected.yaml`. The reader is an object
+rather than a dispatch on the suffix, for two reasons. A LaTeX file is not read alone: the
+headings in force where `main.tex` inputs it decide how its numbers are judged. And the citation
+reader is sometimes handed a path that is not the manuscript's, as `data_statement.cited_in`
+hands it the `.bib`.
+
+| Reader | Markdown today | Read by |
+|---|---|---|
+| `files(main_text_only)`, `printed_order` | `gates/numbers.py` | about 30 modules, through `source_files` |
+| `mask(text)` | `masking.mask` | G2, G5, G6, G8, G14 |
+| `words(text)` | `language._hidden` | G14, G15 |
+| `uncommented(text)` | `masking.blank_comments` | G2, G7's quotations, G9 |
+| `headings(text, path)`, `sections(text, path)` | `heading_index`, `split_sections`, `footnote_index` | G2, G4, G5, G9, G15 |
+| `listings(text)` | `fenced_blocks` | G2's code check |
+| `bindings(text)` | `placeholders.parse` | G1's synthetic inputs, G2 and the custodian's counts, G4's figure files, G8, G9, G15, the build |
+| `substituted(text, values)` | `placeholders.substitute` | G8, G9, G13, `submit`'s response letter and abstract |
+| `citations(text, path)` | `zotero.find_citations` | G6, G7, `lookup` |
+| `count(text, abstract_title)` | `sections.measure` | G4, the title page |
+| `table_at(text, offset)` | a row opening with a pipe | G2's `hand-authored-table` |
+| `printed_view(text)` | `scannable` | G4's required statements |
+| `refusals(path, text)` | `refused_shapes` | `check` under BUILD, the build |
+
+Every view but `substituted` keeps the source's length and line breaks, so a finding from any of
+them names the `.tex` line. `substituted` is the text with the values put in, as `substitute` gives
+it today, and the gates that read it place a finding as they place one today. In LaTeX it writes
+each display with TeX's ten specials escaped and nothing else changed, so a `%` in `12.5%` does
+not start a comment and a `<` stays one character for G8's P. The response letter, which stays
+Markdown, takes the display as it is. G13 looks for a response's quote in the reader's prose
+view of the substituted text, where `~` is a space, commands are blanked and every escape, the
+author's or the display's, is the character it stands for.
+
+The gates that read no part of the manuscript but its file list change only through
+`source_files`: G1's freshness, G3's figure checks, G10, G11 (its digests then cover the
+`.tex` files) and G12. G1's synthetic-input check reads bindings and moves with them. The analysis
+plan stays Markdown.
+
+The gates that read the manuscript move to the reader one at a time, G1's synthetic-input check
+among them. Until a gate has moved, it reads nothing of a LaTeX project and says so in one
+finding, `not-read-in-latex`, naming the gate. That finding fails from `submission`; before then
+it is shown as a note, as any finding not yet due is. Each pull request then ships on its own,
+and a half-taught `check` cannot pass a submission. `tests/test_reads_nothing.py` gets a row
+for each such gate. The commands not yet moved refuse a LaTeX project with a sentence and exit
+2: `explain`, `bind`, `audit`, `reworded`, `checker`, the panel's prompt and the hooks.
+
+### What the LaTeX reader reads
+
+The reader lives in `text/latex/`, apart from `text/tex.py`, which reads TeX inside Markdown:
+- `scan.py` cuts a file into tokens with their offsets, under TeX's default category codes;
+- `commands.py` is the closed table of what each known command takes, and what each argument
+  is;
+- `mask.py`, `structure.py` and `cite.py` answer the reader's questions from the tokens.
+
+It is one pass, linear in the file.
+
+Its contract is `mask`'s: the same length, line breaks kept, and what is not prose replaced by
+NUL. Two additions keep the length:
+- A sign that TeX prints as a space is a space: `~`, `\,`, `\ `, `\quad`, and `&` and `\\` in a
+  table. So `Table~2` meets the rule that reads `Table 2`.
+- An escaped character is that character at the backslash's place, followed by a NUL. So
+  `95\%` reads as `95%`, one atom.
+
+| Read as prose | Blanked |
+|---|---|
+| the body, `\begin{document}` to `\end{document}`, and the files input from it | the preamble of `main.tex` and the files input from it, except what the next row reads |
+| in the preamble, `\title`'s argument, read as the title in Markdown's front matter is and compared with paper.yaml's (`two-titles`); `\thanks`'s outside `\author`, read as a footnote is; the arguments of `\AtBeginDocument`, `\AtEndDocument`, `\AddToHook` and `\AfterEndPreamble`, read as the body is, or as the package is in an author's package | the author block, `\author` with what it holds, which is what authors.yaml holds for a Markdown project and G2 does not read; `\date`, which a Markdown build never prints (a known gap) |
+| the arguments of text commands: `\emph`, `\textbf`, `\footnote`, `\caption` and its short form, `\section` and its kin, `\href`'s text | command names and braces; `\label`, `\ref` and its kin, `\url`, `\href`'s address, `\includegraphics` |
+| a citation's notes, as Markdown's prefix and suffix are read | citation keys |
+| the letters, digits and signs in maths, in subscripts and superscripts too, as Markdown's `mask` keeps them in `$x_1 = 10^{-8}$` | maths' commands, braces and delimiters |
+| `\verb` and `\texttt`, read as a code span is | `verbatim`, `Verbatim`, `lstlisting`, read by G2's code check as fenced blocks are |
+| table cells | a `tabular`'s column specification, `\multicolumn`'s first two arguments, rules |
+| the arguments, optional ones too, of a command not in the table | comments (an unescaped `%` to the end of the line, the `comment` environment, a plain `\iffalse` … `\fi` block), the layout commands `text/tex.py` knows, everything after `\end{document}`, bindings whole |
+
+**Maths** is hidden from `words`, so G14 and G15 never read it as words. Its digits and signs
+stay in `mask`, as they do in `$...$` in Markdown today, because blanking `$\beta = 0.42$` would
+let a typed estimate pass G2. That keeps the agreement test's promise below: the digits the PDF
+prints are the ones `mask` keeps, `$10^{-8}$` and `$R^2$` among them. Markdown's `mask` keeps
+`\beta` and the braces as well, and the LaTeX one blanks them, so `10^{-8}` reads as `10^`, a
+NUL, `-8` and a NUL. How G2's tokenizer reads such a power is settled in step 4 by corruption
+cases on maths, and held by the agreement test from step 9.
+
+**A command not in the table** has its name blanked and its arguments read. This errs towards
+findings, as `masking.py` already does: a command the table lacks shows up as an unclassified
+number such as `2em`, never as a hidden claim.
+
+**Includes.** `\input` and `\include` are followed from `main.tex`, depth first, and that
+order is `printed_order`.
+- A path resolves as TeX resolves it: from the entry file's folder, not from the folder of the
+  file that includes it, with `.tex` added to a path that has none.
+- Each file is read on its own, so a finding names that file's line.
+- A file starts in the state its `\input` stands in. One input from the body is body, and one
+  input from the preamble is preamble. The headings in force there stand before the file's first
+  character in `headings(text, path)`, so `p < 0.05` in a file input under `\section{Methods}`
+  is read under Methods. So does the environment that encloses the `\input`: a file input inside
+  `abstract` is abstract, and one inside a `tabular` is table cells.
+- An `\input` in a comment, in a plain `\iffalse` block or in the `comment` environment is no
+  input. A file named only there is one that nothing inputs, below.
+- A package or class file in `manuscript/`, such as `\usepackage{macros}` with
+  `manuscript/macros.sty` beside the entry file, is followed as a file input from the preamble.
+  It is read as LaTeX reads a package, with `@` a letter. Its definitions are then read where
+  they are written, below. In it, and in the preamble, both branches of a conditional other than
+  a plain `\iffalse` block are read, since a package tests what is loaded. A package found
+  anywhere else is not the author's and is not read. `mgvalues.sty` is excluded by name: the
+  tool writes it, its definitions are the bindings, and `check` compares it with what `values`
+  would write.
+- Refused:
+  - a path that is not written out in full;
+  - a path outside `manuscript/` or under a `_` folder;
+  - a missing file, or a cycle;
+  - `\import`, `\subfile` and `\InputIfFileExists`;
+  - a command that prints a file no gate reads: `\lstinputlisting` and its kin,
+    `\verbatiminput`, csvsimple's `\csvautotabular` and `\csvreader`, pgfplotstable's
+    `\pgfplotstabletypeset` with a file name, datatool's `\DTLloaddb` and its displays, and
+    pdfpages' `\includepdf`. A table is bound with `\mg{table.key}` instead.
+- A `.tex` file that nothing inputs is still read, as every `.md` file is, and warned about
+  (`tex-not-input`). It is read as body under no heading, where definitions, `\makeatletter`
+  (after which `@` is a letter) and conditionals are accepted as in the preamble, since such a
+  file may be a set of macros left out.
+
+**Environments.**
+- In `figure` and `table`, the caption is prose, and a typed number in a `tabular` is
+  `hand-authored-table`.
+- `equation`, `align`, `gather` and `multline`, their starred forms, `\[`, `$$` and `\(` are
+  maths.
+- `abstract`, or `\abstract{…}`, opens a section titled Abstract for every reader, so the
+  counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is refused, as an
+  `abstract:` in Markdown's front matter is.
+- An environment not in the table is read as an unknown command is, and so is its body.
+
+**Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`, `\def` or
+`\DeclareMathOperator` is read where it is written, and its body is prose there, in the preamble
+too, and in a package file of the author's (above). So `\newcommand{\n}{4100}` is one
+unclassified number, at its definition. The parameter tokens `#1` to `#9` in a body are blanked.
+A use of the macro is read as an unknown command is: its name is blanked and its arguments are
+read. So with `\newcommand{\ci}[2]{95\% CI #1--#2}`, the `95` is found at the definition and
+each number of `\ci{1.2}{3.4}` at the use. Nothing is
+expanded, because an expansion is text at a place the file does not hold, with no offset to
+give a finding.
+
+Refused:
+- a definition, in a file of the author's, of any command the reader reads, `\mg` among them;
+- `\def` with delimited parameters;
+- anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
+  `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
+  active;
+- in the body, any conditional but a plain `\iffalse` block.
+
+**Characters.**
+- `--` and `---` stay as typed, as in Markdown.
+- ``` `` ``` and `''` read as typographic quotation marks, the mark first and a NUL after it, in
+  every view the reader gives, so G7's quotations, which read `uncommented`, find a quotation.
+- An accent command or `\-` inside a word cannot be written in place without a NUL that splits
+  the word, so that word is hidden from `words`. G14 says, once a file, how many words it did
+  not read and why: the file is UTF-8, so type the letter.
+- An `inputenc` other than `utf8` is refused.
+
+**Refused.** Each refusal is a finding under BUILD that fails at every stage, as `unclear-fence`
+does. Beyond those above, `tex-unbalanced` covers a group, an environment or maths left open or
+closed twice. Past a refusal the rest of the file is read as prose, so that nothing the reader did
+not understand is hidden.
+
+### Bindings
+
+| Markdown | LaTeX |
+|---|---|
+| `{{results.key}}`, `{{lit.key}}` | `\mg{results.key}`, `\mg{lit.key}` |
+| `{{table.key}}` | `\mg{table.key}`, the tabular; the caption is the float's `\caption`, prose as a figure's is |
+| `{{figure.key}}` | `\mg[options]{figure.key}`, `\includegraphics` of the rendered file |
+| `{{method.step}}` | `\mg{method.step}`, which prints nothing |
+
+One command carries the namespace inside its braces, as `{{results.key}}` does, so a paper
+moves from Markdown to LaTeX by a direct rewrite. `bindings` returns the `Placeholder` records
+that `parse` returns, so every gate that reads bindings reads these unchanged. The whole
+command is NUL in `mask`, so a typed number is found and a bound one is not.
+- A near spelling, an unclosed brace, or a namespace or key outside the grammar is
+  `malformed-placeholder`.
+- A binding in a comment is not read.
+- A binding in `verbatim` would print as typed, and is refused.
+- A binding in the number argument of `\num` or `\SI` is refused, because siunitx parses a
+  number, and a value's display string is formatted text.
+
+**The values file.** `manuscript-guard values` writes `mgvalues.sty` beside each entry file.
+- It defines `\mg` and one entry per key: values and tables with LaTeX's specials escaped,
+  figure paths relative to its own folder.
+- Its first line names the results file by its digest.
+- The entry file loads it with `\usepackage{mgvalues}`, and the `.tex` then compiles in any
+  editor with the values filled in.
+- A key it does not define prints `??` and the key, with a LaTeX warning, as an undefined
+  `\ref` prints `??`. `check` already fails it (`unresolved-binding`).
+- The file is committed, so a co-author's editor has it.
+
+`check` writes nothing. It compares the file with what `values` would write, and fails a
+difference from `drafting` (`values-file-stale`, `values-file-missing`), since a PDF compiled
+from a stale file shows the old number.
+
+**Escaping** is a closed table in `build/latex_values.py`. It covers:
+- the ten specials;
+- `<`, `>` and `|`, written with `\ensuremath`, since pdfLaTeX's default OT1 encoding prints a
+  typed `<0.001` as `¡0.001`;
+- for pdfLaTeX, the characters that values carry: −, –, ±, ×, ≤, ≥, ·, the no-break and thin
+  spaces, and Greek letters, the mathematical ones also with `\ensuremath`. A `$...$` would
+  close the maths that a binding stands in, as in `$p = \mg{results.p}$`.
+
+A value holding any other character outside Latin-1 is refused
+(`value-not-printable`), not guessed at. The pull request that builds the table compiles each
+entry under OT1 and T1 and compares the printed text with the value.
+
+**The submission copy** replaces each binding with what the file defines for it and removes
+`\usepackage{mgvalues}`, so it needs no macro file.
+
+### Citations
+
+`text/latex/cite.py` returns the `CitationUse` records that `find_citations` returns.
+- **Read:** `\cite` and `\nocite`; natbib's `\citep`, `\citet`, `\citealt`, `\citealp`,
+  `\citeauthor`, `\citeyear`, `\citeyearpar` and `\citenum`; biblatex's `\parencite`,
+  `\textcite`, `\autocite`, `\footcite`, `\smartcite` and `\supercite`, and their
+  multi-citation forms with global and per-group notes; the capitalised and starred form of
+  each.
+- **Notes:** one optional argument is the postnote, and two are the prenote and the postnote,
+  which natbib and biblatex agree on.
+- **Keys** are split at commas, and each record carries its key's own line and offset.
+- **Narrative:** `narrative` is true where the authors' names are printed in the sentence
+  (`\citet`, `\citealt`, `\textcite`, `\citeauthor`), and false otherwise, `\cite` included.
+- **The rest:** `\nocite{*}` cites every entry of `references.bib`, as LaTeX does. Any other
+  command whose name holds `cite` is refused.
+
+### The build of a LaTeX source
+
+`build/latex.py` compiles with latexmk. It runs with:
+- `-norc`, so nobody's configuration runs;
+- the engine the profile names, pdfLaTeX by default;
+- `-interaction=nonstopmode -halt-on-error -file-line-error`;
+- `-no-shell-escape`, since TeX Live's restricted shell escape is on by default, and the reader
+  refuses `minted` and anything else that needs one.
+
+It compiles a copy in `build/latex/`, with a fresh `mgvalues.sty` and
+`literature/references.bib`; `build` never writes in `manuscript/`. Under TeX Live it sets
+`openout_any=p`, so nothing is written outside the copy, and `openin_any=p`, so no file is read
+by a path that leaves it. Files found through TeX's own search paths are still read. So
+`TEXINPUTS` names the copy before the standard trees, and `TEXMFHOME` points at an empty
+folder, so that an author's own folder of packages is not searched. Both settings are measured
+under TeX Live and MiKTeX in step 9.
+Under MiKTeX it turns the package installer off and names a missing package rather than
+fetching it mid-build. The log is read: an error is a `BuildError`, with its file and line
+mapped back to the source, and an undefined citation or reference fails at `submission`. The
+numbered headings LaTeX wrote to the `.aux` file, as its `\@writefile{toc}` lines, are compared
+with the reader's, and a difference is refused (`MisreadError`), as pandoc's headings are
+compared. The `.aux` is read rather than the `.toc`, which LaTeX writes only for a document
+with `\tableofcontents`.
+
+latexmk and one engine are needed for a PDF. Without them `build` says so and exits 2, `check`
+runs every gate as usual, and the tests that need LaTeX skip. CI installs a pinned TeX Live and
+sets `MANUSCRIPT_GUARD_REQUIRE_LATEX`, with which `tests/conftest.py` refuses to start unless
+that TeX Live is there.
+
+**The journal profile** gets an optional `latex:` block, each rule quoted from the journal's
+page:
+- `class` and `class_options`;
+- `bibliography`: `bibtex` with a `bst`, or `biblatex` with a `style`;
+- `engine`;
+- `files`: the class and style files the journal hands out, fetched once into
+  `profiles/journals/latex/<slug>/` with their address, SHA-256 and licence, as CSL styles are.
+  None of them ships with the package.
+
+G4 warns where `\documentclass`, `\bibliographystyle` or biblatex's `style=` differ from the
+profile.
+
+**The submission folder.** `submit` writes `build/submission/latex/`:
+- `manuscript.tex`, flattened, with the values written in and the comments removed, since a
+  comment can hold a draft and its old numbers;
+- `references.bib` with only the cited keys, and the `.bbl` where the profile asks for one;
+- the figures, with their paths rewritten;
+- the journal's files;
+- the PDF.
+
+The folder is then compiled alone, in an empty directory, and refused if it needs anything
+outside itself.
+
+**Word counts** are the reader's, and the rule is printed with the count, as for Markdown.
+They count the prose of `words` and the headings, with the abstract apart. Floats and display
+maths are not counted, and an inline formula is one word.
+
+### LaTeX out of Markdown
+
+`build --latex` assembles the document as the Word build does, then runs `pandoc -t latex`.
+It passes:
+- the profile's class, and its template where the profile keeps one;
+- `--natbib` or `--biblatex` as `bibliography:` says, or citeproc with the CSL where it says
+  neither;
+- the title, keywords and authors from paper.yaml and authors.yaml, as template variables.
+
+The result is compiled and packed by the code above, and checked three times:
+1. The gates read the Markdown, as today.
+2. The LaTeX reader reads the body pandoc writes without the template (`-t latex` without
+   `--standalone`) under the author's rules, and refuses what it refuses. Raw TeX that the Word
+   writer drops (`tex-in-the-text`) reaches the `.tex` and takes effect, so a definition or an
+   `\input` in it is caught here. The template is the profile's or pandoc's, not the author's.
+3. The digits the reader's `mask` keeps in that body must be the ones G2 read in the source's
+   body, with the bound values put in, in order. A difference refuses the build. The title
+   page, which the template writes from paper.yaml and authors.yaml wherever the class puts
+   it, and the source's front matter are on neither side. The
+   commands pandoc writes for layout are in the reader's table with the arguments that are not
+   prose: both of `\setcounter`'s, a column's width in `\real{0.33}`, and the anchor of
+   `\hypertarget`, whose second argument is the content it wraps and is read. Where citeproc
+   writes the citations and the reference list as text, they are left out of the comparison,
+   found by the commands pandoc wraps them in, which it writes under `link-citations`; the build
+   passes it. If pandoc's output does not mark them, `build --latex` refuses a profile that
+   names neither natbib nor biblatex, rather than compare digits it cannot place. Which commands
+   pandoc writes is measured in that pull request, against the pinned pandoc.
+
+### Tests
+
+- **The twin.** `tests/data/latex/manuscript/` is the example's manuscript in LaTeX. A fixture
+  runs it against the example's analysis, results, figures and fictional citekeys. A test holds
+  the twin and the example to the same bindings and headings, and to equal G2 counts, so the
+  twin has no `\thanks`; the citations join the comparison when the citation reader does.
+- **Corruption cases.** Each manuscript case in `tests/test_corruption.py` runs on the twin too,
+  with each `\mg` replaced by its value. Further cases:
+  - a key mistyped, and a binding cut short;
+  - a number in a `tabular`, a `\footnote`, a caption, a postnote, a `\newcommand` body and an
+    input file;
+  - `$p<0.05$` under Results;
+  - a stale `mgvalues.sty`, and a missing input;
+  - a key not in the `.bib`;
+  - a required section renamed, and an abstract over its limit;
+  - each refusal.
+- **Generated inputs.** `tests/generated.py` gets `latex_texts()`, drawn from a pool as `texts()`
+  is:
+  - words, and numbers as LaTeX writes them: `95\%`, `$p<0.05$`, `3--5`, `Table~\ref{t}`;
+  - citations with notes, bindings, labels, `\verb` spans, comments and URLs;
+  - openers and closers never paired: `\begin{verbatim}`, `\end{equation}`, `{`, `$`, `\[`,
+    `\iffalse`, `\input{`;
+  - the bare signs `\`, `%`, `&`, `#`, `^`, `_` and `~`.
+- **Readings and properties.** `tests/readings.py` names `latex mask`, `latex words`,
+  `latex sections`, `latex bindings`, `latex citations`, `latex refusals` and `latex check`.
+  `tests/test_properties.py` holds of them what it holds of Markdown:
+  - nothing raises;
+  - the length and every line break are kept;
+  - what is planted in prose, a heading, a footnote, a caption, maths or a note is found, there;
+  - nothing planted in a comment, a key, a label, a binding, the preamble, a listing or after
+    `\end{document}` is found;
+  - nothing past a refusal is hidden.
+- **Broken rules.** `BROKEN` gets at least these, and each must fail under a dozen seeds:
+  - an escaped `%` opens a comment;
+  - a comment runs past its line;
+  - maths is blanked whole;
+  - a citation's notes are blanked;
+  - a group closes at the first brace;
+  - `\verb` takes only `|` as its delimiter;
+  - the preamble ends at the first `\begin`;
+  - an input file starts under no heading;
+  - a file named only by an `\input` in a comment is not read;
+  - a macro's use hides its arguments.
+- **Old against new.** In the pull request that adds a `latex` reading, the base lacks it, so
+  the reading is passed over and written on the job's page; from the next pull request on, it is
+  compared. The first pull request leaves every Markdown reading unchanged.
+- **LaTeX itself.** `tests/test_latex_agreement.py` does for LaTeX what
+  `test_pandoc_agreement.py` does for pandoc. It compiles a fixed number of generated files the
+  reader does not refuse, and the digits the PDF prints must be the ones `mask` keeps. A
+  LuaLaTeX callback writes the digits out page by page.
+
+### Known gaps, from the start
+
+- An author's macro is not expanded where it is used, so a word its body prints there is in no
+  sentence that G6 or G14 reads; its body is read once, at the definition.
+- A class or package that changes how a character is read, beyond those refused, is not seen.
+- A package not in the refused list that prints a table or text from a data file is not seen:
+  what it prints is read by no gate.
+- A profile's LaTeX template is read by no gate, so text or digits it prints after
+  `\begin{document}` are compared with nothing in `build --latex`.
+- `\date` is read by no gate, since a Markdown build prints no date to compare it with.
+- A word holding an accent command is not read by G14.
+- The author block is written in the class's own commands, and is not compared with
+  authors.yaml. A number typed into the author block or `\date` is read by no gate.
+- The Word round trip, `annotate`, `reworded` and `audit` do not read `.tex`.
+- The profile's statement patterns are written for Markdown headings. For a LaTeX source they
+  are matched against `printed_view`, which writes each heading as a `#` line.
+- Biblatex's `.bbl` depends on Biber's version, and a journal that compiles it with another
+  version may refuse it.
+- `\appendix` sections count as main text.
+- Only numbered headings are compared with LaTeX's own.
+- How Overleaf resolves `\input` and figure paths has not been measured.
+- MiKTeX's limits on reading files are not set by the build.
+
+### Order of work
+
+Each step is one pull request, in this order, each under about 600 changed lines. After the
+fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
+
+1. The seam. `text/reader.py` and the Markdown reader; `source_files` through it; format
+   detection, `two-formats` and `other-format-file`; `not-read-in-latex`; the refusing commands.
+   Tests: the differential unchanged, rows in `test_reads_nothing.py`.
+2. The scanner and `mask`. `scan.py`, `commands.py`, `mask.py`, the refusals under BUILD.
+   Tests: `latex_texts()`, `latex mask` and `latex refusals`, their properties and `BROKEN`.
+   The likeliest to pass 600 lines; if it does, comments and the preamble go first, then maths
+   and listings.
+3. Structure. Includes, `printed_order`, inherited headings, sections, the abstract. Tests:
+   `latex sections`.
+4. Bindings and G2. `bindings`, `uncommented`, `table_at`, `mgvalues.sty` and its escape
+   table, `values` and its README row, `values-file-stale`; G2 and the custodian's counts
+   moved, and G1's synthetic-input check. Tests: the twin, G2's corruption cases on it,
+   `latex bindings`. The escape table's compile test needs LaTeX, so it skips on CI until step
+   9 installs TeX Live, and its first measurement is recorded in the pull request.
+5. Citations and G7. `cite.py`; G7, `lookup` and G6's citation positions moved; the twin's
+   comparison with the example takes in the citations. Tests: `latex citations`, G7's cases on
+   the twin.
+6. G4. The counts, sections and statements, and the profile's `latex:` block. Tests: G4's
+   cases on the twin.
+7. G6 and G14. `words`, accents, both gates moved. Tests: `latex words`, planted terms and
+   spellings.
+8. `substituted`, with TeX's specials escaped; G5, G8, G9, G13 and G15 moved. Tests:
+   each gate's cases on the twin, and a display holding `%` through G8.
+9. The PDF. `build/latex.py`, the log, the comparison of headings through the `.aux`, CI's
+   TeX Live and `MANUSCRIPT_GUARD_REQUIRE_LATEX`. Tests: `test_latex_agreement.py`.
+10. The submission folder. Flattening, values written in, `.bib` and `.bbl`, figures, the
+    compile alone, `submit`.
+11. Markdown to LaTeX. `build --latex`, the template, the reading back and the comparison
+    of digits.
+12. The rest. `init --latex`, the hooks, `explain` and `bind`, the panel's prompt, the
+    round's copy in `revision/`, the skills and the README.
+
 ## Zotero is never on the critical path
 
 Two budgets: a gate waits 20 seconds, an explicit `sync-bib` waits 300. Zotero indexing a

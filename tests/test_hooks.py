@@ -18,6 +18,8 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
+import threading
 from pathlib import Path
 
 import pytest
@@ -25,6 +27,18 @@ import pytest
 import manuscript_guard
 from manuscript_guard import hooks
 from manuscript_guard.hooks import HANDLERS, SUBMISSION_MARKERS, dispatch, main
+
+
+@pytest.fixture(autouse=True)
+def temporary_files(tmp_path_factory: pytest.TempPathFactory, monkeypatch) -> Path:
+    """The folder for temporary files, one of each test's own: the stop notes a project's files
+    there, for a handler run here and for a process `run_installed` starts. And no sign that
+    the suite itself runs under `claude -p`, where the stop does nothing."""
+    folder = tmp_path_factory.mktemp("temp")
+    monkeypatch.setattr(tempfile, "tempdir", str(folder))
+    for name in ("CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ATTENDED"):
+        monkeypatch.delenv(name, raising=False)
+    return folder
 
 
 def run(handler: str, payload: dict, capsys) -> dict | None:
@@ -114,6 +128,7 @@ def run_installed(
     env = {key: value for key, value in os.environ.items() if key not in ENCODING_SWITCHES}
     source = str(Path(manuscript_guard.__file__).resolve().parent.parent)
     env["PYTHONPATH"] = os.pathsep.join(filter(None, [source, env.get("PYTHONPATH")]))
+    env.update(dict.fromkeys(("TMPDIR", "TEMP", "TMP"), tempfile.gettempdir()))
     env.update(environment)
     finished = subprocess.run(
         [sys.executable, "-m", "manuscript_guard.hooks", handler],
@@ -1220,6 +1235,403 @@ def test_session_start_names_what_becomes_due_next(tmp_path: Path, capsys) -> No
     )
     text = context(run("session-start", {"cwd": str(root)}, capsys))
     assert "become due at 'drafting'" in text
+
+
+# ---------------------------------------------------------------- the stop
+#
+# At the end of a turn that changed what the gates read, the person is shown the session
+# start's line. The events are shaped as Claude Code 2.1.303 sent them on 2026-10-20, under
+# `claude -p` with a hook that wrote down what it was given.
+
+
+def started(cwd: Path, session: str = "session-1", source: str = "startup") -> dict:
+    return {"session_id": session, "cwd": str(cwd), "hook_event_name": "SessionStart",
+            "source": source}
+
+
+def stopped(cwd: Path, session: str = "session-1") -> dict:
+    return {
+        "session_id": session,
+        "transcript_path": str(cwd.parent / f"{session}.jsonl"),
+        "cwd": str(cwd),
+        "prompt_id": "prompt-1",
+        "permission_mode": "default",
+        "effort": {"level": "medium"},
+        "hook_event_name": "Stop",
+        "stop_hook_active": False,
+        "last_assistant_message": "Done: the Results now give the odds ratio.",
+        "background_tasks": [],
+        "session_crons": [],
+    }
+
+
+def add(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as file:
+        file.write(text)
+
+
+@pytest.fixture
+def status(monkeypatch) -> list[Path]:
+    """The gates stood in for by a line that says where it was asked, so that a test of what
+    the stop notices does not wait for them."""
+    asked: list[Path] = []
+
+    def line(root: Path) -> str:
+        asked.append(root)
+        return "STATUS"
+
+    monkeypatch.setattr(hooks, "_status_of", line)
+    return asked
+
+
+def test_a_turn_that_changed_the_manuscript_ends_with_the_status_line(
+    project: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    assert "drafting" in context(run_installed("session-start", as_sent(started(project)), {}))
+    add(project / "manuscript" / "main.md", "\nIt was 3.84.\n")
+
+    result = run_installed("stop", as_sent(stopped(project)), {})
+    assert result is not None
+    assert set(result) == {"systemMessage"}, "shown to the person, and nothing else asked"
+    assert "stage 'drafting'" in result["systemMessage"]
+    assert "1 failing" in result["systemMessage"]
+    # The line a session started now would give, word for word.
+    now = run_installed("session-start", as_sent(started(project, "session-2")), {})
+    assert result["systemMessage"] == context(now)
+
+
+def test_a_turn_that_changed_nothing_says_nothing_and_runs_no_gate(
+    project: Path, status: list[Path], capsys
+) -> None:
+    run("session-start", started(project), capsys)
+    status.clear()
+    assert run("stop", stopped(project), capsys) is None
+    # Saved again with the same bytes, later, as an editor saves a file nobody changed.
+    main = project / "manuscript" / "main.md"
+    main.write_bytes(main.read_bytes())
+    os.utime(main, ns=(main.stat().st_atime_ns, main.stat().st_mtime_ns + 5_000_000_000))
+    assert run("stop", stopped(project), capsys) is None
+    assert status == [], "the gates are run only for a turn that changed something"
+
+
+#: What a turn may do in a project, and whether the stop then gives the line.
+TURNS = {
+    "manuscript edited": (lambda p: add(p / "manuscript" / "main.md", "\nMore.\n"), True),
+    "manuscript added": (lambda p: add(p / "manuscript" / "supplementary" / "S2.md", "x"), True),
+    "manuscript removed": (
+        lambda p: (p / "manuscript" / "supplementary" / "S1_code_lists.md").unlink(),
+        True,
+    ),
+    "analysis edited": (lambda p: add(p / "analysis" / "01_disproportionality.py", "#\n"), True),
+    "results written": (lambda p: add(p / "results" / "02_other.json", "{}"), True),
+    "figure redrawn": (lambda p: add(p / "figures" / "forest.svg", "<!-- -->"), True),
+    "ledger edited": (lambda p: add(p / "literature" / "ledger.yaml", "\n# read\n"), True),
+    "source stored": (lambda p: add(p / "literature" / "sources" / "new.pdf", "%PDF"), True),
+    "paper.yaml edited": (lambda p: add(p / "paper.yaml", "\n# a note\n"), True),
+    "authors.yaml edited": (lambda p: add(p / "authors.yaml", "\n# a note\n"), True),
+    "build written": (lambda p: add(p / "build" / "manuscript.docx", "x"), False),
+    "review recorded": (lambda p: add(p / "review" / "round-9" / "x.yaml", "x: 1\n"), False),
+    "editor's lock file": (lambda p: add(p / "manuscript" / ".~lock.main.md#", "x"), False),
+    "Python's cache": (lambda p: add(p / "analysis" / "__pycache__" / "a.pyc", "x"), False),
+}
+
+
+@pytest.mark.parametrize("turn", list(TURNS))
+def test_the_stop_gives_the_line_for_a_change_to_what_it_watches(
+    turn: str, project: Path, status: list[Path], capsys
+) -> None:
+    change, shown = TURNS[turn]
+    run("session-start", started(project), capsys)
+    change(project)
+    expected = {"systemMessage": "STATUS"} if shown else None
+    assert run("stop", stopped(project), capsys) == expected
+    assert run("stop", stopped(project), capsys) is None, "said once, for the turn that did it"
+
+
+def test_a_folder_moved_by_paths_is_watched_where_it_now_is(
+    project: Path, status: list[Path], capsys
+) -> None:
+    """Where `paths:` puts a folder is read again once paper.yaml has changed: the stop keeps
+    the folders it last read, for as long as paper.yaml is as it was."""
+    run("session-start", started(project), capsys)
+    add(project / "paper.yaml", "\npaths:\n  results: output\n")
+    assert run("stop", stopped(project), capsys) == {"systemMessage": "STATUS"}
+
+    add(project / "output" / "01_disproportionality.json", "{}")
+    assert run("stop", stopped(project), capsys) == {"systemMessage": "STATUS"}
+    add(project / "results" / "old.json", "{}")
+    assert run("stop", stopped(project), capsys) is None, "results/ is no longer the results"
+
+
+def test_outside_a_project_the_stop_says_nothing_and_notes_nothing(
+    tmp_path: Path, temporary_files: Path, capsys
+) -> None:
+    folder = tmp_path / "elsewhere"
+    add(folder / "notes.md", "It was 3.84.\n")
+    run("session-start", started(folder), capsys)
+    add(folder / "notes.md", "And 4.2.\n")
+    assert run("stop", stopped(folder), capsys) is None
+    assert not (temporary_files / "manuscript-guard").exists()
+
+
+def test_with_nothing_noted_the_first_stop_notes_and_the_next_compares(
+    project: Path, status: list[Path], capsys
+) -> None:
+    """A session whose start was cut off, or was sent from a folder with no project, has
+    nothing to compare with: its first stop says nothing. One with no id never compares."""
+    main = project / "manuscript" / "main.md"
+    add(main, "\nMore.\n")
+    assert run("stop", stopped(project), capsys) is None
+    add(main, "\nMore.\n")
+    assert run("stop", stopped(project), capsys) == {"systemMessage": "STATUS"}
+
+    nameless = {key: value for key, value in stopped(project).items() if key != "session_id"}
+    add(main, "\nMore.\n")
+    assert run("stop", nameless, capsys) is None
+
+
+def test_a_session_compacted_or_resumed_keeps_the_note_its_turn_began_with(
+    project: Path, status: list[Path], capsys
+) -> None:
+    """Compaction starts the session again in the middle of a turn, under the same id."""
+    run("session-start", started(project), capsys)
+    add(project / "manuscript" / "main.md", "\nMore.\n")
+    run("session-start", started(project, source="compact"), capsys)
+    assert run("stop", stopped(project), capsys) == {"systemMessage": "STATUS"}
+
+
+def test_two_sessions_in_one_project_are_noted_apart(
+    project: Path, status: list[Path], capsys
+) -> None:
+    run("session-start", started(project, "first"), capsys)
+    run("session-start", started(project, "second"), capsys)
+    add(project / "manuscript" / "main.md", "\nMore.\n")
+    assert run("stop", stopped(project, "first"), capsys) == {"systemMessage": "STATUS"}
+    assert run("stop", stopped(project, "second"), capsys) == {"systemMessage": "STATUS"}
+
+
+#: What Claude Code 2.1.303 gave a hook on 2026-10-20, and whether anyone reads it: `claude -p`
+#: started on its own, then from inside a desktop session, whose entry point it keeps; the
+#: desktop app; and a tool that sets neither.
+SESSIONS = {
+    "claude -p": ({"CLAUDE_CODE_ENTRYPOINT": "sdk-cli", "CLAUDE_CODE_SESSION_ATTENDED": "0"},
+                  False),
+    "claude -p in a session": (
+        {"CLAUDE_CODE_ENTRYPOINT": "claude-desktop", "CLAUDE_CODE_SESSION_ATTENDED": "0"},
+        False,
+    ),
+    "desktop": ({"CLAUDE_CODE_ENTRYPOINT": "claude-desktop", "CLAUDE_CODE_SESSION_ATTENDED": "1"},
+                True),
+    "neither": ({}, True),
+}
+
+
+@pytest.mark.parametrize("session", list(SESSIONS))
+def test_under_claude_p_the_stop_does_nothing(
+    session: str, project: Path, status: list[Path], temporary_files: Path, monkeypatch, capsys
+) -> None:
+    """Under `claude -p` nobody reads what a hook shows, and the end of a scripted run is not
+    held up for it."""
+    variables, read = SESSIONS[session]
+    for name, value in variables.items():
+        monkeypatch.setenv(name, value)
+    run("session-start", started(project), capsys)
+    add(project / "manuscript" / "main.md", "\nMore.\n")
+    assert run("stop", stopped(project), capsys) == ({"systemMessage": "STATUS"} if read else None)
+    assert (temporary_files / "manuscript-guard").exists() is read, "nothing noted either"
+
+
+def test_codex_is_answered_with_the_one_field_it_reads(
+    project: Path, status: list[Path], capsys
+) -> None:
+    """Codex refuses a stop hook's answer that holds a field it does not know
+    (`StopCommandOutputWire`, codex-rs/hooks/src/schema.rs, read 2026-10-20), and shows
+    `systemMessage` as a warning. Its event, from events/stop.rs."""
+    codex = {
+        "session_id": "019a-test",
+        "turn_id": "turn-1",
+        "transcript_path": None,
+        "cwd": str(project),
+        "hook_event_name": "Stop",
+        "model": "gpt-test",
+        "permission_mode": "default",
+        "stop_hook_active": False,
+        "last_assistant_message": None,
+    }
+    run("session-start", {**codex, "hook_event_name": "SessionStart", "source": "startup"}, capsys)
+    add(project / "results" / "02_other.json", "{}")
+    assert run("stop", codex, capsys) == {"systemMessage": "STATUS"}
+
+
+@pytest.fixture
+def held(project: Path):
+    """A manuscript file no other handle can read while it is held: locked on Windows, and
+    elsewhere readable by nobody. Skipped where it is still read, as by root."""
+    path = project / "manuscript" / "main.md"
+    size, mode = path.stat().st_size, path.stat().st_mode
+    if os.name == "nt":
+        import msvcrt
+
+        with path.open("r+b") as file:
+            msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, size)
+            try:
+                if hooks._digest(path) is not None:
+                    pytest.skip("the file can still be read here")
+                yield path
+            finally:
+                file.seek(0)
+                msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, size)
+        return
+    path.chmod(0)
+    try:
+        if hooks._digest(path) is not None:
+            pytest.skip("the file can still be read here")
+        yield path
+    finally:
+        path.chmod(mode)
+
+
+def test_a_file_that_cannot_be_read_is_compared_by_its_size_and_time(
+    project: Path, held: Path, status: list[Path], capsys
+) -> None:
+    """Never a traceback: the file is noted without its digest, and a turn that writes it
+    is still seen, by its time."""
+    hooks.session_start(started(project))
+    capsys.readouterr()
+    assert hooks.stop(stopped(project)) == 0
+    assert capsys.readouterr().out == "", "nothing changed"
+    os.utime(held, ns=(held.stat().st_atime_ns, held.stat().st_mtime_ns + 5_000_000_000))
+    assert hooks.stop(stopped(project)) == 0
+    assert json.loads(capsys.readouterr().out) == {"systemMessage": "STATUS"}
+
+
+@pytest.mark.parametrize(
+    "note",
+    [b"", b"\xff\xfe\x00", b"[]", b'{"files": {"a": [1]}}', b'{"files": {}, "folders": 3}',
+     b"[" * 100_000],
+    ids=["empty", "not UTF-8", "a list", "an entry cut short", "folders a number", "deep"],
+)
+def test_a_note_that_cannot_be_used_is_noted_again(
+    project: Path, note: bytes, temporary_files: Path, status: list[Path], capsys
+) -> None:
+    """Read by a hook started as the tool starts it: nothing on standard error, and the stop
+    after the next turn compares with the note made in place of the broken one."""
+    hooks._note_the_files(started(project))
+    (noted,) = (temporary_files / "manuscript-guard" / "turns").glob("*.json")
+    noted.write_bytes(note)
+    add(project / "manuscript" / "main.md", "\nIt was 3.84.\n")
+    assert run_installed("stop", as_sent(stopped(project)), {}) is None
+    add(project / "manuscript" / "main.md", "\nIt was 4.2.\n")
+    assert run("stop", stopped(project), capsys) == {"systemMessage": "STATUS"}
+
+
+# The limit. The agent tool cuts a hook off at the timeout hooks.json gives it, and drops what
+# it would have said: a check slower than that told the author nothing, not even that nothing
+# had been checked.
+
+
+def test_the_limit_leaves_the_hook_time_to_say_so_before_the_tool_cuts_it_off() -> None:
+    config = json.loads(
+        (Path(__file__).resolve().parent.parent / "plugin" / "hooks" / "hooks.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    timeouts = {
+        hook["command"].split()[-1]: hook["timeout"]
+        for groups in config["hooks"].values()
+        for group in groups
+        for hook in group["hooks"]
+    }
+    for handler in ("session-start", "stop"):
+        assert timeouts[handler] >= hooks.CHECK_LIMIT + 10, handler
+
+
+@pytest.fixture
+def slow_gates(monkeypatch):
+    """Gates that do not finish until the test lets them, and a limit of a twentieth of a
+    second."""
+    finish = threading.Event()
+
+    def wait(root: Path) -> str:
+        finish.wait(60)
+        return "STATUS"
+
+    monkeypatch.setattr(hooks, "_status_of", wait)
+    monkeypatch.setattr(hooks, "CHECK_LIMIT", 0.05)
+    monkeypatch.setattr(hooks, "_LEFT_RUNNING", [])
+    yield
+    finish.set()
+    for worker in hooks._LEFT_RUNNING:
+        worker.join(60)
+
+
+@pytest.mark.usefixtures("slow_gates")
+def test_a_check_that_does_not_finish_in_time_is_said_not_to_have(
+    project: Path, capsys
+) -> None:
+    said = context(run("session-start", started(project), capsys))
+    assert f"the check of {project.name} did not finish in 0.05 s" in said
+    assert "`manuscript-guard check`" in said
+
+    add(project / "manuscript" / "main.md", "\nMore.\n")
+    result = run("stop", stopped(project), capsys)
+    assert result is not None and set(result) == {"systemMessage"}
+    assert f"the check of {project.name} did not finish" in result["systemMessage"]
+    assert len(hooks._LEFT_RUNNING) == 2, "left running, and not waited for"
+
+
+def test_the_process_ends_without_waiting_for_the_gates_it_gave_up_on(project: Path) -> None:
+    """Started as the tool starts it, with gates that would take ten minutes: the hook answers
+    and its process ends, and nothing is said on standard error."""
+    hooks._note_the_files(started(project))
+    add(project / "manuscript" / "main.md", "\nMore.\n")
+    source = str(Path(manuscript_guard.__file__).resolve().parent.parent)
+    script = (
+        "import sys, time\n"
+        "import manuscript_guard.cli\n"
+        "from manuscript_guard import hooks\n"
+        "manuscript_guard.cli._run_gates = lambda *a, **k: time.sleep(600)\n"
+        "hooks.CHECK_LIMIT = 0.5\n"
+        "sys.exit(hooks.main(['stop']))\n"
+    )
+    env = {**os.environ, "PYTHONPATH": source, "TMP": tempfile.gettempdir(),
+           "TEMP": tempfile.gettempdir(), "TMPDIR": tempfile.gettempdir()}
+    finished = subprocess.run(
+        [sys.executable, "-c", script],
+        input=as_sent(stopped(project)),
+        capture_output=True,
+        env=env,
+        timeout=120,
+    )
+    assert finished.returncode == 0
+    assert finished.stderr == b""
+    said = json.loads(finished.stdout)["systemMessage"]
+    assert "did not finish in 0.5 s" in said
+
+
+@pytest.mark.parametrize(
+    "where", ["project", "manuscript", "outside", "missing"]
+)
+def test_the_hooks_find_the_project_where_check_finds_it(
+    where: str, project: Path, tmp_path: Path
+) -> None:
+    """`_project_root` is `find_root` without importing the contracts, which load the
+    project's schemas at the end of every turn."""
+    from manuscript_guard.contracts import ContractError, find_root
+
+    folder = {
+        "project": project,
+        "manuscript": project / "manuscript",
+        "outside": tmp_path,
+        "missing": project / "not" / "there",
+    }[where]
+    try:
+        expected = find_root(folder)
+    except ContractError:
+        expected = None
+    assert hooks._project_root({"cwd": str(folder)}) == expected
 
 
 # ---------------------------------------------------------------- a project that cannot be read

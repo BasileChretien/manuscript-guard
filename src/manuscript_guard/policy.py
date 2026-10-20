@@ -188,6 +188,9 @@ BINDS_AT = {
     # -- submission -------------------------------------------------------------
     # The panel's verdict is the last thing to bind, because a panel reviews a draft
     # that is otherwise finished.
+    # A gate not yet taught LaTeX read nothing of a LaTeX manuscript: a note while it is
+    # written, a failure for the version sent anywhere.
+    "not-read-in-latex": SUBMISSION,
     "no-review": SUBMISSION,
     "rounds-outstanding": SUBMISSION,
     "review-missing": SUBMISSION,

@@ -25,6 +25,10 @@ command needs it, write it to a file with the file tools and give the command th
 
 ## 1. Get the source
 
+A claim with no source yet needs one found first, from a registry and chosen by the author:
+the manuscript-writing skill, "When a claim needs a citation", says how, with
+`manuscript-guard search`. Never take a number from a work recalled from memory.
+
 Where Zotero is running with Better BibTeX, start with `manuscript-guard sync-sources`. It
 copies each cited work's PDF or saved page from Zotero into `literature/sources/`, under the
 name below, or Zotero's text of it where the file is not on this computer or is an EPUB,

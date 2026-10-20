@@ -356,8 +356,9 @@ WORD_SAVED = Path(__file__).parent / "data" / "word"
 def test_what_word_saved_is_read_as_decided() -> None:
     """Documents Word 16 itself saved (2026-10-20, over COM), from round 8 of the example:
     every suggestion decided, and one with all but the first left open. Word merged runs,
-    renumbered the comments and wrote a reply's parent in `commentsExtended.xml`; the person
-    who saved them is renamed `Ana Author`, and nothing else was changed."""
+    renumbered the comments and wrote a reply's parent in `commentsExtended.xml`. The person
+    who saved them is renamed `Ana Author`, with initials `AA`, and Word's account record of
+    them is removed; nothing else was changed."""
     from manuscript_guard.suggestions import decisions
     from manuscript_guard.tracked import offered_of, pending
 
@@ -366,6 +367,10 @@ def test_what_word_saved_is_read_as_decided() -> None:
     authors = {entry["author"] for entry in offered}
     assert [entry["finding"] for entry in offered] == ["r8-pe-02"] * 4 + ["r8-pe-03"]
     assert (pending(decided, authors), pending(still, authors)) == (0, 8)
+    # Read with every change accepted, an edit still open reads as its new words; its old
+    # words, still there as deleted text, are not read.
+    assert offered_of(still) == offered
+    assert [d.state for d in decisions(still, offered)[0]] == ["accepted"] * 5
     found, told = decisions(decided, offered)
     assert [d.state for d in found] == ["accepted", "refused", "accepted", "accepted", "refused"]
     assert [[(r.author, r.text) for r in d.replies] for d in found] == [

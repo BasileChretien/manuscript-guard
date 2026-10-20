@@ -36,7 +36,7 @@ from pathlib import Path
 from manuscript_guard.contracts._schema import ContractError, read_structured, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
-from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.text.reader import manuscript_files
 
 GATE = "G11"
 REVIEW_DIR = "review"
@@ -48,7 +48,7 @@ VERDICT_ORDER = ("pass", "minor-revision", "major-revision", "reject")
 def manuscript_digest(project: Project) -> str:
     """A digest of the manuscript source, so a review can be tied to what it read."""
     digest = hashlib.sha256()
-    for path in source_files(project.path("manuscript")):
+    for path in manuscript_files(project):
         digest.update(path.name.encode("utf-8"))
         digest.update(path.read_bytes())
     return digest.hexdigest()
@@ -67,7 +67,7 @@ def file_digests(project: Project) -> dict[str, str]:
     root = project.path("manuscript")
     return {
         path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in source_files(root)
+        for path in manuscript_files(project)
     }
 
 

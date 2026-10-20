@@ -64,8 +64,11 @@ PER_FILE_CAP = 50
 SUPPLEMENTARY = "supplementary"
 
 
-def source_files(manuscript_dir: Path, *, main_text_only: bool = False) -> list[Path]:
-    """Every Markdown source, skipping directories whose name starts with `_` or `.`.
+def source_files(
+    manuscript_dir: Path, *, main_text_only: bool = False, glob: str = SOURCE_GLOB
+) -> list[Path]:
+    """Every Markdown source, skipping directories whose name starts with `_` or `.`. `glob`
+    is for `text/reader.py`, which lists a LaTeX manuscript's `.tex` files the same way.
 
     The underscore convention gives an author somewhere to keep notes and abandoned drafts
     without either polluting the report or being silently exempted from it: the rule is
@@ -79,7 +82,7 @@ def source_files(manuscript_dir: Path, *, main_text_only: bool = False) -> list[
     if not manuscript_dir.exists():
         return []
     out = []
-    for path in sorted(manuscript_dir.rglob(SOURCE_GLOB)):
+    for path in sorted(manuscript_dir.rglob(glob)):
         parts = path.relative_to(manuscript_dir).parts
         if any(part.startswith((".", "_")) for part in parts):
             continue

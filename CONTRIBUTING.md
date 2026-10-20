@@ -126,3 +126,11 @@ ruff check src tests
 
 The R interoperability tests skip when R is absent, and the Zotero tests skip when Zotero
 is not running. Neither is required to work on the rest.
+
+To run it faster, as CI does, run the suite on parallel workers and then the tests that
+read a clock, which a worker beside them would slow:
+
+```bash
+pytest -q -n auto -m "not timing"
+pytest -q -m timing
+```

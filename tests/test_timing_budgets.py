@@ -366,6 +366,34 @@ def test_every_entry_says_why_and_every_budget_its_headroom() -> None:
             assert str(entry.get("headroom", "")).strip(), f"{where}: no measured headroom"
 
 
+def test_each_budget_runs_apart_from_the_parallel_workers() -> None:
+    """CI runs the suite on parallel workers and the tests marked `timing` after them in one
+    process. A budget held by a helper (`check_overhead`) marks the tests that call it, at any
+    depth; one that marked no test would be measured beside busy workers (round 1 of #359:
+    two helpers' budgets matched no test id, and their fourteen callers went to the
+    workers). So the suite is collected as CI selects it, and each budget has a test there."""
+    import importlib
+    import subprocess
+    import sys
+
+    from conftest import budgets, clocked
+
+    listed = budgets()
+    collected = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
+         "-m", "timing", *sorted(listed)],
+        cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=600,
+    )  # fmt: skip
+    assert collected.returncode == 0, f"did not collect: {collected.stderr}{collected.stdout}"
+    marked = {line.split("[", 1)[0] for line in collected.stdout.splitlines() if "::" in line}
+    for path, names in listed.items():
+        module = importlib.import_module(Path(path).stem)
+        for name in names:
+            holders = {f"{path}::{held}" for held in clocked(module, {name})}
+            assert holders & marked, f"{path}::{name}: no test that holds it is marked timing"
+
+
 @pytest.mark.parametrize(
     "entry", [e for e in LISTED if e["kind"] == "budget"], ids=lambda e: e["where"]
 )

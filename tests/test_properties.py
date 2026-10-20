@@ -48,13 +48,16 @@ from generated import (
     PLACEHOLDERS,
     SOURCE_GAPS,
     SOURCE_WORDS,
+    STRETCHES,
     TEMPORARY_LINKS,
     TERMS,
     TYPOGRAPHY,
+    WRITTEN_WORDS,
     bindings,
     commented,
     generated,
     holds,
+    laid_out,
     lines,
     mean_tables,
     pdf_figures,
@@ -63,6 +66,7 @@ from generated import (
     share_tables,
     signs,
     sources,
+    suggestion_paragraphs,
     texts,
     typed,
     vector_figures,
@@ -3245,6 +3249,103 @@ def _a_line_break_between_an_edit_s_words_is_no_space(patch: pytest.MonkeyPatch)
     from manuscript_guard import suggestions
 
     patch.setattr(suggestions, "_SPACE", "[ \\t\\u00a0]+")
+
+
+def _stretch_of(word: tuple, tokens: list) -> int:
+    """Which stretch between two values a word of `laid_out` stands in: how many values
+    print before it."""
+    return sum(1 for _start, end in tokens if end <= word[4][0])
+
+
+@holds(60, suggestion_paragraphs())
+def test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes(
+    paragraph: dict[str, Any],
+) -> None:
+    """`import` writes a suggestion accepted in Word into the source where its old words
+    are (`suggestions.write_in`), then merges against that whatever else the author changed
+    in the paragraph. Every run of one or two words of every stretch is written over in
+    turn. In prose, emphasis or strong emphasis it is written, and only those words change,
+    in the source and in what Word shows; each value prints where it did, moved along; the
+    merge brings the paragraph back as written, and when the author also retyped a word
+    between other values, it keeps the stretch the suggestion was written in, markup and
+    all. Inside code or a link's text it is not written: Word shows those without their
+    markup, so the words there are not what the source holds."""
+    from manuscript_guard.roundtrip import align, segments
+    from manuscript_guard.suggestions import Words, write_in
+
+    source, printed, words, tokens, renderings = laid_out(paragraph)
+    runs = [
+        words[at : at + length]
+        for length in (1, 2)
+        for at in range(len(words) - length + 1)
+        if words[at][2] == words[at + length - 1][2]
+    ]
+    for count, run in enumerate(runs):
+        new = WRITTEN_WORDS[count % len(WRITTEN_WORDS)]
+        old = " ".join(word for word, *_rest in run)
+        written = write_in(source, printed, tokens, [Words(old, new)])
+        if not STRETCHES[run[0][1]][2]:
+            assert isinstance(written, str), (old, source)
+            continue
+        assert not isinstance(written, str), (old, written, source)
+        (start, _), (shown_start, _) = run[0][3], run[0][4]
+        (_, end), (_, shown_end) = run[-1][3], run[-1][4]
+        shown_new = " ".join(new.split())
+        assert written.source == source[:start] + new + source[end:], (old, source)
+        assert written.shown == printed[:shown_start] + shown_new + printed[shown_end:]
+        assert [written.shown[a:b] for a, b in written.tokens] == renderings, (old, source)
+        alone = align(written.bare, written.shown, written.shown, written.tokens)
+        assert alone.rebuilt == written.bare, (old, source)
+        # The author retypes a word between other values, where no link is: a link's address
+        # is not in Word's text, and the merge refuses a stretch with one that was edited.
+        here = _stretch_of(run[0], tokens)
+        linked = {_stretch_of(word, tokens) for word in words if word[1] == "link"}
+        other = next(
+            (word for word in words
+             if _stretch_of(word, tokens) not in {here, *linked} and word[1] != "code"),
+            None,
+        )  # fmt: skip
+        if other is None:
+            continue
+        at, to = other[4]
+        if at >= shown_end:
+            at, to = (at + len(shown_new) - (shown_end - shown_start),
+                      to + len(shown_new) - (shown_end - shown_start))  # fmt: skip
+        returned = written.shown[:at] + "zebra" + written.shown[to:]
+        merged = align(written.bare, written.shown, returned, written.tokens).rebuilt
+        assert merged is not None and "zebra" in merged, (old, other[0], source)
+        assert segments(written.bare)[0][here].strip() in merged, (old, other[0], source)
+
+
+def _a_value_is_not_moved_along_by_the_words_written_before_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    patch.setattr(suggestions, "_shifted", lambda spans, after, by: spans)
+
+
+def _a_suggestion_is_written_inside_code_or_a_link(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+    from manuscript_guard.roundtrip import _tokens
+
+    def tokens_only(paragraph: str, start: int, end: int) -> str:
+        found = any(token.at < end and start < token.to for token in _tokens(paragraph))
+        return "inside a binding or a citation" if found else ""
+
+    patch.setattr(suggestions, "_in_the_way", tokens_only)
+
+
+def _emphasis_is_in_the_way_of_a_suggestion(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+    from manuscript_guard.roundtrip import _emphasis
+
+    real = suggestions._in_the_way
+
+    def with_emphasis(paragraph: str, start: int, end: int) -> str:
+        if any(a < end and start < b for a, b, _width in _emphasis(paragraph)):
+            return "inside emphasis"
+        return real(paragraph, start, end)
+
+    patch.setattr(suggestions, "_in_the_way", with_emphasis)
 
 
 # ------------------------------------------------------------------------- a rewording
@@ -6468,6 +6569,18 @@ BROKEN = {
     "a line break between an edit's words is no space": (
         _a_line_break_between_an_edit_s_words_is_no_space,
         test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else,
+    ),
+    "a value is not moved along by the words written before it": (
+        _a_value_is_not_moved_along_by_the_words_written_before_it,
+        test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
+    ),
+    "a suggestion is written inside code or a link": (
+        _a_suggestion_is_written_inside_code_or_a_link,
+        test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
+    ),
+    "emphasis is in the way of a suggestion": (
+        _emphasis_is_in_the_way_of_a_suggestion,
+        test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
     ),
     "a rule's or a table's dashes are em dashes": (
         _a_rule_or_a_table_s_dashes_are_em_dashes,

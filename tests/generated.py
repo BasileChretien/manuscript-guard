@@ -978,6 +978,109 @@ def suggested_edits(draw: st.DrawFn) -> dict[str, str]:
     return {"text": text, "old": old, "new": new}
 
 
+#: Words of a paragraph a suggestion is written into, each used once so that a run of them
+#: is found once: letters only, so that none is a number to `reworded`, and none a word of
+#: the link's address.
+PARAGRAPH_WORDS = (
+    "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india",
+    "juliet", "kilo", "lima", "mike", "november", "oscar", "papa", "quebec", "romeo",
+    "sierra", "tango", "uniform", "victor", "whiskey", "xray", "yankee", "zulu", "amber",
+    "basil", "cedar", "dune", "ember", "fern", "grove", "heath", "iris", "jade", "kelp",
+    "larch", "moss", "nettle",
+)  # fmt: skip
+#: Each kind of stretch a paragraph's words stand in: how it is typed around them, and
+#: whether a suggestion is written inside it. Emphasis is prose with marks around it, and
+#: Word shows the new words in it; code and a link's text Word shows without their markup.
+STRETCHES = {
+    "plain": ("", "", True),
+    "em": ("*", "*", True),
+    "strong": ("**", "**", True),
+    "code": ("`", "`", False),
+    "link": ("[", "](https://example.invalid/page)", False),
+}
+#: What each value of the analysis prints, in the order the values stand.
+RENDERED = ("12", "345", "6.7", "89", "1,234")
+#: The words written in place of a run: shorter, longer, and two with a double space
+#: between them, which Word shows as one.
+WRITTEN_WORDS = ("plainly", "the revised wording here", "kept  apart", "so")
+
+
+@st.composite
+def suggestion_paragraphs(draw: st.DrawFn) -> dict[str, Any]:
+    """A paragraph holding every kind of stretch a suggestion can be written beside or
+    inside, in an order drawn each time: words alone, in emphasis, in strong emphasis, in
+    code and in a link's text, with values of the analysis between them. Each kind is there
+    at least once, and the paragraph ends with a value and words after it, so that some
+    words always stand before a value. As its stretches and the spaces between them, for
+    `laid_out` to type and print."""
+    kinds = ["plain", "em", "strong", "code", "link", "binding"]
+    kinds += draw(st.lists(st.sampled_from([*STRETCHES, "binding"]), max_size=3))
+    kinds = [*draw(st.permutations(kinds)), "binding", "plain"]
+    words = iter(draw(st.permutations(PARAGRAPH_WORDS)))
+    stretches = [
+        [kind, [] if kind == "binding" else [next(words) for _ in range(draw(st.integers(1, 3)))]]
+        for kind in kinds
+    ]
+    space = st.sampled_from((" ", "\n"))
+    return {
+        "stretches": stretches,
+        "between": draw(st.lists(space, min_size=len(kinds) - 1, max_size=len(kinds) - 1)),
+        "inside": draw(st.lists(space, min_size=3 * len(kinds), max_size=3 * len(kinds))),
+    }
+
+
+def laid_out(paragraph: dict[str, Any]) -> tuple[str, str, list, list, list]:
+    """A `suggestion_paragraphs` paragraph as typed in the source and as Word shows it:
+    `(source, printed, words, tokens, renderings)`. Each word is `(word, kind, stretch,
+    (start, end) in the source, (start, end) in what Word shows)`, and `tokens` is where each
+    value prints. Word shows a line break as a space, and code and a link by their text."""
+    source, printed = "", ""
+    words, tokens, renderings = [], [], []
+    inside = iter(paragraph["inside"])
+    for index, (kind, stretch) in enumerate(paragraph["stretches"]):
+        if index:
+            source += paragraph["between"][index - 1]
+            printed += " "
+        if kind == "binding":
+            rendering = RENDERED[len(tokens)]
+            source += "{{results.value_" + "abcde"[len(tokens)] + "}}"
+            tokens.append((len(printed), len(printed) + len(rendering)))
+            renderings.append(rendering)
+            printed += rendering
+            continue
+        opening, closing, _prose = STRETCHES[kind]
+        source += opening
+        for at, word in enumerate(stretch):
+            if at:
+                # A line break inside code or a link's text is left out: what it does there
+                # is not what this generator is about.
+                source += next(inside) if STRETCHES[kind][2] else " "
+                printed += " "
+            typed = (len(source), len(source) + len(word))
+            shown = (len(printed), len(printed) + len(word))
+            words.append((word, kind, index, typed, shown))
+            source += word
+            printed += word
+        source += closing
+    return source, printed, words, tokens, renderings
+
+
+@st.composite
+def suggestion_writes(draw: st.DrawFn) -> dict[str, Any]:
+    """One run of a `suggestion_paragraphs` paragraph's words to write over, which may cross
+    from one stretch into the next, and words to write, some of them markup."""
+    source, printed, words, tokens, _renderings = laid_out(draw(suggestion_paragraphs()))
+    first = draw(st.integers(0, len(words) - 1))
+    run = words[first : first + draw(st.integers(1, 2))]
+    return {
+        "source": source,
+        "printed": printed,
+        "tokens": [list(token) for token in tokens],
+        "old": " ".join(word for word, *_rest in run),
+        "new": draw(st.sampled_from((*WRITTEN_WORDS, "*held*", "two\nlines"))),
+    }
+
+
 # ---------------------------------------------------------------------------- spellings
 
 #: Words one English writes and the other does not, with a name's capital, in capitals,
@@ -1640,6 +1743,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "quote placement": nearly_quoted(),
     "suggested edit": suggested_edits(),
+    "suggestion written": suggestion_writes(),
     "spelling": st.fixed_dictionaries(
         {
             "text": texts(SPELT),

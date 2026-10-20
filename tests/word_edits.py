@@ -162,6 +162,27 @@ def decide(
     return target
 
 
+def retype(document: Path, number: int, old: str, new: str) -> Path:
+    """`document` with `old` typed over as `new` in the paragraph that holds suggestion
+    `number`, with Track Changes off: what an author does beside a suggestion, in words
+    Word keeps in one run. Each run's text is a `w:t`, and typing inside one changes only
+    its text."""
+    names, parts = _read(document)
+    root = ET.fromstring(parts["word/document.xml"])
+    for paragraph in root.iter(W + "p"):
+        if _span(paragraph, number) is None:
+            continue
+        for t in paragraph.iter(W + "t"):
+            if t.text and old in t.text:
+                t.text = t.text.replace(old, new, 1)
+                parts["word/document.xml"] = _serialised(
+                    root, _namespaces(parts["word/document.xml"])
+                )
+                _write(document, names, parts)
+                return document
+    raise AssertionError(f"{old!r} is not in one run of suggestion {number}'s paragraph")
+
+
 def _anchor(root: ET.Element, number: int) -> str:
     for paragraph in root.iter(W + "p"):
         span = _span(paragraph, number)

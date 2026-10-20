@@ -19,13 +19,14 @@ to go. An edit is dropped, and says why, unless every one of these holds:
   curly one, `--` an en dash, a space a line break or a no-break space;
 - the edit is prose: `reworded`, comparing the paragraph before and after, finds nothing to
   say of a binding, a citation or a typed number;
-- accepted in Word, the edit comes back into the source as written. The paragraph as Word
-  would return it is merged by `roundtrip.align`, the merge `import` makes, and the result
-  must be the source with `old` replaced by `new`, line wrapping aside. A merge rebuilds an
-  edited stretch from Word's text, so an edit beside emphasis, code or anything else Word
-  shows without its markup is dropped here rather than flattened there;
+- written into the source where its words are (`write_in`, which is how `import` writes
+  one accepted in Word), the paragraph reads as Word shows it with the edit accepted, and
+  is still a paragraph of its own under its identifier. Only the edit's own words change:
+  emphasis, code or a link beside them stays as the source has it, and emphasis around
+  them goes round the new words, as Word shows those. Words that run across a line break,
+  or into a binding, a citation or an inline construct, are not written;
 - no other placed edit changes any of the same words, and with the edits before it in its
-  paragraph accepted too, it still comes back as written.
+  paragraph written too, it still holds.
 
 Each reading has at most `PER_READING` edits written.
 """
@@ -59,7 +60,6 @@ _TYPESET = (
 _SPACE = "(?:[ \\t\\u00a0]*\\n[ \\t\\u00a0]*|[ \\t\\u00a0]+)"
 _RUN = re.compile(r"\s+")
 _SOFT = re.compile(r"[ \t]*\n[ \t]*|[ \t]+")
-_HARD_BREAK = re.compile(r"(?:  |\\)\n")
 
 
 @dataclass(frozen=True)
@@ -255,14 +255,15 @@ def refused_words(old: str, new: str) -> str:
 
 @dataclass(frozen=True)
 class _Context:
-    """What placing reads once: the source files, the paragraphs, the build as printed."""
+    """What placing reads once: the source files, searchable and as they are, the
+    paragraphs, the build as printed."""
 
     sources: list[tuple[Path, str]]
     paragraphs: dict[str, tuple[Path, str, int]]
     printed: dict[str, str]
     extents: dict[str, tuple]
     supplementary: frozenset[str]
-    abbreviations: frozenset[str]
+    raws: dict[Path, str]
     as_sent: list[str]
 
 
@@ -294,69 +295,180 @@ def _in_source(context: _Context, edit: Edit) -> tuple[str, int, int] | str:
     )
 
 
-def _inside_markup(paragraph: str, start: int, end: int) -> str:
-    """What the words at `start:end` of a source paragraph are inside that an edit does not
-    reach into, named: a binding, a citation, or an inline construct Word shows without its
-    markup (code, a link, a footnote, maths, raw markup). Empty where they are in prose."""
+#: What `_SCAN` finds that `_INLINE` gives no name, as a refusal names it.
+_UNNAMED = {"code": "code", "entity": "a character reference"}
+
+
+def _in_the_way(paragraph: str, start: int, end: int) -> str:
+    """Why the words at `start:end` of a source paragraph cannot be written over, or nothing
+    where they are prose: they are inside a binding, a citation or an inline construct Word
+    shows without its markup (code, a link, a footnote, maths, raw markup), or they run
+    across a hard line break, which writing them would delete. Emphasis is not in the way:
+    the new words are written inside it, as Word shows them."""
     from manuscript_guard.roundtrip import _INLINE, _SCAN, _tokens
 
     for token in _tokens(paragraph):
         if token.at < end and start < token.to:
-            return "a binding" if token.text.startswith("{{") else "a citation"
+            inside = "a binding" if token.text.startswith("{{") else "a citation"
+            return f"its words are inside {inside}, which an edit does not change"
     for found in _SCAN.finditer(paragraph):
         kind = found.lastgroup or ""
-        if kind in ("entity", "nbsp", "break") or not (found.start() < end and start < found.end()):
+        if kind == "nbsp" or not (found.start() < end and start < found.end()):
             continue
-        return _INLINE[kind][0] or ("code" if kind == "code" else "an escaped character")
+        if kind == "break":
+            return "its words run across a line break, which writing them would delete"
+        inside = _INLINE[kind][0] or _UNNAMED.get(kind, "an escaped character")
+        return f"its words are inside {inside}, which an edit does not change"
     return ""
+
+
+@dataclass(frozen=True)
+class Words:
+    """An edit's words, as its reading holds them: what `write_in` writes. `printed` is the
+    digest the document recorded of the old words as the build printed them, which `import`
+    holds them to; empty where nothing was recorded yet."""
+
+    old: str
+    new: str
+    printed: str = ""
+
+
+@dataclass(frozen=True)
+class Written:
+    """A paragraph with edits written into it: its source without the anchors that end it,
+    those anchors, the paragraph as Word shows it with the edits accepted, and where each of
+    its values and citations is in that (None where it has none to place)."""
+
+    bare: str
+    anchors: str
+    shown: str
+    tokens: tuple[tuple[int, int], ...] | None
+
+    @property
+    def source(self) -> str:
+        return self.bare + self.anchors
+
+
+def _once(pattern: re.Pattern[str], text: str, where: str) -> re.Match[str] | str:
+    found = _starts(pattern, text)
+    if len(found) == 1:
+        return found[0]
+    if found:
+        return f"its words are in the paragraph {len(found)} times {where}"
+    return f"its words are not in the paragraph {where}"
+
+
+def write_in(
+    source: str, printed: str, tokens: Sequence[tuple[int, int]] | None, edits: Sequence[Words]
+) -> Written | str:
+    """The paragraph `source`, which the build printed as `printed` with its values and
+    citations at `tokens`, with each edit's new words written where its old words are; or
+    why they cannot be.
+
+    The other half of how a suggestion is made exact. `import` merges a rewording by
+    rebuilding each edited stretch between two values from Word's text, which holds no
+    markup, so emphasis or code beside the words would be flattened. A suggestion's words
+    are known, and where they were found, so they are written there instead and nothing
+    else in the paragraph is touched; `import` then merges whatever else the author changed
+    in it against this, by its own rules (`merge.plan_import`).
+
+    Nothing is guessed. Each edit's old words are found once in the source and once in what
+    the build printed, and where the document recorded a digest of the printed ones, they
+    are those. They lie outside every binding, citation and inline construct and across no
+    line break (`_in_the_way`), and no two edits change the same words. Written, the
+    paragraph is a change of words to `reworded`, and it reads as Word shows it with the
+    edits accepted. That the file still marks it as a paragraph of its own is asked apart,
+    of the file (`_stays_marked`), and `import` asks it of every write it makes.
+    """
+    from manuscript_guard.reworded import compare
+    from manuscript_guard.roundtrip import _checked, _read, _reads_as, anchors_apart
+
+    apart = anchors_apart(source)
+    if apart is None:
+        return "its paragraph ends in a way import cannot merge into"
+    bare, anchors = apart
+    places = []
+    for words in edits:
+        pattern = pattern_of(words.old)
+        here = _once(pattern, bare, "as it stands")
+        if isinstance(here, str):
+            return here
+        why = _in_the_way(bare, here.start(), here.end())
+        if why:
+            return why
+        shown = _once(pattern, printed, "as the build printed it")
+        if isinstance(shown, str):
+            return shown
+        if words.printed and short_digest(shown.group(0)) != words.printed:
+            return "its words as the build printed them are not the ones the document showed"
+        places.append((here.span(), shown.span(), words))
+
+    def overlap(one: tuple[int, int], two: tuple[int, int]) -> bool:
+        return one[0] < two[1] and two[0] < one[1]
+
+    for i, (one, one_shown, _words) in enumerate(places):
+        for two, two_shown, _other in places[i + 1 :]:
+            if overlap(one, two) or overlap(one_shown, two_shown):
+                return "two of its edits change some of the same words"
+    reading = _read(bare)
+    spans: list[tuple[int, int]] = []
+    if reading.protected:
+        checked = _checked(tokens, len(reading.protected), len(printed))
+        if checked is None:
+            return "its values and citations could not be lined up with the build"
+        spans = checked
+        for _here, (a, b), _w in places:
+            if any(a < end and start < b for start, end in spans):
+                return "its words run into a value or a citation as the build printed it"
+    written, shown_text = bare, printed
+    # From the last edit to the first, so that the offsets before each still hold.
+    for (start, end), _shown, words in sorted(places, key=lambda p: p[0], reverse=True):
+        written = written[:start] + words.new.strip() + written[end:]
+    for _here, (a, b), words in sorted(places, key=lambda p: p[1], reverse=True):
+        new = " ".join(words.new.split())
+        shown_text = shown_text[:a] + new + shown_text[b:]
+        spans = _shifted(spans, b, len(new) - (b - a))
+    report = compare(source, written + anchors)
+    if report.findings:
+        return f"it is more than a change of words: {report.findings[0].message}"
+    renderings = [shown_text[start:end] for start, end in spans]
+    if not _reads_as(written, reading.protected, renderings, shown_text):
+        return "written into the source, it would not read as Word shows it"
+    return Written(written, anchors, shown_text, tuple(spans) if reading.protected else None)
+
+
+def _shifted(spans: list[tuple[int, int]], after: int, by: int) -> list[tuple[int, int]]:
+    """Each value's or citation's place in the printed paragraph once the words ending at
+    `after` are `by` characters longer: the ones after them move with them."""
+    return [(start + by, end + by) if start >= after else (start, end) for start, end in spans]
+
+
+def _stays_marked(raw: str, start: int, before: str, after: str) -> bool:
+    """Whether the source file `raw`, with the paragraph `before` at `start` written as
+    `after`, still marks every paragraph it marked, under the same identifiers, and this one
+    with its new text: a block `tag` reads as something else, a list or a heading, is no
+    paragraph, and the next build gives it no identifier."""
+    from manuscript_guard.roundtrip import marked_blocks
+
+    spliced = raw[:start] + after + raw[start + len(before) :]
+    expected = [(index, after if at == start else text) for index, text, at in marked_blocks(raw)]
+    return [(index, text) for index, text, _at in marked_blocks(spliced)] == expected
 
 
 def _comes_back(
     context: _Context, name: str, edits: Sequence[Placed], source: str
 ) -> str:
-    """Why the paragraph `name`, with `edits` accepted in Word, would not come back into
-    the source as written; empty if it would."""
-    from manuscript_guard.reworded import compare
-    from manuscript_guard.roundtrip import align, anchors_apart
-
-    # Both replaced from the last edit to the first, so that the offsets before hold.
-    expected = source
-    returned = context.printed[name]
-    for placed in sorted(edits, key=lambda p: p.start, reverse=True):
-        expected = expected[: placed.start] + placed.edit.new.strip() + expected[placed.end :]
-    spans = []
-    for placed in edits:
-        found = _starts(pattern_of(placed.edit.old), returned)
-        if len(found) != 1:
-            return (
-                f"its words are in the paragraph {len(found)} times as the build printed it"
-                if found
-                else "its words are not in the paragraph as the build printed it"
-            )
-        spans.append((found[0].start(), found[0].end(), placed.shown_new))
-    for start, end, new in sorted(spans, reverse=True):
-        returned = returned[:start] + new + returned[end:]
-    report = compare(source, expected)
-    if report.findings:
-        said = report.findings[0].message
-        return f"it is more than a change of words: {said}"
-    apart = anchors_apart(source)
-    if apart is None:
-        return "its paragraph ends in a way import cannot merge into"
-    bare, anchors = apart
-    aligned = align(bare, context.printed[name], returned, context.extents.get(name),
-                    context.abbreviations)  # fmt: skip
-    rebuilt = None if aligned.rebuilt is None else aligned.rebuilt + anchors
-    same = (
-        rebuilt == expected
-        if _HARD_BREAK.search(source)
-        else rebuilt is not None and _folded(rebuilt) == _folded(expected)
-    )
-    if not same:
+    """Why the paragraph `name`, with `edits` accepted in Word, could not be written into
+    the source as `import` writes it; empty if it could."""
+    words = [Words(placed.edit.old, placed.edit.new) for placed in edits]
+    written = write_in(source, context.printed[name], context.extents.get(name), words)
+    if isinstance(written, str):
+        return written
+    path, _text, start = context.paragraphs[name]
+    if not _stays_marked(context.raws[path], start, source, written.source):
         return (
-            "accepted in Word, it would not come back into the source as written: import "
-            "rebuilds an edited stretch from Word's text, which does not hold the markup "
-            "beside it"
+            "written into the source, it would no longer be a paragraph of its own (a list, "
+            "a heading or a caption to pandoc), and the next build would not find it again"
         )
     return ""
 
@@ -380,10 +492,9 @@ def place(context: _Context, edits: Sequence[Edit]) -> list[Placed]:
             out.append(Placed(edit, where))
             continue
         name, start, end = where
-        inside = _inside_markup(context.paragraphs[name][1], start, end)
-        if inside:
-            out.append(Placed(edit, f"its words are inside {inside}, which an edit does not "
-                                    "change"))  # fmt: skip
+        why = _in_the_way(context.paragraphs[name][1], start, end)
+        if why:
+            out.append(Placed(edit, why))
             continue
         printed = context.printed.get(name)
         if printed is None:
@@ -411,8 +522,9 @@ def place(context: _Context, edits: Sequence[Edit]) -> list[Placed]:
 
 
 def _settled(context: _Context, placed: list[Placed]) -> list[Placed]:
-    """Drop edits that change the same words as another, and those that would not come
-    back as written, alone or with the edits before them in their paragraph."""
+    """Drop edits that change the same words as another, and those that could not be
+    written into the source as `import` writes them, alone or with the edits before them in
+    their paragraph."""
     live = [p for p in placed if not p.dropped]
     clashing = set()
     for i, one in enumerate(live):
@@ -504,7 +616,6 @@ def write_round(project, number: int, *, csl: Path | None, date: str) -> Outcome
 
     from manuscript_guard import tracked
     from manuscript_guard.build import OFFLINE, BuildError, assemble, build_document
-    from manuscript_guard.build.document import abbreviations
     from manuscript_guard.contracts import load_namespace
     from manuscript_guard.docxtext import blocks
     from manuscript_guard.findings import Report
@@ -517,14 +628,15 @@ def write_round(project, number: int, *, csl: Path | None, date: str) -> Outcome
         return Outcome((), (), tuple(found.notes), Report())
     namespace, results, _literature, _report = load_namespace(project)
     manuscript_dir = project.path("manuscript")
-    sources = [(path, _searchable(raw)) for path, _relative, raw in _sources(project)]
+    raws = {path: raw for path, _relative, raw in _sources(project)}
+    sources = [(path, _searchable(raw)) for path, raw in raws.items()]
     shown = {ref: value.display for ref, value in namespace.items()}
     paragraphs = tagged_paragraphs(project)
     supplement = frozenset(
         name for name, (path, _t, _s) in paragraphs.items()
         if is_supplementary(manuscript_dir, path)
     )  # fmt: skip
-    looking = _Context(sources, paragraphs, {}, {}, supplement, frozenset(),
+    looking = _Context(sources, paragraphs, {}, {}, supplement, raws,
                        [substitute(text, shown) for _path, text in sources])  # fmt: skip
     kinds = {False}
     for edit in found.edits:
@@ -562,7 +674,7 @@ def write_round(project, number: int, *, csl: Path | None, date: str) -> Outcome
     except BuildError as exc:
         raise SuggestionsError(f"the document could not be built: {exc}") from None
 
-    context = _Context(sources, paragraphs, printed, extents, supplement, abbreviations(),
+    context = _Context(sources, paragraphs, printed, extents, supplement, raws,
                        looking.as_sent)  # fmt: skip
     placed = place(context, found.edits)
     numbered = {id(p): n for n, p in enumerate((p for p in placed if not p.dropped), start=1)}
@@ -672,16 +784,8 @@ def answers(
     was changed in Word, or whose place is gone, is left to the author, as is one that is
     answered already, or whose record no longer holds the edit the document was made from.
     """
-    from manuscript_guard.gates.review import reading_path
-
-    groups: dict[tuple, list[Decision]] = {}
-    for decision in decided:
-        entry = decision.offered
-        key = (entry["round"], entry["reviewer"], entry["reader"], entry["finding"])
-        groups.setdefault(key, []).append(decision)
     out = []
-    for (number, reviewer, reader, finding), group in groups.items():
-        path = reading_path(project, number, reviewer, reader)
+    for path, finding, group in _by_finding(project, decided):
         found = _finding_of(path, finding, group)
         if isinstance(found, str):
             out.append(Answer(path, finding, None, found))
@@ -695,9 +799,65 @@ def answers(
     return out
 
 
+def _by_finding(project, decided: Sequence[Decision]) -> list[tuple[Path, str, list[Decision]]]:
+    """The decisions grouped by the finding they are edits of: its record and its id."""
+    from manuscript_guard.gates.review import reading_path
+
+    groups: dict[tuple, list[Decision]] = {}
+    for decision in decided:
+        entry = decision.offered
+        key = (entry["round"], entry["reviewer"], entry["reader"], entry["finding"])
+        groups.setdefault(key, []).append(decision)
+    return [
+        (reading_path(project, number, reviewer, reader), finding, group)
+        for (number, reviewer, reader, finding), group in groups.items()
+    ]
+
+
+def accepted_words(
+    project, decided: Sequence[Decision], *, named=lambda name: name
+) -> dict[str, tuple[Words, ...] | str]:
+    """The words of each suggestion accepted in Word, under the paragraph its bookmark is in
+    (by the name it has now), for `import` to write where they were found (`write_in`); or,
+    for a paragraph, why its accepted words cannot be known exactly, and so are not written.
+
+    The words are the sealed record's, held to the document's digests of them: the document
+    carries no words of its own. A suggestion whose bookmark is in no identified paragraph is
+    not here, and neither is that paragraph: `import` does not compare it.
+    """
+    words: dict[str, list[Words]] = {}
+    unknown: dict[str, str] = {}
+    for path, finding, group in _by_finding(project, decided):
+        record = _sealed_finding(path, finding, group)
+        for decision in group:
+            if decision.state != ACCEPTED or not decision.paragraph:
+                continue
+            name = named(decision.paragraph)
+            if isinstance(record, str):
+                unknown.setdefault(name, f"the words are not known: {record}")
+                continue
+            edit = record["edits"][decision.offered["index"] - 1]
+            words.setdefault(name, []).append(
+                Words(str(edit["old"]), str(edit["new"]), decision.offered["old"])
+            )
+    return {**{name: tuple(listed) for name, listed in words.items()}, **unknown}
+
+
 def _finding_of(path: Path, finding: str, group: Sequence[Decision]) -> dict | str:
     """The finding the document's edits came from, as its sealed record holds it, or why
     it cannot be answered from here."""
+    record = _sealed_finding(path, finding, group)
+    if isinstance(record, str):
+        return record
+    answered = (str(record.get(key) or "").strip() for key in ("resolution", "overridden"))
+    if any(answered):
+        return "it is answered in the record already, and is left as it is"
+    return record
+
+
+def _sealed_finding(path: Path, finding: str, group: Sequence[Decision]) -> dict | str:
+    """The finding the document's edits came from, as its sealed record holds it, with each
+    edit the document recorded; or why the record does not hold that."""
     from manuscript_guard.contracts._schema import ContractError, read_structured
     from manuscript_guard.gates.review import reading_digest
 
@@ -729,9 +889,6 @@ def _finding_of(path: Path, finding: str, group: Sequence[Decision]) -> dict | s
 
     if record is None or not all(same(d) for d in group):
         return "its finding in the record is not the one the document was made from"
-    answered = (str(record.get(key) or "").strip() for key in ("resolution", "overridden"))
-    if any(answered):
-        return "it is answered in the record already, and is left as it is"
     return record
 
 
@@ -808,6 +965,9 @@ __all__ = [
     "Outcome",
     "Placed",
     "SuggestionsError",
+    "Words",
+    "Written",
+    "accepted_words",
     "author_of",
     "document_path",
     "edits_of",
@@ -816,5 +976,6 @@ __all__ = [
     "place",
     "refused_words",
     "short_digest",
+    "write_in",
     "write_round",
 ]

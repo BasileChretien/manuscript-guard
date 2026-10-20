@@ -3564,9 +3564,10 @@ session start notes each file of `manuscript`, `analysis`, `results`, `figures` 
 `literature`, wherever `paths:` puts them, and `paper.yaml` and `authors.yaml`: its size, the
 time it was written and the SHA-256 of its bytes. Each stop notes them again and compares. A
 file is read again only where its size or time has moved, so a stop at which nothing changed
-lists the folders and reads nothing, and a file saved with the same bytes is no change, as
-it is none to G1. Hidden files and Python's `__pycache__` are not looked at: an editor's lock
-file beside `main.md` is not the manuscript. The note is kept in the folder for temporary
+lists the folders and reads no file but one it could not read before, and a file saved with
+the same bytes is no change, as it is none to G1. Hidden files and Python's `__pycache__` are
+not looked at, so LibreOffice's lock file `.~lock.main.md#` beside `main.md` is not taken for
+the manuscript. Word's `~$` files and other editors' backups are (Known gaps). The note is kept in the folder for temporary
 files, one for each session and project, so that a hook writes nothing in the author's
 project. It holds the folders `paths:` names as well, and the project is asked for them again
 only once `paper.yaml` has changed: asking loads the project's schemas, about half a second
@@ -3584,7 +3585,8 @@ would have said. The session start used to wait for the gates until then, and a 
 check took a minute started its sessions with no line, and nothing said why. Both now run the
 gates on a thread of their own and wait `CHECK_LIMIT`, 45 s. Past it they say that the check
 of the project did not finish and to run `manuscript-guard check`, and the process ends
-without waiting for the gates, which leaves time to start Python and look at the files.
+without waiting for the gates. The 15 s left are for starting Python and noting the files,
+and the noting has no limit of its own (Known gaps).
 `tests/test_hooks.py` holds the limit ten seconds under each timeout.
 
 **Under `claude -p` the stop does nothing.** Nobody reads what a hook shows there, and the end
@@ -7721,8 +7723,16 @@ Open, recorded as each change landed:
   from two variables Claude Code does not document; if they go, the stop runs there as in a
   session, checks at the end of a scripted turn, and shows its line to nobody. Under Codex
   the stop is read from Codex's source and has not been seen in a session, and `codex exec`
-  is not told apart from a session. A check given up on after 45 s ends with the hook's
-  process, and a program it started, pandoc for one, runs on until its own limit.
+  is not told apart from a session, nor is a program of the Agent SDK that sets neither
+  variable. A check given up on after 45 s ends with the hook's process, and a program it
+  started, pandoc for one, runs on until its own limit. Noting the files is not under the
+  limit: the session start reads every watched file before the gates start, and a stop reads
+  every new or changed one before it checks, so hundreds of megabytes under
+  `literature/sources/`, read from a cold disk ahead of a check that takes nearly 45 s, can
+  still reach the 60 s timeout and end with nothing said. Only hidden files and `__pycache__`
+  are passed over, so Word's `~$main.docx`, Emacs's `#main.md#` and `main.md~`, and Windows'
+  `Thumbs.db` count as changes, and the line can follow a turn that changed nothing the
+  gates read. A file that cannot be read is read again at every stop (round 1 of #366).
 - **On Windows every hook misread a name outside ASCII.** The event was read from standard
   input as text, which on Windows is the system's ANSI code page, what Python gives a pipe,
   and not the console's (so `chcp 65001` changed nothing), and the tools write it as UTF-8

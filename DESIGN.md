@@ -846,7 +846,8 @@ duplicated key, where both keep the last.
 ## LaTeX manuscripts
 
 Status: designed 2026-10-20. Built: the first half of step 1, the format, the reader's file
-list, `two-formats`, `other-format-file` and `not-read-in-latex`. Where the design depends on
+list, `two-formats`, `other-format-file` and `not-read-in-latex`; and step 2, the scanner
+and its mask, which no gate reads yet. Where the design depends on
 what LaTeX does, the pull request that relies on it checks the statement against TeX Live and
 MiKTeX and records the measurement. On the author's machine, 2026-10-20: MiKTeX 24.4 and
 latexmk 4.88, with pdfLaTeX, LuaLaTeX, XeLaTeX, BibTeX and Biber on PATH.
@@ -1260,6 +1261,12 @@ The result is compiled and packed by the code above, and checked three times:
 
 ### Known gaps, from the start
 
+- `babel` with a language whose shorthands make a character active is not refused yet (step
+  2): a shorthand changes letters, not digits, so it is left to step 7, which reads words.
+- A bibliography typed by hand, `thebibliography`, is read as prose, so its years and pages are
+  numbers G2 reads; a Markdown project's reference list is built and never read.
+- Only the first refusal of a file is reported: past it the file is read as prose, and the
+  next is found once the first is put right.
 - A `.tex` file in a Markdown manuscript is not refused, as a Markdown file in a LaTeX one is
   (`other-format-file`): a project written before LaTeX was read may keep a `.tex` beside its
   Markdown for pandoc's header, and refusing it would fail a paper that passed. It is read by
@@ -1308,10 +1315,13 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    check in `_NOT_READ_IN_LATEX`, a set each later step takes its check out of. The second:
    the refusing commands, after the open pull requests that change the same commands. Tests:
    the differential unchanged, the corruption cases, rows in `test_reads_nothing.py`.
-2. The scanner and `mask`. `scan.py`, `commands.py`, `mask.py`, the refusals under BUILD.
-   Tests: `latex_texts()`, `latex mask` and `latex refusals`, their properties and `BROKEN`.
-   The likeliest to pass 600 lines; if it does, comments and the preamble go first, then maths
-   and listings.
+2. The scanner and `mask`, built: `commands.py` and `mask.py`, which scans as it reads, so
+   that no `scan.py` stands apart. `read(text, body=...)` gives the masked text and the first
+   refusal. Tests: `latex_texts()`, `latex_planted()`, `latex mask` and `latex refusals`,
+   their properties and eight `BROKEN` rules, and a test of each rule in
+   `tests/test_latex_mask.py`. It passed 600 lines and was not split: comments, the preamble,
+   maths and listings share one scanner. The refusals reach BUILD with the reader in step 3,
+   which finds the files they are refused in.
 3. Structure. Includes, `printed_order`, inherited headings, sections, the abstract. Tests:
    `latex sections`.
 4. Bindings and G2. `bindings`, `uncommented`, `table_at`, `mgvalues.sty` and its escape

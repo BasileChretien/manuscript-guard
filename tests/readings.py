@@ -139,6 +139,20 @@ def _mask() -> Reading:
     return mask
 
 
+@reading("latex mask")
+def _latex_mask() -> Reading:
+    from manuscript_guard.text.latex.mask import mask
+
+    return mask
+
+
+@reading("latex refusals")
+def _latex_refusals() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+
+    return lambda text: [[r.code, r.offset] for r in read(text).refusals]
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden

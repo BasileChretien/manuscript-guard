@@ -9,18 +9,22 @@ proxy. So this copies, for each work the manuscript cites, what Zotero holds int
 
 What it takes, for each attachment Better BibTeX lists for the key:
 
-* the file, where it is on this computer and is a kind G7 reads (a PDF, a saved page, text);
+* the file, where it is on this computer and is a PDF, a saved page or plain text;
 * else Zotero's text of it, `.zotero-ft-cache` in the attachment's folder, which Zotero keeps
-  for a file it indexed and has not downloaded here, filed as `<key>.txt`;
+  for a file it indexed, whether the file is not downloaded here or is of another kind (an
+  EPUB), filed as `<key>.txt`;
 * else nothing, and the reason is said.
 
-Two different files that would take one name are neither of them copied: which is the article
-and which the supplement is not a thing to guess. A file under `literature/sources/` that this
+The other kinds G7 reads, a table or a citation file, are not taken: attached to an item in
+Zotero they are a supplement's data or the item's own reference, not the work's text. Two
+different files that would take one name are neither of them copied: which is the article and
+which the supplement is not a thing to guess. A file under `literature/sources/` that this
 command did not write, or that was changed since it wrote it, is never written over; one it
-wrote, and that is as it wrote it, is replaced when Zotero's copy has changed. Nothing is
-deleted. What it wrote is recorded in `literature/sources.yaml`: each file's name, the work,
-the SHA-256 and size of what was written, and whether it is the file or Zotero's text. The
-record holds no path on anyone's computer.
+wrote, and that is as it wrote it, is replaced when Zotero's copy has changed. A file found in
+place with Zotero's bytes is left out of the record, so it stays the author's (round 1 of
+#361). Nothing is deleted. What it wrote is recorded in `literature/sources.yaml`: each file's
+name, the work, the SHA-256 and size of what was written, and whether it is the file or
+Zotero's text. The record holds no path on anyone's computer.
 """
 
 from __future__ import annotations
@@ -43,7 +47,6 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.literature.sources import (
     HTML_SUFFIXES,
     PDF_SUFFIXES,
-    TEXT_SUFFIXES,
     filed_name,
     stored_files,
 )
@@ -56,7 +59,9 @@ RECORD = "sources.yaml"
 FOLDER = "sources"
 #: The text Zotero keeps of a file it indexed, in the attachment's own folder.
 ZOTERO_TEXT = ".zotero-ft-cache"
-READABLE = frozenset(TEXT_SUFFIXES | HTML_SUFFIXES | PDF_SUFFIXES)
+#: The kinds taken as the work's own text: G7 reads more (`TEXT_SUFFIXES`), but a table or a
+#: citation file attached in Zotero is not the work (round 1 of #361).
+TAKEN = frozenset(PDF_SUFFIXES | HTML_SUFFIXES | {".txt"})
 
 COPIED = "copied"
 UPDATED = "updated"
@@ -152,13 +157,14 @@ def candidates(key: str, held: list[Attachment]) -> tuple[list[Candidate], list[
             continue
         path = Path(one.path)
         suffix = path.suffix.lower()
-        if path.is_file():
-            if suffix not in READABLE:
-                why.append(f"a {suffix or 'suffixless'} file, which check cannot read")
-                continue
+        here = path.is_file()
+        if here and suffix in TAKEN:
             origin, kind, name = path, "zotero", filed_name(key, suffix)
         elif (path.parent / ZOTERO_TEXT).is_file():
             origin, kind, name = path.parent / ZOTERO_TEXT, "zotero-text", filed_name(key, ".txt")
+        elif here:
+            why.append(f"a {suffix or 'suffixless'} file, not taken as the work's text")
+            continue
         else:
             why.append(f"its {suffix} file is not on this computer, nor Zotero's text of it")
             continue
@@ -304,21 +310,22 @@ def _file(
     dry_run: bool,
     today: date,
 ) -> Outcome:
-    """Copy one file where it is due, and enter it in `files`."""
+    """Copy one file where it is due, and enter it in `files`. Only a file the command writes
+    is entered: one found in place with Zotero's bytes stays the author's (round 1 of #361)."""
     dest = folder / candidate.name
-    status = _decide(dest, candidate, recorded.get(candidate.name))
+    where = f"literature/sources/{candidate.name}"
+    try:
+        status = _decide(dest, candidate, recorded.get(candidate.name))
+    except OSError as exc:
+        said = f"{where} could not be read ({exc.strerror or exc}): left as it is"
+        return Outcome(key, KEPT, said, candidate.name)
     if not dry_run and status in (COPIED, UPDATED):
         try:
             written = _write(candidate.origin, dest)
         except OSError as exc:
-            said = (
-                f"literature/sources/{candidate.name} could not be written "
-                f"({exc.strerror or exc}): left as it was"
-            )
+            said = f"{where} could not be written ({exc.strerror or exc}): left as it was"
             return Outcome(key, KEPT, said, candidate.name)
         files[candidate.name] = _entry(key, candidate, written, today)
-    elif not dry_run and status == UNCHANGED and candidate.name not in files:
-        files[candidate.name] = _entry(key, candidate, (candidate.sha256, candidate.size), today)
     return Outcome(key, status, _said(status, candidate, dry_run), candidate.name)
 
 

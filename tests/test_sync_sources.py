@@ -234,6 +234,42 @@ def test_a_file_put_there_by_hand_is_never_written_over(paper, tmp_path, monkeyp
     assert not (paper / "literature" / copies.RECORD).exists()
 
 
+def test_an_authors_file_the_same_as_zoteros_is_never_claimed(paper, tmp_path, monkeypatch):
+    """Round 1 of #361: an author's copy with Zotero's bytes was found unchanged and entered in
+    the record as the command's, so that a later change in Zotero replaced it."""
+    zotero = Storage(tmp_path)
+    cite(paper, "smith2020")
+    attachment = zotero.file("s.pdf", PDF)
+    sources(paper).mkdir(parents=True, exist_ok=True)
+    (sources(paper) / "smith2020.pdf").write_bytes(PDF)
+    fake = FakeBBT({1: {"smith2020": [attachment]}})
+    (first,) = sync(paper, monkeypatch, fake)
+    assert first.status == copies.UNCHANGED
+    assert not (paper / "literature" / copies.RECORD).exists(), "found in place, not written"
+
+    Path(attachment["path"]).write_bytes(PDF + b"% the accepted manuscript instead\n")
+    (second,) = sync(paper, monkeypatch, fake)
+    assert second.status == copies.KEPT
+    assert (sources(paper) / "smith2020.pdf").read_bytes() == PDF
+
+
+def test_an_existing_file_that_cannot_be_read_is_said_and_left(paper, tmp_path, monkeypatch):
+    zotero = Storage(tmp_path)
+    cite(paper, "smith2020")
+    sources(paper).mkdir(parents=True, exist_ok=True)
+    (sources(paper) / "smith2020.pdf").write_bytes(b"%PDF-1.4\nthe author's\n")
+    hashed = copies.digest
+
+    def locked(path):
+        if path.parent == sources(paper):
+            raise PermissionError(13, "The process cannot access the file")
+        return hashed(path)
+
+    monkeypatch.setattr(copies, "digest", locked)
+    (outcome,) = sync(paper, monkeypatch, FakeBBT({1: {"smith2020": [zotero.file("s.pdf", PDF)]}}))
+    assert outcome.status == copies.KEPT and "could not be read" in outcome.said
+
+
 def test_a_copy_it_wrote_is_replaced_when_zoteros_changes(paper, tmp_path, monkeypatch):
     zotero = Storage(tmp_path)
     cite(paper, "smith2020")
@@ -304,6 +340,32 @@ def test_a_file_check_cannot_read_is_not_copied(paper, tmp_path, monkeypatch):
     (outcome,) = sync(paper, monkeypatch, fake)
 
     assert outcome.status == copies.NO_COPY and ".epub" in outcome.said
+    assert not list(sources(paper).iterdir())
+
+
+def test_zoteros_text_is_taken_for_a_file_check_cannot_read(paper, tmp_path, monkeypatch):
+    """Round 1 of #361: the same attachment gave its text when its file was absent and nothing
+    when its file was here in a kind check cannot read."""
+    zotero = Storage(tmp_path)
+    cite(paper, "book2012")
+    attachment = zotero.file("b.epub", b"PK")
+    (Path(attachment["path"]).parent / ".zotero-ft-cache").write_text("Chapter one.", "utf-8")
+    (outcome,) = sync(paper, monkeypatch, FakeBBT({1: {"book2012": [attachment]}}))
+
+    assert outcome.status == copies.COPIED
+    assert (sources(paper) / "book2012.txt").read_text("utf-8") == "Chapter one."
+
+
+@pytest.mark.parametrize("kind", [".csv", ".json", ".xml", ".bib", ".ris", ".nbib"])
+def test_a_data_or_citation_file_is_not_copied_as_the_work(paper, tmp_path, monkeypatch, kind):
+    """Round 1 of #361: G7 reads these suffixes, and a supplementary table or a citation file
+    attached in Zotero was copied as the work's text."""
+    zotero = Storage(tmp_path)
+    cite(paper, "data2011")
+    fake = FakeBBT({1: {"data2011": [zotero.file("table" + kind, b"a,b\n1,2\n")]}})
+    (outcome,) = sync(paper, monkeypatch, fake)
+
+    assert outcome.status == copies.NO_COPY and kind in outcome.said
     assert not list(sources(paper).iterdir())
 
 

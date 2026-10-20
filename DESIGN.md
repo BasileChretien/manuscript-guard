@@ -1077,10 +1077,12 @@ the user's library goes on to the group libraries and any other refusal stops th
 needed has, for a file never opened on this computer, only Zotero's text of it: the
 attachment's folder holds `.zotero-ft-cache` and nothing else. Of 193 items found by two
 title searches of the author's library, 69 had a file on this computer, 32 only that text,
-and 92 neither. So each attachment gives its file, where it is there and is a kind G7 reads
-(a PDF, a saved page, text), or else Zotero's text of it as `<key>.txt`, or else a reason,
-and the works left with no copy are listed with theirs and what to do in Zotero. A work with
-a file saved under its name by hand is not listed.
+and 92 neither. So each attachment gives its file, where it is there and is a PDF, a saved
+page or plain text, or else Zotero's text of it as `<key>.txt` (Zotero keeps one for an EPUB
+too), or else a reason, and the works left with no copy are listed with theirs and what to do
+in Zotero. A work with a file saved under its name by hand is not listed. The other kinds G7
+reads, a table or a citation file, are not taken: attached to an item in Zotero they are a
+supplement's data or the item's own reference, and G7 would read them as the work's text.
 
 Two rules keep the command from doing harm. Two different files that would take one name,
 an article and its supplement both PDFs, are neither of them copied: which one is the work's
@@ -1089,7 +1091,9 @@ command wrote it and it is as written: `literature/sources.yaml` records each fi
 with the work, the SHA-256 and size of what was written, whether it is Zotero's file or
 Zotero's text, Zotero's key of the attachment, and the day. A file not in the record, or
 whose bytes no longer match it, is the author's, and is left as it is, as `install-skills`
-leaves a folder it did not write. Nothing is deleted. The record holds no path on anyone's
+leaves a folder it did not write. A file found in place with Zotero's bytes is not entered
+either: the first version entered it as unchanged, and a later change in Zotero then replaced
+the author's copy (round 1 of #361). Nothing is deleted. The record holds no path on anyone's
 computer, and lives beside `sources/` rather than in it, so that it can be kept where the
 sources are not. A record that is not one stops the command, since without it the command
 cannot tell its files from the author's; deleting it makes every file the author's.
@@ -11046,7 +11050,11 @@ Open, recorded as each change landed:
   work's. A linked file that is not on this computer is listed as such even where Zotero has
   its text: Zotero keeps that text in its own storage folder, not beside the linked file,
   and the command looks only beside the file. Two cited keys that file under one name
-  (`a:b` and `a_b`) share one copy, as they share one source in G7.
+  (`a:b` and `a_b`) share one copy, as they share one source in G7, and where Zotero holds
+  different files for them each run puts the other's in place, the copy being the command's
+  each time (round 1 of #361). A refusal from Better BibTeX other than "not found", which
+  may be its answer for a key two items carry (not probed), stops the run with what was
+  copied so far recorded, rather than listing that key and going on.
 - **`literature/sources/` is kept in git unless the author says otherwise.** `init` does not
   ignore it, so the copies `sync-sources` makes, of paywalled papers among them, are
   committed with the project, and published with it if the repository is public, including

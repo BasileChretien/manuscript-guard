@@ -182,8 +182,9 @@ re-run, so the profile stays a function of the published checklist.
 - Tests never open a connection to a provider. The client takes its transport as an
   argument; `tests/test_review_transport.py` runs the real one against a server it
   starts on a loopback port.
-- Known limits go in DESIGN.md under "Known gaps". A gate whose limits are undocumented
-  gets trusted beyond them.
+- Known limits go in DESIGN.md under "Known gaps", above its "Closed since" line: an entry
+  added at the end of the section reads as closed. A gate whose limits are undocumented gets
+  trusted beyond them.
 - Prose in this repository, including documentation, must pass the project's own
   AI-writing lint once that exists.
 

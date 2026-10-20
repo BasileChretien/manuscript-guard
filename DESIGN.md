@@ -1269,10 +1269,13 @@ The result is compiled and packed by the code above, and checked three times:
   - `bind`, `lookup` and `build` stop on it, as on a folder with no Markdown, and so does the
     panel's prompt ("no manuscript to review");
   - `explain manuscript/main.tex` reads the file as Markdown and labels its numbers;
-  - `audit`, `reworded` and `checker` read only Markdown;
+  - `reworded` and `checker` read only Markdown, and so does `audit` given a folder; `audit`
+    given a `.tex` by name reads it as text, as `explain` does;
   - `review` and `respond --open` digest the `.tex` files, as G11 does, but `respond --open`
     keeps no copy of them;
-  - the hooks run the gates, so they see `not-read-in-latex` as `check` does.
+  - the submission refusal and the status line run the gates, so they see
+    `not-read-in-latex` as `check` does; the note on a saved file reads only Markdown, and
+    says nothing when a `.tex` is saved (round 2 of #370).
 - An author's macro is not expanded where it is used, so a word its body prints there is in no
   sentence that G6 or G14 reads; its body is read once, at the definition.
 - A class or package that changes how a character is read, beyond those refused, is not seen.

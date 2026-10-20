@@ -5043,6 +5043,17 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
     _as_latex(project)
     cli._run_gates(project, stage="drafting")
     assert sorted(called) == sorted(_NOT_THE_MANUSCRIPT)
+    # One entry calls two checks, so the set is pinned name by name as well (round 2), and
+    # a check the runner gains must be put in one of the two tuples.
+    assert set(_MARKDOWN_ONLY) == cli._NOT_READ_IN_LATEX
+    runner = {
+        name
+        for code in cli._run_gates.__code__.co_consts
+        if isinstance(code, type(cli._run_gates.__code__))
+        for name in code.co_names
+        if name.startswith("check_")
+    }
+    assert runner == set(_MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT)
 
 
 def test_a_main_tex_without_a_class_leaves_a_markdown_manuscript_markdown(project: Path) -> None:
@@ -5057,12 +5068,17 @@ def test_a_main_tex_without_a_class_leaves_a_markdown_manuscript_markdown(projec
     assert not {"two-formats", "other-format-file", "not-read-in-latex"} & said
 
 
-def test_a_latex_file_that_is_not_utf8_is_named_as_a_markdown_one_is(project: Path) -> None:
+@pytest.mark.parametrize("encoding", ["cp1252", "utf-16"])
+def test_a_latex_file_that_is_not_utf8_is_named_as_a_markdown_one_is(
+    project: Path, encoding: str
+) -> None:
+    """In a code page, or as UTF-16, which round 2 of #370 found taken for an empty Markdown
+    folder: its `\\documentclass` was not seen in the bytes."""
     from manuscript_guard.cli import _run_gates
 
     entry = _as_latex(project)
     text = "\\documentclass{article}\nCaf\N{LATIN SMALL LETTER E WITH ACUTE}\n"
-    entry.write_bytes(text.encode("cp1252"))
+    entry.write_bytes(text.encode(encoding))
     report, _project, _stage, _deferred = _run_gates(project, stage="design")
     found = [f for f in report.failures if f.code == "manuscript-unreadable"]
     assert [f.path for f in found] == [entry], report.render(project)

@@ -184,6 +184,7 @@ def annotate(
     results=None,
     project=None,
     pandoc: str | None = None,
+    numbers=None,
 ) -> tuple[str, list[Mark]]:
     """Substitute every binding and wrap every number in a highlight and a link.
 
@@ -194,7 +195,8 @@ def annotate(
     Tables and figures are substituted here too. The first version annotated the source and
     substituted only *value* bindings, so `{{table.baseline}}` was printed literally and the
     annotated copy contained no tables and no figures at all — an audit document missing the
-    artefacts most likely to carry a stale number.
+    artefacts most likely to carry a stale number. So are ref and num bindings, numbered
+    from `numbers` (`crossref.Numbers`), the count the build prints them from.
 
     A mark never goes where it would change how the text reads. The number finder reads
     raw text, and a mark around what it found split `HbA~1c~` before its closing `~`, so
@@ -210,6 +212,7 @@ def annotate(
     unmarkable = _Unmarkable(text, masked, front_matter_end(text))
     pieces = [
         *_value_pieces(placeholders, namespace, counter, unmarkable),
+        *_ref_pieces(placeholders, numbers, counter, unmarkable),
         *_block_pieces(placeholders, results, project, counter),
         # An anchor prints nothing, here as in the build.
         *(_Piece(p.start, p.end, "") for p in placeholders if p.is_anchor),
@@ -278,11 +281,37 @@ def _value_pieces(placeholders, namespace, counter, unmarkable) -> list[_Piece]:
     return pieces
 
 
+def _ref_pieces(placeholders, numbers, counter, unmarkable) -> list[_Piece]:
+    """Each ref and num binding, put in as the number the build prints, and marked as traced:
+    it is counted from where its table or figure is placed, as G2 counts."""
+    pieces = []
+    for placeholder in placeholders:
+        if not placeholder.is_ref or numbers is None:
+            continue
+        printed = numbers.printed(placeholder)
+        if printed is None:
+            continue
+        display = numbers.display(placeholder)
+        counter[0] += 1
+        where = "the supplement" if display.supplementary else "the main text"
+        mark = Mark(
+            anchor=_ANCHOR.format(n=counter[0]),
+            tier=TRACED,
+            shown=printed,
+            label=placeholder.ref,
+            detail=f"numbered by the build: {where}'s {display.kind} {display.number}, "
+            f"placed by {display.binding}",
+            unmarked=unmarkable.reason(placeholder.start, placeholder.end),
+        )
+        pieces.append(_Piece(placeholder.start, placeholder.end, printed, mark))
+    return pieces
+
+
 def _block_pieces(placeholders, results, project, counter) -> list[_Piece]:
     """Each table, its numbers marked, and each figure."""
     pieces = []
     for placeholder in placeholders:
-        if placeholder.is_value or placeholder.is_anchor or results is None:
+        if placeholder.is_value or placeholder.is_anchor or placeholder.is_ref or results is None:
             continue
         if placeholder.namespace == "table":
             table = results.tables.get(placeholder.key)

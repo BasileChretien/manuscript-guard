@@ -262,8 +262,10 @@ def _read(path: Path, label: str) -> tuple[bytes, str]:
         raise PromptError(f"{label} is not UTF-8, so it cannot be sent as text") from None
 
 
-def _as_read(text: str, namespace: dict, results) -> tuple[str, int]:
+def _as_read(text: str, namespace: dict, results, numbers=None) -> tuple[str, int]:
     """The text as the build prints it, and how many of its bindings have nothing to print.
+    `numbers` numbers the manuscript's tables and figures for its ref and num bindings
+    (`crossref.Numbers`); a text read without them, the plan, prints none.
 
     The build drops a file's YAML header and pandoc drops every HTML comment, so neither is
     sent: a comment is where authors are told to keep their notes, and "the round-one
@@ -284,6 +286,8 @@ def _as_read(text: str, namespace: dict, results) -> tuple[str, int]:
             replacement = render_table(table) if table is not None else None
         elif placeholder.namespace == "figure":
             replacement = f"[figure {placeholder.key}: the image is not sent]"
+        elif placeholder.is_ref and numbers is not None:
+            replacement = numbers.printed(placeholder)
         if replacement is None:
             missing += 1
             continue
@@ -410,6 +414,9 @@ def gather(project: Project) -> Material:
         sent.append(Sent(label))
 
     parts.append("# The manuscript")
+    from manuscript_guard.gates.pointers import display_numbers
+
+    numbers = display_numbers(project)
     whole = hashlib.sha256()
     digests: dict[str, str] = {}
     blocks: dict[Path, tuple[str, str]] = {}
@@ -423,7 +430,7 @@ def gather(project: Project) -> Material:
         whole.update(path.name.encode("utf-8"))
         whole.update(data)
         digests[relative] = hashlib.sha256(data).hexdigest()
-        shown, missing = _as_read(text, namespace, results)
+        shown, missing = _as_read(text, namespace, results, numbers)
         unrendered += missing
         blocks[path] = (label, shown)
 

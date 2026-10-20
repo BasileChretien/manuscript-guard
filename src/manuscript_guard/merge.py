@@ -2219,6 +2219,13 @@ def why(aligned: Alignment) -> tuple[str, ...]:
         for shown, token in aligned.changed:
             if token.startswith("{{"):
                 key = token.strip("{} ")
+                if key.startswith(("ref.", "num.")):
+                    # A pointer the build numbers from where its table or figure is placed.
+                    lines.append(
+                        f"'{shown}' comes from {key}, numbered where the build places it. "
+                        "Move the table or figure, or name another, in the .md, not in Word."
+                    )
+                    continue
                 lines.append(f"'{shown}' comes from {key}. Change the analysis, not the document.")
             else:
                 lines.append(

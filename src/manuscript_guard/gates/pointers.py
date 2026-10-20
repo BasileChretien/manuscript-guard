@@ -24,20 +24,31 @@ the order of their first citation in the text", icmje.org, Preparing for Submiss
 
 Each finding fails from the internal-review stage, Basile's choice on 2026-10-14: while the
 draft is written its tables move and are numbered again, and a failure then is noise.
+
+A pointer the build numbers, `{{ref.table.<key>}}` or `{{num.table.<key>}}` (`crossref.py`),
+is read here as what it prints, so it is cited where it stands and in its order like a typed
+one, and never points at nothing. What can go wrong with one is said instead: a key nothing
+places (`unresolved-binding`), a number the count cannot give (`ref-number-unknown`), and
+words around it that point at another kind or the other document ("Figures
+{{num.table.a}}", `pointer-word-mismatch`).
 """
 
 from __future__ import annotations
 
+import bisect
+import functools
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
+from manuscript_guard.crossref import NUM, NUMBER, Display, Numbers, Refused, project_forms
 from manuscript_guard.findings import INFO, Finding, Report
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
 from manuscript_guard.text.blocks import find_headings, scannable
 from manuscript_guard.text.masking import without_front_matter
+from manuscript_guard.text.placeholders import Placeholder, parse
 
 GATE = "G2"
 TABLE = "table"
@@ -69,7 +80,7 @@ _REST = re.compile(r"(?P<join>" + _JOIN + r")(?P<s>S)?(?P<n>\d+)[A-Za-z]?\b", re
 _PLURAL = re.compile(r"(?:tables|figures|figs\.?)$", re.IGNORECASE)
 #: What may stand before a caption's pointer on its line: nothing, or the marks of bold.
 _CAPTION = re.compile(r"[^\S\n]*(?:\*\*|__)?")
-_PLACED = re.compile(r"\{\{\s*(?P<kind>table|figure)\.[A-Za-z0-9_.]+\s*\}\}")
+_PLACED = re.compile(r"\{\{\s*(?P<kind>table|figure)\.(?P<key>[A-Za-z0-9_.]+)\s*\}\}")
 #: What says a document places a table by hand, in any of the forms pandoc reads: a pipe
 #: table's rule, a grid table's border, a simple table's dashes, a multiline table's rule, a
 #: caption line, raw HTML. Read wrongly, one only leaves the tables unchecked.
@@ -97,18 +108,24 @@ class Pointer:
     shown: str
     #: In a heading or a caption: a pointer, and no citation.
     cites: bool
+    #: The ref or num binding that printed the number, where one did.
+    binding: Placeholder | None = None
 
 
 def _kind(word: str) -> str:
     return TABLE if word.lower().startswith("table") else FIGURE
 
 
-def _numbers(found: re.Match) -> list[tuple[bool, int]]:
-    """Each number one pointer names, a range read as every number in it. An `S` before
-    the first number of a range holds for the rest: "Tables S1-3" is S1, S2 and S3."""
-    out = [(bool(found["s0"]), int(found["n0"]))]
+def _numbers(found: re.Match) -> list[tuple[bool, int, int | None]]:
+    """Each number one pointer names, a range read as every number in it, with where its
+    digits start in the text read, or None for one a range names without writing it. An `S`
+    before the first number of a range holds for the rest: "Tables S1-3" is S1, S2 and S3."""
+    out: list[tuple[bool, int, int | None]] = [
+        (bool(found["s0"]), int(found["n0"]), found.start("n0"))
+    ]
     plural = bool(_PLURAL.match(found["kind"]))
     ended = False
+    rest = found.start("rest")
     for part in _REST.finditer(found["rest"]):
         number, joined = int(part["n"]), part["join"].strip().lower().lstrip(", ") or ","
         ranged = joined in ("to", *_DASHES)
@@ -118,21 +135,82 @@ def _numbers(found: re.Match) -> list[tuple[bool, int]]:
         ended = ended or joined in ("and", "&")
         start, s = out[-1][1], bool(part["s"]) or (ranged and out[-1][0])
         if ranged and start < number <= start + 50:
-            out.extend((s, between) for between in range(start + 1, number))
-        out.append((s, number))
+            out.extend((s, between, None) for between in range(start + 1, number))
+        out.append((s, number, rest + part.start("n")))
     return out
 
 
-def pointers_in(text: str, path: Path) -> list[Pointer]:
-    """Every table and figure a file points at, in the order it does."""
-    shown = scannable(without_front_matter_kept(text))
-    heads = {shown.count("\n", 0, heading.start) + 1 for heading in find_headings(text)}
+@dataclass(frozen=True)
+class _Printed:
+    """A file's text as G2 reads it, each ref and num binding put in as the build prints it.
+
+    `spans` holds, for each binding put in, where its print starts and ends in `text`, where
+    the binding started and ended in the file, and the binding, in order: lines are counted
+    in the file, so that a finding names the line the author wrote.
+    """
+
+    text: str
+    spans: tuple[tuple[int, int, int, int, Placeholder], ...]
+
+    @functools.cached_property
+    def _starts(self) -> list[int]:
+        return [span[0] for span in self.spans]
+
+    def _at(self, at: int) -> int:
+        return bisect.bisect_right(self._starts, at) - 1
+
+    def origin(self, at: int) -> int:
+        """Where an offset of `text` stood in the file."""
+        index = self._at(at)
+        if index < 0:
+            return at
+        start, end, was, was_end, _binding = self.spans[index]
+        return was if at < end else at + was_end - end
+
+    def binding_at(self, at: int | None) -> Placeholder | None:
+        index = -1 if at is None else self._at(at)
+        if index < 0 or at is None or at >= self.spans[index][1]:
+            return None
+        return self.spans[index][4]
+
+
+def _printed(text: str, shown: str, numbers: Numbers | None) -> _Printed:
+    """`shown` with every ref and num binding that prints a number put in as that number.
+    One `shown` does not show, in code, a comment or the front matter, stays out."""
+    if numbers is None:
+        return _Printed(shown, ())
+    pieces: list[str] = []
+    spans: list[tuple[int, int, int, int, Placeholder]] = []
+    cursor = length = 0
+    for binding in parse(text)[0]:
+        if not binding.is_ref or shown[binding.start : binding.end] != binding.raw:
+            continue
+        printed = numbers.printed(binding)
+        if printed is None:
+            continue
+        pieces.append(shown[cursor : binding.start])
+        length += binding.start - cursor
+        spans.append((length, length + len(printed), binding.start, binding.end, binding))
+        pieces.append(printed)
+        length += len(printed)
+        cursor = binding.end
+    pieces.append(shown[cursor:])
+    return _Printed("".join(pieces), tuple(spans))
+
+
+def pointers_in(text: str, path: Path, numbers: Numbers | None = None) -> list[Pointer]:
+    """Every table and figure a file points at, in the order it does: typed, and, given the
+    document's `numbers`, printed by a ref or num binding."""
+    read = _printed(text, _scanned(text), numbers)
+    shown = read.text
+    starts = [0, *(found.end() for found in re.finditer("\n", text))]
+    heads = {bisect.bisect_right(starts, heading.start) for heading in find_headings(text)}
     found = []
     for match in _POINTER.finditer(shown):
-        line = shown.count("\n", 0, match.start()) + 1
+        line = bisect.bisect_right(starts, read.origin(match.start()))
         caption = _is_caption(shown, match)
         elsewhere = bool(match["supp"] or match["e"] or match["after"])
-        for s, number in _numbers(match):
+        for s, number, at in _numbers(match):
             found.append(
                 Pointer(
                     kind=_kind(match["kind"]),
@@ -142,6 +220,7 @@ def pointers_in(text: str, path: Path) -> list[Pointer]:
                     line=line,
                     shown=" ".join(match.group().split()),
                     cites=line not in heads and not caption,
+                    binding=read.binding_at(at),
                 )
             )
     return found
@@ -169,18 +248,27 @@ def without_front_matter_kept(text: str) -> str:
     return re.sub(r"[^\n]", " ", text[:head]) + body
 
 
+@functools.lru_cache(maxsize=4)
+def _scanned(text: str) -> str:
+    """The text as G2 reads a file's pointers: its front matter, fenced listings and comments
+    blanked. Kept for the last few files, since each is read for what it places, for its
+    pointers and for its ref and num bindings."""
+    return scannable(without_front_matter_kept(text))
+
+
 @dataclass(frozen=True)
 class Placed:
-    """What a file places by binding, in order, and which kinds it places by hand too."""
+    """What a file places by binding, `(kind, key)` in order, and which kinds it places by
+    hand too."""
 
-    bound: tuple[str, ...]
+    bound: tuple[tuple[str, str], ...]
     by_hand: frozenset[str]
 
 
 def placed_in(text: str) -> Placed:
-    shown = scannable(without_front_matter_kept(text))
+    shown = _scanned(text)
     return Placed(
-        tuple(m["kind"] for m in _PLACED.finditer(shown)),
+        tuple((m["kind"], m["key"]) for m in _PLACED.finditer(shown)),
         frozenset(kind for kind, form in _BY_HAND.items() if form.search(shown)),
     )
 
@@ -194,28 +282,63 @@ AS_FILES = {
 }
 
 
-def check_pointers(project: Project) -> Report:
+def _count(project: Project) -> tuple[Numbers, list[tuple[Path, str]]]:
+    """What each document places, numbered in the order its files print, and each file's
+    text in that order: the main text's, then the supplement's."""
     root = project.path("manuscript")
     declared = project.setting("displays") or {}
-    as_files = {key: int(declared.get(name) or 0) for key, name in AS_FILES.items()}
     sources = source_files(root)
-    main = [path for path in sources if not is_supplementary(root, path)]
-    supplement = [path for path in sources if is_supplementary(root, path)]
     documents = {
-        False: printed_order(main, supplementary=False),
-        True: printed_order(supplement, supplementary=True),
+        supplementary: printed_order(
+            [path for path in sources if is_supplementary(root, path) == supplementary],
+            supplementary=supplementary,
+        )
+        for supplementary in (False, True)
     }
+    files: list[tuple[Path, str]] = []
+    placed: dict[tuple[str, str], list[Display]] = {}
     bound: dict[tuple[bool, str], int] = {}
     by_hand: set[tuple[bool, str]] = set()
-    pointers: list[Pointer] = []
     for supplementary, paths in documents.items():
         for path in paths:
             text = read_text(path)
-            placed = placed_in(text)
-            for kind in placed.bound:
-                bound[supplementary, kind] = bound.get((supplementary, kind), 0) + 1
-            by_hand |= {(supplementary, kind) for kind in placed.by_hand}
-            pointers += pointers_in(text, path)
+            files.append((path, text))
+            found = placed_in(text)
+            for kind, key in found.bound:
+                number = bound[supplementary, kind] = bound.get((supplementary, kind), 0) + 1
+                placed.setdefault((kind, key), []).append(
+                    Display(kind, key, supplementary, number)
+                )
+            by_hand |= {(supplementary, kind) for kind in found.by_hand}
+    numbers = Numbers(
+        placed={where: tuple(found) for where, found in placed.items()},
+        bound=bound,
+        by_hand=frozenset(by_hand),
+        as_files={key: int(declared.get(name) or 0) for key, name in AS_FILES.items()},
+        forms=project_forms(project),
+    )
+    return numbers, files
+
+
+def display_numbers(project: Project) -> Numbers:
+    """The number each table and figure placed by its binding has in its document, which
+    `{{ref.table.<key>}}` prints (`crossref.py`)."""
+    return _count(project)[0]
+
+
+def check_pointers(project: Project) -> Report:
+    root = project.path("manuscript")
+    numbers, files = _count(project)
+    as_files = numbers.as_files
+    bound = numbers.bound
+    by_hand = set(numbers.by_hand)
+    report = _unread_forms(numbers, _profile_path(project))
+    pointers: list[Pointer] = []
+    for path, text in files:
+        found = pointers_in(text, path, numbers)
+        report = report.merge(_bound(text, path, numbers, found))
+        # A binding read with words that point elsewhere is said above, and cites nothing.
+        pointers += [pointer for pointer in found if _reads_as_named(pointer, numbers)]
 
     # What each document carries of each kind: what it places by binding, and what paper.yaml
     # says goes to the journal as files of their own.
@@ -224,7 +347,6 @@ def check_pointers(project: Project) -> Report:
     def counted(key: tuple[bool, str]) -> bool:
         return total[key] > 0 and key not in by_hand
 
-    report = Report()
     for pointer in pointers:
         key = (pointer.supplementary, pointer.kind)
         count = total[key]
@@ -232,19 +354,20 @@ def check_pointers(project: Project) -> Report:
             continue
         where = "the supplement" if pointer.supplementary else "the main text"
         plural = "" if bound.get(key, 0) == 1 else "s"
-        files = f" and {as_files[key]} sent as files" if as_files[key] else ""
+        files_too = f" and {as_files[key]} sent as files" if as_files[key] else ""
         report = report.with_findings(
             Finding(
                 gate=GATE,
                 code="pointer-to-nothing",
                 message=f"{pointer.shown!r} points at {pointer.kind} "
                 f"{'S' if pointer.supplementary else ''}{pointer.number}, and {where} "
-                f"places {bound.get(key, 0)} {pointer.kind}{plural}{files}",
+                f"places {bound.get(key, 0)} {pointer.kind}{plural}{files_too}",
                 path=pointer.path,
                 line=pointer.line,
-                hint="number tables and figures as the document places them; a table or figure "
-                "moved to the supplement is Table S1 or Figure S1 there; one sent to the journal "
-                f"as a file of its own is declared in paper.yaml, `displays: "
+                hint="number tables and figures as the document places them, or name one by "
+                "its key, `{{ref.table.<key>}}`, and the build prints its number; a table or "
+                "figure moved to the supplement is Table S1 or Figure S1 there; one sent to "
+                f"the journal as a file of its own is declared in paper.yaml, `displays: "
                 f"{{{AS_FILES[key]}: 1}}`",
             )
         )
@@ -256,6 +379,118 @@ def check_pointers(project: Project) -> Report:
         tables_placed=bound.get((False, TABLE), 0),
         figures_placed=bound.get((False, FIGURE), 0),
     )
+
+
+def _reads_as_named(pointer: Pointer, numbers: Numbers) -> bool:
+    """Whether a pointer points where its binding does: a typed one always does."""
+    if pointer.binding is None:
+        return True
+    display = numbers.display(pointer.binding)
+    return not isinstance(display, Refused) and (display.kind, display.supplementary) == (
+        pointer.kind,
+        pointer.supplementary,
+    )
+
+
+def _bound(text: str, path: Path, numbers: Numbers, found: list[Pointer]) -> Report:
+    """What is wrong with each ref and num binding of a file the build prints: a key nothing
+    places, a number the count cannot give, and words around it that point elsewhere."""
+    report = Report()
+    shown = _scanned(text)
+    read: dict[int, list[Pointer]] = {}
+    for pointer in found:
+        if pointer.binding is not None:
+            read.setdefault(pointer.binding.start, []).append(pointer)
+    for binding in parse(text)[0]:
+        if not binding.is_ref or shown[binding.start : binding.end] != binding.raw:
+            continue
+        display = numbers.display(binding)
+        if isinstance(display, Refused):
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code=display.code,
+                    message=display.why,
+                    path=path,
+                    line=binding.line,
+                    col=binding.col,
+                    hint=display.hint,
+                )
+            )
+            continue
+        readings = read.get(binding.start, [])
+        named = (display.kind, display.supplementary)
+        wrong = [p for p in readings if (p.kind, p.supplementary) != named]
+        if readings and not wrong:
+            continue
+        printed = numbers.printed(binding)
+        whole = numbers.forms[display.supplementary, display.kind].replace(
+            NUMBER, str(display.number)
+        )
+        said = (
+            f"read with the words around it as {wrong[0].shown!r}, a {wrong[0].kind} of "
+            f"{_where(wrong[0].supplementary)}"
+            if wrong
+            else "with no word before it that points at a table or a figure"
+        )
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="pointer-word-mismatch",
+                message=f"{binding.raw} prints {printed!r}, {said}; {display.binding} is "
+                f"{whole} in {_where(display.supplementary)}",
+                path=path,
+                line=binding.line,
+                col=binding.col,
+                hint=f"write {{{{ref.{display.kind}.{display.key}}}}}, which prints {whole!r} "
+                f"whole, or put {{{{{NUM}.{display.kind}.{display.key}}}}} after the words "
+                f"that name a {display.kind} of {_where(display.supplementary)}",
+            )
+        )
+    return report
+
+
+def _where(supplementary: bool) -> str:
+    return "the supplement" if supplementary else "the main text"
+
+
+def _profile_path(project: Project) -> Path | None:
+    from manuscript_guard.gates.journal import profile_path
+
+    slug = project.target_journal
+    return profile_path(project, slug) if slug else None
+
+
+def _unread_forms(numbers: Numbers, profile: Path | None) -> Report:
+    """A form of the journal profile's `pointers:` that G2 does not read back, whole, as a
+    pointer to that kind of that document. A ref printed in it would be a pointer G2 could
+    not hold to anything, or would hold to the other document."""
+    report = Report()
+    for (supplementary, kind), form in numbers.forms.items():
+        written = form.replace(NUMBER, "1")
+        read = next(
+            (m for m in _POINTER.finditer(f"As {written} shows") if m.group() == written), None
+        )
+        if (
+            read is not None
+            and not read["rest"]
+            and _kind(read["kind"]) == kind
+            and bool(read["supp"] or read["e"] or read["after"] or read["s0"]) == supplementary
+        ):
+            continue
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="pointer-form-unread",
+                message=f"the journal profile writes a pointer to a {kind} of "
+                f"{_where(supplementary)} {form!r}, which G2 does not read as one",
+                path=profile or Path("profiles") / "journals",
+                hint="a form is the word and {n}, as the journal writes it: \"Table {n}\", "
+                "\"Fig. {n}\", \"Table S{n}\", \"Supplementary Table {n}\", \"eTable {n}\", "
+                "\"Extended Data Fig. {n}\", \"Table {n} in the Supplement\"",
+            )
+        )
+    return report
 
 
 def _unchecked(
@@ -347,4 +582,4 @@ def _in_order(
     return report
 
 
-__all__ = ["Placed", "check_pointers", "placed_in", "pointers_in"]
+__all__ = ["Placed", "check_pointers", "display_numbers", "placed_in", "pointers_in"]

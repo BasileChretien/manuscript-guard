@@ -93,6 +93,9 @@ BINDS_AT = {
     "hand-authored-table": DRAFTING,
     "malformed-placeholder": DRAFTING,
     "unresolved-binding": DRAFTING,
+    # A ref the build cannot number: it would print nothing where a pointer stands.
+    "ref-number-unknown": DRAFTING,
+    "pointer-form-unread": DRAFTING,
     "unquoted-result": DRAFTING,
     "typed-parameter": DRAFTING,
     "typed-software-version": DRAFTING,
@@ -160,6 +163,10 @@ BINDS_AT = {
     # A pointer to a table or a figure the document does not place, or out of ICMJE's order:
     # tables move and are renumbered while the draft is written (Basile, 2026-10-14).
     "pointer-to-nothing": INTERNAL_REVIEW,
+    # The words around a ref or num binding point at another kind or the other document:
+    # "Figures {{num.table.a}}". The binding's number is right; the words go stale as the
+    # display moves, as a typed pointer does.
+    "pointer-word-mismatch": INTERNAL_REVIEW,
     "cited-out-of-order": INTERNAL_REVIEW,
     "display-not-cited": INTERNAL_REVIEW,
     # A reference list is printed for others to read from the finished draft on. While

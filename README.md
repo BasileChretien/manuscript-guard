@@ -92,6 +92,10 @@ The database contained {{results.cohort.n_reports}} reports, of which
 {{results.ror.point}} (95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}}).
 ```
 
+A table or a figure is placed by its key, `{{table.baseline}}`, and pointed at by it:
+`{{ref.table.baseline}}` prints "Table 2" if it is the second table the main text places,
+and the number follows the table when it moves.
+
 Your analysis publishes those values through an emitter, which records where they came
 from. There is one for Python and one for R, and anything that can write JSON can take part:
 
@@ -127,7 +131,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | Gate | Checks |
 |---|---|
 | G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since, an input Git LFS or git-annex keeps judged by its pointer where it is not fetched; an input the data custodian keeps is not in git; no result quoted from synthetic data at submission, unless the paper is a demonstration; a warning where a lockfile pinning its packages has |
-| G2 | every number is classified, in the manuscript and in the replies to the reviewers, every declared value is quoted, every pointer to a table or figure placed by its binding names one the document places, and a p value, a share or an interval is quoted with what it belongs to; the level written beside an interval and the label beside a standard deviation or error are the ones emitted (warnings); a unit written after a binding is the one emitted; no bound count is printed below the data custodian's minimum |
+| G2 | every number is classified, in the manuscript and in the replies to the reviewers, every declared value is quoted, every pointer to a table or figure placed by its binding names one the document places, and one the build numbers (`{{ref.table.<key>}}`) a display it can number, and a p value, a share or an interval is quoted with what it belongs to; the level written beside an interval and the label beside a standard deviation or error are the ones emitted (warnings); a unit written after a binding is the one emitted; no bound count is printed below the data custodian's minimum |
 | G3 | numbers in a figure's output *and in its source* trace back to results, and a script that estimates, samples or draws at random while it plots says why (a warning) |
 | G4 | word counts, required sections and required statements match the target journal, and each rule of its profile is quoted from the journal's stored page, its rules no gate checks signed off by the corresponding author, the Data availability statement says what the journal's data policy asks, and the figure files meet its artwork rules, an SVG's or a PDF's smallest text and thinnest line at the width it prints and a PDF's fonts among them, and the journal chosen from `journals/shortlist.yaml` is indexed for MEDLINE and, if open access, listed in DOAJ, as `lookup --journals` recorded, and the citation style it names is kept unchanged for the offline build and numbers citations as the profile says (warnings) |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason, and a declared study design has one of its guidelines; a guideline its authors have replaced is pointed out |
@@ -252,7 +256,7 @@ number in the file and the rule that classified it.
 |---|---|
 | `init` | scaffold a new manuscript project |
 | `check` | run every gate; `--submission` holds the manuscript to submission standards |
-| `bind` | show every unbound number and how to give it a source |
+| `bind` | show every unbound number and how to give it a source; `--pointers` offers the `{{ref.…}}` binding that prints each typed "Table 2" |
 | `explain` | show how each number in a file was classified |
 | `impact` | list what depends on a file, or on each file changed since a commit: results, the sentences that bind them, figures, Methods paragraphs, panel readings and co-author answers |
 | `verify` | re-run the analysis and check it still produces the recorded results |

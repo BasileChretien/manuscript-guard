@@ -270,12 +270,26 @@ reporting_guidelines:
 #   # for them, and the rest above still hold.
 #   # supplementary: {max_dpi: 300, max_file_mb: 10}
 
+# ── Pointers to tables and figures ───────────────────────────────────────────────────────
+#
+# How the journal writes a pointer to a table or a figure, {n} standing for its number.
+# `{{ref.table.<key>}}` prints it in this form, "Table 2" or "eTable 1", and
+# `{{num.table.<key>}}` the word of it with the number, "2" or "S1". Delete any line the
+# journal does not state; the default is the one in the comment beside it.
+#
+# pointers:
+#   table: "Table {n}"                       # default "Table {n}"
+#   figure: "Fig. {n}"                       # default "Figure {n}"
+#   supplementary_table: "eTable {n}"        # default "Table S{n}"
+#   supplementary_figure: "eFigure {n}"      # default "Figure S{n}"
+
 # ── Quotes ───────────────────────────────────────────────────────────────────────────────
 #
 # For every rule above, the words of the stored page it was read from, as the page writes
 # them, under the rule's key: limits.<name>, structure.required_sections,
 # structure.abstract_structured, structure.abstract_headings, structure.abstract_title,
-# required_statements.<id>, references, english_variant, blinding, reporting_guidelines.
+# required_statements.<id>, references, english_variant, blinding, reporting_guidelines,
+# pointers.<kind>.
 # G4 names every rule that has none. A limit's number must be in its quote, as digits
 # ("3500", "3,500") or as a word up to twenty ("four").
 #

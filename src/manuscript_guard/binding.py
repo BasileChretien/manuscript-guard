@@ -92,6 +92,67 @@ def unbound(project: Project, namespace: dict[str, Value]) -> list[Unbound]:
     return found
 
 
+def typed_pointers(project: Project) -> list[Unbound]:
+    """Each typed pointer to a table or a figure the document numbers, with the binding that
+    prints it as it reads now: "Table 2" becomes `{{ref.table.<key>}}`, and in a list
+    ("Tables 1 and 2") each number becomes `{{num.table.<key>}}`, its words kept.
+
+    Offered only where the binding prints what is typed, character for character, so that
+    accepting one changes no word of the paper: "Supplementary Table 1" under the form
+    "Table S{n}" would print "S1", and is not offered. Nor is a range that names a table it
+    does not write, "Tables 1-3", whose 2 no binding could stand for. A pointer to a kind the
+    build cannot number (`crossref`) is not offered, nor one that points at nothing.
+    """
+    from manuscript_guard.crossref import NUMBER, Display, number_of
+    from manuscript_guard.gates import pointers
+
+    numbers, files = pointers._count(project)
+    by_number = {
+        (found.supplementary, found.kind, found.number): found
+        for placed in numbers.placed.values()
+        if len(placed) == 1
+        for found in placed
+    }
+    offered: list[Unbound] = []
+    for path, text in files:
+        shown = pointers._scanned(text)
+        for match in pointers._POINTER.finditer(shown):
+            read = pointers._numbers(match)
+            if any(at is None for _s, _n, at in read):
+                continue
+            kind = pointers._kind(match["kind"])
+            elsewhere = bool(match["supp"] or match["e"] or match["after"])
+            whole = " ".join(match.group().split())
+            for s, number, at in read:
+                found = by_number.get((elsewhere or s, kind, number))
+                if not isinstance(found, Display) or numbers.uncounted(
+                    found.supplementary, kind
+                ):
+                    continue
+                form = numbers.forms[found.supplementary, kind]
+                if len(read) == 1 and whole == form.replace(NUMBER, str(number)):
+                    start, end, binding = match.start(), match.end(), "ref"
+                else:
+                    start = at - (1 if s else 0)
+                    end = at + len(str(number))
+                    if shown[start:end] != number_of(form, number):
+                        continue
+                    binding = "num"
+                offered.append(
+                    Unbound(
+                        path=path,
+                        line=shown.count("\n", 0, start) + 1,
+                        start=start,
+                        end=end,
+                        text=text[start:end],
+                        hint=f"{found.binding} is {kind} {shown[start:end]} of "
+                        f"{'the supplement' if found.supplementary else 'the main text'}",
+                        candidates=(f"{binding}.{kind}.{found.key}",),
+                    )
+                )
+    return offered
+
+
 def routes(item: Unbound) -> list[str]:
     """The ways to give this number a source, likeliest first."""
     out: list[str] = []

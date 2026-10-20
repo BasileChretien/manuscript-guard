@@ -1820,6 +1820,57 @@ def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
             'Some called it "acceptable in all but the frailest". Others disagreed '
             "[@fictionalHepaticCohort2021].", [], id="cited in the next sentence",
         ),
+        # Round 1 of #282: words elided, or a word marked [sic], and each piece is the
+        # source's, in order.
+        pytest.param(
+            "The cohort found that “incidence rose with age [...] by sex” "
+            "[@fictionalHepaticCohort2021].", [], id="words elided",
+        ),
+        pytest.param(
+            "The cohort found that “incidence rose … did not differ meaningfully” "
+            "[@fictionalHepaticCohort2021].", [], id="words elided with an ellipsis",
+        ),
+        pytest.param(
+            "The cohort found that “incidence rose with age [sic] and did not differ” "
+            "[@fictionalHepaticCohort2021].", [], id="a word marked [sic]",
+        ),
+        pytest.param(
+            "The cohort found that “did not differ meaningfully by sex [...] incidence "
+            "rose” [@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+            id="pieces out of order",
+        ),
+        # Round 1 of its review: a piece found inside a longer word, and [sic] taken for an
+        # elision, passed misquotations main warned of.
+        pytest.param(
+            "The cohort found that “incidence rose with age [...] ningfully by sex” "
+            "[@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+            id="a piece inside a longer word",
+        ),
+        pytest.param(
+            "The cohort found that “incidence rose with age [sic] not differ "
+            "meaningfully” [@fictionalHepaticCohort2021].",
+            [("quotation-not-in-source", "warn")], id="words left out at a [sic]",
+        ),
+        # Round 2 of its review: one piece beside an elision at an end, a piece after a
+        # hyphen inside a word, and [sic] in emphasis.
+        pytest.param(
+            "The cohort found that “… cidence rose with age and did” "
+            "[@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+            id="one piece inside a longer word",
+        ),
+        pytest.param(
+            "The cohort found that “… induced hepatic injury was 14 per 100 000” "
+            "[@fictionalHepaticCohort2021].", [("quotation-not-in-source", "warn")],
+            id="a piece after a hyphen inside a word",
+        ),
+        pytest.param(
+            "The cohort found that “incidence rose [*sic*] with age and did not differ” "
+            "[@fictionalHepaticCohort2021].", [], id="[sic] in emphasis",
+        ),
+        pytest.param(
+            "The cohort found that “… did not differ meaningfully by sex” "
+            "[@fictionalHepaticCohort2021].", [], id="one piece the source holds",
+        ),
     ],
 )  # fmt: skip
 def test_a_quotation_in_the_prose_is_in_the_source_it_cites(
@@ -1853,6 +1904,54 @@ def test_a_misquotation_names_only_the_works_looked_in(project: Path) -> None:
     [found] = check_prose_quotations(project_).findings
     assert found.code == "quotation-not-in-source"
     assert found.message.endswith("is not in the stored source of @fictionalHepaticCohort2021")
+
+
+def test_an_elided_quotation_reads_points_as_a_reader_does(  # and a dash, as pinned
+) -> None:
+    """The review of #282: a reference number after a full stop joined the word before it,
+    and a faithful quotation was warned of; a decimal point still joins. A source is read
+    folded, its dashes hyphens, so a range quoted with its dash is found; and a dash closed
+    up between words joins them, so a piece ending there is warned of (Known gaps)."""
+    from manuscript_guard.gates.quotations import quoted_in
+    from manuscript_guard.literature.sources import normalise
+
+    assert quoted_in(normalise("in the frailest patients.12 Results"), "… in the frailest patients")
+    assert not quoted_in(normalise("raised to 2.5 mg daily"), "raised … 5 mg daily")
+    assert quoted_in(normalise("doses of 10–20 mg were safe here"), "… doses of 10–20 mg were safe")
+    assert not quoted_in(normalise("the drug was safe—at least in adults"),
+                         "the drug was safe … in adults")  # fmt: skip
+    dashed = "rose with age … — … and did not differ"
+    assert quoted_in("rose with age and did not differ", dashed)
+    assert not quoted_in("rose with age, cost-effective, and differed", dashed)
+
+
+def test_a_quotation_is_looked_for_in_every_stored_file_of_its_work(project: Path) -> None:
+    """Round 1 of #282: the first file of a work in the order of their suffixes was read
+    alone, so a quotation of the full text beside an HTML abstract was said to be absent,
+    and an abstract filed as `<key>.abstract.txt`, as the literature skill names it, was
+    never found."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    path = main_md(project)
+    sentence = ("The agency judged it “acceptable in all but the frailest patients” "
+                "[@fictionalAgencyReport].")  # fmt: skip
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("\n# Discussion\n", "\n" + sentence + "\n\n# Discussion\n", 1),
+                    encoding="utf-8")  # fmt: skip
+    sources = project / "literature" / "sources"
+
+    def said() -> list[str]:
+        return [f.code for f in check_prose_quotations(load_project(project)[0]).findings]
+
+    assert said() == ["quotation-unchecked"]
+    abstract = sources / "fictionalAgencyReport.abstract.txt"
+    abstract.write_text("The risk was acceptable in all but the frailest patients.\n", "utf-8")
+    assert said() == []
+    abstract.unlink()
+    (sources / "fictionalAgencyReport.html").write_text("<p>An abstract.</p>", "utf-8")
+    (sources / "fictionalAgencyReport.txt").write_text(
+        "It was acceptable in all but the frailest patients, the agency said.\n", "utf-8")
+    assert said() == []
 
 
 # ------------------------------------------------------------- what a change makes stale

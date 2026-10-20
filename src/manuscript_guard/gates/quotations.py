@@ -5,11 +5,12 @@ a sentence of the manuscript was checked against nothing: 'the agency judged the
 "acceptable in all but the frailest patients" [@agency2019]' could be misremembered, and
 nothing would say so. So each quoted span of four words or more, inside quotation marks, in
 a sentence that cites a work, is looked for in that work's stored source under
-`literature/sources/`, named by its citation key, with the same `contains()` the ledger's
-quotes are read with. Where it is found in none of the sentence's cited works that have a
-source, G7 warns (`quotation-not-in-source`); where none of them has a stored source, a note
-says the quotation could not be checked (`quotation-unchecked`). Page numbers are not
-compared: a PDF's page index is not the page printed on it.
+`literature/sources/`, named by its citation key, in every stored file of it, with the
+same `contains()` the ledger's quotes are read with; a quotation with words left out is
+looked for piece by piece (`quoted_in`). Where it is found in none of the sentence's cited
+works that have a source, G7 warns (`quotation-not-in-source`); where none of them has a
+stored source, a note says the quotation could not be checked (`quotation-unchecked`). Page
+numbers are not compared: a PDF's page index is not the page printed on it.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from manuscript_guard.literature.sources import (
     UnreadableSource,
     contains,
     filed_name,
+    normalise,
     read_source,
 )
 from manuscript_guard.text.masking import blank_comments
@@ -88,12 +90,76 @@ def quotations_in(text: str) -> list[Quotation]:
     return found
 
 
-def _source_of(sources: Path, key: str) -> Path | None:
-    for suffix in sorted(TEXT_SUFFIXES | HTML_SUFFIXES | PDF_SUFFIXES):
-        path = sources / filed_name(key, suffix)
-        if path.is_file():
-            return path
-    return None
+def _sources_of(sources: Path, key: str) -> list[Path]:
+    """Every stored file of a work: its full text in each form kept, and its abstract,
+    `<key>.abstract.txt` as the literature skill names it (round 1 of #282: the first file
+    alone was read, so a quotation of a PDF beside an HTML abstract was said to be absent,
+    and an abstract so named was never found)."""
+    suffixes = sorted(TEXT_SUFFIXES | HTML_SUFFIXES | PDF_SUFFIXES)
+    names = [filed_name(key, s) for s in suffixes] + [filed_name(key, ".abstract" + s)
+                                                       for s in suffixes]  # fmt: skip
+    return [sources / name for name in names if (sources / name).is_file()]
+
+
+#: Where a writer left words of a source out: "[...]", "[. . .]", "[…]", "…" or "...".
+_ELIDED = re.compile(
+    r"\s*(?:\[\s*(?:\.\s*){3}\]|\[\s*\N{HORIZONTAL ELLIPSIS}\s*\]|\N{HORIZONTAL ELLIPSIS}"
+    r"|\.\.\.)\s*"
+)
+#: A word the writer marks as the source's own, `[sic]`, `[*sic*]`, `[sic!]`: it leaves
+#: nothing out, and is taken out.
+_SIC = re.compile(r"\s*\[\s*[*_]{0,2}sic[*_]{0,2}!?\s*\]", re.IGNORECASE)
+
+
+def quoted_in(text: str, quote: str) -> bool:
+    """Whether a quotation is in a source's text: whole, less any [sic], or, where the writer
+    left words out, each piece either side as words of its own, in the order quoted (round
+    1 of #282: the whole was looked for, and an elided quotation was said to be absent).
+    [sic] leaves nothing out, so the words either side of it stand together in the source,
+    and a piece is not the end or the start of a longer word (round 1 of the review: "…
+    effective" was found inside "ineffective")."""
+    quote = _SIC.sub("", quote)
+    # Whole, as main reads it, only where nothing was left out: one piece beside an elision
+    # at either end is words of its own too (round 2 of the review).
+    if not _ELIDED.search(quote):
+        return contains(text, quote)
+    # A piece with no letter or digit, a dash between two elisions, is no words to look for.
+    folded = (normalise(piece).lower() for piece in _ELIDED.split(quote))
+    pieces = [piece for piece in folded if any(c.isalnum() for c in piece)]
+    haystack, at = normalise(text).lower(), 0
+    for piece in pieces:
+        found = _as_words(haystack, piece, at)
+        if found < 0:
+            return False
+        at = found + len(piece)
+    return True
+
+
+def _as_words(haystack: str, piece: str, at: int) -> int:
+    """Where `piece` stands from `at` on as words of its own, or -1: not after or before a
+    letter or digit, nor a hyphen or an apostrophe joining it to one, nor a point between
+    digits ("… effective" is no part of "cost-effective", nor "5 mg" of "2.5 mg"; a
+    reference number after a full stop, "patients.12", is)."""
+    found = haystack.find(piece, at)
+    while found >= 0:
+        end = found + len(piece)
+        before = haystack[max(0, found - 2) : found].rjust(2)
+        after = haystack[end : end + 2].ljust(2)
+        joined_before = before[1].isalnum() or _joins(before[0], before[1], piece[0])
+        joined_after = after[0].isalnum() or _joins(piece[-1], after[0], after[1])
+        if not (piece[0].isalnum() and joined_before) and not (
+            piece[-1].isalnum() and joined_after
+        ):
+            return found
+        found = haystack.find(piece, found + 1)
+    return -1
+
+
+def _joins(left: str, mark: str, right: str) -> bool:
+    """Whether `mark` joins `left` and `right` into one word or number."""
+    if mark == ".":
+        return left.isdigit() and right.isdigit()
+    return mark in "-'" and left.isalnum() and right.isalnum()
 
 
 def check_prose_quotations(project: Project) -> Report:
@@ -103,17 +169,17 @@ def check_prose_quotations(project: Project) -> Report:
     report = Report()
     for path in source_files(project.path("manuscript")):
         for quotation in quotations_in(read_text(path)):
-            found = [(key, _source_of(sources, key)) for key in quotation.keys]
-            stored = [(key, source) for key, source in found if source]
+            stored = [(key, source) for key in quotation.keys
+                      for source in _sources_of(sources, key)]  # fmt: skip
             if not stored:
                 report = report.with_findings(_unchecked(path, quotation))
                 continue
             texts = [(key, _text(read, source)) for key, source in stored]
-            if any(text is not None and contains(text, quotation.quote) for _k, text in texts):
+            if any(text is not None and quoted_in(text, quotation.quote) for _k, text in texts):
                 continue
             # Named only where a source was read: a work with none was not looked in (round
             # 1 of #282: every cited key was named).
-            looked_in = [key for key, text in texts if text is not None]
+            looked_in = list(dict.fromkeys(key for key, text in texts if text is not None))
             if not looked_in:
                 report = report.with_findings(_unchecked(path, quotation))
                 continue

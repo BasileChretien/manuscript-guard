@@ -1058,12 +1058,17 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
 G7 checks the ledger's quotes against the stored sources. A quotation written into a sentence
 of the manuscript was checked against nothing, and a misremembered one reads as checked. Now
 each quotation of four words or more, in straight or curly double marks, is looked for in the
-stored source of every work cited in the sentences it spans, with the ledger's `contains()`:
+stored source of every work cited in the sentences it spans, with the ledger's `contains()`
+where it leaves nothing out:
 a quotation of two sentences ends in the one that cites. The sentences are cut as the
 co-author's items are. Where it is in none of those sources, G7 warns
 (`quotation-not-in-source`); where none of the cited works has a source that can be read, a
 note says it could not be checked (`quotation-unchecked`). Page numbers are not compared: a
-PDF's page index is not the page printed on it.
+PDF's page index is not the page printed on it. Every stored file of a work is looked in, its
+full text in each form kept and its abstract, `<key>.abstract.txt` as the literature skill
+files it; and where the writer left words out, `[...]`, `…` or `...`, or marked one `[sic]`,
+each piece either side is looked for, in the order quoted (round 1 of #282: the first file
+alone was read, and the whole quotation was looked for, so both were said to be absent).
 
 ## Only a person can sign an attestation
 
@@ -9106,7 +9111,18 @@ Closed since, and why each mattered:
   marks, and a quotation in a language whose marks differ (« », „ “) are not read. A
   quotation of something that is not the cited work, a questionnaire's item in a sentence
   that cites the instrument's paper, is looked for in that paper all the same, and warned of.
-  A quotation with emphasis inside it is compared with the emphasis marks in it.
+  A quotation with emphasis inside it is compared with the emphasis marks in it. The
+  pieces of a quotation with words left out are looked for in order, however far apart
+  they stand in the source, so two short pieces from different pages are found, and a
+  quotation of four one-word pieces checks little; its four words are counted whole. A
+  key that ends in `.abstract` files its source under the name another key's abstract
+  has, `smith.abstract.txt`, and each is read as the other's. A piece after an elision is
+  held to its word's edges by letters, digits, a hyphen, an apostrophe and a decimal point:
+  a decimal comma and a minus sign are not seen, so "… 0.5 mg" is found in "-0.5 mg". A
+  source is read with its dashes made hyphens, so a dash closed up between words joins
+  them, and a piece that ends or starts at a closed-up dash or inside a range, "safe" in
+  "safe—at least" or "20 mg" in "10–20 mg", is warned of
+  (`test_an_elided_quotation_reads_points_as_a_reader_does`).
 - **`impact` follows the edges the gates record, as loosely as they record them.** A figure
   script counts as reading the results when G3's heuristic says so, and then depends on
   every results file, not on the keys it reads. A sentence is named by its line, not its

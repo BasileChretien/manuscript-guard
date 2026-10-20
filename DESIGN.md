@@ -1078,9 +1078,11 @@ needed has, for a file never opened on this computer, only Zotero's text of it: 
 attachment's folder holds `.zotero-ft-cache` and nothing else. Of 193 items found by two
 title searches of the author's library, 69 had a file on this computer, 32 only that text,
 and 92 neither. So each attachment gives its file, where it is there and is a PDF, a saved
-page or plain text, or else Zotero's text of it as `<key>.txt` (Zotero keeps one for an EPUB
-too), or else a reason, and the works left with no copy are listed with theirs and what to do
-in Zotero. A work with a file saved under its name by hand is not listed. The other kinds G7
+page or plain text, or else, where the file is not here or is an EPUB, Zotero's text of it as
+`<key>.txt`, or else a reason, and the works left with no copy are listed with theirs and what
+to do in Zotero. Zotero's text is not taken for a table or a citation file that is here,
+which Zotero may index too (round 2 of #361), and a record entry whose file is gone is
+dropped at the start of a run, so that a file saved later under its name stays the author's. A work with a file saved under its name by hand is not listed. The other kinds G7
 reads, a table or a citation file, are not taken: attached to an item in Zotero they are a
 supplement's data or the item's own reference, and G7 would read them as the work's text.
 

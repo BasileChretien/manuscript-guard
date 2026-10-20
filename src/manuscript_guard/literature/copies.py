@@ -62,6 +62,9 @@ ZOTERO_TEXT = ".zotero-ft-cache"
 #: The kinds taken as the work's own text: G7 reads more (`TEXT_SUFFIXES`), but a table or a
 #: citation file attached in Zotero is not the work (round 1 of #361).
 TAKEN = frozenset(PDF_SUFFIXES | HTML_SUFFIXES | {".txt"})
+#: The kinds on this computer whose Zotero text is taken in their place: a book's text, and
+#: not a table's or a citation file's, which Zotero may index too (round 2 of #361).
+TEXT_IN_PLACE_OF = frozenset({".epub"})
 
 COPIED = "copied"
 UPDATED = "updated"
@@ -91,6 +94,8 @@ class Candidate:
     attachment: str | None
     sha256: str
     size: int
+    #: What the copy is, as the command says it: "from Zotero", or which file Zotero's text is of.
+    about: str = "from Zotero"
 
 
 @dataclass(frozen=True)
@@ -158,10 +163,17 @@ def candidates(key: str, held: list[Attachment]) -> tuple[list[Candidate], list[
         path = Path(one.path)
         suffix = path.suffix.lower()
         here = path.is_file()
+        text = path.parent / ZOTERO_TEXT
+        about = "from Zotero"
         if here and suffix in TAKEN:
             origin, kind, name = path, "zotero", filed_name(key, suffix)
-        elif (path.parent / ZOTERO_TEXT).is_file():
-            origin, kind, name = path.parent / ZOTERO_TEXT, "zotero-text", filed_name(key, ".txt")
+        elif (not here or suffix in TEXT_IN_PLACE_OF) and text.is_file():
+            origin, kind, name = text, "zotero-text", filed_name(key, ".txt")
+            about = (
+                f"Zotero's text of a {suffix} file"
+                if here
+                else "Zotero's text of a file that is not on this computer"
+            )
         elif here:
             why.append(f"a {suffix or 'suffixless'} file, not taken as the work's text")
             continue
@@ -174,7 +186,7 @@ def candidates(key: str, held: list[Attachment]) -> tuple[list[Candidate], list[
             why.append(f"its file could not be read ({exc.strerror or exc})")
             continue
         found.setdefault(name, {}).setdefault(
-            sha, Candidate(name, origin, kind, one.item, sha, size)
+            sha, Candidate(name, origin, kind, one.item, sha, size, about)
         )
     chosen = []
     for name, versions in found.items():
@@ -235,11 +247,7 @@ def _size(size: int) -> str:
 
 def _said(status: str, candidate: Candidate, dry_run: bool) -> str:
     where = f"literature/sources/{candidate.name}"
-    what = (
-        "Zotero's text of a file that is not on this computer"
-        if candidate.kind == "zotero-text"
-        else "from Zotero"
-    )
+    what = candidate.about
     if status == COPIED:
         return f"{'would copy' if dry_run else 'copied'} {where} ({what}, {_size(candidate.size)})"
     if status == UPDATED:
@@ -277,7 +285,10 @@ def sync(
         raise NothingToCopy("the manuscript cites nothing, so there is no source to copy")
     fetch = fetch or client.attachments
     folder = project.path("literature") / FOLDER
-    recorded = read_record(project)
+    on_disk = read_record(project)
+    # An entry whose file is gone says nothing of a file saved under that name later: kept, it
+    # made the author's copy the command's (round 2 of #361).
+    recorded = {name: entry for name, entry in on_disk.items() if (folder / name).is_file()}
     files = dict(recorded)
     outcomes: list[Outcome] = []
     try:
@@ -296,7 +307,7 @@ def sync(
                 )
     finally:
         # Zotero stopping halfway leaves the files copied so far recorded as the command's.
-        if not dry_run and files != recorded:
+        if not dry_run and files != on_disk:
             write_record(project, files)
     return outcomes
 

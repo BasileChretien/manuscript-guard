@@ -27,7 +27,8 @@ command needs it, write it to a file with the file tools and give the command th
 
 Where Zotero is running with Better BibTeX, start with `manuscript-guard sync-sources`. It
 copies each cited work's PDF or saved page from Zotero into `literature/sources/`, under the
-name below, or Zotero's text of it where the file is not on this computer, and lists the
+name below, or Zotero's text of it where the file is not on this computer or is an EPUB,
+and lists the
 works it found no copy of. Zotero's copies came through the user's own access: the Zotero
 Connector in their browser, or Find Available PDF through their library's proxy. It writes
 over no file it did not write.

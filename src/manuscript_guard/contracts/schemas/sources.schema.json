@@ -21,7 +21,7 @@
           "bytes": { "type": "integer", "minimum": 0 },
           "from": {
             "enum": ["zotero", "zotero-text"],
-            "description": "`zotero`: the attachment's own file. `zotero-text`: Zotero's text of an attachment whose file is not on this computer, the `.zotero-ft-cache` beside where the file would be."
+            "description": "`zotero`: the attachment's own file. `zotero-text`: Zotero's text of an attachment whose file is not on this computer or is an EPUB, the `.zotero-ft-cache` in the attachment's folder."
           },
           "attachment": {
             "type": "string",

@@ -62,11 +62,15 @@ STUCK_AFTER = 900
 #: The terminal's own standard error, kept from the one moment pytest is not capturing it.
 _TERMINAL: int | None = None
 
+#: The mark of a test that reads a clock. See `pytest_collection_modifyitems`.
+TIMING = "timing"
+
 
 def pytest_configure(config: pytest.Config) -> None:
     """Where pandoc is required, refuse to start without it rather than skip every test that
     needs it. Unset, a missing pandoc still skips them."""
     global _TERMINAL
+    config.addinivalue_line("markers", f"{TIMING}: reads a clock; CI runs it apart, in one process")
     try:
         _TERMINAL = os.dup(sys.stderr.fileno())
     except (AttributeError, OSError, ValueError):
@@ -100,6 +104,22 @@ def pytest_unconfigure(config: pytest.Config) -> None:
     if _TERMINAL is not None:
         os.close(_TERMINAL)
         _TERMINAL = None
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Mark `timing` each test that times a scan with `assert_linear`, and each that
+    `tests/data/timing_budgets.yaml` lists as a budget. CI runs the rest on parallel workers
+    (`-n auto -m "not timing"`) and these after them in one process (`-m timing`): a worker
+    running beside a timed test takes some of the time it measures."""
+    import yaml
+
+    listed = yaml.safe_load((REPO / "tests" / "data" / "timing_budgets.yaml").read_text(
+        encoding="utf-8"))["reads"]  # fmt: skip
+    budgets = {entry["where"] for entry in listed if entry.get("kind") == "budget"}
+    for item in items:
+        timed = "assert_linear" in getattr(item, "fixturenames", ())
+        if timed or item.nodeid.split("[", 1)[0] in budgets:
+            item.add_marker(TIMING)
 
 
 @pytest.fixture

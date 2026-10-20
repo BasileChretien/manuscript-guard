@@ -26,6 +26,7 @@ pip package, with tests.
 ```bash
 pip install -e ".[dev]"      # from the repo root
 pytest -q                    # the whole suite (R, Zotero, Claude Code, Codex, pandoc tests skip if absent)
+pytest -q -n auto -m "not timing" && pytest -q -m timing   # the same, as CI runs it
 ruff check src tests
 claude plugin validate .     # the marketplace manifest; `plugin` validates the plugin itself
 ```

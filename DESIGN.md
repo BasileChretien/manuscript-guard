@@ -7078,354 +7078,7 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   column, while a negative SMD, a P with a footnote and "NS" are refused; a docx `gridSpan`
   has no upper bound.
 
-Closed since, and why each mattered:
-
-- **The header's title was read by line, and the warning of two titles was wrong on any
-  header but the plainest.** Nobody saw the warning until #165. Shown, it took what stands
-  after the first `title:` in the block, at any depth and on that line alone, less every
-  quotation mark and apostrophe at either end. So it warned of two titles that agreed where
-  the header's had a comment after it, an apostrophe doubled between single quotation marks
-  (`'Crohn''s disease'`), a quotation mark or a backslash escaped between double ones, a
-  mark of its own at either end, a second line or a folded block, or an author's
-  `title: Dr` above it; and where `paper.yaml`'s own was a folded block, whose closing line
-  break YAML keeps. An author who made the two agree by copying `paper.yaml`'s line, as
-  `init` types it for a title with TeX (`"IFN-$\\gamma$ release assays"`), kept the
-  warning. And it said nothing of two that differed where the header's title began under
-  its key, was written `title :` or `"title":`, or was written twice. The header's title
-  is now read as its abstract is: by the key pandoc knows, its own or merged in, and the
-  last of one written twice. Both are taken from the one composing that finds the header.
-  The abstract had a second composing of its own, and the title was at first read from
-  that: a header nested just as deep as the first composing could take, about 480 levels,
-  then raised `RecursionError` out of the second, one call further down the stack, and
-  `import` ended in a traceback where it had answered (the review of #168). The two
-  titles are compared with their spaces, tabs and line breaks folded, and the warning
-  names the line of the header's title. Pandoc is asked for the title it keeps from each header of the
-  table that holds this (`AS_YAML_READS_IT` in `tests/test_corruption.py`), and agrees on
-  every row but the one Known gaps names. `init` types a header for more titles as a
-  consequence (Basile, 2026-10-04): one that begins or ends with a quotation mark or an
-  apostrophe, `the patients'`, is held between the other kind. A title that neither kind
-  gives back is still left without a header: one holding both kinds, or a backslash and
-  an apostrophe, `TNF-$\alpha$ inhibitors in Crohn's disease`.
-- **The warning of two titles was shown by no command.** Assembling compares the title in a
-  manuscript file's header with `paper.yaml`'s and makes a warning where they differ
-  (`two-titles`). `build` and `submit` printed what assembling found only when that held a
-  failure, and `check` does not assemble, so the warning was made and nobody was told: with
-  the title changed in `paper.yaml` and the header left as it was, `check` listed nothing
-  and `build` printed the name of the document. That document carried `paper.yaml`'s title,
-  the one meant, so nothing wrong was printed, while this file said the build warned. Found
-  in the work on #162. `check` now gives the warning at every stage, from the gate that
-  already refuses what assembling would refuse; the stage decides which failures are due,
-  and a warning is not one. `build` and `submit` print what assembling warns of, once and
-  before the document is made (Basile, 2026-10-04). `import` rebuilds a document already
-  sent and says nothing of it, as before. How the header's title was read was left as it
-  was then; the entry above is what became of it.
-- **An abbreviated `--submission` was not seen by the submission guard.** argparse reads any
-  prefix of an option that names one option only, so `manuscript-guard build --subm` was a
-  submission build and `review --subm` a review at submission standard, and the guard's
-  marker is the whole word: in a project that fails, `build --subm --offline` was let
-  through by the guard. `build` then refused on its own account, as it does while anything
-  fails; with `--skip-checks` it built, and that build is what the guard missed. Found in
-  the review of #131 and true before it. No command reads an abbreviated
-  option now (Basile, 2026-10-02): `build --subm` exits 2 with `unrecognized arguments:
-  --subm`, and so does `--off` for `--offline`, which is the cost, paid by someone typing a
-  short form by hand. No document, skill or test in the repository wrote one. The marker was
-  not widened to the prefixes instead, because it would then have to be kept in step with
-  the parser by hand: on `review`, `--su` already stands for `--summary` as much as for
-  `--submission`. argparse's setting belongs to each parser, and on the top one alone it
-  leaves every command abbreviating, so it is set by the class the commands are made from.
-  `tests/test_cli.py` takes the commands that have the option from the parser and holds
-  every prefix of the word to one rule, that a spelling read as a submission is one the
-  guard's pattern matches; a second test fails for a command added with abbreviations on.
-  Before any command, `manuscript-guard --vers` is an error too, though the message is
-  argparse's for the missing command and does not name the option.
-- **A backslash before raw markup was not read.** `<!--`, `\begin{x}` or `<pre>` after an
-  odd number of backslashes is text to pandoc, and `import` writes what a co-author types
-  in Word so: a `<!--` typed there comes back as `\<!--`. `_blocks` took it for an opener
-  all the same, and where a `-->` followed further down the file, that paragraph and every
-  one up to the `-->` went without an identifier. A co-author's next edit to them was
-  dropped with "nothing came back"; since #69, `import` refused the rewording that typed the
-  `<!--` instead, though it was safe to make. A `\<div>` in a paragraph did the same to that
-  paragraph alone. An opener, a LaTeX `\begin` or `\end` and a block-level tag now count
-  only where no backslash escapes them (`_backslashed`): an odd run makes them text, an
-  even one escapes itself. Inside a comment or a verbatim element pandoc reads no escapes,
-  so `\-->` and `\</pre>` still close them. Braces were left to #72, which merged with this:
-  `_untagged` counts only unescaped braces, and `import` escapes a `}` as well as a `{`, so a
-  lone `{` typed in Word, written `\{`, keeps its paragraph's identifier, and so does
-  `\{\{results.x\}\}`, a binding typed as text (see "The writer and the tagger have to read
-  an opening the same way").
-- **Front matter closed by `...` took the body with it.** YAML, and pandoc, close a header
-  with `...` as well as `---`, and the build's pattern took only `---`. It ran on to the
-  next `---` line in the file, a horizontal rule, and the Introduction above the rule
-  vanished from the document, from `import` and from G13, with no warning. The build now
-  uses the pattern the gates use, which closes on the first `---` or `...` line, the file's
-  last line included, and the line straight after the opening, where an empty header had
-  run on to the next rule the same way. And it counts a block as front matter only where pandoc keeps it as
-  metadata: a mapping, or nothing. A list or a sentence between two delimiters prints, so
-  it is no longer stripped or masked. A header never closed before a later rule, with prose
-  in it, is not YAML, and pandoc refuses the file. The build had stripped it into one that
-  built without the Introduction. Now G2 and the build stop on it and name the YAML's
-  error, as they do for any header pandoc cannot read. Leaving such a header in the body for
-  pandoc to refuse was not enough: the identifier in front of its first paragraph made it
-  prose, so the build printed the YAML as text, and a `# Methods` in it let `p < 0.001`
-  pass G2 as the alpha chosen in advance. A header behind a byte-order mark or a blank first
-  line is found too, as pandoc finds it, and tabs are expanded before the YAML is read, as
-  pandoc expands them. Left in the body, such a header's title never met the two-titles
-  warning, and G2 read its keys as prose.
-- **A token straight after inline code stopped `import` for the whole manuscript.** The
-  bookmark around a binding or citation is raw inline code, and against a code span's
-  closing backtick its own backtick joined that run. Pandoc read the code and the bookmark
-  as one raw span and wrote the code into the marked build as XML: `` `age<65`{{x}} `` made
-  that build unreadable, and `import` exited 2 over a file the author had never seen. An
-  empty comment now keeps the two apart, which the Word writer drops, so the paragraph
-  still takes a rewording. And a marked build that cannot be read no longer stops the run.
-- **G8 went quiet exactly when two keys had diverged.** It fires when two quoted keys hold
-  the same value with different displays, so a duplicate was caught while it still agreed
-  and missed once it did not — a paper could carry `ror.point` at 0.95 and `ror.abstract`
-  at 3.84 and nothing said a word. `same_as` records the author's intent, and G8 fails when
-  a declared pair disagrees. A declaration rather than an inference, because the question
-  *is* about intent: `ror.point`, `ror.ci_low` and `ror.ci_high` share everything a
-  heuristic could see and are supposed to differ. The limit is honest — it protects the
-  pairs someone thought to declare — but a declared pair cannot drift in silence.
-- **`p < 0.05` was a convention everywhere.** The same characters mean two things: where a
-  paper describes its own method it is the alpha chosen in advance, and in the Results it is
-  a finding. A significance claim the analysis never produced therefore passed the gate that
-  carries the invariant. A rule can now be marked `methods_only`, and G2 reads the chain of
-  headings enclosing each number — a chain rather than the nearest heading, because
-  `### Sensitivity analyses` under `## Methods` is still Methods. Only G2 passes a section:
-  a figure legend has no Methods section to sit in and its `p < 0.05` is a legend
-  convention, so figure text and the audit keep every rule. One entailment: a display may
-  now carry a comparator, since a reported p-value has to be emittable and "<0.001" is the
-  honest rendering of a number too small to state. The value must be on the stated side of
-  it — `display="<0.001"` on a value of 0.4 is refused.
-- **`build --skip-checks` left a document that could pass for a checked one.** Revert the
-  source afterwards and `check` passes while the stale `.docx` still holds the wrong
-  number — the check and the artefact disagreeing silently, with nothing on disk recording
-  which was skipped. An unchecked build is now written as `manuscript.UNCHECKED.docx`, and
-  a submission pack assembled with `--skip-checks` says so in its own `MANIFEST.yaml`,
-  which is the file whose entire purpose is to be the thing you can tell from.
-- **Sidecar exemptions took a value with no reason.** `why` was optional in the code and
-  mandatory in every message these gates print, so `- value: '1'` on its own exempted a
-  number with no argument recorded anywhere. An entry without a reason is now ignored
-  rather than honoured: an exemption nobody justified is one nobody can review.
-- **`{{results.x}` was neither a binding nor malformed.** The loose pattern required `}}`,
-  so a single missing brace travelled into the built document as literal text, in the place
-  where a number was supposed to be. One typo, worst available outcome.
-- **A `.jl` figure script produced an empty report**, which reads as "checked and clean".
-  The lexer has no Julia entry; it now says the source was not read.
-- **A point estimate outside its own confidence interval passed `check`.** `interval()`
-  refuses it, and `interval()` was the only thing that did — the results fragment is a
-  contract with three other writers (`value(bounds=…)` called directly, the R emitter, a
-  hand-edited file), and none of them went through that helper. It is the one arithmetic
-  error a reader catches by eye in the first sentence of the Results. Bracketing is now
-  checked where every producer meets: at the fragment, by G2, along with an inverted interval,
-  a bound of an estimate nobody published, and two bounds claiming the same end.
-- **The reversed-interval check was disabled by restating a bound, and invented reversals
-  that were not there.** The guard meant to keep the *first* mention of each end tested
-  `value.bound in seen` while the keys were `"{bounds}:{bound}"`, so it never matched: the
-  last mention won. "2.10 to 7.02, and a lower bound of 2.10 excludes unity" was reported as
-  reversed, and a genuinely reversed interval that named its upper bound again went
-  unreported. A false positive on ordinary writing is the worse half — an author whose only
-  recourse is to delete a true sentence learns to distrust the gate.
-- **One estimate could carry only one interval.** A 90% CI beside the 95%, or a credibility
-  interval beside a frequentist one, is ordinary in a disproportionality paper and was
-  inexpressible: `interval()` wrote one fixed pair of key names, and declaring a second pair
-  by hand became a duplicated bound the moment bracketing started being checked — so closing
-  that hole closed a door too. A bound now carries a `level`, `interval()` takes one and
-  derives the key from it (`"90%"` → `ror.ci90_low`), and omitting `point` reuses the estimate
-  rather than publishing it twice: two keys holding one number is what `same_as` is for and
-  what G8 watches. Bounds are compared within a level and never across, because a 90% interval
-  nested inside a 95% one is correct rather than a contradiction — in the fragment and in
-  prose alike, since "3.84 (95% CI 2.10 to 7.02; 90% CI 2.51 to 5.87)" is one sentence and two
-  intervals. The slug is derived identically in both languages, or a manuscript's bindings
-  would depend on which language its analysis was written in.
-- **The example's figure had a different digest on Windows and on Linux.** matplotlib writes
-  an SVG through a text stream, so the same picture came out CRLF on one and LF on the other,
-  and everything downstream hashes the bytes: re-running `figures/forest.py` on Windows
-  invalidated the figure's own review record and its render manifest, and reported a change
-  nobody had made. The committed manifest was therefore right only on the machine that wrote
-  it. Exactly the trap `writeLines` set for the R emitter, in the Python path, in the example
-  a new user copies from. The script normalises the file before recording it.
-- **Supplementary material was welded into the manuscript.** There was no way to say a file
-  was a supplement, so it went into `manuscript.docx` after the Discussion — counted against
-  the journal's word and display-item limits, declared in that count on the title page,
-  arriving as pages an editor has to find the end of, and impossible to upload to the
-  "supplementary material" slot every submission system has. An author's only recourse was to
-  keep the supplement outside the project, which is also the only place the gates cannot see
-  it. `manuscript/supplementary/` builds as its own document, reaches the pack as its own
-  file, is still read by every gate that reads prose, and is still in scope for review.
-- **The pack answered "attach your completed checklist" with YAML.** It copied
-  `reporting/*.yaml` and nothing else, which is a serialisation rather than a checklist. A
-  table now goes beside the record — generated, so it cannot drift from the file the gate
-  checks, and built from the *published* item list rather than the completion, so an item
-  nobody answered appears with the answer blank instead of vanishing from what the journal
-  receives.
-- **`audit` reported a third of a real paper's citation markers as unexplained numbers.**
-  Pointed at a submitted pharmacology paper — 580 numeric tokens, 94 output files — it called
-  232 of them "not found in any output". Reading the list rather than the count: 25 were
-  Vancouver citation markers (`rejection[1,2]`, each dragging the preceding word in, because
-  an atom runs to the next space and only *author-year* citations had a rule); 29 were
-  confidence intervals written as ranges, matched as a single string `0.72–0.82` against
-  outputs holding the two bounds separately; 15 were `§3.1` section references, since only
-  the word form was recognised and its number was undotted, so "Section 4.2" failed too; and
-  14 were the ORCIDs and postcodes in the author block. Fixing those four took 232 to 151 on
-  the same paper.
-
-  The count was never wrong; it was unreadable, which is the same thing. A list where two in
-  three entries are the tool's own noise does not get triaged, it gets abandoned — and the
-  intervals are the sharpest case, because an interval is the paper's actual result and the
-  audit was worst precisely there. What remains at 151 is mostly the paper's own vocabulary
-  (`3-core`, `top-1%`), which is what `terms:` is for and is correctly reported as "this tool
-  does not know these words".
-
-  The same paper's supplements — still markdown, 1766 tokens — added one more: `n=8,393`
-  written closed up is a single atom that no longer looks like a number at all, so thirty
-  counts sitting in the outputs were reported unexplained. With spaces, `n = 8,393` is
-  already two tokens and always read correctly, which is why nobody had noticed. A label of
-  up to three letters is stripped before the number is read; 278 → 248 on those files.
-  Deliberately *not* fixed there: forty-three four-digit-hyphen-four-digit tokens, which in a
-  bibliometrics paper are ISSNs. They have the same shape as a plain range — that paper also
-  writes `2000-3999` for a Scopus code band — so a rule for them would be a rule matching a
-  shape rather than naming values, which is the mistake this file records six times already.
-- **A claim published through the results file came out green.**
-
-      em.value("conclusion", "The drug causes liver failure and should be withdrawn")
-
-  resolved, passed every gate, and the annotated copy painted it *traced* — green, over its
-  own key and "emitted by 01_disproportionality.json", the strongest reassurance that document
-  offers — on a sentence the author typed into an analysis script and nothing verified. And it
-  is the one route by which text escapes everything that reads text: the writing gate reads
-  manuscript sources, and this sentence is not in one.
-
-  Judged on whether the display carries a digit, not on whether it reads like a sentence — a
-  rule about the shape of the text would be the wrong kind of rule. `label=True` already means
-  "a name, not a measurement", so it is both the way out and a declaration on the record: a
-  drug name or a cohort label stays green, because it really is traced to the analysis.
-  Unlabelled prose is a defect in the annotated copy and a `prose-as-value` warning in
-  `check`. A warning rather than a refusal, because the toolkit does not get to decide that
-  keeping a name in one place is wrong.
-- **A value printing display maths split its paragraph in Word.** Identifiers are given to
-  the source before bindings are substituted, and a paragraph with `$$` in its source gets
-  none. `em.value("model.formula", "$$y = 2.1 x$$")`, bound in the sentence that ends a
-  section, put `$$` into a paragraph that had one. Pandoc gave the equation a Word paragraph
-  of its own, and only the part before it carried the identifier. A co-author who swapped
-  that part with the paragraph above had the whole sentence moved in the .md, exit 0, and
-  `check` said nothing: the digit kept even the prose warning quiet. G2 now refuses a value
-  whose display holds what, typed into the source, would have kept the identifier off the
-  paragraph (display maths, a LaTeX environment or an HTML block tag), and a line break,
-  after which a blank line, a fence or a `<div>` ends the paragraph. Leaving such a
-  paragraph untagged was the other way, and it was not taken: the identifiers would then
-  depend on the results as well as the source, and `import` reads them from the source.
-- **A p-value of 3.2 × 10⁻⁹ was published as "0.00".** `digits=2` on any number smaller than
-  half a unit in the last place gives a string of zeroes, and nothing objected: an explicit
-  `display` has been checked against its value since round two, but a *derived* one was
-  checked against nothing at all. So the one field a reader looks at first could carry a
-  number that is not the number, silently, from a single ordinary call. A rounding that turns
-  a non-zero value into zero is now refused, and the message says what to write instead.
-
-  What to write instead had to exist first. `display="<0.001"` already worked; scientific
-  notation parsed only as `3.2e-9`, which no journal prints — so an author wanting the value
-  stated precisely had the choice of a programmer's notation or `digits=`, and `digits=` was
-  the trap above. `3.2 × 10⁻⁹`, `3.2 x 10^-9` and `3.2*10**-9` are now readings of the same
-  number, superscripts included, and each is still checked against the value it claims to
-  render: `3.2 × 10⁻⁸` on a value of 3.2e-9 is refused, and so is `3.2 × 10⁻⁹` on a value
-  of 3.2 — which would previously have parsed with `10⁻⁹` as a *unit*.
-
-  Mirroring it in R exposed a live divergence in the cross-language contract: R's tolerance
-  was computed from the mantissa alone, which the Python side had already fixed. R therefore
-  accepted a display of `9.99e-6` for a value of `1.2e-6` while Python refused it. The parity
-  harness missed it because not one of its cases carried an exponent — "both emitters have to
-  be exercised on the same input, or mirrors is only a claim", written in that file's own
-  comments, and true again.
-- **`bind --apply` was all or nothing.** It replaced every literal that matched exactly one
-  published value, in one go. But a match is a suggestion and never evidence — the gate
-  refuses a number *because* it matches one, since nothing may pass by coincidence — so a
-  `12` that happens to equal a published count while meaning twelve months of follow-up was
-  applied along with the nine correct ones, and the only way to avoid it was to decline all
-  ten and retype them. `--only manuscript/main.md:42` accepts one suggestion; naming an
-  ambiguous one is refused rather than treated as permission to guess, and an unmatched
-  selector is an error rather than a silent no-op. The command now also names every
-  replacement it made — "replaced
-  7 literal(s)" said nothing about which seven, and each of them rewrote a sentence.
-- **The submission pack left out the response to reviewers.** `respond` wrote the letter into
-  `build/` and nothing collected it, so a resubmission pack held the revised manuscript and no
-  answer to the reviewers — the document a resubmission is judged on as much as the paper, and
-  the only artefact whose claims G13 actually checks. It is generated at pack time from the
-  revision records rather than read out of `build/`, by the same function `respond` calls: two
-  renderers would drift, and the drift would be invisible because both produce something that
-  looks like a letter. A stale letter is worse than an absent one — a checked set of claims
-  and an unchecked document making them. The manifest now also says which submission the pack
-  is, because "which version did the journal get" is a question about a round as much as about
-  a checksum.
-- **Two gates blocked the work and had no command behind them.** G11 refuses a submission
-  until a panel exists and every reviewer has filed a record; G10 refuses until every figure
-  has been read. Both asked for a SHA-256 the toolkit computed and never printed — G10's is a
-  digest of the figure's *content*, so it could not be obtained at all. An author who reaches
-  a gate and finds no way through does not hand-write the YAML; they reach for
-  `--skip-checks`, and the gate has then made the project worse than having no gate.
-  `review --record` and `--record-figure` write the file, fill in the digests, extend the
-  panel (carrying a reviewer's remit into a later round), and leave the findings to a person.
-
-  What they deliberately do not offer is a way to re-stamp a record after the manuscript has
-  changed. That one flag would turn the review system into theatre: the digest is the only
-  thing separating "somebody read this version" from "somebody read a version". Recording
-  twice is refused and says to record a further round instead. For the same reason the
-  verdict is required rather than defaulted — a record written before the reading is a claim
-  that somebody looked — and a figure's checks are written `ok: false` with the question each
-  one asks, so the file is a to-do list the gate reads back rather than a row of ticks.
-- **R could not express an interval at all.** The R emitter had `value()` and no
-  `interval()`, and its `value()` took no `bounds`/`bound`, so an R analysis published three
-  keys that no gate could know were one estimate — `interval-reversed` simply could not fire
-  on an R project, with nothing saying so. The results fragment is a cross-language contract,
-  and a rule enforced on one side only is a rule an author steps around by switching language.
-- **"According to the medical record" claimed adherence to RECORD.** The guideline names were
-  matched case-insensitively, and several of them — RECORD, ARRIVE, CONSORT — are ordinary
-  English words. The gate therefore warned about an unfollowed reporting guideline on the
-  Methods section of essentially every observational paper: a false positive about the
-  paper's own conduct, which is the fastest way to teach an author that this output is noise.
-  Guideline names are published in capitals; the match now requires that casing.
-- **The annotated figure sheet always said no values were exempt.** It read a
-  `presentational` section; the sidecar's sections are `allow` and `allow_source`, and no
-  schema, gate or example has ever written the other name. So the one page whose whole job is
-  to show what was exempted claimed nothing was — including for the shipped example, which
-  declares five axis ticks. Wrong precisely when it mattered, and untested, which is why it
-  survived.
-- **`fetch --save-url` wrote inside the installed package.** `_recipe_paths` falls back to the
-  recipes shipped in `src/`, and `--save-url` wrote back to whatever it returned: on a normal
-  pip install the command edited a file in site-packages — invisible to git, lost on upgrade,
-  applied to every other project on the machine, a `PermissionError` traceback on a
-  system-wide install. It also round-tripped the YAML through `safe_dump`, dropping every
-  comment; in those files the comments *are* the licence reasoning. The URL now goes into the
-  project's own recipe, edited line by line.
-
-- **The emitter had no invariants.** `display` was returned verbatim, so one call could
-  publish a fabricated estimate *and* a fabricated interval; table cells were `str()`-ed and
-  compared to nothing, so "tables are emitted, not written" was satisfied by calling the
-  emitter while the numbers stayed typed. A display must now render its own value, and a
-  numeric cell must be a number. A composite cell — "3.84 (2.10 to 7.02)" — stays a string,
-  but every *claim* in it must be a value the analysis published, with the manuscript's own
-  classifier deciding what counts as a claim so "Age 18-44" is a label in a table for the
-  reason it is one in a sentence. `em.cell("{} ({})", n, (pct, 1))` covers "n (%)", because
-  an f-string reaches `table()` indistinguishable from a typed string and the API has to be
-  the thing that tells them apart. Both are now in the R emitter too, and neither depends on
-  it: see the section below on where the rule actually lives.
-- **`script-newer` compared mtimes, and `touch` sets those.** The fragment now records the
-  analysis script's digest. Fragments written before the field existed fall back to the
-  mtime test, so an older project degrades rather than breaking.
-- **Inline code and fenced blocks were masked but render.** Both are read now. The argument
-  for masking them — not nagging a Methods section about `n = 42` — turned out to be an
-  argument about READMEs: G2 reads `manuscript/` only. Word counting keeps its own answer,
-  since "what would a journal count?" and "where is a digit not a claim?" are different
-  questions that were sharing one mask.
-- **A figure with no text layer was counted as checked.** matplotlib draws text as outlines
-  unless `svg.fonttype` is `'none'`, so an SVG full of annotations read as empty — and
-  because a figure yielding no atoms is also not "drawing numbers", the script's results
-  check dropped from FAIL to WARN at the same time. Both halves, one setting. An empty text
-  layer now fails, and a figure that could not be read no longer softens its script's check.
-- **A raster beside a vector was skipped on the strength of its filename.** Render both
-  honestly, re-render only the PNG from elsewhere, and the retouched figure went into the
-  .docx while G3 read the correct SVG. `manuscript_guard.render.record()` writes a manifest
-  of what one run produced, and the raster is skipped only when the manifest says the two
-  came out together and both still match their digests.
+Open, recorded as each change landed:
 
 - **A figure review does not survive a change of plotting library.** The digest normalises
   render timestamps and generated element ids, but not the drawn path data, and a different
@@ -7440,10 +7093,9 @@ Closed since, and why each mattered:
   looking is worse than none, because it makes an unexamined figure look examined.
 - **Changing the digest algorithm invalidates every stored review.** There is no version
   field on `content_sha256` yet.
-- **The offline build applies no journal style unless `--csl` is given.** Journal profiles
-  arrive in phase 5.
-- **Supplements are concatenated into one document.** Separate files per additional file,
-  as most journals require, is not implemented.
+- **The supplementary files are joined into one document.** Every Markdown source under
+  `manuscript/supplementary/` is built into one `supplementary.docx`, apart from the paper.
+  A journal that asks for each additional file on its own gets them as one.
 - **A verified quote does not mean the value was read correctly.** The chain proves the
   sentence is in the source and the number is in the sentence. Whether that number means
   what the manuscript says it means is a judgement, and belongs to the review panels.
@@ -11344,6 +10996,361 @@ Closed since, and why each mattered:
     simplest session alone.
   - The hard limit ends the whole run, not the one test: nothing else stops a pattern
     that is backtracking in C.
+
+Closed since, and why each mattered (an open gap goes above this line):
+
+- **The header's title was read by line, and the warning of two titles was wrong on any
+  header but the plainest.** Nobody saw the warning until #165. Shown, it took what stands
+  after the first `title:` in the block, at any depth and on that line alone, less every
+  quotation mark and apostrophe at either end. So it warned of two titles that agreed where
+  the header's had a comment after it, an apostrophe doubled between single quotation marks
+  (`'Crohn''s disease'`), a quotation mark or a backslash escaped between double ones, a
+  mark of its own at either end, a second line or a folded block, or an author's
+  `title: Dr` above it; and where `paper.yaml`'s own was a folded block, whose closing line
+  break YAML keeps. An author who made the two agree by copying `paper.yaml`'s line, as
+  `init` types it for a title with TeX (`"IFN-$\\gamma$ release assays"`), kept the
+  warning. And it said nothing of two that differed where the header's title began under
+  its key, was written `title :` or `"title":`, or was written twice. The header's title
+  is now read as its abstract is: by the key pandoc knows, its own or merged in, and the
+  last of one written twice. Both are taken from the one composing that finds the header.
+  The abstract had a second composing of its own, and the title was at first read from
+  that: a header nested just as deep as the first composing could take, about 480 levels,
+  then raised `RecursionError` out of the second, one call further down the stack, and
+  `import` ended in a traceback where it had answered (the review of #168). The two
+  titles are compared with their spaces, tabs and line breaks folded, and the warning
+  names the line of the header's title. Pandoc is asked for the title it keeps from each header of the
+  table that holds this (`AS_YAML_READS_IT` in `tests/test_corruption.py`), and agrees on
+  every row but the one Known gaps names. `init` types a header for more titles as a
+  consequence (Basile, 2026-10-04): one that begins or ends with a quotation mark or an
+  apostrophe, `the patients'`, is held between the other kind. A title that neither kind
+  gives back is still left without a header: one holding both kinds, or a backslash and
+  an apostrophe, `TNF-$\alpha$ inhibitors in Crohn's disease`.
+- **The warning of two titles was shown by no command.** Assembling compares the title in a
+  manuscript file's header with `paper.yaml`'s and makes a warning where they differ
+  (`two-titles`). `build` and `submit` printed what assembling found only when that held a
+  failure, and `check` does not assemble, so the warning was made and nobody was told: with
+  the title changed in `paper.yaml` and the header left as it was, `check` listed nothing
+  and `build` printed the name of the document. That document carried `paper.yaml`'s title,
+  the one meant, so nothing wrong was printed, while this file said the build warned. Found
+  in the work on #162. `check` now gives the warning at every stage, from the gate that
+  already refuses what assembling would refuse; the stage decides which failures are due,
+  and a warning is not one. `build` and `submit` print what assembling warns of, once and
+  before the document is made (Basile, 2026-10-04). `import` rebuilds a document already
+  sent and says nothing of it, as before. How the header's title was read was left as it
+  was then; the entry above is what became of it.
+- **An abbreviated `--submission` was not seen by the submission guard.** argparse reads any
+  prefix of an option that names one option only, so `manuscript-guard build --subm` was a
+  submission build and `review --subm` a review at submission standard, and the guard's
+  marker is the whole word: in a project that fails, `build --subm --offline` was let
+  through by the guard. `build` then refused on its own account, as it does while anything
+  fails; with `--skip-checks` it built, and that build is what the guard missed. Found in
+  the review of #131 and true before it. No command reads an abbreviated
+  option now (Basile, 2026-10-02): `build --subm` exits 2 with `unrecognized arguments:
+  --subm`, and so does `--off` for `--offline`, which is the cost, paid by someone typing a
+  short form by hand. No document, skill or test in the repository wrote one. The marker was
+  not widened to the prefixes instead, because it would then have to be kept in step with
+  the parser by hand: on `review`, `--su` already stands for `--summary` as much as for
+  `--submission`. argparse's setting belongs to each parser, and on the top one alone it
+  leaves every command abbreviating, so it is set by the class the commands are made from.
+  `tests/test_cli.py` takes the commands that have the option from the parser and holds
+  every prefix of the word to one rule, that a spelling read as a submission is one the
+  guard's pattern matches; a second test fails for a command added with abbreviations on.
+  Before any command, `manuscript-guard --vers` is an error too, though the message is
+  argparse's for the missing command and does not name the option.
+- **A backslash before raw markup was not read.** `<!--`, `\begin{x}` or `<pre>` after an
+  odd number of backslashes is text to pandoc, and `import` writes what a co-author types
+  in Word so: a `<!--` typed there comes back as `\<!--`. `_blocks` took it for an opener
+  all the same, and where a `-->` followed further down the file, that paragraph and every
+  one up to the `-->` went without an identifier. A co-author's next edit to them was
+  dropped with "nothing came back"; since #69, `import` refused the rewording that typed the
+  `<!--` instead, though it was safe to make. A `\<div>` in a paragraph did the same to that
+  paragraph alone. An opener, a LaTeX `\begin` or `\end` and a block-level tag now count
+  only where no backslash escapes them (`_backslashed`): an odd run makes them text, an
+  even one escapes itself. Inside a comment or a verbatim element pandoc reads no escapes,
+  so `\-->` and `\</pre>` still close them. Braces were left to #72, which merged with this:
+  `_untagged` counts only unescaped braces, and `import` escapes a `}` as well as a `{`, so a
+  lone `{` typed in Word, written `\{`, keeps its paragraph's identifier, and so does
+  `\{\{results.x\}\}`, a binding typed as text (see "The writer and the tagger have to read
+  an opening the same way").
+- **Front matter closed by `...` took the body with it.** YAML, and pandoc, close a header
+  with `...` as well as `---`, and the build's pattern took only `---`. It ran on to the
+  next `---` line in the file, a horizontal rule, and the Introduction above the rule
+  vanished from the document, from `import` and from G13, with no warning. The build now
+  uses the pattern the gates use, which closes on the first `---` or `...` line, the file's
+  last line included, and the line straight after the opening, where an empty header had
+  run on to the next rule the same way. And it counts a block as front matter only where pandoc keeps it as
+  metadata: a mapping, or nothing. A list or a sentence between two delimiters prints, so
+  it is no longer stripped or masked. A header never closed before a later rule, with prose
+  in it, is not YAML, and pandoc refuses the file. The build had stripped it into one that
+  built without the Introduction. Now G2 and the build stop on it and name the YAML's
+  error, as they do for any header pandoc cannot read. Leaving such a header in the body for
+  pandoc to refuse was not enough: the identifier in front of its first paragraph made it
+  prose, so the build printed the YAML as text, and a `# Methods` in it let `p < 0.001`
+  pass G2 as the alpha chosen in advance. A header behind a byte-order mark or a blank first
+  line is found too, as pandoc finds it, and tabs are expanded before the YAML is read, as
+  pandoc expands them. Left in the body, such a header's title never met the two-titles
+  warning, and G2 read its keys as prose.
+- **A token straight after inline code stopped `import` for the whole manuscript.** The
+  bookmark around a binding or citation is raw inline code, and against a code span's
+  closing backtick its own backtick joined that run. Pandoc read the code and the bookmark
+  as one raw span and wrote the code into the marked build as XML: `` `age<65`{{x}} `` made
+  that build unreadable, and `import` exited 2 over a file the author had never seen. An
+  empty comment now keeps the two apart, which the Word writer drops, so the paragraph
+  still takes a rewording. And a marked build that cannot be read no longer stops the run.
+- **G8 went quiet exactly when two keys had diverged.** It fires when two quoted keys hold
+  the same value with different displays, so a duplicate was caught while it still agreed
+  and missed once it did not — a paper could carry `ror.point` at 0.95 and `ror.abstract`
+  at 3.84 and nothing said a word. `same_as` records the author's intent, and G8 fails when
+  a declared pair disagrees. A declaration rather than an inference, because the question
+  *is* about intent: `ror.point`, `ror.ci_low` and `ror.ci_high` share everything a
+  heuristic could see and are supposed to differ. The limit is honest — it protects the
+  pairs someone thought to declare — but a declared pair cannot drift in silence.
+- **`p < 0.05` was a convention everywhere.** The same characters mean two things: where a
+  paper describes its own method it is the alpha chosen in advance, and in the Results it is
+  a finding. A significance claim the analysis never produced therefore passed the gate that
+  carries the invariant. A rule can now be marked `methods_only`, and G2 reads the chain of
+  headings enclosing each number — a chain rather than the nearest heading, because
+  `### Sensitivity analyses` under `## Methods` is still Methods. Only G2 passes a section:
+  a figure legend has no Methods section to sit in and its `p < 0.05` is a legend
+  convention, so figure text and the audit keep every rule. One entailment: a display may
+  now carry a comparator, since a reported p-value has to be emittable and "<0.001" is the
+  honest rendering of a number too small to state. The value must be on the stated side of
+  it — `display="<0.001"` on a value of 0.4 is refused.
+- **`build --skip-checks` left a document that could pass for a checked one.** Revert the
+  source afterwards and `check` passes while the stale `.docx` still holds the wrong
+  number — the check and the artefact disagreeing silently, with nothing on disk recording
+  which was skipped. An unchecked build is now written as `manuscript.UNCHECKED.docx`, and
+  a submission pack assembled with `--skip-checks` says so in its own `MANIFEST.yaml`,
+  which is the file whose entire purpose is to be the thing you can tell from.
+- **Sidecar exemptions took a value with no reason.** `why` was optional in the code and
+  mandatory in every message these gates print, so `- value: '1'` on its own exempted a
+  number with no argument recorded anywhere. An entry without a reason is now ignored
+  rather than honoured: an exemption nobody justified is one nobody can review.
+- **`{{results.x}` was neither a binding nor malformed.** The loose pattern required `}}`,
+  so a single missing brace travelled into the built document as literal text, in the place
+  where a number was supposed to be. One typo, worst available outcome.
+- **A `.jl` figure script produced an empty report**, which reads as "checked and clean".
+  The lexer has no Julia entry; it now says the source was not read.
+- **A point estimate outside its own confidence interval passed `check`.** `interval()`
+  refuses it, and `interval()` was the only thing that did — the results fragment is a
+  contract with three other writers (`value(bounds=…)` called directly, the R emitter, a
+  hand-edited file), and none of them went through that helper. It is the one arithmetic
+  error a reader catches by eye in the first sentence of the Results. Bracketing is now
+  checked where every producer meets: at the fragment, by G2, along with an inverted interval,
+  a bound of an estimate nobody published, and two bounds claiming the same end.
+- **The reversed-interval check was disabled by restating a bound, and invented reversals
+  that were not there.** The guard meant to keep the *first* mention of each end tested
+  `value.bound in seen` while the keys were `"{bounds}:{bound}"`, so it never matched: the
+  last mention won. "2.10 to 7.02, and a lower bound of 2.10 excludes unity" was reported as
+  reversed, and a genuinely reversed interval that named its upper bound again went
+  unreported. A false positive on ordinary writing is the worse half — an author whose only
+  recourse is to delete a true sentence learns to distrust the gate.
+- **One estimate could carry only one interval.** A 90% CI beside the 95%, or a credibility
+  interval beside a frequentist one, is ordinary in a disproportionality paper and was
+  inexpressible: `interval()` wrote one fixed pair of key names, and declaring a second pair
+  by hand became a duplicated bound the moment bracketing started being checked — so closing
+  that hole closed a door too. A bound now carries a `level`, `interval()` takes one and
+  derives the key from it (`"90%"` → `ror.ci90_low`), and omitting `point` reuses the estimate
+  rather than publishing it twice: two keys holding one number is what `same_as` is for and
+  what G8 watches. Bounds are compared within a level and never across, because a 90% interval
+  nested inside a 95% one is correct rather than a contradiction — in the fragment and in
+  prose alike, since "3.84 (95% CI 2.10 to 7.02; 90% CI 2.51 to 5.87)" is one sentence and two
+  intervals. The slug is derived identically in both languages, or a manuscript's bindings
+  would depend on which language its analysis was written in.
+- **The example's figure had a different digest on Windows and on Linux.** matplotlib writes
+  an SVG through a text stream, so the same picture came out CRLF on one and LF on the other,
+  and everything downstream hashes the bytes: re-running `figures/forest.py` on Windows
+  invalidated the figure's own review record and its render manifest, and reported a change
+  nobody had made. The committed manifest was therefore right only on the machine that wrote
+  it. Exactly the trap `writeLines` set for the R emitter, in the Python path, in the example
+  a new user copies from. The script normalises the file before recording it.
+- **Supplementary material was welded into the manuscript.** There was no way to say a file
+  was a supplement, so it went into `manuscript.docx` after the Discussion — counted against
+  the journal's word and display-item limits, declared in that count on the title page,
+  arriving as pages an editor has to find the end of, and impossible to upload to the
+  "supplementary material" slot every submission system has. An author's only recourse was to
+  keep the supplement outside the project, which is also the only place the gates cannot see
+  it. `manuscript/supplementary/` builds as its own document, reaches the pack as its own
+  file, is still read by every gate that reads prose, and is still in scope for review.
+- **The pack answered "attach your completed checklist" with YAML.** It copied
+  `reporting/*.yaml` and nothing else, which is a serialisation rather than a checklist. A
+  table now goes beside the record — generated, so it cannot drift from the file the gate
+  checks, and built from the *published* item list rather than the completion, so an item
+  nobody answered appears with the answer blank instead of vanishing from what the journal
+  receives.
+- **`audit` reported a third of a real paper's citation markers as unexplained numbers.**
+  Pointed at a submitted pharmacology paper — 580 numeric tokens, 94 output files — it called
+  232 of them "not found in any output". Reading the list rather than the count: 25 were
+  Vancouver citation markers (`rejection[1,2]`, each dragging the preceding word in, because
+  an atom runs to the next space and only *author-year* citations had a rule); 29 were
+  confidence intervals written as ranges, matched as a single string `0.72–0.82` against
+  outputs holding the two bounds separately; 15 were `§3.1` section references, since only
+  the word form was recognised and its number was undotted, so "Section 4.2" failed too; and
+  14 were the ORCIDs and postcodes in the author block. Fixing those four took 232 to 151 on
+  the same paper.
+
+  The count was never wrong; it was unreadable, which is the same thing. A list where two in
+  three entries are the tool's own noise does not get triaged, it gets abandoned — and the
+  intervals are the sharpest case, because an interval is the paper's actual result and the
+  audit was worst precisely there. What remains at 151 is mostly the paper's own vocabulary
+  (`3-core`, `top-1%`), which is what `terms:` is for and is correctly reported as "this tool
+  does not know these words".
+
+  The same paper's supplements — still markdown, 1766 tokens — added one more: `n=8,393`
+  written closed up is a single atom that no longer looks like a number at all, so thirty
+  counts sitting in the outputs were reported unexplained. With spaces, `n = 8,393` is
+  already two tokens and always read correctly, which is why nobody had noticed. A label of
+  up to three letters is stripped before the number is read; 278 → 248 on those files.
+  Deliberately *not* fixed there: forty-three four-digit-hyphen-four-digit tokens, which in a
+  bibliometrics paper are ISSNs. They have the same shape as a plain range — that paper also
+  writes `2000-3999` for a Scopus code band — so a rule for them would be a rule matching a
+  shape rather than naming values, which is the mistake this file records six times already.
+- **A claim published through the results file came out green.**
+
+      em.value("conclusion", "The drug causes liver failure and should be withdrawn")
+
+  resolved, passed every gate, and the annotated copy painted it *traced* — green, over its
+  own key and "emitted by 01_disproportionality.json", the strongest reassurance that document
+  offers — on a sentence the author typed into an analysis script and nothing verified. And it
+  is the one route by which text escapes everything that reads text: the writing gate reads
+  manuscript sources, and this sentence is not in one.
+
+  Judged on whether the display carries a digit, not on whether it reads like a sentence — a
+  rule about the shape of the text would be the wrong kind of rule. `label=True` already means
+  "a name, not a measurement", so it is both the way out and a declaration on the record: a
+  drug name or a cohort label stays green, because it really is traced to the analysis.
+  Unlabelled prose is a defect in the annotated copy and a `prose-as-value` warning in
+  `check`. A warning rather than a refusal, because the toolkit does not get to decide that
+  keeping a name in one place is wrong.
+- **A value printing display maths split its paragraph in Word.** Identifiers are given to
+  the source before bindings are substituted, and a paragraph with `$$` in its source gets
+  none. `em.value("model.formula", "$$y = 2.1 x$$")`, bound in the sentence that ends a
+  section, put `$$` into a paragraph that had one. Pandoc gave the equation a Word paragraph
+  of its own, and only the part before it carried the identifier. A co-author who swapped
+  that part with the paragraph above had the whole sentence moved in the .md, exit 0, and
+  `check` said nothing: the digit kept even the prose warning quiet. G2 now refuses a value
+  whose display holds what, typed into the source, would have kept the identifier off the
+  paragraph (display maths, a LaTeX environment or an HTML block tag), and a line break,
+  after which a blank line, a fence or a `<div>` ends the paragraph. Leaving such a
+  paragraph untagged was the other way, and it was not taken: the identifiers would then
+  depend on the results as well as the source, and `import` reads them from the source.
+- **A p-value of 3.2 × 10⁻⁹ was published as "0.00".** `digits=2` on any number smaller than
+  half a unit in the last place gives a string of zeroes, and nothing objected: an explicit
+  `display` has been checked against its value since round two, but a *derived* one was
+  checked against nothing at all. So the one field a reader looks at first could carry a
+  number that is not the number, silently, from a single ordinary call. A rounding that turns
+  a non-zero value into zero is now refused, and the message says what to write instead.
+
+  What to write instead had to exist first. `display="<0.001"` already worked; scientific
+  notation parsed only as `3.2e-9`, which no journal prints — so an author wanting the value
+  stated precisely had the choice of a programmer's notation or `digits=`, and `digits=` was
+  the trap above. `3.2 × 10⁻⁹`, `3.2 x 10^-9` and `3.2*10**-9` are now readings of the same
+  number, superscripts included, and each is still checked against the value it claims to
+  render: `3.2 × 10⁻⁸` on a value of 3.2e-9 is refused, and so is `3.2 × 10⁻⁹` on a value
+  of 3.2 — which would previously have parsed with `10⁻⁹` as a *unit*.
+
+  Mirroring it in R exposed a live divergence in the cross-language contract: R's tolerance
+  was computed from the mantissa alone, which the Python side had already fixed. R therefore
+  accepted a display of `9.99e-6` for a value of `1.2e-6` while Python refused it. The parity
+  harness missed it because not one of its cases carried an exponent — "both emitters have to
+  be exercised on the same input, or mirrors is only a claim", written in that file's own
+  comments, and true again.
+- **`bind --apply` was all or nothing.** It replaced every literal that matched exactly one
+  published value, in one go. But a match is a suggestion and never evidence — the gate
+  refuses a number *because* it matches one, since nothing may pass by coincidence — so a
+  `12` that happens to equal a published count while meaning twelve months of follow-up was
+  applied along with the nine correct ones, and the only way to avoid it was to decline all
+  ten and retype them. `--only manuscript/main.md:42` accepts one suggestion; naming an
+  ambiguous one is refused rather than treated as permission to guess, and an unmatched
+  selector is an error rather than a silent no-op. The command now also names every
+  replacement it made — "replaced
+  7 literal(s)" said nothing about which seven, and each of them rewrote a sentence.
+- **The submission pack left out the response to reviewers.** `respond` wrote the letter into
+  `build/` and nothing collected it, so a resubmission pack held the revised manuscript and no
+  answer to the reviewers — the document a resubmission is judged on as much as the paper, and
+  the only artefact whose claims G13 actually checks. It is generated at pack time from the
+  revision records rather than read out of `build/`, by the same function `respond` calls: two
+  renderers would drift, and the drift would be invisible because both produce something that
+  looks like a letter. A stale letter is worse than an absent one — a checked set of claims
+  and an unchecked document making them. The manifest now also says which submission the pack
+  is, because "which version did the journal get" is a question about a round as much as about
+  a checksum.
+- **Two gates blocked the work and had no command behind them.** G11 refuses a submission
+  until a panel exists and every reviewer has filed a record; G10 refuses until every figure
+  has been read. Both asked for a SHA-256 the toolkit computed and never printed — G10's is a
+  digest of the figure's *content*, so it could not be obtained at all. An author who reaches
+  a gate and finds no way through does not hand-write the YAML; they reach for
+  `--skip-checks`, and the gate has then made the project worse than having no gate.
+  `review --record` and `--record-figure` write the file, fill in the digests, extend the
+  panel (carrying a reviewer's remit into a later round), and leave the findings to a person.
+
+  What they deliberately do not offer is a way to re-stamp a record after the manuscript has
+  changed. That one flag would turn the review system into theatre: the digest is the only
+  thing separating "somebody read this version" from "somebody read a version". Recording
+  twice is refused and says to record a further round instead. For the same reason the
+  verdict is required rather than defaulted — a record written before the reading is a claim
+  that somebody looked — and a figure's checks are written `ok: false` with the question each
+  one asks, so the file is a to-do list the gate reads back rather than a row of ticks.
+- **R could not express an interval at all.** The R emitter had `value()` and no
+  `interval()`, and its `value()` took no `bounds`/`bound`, so an R analysis published three
+  keys that no gate could know were one estimate — `interval-reversed` simply could not fire
+  on an R project, with nothing saying so. The results fragment is a cross-language contract,
+  and a rule enforced on one side only is a rule an author steps around by switching language.
+- **"According to the medical record" claimed adherence to RECORD.** The guideline names were
+  matched case-insensitively, and several of them — RECORD, ARRIVE, CONSORT — are ordinary
+  English words. The gate therefore warned about an unfollowed reporting guideline on the
+  Methods section of essentially every observational paper: a false positive about the
+  paper's own conduct, which is the fastest way to teach an author that this output is noise.
+  Guideline names are published in capitals; the match now requires that casing.
+- **The annotated figure sheet always said no values were exempt.** It read a
+  `presentational` section; the sidecar's sections are `allow` and `allow_source`, and no
+  schema, gate or example has ever written the other name. So the one page whose whole job is
+  to show what was exempted claimed nothing was — including for the shipped example, which
+  declares five axis ticks. Wrong precisely when it mattered, and untested, which is why it
+  survived.
+- **`fetch --save-url` wrote inside the installed package.** `_recipe_paths` falls back to the
+  recipes shipped in `src/`, and `--save-url` wrote back to whatever it returned: on a normal
+  pip install the command edited a file in site-packages — invisible to git, lost on upgrade,
+  applied to every other project on the machine, a `PermissionError` traceback on a
+  system-wide install. It also round-tripped the YAML through `safe_dump`, dropping every
+  comment; in those files the comments *are* the licence reasoning. The URL now goes into the
+  project's own recipe, edited line by line.
+
+- **The emitter had no invariants.** `display` was returned verbatim, so one call could
+  publish a fabricated estimate *and* a fabricated interval; table cells were `str()`-ed and
+  compared to nothing, so "tables are emitted, not written" was satisfied by calling the
+  emitter while the numbers stayed typed. A display must now render its own value, and a
+  numeric cell must be a number. A composite cell — "3.84 (2.10 to 7.02)" — stays a string,
+  but every *claim* in it must be a value the analysis published, with the manuscript's own
+  classifier deciding what counts as a claim so "Age 18-44" is a label in a table for the
+  reason it is one in a sentence. `em.cell("{} ({})", n, (pct, 1))` covers "n (%)", because
+  an f-string reaches `table()` indistinguishable from a typed string and the API has to be
+  the thing that tells them apart. Both are now in the R emitter too, and neither depends on
+  it: see the section below on where the rule actually lives.
+- **`script-newer` compared mtimes, and `touch` sets those.** The fragment now records the
+  analysis script's digest. Fragments written before the field existed fall back to the
+  mtime test, so an older project degrades rather than breaking.
+- **Inline code and fenced blocks were masked but render.** Both are read now. The argument
+  for masking them — not nagging a Methods section about `n = 42` — turned out to be an
+  argument about READMEs: G2 reads `manuscript/` only. Word counting keeps its own answer,
+  since "what would a journal count?" and "where is a digit not a claim?" are different
+  questions that were sharing one mask.
+- **A figure with no text layer was counted as checked.** matplotlib draws text as outlines
+  unless `svg.fonttype` is `'none'`, so an SVG full of annotations read as empty — and
+  because a figure yielding no atoms is also not "drawing numbers", the script's results
+  check dropped from FAIL to WARN at the same time. Both halves, one setting. An empty text
+  layer now fails, and a figure that could not be read no longer softens its script's check.
+- **A raster beside a vector was skipped on the strength of its filename.** Render both
+  honestly, re-render only the PNG from elsewhere, and the retouched figure went into the
+  .docx while G3 read the correct SVG. `manuscript_guard.render.record()` writes a manifest
+  of what one run produced, and the raster is skipped only when the manifest says the two
+  came out together and both still match their digests.
+- **The offline build applied no journal style unless `--csl` was given.**
+  `manuscript-guard style` keeps the style the journal's profile names in
+  `profiles/journals/styles/`, and the offline build formats citations with it
+  (item 51). What is left: a style that is not in the CSL style repository, a build
+  before `style` has been run, or a kept style edited since it was fetched still needs
+  `--csl`; without it the build uses pandoc's default and says so.
 
 ## Still open
 

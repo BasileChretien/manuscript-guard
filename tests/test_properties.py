@@ -2445,6 +2445,10 @@ _QUOTATION_KINDS = (
     ('Reports said "too short" [@{k}].', False, 1),
     ('Reports said "{q}". Later work agreed [@{k}].', False, 1),
     ('Reports said <!-- "{q}" [@{k}] -->.', False, 1),
+    # Round 1 of #282: words left out inside the marks are part of what is quoted, and a key
+    # may hold a colon.
+    ("Reports said {o}{q} [...] and more words here{c} [@{k}].", True, 1),
+    ('Reports said "{q}" [@{k}:2].', True, 1),
 )
 
 
@@ -2465,9 +2469,11 @@ def _planted_quotations(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, tupl
         paragraph = f"{before.capitalize()}. {sentence}"
         if looked:
             written = quote + (" and more words here" if "and more" in kind else "")
+            if "[...]" in kind:
+                written = f"{quote} [...] and more words here"
             if kind.startswith("{o}It was low."):
                 written = f"It was low. {quote}."
-            cited = (key, f"{key}x")[:keys]
+            cited = (key, f"{key}x")[:keys] if ":2]" not in kind else (f"{key}:2",)
             found.append((line, written, cited))
         paragraphs.append(paragraph)
         line += paragraph.count("\n") + 2
@@ -2484,6 +2490,53 @@ def test_a_quotation_is_found_with_the_works_its_sentences_cite_and_no_other(
     text, expected = planted
     found = [(q.line, q.quote, q.keys) for q in quotations_gate.quotations_in(text)]
     assert found == expected, text
+
+
+#: What a writer may put where words of a source are left out or marked, and is no word of it.
+_ELISIONS = (" [...] ", " [. . .] ", " [\N{HORIZONTAL ELLIPSIS}] ", " \N{HORIZONTAL ELLIPSIS} ",
+             " ... ")  # fmt: skip
+
+
+@st.composite
+def _quotes_of_a_source(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
+    """A source of words that each stand once, and quotations of it: whole, with words left
+    out each way a writer marks it, with a word marked [sic]; and, as none of it, the
+    pieces in the other order, a piece the source does not hold, a word left out at a [sic],
+    and a piece that opens inside a word. Every kind in each example, from places drawn
+    each time."""
+    words = [f"w{at:03d}" for at in range(draw(st.integers(14, 40)))]
+    start = draw(st.integers(0, len(words) - 12))
+    quoted = words[start : start + 10]
+    cut, rest = draw(st.integers(2, 4)), draw(st.integers(6, 8))
+    head, tail = " ".join(quoted[:cut]), " ".join(quoted[rest:])
+    sic = draw(st.integers(1, 8))
+    cases = [(" ".join(quoted), True)]
+    cases += [(head + elision + tail, True) for elision in _ELISIONS]
+    cases += [
+        (" ".join(quoted[:sic]) + " [sic] " + " ".join(quoted[sic:]), True),
+        (tail + draw(st.sampled_from(_ELISIONS)) + head, False),
+        (head + draw(st.sampled_from(_ELISIONS)) + "nowhere " + tail, False),
+        # Round 1 of its review: [sic] leaves nothing out, and a piece is words of its own.
+        (" ".join(quoted[:sic]) + " [sic] " + " ".join(quoted[sic + 1 :]), False),
+        (head + draw(st.sampled_from(_ELISIONS)) + tail[1:], False),
+        # Round 2 of its review: one piece beside an elision at an end is words of its own,
+        # and is found where the source holds it.
+        (draw(st.sampled_from(_ELISIONS)).lstrip() + tail[1:], False),
+        (draw(st.sampled_from(_ELISIONS)).lstrip() + tail, True),
+    ]
+    return " ".join(words), draw(st.permutations(cases))
+
+
+@holds(100, _quotes_of_a_source())
+def test_a_quotation_with_words_left_out_is_found_piece_by_piece(
+    drawn: tuple[str, list[tuple[str, bool]]],
+) -> None:
+    """Round 1 of #282: a quotation with words left out, or one marked [sic], was looked for
+    whole, and said not to be in its source. Each piece is the source's, in the order
+    quoted, and a piece out of order or not in it is not."""
+    source, cases = drawn
+    for quote, there in cases:
+        assert quotations_gate.quoted_in(source, quote) is there, (source, quote)
 
 
 # ------------------------------------------------------------ pointers to tables and figures
@@ -5424,6 +5477,42 @@ def _a_quotation_in_a_comment_is_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(quotations_gate, "blank_comments", lambda text: text)
 
 
+def _a_quotation_is_looked_for_whole(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature.sources import contains
+
+    patch.setattr(quotations_gate, "quoted_in", contains)
+
+
+def _the_pieces_of_a_quotation_are_looked_for_anywhere(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.literature.sources import contains
+
+    def anywhere(text: str, quote: str) -> bool:
+        pieces = [p for p in quotations_gate._ELIDED.split(quote) if p.strip()]
+        return all(contains(text, piece) for piece in pieces)
+
+    patch.setattr(quotations_gate, "quoted_in", anywhere)
+
+
+def _sic_is_a_word_of_the_source(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(quotations_gate, "_SIC", re.compile(r"(?!)"))
+
+
+def _sic_leaves_words_out(patch: pytest.MonkeyPatch) -> None:
+    # As the change first had it: [sic] split the quotation as an elision does.
+    pattern = quotations_gate._ELIDED.pattern.replace(r"|\.\.\.)", r"|\.\.\.|\[sic\])")
+    assert pattern != quotations_gate._ELIDED.pattern, "the elision rule changed its shape"
+    patch.setattr(quotations_gate, "_ELIDED", re.compile(pattern, re.IGNORECASE))
+    patch.setattr(quotations_gate, "_SIC", re.compile(r"(?!)"))
+
+
+def _a_piece_may_stand_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(quotations_gate, "_as_words", lambda text, piece, at: text.find(piece, at))
+
+
+def _a_citation_key_stops_at_a_colon(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(quotations_gate, "_KEY", re.compile(r"(?<![\w.])@([A-Za-z](?:[\w.-]*\w)?)"))
+
+
 def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
 
@@ -5838,6 +5927,30 @@ BROKEN = {
     "a quotation takes its paragraph's citations": (
         _a_quotation_takes_its_paragraphs_citations,
         test_a_quotation_is_found_with_the_works_its_sentences_cite_and_no_other,
+    ),
+    "a citation key stops at a colon": (
+        _a_citation_key_stops_at_a_colon,
+        test_a_quotation_is_found_with_the_works_its_sentences_cite_and_no_other,
+    ),
+    "a quotation with words left out is looked for whole": (
+        _a_quotation_is_looked_for_whole,
+        test_a_quotation_with_words_left_out_is_found_piece_by_piece,
+    ),
+    "the pieces of a quotation are looked for in any order": (
+        _the_pieces_of_a_quotation_are_looked_for_anywhere,
+        test_a_quotation_with_words_left_out_is_found_piece_by_piece,
+    ),
+    "[sic] is taken for a word of the source": (
+        _sic_is_a_word_of_the_source,
+        test_a_quotation_with_words_left_out_is_found_piece_by_piece,
+    ),
+    "[sic] is taken for words left out": (
+        _sic_leaves_words_out,
+        test_a_quotation_with_words_left_out_is_found_piece_by_piece,
+    ),
+    "a piece of a quotation may stand inside a word": (
+        _a_piece_may_stand_inside_a_word,
+        test_a_quotation_with_words_left_out_is_found_piece_by_piece,
     ),
     "a quotation in a comment is read": (
         _a_quotation_in_a_comment_is_read,

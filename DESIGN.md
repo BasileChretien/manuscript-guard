@@ -7061,6 +7061,8 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   column, while a negative SMD, a P with a footnote and "NS" are refused; a docx `gridSpan`
   has no upper bound.
 
+Open, recorded as each change landed:
+
 - **A figure review does not survive a change of plotting library.** The digest normalises
   render timestamps and generated element ids, but not the drawn path data, and a different
   matplotlib or font stack produces different paths for the same figure. CI found this: the
@@ -7074,6 +7076,9 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   looking is worse than none, because it makes an unexamined figure look examined.
 - **Changing the digest algorithm invalidates every stored review.** There is no version
   field on `content_sha256` yet.
+- **The supplementary files are joined into one document.** Everything under
+  `manuscript/supplementary/` is built as one `supplementary.docx`, apart from the paper.
+  A journal that asks for each additional file on its own gets them as one.
 - **A verified quote does not mean the value was read correctly.** The chain proves the
   sentence is in the source and the number is in the sentence. Whether that number means
   what the manuscript says it means is a judgement, and belongs to the review panels.
@@ -11315,7 +11320,9 @@ Closed since, and why each mattered (an open gap goes above this line):
 - **The offline build applied no journal style unless `--csl` was given.**
   `manuscript-guard style` keeps the style the journal's profile names in
   `profiles/journals/styles/`, and the offline build formats citations with it
-  (item 51).
+  (item 51). What is left: a style that is not in the CSL style repository, or a
+  build before `style` has been run, still needs `--csl`; without it the build
+  uses pandoc's default and says so.
 
 ## Still open
 

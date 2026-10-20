@@ -255,6 +255,7 @@ number in the file and the rule that classified it.
 | `check` | run every gate; `--submission` holds the manuscript to submission standards |
 | `bind` | show every unbound number and how to give it a source |
 | `explain` | show how each number in a file was classified |
+| `passages` | list each sentence that cites a work, with the passage of that work recorded as supporting it and what G7 found of it; `--missing` lists those with none |
 | `impact` | list what depends on a file, or on each file changed since a commit: results, the sentences that bind them, figures, Methods paragraphs, panel readings and co-author answers |
 | `verify` | re-run the analysis and check it still produces the recorded results |
 | `build` | produce the .docx; `--annotated` colours every number by what backs it |
@@ -273,7 +274,6 @@ number in the file and the rule that classified it.
 | `methods` | check or record that the Methods were read against the code; `--explain` lists each claim beside the step that backs it |
 | `models` | print each fitted model as its card, with what G15 says of it |
 | `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` does the same for a design round, which reads the plan |
-| `passages` | list each sentence that cites a work, with the passage of that work recorded as supporting it and what G7 found of it; `--missing` lists those with none |
 | `checker` | send a co-author one file of things to confirm, and record what they answered |
 | `import` | bring a co-author's Word edits back into the manuscript source |
 | `reworded` | check that an edit changed the wording and no binding, citation or typed number |

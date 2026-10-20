@@ -116,6 +116,9 @@ SERVICES = lookup.Services(
     datacite="https://registry.test/datacite/",
     doi_org="https://registry.test/doi_org/",
     pubmed="https://registry.test/pubmed/esummary.fcgi",
+    esearch="https://registry.test/esearch/esearch.fcgi",
+    crossref_search="https://registry.test/crossref_search",
+    openalex_search="https://registry.test/openalex_search",
 )
 
 
@@ -407,6 +410,7 @@ def test_a_short_retry_after_is_obeyed_once(project: Path) -> None:
 
 
 def test_what_is_not_looked_up_says_why(project: Path) -> None:
+    """The example says in paper.yaml that its two references are in no registry."""
     bib = project / "literature" / "references.bib"
     text = bib.read_text(encoding="utf-8")
     bib.write_text(
@@ -420,7 +424,8 @@ def test_what_is_not_looked_up_says_why(project: Path) -> None:
     planned = {p.citekey: p.skipped for p in lookup.plan(_loaded(project))}
     assert planned == {
         "fictionalHepaticCohort2021": "its identifier is malformed (G7 says how)",
-        "fictionalClassSignal2019": "it has no DOI and no PMID",
+        "fictionalClassSignal2019": "it has no DOI and no PMID, and paper.yaml says no registry "
+        "has it: invented for this worked example; no registry has it",
         "nowhere2020": "not in references.bib",
     }
 
@@ -515,7 +520,8 @@ def test_the_example_has_nothing_to_look_up_and_sends_nothing(tmp_path, capsys, 
     monkeypatch.setattr(lookup, "default_transport", _refused)
     assert main(["lookup", str(root)]) == 0
     out = capsys.readouterr().out
-    assert "@fictionalHepaticCohort2021: not looked up: it has no DOI and no PMID" in out
+    said = "@fictionalHepaticCohort2021: not looked up: it has no DOI and no PMID, and paper.yaml"
+    assert said in out
     assert not (root / "literature" / "lookups").exists()
 
 
@@ -530,6 +536,239 @@ def test_a_dry_run_says_what_it_would_look_up_and_sends_nothing(project, capsys,
     assert f"@fictionalHepaticCohort2021: would look up DOI {DOI}, PMID {PMID} (no record)" in out
     assert "nothing was sent" in out
     assert not (project / "literature" / "lookups").exists()
+
+
+# ------------------------------------------------------- a reference with no identifier
+
+#: The example's first reference, as the registries would hold it: answers in the shapes
+#: probed on 2026-10-20 (DESIGN.md, "A reference is looked up once, and the answer is kept").
+_TITLE = "Hepatic injury in a fictional national cohort, 2010-2019"
+_ESUMMARY = {
+    "header": {"type": "esummary"},
+    "result": {
+        "uids": [PMID],
+        PMID: {
+            "uid": PMID,
+            "title": _TITLE + ".",
+            "sortpubdate": "2021/04/01 00:00",
+            "pubtype": ["Journal Article"],
+            "articleids": [{"idtype": "pubmed", "value": PMID}, {"idtype": "doi", "value": DOI}],
+            "authors": [{"name": "Fictional A", "authtype": "Author", "clusterid": ""},
+                        {"name": "Fictional B", "authtype": "Author", "clusterid": ""},
+                        {"name": "Fictional Study Group", "authtype": "CollectiveName"}],
+        },
+    },
+}  # fmt: skip
+
+
+def _esearch(*ids: str) -> Response:
+    return _json(200, {"header": {"type": "esearch"}, "esearchresult": {
+        "count": str(len(ids)), "retmax": str(len(ids)), "retstart": "0", "idlist": list(ids)}})
+
+
+def _work_list(*items: dict) -> Response:
+    return _json(200, {"status": "ok", "message-type": "work-list", "message": {
+        "total-results": 5000000, "items": list(items), "items-per-page": 10, "query": {}}})
+
+
+_CROSSREF_ITEM = {
+    "DOI": DOI.upper(),
+    "type": "journal-article",
+    "title": [_TITLE],
+    "issued": {"date-parts": [[2021, 3]]},
+    "author": [{"given": "Anne", "family": "Fictional", "sequence": "first"},
+               {"given": "Bernard", "family": "Fictional", "sequence": "additional"},
+               {"name": "The Fictional Study Group", "sequence": "additional"}],
+}  # fmt: skip
+_OPENALEX_RESULT = {
+    "id": "https://openalex.org/W1", "doi": f"https://doi.org/{DOI}", "title": _TITLE,
+    "publication_year": 2021, "type": "article", "is_retracted": False,
+    "ids": {"pmid": f"https://pubmed.ncbi.nlm.nih.gov/{PMID}"},
+    "authorships": [{"author": {"display_name": "Anne Fictional"}}],
+}  # fmt: skip
+
+
+def _searches(esearch=None, esummary=None, crossref=None, openalex=None, headers=None):
+    """Answers to the searches by service; each default finds the cited work."""
+    found = {
+        "esearch": esearch or (lambda request: _esearch(PMID)),
+        "pubmed": esummary or (lambda request: _json(200, _ESUMMARY)),
+        "crossref_search": crossref or (lambda request: _work_list(_CROSSREF_ITEM)),
+        "openalex_search": openalex or (lambda request: _json(
+            200, {"meta": {"count": 1}, "results": [_OPENALEX_RESULT]}, headers)),
+    }
+
+    def answer(path: str, request: Request) -> Response:
+        return found[path.strip("/").split("/")[0]](request)
+
+    return Table(answer)
+
+
+@pytest.fixture
+def searched(tmp_path: Path) -> Path:
+    """The example, its two references without the paper.yaml that says no registry has
+    them: each is searched for by its title."""
+    root = tmp_path / "paper"
+    shutil.copytree(EXAMPLE, root, ignore=shutil.ignore_patterns("build", ".git"))
+    paper = root / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    paper.write_text(text[: text.index("lookup:\n")] + text[text.index("\n# Abbreviations"):],
+                     encoding="utf-8")  # fmt: skip
+    return root
+
+
+def test_a_reference_with_no_identifier_is_searched_by_its_title(searched: Path) -> None:
+    table = _searches()
+    written = _run(searched, table)
+    assert len(written) == 2
+    record = read_record(_loaded(searched), "fictionalHepaticCohort2021")
+    assert record["schema"] == "manuscript-guard/lookup/2" and record["identifiers"] == {}
+    assert set(record["sources"]) == {"pubmed_search", "crossref_search", "openalex_search"}
+    pubmed = record["sources"]["pubmed_search"]
+    assert pubmed["asked"] == ["hepatic[ti] AND injury[ti] AND fictional[ti] AND national[ti] "
+                               "AND cohort[ti] AND 2010[ti] AND 2019[ti]"]  # fmt: skip
+    assert pubmed["candidates"][0]["pmid"] == PMID
+    assert pubmed["candidates"][0]["authors"] == [
+        {"family": "Fictional", "given": "A"}, {"family": "Fictional", "given": "B"},
+        {"group": "Fictional Study Group"}]  # fmt: skip
+    crossref = record["sources"]["crossref_search"]["candidates"][0]
+    assert crossref["doi"] == DOI and crossref["authors"][2] == {
+        "group": "The Fictional Study Group"}  # fmt: skip
+    alex = record["sources"]["openalex_search"]["candidates"][0]
+    assert alex["pmid"] == PMID and alex["authors"] == [{"family": "Fictional", "given": "Anne"}]
+    # A quoted title is "No items found" in PubMed, whatever it holds (2026-10-20).
+    assert not any('"' in v for r in table.sent for v in r.params.values())
+
+
+def test_pubmed_is_asked_by_the_first_author_only_where_the_title_found_no_work(
+    searched: Path,
+) -> None:
+    """A title cited with one word wrong finds nothing in PubMed's title field, since an
+    unknown word empties the whole search: the first author and the years find it."""
+    terms: list[str] = []
+
+    def esearch(request: Request) -> Response:
+        terms.append(request.params["term"])
+        return _esearch(PMID) if "[1au]" in request.params["term"] else _esearch()
+
+    _run(searched, _searches(esearch=esearch))
+    record = read_record(_loaded(searched), "fictionalHepaticCohort2021")
+    asked = record["sources"]["pubmed_search"]["asked"]
+    assert len(asked) == 2 and asked[1].startswith("fictional[1au] AND 2020:2022[dp] AND (")
+    assert "hepatic[ti] OR injury[ti]" in asked[1]
+    assert record["sources"]["pubmed_search"]["candidates"][0]["pmid"] == PMID
+    terms.clear()
+    _run(searched, _searches(esearch=lambda r: (terms.append(r.params["term"]), _esearch(PMID))[1]),
+         again=True)  # fmt: skip
+    first = [term for term in terms if "hepatic" in term]
+    assert first and not any("[1au]" in term for term in first), "the title found it"
+
+
+def test_crossref_s_search_keeps_to_the_cited_years(searched: Path) -> None:
+    """Fabricated copies of a famous paper, posted years later, rank first once the authors
+    are in the query (five under 10.65215 for "Attention is all you need", 2026-10-20)."""
+    table = _searches()
+    _run(searched, table)
+    sent = [r for r in table.sent if r.base.endswith("crossref_search")]
+    assert sent[0].params["filter"] == "from-pub-date:2020,until-pub-date:2022"
+    assert sent[0].params["query.bibliographic"].endswith("Fictional 2021")
+
+
+@pytest.mark.parametrize(
+    ("answer", "status"),
+    [
+        (_work_list(_CROSSREF_ITEM), sources.FOUND),
+        (_work_list(), sources.ABSENT),
+        (_json(200, {"status": "failed", "message-type": "validation-failure", "message": []}),
+         sources.UNRESOLVABLE),
+        (_json(200, {"status": "ok", "message-type": "work", "message": {"DOI": DOI}}),
+         sources.UNRESOLVABLE),
+        (_work_list({"title": ["no DOI"]}), sources.UNRESOLVABLE),
+        (Response(429, {}, b""), sources.UNRESOLVABLE),
+    ],
+)  # fmt: skip
+def test_crossref_s_search_is_found_or_absent_only_in_its_own_shape(
+    searched: Path, answer: Response, status: str
+) -> None:
+    _run(searched, _searches(crossref=lambda request: answer))
+    record = read_record(_loaded(searched), "fictionalHepaticCohort2021")
+    assert record["sources"]["crossref_search"]["status"] == status
+
+
+def test_a_work_too_unlike_the_cited_one_is_not_kept(searched: Path) -> None:
+    other = {**_CROSSREF_ITEM, "DOI": "10.5555/other", "title": ["Renal outcomes of statins"]}
+    _run(searched, _searches(crossref=lambda request: _work_list(other, _CROSSREF_ITEM)))
+    record = read_record(_loaded(searched), "fictionalHepaticCohort2021")
+    kept = record["sources"]["crossref_search"]["candidates"]
+    assert [c["doi"] for c in kept] == [DOI]
+
+
+def test_openalex_is_searched_only_while_its_allowance_lasts(searched: Path) -> None:
+    """A search costs a thousandth of a dollar, and the free allowance is ten cents a day
+    for everyone behind one address: with three searches' worth left, no more is asked."""
+    nearly = {"X-RateLimit-Remaining-USD": "0.002", "X-RateLimit-Cost-USD": "0.001"}
+    _run(searched, _searches(headers=nearly))
+    keys = ("fictionalHepaticCohort2021", "fictionalClassSignal2019")
+    first, second = (read_record(_loaded(searched), k) for k in keys)
+    assert "openalex_search" in first["sources"] and "openalex_search" not in second["sources"]
+    _run(searched, _searches(headers=nearly), again=True,
+         credentials=lookup.Credentials(openalex_key=OPENALEX))  # fmt: skip
+    second = read_record(_loaded(searched), "fictionalClassSignal2019")
+    assert "openalex_search" in second["sources"], "with a key, the allowance is its own"
+
+
+def test_crossref_s_searches_are_paced_from_their_own_pool() -> None:
+    """A search is answered from Crossref's list pool at one a second, and a DOI from the
+    single-record pool at five: one does not hold the other up."""
+    clock = [0.0]
+    waited: list[float] = []
+    pacer = lookup.Pacer(clock=lambda: clock[0], sleep=waited.append)
+    ask = lookup._asker(lambda request, timeout: _json(200, {}), pacer, lookup.Credentials())
+    ask(Request("https://api.crossref.org/works", params={"query.bibliographic": "x"}))
+    ask(Request("https://api.crossref.org/works/10.5555/x"))
+    ask(Request("https://api.crossref.org/works", params={"query.bibliographic": "y"}))
+    assert waited == [1.0]
+
+
+def test_a_record_kept_before_the_authors_is_looked_up_again(project: Path) -> None:
+    _run(project, _registries())
+    path = record_path(_loaded(project), "fictionalClassSignal2019")
+    record = yaml.safe_load(path.read_text(encoding="utf-8"))
+    record["schema"] = "manuscript-guard/lookup/1"
+    path.write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    planned = {p.citekey: p for p in lookup.plan(_loaded(project))}
+    assert planned["fictionalClassSignal2019"].again == (
+        "it was looked up before the authors were kept")  # fmt: skip
+    assert planned["fictionalHepaticCohort2021"].skipped == "up to date"
+
+
+def test_crossref_and_pubmed_keep_each_work_s_authors() -> None:
+    people = [{"given": "Anne", "family": "Fictional"},
+              {"name": "The RECOVERY Collaborative Group"},
+              {"given": "RECOVERY", "family": "Collaborative Group"},
+              {"given": "Only"}]  # fmt: skip
+    found = sources.crossref(DOI, _ask(_registries(crossref=_json(200, _crossref_work(
+        author=people)))), SERVICES.crossref, None)  # fmt: skip
+    assert found["authors"] == [
+        {"family": "Fictional", "given": "Anne"},
+        {"group": "The RECOVERY Collaborative Group"},
+        {"group": "RECOVERY Collaborative Group"},
+        {"family": "Only"},
+    ]  # fmt: skip
+    pubmed = sources.pubmed(PMID, _ask(_registries(pubmed=_json(200, _ESUMMARY))),
+                            SERVICES.pubmed, None, None)  # fmt: skip
+    assert pubmed["authors"][0] == {"family": "Fictional", "given": "A"}
+    assert pubmed["authors"][2] == {"group": "Fictional Study Group"}
+
+
+def test_a_dry_run_says_a_reference_with_no_identifier_would_be_searched(
+    searched, capsys, monkeypatch
+):
+    monkeypatch.setattr(lookup, "default_transport", _refused)
+    assert main(["lookup", str(searched), "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert ("@fictionalHepaticCohort2021: would search PubMed, Crossref and OpenAlex for its "
+            "title (no record)") in out  # fmt: skip
 
 
 # ------------------------------------------------------------- the real transport, on loopback
@@ -621,7 +860,7 @@ def test_the_real_transport_looks_up_and_keeps_no_key(project: Path, server) -> 
     for path in (project / "literature" / "lookups").glob("*.yaml"):
         text = path.read_text(encoding="utf-8")
         assert not any(s in text for s in (CONTACT, NCBI, OPENALEX, "127.0.0.1"))
-        assert yaml.safe_load(text)["schema"] == "manuscript-guard/lookup/1"
+        assert yaml.safe_load(text)["schema"] == "manuscript-guard/lookup/2"
 
 
 def test_the_real_transport_follows_no_redirect(server) -> None:

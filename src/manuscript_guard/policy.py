@@ -174,6 +174,10 @@ BINDS_AT = {
     "reference-year-mismatch": INTERNAL_REVIEW,
     "pmid-names-another-work": INTERNAL_REVIEW,
     "pmid-unknown": INTERNAL_REVIEW,
+    # A reference with no identifier that no registry has, and one whose authors are none
+    # of those the registries list for its title (Basile, 2026-10-20).
+    "reference-not-found": INTERNAL_REVIEW,
+    "reference-authors-disjoint": INTERNAL_REVIEW,
     "lookup-date-future": INTERNAL_REVIEW,
     "lookup-record-unreadable": INTERNAL_REVIEW,
     "lookup-record-misfiled": INTERNAL_REVIEW,

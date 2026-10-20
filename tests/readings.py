@@ -490,6 +490,46 @@ def _title_held() -> Reading:
     return held
 
 
+@reading("title alike")
+def _title_alike() -> Reading:
+    """How alike a cited title is to a registered one, each way, by which G7 takes a work a
+    search found for the one cited (`gates/searched`)."""
+    from manuscript_guard.gates.searched import alike
+
+    def held(given: dict[str, str]) -> float:
+        return round(alike(given["cited"], [given["registered"]]), 6)
+
+    return held
+
+
+@reading("search words")
+def _search_words() -> Reading:
+    """The words of a title `lookup` searches the registries for."""
+    from manuscript_guard.gates.searched import search_words
+
+    return search_words
+
+
+@reading("authors cited")
+def _authors_cited() -> Reading:
+    """A .bib entry's author field, read into people and groups."""
+    from manuscript_guard.literature.names import cited
+
+    def read(field: str) -> list[Any]:
+        found = cited(field)
+        return [[[n.family, n.given, n.group] for n in found.names], found.truncated]
+
+    return read
+
+
+@reading("same family name")
+def _same_family_name() -> Reading:
+    """Whether two family names are one person's, by G7's folding (`gates/authors`)."""
+    from manuscript_guard.gates.authors import same
+
+    return lambda given: same(given["cited"], given["registered"])
+
+
 @reading("units after")
 def _units_after() -> Reading:
     """The unit written right after each results binding, which G2 holds to the unit the

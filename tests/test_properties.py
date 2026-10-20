@@ -4326,6 +4326,70 @@ def test_a_cited_title_is_found_in_its_registered_form_and_not_in_another(
             assert held is not None and held < lookups.TITLE_HELD, (kind, cited, title, held)
 
 
+# ------------------------------------------------------------- a family name, as registered
+
+#: Family names a property draws: of letters a folding leaves alone.
+_FAMILIES = ("Naranjo", "Busto", "Sellers", "Greenblatt", "Okafor", "Lindqvist", "Tanaka",
+             "Moreau", "Kowalski", "Haddad", "Petrov", "Ndiaye")  # fmt: skip
+#: A vowel, how TeX accents it in a .bib, and the letter a registry prints.
+_ACCENTS = (("e", "{\\'e}", "\N{LATIN SMALL LETTER E WITH ACUTE}"),
+            ("a", "{\\`a}", "\N{LATIN SMALL LETTER A WITH GRAVE}"),
+            ("o", "{\\^o}", "\N{LATIN SMALL LETTER O WITH CIRCUMFLEX}"),
+            ("i", "{\\'i}", "\N{LATIN SMALL LETTER I WITH ACUTE}"))  # fmt: skip
+_PARTICLE_FORMS = ("van der", "de", "von", "da", "van")
+#: What G7 is to find one person in, and what it is to find another person in.
+_SAME_NAME = ("cased", "accented", "particle", "apostrophe", "umlaut", "hyphen", "suffix")
+_OTHER_NAME = ("a letter off", "another name")
+
+
+@st.composite
+def _renamed(draw: st.DrawFn) -> list[tuple[str, str, str]]:
+    """One family name drawn, written for each way a registry writes the same name and for
+    each way another person's differs: every kind in every example, so that a rule broken
+    for one kind fails whatever the seed."""
+    family, second = draw(st.lists(st.sampled_from(_FAMILIES), min_size=2, max_size=2,
+                                   unique=True))  # fmt: skip
+    vowels = [at for at, c in enumerate(family) if c in "aeio"]
+    at = draw(st.sampled_from(vowels))
+    plain, tex, printed = next(a for a in _ACCENTS if a[0] == family[at])
+    particle = draw(st.sampled_from(_PARTICLE_FORMS))
+    cut = draw(st.integers(1, len(family) - 1))
+    letter = draw(st.sampled_from([c for c in "zqxj" if c not in family.casefold()]))
+    case = draw(st.sampled_from((str.upper, str.lower, str.title)))
+    umlaut = family[:cut] + "\N{LATIN SMALL LETTER U WITH DIAERESIS}" + family[cut:]
+    return [
+        ("cased", family, case(family)),
+        ("accented", family[:at] + tex + family[at + 1 :],
+         family[:at] + printed + family[at + 1 :]),
+        ("particle", f"{particle} {family}",
+         draw(st.sampled_from((family, f"{particle.title()} {family}")))),
+        ("apostrophe", f"O'{family}",
+         draw(st.sampled_from((f"O{family}", f"O\N{RIGHT SINGLE QUOTATION MARK}{family}")))),
+        ("umlaut", umlaut, family[:cut] + "ue" + family[cut:]),
+        ("hyphen", f"{family}-{second}", draw(st.sampled_from((f"{family} {second}", second)))),
+        ("suffix", f"{family} Jr.", family),
+        ("a letter off", family, family[:cut] + letter + family[cut + 1 :]),
+        ("another name", family, second),
+    ]  # fmt: skip
+
+
+@holds(150, _renamed())
+def test_a_family_name_is_one_person_s_however_a_registry_writes_it(
+    drawn: list[tuple[str, str, str]],
+) -> None:
+    """G7 holds a cited family name to a registry's by Basile's lenient folding (2026-10-20):
+    case, accents written in TeX or in Unicode, a particle, an apostrophe, ü for ue, one part
+    of a double name and a suffix are one person's; a letter that differs, or another name,
+    is another person's."""
+    from manuscript_guard.gates import authors
+
+    for kind, cited, registered in drawn:
+        if kind in _SAME_NAME:
+            assert authors.same(cited, registered), (kind, cited, registered)
+        else:
+            assert not authors.same(cited, registered), (kind, cited, registered)
+
+
 # ------------------------------------------------------------- a figure that estimates itself
 
 _FIGURE_FILLER = {
@@ -4853,6 +4917,46 @@ def _a_title_is_compared_both_ways(patch: pytest.MonkeyPatch) -> None:
         return both / max(len(mine), len(theirs))
 
     patch.setattr(lookups, "title_held", held)
+
+
+def _a_family_name_must_agree_whole(patch: pytest.MonkeyPatch) -> None:
+    """The strict option Basile did not take: particles and all."""
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "same", lambda a, b: authors.name_words(a) == authors.name_words(b))
+
+
+def _an_accent_is_a_letter_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "name_words", lambda family: tuple(re.findall(
+        r"[^\W\d_]+", family.replace("{", "").replace("}", "").casefold())))  # fmt: skip
+
+
+def _ue_is_not_u_umlaut(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "_TRANSCRIPTIONS", ())
+
+
+def _an_apostrophe_parts_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "_APOSTROPHES", re.compile(r"(?!)"))
+
+
+def _a_name_a_letter_off_is_the_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    same = authors.same
+
+    def near(a: str, b: str) -> bool:
+        x, y = " ".join(authors.name_words(a)), " ".join(authors.name_words(b))
+        one_off = len(x) == len(y) and sum(i != j for i, j in zip(x, y, strict=True)) <= 1
+        return same(a, b) or one_off
+
+    patch.setattr(authors, "same", near)
+
 
 
 def _an_isbn_10_is_not_read_as_its_isbn_13(patch: pytest.MonkeyPatch) -> None:
@@ -6307,6 +6411,26 @@ BROKEN = {
     "a cited title is compared both ways": (
         _a_title_is_compared_both_ways,
         test_a_cited_title_is_found_in_its_registered_form_and_not_in_another,
+    ),
+    "a family name must agree whole, particles and all": (
+        _a_family_name_must_agree_whole,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "an accent is a letter of its own": (
+        _an_accent_is_a_letter_of_its_own,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "ue is not \N{LATIN SMALL LETTER U WITH DIAERESIS}": (
+        _ue_is_not_u_umlaut,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "an apostrophe parts a name": (
+        _an_apostrophe_parts_a_name,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "a name a letter off is the name": (
+        _a_name_a_letter_off_is_the_name,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
     ),
     "an ISBN-10 is not read as its ISBN-13": (
         _an_isbn_10_is_not_read_as_its_isbn_13,

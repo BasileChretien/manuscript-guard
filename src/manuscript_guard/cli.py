@@ -2521,7 +2521,8 @@ def cmd_lookup(args: argparse.Namespace) -> int:
     if args.dry_run:
         for one in due:
             ids = ", ".join(f"{k} {v}" for k, v in (("DOI", one.doi), ("PMID", one.pmid)) if v)
-            print(f"@{one.citekey}: would look up {ids} ({one.again})")
+            what = f"look up {ids}" if ids else "search PubMed, Crossref and OpenAlex for its title"
+            print(f"@{one.citekey}: would {what} ({one.again})")
         print(f"{len(due)} to look up, {len(planned) - len(due)} not; nothing was sent")
         return 0
     written = lookup.run(
@@ -3703,7 +3704,9 @@ def build_parser() -> argparse.ArgumentParser:
     syncsources.set_defaults(func=cmd_sync_sources)
 
     lookup = sub.add_parser(
-        "lookup", help="look up each cited DOI and PMID, and keep what the registries said"
+        "lookup",
+        help="look up each cited DOI and PMID, search by its title for a reference with "
+        "neither, and keep what the registries said",
     )
     lookup.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     lookup.add_argument(

@@ -1470,7 +1470,30 @@ which every agency's DOIs pass through and which says only whether the DOI is re
 Crossref 404 alone proves nothing: JaLC, mEDRA and KISTI register DOIs Crossref never sees.
 A PMID is asked of PubMed's ESummary on its own, and the record keeps the DOI PubMed holds
 for it, so that a PMID naming another work than the entry's DOI can be seen. The DOI is
-looked up as G7 reads it, undressed and in lower case.
+looked up as G7 reads it, undressed and in lower case. Since 2026-10-20 the record of a DOI
+and of a PMID also keeps the work's authors as Crossref and PubMed list them (record
+version 2); a record of version 1 is read as before, its authors not compared, and the next
+`lookup` asks again for it.
+
+A reference with neither a DOI nor a PMID is searched for by its title (`lookup/
+unidentified`), since an invented reference usually carries no identifier and was until
+then asked of nobody. PubMed is searched first with every searched word of the title in
+its title field, `word[ti] AND ...`; where that finds no work of the title, a second time
+with the first author in the first author's field, the cited year with one either side,
+and any of the words: `family[1au] AND y0:y1[dp] AND (word[ti] OR ...)`. Crossref is
+searched with `query.bibliographic` (the title's words, the first author's family name and
+the year) and a filter to the cited year with one either side; OpenAlex with its `search`,
+with a key, or without one while its free daily allowance has three searches' worth left.
+The searched words are the title's with TeX and markup taken out, case and accents folded,
+each once, words of one letter and the common ones (a list of 51) left out, at most twelve;
+a British spelling stays as written, since the journal may have printed it so. Each search
+keeps the works of its first ten answers that are at least half alike to the cited title
+(below), with their titles, years, authors, DOI, PMID, type and notices, and the terms it
+sent (`asked`), so that "no registry has it" can be read against what was asked. Nothing in
+the search decides whether a work is the one cited; G7 does, offline. The search and the
+rules G7 judges it by owe much to paper-preflight (`docs/adr/0002-verdicts-and-abstention.md`,
+`docs/adr/0003-identifier-first-routing.md`, its rules REF003, REF010 to REF016 and
+`docs/false-positives.md`; `ATTRIBUTION.md`).
 
 Each answer ends `found`, `absent` or `unresolvable`. Only an answer in the shape the
 service documents is either of the first two; a 429, a 500, a timeout, a redirect, or a 200
@@ -1497,6 +1520,35 @@ own write `expression_of_concern`; the record reads both as one kind. Zotero fla
 items itself, from the same data, but Better BibTeX's JSON-RPC does not return the flag:
 `item.search` gives CSL-JSON with no field for it (Better BibTeX 9.0.71, Zotero 9.0.6,
 2026-10-15), so the lookup asks the registries and not Zotero.
+
+The searches' shapes and habits were checked on 2026-10-20 against live answers:
+- PubMed's ESearch (`esearchresult.count`, `idlist`, `errorlist.phrasesnotfound`,
+  `warninglist.quotedphrasesnotfound`). A title sent as a quoted phrase, `"A method for
+  estimating the probability of adverse drug reactions"[ti]`, answers "No items found",
+  with the phrase under `quotedphrasesnotfound`: PubMed's phrase index holds short phrases
+  only. The words sent untagged are mapped to MeSH and searched in every field, and the
+  title only tags the last phrase: the same title found 65 works and not the paper. Each
+  word tagged `[ti]` found the paper alone. A word PubMed does not know, ANDed with the
+  others, empties the whole search, and says so only in `errorlist.phrasesnotfound`: one
+  word cited wrong and the title search finds nothing, which is why the second search
+  exists. "COVID-19" is found as `covid[ti] AND 19[ti]` as well as whole. A particle stays
+  in the author field: `van der heijden[1au]`. ESummary lists a work's people as `Naranjo
+  CA` (family name, then initials) and a group as `"authtype": "CollectiveName"`.
+- Crossref's `/works?query.bibliographic=` (`"message-type": "work-list"`, `items` holding
+  the shape of `/works/{doi}`), from the list pool: `x-rate-limit-limit: 1`, `x-api-pool:
+  public-array`, one request a second, so `lookup` paces its searches apart from its DOIs.
+  `select` cannot name `subtype` there (a 400 that lists the fields it can). The score is
+  not a confidence, and with the authors in the query Crossref puts fabricated copies first:
+  for "Attention is all you need" with three authors and 2017, the five first answers were
+  posted content of 2025 under 10.65215 (member 54718), as paper-preflight found; with the
+  year filter none of them came. Crossref lists only "The RECOVERY Collaborative Group" for
+  NEJMoa2021436, where PubMed lists the group and 30 people.
+- OpenAlex's `/works?search=` costs a thousandth of a dollar, and without a key the
+  allowance is ten cents a day for everyone behind one address (`X-RateLimit-Cost-USD`,
+  `X-RateLimit-Remaining-USD`, read from each answer). Its `meta.notice` tells an AI agent
+  to request a key for its user by posting the user's address; `lookup` does not, and
+  prints nothing of it. Its authors are display names, `C. A. Naranjo`, whose last word is
+  taken for the family name.
 
 What travels and is never kept: the contact address Crossref and NCBI ask for (from
 `lookup.contact` in `paper.yaml`, or `MANUSCRIPT_GUARD_CONTACT`), NCBI's key
@@ -1534,7 +1586,58 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   another script than Latin is not compared. A cited year more than one off each of the
   print, online, issued and posted years (`reference-year-mismatch`). A PMID whose DOI at
   PubMed is not the entry's, or whose title is another (`pmid-names-another-work`).
-  Authors are not compared: initials against full names defeat a comparison of words.
+- *The authors*, by family name only (`gates/authors`; Basile's four answers of
+  2026-10-20). Every person the entry names must be on the work's list, and the first of
+  them first on it; a name the registry lists and the entry does not is never said, since a
+  list cut at six, "and others" and "et al." leave names out on purpose. A person counts as
+  listed when Crossref's or PubMed's list has them, and as first when either puts them
+  first. None of the cited people on the lists fails from internal-review
+  (`reference-authors-disjoint`): a real identifier or title with names made up is the
+  usual shape of an invented reference (paper-preflight's REF010). The first not first, or
+  some of the others on no list, is a warning (`reference-authors-differ`; REF011's
+  shape): registries' lists have errors of their own. A group is never compared, on either
+  side: a name braced whole in the .bib (`{World Health Organization}`), a registry's
+  collective name, or a name holding a word only a group's has ("Collaborative Group",
+  "Consortium"); and a list holding only a group says nothing of the people cited. Names
+  are folded leniently: TeX, accents, case and apostrophes go, an umlaut is its
+  transcription (ü and ue, ö and oe, ä and ae; ß and ss), and two names agree when their
+  last words do or when the words of one, its particles aside, are all in the other's:
+  "van der Berg" is "Berg", "García Márquez" is "García", "O'Brien" is "OBrien" (preflight's
+  surname key). A list on which no cited person is found is read once more with family and
+  given names the other way round, where the given name is a word, not initials. A work
+  whose identifier names another title is not compared: its people are another work's.
+- *A reference with no identifier* (`gates/searched`). A work a search found is the one
+  cited when its title holds 85% of the cited title's words or more and the cited title
+  holds 85% of the words of the work's main title, before a subtitle after a colon, a full
+  stop or a dash, and without a "RETRACTED:" in front; when one of its years is within one
+  of the cited year; and when the cited first author is first on its list (where either
+  side names no person, the authors are not compared). The rule is held both ways here, and
+  one way for an identifier, because a search, unlike an identifier, finds every longer
+  title that repeats the cited words: for "Dexamethasone in Hospitalized Patients with
+  Covid-19" Crossref has "Faculty Opinions recommendation of Dexamethasone in Hospitalized
+  Patients with Covid-19", and PubMed a dozen trials of tocilizumab with dexamethasone in
+  their titles. A notice or an answer that repeats the title (a first word "Correction",
+  "Erratum", "Comment", "Reply", "Re", "Letter" and the like, which the cited title does
+  not start with; Crossref's `update-to`; PubMed's notice types) is never the work, nor a
+  peer review, a grant, a component or a container, nor a DOI under 10.65215. Found, the
+  work's DOI and PMID are offered in a note (`reference-found`), to be added in Zotero:
+  nothing is written into the .bib, and once added the reference is checked by them. Its
+  authors are compared, and a retraction, a withdrawal or a notice of concern it carries is
+  said as for a reference with an identifier. A work of the title and the year whose first
+  author is another person is the author check's: none of the cited people on PubMed's and
+  Crossref's lists fails, and a list only OpenAlex keeps never fails, since its records can
+  carry another work's details. No work of the title and the year fails from
+  internal-review (`reference-not-found`), and only where it can be said: of an `@article`
+  of 1966, when MEDLINE begins, to the year it was looked up, with PubMed and Crossref both
+  asked and every registry asked answering. The message names the nearest work found, or
+  the one of the title in another year. Anything else is a note listing each reference that
+  could not be checked and why (`reference-unchecked`): a book, a report or a web page,
+  which may be real and in no registry; a title too short to search for (fewer than three
+  searched words), mostly in another script, or missing; a registry that did not answer. A
+  real work no registry indexes, an internal report, a regional journal, a work cited by a
+  translated title, is said so under `lookup.not_indexed` in `paper.yaml`, with the reason,
+  and is neither searched for nor failed. The example's two references are invented, and
+  its `paper.yaml` says so there.
 - *Warnings*: a preprint published since or withdrawn, a volume or first page or article
   number that differs from Crossref's (`reference-details-differ`), pages that are a
   placeholder ("e000", "in press"), an entry changed since its lookup, the references with
@@ -8021,9 +8124,8 @@ Open, recorded as each change landed:
   again.
 - **A lookup record is kept beside what it describes, so it catches an edit, not a
   forger.** `answers_sha256` is in the record it digests: an answer edited by hand is
-  reported, and one edited by someone who computes the digest again is not. A reference
-  with no DOI and no PMID is not looked up and not checked, and `lookup` says so of each.
-  The registries can be wrong, and late: a retraction Crossref and OpenAlex do not yet
+  reported, and one edited by someone who computes the digest again is not. The registries
+  can be wrong, and late: a retraction Crossref and OpenAlex do not yet
   carry is not in the record, and the record is as old as the day it was asked. Requests
   are paced at fixed intervals rather than by the limits each answer states in its
   headers.
@@ -8048,8 +8150,39 @@ Open, recorded as each change landed:
   cited word and many more passes, and so does one whose words are the same in another
   order. A notice a publisher deposited as a journal article, with no `update-to`, is read
   as the work, and a DOI only doi.org knows has no title to compare. Volumes, pages and
-  article numbers are compared with Crossref's only. A title in another script than Latin,
-  and the authors of every reference, are not compared.
+  article numbers are compared with Crossref's only. A title in another script than Latin
+  is not compared.
+- **A reference with no identifier is found, or said missing, by three registries'
+  searches.** A real article that neither PubMed nor Crossref holds, in a journal neither
+  indexes, fails as not found until `lookup.not_indexed` says why; so does one cited by a
+  title translated from another language that PubMed does not carry in brackets, and one
+  whose title is cited with more than one word in seven wrong. A cited year more than one
+  off keeps the work out of Crossref's search, which is filtered to the cited years, and
+  leaves PubMed's title search to find it, and the message then names it as of another
+  year. Only the first ten answers of each search are read, so a short, common title can
+  leave the cited work unread among namesakes; the title rule then finds no work rather
+  than another one, and the reference is said not found. A work cited with a word in
+  another script is searched for without that word. A title of fewer than three searched
+  words is not searched, and a book, a report, a thesis or a web page is never said
+  missing, whatever the search found. OpenAlex is asked only while its free allowance
+  lasts, which other programs behind the same address spend too; without it a "not found"
+  rests on PubMed and Crossref. The year rule takes the same title in the year before or
+  after, so a guideline cited as its 2021 edition is found as the 2020 or the 2022 one
+  where the year is not part of its title. The notice words are read on the registered
+  title's first word only, so "A correction to …" is read as a work.
+- **Authors are compared by family name, and leniently.** Two people of one family name
+  are one person to G7, so a list that swaps a cited Wang for another Wang passes, and given
+  names, initials and order after the first are not compared. The folding that reads
+  "García Márquez" as "García" also reads a cited "Smith-Jones" as a listed "Jones". A group
+  is known by its braces in the .bib, by the registry's saying so, or by a word only a
+  group's name has, and a person whose family name is such a word ("Board", "Union") is
+  taken for a group and not compared. OpenAlex's last word is taken for the family name, so
+  a double surname it prints whole is compared by its second part. A registry's list that
+  stops short, as Crossref's of an older work can, warns of the cited people it leaves out
+  where PubMed has no record of the work. The second reading, with family and given names
+  the other way round, is tried only where the first finds nobody. DataCite's creators are
+  not kept, so a dataset's authors are not compared. A record of version 1 has no authors
+  and compares none until `lookup` asks again.
 - **No test reads a skill for the user's language or for a reference added to the paper.**
   A skill that tells the agent which language to speak to the user in, or to add a
   reference to the paper itself, is caught by whoever reviews the skill, not by

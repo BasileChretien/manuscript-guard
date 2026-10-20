@@ -6,15 +6,19 @@ same in CI as on the author's machine. What it fails on:
 
 * a cited work the record shows retracted or withdrawn (from drafting), unless the paper
   says why it cites it anyway (`lookup.cited_as_retracted` in paper.yaml);
-* a DOI no registry has, a DOI or PMID whose work has another title or another year, and
-  a DOI that is a notice, a journal or a series rather than the work (from internal-review).
+* a DOI no registry has, a DOI or PMID whose work has another title or another year, a
+  DOI that is a notice, a journal or a series rather than the work, and a work none of
+  whose authors is among those the entry names (from internal-review);
+* a reference with neither a DOI nor a PMID that no registry has, searched for by its
+  title (from internal-review; `gates/searched`).
 
 And what it warns of: a preprint published since or withdrawn, an expression of concern, a
-volume or first page that differs, a placeholder for the pages, an entry changed since its
-lookup, and references never looked up or looked up too long ago. A lookup that got no
-answer is a note: a registry that did not answer said nothing, and nothing fails on it.
-
-A reference with neither a DOI nor a PMID has no record, and none of this is said of it.
+volume or first page that differs, authors of whom only some are on the work's record or
+the first not first, a placeholder for the pages, an entry changed since its lookup, and
+references never looked up or looked up too long ago. A lookup that got no answer is a
+note: a registry that did not answer said nothing, and nothing fails on it. So is a
+reference with no identifier found by its title, with the identifier it can be given, and
+one that could be neither found nor said to be missing, with the reason.
 """
 
 from __future__ import annotations
@@ -31,8 +35,9 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.identifiers import doi_of, pmid_of
 from manuscript_guard.gates.spelling import _variants
+from manuscript_guard.literature import names
 from manuscript_guard.literature.bibfile import read_entries
-from manuscript_guard.literature.lookups import answers_digest, entry_digest, record_path
+from manuscript_guard.literature.lookups import SCHEMA, answers_digest, entry_digest, record_path
 
 GATE = "G7"
 BIB_FILE = "references.bib"
@@ -201,20 +206,32 @@ _REDO = "run `manuscript-guard lookup --again` to write the record again"
 
 
 def check_lookups(project: Project, cited: list[str]) -> Report:
-    """Every cited reference with a DOI or a PMID, against its record."""
+    """Every cited reference, against its record."""
+    from manuscript_guard.gates import searched
+
     bib = project.path("literature") / BIB_FILE
     entries = read_entries(bib) if bib.is_file() else {}
+    raw = read_entries(bib, braces=True) if bib.is_file() else {}
     settings = project.setting("lookup") or {}
     excused: dict[str, str] = settings.get("cited_as_retracted") or {}
+    not_indexed: dict[str, str] = settings.get("not_indexed") or {}
     max_age = settings.get("max_age_days") or MAX_AGE_DAYS
     report, missing, stale, looked = Report(), [], [], 0
+    unchecked: list[str] = []
     for citekey in cited:
         fields = entries.get(citekey)
         if fields is None:
             continue  # `citation-unresolved` says so
         report = report.merge(_pages(citekey, fields, bib))
-        if not doi_of(fields) and not pmid_of(fields):
-            continue
+        identified = bool(doi_of(fields) or pmid_of(fields))
+        if not identified:
+            if fields.get("doi") or fields.get("pmid"):
+                continue  # `identifier-malformed` says so
+            why = (f"paper.yaml: {not_indexed[citekey]}" if citekey in not_indexed
+                   else searched.unsearchable(fields))  # fmt: skip
+            if why:
+                unchecked.append(f"@{citekey} ({why})")
+                continue
         if not record_path(project, citekey).exists():
             missing.append(citekey)
             continue
@@ -225,9 +242,27 @@ def check_lookups(project: Project, cited: list[str]) -> Report:
         looked += 1
         if (today() - date.fromisoformat(record["looked_up_on"])).days > max_age:
             stale.append(citekey)
-        report = report.merge(_judge(project, citekey, fields, record, excused.get(citekey)))
+        cited_by = names.cited(raw.get(citekey, {}).get("author", ""))
+        judged, why = _judge(project, citekey, fields, record, excused.get(citekey), cited_by)
+        report = report.merge(judged)
+        if why:
+            unchecked.append(f"@{citekey} ({why})")
     report = report.merge(_unlooked(missing, stale, max_age, project))
+    report = report.merge(_unchecked(unchecked, project))
     return report.with_counts(references_looked_up=looked)
+
+
+def _unchecked(unchecked: list[str], project: Project) -> Report:
+    if not unchecked:
+        return Report()
+    return Report((_finding(
+        "reference-unchecked",
+        f"{len(unchecked)} cited reference(s) with no DOI and no PMID could not be checked "
+        "against a registry: " + ", ".join(unchecked),
+        project.path("literature") / BIB_FILE,
+        "give each an identifier in Zotero where it has one, or check it by hand",
+        INFO,
+    ),))  # fmt: skip
 
 
 def _unlooked(missing: list[str], stale: list[str], max_age: int, project: Project) -> Report:
@@ -237,11 +272,12 @@ def _unlooked(missing: list[str], stale: list[str], max_age: int, project: Proje
         found.append(
             _finding(
                 "lookup-missing",
-                f"{len(missing)} cited reference(s) with a DOI or PMID were never looked up: "
+                f"{len(missing)} cited reference(s) were never looked up: "
                 + ", ".join(f"@{k}" for k in missing),
                 where,
                 "run `manuscript-guard lookup` to ask the registries whether each exists, "
-                "names the cited work and still stands",
+                "names the cited work and still stands; one with no identifier is searched "
+                "for by its title",
                 WARN,
             )
         )
@@ -284,9 +320,14 @@ def _judge(
     fields: dict[str, str],
     record: dict[str, Any],
     excuse: str | None,
-) -> Report:
-    """What one record says of the reference it was written for."""
+    cited: names.Authors | None = None,
+) -> tuple[Report, str]:
+    """What one record says of the reference it was written for, and why nothing could be
+    said of a reference with no identifier, where nothing could."""
+    from manuscript_guard.gates import searched
+
     path = record_path(project, citekey)
+    cited = cited or names.Authors()
     if answers_digest(record) != record["answers_sha256"]:
         return Report(
             (
@@ -297,7 +338,7 @@ def _judge(
                     "what a registry said is not the author's to edit; " + _REDO,
                 ),
             )
-        )
+        ), ""
     found: list[Finding] = []
     looked_on = date.fromisoformat(record["looked_up_on"])
     if looked_on > today():
@@ -321,7 +362,7 @@ def _judge(
             )
         )
         if record["identifiers"] != wanted:
-            return Report(tuple(found))
+            return Report(tuple(found)), ""
     answers = record["sources"]
     late = [name for name, answer in answers.items() if answer["status"] == "unresolvable"]
     if late:
@@ -337,9 +378,30 @@ def _judge(
                 WARN if nothing else INFO,
             )
         )
+    if not wanted:
+        verdict = searched.judge(citekey, fields, cited, record, path, excuse)
+        return Report((*found, *verdict.findings)), verdict.unchecked
     found += _standing(citekey, fields, answers, path, excuse)
     found += _identity(citekey, fields, answers, path, excuse)
-    return Report(tuple(found))
+    if record["schema"] == SCHEMA:
+        found += _authors(citekey, fields, cited, answers, path, found)
+    return Report(tuple(found)), ""
+
+
+def _authors(citekey, fields, cited, answers, path, found: list[Finding]) -> list[Finding]:
+    """The cited people against the lists Crossref and PubMed keep for the identifiers' work.
+    Not where the identifier names another work: its people are another work's."""
+    from manuscript_guard.gates import authors
+
+    if {f.code for f in found} & {"reference-title-mismatch", "pmid-names-another-work",
+                                   "reference-not-the-work"}:  # fmt: skip
+        return []
+    lists = [(label, names.recorded(_found(answers, name).get("authors", [])))
+             for name, label in (("crossref", "Crossref"), ("pubmed", "PubMed"))
+             if _found(answers, name)]  # fmt: skip
+    which = " and ".join(f"{k} {v}" for k, v in (("DOI", doi_of(fields)),
+                                                 ("PMID", pmid_of(fields))) if v)  # fmt: skip
+    return authors.judged(citekey, cited, lists, path, f"the work of its {which}")
 
 
 def _found(answers: dict[str, Any], name: str) -> dict[str, Any]:

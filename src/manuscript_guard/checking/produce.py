@@ -24,6 +24,7 @@ items in its own file.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -211,17 +212,23 @@ def _split(flat: str) -> list[str]:
     return joined
 
 
-def _sentences_of(text: str) -> list[tuple[int, str]]:
+def _sentences_of(text: str, *, citing: bool = False) -> list[tuple[int, str]]:
     """Each sentence of each paragraph, with the line the **paragraph** starts on.
 
     The paragraph's line, not the sentence's: it is how a reader finds the passage, and nothing
     is keyed on it.
+
+    `citing` cuts only the paragraphs with an `@` in them, which are the only ones that can
+    hold a sentence that cites: the cut reads a long paragraph slowly, and G7 asks it of every
+    file at every `check` (the quotation gate found five thousand lines of one paragraph took
+    `check` past its budget).
     """
     out: list[tuple[int, str]] = []
     line = 1
     for paragraph in text.split("\n\n"):
-        for sentence in _split(" ".join(paragraph.split())):
-            out.append((line, sentence))
+        if not citing or "@" in paragraph:
+            for sentence in _split(" ".join(paragraph.split())):
+                out.append((line, sentence))
         line += paragraph.count("\n") + 2
     return out
 
@@ -255,6 +262,62 @@ def _plain(fact: Any) -> str:
 
 #: One manuscript file: its path, its text, and its sentences with the line each starts on.
 Document = tuple[Path, str, list[tuple[int, str]]]
+
+
+@dataclass(frozen=True)
+class CitedSentence:
+    """A sentence of the manuscript that cites, as a co-author is shown it: its file, the line
+    its paragraph starts on, its words as written, and the works it cites, in order."""
+
+    path: Path
+    line: int
+    text: str
+    keys: tuple[str, ...]
+
+
+def citing_document(path: Path, text: str) -> Document:
+    """One manuscript file as G7 reads it for its cited sentences: comments blanked, and only
+    the paragraphs that can cite cut into sentences (`_sentences_of`)."""
+    from manuscript_guard.text.masking import blank_comments
+
+    body = blank_comments(text)
+    return path, body, _sentences_of(body, citing=True)
+
+
+def cited_sentences(documents: list[Document]) -> list[CitedSentence]:
+    """Every sentence that cites a work, in the order the files and sentences come: what the
+    checker asks a co-author about, and what G7 holds a supporting passage to. A sentence
+    written twice is here twice; a sentence of nothing but citations is not here at all."""
+    from manuscript_guard.zotero import find_citations
+
+    cited: list[CitedSentence] = []
+    for path, text, sentences in documents:
+        # The toolkit's own reader says whether this file cites anything at all, and which keys
+        # it knows; which of them a given sentence carries is read from the sentence, because a
+        # citation group can span lines and a line can hold two sentences.
+        known = {use.citekey for use in find_citations(text, path)}
+        if not known:
+            continue
+        for line, sentence in sentences:
+            keys = sorted(
+                {
+                    # `.rstrip(".,;:")` as `zotero/citations.py` does it: a narrative citation
+                    # that ends a sentence is written "as @key." and the stop is not part of the
+                    # key, so without this the sentence was on no item at all.
+                    found.group(1).rstrip(".,;:")
+                    for found in CITEKEY.finditer(sentence)
+                    if found.group(1).rstrip(".,;:") in known
+                }
+            )
+            if not keys:
+                continue
+            if not any(ch.isalpha() for ch in CITEKEY.sub("", sentence)):
+                # A paragraph that is nothing but a citation — the splitter joins a claimless
+                # piece to the one before it, but a whole paragraph has nothing before it. There
+                # is no claim in it to judge, so nobody is asked about it.
+                continue
+            cited.append(CitedSentence(path, line, sentence, tuple(keys)))
+    return cited
 
 
 def _manuscript(project) -> list[Document]:
@@ -379,9 +442,10 @@ def _literature_items(project, literature, documents) -> list[dict]:
     return items
 
 
-def _claim_items(project, literature, documents) -> list[dict]:
-    from manuscript_guard.zotero import find_citations
+def _claim_items(project, literature, documents, passages=()) -> list[dict]:
+    from manuscript_guard.literature.passages import Belonging
 
+    belonging = Belonging(passages)
     quoted: dict[str, list[dict]] = {}
     for value in literature.values.values():
         detail = value.detail or {}
@@ -394,77 +458,71 @@ def _claim_items(project, literature, documents) -> list[dict]:
     records = _bib_records(project)
     items = []
     seen: set[str] = set()
-    for path, text, sentences in documents:
-        # The toolkit's own reader says whether this file cites anything at all, and which keys
-        # it knows; which of them a given sentence carries is read from the sentence, because a
-        # citation group can span lines and a line can hold two sentences.
-        known = {use.citekey for use in find_citations(text, path)}
-        if not known:
+    for cited in cited_sentences(documents):
+        path, line, sentence, keys = cited.path, cited.line, cited.text, cited.keys
+        identifier = _identifier("claim", str(path.name), sentence)
+        if identifier in seen:
+            # One sentence written twice in a file is one claim, and asking it twice would
+            # also give two items one id, which the schema refuses for the whole build.
             continue
-        for line, sentence in sentences:
-            keys = sorted(
-                {
-                    # `.rstrip(".,;:")` as `zotero/citations.py` does it: a narrative citation
-                    # that ends a sentence is written "as @key." and the stop is not part of the
-                    # key, so without this the sentence was on no item at all.
-                    found.group(1).rstrip(".,;:")
-                    for found in CITEKEY.finditer(sentence)
-                    if found.group(1).rstrip(".,;:") in known
-                }
-            )
-            if not keys:
-                continue
-            if not any(ch.isalpha() for ch in CITEKEY.sub("", sentence)):
-                # A paragraph that is nothing but a citation — the splitter joins a claimless
-                # piece to the one before it, but a whole paragraph has nothing before it. There
-                # is no claim in it to judge, so nobody is asked about it.
-                continue
-            identifier = _identifier("claim", str(path.name), sentence)
-            if identifier in seen:
-                # One sentence written twice in a file is one claim, and asking it twice would
-                # also give two items one id, which the schema refuses for the whole build.
-                continue
-            seen.add(identifier)
-            facts = [["Cites", ", ".join("@" + k for k in keys)]]
-            evidence: list[dict] = []
-            for key in keys:
-                record = records.get(key, {})
-                rows = _rows_for(record, CITED_FIELDS)
-                if rows:
-                    evidence.append({"kind": "facts", "caption": f"@{key}", "rows": rows})
-                for held in quoted.get(key, [])[:4]:
-                    evidence.append(
-                        {
-                            "kind": "quote",
-                            "caption": f"@{key}, quoted in the ledger"
-                            + (f": {held['locator']}" if held["locator"] else ""),
-                            "text": held["quote"],
-                            "note": f"for the value {held['value']}",
-                        }
-                    )
-            items.append(
-                {
-                    # Keyed on the file and the sentence as written, and on nothing else.
-                    # The line was in it, so adding one paragraph to the Introduction threw away
-                    # every claim answer below — the case DESIGN.md said had been removed, which
-                    # had been removed from the digest and left here. The sentence is taken whole
-                    # rather than cut at 80 characters, so two long sentences with the same
-                    # opening are two items.
-                    "id": identifier,
-                    "group": "claim",
-                    "title": _short(_without_bindings(sentence)),
-                    "facts": facts,
-                    "sentences": [
-                        {
-                            "text": _without_bindings(sentence),
-                            "section": path.name,
-                            "line": line,
-                        }
-                    ],
-                    "evidence": evidence or [{"kind": "none"}],
-                }
-            )
+        seen.add(identifier)
+        facts = [["Cites", ", ".join("@" + k for k in keys)]]
+        evidence: list[dict] = []
+        for key in keys:
+            record = records.get(key, {})
+            rows = _rows_for(record, CITED_FIELDS)
+            if rows:
+                evidence.append({"kind": "facts", "caption": f"@{key}", "rows": rows})
+            evidence += [_passage_evidence(key, held) for held in belonging.of(cited, key)]
+            for held in quoted.get(key, [])[:4]:
+                evidence.append(
+                    {
+                        "kind": "quote",
+                        "caption": f"@{key}, quoted in the ledger"
+                        + (f": {held['locator']}" if held["locator"] else ""),
+                        "text": held["quote"],
+                        "note": f"for the value {held['value']}",
+                    }
+                )
+        items.append(
+            {
+                # Keyed on the file and the sentence as written, and on nothing else.
+                # The line was in it, so adding one paragraph to the Introduction threw away
+                # every claim answer below — the case DESIGN.md said had been removed, which
+                # had been removed from the digest and left here. The sentence is taken whole
+                # rather than cut at 80 characters, so two long sentences with the same
+                # opening are two items.
+                "id": identifier,
+                "group": "claim",
+                "title": _short(_without_bindings(sentence)),
+                "facts": facts,
+                "sentences": [
+                    {
+                        "text": _without_bindings(sentence),
+                        "section": path.name,
+                        "line": line,
+                    }
+                ],
+                "evidence": evidence or [{"kind": "none"}],
+            }
+        )
     return items
+
+
+def _passage_evidence(key: str, held) -> dict:
+    """The passage recorded as supporting a sentence, for a co-author to read against it.
+
+    Its words and its locator only, which are in the item's digest: a passage replaced after a
+    co-author read it leaves their answer about one they never saw. Neither whether G7 found
+    it in the stored copy, which depends on the PDF reader of the machine that built the page,
+    nor what the author judged of it, which would tell the co-author the answer before they
+    read."""
+    return {
+        "kind": "quote",
+        "caption": f"@{key}, the passage recorded as supporting this sentence: {held.locator}",
+        "text": held.passage,
+        "note": "the cited work's words, as the author copied them from its stored copy",
+    }
 
 
 def _reference_items(project, literature) -> list[dict]:
@@ -554,14 +612,21 @@ def produce(project) -> tuple[dict[str, Any], tuple[str, ...]]:
     of output. The warnings come back with the document now, and `build` prints them.
     """
     from manuscript_guard.contracts.literature import load_literature
+    from manuscript_guard.literature.passages import read_passages
 
     literature, report = load_literature(project.path("literature"))
-    unread = tuple(f"{finding.code}: {finding.message}" for finding in report.failures)
+    # A passages file that cannot be used takes every passage off the page, and says so as the
+    # ledger does.
+    passages, passages_report = read_passages(project.path("literature"))
+    unread = tuple(
+        f"{finding.code}: {finding.message}"
+        for finding in (*report.failures, *passages_report.failures)
+    )
     documents = _manuscript(project)
 
     items = (
         _literature_items(project, literature, documents)
-        + _claim_items(project, literature, documents)
+        + _claim_items(project, literature, documents, passages)
         + _reference_items(project, literature)
         + _author_items(project)
     )

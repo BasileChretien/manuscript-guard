@@ -1954,6 +1954,87 @@ def test_a_quotation_is_looked_for_in_every_stored_file_of_its_work(project: Pat
     assert said() == []
 
 
+# --------------------------------------------- a cited statement's supporting passage
+
+#: The example's passage, as `literature/passages.yaml` records it.
+_SIGNAL = "A signal was detected for the class as a whole"
+
+
+def _passage_findings(project: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates import check_passages
+
+    found = check_passages(load_project(project)[0], "internal-review").findings
+    return [(f.code, f.severity) for f in found if f.code != "statements-without-passage"]
+
+
+def _recorded(project: Path, old: str, new: str) -> None:
+    path = project / "literature" / "passages.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert old in text, old
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "said"),
+    [
+        pytest.param(_SIGNAL, "A signal was found for the class as a whole",
+                     [("passage-not-in-source", "fail")], id="a word retyped"),
+        pytest.param(_SIGNAL, "Incidence rose with age and did not differ meaningfully by sex",
+                     [("passage-not-in-source", "fail")], id="another work's words"),
+        pytest.param(_SIGNAL, "as a whole [...] A signal was detected",
+                     [("passage-not-in-source", "fail")], id="pieces out of order"),
+        pytest.param(_SIGNAL, "A signal was detected [...] lass as a whole",
+                     [("passage-not-in-source", "fail")], id="a piece inside a longer word"),
+        pytest.param(_SIGNAL, "detected for the", [("passage-too-short", "warn")],
+                     id="three words"),
+        pytest.param("citekey: fictionalClassSignal2019",
+                     "citekey: fictionalHepaticCohort2021",
+                     [("passage-not-in-source", "fail")], id="recorded for the other work"),
+        pytest.param('    locator: "Abstract, Results"\n',
+                     '    locator: "Abstract, Results"\n    support: supports\n'
+                     '    judged_by: "Claude"\n    judged_on: 2026-10-20\n',
+                     [("judgement-not-human", "fail")], id="judged by a model"),
+        pytest.param('    locator: "Abstract, Results"\n',
+                     '    locator: "Abstract, Results"\n    support: does-not\n'
+                     '    judged_by: "Ada Example"\n    judged_on: 2026-10-20\n',
+                     [("passage-does-not-support", "fail")], id="judged not to support"),
+        pytest.param(_SIGNAL, _SIGNAL, [], id="as recorded"),
+    ],
+)  # fmt: skip
+def test_a_supporting_passage_that_is_not_what_its_work_says_is_caught(
+    project: Path, old: str, new: str, said: list
+) -> None:
+    """Each way a passage recorded for a cited sentence can be wrong, at internal-review:
+    words that are not the work's, a judgement a model signed, and one that says the passage
+    does not support the sentence."""
+    _recorded(project, old, new)
+    assert _passage_findings(project) == said
+
+
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        pytest.param(("has been reported", "was reported"), [("passage-stale", "info")],
+                     id="the sentence reworded"),
+        pytest.param(("[@fictionalClassSignal2019]. The", "The"), [("passage-stale", "info")],
+                     id="the work no longer cited"),
+    ],
+)  # fmt: skip
+def test_a_passage_whose_sentence_changed_is_stale(
+    project: Path, change: tuple[str, str], said: list
+) -> None:
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    assert change[0] in text
+    path.write_text(text.replace(*change, 1), encoding="utf-8")
+    assert _passage_findings(project) == said
+
+
+def test_a_passage_of_a_work_with_no_stored_copy_is_unchecked(project: Path) -> None:
+    (project / "literature" / "sources" / "fictionalClassSignal2019.txt").unlink()
+    assert _passage_findings(project) == [("passage-unchecked", "warn")]
+
+
 # ------------------------------------------------------------- what a change makes stale
 
 

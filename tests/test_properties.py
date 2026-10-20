@@ -38,6 +38,7 @@ from generated import (
     DATA_IDENTIFIERS,
     FILLER,
     FIXED_LINKS,
+    FOLDED,
     HELD,
     INPUTS,
     LOOKALIKES,
@@ -55,6 +56,7 @@ from generated import (
     holds,
     lines,
     mean_tables,
+    passage_files,
     pdf_figures,
     planned_plans,
     quotations,
@@ -97,6 +99,7 @@ from manuscript_guard.gates.vocabulary import (
     judge_vocabulary,
     own_words,
 )
+from manuscript_guard.literature import passages as passages_module
 from manuscript_guard.literature import sources as literature_sources
 from manuscript_guard.literature.sources import contains, normalise, states_value
 from manuscript_guard.reworded import (
@@ -2537,6 +2540,27 @@ def test_a_quotation_with_words_left_out_is_found_piece_by_piece(
     source, cases = drawn
     for quote, there in cases:
         assert quotations_gate.quoted_in(source, quote) is there, (source, quote)
+
+
+@holds(60, passage_files())
+def test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work(
+    drawn: tuple[dict[str, Any], list[tuple[int, str]]],
+) -> None:
+    """Basile, 2026-10-20: an entry of `passages.yaml` belongs to the sentences whose words it
+    gives and which cite its work, however it is typed and wherever the sentence stands. One
+    with a word changed or added belongs to none, and is said to be of a sentence reworded;
+    one naming a work the sentence does not cite belongs to none, and is said to be of a
+    sentence that no longer cites it (`literature/passages.py`)."""
+    given, written = drawn
+    found = READINGS["passages"]()(given)
+    for (belongs, stale), (n, how) in zip(found, written, strict=True):
+        if how in FOLDED:
+            assert belongs, (how, given)
+            assert all(f"Claim {n}:" in text for _line, text in belongs), (how, belongs)
+            assert stale is None, (how, stale)
+        else:
+            assert belongs == [], (how, belongs)
+            assert stale == ("uncited" if how == "work not cited" else "changed"), (how, stale)
 
 
 # ------------------------------------------------------------ pointers to tables and figures
@@ -5653,12 +5677,67 @@ def _each_anchors_line_is_its_own_run(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_runs", lambda numbers: [(number, number) for number in numbers])
 
 
+def _a_passage_is_matched_as_it_is_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(passages_module, "statement_words", lambda sentence: sentence)
+
+
+def _a_citation_group_is_words_of_the_sentence(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(passages_module, "bracketed", lambda text: iter(()))
+
+
+def _a_space_before_a_comma_is_a_difference(patch: pytest.MonkeyPatch) -> None:
+    # Matches nothing, with the group the substitution puts back.
+    patch.setattr(passages_module, "_BEFORE_MARK", re.compile("(?!)( )"))
+
+
+def _a_sentence_is_matched_on_its_opening_words(patch: pytest.MonkeyPatch) -> None:
+    folded = passages_module.statement_words
+    patch.setattr(passages_module, "statement_words",
+                  lambda sentence: " ".join(folded(sentence).split()[:8]))  # fmt: skip
+
+
+def _a_passage_is_matched_whatever_work_it_names(patch: pytest.MonkeyPatch) -> None:
+    def of(self, cited, key, words=None):  # noqa: ANN001, ANN202 - the method it stands for
+        found = passages_module.statement_words(cited.text) if words is None else words
+        return list(self._by_words.get(found, []))
+
+    patch.setattr(passages_module.Belonging, "of", of)
+
+
+def _no_reworded_sentence_is_near(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(passages_module, "NEAR", 1.1)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
     "every stop ends a sentence, after et al. and Suppl. too": (
         _every_stop_ends_a_sentence,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
+    "a passage is matched on its sentence as it is typed": (
+        _a_passage_is_matched_as_it_is_typed,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a citation group is words of the sentence": (
+        _a_citation_group_is_words_of_the_sentence,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a space before a comma is a difference": (
+        _a_space_before_a_comma_is_a_difference,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a sentence is matched on its opening words": (
+        _a_sentence_is_matched_on_its_opening_words,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a passage is matched whatever work it names": (
+        _a_passage_is_matched_whatever_work_it_names,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "no reworded sentence is near its passage's": (
+        _no_reworded_sentence_is_near,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
     ),
     "no stop ends a sentence": (
         _no_stop_ends_a_sentence,

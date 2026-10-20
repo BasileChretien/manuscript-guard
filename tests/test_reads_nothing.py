@@ -108,6 +108,9 @@ COMMANDS = {
                    argv=("lookup", "{project}")),
     "methods": Zero("the analysis files", why="it prints `analysis_files`, 0 included"),
     "models": Zero("the models the analysis fitted", why="it says when there are none"),
+    "passages": Zero("the sentences that cite, and the passages recorded for them",
+                     why="it prints how many cited statements carry a passage, 0 of 0 "
+                     "included"),
     "render": Zero("the manuscript", why="it says how many files it rendered, 0 included"),
     "respond": Zero("the rounds of revision", exits=1, argv=("respond", "{project}")),
     "review": Zero("the review panels", why="it says there are none, and G11 says `no-review`"),

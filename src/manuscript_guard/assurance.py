@@ -91,7 +91,7 @@ def assurance(report: Report, project: Project) -> list[str]:
     lines = ["What was checked, by what (no score: none of this says the paper is right):"]
     recorded = {
         "computational reproducibility": _verified(project),
-        "literature": _attested(project),
+        "literature": [*_attested(project), *_passages(report, project)],
         "methodological validity": ["no review of the design"],
         "review": [*_rounds(project), *_figures(project)],
     }
@@ -246,6 +246,27 @@ def _attested(project: Project) -> list[str]:
         f"{len(attested)} value{'s' if len(attested) > 1 else ''} attested as read in a source "
         f"that could not be stored, by {', '.join(people)}"
     ]
+
+
+def _passages(report: Report, project: Project) -> list[str]:
+    """How many cited statements carry a passage of a work they cite, as G7 counted them, and
+    the passages a person judged, by whom."""
+    from manuscript_guard.literature.passages import read_passages
+
+    total = report.counts.get("cited_statements", 0)
+    if not total:
+        return []
+    carrying = report.counts.get("cited_statements_with_passage", 0)
+    said = f"cited statements with a passage of a work they cite: {carrying} of {total}"
+    passages, _report = read_passages(project.path("literature"))
+    judged = [passage for passage in passages if passage.support is not None]
+    if judged:
+        people = sorted({str(passage.judged_by) for passage in judged})
+        said += (
+            f"; {len(judged)} passage{'' if len(judged) == 1 else 's'} judged against "
+            f"{'its sentence' if len(judged) == 1 else 'their sentences'}, by {', '.join(people)}"
+        )
+    return [said]
 
 
 def _read(path: Path) -> dict:

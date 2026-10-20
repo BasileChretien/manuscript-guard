@@ -604,6 +604,9 @@ def guard_write(payload: dict) -> int:
     named = [
         said for path in paths if (said := _or_nothing(lambda file: _attests(file, payload), path))
     ]
+    named += [
+        said for path in paths if (said := _or_nothing(lambda file: _judges(file, payload), path))
+    ]
     named += [said for path in paths if (said := _or_nothing(_an_approval, path))]
     if not named:
         return 0
@@ -690,6 +693,105 @@ def _attests(path: Path, payload: dict) -> str | None:
         f"That is the author's statement that they read it, and G7 cannot tell a name an "
         f"agent typed from the author's own."
     )
+
+
+def _judges(path: Path, payload: dict) -> str | None:
+    """Why an edit of the project's passages.yaml is a person's to make, or None where it
+    leaves every judgement as it was, over the words it was of.
+
+    Whether a passage supports its sentence is the judgement of the person `judged_by` names.
+    G7 refuses a model's name there, and cannot tell a person's name typed by an agent from
+    the person's own; nor a judgement left standing while an agent changes the sentence, the
+    work or the passage it was of. So an edit after which some judged entry is not one the
+    file held before, word for word, is put to the person. A patch, which holds only the
+    lines it changes, is put to them where it touches a judgement or the file has one."""
+    if path.name != "passages.yaml":
+        return None
+    found = _relative_to_project(path)
+    if found is None:
+        return None
+    root, relative = found
+    from manuscript_guard.contracts import ContractError, load_project
+    from manuscript_guard.literature.passages import PASSAGES_FILE
+
+    try:
+        project, _report = load_project(root)
+        passages = project.path("literature") / PASSAGES_FILE
+    except (ContractError, ValueError, OSError):
+        passages = root / "literature" / PASSAGES_FILE
+    if path.resolve() != passages.resolve():
+        return None
+    before, after = _whole_texts(payload, path)
+    if after is None:
+        if not any(_JUDGED_BY.search(text) for text in before):
+            return None
+        names = "a judgement it touches or keeps"
+    else:
+        judged = _judgements(after) - _judgements(before[0])
+        if not judged:
+            return None
+        names = ", ".join(dict.fromkeys(str(entry[-2]) for entry in judged))
+    return (
+        f"{relative}: this edit records, or leaves standing over words it changes, a person's "
+        f"judgement of whether a passage supports its sentence ({names}). That is the "
+        f"person's judgement, and G7 cannot tell a name an agent typed from theirs."
+    )
+
+
+#: A judge named in passages.yaml, in block or flow style.
+_JUDGED_BY = re.compile(r"""\bjudged_by["']?[ \t]*:""")
+
+
+def _judgements(text: str) -> set[tuple]:
+    """Each judged entry of a passages.yaml text, as the words it judges and who judged them
+    when. A text YAML cannot read is taken to judge whatever it names a judge in, so that an
+    edit leaving the file unreadable is put to the person where it names one."""
+    import yaml
+
+    try:
+        document = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return {
+            ("", "", str(match.start()), "", "a judge in a text YAML cannot read", "")
+            for match in _JUDGED_BY.finditer(text)
+        }
+    entries = document.get("passages") if isinstance(document, dict) else None
+    judged = set()
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict) or entry.get("judged_by") in (None, ""):
+            continue
+        judged.add(tuple(
+            str(entry.get(field)) for field in
+            ("sentence", "citekey", "passage", "support", "judged_by", "judged_on")
+        ))  # fmt: skip
+    return judged
+
+
+def _whole_texts(payload: dict, path: Path) -> tuple[list[str], str | None]:
+    """The file as it is and as the edit leaves it, where the edit says that whole; where it
+    says only the lines or stretches it changes (a patch, an edit whose text is not in the
+    file), those stretches and the file as it is, and None for after."""
+    tool_input = payload.get("tool_input", {})
+    on_disk = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    if "content" in tool_input:
+        return [on_disk], str(tool_input["content"])
+    edits = tool_input.get("edits") or [tool_input]
+    if any("new_string" in edit for edit in edits):
+        after = on_disk
+        for edit in edits:
+            old, new = str(edit.get("old_string", "")), str(edit.get("new_string", ""))
+            if not old or old not in after:
+                stretches = [str(one.get(part, "")) for one in edits
+                             for part in ("old_string", "new_string")]  # fmt: skip
+                return [on_disk, *stretches], None
+            after = after.replace(old, new, -1 if edit.get("replace_all") else 1)
+        return [on_disk], after
+    command = tool_input.get("command")
+    if payload.get("tool_name") == PATCH_TOOL and isinstance(command, str):
+        removed, added = _patch_lines(command, path, Path(payload.get("cwd") or Path.cwd()))
+        if removed or added:
+            return [on_disk, "\n".join(removed), "\n".join(added)], None
+    return [on_disk], on_disk
 
 
 def _texts_of(payload: dict, path: Path) -> tuple[list[str], list[str]]:

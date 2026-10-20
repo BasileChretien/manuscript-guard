@@ -26,6 +26,11 @@ place with Zotero's bytes is left out of the record, so it stays the author's (r
 deleted. What it wrote is recorded in `literature/sources.yaml`: each file's
 name, the work, the SHA-256 and size of what was written, and whether it is the file or
 Zotero's text. The record holds no path on anyone's computer.
+
+With `--from <folder>` the files are taken from a folder of PDFs named by DOI instead of from
+Zotero (`downloads`), under the same rules, and recorded as from the folder with the DOI they
+were matched by. A file one source wrote is not replaced from the other: one paper downloaded
+twice can differ in its bytes, and each run would put its own back.
 """
 
 from __future__ import annotations
@@ -39,7 +44,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -53,6 +58,9 @@ from manuscript_guard.literature.sources import (
     stored_files,
 )
 from manuscript_guard.zotero import Attachment, client
+
+if TYPE_CHECKING:
+    from manuscript_guard.literature.downloads import Offer
 
 SCHEMA = "manuscript-guard/sources/1"
 #: Under `literature/`, beside `sources/` rather than in it, so that it can be kept in git
@@ -69,6 +77,8 @@ TAKEN = frozenset(PDF_SUFFIXES | HTML_SUFFIXES | {".txt"})
 TEXT_IN_PLACE_OF = frozenset({".epub"})
 #: A table or a citation file: neither it nor Zotero's text of it is taken, here or not (#364).
 NOT_THE_WORK = frozenset(TEXT_SUFFIXES) - TAKEN
+#: What `from` says of a PDF taken from the folder named with `--from`.
+FROM_FOLDER = "folder"
 
 COPIED = "copied"
 UPDATED = "updated"
@@ -76,11 +86,14 @@ UNCHANGED = "unchanged"
 KEPT = "kept"
 STORED = "stored"
 NO_COPY = "no copy"
+#: Kept, because the other source wrote it: said apart, counted as kept.
+_OTHERS = "the other source's"
 
 HEADER = (
-    "# Written by `manuscript-guard sync-sources`: the files it copied from Zotero into\n"
-    "# literature/sources/. A file listed here is one the command may replace when Zotero's\n"
-    "# copy changes, and only while it is as the command wrote it. Not edited by hand.\n"
+    "# Written by `manuscript-guard sync-sources`: the files it copied from Zotero, or from a\n"
+    "# folder of downloaded PDFs, into literature/sources/. A file listed here is one the\n"
+    "# command may replace when the copy it came from changes, and only while it is as the\n"
+    "# command wrote it. Not edited by hand.\n"
 )
 
 
@@ -90,7 +103,7 @@ class NothingToCopy(Exception):
 
 @dataclass(frozen=True)
 class Candidate:
-    """A file Zotero holds for a work, and the name it is filed under."""
+    """A file Zotero or the folder holds for a work, and the name it is filed under."""
 
     name: str
     origin: Path
@@ -100,6 +113,12 @@ class Candidate:
     size: int
     #: What the copy is, as the command says it: "from Zotero", or which file Zotero's text is of.
     about: str = "from Zotero"
+    #: The DOI a file of the folder was matched by.
+    doi: str | None = None
+
+
+def _holder(kind: str) -> str:
+    return "the folder" if kind == FROM_FOLDER else "Zotero"
 
 
 @dataclass(frozen=True)
@@ -216,7 +235,7 @@ def _decide(dest: Path, candidate: Candidate, ours: dict[str, Any] | None) -> st
     if current == candidate.sha256:
         return UNCHANGED
     if ours is not None and ours.get("sha256") == current:
-        return UPDATED
+        return UPDATED if _holder(ours["from"]) == _holder(candidate.kind) else _OTHERS
     return KEPT
 
 
@@ -241,6 +260,8 @@ def _entry(key: str, candidate: Candidate, written: tuple[str, int], today: date
     entry["from"] = candidate.kind
     if candidate.attachment:
         entry["attachment"] = candidate.attachment
+    if candidate.doi:
+        entry["doi"] = candidate.doi
     entry["copied"] = today.isoformat()
     return entry
 
@@ -254,25 +275,32 @@ def _size(size: int) -> str:
 
 def _said(status: str, candidate: Candidate, dry_run: bool) -> str:
     where = f"literature/sources/{candidate.name}"
+    holder = _holder(candidate.kind)
     what = candidate.about
     if status == COPIED:
         return f"{'would copy' if dry_run else 'copied'} {where} ({what}, {_size(candidate.size)})"
     if status == UPDATED:
         verb = "would replace" if dry_run else "replaced"
-        return f"{verb} {where} with Zotero's newer copy ({what}, {_size(candidate.size)})"
+        return f"{verb} {where} with {holder}'s newer copy ({what}, {_size(candidate.size)})"
     if status == UNCHANGED:
-        return f"{where} is Zotero's copy already"
+        return f"{where} is {holder}'s copy already"
+    if status == _OTHERS:
+        other = "Zotero" if candidate.kind == FROM_FOLDER else "the folder"
+        return (
+            f"{where} was copied from {other}, and {holder}'s differs: left as it is. Move it "
+            f"away to take {holder}'s."
+        )
     return (
-        f"{where} is not the file Zotero holds, and is not as sync-sources wrote it: left as "
-        "it is. Move it away to take Zotero's."
+        f"{where} is not the file {holder} holds, and is not as sync-sources wrote it: left as "
+        f"it is. Move it away to take {holder}'s."
     )
 
 
-def _without_copy(folder: Path, key: str, why: list[str]) -> Outcome:
+def _without_copy(folder: Path, key: str, why: list[str], holder: str = "Zotero") -> Outcome:
     reasons = "; ".join(why) or "no attachment"
     stored = [p.name for p in stored_files(folder, key)]
     if stored:
-        return Outcome(key, STORED, f"nothing to copy from Zotero ({reasons}); "
+        return Outcome(key, STORED, f"nothing to copy from {holder} ({reasons}); "
                        f"{', '.join(stored)} is stored already")  # fmt: skip
     return Outcome(key, NO_COPY, f"no copy: {reasons}")
 
@@ -283,14 +311,17 @@ def sync(
     dry_run: bool = False,
     today: date | None = None,
     fetch: Callable[[str], list[Attachment] | None] | None = None,
+    offered: Offer | None = None,
 ) -> list[Outcome]:
-    """Copy each cited work's files from Zotero, record them, and say what became of each."""
+    """Copy each cited work's files from Zotero, or from the folder `offered` was read from,
+    record them, and say what became of each."""
     from manuscript_guard.lookup.run import cited_keys
 
     keys = cited_keys(project)
     if not keys:
         raise NothingToCopy("the manuscript cites nothing, so there is no source to copy")
     fetch = fetch or client.attachments
+    holder = "Zotero" if offered is None else "the folder"
     folder = project.path("literature") / FOLDER
     on_disk = read_record(project)
     # An entry whose file is gone says nothing of a file saved under that name later: kept, it
@@ -300,13 +331,14 @@ def sync(
     outcomes: list[Outcome] = []
     try:
         for key in keys:
-            held = fetch(key)
-            if held is None:
-                outcomes.append(_without_copy(folder, key, ["not in Zotero"]))
-                continue
-            chosen, why = candidates(key, held)
+            if offered is not None:
+                chosen, why = offered.candidates(key)
+            elif (held := fetch(key)) is None:
+                chosen, why = [], ["not in Zotero"]
+            else:
+                chosen, why = candidates(key, held)
             if not chosen:
-                outcomes.append(_without_copy(folder, key, why))
+                outcomes.append(_without_copy(folder, key, why, holder))
                 continue
             for candidate in chosen:
                 outcomes.append(
@@ -329,7 +361,8 @@ def _file(
     today: date,
 ) -> Outcome:
     """Copy one file where it is due, and enter it in `files`. Only a file the command writes
-    is entered: one found in place with Zotero's bytes stays the author's (round 1 of #361)."""
+    is entered: one found in place with its source's bytes stays the author's (round 1 of
+    #361)."""
     dest = folder / candidate.name
     where = f"literature/sources/{candidate.name}"
     try:
@@ -344,11 +377,43 @@ def _file(
             said = f"{where} could not be written ({exc.strerror or exc}): left as it was"
             return Outcome(key, KEPT, said, candidate.name)
         files[candidate.name] = _entry(key, candidate, written, today)
-    return Outcome(key, status, _said(status, candidate, dry_run), candidate.name)
+    said = _said(status, candidate, dry_run)
+    return Outcome(key, KEPT if status == _OTHERS else status, said, candidate.name)
 
 
-def report(outcomes: list[Outcome], *, dry_run: bool = False) -> list[str]:
-    """What `sync-sources` prints: a line for each file, a count, and the works with no copy."""
+ZOTERO_ADVICE = (
+    "  For each: in Zotero, save it from the publisher's page with the Zotero Connector, "
+    "or use Find Available PDF, or open its attachment once so that the file is "
+    "downloaded here; then run this again. Or save the file as "
+    "literature/sources/<key>.pdf yourself."
+)
+FOLDER_ADVICE = (
+    "  For each: save its PDF in the folder under its DOI, with each character a file name "
+    "cannot hold written as _ (10.1000/abc.1 as 10.1000_abc.1.pdf), as auto-paper-harvester "
+    "does; then run this again. Or save the file as literature/sources/<key>.pdf yourself."
+)
+
+
+def _unmatched(offered: Offer) -> list[str]:
+    if not offered.pdfs:
+        return [
+            "The folder holds no PDF where a DOI names one: <name>.pdf, <name>/<name>.pdf "
+            "or _browser_fallback/<name>.pdf."
+        ]
+    if not offered.unmatched:
+        return []
+    many = offered.unmatched != 1
+    return [
+        f"{offered.unmatched} PDF{'s' if many else ''} in the folder {'are' if many else 'is'} "
+        f"named for no DOI the manuscript cites, and {'were' if many else 'was'} not copied."
+    ]
+
+
+def report(
+    outcomes: list[Outcome], *, dry_run: bool = False, offered: Offer | None = None
+) -> list[str]:
+    """What `sync-sources` prints: a line for each file, a count, the works with no copy, and,
+    from a folder, how many of its PDFs no cited DOI names."""
     lines = [f"@{one.key}: {one.said}" for one in outcomes]
     counts = Counter(one.status for one in outcomes)
     parts = [
@@ -365,21 +430,19 @@ def report(outcomes: list[Outcome], *, dry_run: bool = False) -> list[str]:
     works = len({one.key for one in outcomes})
     counted = ", ".join(parts) or "nothing copied"
     lines.append(f"{works} cited work{'' if works == 1 else 's'}: {counted}")
+    if offered is not None:
+        lines.extend(_unmatched(offered))
     missing = [one for one in outcomes if one.status == NO_COPY]
     if missing:
         lines.append(f"No copy for {len(missing)} cited work{'' if len(missing) == 1 else 's'}:")
         lines.extend(f"  @{one.key}: {one.said.removeprefix('no copy: ')}" for one in missing)
-        lines.append(
-            "  For each: in Zotero, save it from the publisher's page with the Zotero Connector, "
-            "or use Find Available PDF, or open its attachment once so that the file is "
-            "downloaded here; then run this again. Or save the file as "
-            "literature/sources/<key>.pdf yourself."
-        )
+        lines.append(ZOTERO_ADVICE if offered is None else FOLDER_ADVICE)
     return lines
 
 
 __all__ = [
     "COPIED",
+    "FROM_FOLDER",
     "KEPT",
     "NO_COPY",
     "RECORD",

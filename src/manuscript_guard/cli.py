@@ -2453,17 +2453,19 @@ def cmd_sync_bib(args: argparse.Namespace) -> int:
 
 
 def cmd_sync_sources(args: argparse.Namespace) -> int:
-    """Copy each cited work's PDF, saved page or text from Zotero into literature/sources/."""
-    from manuscript_guard.literature import copies
+    """Copy each cited work's PDF, saved page or text from Zotero into literature/sources/, or
+    each PDF of a folder named by DOI with `--from`."""
+    from manuscript_guard.literature import copies, downloads
     from manuscript_guard.zotero import ZoteroUnavailable
 
     project, _ = load_project(args.path)
     try:
-        outcomes = copies.sync(project, dry_run=args.dry_run)
-    except (ZoteroUnavailable, copies.NothingToCopy) as exc:
+        offered = None if args.source is None else downloads.offer(project, args.source)
+        outcomes = copies.sync(project, dry_run=args.dry_run, offered=offered)
+    except (ZoteroUnavailable, copies.NothingToCopy, downloads.FolderUnreadable) as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
-    for line in copies.report(outcomes, dry_run=args.dry_run):
+    for line in copies.report(outcomes, dry_run=args.dry_run, offered=offered):
         print(line)
     return 0
 
@@ -3583,11 +3585,21 @@ def build_parser() -> argparse.ArgumentParser:
     syncbib.set_defaults(func=cmd_sync_bib)
 
     syncsources = sub.add_parser(
-        "sync-sources", help="copy each cited work's PDF or saved page from Zotero"
+        "sync-sources",
+        help="copy each cited work's PDF or saved page from Zotero, or from a folder of PDFs "
+        "named by DOI",
     )
     syncsources.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     syncsources.add_argument(
         "--dry-run", action="store_true", help="say what would be copied, and copy nothing"
+    )
+    syncsources.add_argument(
+        "--from",
+        dest="source",
+        type=Path,
+        metavar="FOLDER",
+        help="take each PDF of a folder named by DOI, as auto-paper-harvester saves them, "
+        "instead of asking Zotero",
     )
     syncsources.set_defaults(func=cmd_sync_sources)
 

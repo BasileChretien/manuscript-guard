@@ -1101,6 +1101,37 @@ computer, and lives beside `sources/` rather than in it, so that it can be kept 
 sources are not. A record that is not one stops the command, since without it the command
 cannot tell its files from the author's; deleting it makes every file the author's.
 
+Zotero is one way to the author's own access, and a downloader is another: auto-paper-harvester
+(github.com/jxtse/auto-paper-harvester) fetches each DOI from an open copy, then a publisher's
+text-and-data-mining service, then the author's own signed-in Chrome, at a set pace and
+without answering a CAPTCHA. manuscript-guard does none of that itself: driving a browser
+would be a dependency of its own, a publisher's terms are the author's to accept, and a run
+that fetched too fast could have the institution blocked. Shadow libraries are out of its
+scope altogether. It reads the folder such a tool writes instead: `sync-sources --from
+<folder>` asks Zotero nothing, and files each PDF of the folder under the key of the cited
+work whose DOI it is named for, the DOI of the work's entry in `references.bib` as G7 reads
+it (`doi_of`: undressed, in lower case). The harvester, read at commit 4bcb9b5, writes
+`<name>/<name>.pdf` for an open copy or a publisher's service, keeping the DOI's case and
+making each run of characters a file name cannot hold one `_` (`clients._safe_identifier`,
+cut at 150 characters), and `_browser_fallback/<name>.pdf` for its browser passes, in lower
+case, making each run one `_` (`browser_fallback._doi_to_pdf_path`) or each character one
+(`real_browser._slug`); an older version called the file in a DOI's folder `article.pdf`. Each
+of the three names is tried, without regard to case, at each of those places and as
+`<name>.pdf` at the top of the folder, which is how a folder saved by hand or by another tool
+is read. A DOI's folder holds the harvester's supplements as well, under other names, and
+they are not taken. A file that does not begin with `%PDF-` is refused and said: the
+harvester checks that what it saves is a PDF, but a page saved by hand, or by another tool,
+under a `.pdf` name is a sign-in or paywall page. A file named for two cited DOIs (`10.1000/a:b` and
+`10.1000/a;b` are both `10.1000_a_b`) is copied for neither; one DOI cited under two keys is
+copied for each. Two PDFs of one DOI that differ, its open copy and the browser's, are
+neither copied, as with Zotero. The works the folder had nothing for are listed with why: no
+PDF named for the DOI, or no DOI to look for. The PDFs named for no cited DOI are counted, so
+that a folder named by title, or the wrong folder, shows. The record says `from: folder` and
+the DOI the file was matched by, and no path. A file one source wrote is not replaced from
+the other, which is the rule that the command never writes over what it did not write,
+applied between its two sources: one paper downloaded twice can differ in its bytes, where a
+publisher stamps each download, and each run would otherwise put its own copy back.
+
 ## A quotation in the prose is in its source
 
 G7 checks the ledger's quotes against the stored sources. A quotation written into a sentence
@@ -11065,6 +11096,18 @@ Open, recorded as each change landed:
   committed with the project, and published with it if the repository is public, including
   in its history if it is made public later. Leaving them out of git leaves CI unable to
   hold a quote to its source. Which way a project goes is not yet decided here.
+- **`sync-sources --from` matches only a name a DOI spells, at the places the harvester puts
+  it.** A PDF named by its title, its PMID or its citation key is counted as named for no
+  cited DOI and not copied, and one deeper in the folder than `<name>/` or
+  `_browser_fallback/` is not seen at all, nor counted. The three names are
+  auto-paper-harvester's at commit 4bcb9b5; a later version that names its files otherwise is
+  not read until they are added here. A cited work with no DOI in `references.bib`, a book
+  known by its ISBN or a report, is listed and never matched. That a file begins with `%PDF-`
+  is all that is checked of it: a PDF with bytes before its header, which readers accept, is
+  refused, and a PDF of the wrong paper, a cover page or a download cut short is copied, for
+  G7 to show as it shows Zotero's. The two sources are told apart by what the record says
+  wrote a file, so a file that both hold in the same bytes stays recorded as from the one
+  that copied it first.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

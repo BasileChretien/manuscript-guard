@@ -21,8 +21,8 @@ import pytest
 import yaml
 
 from manuscript_guard.cli import main
-from manuscript_guard.contracts import load_project
-from manuscript_guard.literature import copies
+from manuscript_guard.contracts import ContractError, load_project
+from manuscript_guard.literature import copies, downloads
 from manuscript_guard.zotero import ZoteroRefused, ZoteroUnavailable, client, reset_cache
 
 PDF = b"%PDF-1.4\nthe article as published\n%%EOF\n"
@@ -520,3 +520,297 @@ def test_better_bibtexs_not_found_is_told_apart_from_other_refusals(monkeypatch)
     reset_cache()
     with pytest.raises(ZoteroRefused):
         client.attachments("nobody2000")
+
+
+# ------------------------------------------------- `--from`: a folder of PDFs named by DOI
+#
+# The names are written out here as auto-paper-harvester gives them (commit 4bcb9b5), not
+# made by the function under test: `clients._safe_identifier` for an open copy or a
+# publisher's service, `browser_fallback._doi_to_pdf_path` and `real_browser._slug` for its
+# two browser passes.
+
+SICI = "10.1002/(SICI)1097-4636(199706)35:4<417::AID-JBM3>3.0.CO;2-H"
+#: `_safe_identifier`: each run made one `_`, case kept.
+SICI_SERVICE = "10.1002_SICI_1097-4636_199706_35_4_417_AID-JBM3_3.0.CO_2-H"
+#: `_doi_to_pdf_path`: in lower case, each run made one `_`.
+SICI_PLAYWRIGHT = "10.1002_sici_1097-4636_199706_35_4_417_aid-jbm3_3.0.co_2-h"
+#: `_slug`: in lower case, each character made `_`.
+SICI_CHROME = "10.1002__sici_1097-4636_199706_35_4_417__aid-jbm3_3.0.co_2-h"
+LONG = "10.1000/" + "a" * 160
+#: `_safe_identifier` cuts a name at 150 characters; the browser passes do not.
+LONG_SERVICE = ("10.1000_" + "a" * 160)[:150]
+
+
+def bib(root: Path, **dois: str | None) -> None:
+    """Write `references.bib` with an article for each key, with the DOI given, or none."""
+    entries = []
+    for key, doi in dois.items():
+        field = f"  doi = {{{doi}}},\n" if doi is not None else ""
+        entries.append(f"@article{{{key},\n  title = {{A study}},\n{field}  year = {{2020}},\n}}\n")
+    (root / "literature" / "references.bib").write_text("\n".join(entries), "utf-8")
+
+
+def put(folder: Path, name: str, data: bytes = PDF) -> Path:
+    path = folder / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return path
+
+
+def harvest(root: Path, folder: Path, *extra: str) -> int:
+    return main(["sync-sources", str(root), "--from", str(folder), *extra])
+
+
+def test_a_downloaded_pdf_is_filed_under_the_key_of_its_doi(paper, tmp_path, monkeypatch, capsys):
+    cite(paper, "smith2020")
+    bib(paper, smith2020="https://doi.org/10.1016/J.Cell.2020.01.001")
+    papers = tmp_path / "papers"
+    put(papers, "10.1016_J.Cell.2020.01.001/10.1016_J.Cell.2020.01.001.pdf")
+    put(papers, "10.1016_J.Cell.2020.01.001/supplementary_1.pdf", b"%PDF-1.4\ntable S1\n")
+    fake = FakeBBT({1: {}})
+    monkeypatch.setattr(client, "rpc", fake)
+    assert harvest(paper, papers) == 0
+
+    assert (sources(paper) / "smith2020.pdf").read_bytes() == PDF
+    assert record(paper)["files"]["smith2020.pdf"] == {
+        "key": "smith2020",
+        "sha256": hashlib.sha256(PDF).hexdigest(),
+        "bytes": len(PDF),
+        "from": "folder",
+        "doi": "10.1016/j.cell.2020.01.001",
+        "copied": date.today().isoformat(),
+    }
+    text = (paper / "literature" / copies.RECORD).read_text("utf-8")
+    assert str(tmp_path) not in text and "papers" not in text, "no path on this computer"
+    out = capsys.readouterr().out
+    assert "copied literature/sources/smith2020.pdf (from the folder" in out
+    assert "named for no DOI" not in out, "a supplement in the DOI's folder is not counted"
+    assert fake.calls == [], "Zotero is not asked"
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        f"{SICI_SERVICE}/{SICI_SERVICE}.pdf",
+        f"_browser_fallback/{SICI_PLAYWRIGHT}.pdf",
+        f"_browser_fallback/{SICI_CHROME}.pdf",
+        f"{SICI_PLAYWRIGHT}.pdf",
+        f"{SICI_CHROME}.PDF",
+        f"{SICI_SERVICE}/article.pdf",
+    ],
+    ids=["service", "playwright", "chrome", "flat", "flat-upper-suffix", "older-harvester"],
+)
+def test_each_name_and_place_a_downloader_gives_a_doi_is_read(paper, tmp_path, name):
+    cite(paper, "sici1997")
+    bib(paper, sici1997=SICI.lower())
+    put(tmp_path / "papers", name)
+    assert harvest(paper, tmp_path / "papers") == 0
+    assert (sources(paper) / "sici1997.pdf").read_bytes() == PDF
+
+
+@pytest.mark.parametrize(
+    ("doi", "name"),
+    [
+        ("10.1000/xyz(1)", "10.1000_xyz_1/10.1000_xyz_1.pdf"),
+        ("10.1000/xyz(1)", "_browser_fallback/10.1000_xyz_1.pdf"),
+        ("10.1000/xyz(1)", "_browser_fallback/10.1000_xyz_1_.pdf"),
+        (LONG, f"{LONG_SERVICE}/{LONG_SERVICE}.pdf"),
+        (LONG, f"_browser_fallback/{'10.1000_' + 'a' * 160}.pdf"),
+    ],
+    ids=["service-ends-stripped", "playwright-ends-stripped", "chrome-ends-kept",
+         "service-cut-at-150", "browser-not-cut"],
+)  # fmt: skip
+def test_a_doi_whose_name_is_cut_or_trimmed_is_still_found(paper, tmp_path, doi, name):
+    cite(paper, "edge2020")
+    bib(paper, edge2020=doi)
+    put(tmp_path / "papers", name)
+    assert harvest(paper, tmp_path / "papers") == 0
+    assert (sources(paper) / "edge2020.pdf").read_bytes() == PDF
+
+
+def test_a_page_saved_as_a_pdf_is_refused_and_said(paper, tmp_path, capsys):
+    cite(paper, "paywall2021", "beside2021")
+    bib(paper, paywall2021="10.1000/paywall", beside2021="10.1000/beside")
+    page = b"<!DOCTYPE html><html><body>Sign in through your institution</body></html>"
+    put(tmp_path / "papers", "10.1000_paywall/10.1000_paywall.pdf", page)
+    put(tmp_path / "papers", "_browser_fallback/10.1000_beside.pdf", page)
+    put(tmp_path / "papers", "10.1000_beside/10.1000_beside.pdf")
+    assert harvest(paper, tmp_path / "papers") == 0
+
+    assert not (sources(paper) / "paywall2021.pdf").exists()
+    assert (sources(paper) / "beside2021.pdf").read_bytes() == PDF, "the real PDF is taken"
+    listed = capsys.readouterr().out.split("No copy for 1 cited work:")[1]
+    assert "@paywall2021" in listed and "does not begin with %PDF-" in listed
+    assert "10.1000_paywall/10.1000_paywall.pdf" in listed
+    assert set(record(paper)["files"]) == {"beside2021.pdf"}
+
+
+def test_two_pdfs_of_one_doi_that_differ_are_neither_copied(paper, tmp_path):
+    cite(paper, "twice2019", "same2018")
+    bib(paper, twice2019="10.1000/twice", same2018="10.1000/same")
+    papers = tmp_path / "papers"
+    put(papers, "10.1000_twice/10.1000_twice.pdf")
+    put(papers, "_browser_fallback/10.1000_twice.pdf", PDF + b"% stamped at download\n")
+    put(papers, "10.1000_same/10.1000_same.pdf")
+    put(papers, "_browser_fallback/10.1000_same.pdf")
+    project = load_project(paper)[0]
+    found = by_key(copies.sync(project, offered=downloads.offer(project, papers)))
+
+    (refused,) = found["twice2019"]
+    assert refused.status == copies.NO_COPY and "2 PDFs of its DOI that differ" in refused.said
+    assert not (sources(paper) / "twice2019.pdf").exists()
+    assert (sources(paper) / "same2018.pdf").read_bytes() == PDF, "one file twice is one file"
+
+
+def test_a_name_two_cited_dois_spell_is_copied_for_neither(paper, tmp_path):
+    cite(paper, "colon2020", "semicolon2020")
+    bib(paper, colon2020="10.1000/a:b", semicolon2020="10.1000/a;b")
+    put(tmp_path / "papers", "10.1000_a_b.pdf")
+    project = load_project(paper)[0]
+    found = by_key(copies.sync(project, offered=downloads.offer(project, tmp_path / "papers")))
+
+    for key in ("colon2020", "semicolon2020"):
+        (outcome,) = found[key]
+        assert outcome.status == copies.NO_COPY and "10.1000/a:b, 10.1000/a;b" in outcome.said
+    assert not list(sources(paper).iterdir())
+
+
+def test_one_doi_cited_under_two_keys_is_copied_for_each(paper, tmp_path):
+    cite(paper, "first2020", "again2020")
+    bib(paper, first2020="10.1000/one", again2020="doi:10.1000/ONE")
+    put(tmp_path / "papers", "10.1000_one.pdf")
+    assert harvest(paper, tmp_path / "papers") == 0
+    assert (sources(paper) / "first2020.pdf").read_bytes() == PDF
+    assert (sources(paper) / "again2020.pdf").read_bytes() == PDF
+
+
+def test_the_folder_never_writes_over_a_file_put_there_by_hand(paper, tmp_path):
+    cite(paper, "smith2020")
+    bib(paper, smith2020="10.1000/smith")
+    mine = b"%PDF-1.4\nthe copy the author saved from the publisher\n"
+    put(sources(paper), "smith2020.pdf", mine)
+    put(tmp_path / "papers", "10.1000_smith.pdf")
+    project = load_project(paper)[0]
+    (outcome,) = copies.sync(project, offered=downloads.offer(project, tmp_path / "papers"))
+
+    assert outcome.status == copies.KEPT and "not the file the folder holds" in outcome.said
+    assert (sources(paper) / "smith2020.pdf").read_bytes() == mine
+    assert not (paper / "literature" / copies.RECORD).exists()
+
+
+def test_a_copy_from_the_folder_is_replaced_until_it_is_changed_by_hand(paper, tmp_path):
+    cite(paper, "smith2020")
+    bib(paper, smith2020="10.1000/smith")
+    downloaded = put(tmp_path / "papers", "10.1000_smith.pdf")
+    project = load_project(paper)[0]
+
+    def again() -> copies.Outcome:
+        (outcome,) = copies.sync(project, offered=downloads.offer(project, tmp_path / "papers"))
+        return outcome
+
+    assert again().status == copies.COPIED
+    newer = PDF + b"% the corrected version\n"
+    downloaded.write_bytes(newer)
+    assert again().status == copies.UPDATED
+    assert (sources(paper) / "smith2020.pdf").read_bytes() == newer
+    (sources(paper) / "smith2020.pdf").write_bytes(b"%PDF-1.4\nannotated by hand\n")
+    downloaded.write_bytes(PDF + b"% newer still\n")
+    assert again().status == copies.KEPT
+    assert (sources(paper) / "smith2020.pdf").read_bytes() == b"%PDF-1.4\nannotated by hand\n"
+
+
+def test_neither_source_replaces_what_the_other_copied(paper, tmp_path, monkeypatch):
+    """One paper downloaded twice differs in its bytes; each run would put its own back."""
+    zotero = Storage(tmp_path)
+    cite(paper, "zot2020", "fold2019")
+    bib(paper, zot2020="10.1000/zot", fold2019="10.1000/fold")
+    folder_pdf = PDF + b"% as the publisher stamped it for the harvester\n"
+    put(tmp_path / "papers", "10.1000_zot.pdf", folder_pdf)
+    put(tmp_path / "papers", "10.1000_fold.pdf", folder_pdf)
+    fake = FakeBBT({1: {"zot2020": [zotero.file("z.pdf", PDF)], "fold2019": None}})
+    sync(paper, monkeypatch, fake)
+    project = load_project(paper)[0]
+    found = by_key(copies.sync(project, offered=downloads.offer(project, tmp_path / "papers")))
+
+    (kept,) = found["zot2020"]
+    assert kept.status == copies.KEPT and "was copied from Zotero" in kept.said
+    assert (sources(paper) / "zot2020.pdf").read_bytes() == PDF
+    assert (sources(paper) / "fold2019.pdf").read_bytes() == folder_pdf
+    assert record(paper)["files"]["zot2020.pdf"]["from"] == "zotero"
+
+    reset_cache()
+    fake.held[1]["fold2019"] = [zotero.file("f.pdf", PDF)]
+    (back,) = by_key(sync(paper, monkeypatch, fake))["fold2019"]
+    assert back.status == copies.KEPT and "was copied from the folder" in back.said
+    assert (sources(paper) / "fold2019.pdf").read_bytes() == folder_pdf
+    assert record(paper)["files"]["fold2019.pdf"]["from"] == "folder"
+
+
+def test_a_dry_run_from_a_folder_writes_nothing(paper, tmp_path, capsys):
+    cite(paper, "smith2020")
+    bib(paper, smith2020="10.1000/smith")
+    put(tmp_path / "papers", "10.1000_smith.pdf")
+    assert harvest(paper, tmp_path / "papers", "--dry-run") == 0
+
+    assert not list(sources(paper).iterdir())
+    assert not (paper / "literature" / copies.RECORD).exists()
+    assert "would copy literature/sources/smith2020.pdf" in capsys.readouterr().out
+
+
+def test_the_works_the_folder_has_nothing_for_are_listed(paper, tmp_path, capsys):
+    cite(paper, "has2020", "none2019", "nodoi2018", "bad2017", "absent2016")
+    bib(paper, has2020="10.1000/has", none2019="10.1000/none", nodoi2018=None,
+        bad2017="10.12/short")  # fmt: skip
+    papers = tmp_path / "papers"
+    put(papers, "10.1000_has.pdf")
+    put(papers, "10.1000_uncited.pdf")
+    put(papers, "Smith et al. - 2020 - A cohort.pdf")
+    put(papers, "notes.txt", b"what to fetch next")
+    assert harvest(paper, papers) == 0
+
+    out = capsys.readouterr().out
+    assert "2 PDFs in the folder are named for no DOI the manuscript cites" in out
+    listed = out.split("No copy for 4 cited works:")[1]
+    for key, why in (
+        ("none2019", "no PDF named for its DOI, 10.1000/none"),
+        ("nodoi2018", "no DOI in references.bib"),
+        ("bad2017", "malformed"),
+        ("absent2016", "not in references.bib"),
+    ):
+        assert f"@{key}: {why}" in listed or (f"@{key}" in listed and why in listed), (key, out)
+    assert "as auto-paper-harvester does" in listed and "Zotero" not in listed
+
+
+def test_a_folder_with_no_pdf_where_a_doi_names_one_says_so(paper, tmp_path, capsys):
+    cite(paper, "smith2020")
+    bib(paper, smith2020="10.1000/smith")
+    put(tmp_path / "papers", "deeper/still/10.1000_smith.pdf")
+    assert harvest(paper, tmp_path / "papers") == 0
+    assert "The folder holds no PDF where a DOI names one" in capsys.readouterr().out
+
+
+def test_a_folder_that_is_not_one_exits_2_and_writes_nothing(paper, tmp_path, capsys):
+    cite(paper, "smith2020")
+    bib(paper, smith2020="10.1000/smith")
+    assert harvest(paper, tmp_path / "nowhere") == 2
+    assert "is not a folder" in capsys.readouterr().err
+    assert not list(sources(paper).iterdir())
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"from": "folder"},
+        {"from": "folder", "doi": "10.1000/x", "attachment": "ABCD1234"},
+        {"from": "zotero", "doi": "10.1000/x"},
+    ],
+    ids=["folder-without-its-doi", "folder-with-an-attachment", "zotero-with-a-doi"],
+)
+def test_a_record_entry_holds_what_its_source_gives(paper, entry):
+    files = {"smith2020.pdf": {"key": "smith2020", "sha256": "0" * 64, "bytes": 1,
+                               "copied": "2026-10-20", **entry}}  # fmt: skip
+    (paper / "literature" / copies.RECORD).write_text(
+        yaml.safe_dump({"schema": copies.SCHEMA, "files": files}), "utf-8"
+    )
+    with pytest.raises(ContractError):
+        copies.read_record(load_project(paper)[0])

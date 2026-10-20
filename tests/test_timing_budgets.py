@@ -379,12 +379,14 @@ def test_each_budget_runs_apart_from_the_parallel_workers() -> None:
     from conftest import budgets, clocked
 
     listed = budgets()
-    printed = subprocess.run(
+    collected = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
          "-m", "timing", *sorted(listed)],
         cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace",
-    ).stdout  # fmt: skip
-    marked = {line.split("[", 1)[0] for line in printed.splitlines() if "::" in line}
+        timeout=600,
+    )  # fmt: skip
+    assert collected.returncode == 0, f"did not collect: {collected.stderr}{collected.stdout}"
+    marked = {line.split("[", 1)[0] for line in collected.stdout.splitlines() if "::" in line}
     for path, names in listed.items():
         module = importlib.import_module(Path(path).stem)
         for name in names:

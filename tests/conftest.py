@@ -121,13 +121,24 @@ def budgets() -> dict[str, set[str]]:
     return found
 
 
+def _names(code: Any) -> set[str]:
+    """The names a function's code uses, with those of the code nested in it: a generator
+    expression, a lambda, an inner function, and before Python 3.12 a comprehension (round 2
+    of #359)."""
+    found = set(code.co_names)
+    for constant in code.co_consts:
+        if isinstance(constant, type(code)):
+            found |= _names(constant)
+    return found
+
+
 def clocked(module: Any, names: set[str]) -> set[str]:
     """`names`, and each function of `module` that calls one of them, at any depth: a budget
     may be held by a helper the tests call (`check_overhead` in test_robustness.py)."""
     import inspect
 
     calls = {
-        name: set(inspect.unwrap(value).__code__.co_names)
+        name: _names(inspect.unwrap(value).__code__)
         for name, value in vars(module).items()
         if inspect.isfunction(inspect.unwrap(value))
     }
@@ -152,16 +163,16 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         if not timed and path in listed and function is not None:
             if path not in seen:
                 seen[path] = clocked(item.module, listed[path])
-            timed = bool(seen[path] & ({function.__name__} | set(function.__code__.co_names)))
+            timed = bool(seen[path] & ({function.__name__} | _names(function.__code__)))
         if timed:
             item.add_marker(TIMING)
 
 
 @pytest.fixture
 def stopped_if_stuck() -> Iterator[None]:
-    """Stop the whole run if this test is still going after `STUCK_AFTER` seconds, and say
-    where it was. On parallel workers it stops the worker, which xdist reports as crashed,
-    and the run goes on without it and fails.
+    """Stop this test's process if the test is still going after `STUCK_AFTER` seconds, and
+    say where it was: the whole run in one process; on parallel workers, the worker, which
+    xdist replaces, reporting the test as failed.
 
     A generated input is one nobody chose, and now and then it is the one a pattern
     backtracks on for ever. A test stuck there holds its runner until the job's own limit,

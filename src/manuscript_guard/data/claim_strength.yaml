@@ -1,0 +1,61 @@
+schema: manuscript-guard/claim-strength/1
+
+# The words that say how strongly a sentence claims what it claims. `manuscript-guard
+# reworded` compares each sentence an edit changed with what it was, and warns where one of
+# these came or went, or a word of the ladder was made a word of another rung.
+#
+# Adapted from the Claim-Strength Contract of Yila-AI/awesome-research-skills,
+# skills/science-research-writing/references/certainty-and-claim-strength.md, read
+# 2026-10-20 at commit 0609e85b6dbfdae8a48ba66c332d340265d7b3e5, Apache License 2.0
+# (https://github.com/Yila-AI/awesome-research-skills). Its ladder is the six rungs below,
+# in its order, and its certainty markers are among the hedges, the negations and the
+# limits. The synonyms and the inflections are this project's, chosen on 2026-10-20;
+# ATTRIBUTION.md says what was changed.
+#
+# How a word is read:
+# - Each is a whole word, or whole words with any space or line break between them.
+# - Each is written in lower case and read so, and with a capital where it opens a
+#   sentence. A capital elsewhere marks a name: "in May 2020". In `lower_case_only`, never
+#   with a capital.
+# - Only the forms listed: "suggests" is read because it is here, and "suggestion" is not.
+#   "*n't" is any word that ends so: "didn't", "wasn't".
+# - A word joined by a hyphen to the one before or after is part of a compound and is not
+#   read: "drug-induced", "all-cause", "cause-specific".
+# - A form ending in "ed" after "a", "an" or "the" is an adjective and is not read: "an
+#   increased risk", "the associated factors".
+#
+# English only, as every gate.
+
+# From the weakest claim to the strongest. Moving a word within a rung, "associated" made
+# "linked to", leaves the claim as strong as it was.
+ladder:
+  - rung: consistency
+    words: [consistent with, suggest, suggests, suggested, suggesting, suggestive of]
+  - rung: association
+    words: [associated, association, associations, correlated, correlation, related to,
+            linked to]
+  - rung: prediction
+    words: [predict, predicts, predicted, predicting, predictive of, predictor, predictors]
+  - rung: contribution
+    words: [contribute to, contributes to, contributed to, contributing to]
+  - rung: effect
+    words: [affect, affects, affected, affecting, lead to, leads to, led to, resulted in,
+            increase, increases, increased, decrease, decreases, decreased, reduce, reduces,
+            reduced, improve, improves, improved, worsen, worsens, worsened, induce, induces,
+            induced, prevent, prevents, prevented]
+  - rung: causation
+    words: [cause, causes, caused, causing, causal, causally, demonstrate that,
+            demonstrates that, demonstrated that, prove that, proves that, proved that]
+
+# A word that says the claim may not hold. One gone makes the claim stronger.
+hedges: [may, might, could, possibly, perhaps, potentially, probably, appear, appears,
+         appeared, seem, seems, seemed]
+
+# A word that turns the claim round. One gone or new says the opposite of what was said.
+negations: ["not", "*n't", cannot, "no", never, neither, nor, none, non-significant,
+            nonsignificant]
+
+# A word that bounds the claim. One gone makes it hold more widely than it did.
+limits: [only, in this sample, within this sample, under these conditions]
+
+lower_case_only: [may]

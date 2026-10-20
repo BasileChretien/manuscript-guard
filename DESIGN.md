@@ -2494,6 +2494,81 @@ with what pandoc drops blanked, and `find_citations`. A test holds the bindings 
 `parse` counted each binding's line from the top of the file, and a comparison of two long
 texts showed it; #213 has since put that right.
 
+## A rewording keeps what a sentence claims
+
+Holding an edit to its facts leaves the words free, and some words carry the claim. "Use was
+associated with a higher risk" made "use increased the risk" keeps every binding and
+citation and claims an effect where the analysis showed an association. A "may" dropped
+makes a possibility a finding, and a "did not" dropped turns the result round. A language
+pass by a model does each of these as it smooths a sentence, and an AI reviewer's suggested
+edit (#367) can do it too.
+
+So `reworded` compares each sentence the edit changed with what it was, for the words that
+set how strongly it claims, and warns where they moved. The words are in
+`src/manuscript_guard/data/claim_strength.yaml`. The idea and the ladder are adapted from
+the Claim-Strength Contract of Yila-AI/awesome-research-skills (Apache-2.0, credited in
+ATTRIBUTION.md), which asks that a draft never move a claim silently in either direction.
+There are four kinds of word:
+
+- a **hedge**, "may", "might", "appears": one gone makes the claim stronger, one new
+  weaker;
+- a **limit**, "only", "in this sample", "under these conditions": the same;
+- a **negation**, "not", "no", "never", "non-significant": one gone or new turns the claim
+  round, whatever else moved, and is told as that;
+- a word of the **ladder**, whose rungs run from consistency ("consistent with",
+  "suggests") through association, prediction, contribution and effect ("increased",
+  "led to") to causation ("caused", "demonstrated that"). A word moved up makes the claim
+  stronger, down weaker, and within a rung it is free: "associated" made "linked to".
+
+Basile chose the four terms on 2026-10-20.
+
+**A move is a warning, and the command passes.** A list of words cannot know whether the
+author meant the move, and a reviewer who asked for "associated" where the text said
+"caused" meant it. A warning needs no acknowledging: the author reads it, and the next
+commit makes the edit the text before. The codes are `claim-stronger`, `claim-weaker`,
+`claim-moved` (moves both ways, or ladder words changed with no direction to tell) and
+`claim-negation`, collected as `reworded.CLAIM_CODES`.
+
+**Only the sentences the edit changed are read.** A causal verb that stood before the edit
+passes, in an observational paper as anywhere. Reading the whole text against the design
+`study_type` declares would be another gate, with more false alarms, and is not built.
+
+**The words are a list, in English.** Each is read as a whole word, in the forms listed and
+no others, in lower case or with a capital where it opens its sentence; "may" in lower case
+only, since "May" is a month. A word joined by a hyphen to the one before or after is part
+of a compound and is not read, "drug-induced", "cause-specific"; nor is a form in "-ed" after
+"a", "an" or "the", "an increased risk", which is an adjective. What `mask` blanks is not read,
+and inline code is blanked too.
+
+**A suggested edit that moves a claim is written, and says so.** A review panel's suggested
+edit (#367) is dropped where `reworded` finds anything to say of it. Basile chose on
+2026-10-20 that a claim's warning be the one exception: the edit is written as a tracked
+change, and its comment in Word carries the warning, so that the author sees the move where
+they decide it. `CLAIM_CODES` is how the edits tell the two kinds of finding apart.
+
+**Hedges, limits and negations are counted; the ladder by its rungs.** "May" made "might"
+is the same count of hedges and no change. Where ladder words left some rungs and came to
+others, the move is up when every rung that came is above every rung that left, and down the
+other way, and otherwise it cannot be told. Where words only left or only came, the
+sentence is read by its lowest rung, which is its claim where one word of the ladder holds
+another: "associated with increased mortality" claims an association, and made "increased
+mortality" it claims an effect. A sentence with no word of the ladder states, and a word of
+consistency makes it claim less than that.
+
+**The sentences are lined up as patience diff does.** Each text is cut into sentences at a
+stop and a space before anything but a lower-case letter, at a blank line, at a line that
+opens a block, and at each line of the front matter. A sentence's key is its words with
+every run of spaces and blanked text made one, so rewrapping changes nothing. Those that
+stand once in each text are lined up first, the longest run of them in order, in n log n:
+the time stays linear in the manuscript, as the facts' comparison does. Between two of them
+lies what the edit changed, its ends that stand in both taken off. Where a stretch has as
+many sentences before as after, they are compared one by one; where it has not, a sentence
+was split or joined and the stretch is compared whole. Where it has none on one side, a
+sentence was added or deleted whole, and nothing is compared: that is no rewording of a
+sentence, and its facts are held by the facts' comparison. A finding is placed on the
+sentence that holds a word that came, or on the stretch's first sentence where words only
+left.
+
 ## Review panels: the record is the contract
 
 Every other gate checks a property of the text. G11 checks that somebody competent
@@ -10638,9 +10713,11 @@ Open, recorded as each change landed:
   while timing. Both are left to the wall clock.
 
 - **`reworded` holds bindings, citation keys and typed numbers, and nothing else.**
-  - A unit, a "not" and "increased" for "decreased" are words, and are not held: "5 mg"
-    made "5 g" and "did not differ" made "differed" both pass. So does a number written in
-    words: "three" made "four".
+  - A unit and "increased" for "decreased" are words, and are not held: "5 mg" made "5 g"
+    passes, and so does "increased" made "decreased", two words of one rung of the
+    ladder. So does a number written in words: "three" made "four". "Did not differ" made
+    "differed" passes with a warning, as every move of a claim's words does (the next
+    entry).
   - A sign of comparison is held only as a sign. Spelt out, "P < 0.05" made "P less than
     0.05" fails as a sign gone, though the sentence says the same; "less than" made
     "more than" passes. Typed in TeX, `$p \leq 0.05$`, it is letters and not held. A
@@ -10709,6 +10786,38 @@ Open, recorded as each change landed:
     limit stops the wrapper and not the git it started. `emit.py` asks git the same way.
   - The text before is what git holds for the commit. A file under a
     `working-tree-encoding` or a filter is compared as git stores it.
+
+- **`reworded` reads how strongly a sentence claims from a list of words.**
+  - A word not in the list moves nothing: "raised", "lowered", "drives", "explains", "is
+    responsible for", "due to", "attributable to". Nor does a form not listed:
+    "suggestion", "increasing". A noun of effect is not read, "an effect of", "a reduction
+    in", and the noun "causes" is read as causation: "the leading causes of death" made
+    "the leading reasons" is a claim made weaker.
+  - "Increased", "reduced" and the rest of the effect rung are read as an effect where they
+    describe a trend too: "incidence rose" made "incidence increased" is a claim made
+    stronger. A participle is taken for an adjective only directly after "a", "an" or
+    "the", so "its increased risk" and "an unexpectedly increased risk" are read as the
+    verb.
+  - The direction comes from the words, not from the grammar. A sentence of two clauses is
+    read by its lowest rung where ladder words only came or left: "X caused Y, which was
+    associated with Z" made "X caused Y and Z" claims more by this reading.
+  - Negations are counted, not read: "not uncommon" made "common" is a negation gone, and
+    "failed to show" made "did not show" is a negation new.
+  - A capital away from the start of a sentence marks a name, so a heading in title case,
+    "Factors Associated With Injury", is not read, nor a word in capitals.
+  - A sentence ends at a stop and a space before anything but a lower-case letter, so "et
+    al. Smith" and "Fig. 2" end one, and a sentence that opens in lower case, "p values
+    were small", is joined to the one before. The two texts are cut alike, so this only
+    makes the pieces one stretch, compared whole.
+  - A stretch compared whole hides a word that moved between its sentences: a sentence
+    split, with its "may" carried from one half to the other, is no change.
+  - A sentence added or deleted whole is not read. A limitation dropped in a polish, "This
+    may reflect confounding.", is told by nothing here, though its facts are held.
+  - A sentence that stands twice in a text lines nothing up, and is compared only where it
+    falls at the end of a stretch.
+  - Each line of the front matter is read as a sentence, so an abstract folded over several
+    lines there is cut at each line. Rewrapped, its lines are compared as a stretch.
+  - English only, as every gate.
 
 - **G14 reads a definition by its shape, and an abbreviation by its capitals.**
   - A definition written as a sentence is not seen: "hereafter ROR", "which we call the

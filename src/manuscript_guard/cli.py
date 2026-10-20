@@ -3521,9 +3521,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="check that an edit changed the wording and nothing else",
         description="Compares the manuscript with what it was and holds every binding, "
         "citation key and typed number to its place. One that is gone, new or changed "
-        "fails; the same ones in another order pass with a warning for each place. Run it "
-        "after a language edit, by a person, a service or a model, and before committing "
-        "it: the text before is the last commit's unless another is named.",
+        "fails; the same ones in another order pass with a warning for each place. A "
+        "sentence the edit made claim more, less or the opposite, by a hedge, a limit, a "
+        "negation or a word of the claim-strength ladder that came or went, passes with a "
+        "warning. Run it after a language edit, by a person, a service or a model, and "
+        "before committing it: the text before is the last commit's unless another is named.",
     )
     reworded.add_argument(
         "paths",

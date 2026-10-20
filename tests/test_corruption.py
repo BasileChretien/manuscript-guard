@@ -16550,6 +16550,57 @@ def test_a_language_pass_that_only_reworded_passes(project: Path) -> None:
     assert report.counts["reworded_citations"] > 2
 
 
+# A language pass that kept every fact and changed what a sentence claims. `check` passes
+# each, and so does the comparison of facts; the words of the claim are compared too, and
+# each move is a warning, since a list of words cannot know whether it was meant.
+
+
+def _claim_moved(project: Path, old: str, new: str, opening: str) -> tuple[str, str]:
+    """What is said of the one edit, which is placed on the line its sentence opens on."""
+    after, report = after_a_language_pass(project, old, new)
+    assert gate_report(project).ok, "the gates see nothing wrong with it"
+    (finding,) = report.findings
+    assert finding.severity == "warn" and report.ok
+    assert finding.line == line_of(after, opening)
+    return finding.code, finding.message.split(": ", 1)[1]
+
+
+def test_a_language_pass_that_made_a_disproportion_a_cause_is_shown(project: Path) -> None:
+    assert _claim_moved(
+        project,
+        "Reporting of hepatic injury is disproportionate for example-drug",
+        "Example-drug causes disproportionate reporting of hepatic injury",
+        "Example-drug causes",
+    ) == ("claim-stronger", "'causes' (causation) is new")
+
+
+def test_a_language_pass_that_hedged_a_comparison_is_shown(project: Path) -> None:
+    assert _claim_moved(
+        project,
+        "The reporting odds ratio observed here exceeds",
+        "The reporting odds ratio observed here appears to exceed",
+        "The reporting odds ratio observed here appears",
+    ) == ("claim-weaker", "'appears' is new")
+
+
+def test_a_language_pass_that_dropped_a_not_is_shown(project: Path) -> None:
+    assert _claim_moved(
+        project,
+        "specifically has not been examined.",
+        "specifically has been examined.",
+        "Whether the signal extends",
+    ) == ("claim-negation", "'not' is gone")
+
+
+def test_a_language_pass_that_hedged_a_claim_and_widened_it_is_shown(project: Path) -> None:
+    assert _claim_moved(
+        project,
+        "is the only population-level figure available",
+        "may be the sole population-level figure available",
+        "rate. The cohort",
+    ) == ("claim-moved", "'may' is new; 'only' is gone")
+
+
 # --------------------------------------------------------------------------------------
 # Parameters: a threshold the analysis declares is bound in the Methods, and read by the code.
 # --------------------------------------------------------------------------------------

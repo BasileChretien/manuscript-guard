@@ -274,7 +274,7 @@ number in the file and the rule that classified it.
 | `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` does the same for a design round, which reads the plan |
 | `checker` | send a co-author one file of things to confirm, and record what they answered |
 | `import` | bring a co-author's Word edits back into the manuscript source |
-| `reworded` | check that an edit changed the wording and no binding, citation or typed number |
+| `reworded` | check that an edit changed the wording and no binding, citation or typed number, and warn where it made a sentence claim more, less or the opposite |
 | `respond` | open a revision round, or write the point-by-point response |
 | `submit` | assemble the submission pack, with a checklist of the journal's rules no gate checks |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |

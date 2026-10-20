@@ -29,12 +29,15 @@ import shutil
 import subprocess
 import sys
 from bisect import bisect_left
+from collections import Counter
+from functools import cache, partial
 from pathlib import Path
 from typing import Any
 
 import pytest
 from generated import (
     AGREED,
+    CLAIMED,
     DATA_IDENTIFIERS,
     FILLER,
     FIXED_LINKS,
@@ -49,7 +52,9 @@ from generated import (
     TEMPORARY_LINKS,
     TERMS,
     TYPOGRAPHY,
+    UNCLAIMED,
     bindings,
+    claim_edits,
     commented,
     generated,
     holds,
@@ -71,6 +76,7 @@ from hypothesis import strategies as st
 from hypothesis.database import InMemoryExampleDatabase
 from readings import MAIN, PAPER, PEOPLE, READINGS, Unavailable, answer
 
+from manuscript_guard import claims as claims_module
 from manuscript_guard import reworded as reworded_module
 from manuscript_guard.build import blinding
 from manuscript_guard.build.blinding import names_in, sought
@@ -3483,6 +3489,43 @@ def _held_to_its_edit(drawn: tuple[str, str, str, list[str], int]) -> None:
         assert by_code["fact-new"].line == line, (before, after, said)
 
 
+# ------------------------------------------------------------ how strongly a sentence claims
+
+
+def test_every_word_planted_as_a_claim_is_read_as_one_and_nothing_else_is() -> None:
+    """The edits plant the words of `CLAIMED` and `UNCLAIMED`, which are written in the tests
+    so that a rule broken in reading the data file does not draw its own inputs. Here they
+    are held to the file: a word planted as a hedge is read as a hedge, and a look-alike or
+    a filler word as nothing."""
+    for kind, words in CLAIMED.items():
+        for word in words:
+            (sentence,) = claims_module.sentences(f"Here {word} stands.")
+            read = word.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'")
+            assert sentence.words == ((read, kind),), (word, sentence)
+    for word in (*UNCLAIMED, *FILLER):
+        (sentence,) = claims_module.sentences(f"Here {word} stands.")
+        assert sentence.words == (), (word, sentence)
+
+
+@holds(30, claim_edits())
+def test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands(
+    drawn: tuple[str, str, list[tuple[str, int]]],
+) -> None:
+    """Each sentence an edit changed is compared with what it was, and only those. A hedge,
+    a limit, a negation or a word of the ladder that came or went is told on the line the
+    sentence stands on now, as a warning; a word made another of its class or rung, a
+    look-alike, a sentence added, deleted, moved or rewrapped is told nothing. `reworded`
+    tells the same, beside the facts, and passes."""
+    before, after, expected = drawn
+    found = claims_module.moved(before, after, MAIN)
+    said = [(one.code, one.line, one.message) for one in found]
+    assert [(one.code, one.line) for one in found] == expected, (before, after, said)
+    assert all((one.gate, one.severity, one.path) == ("REWORDED", "warn", MAIN) for one in found)
+    report = compare(before, after, MAIN)
+    assert [(one.code, one.line) for one in report.findings] == expected, report.findings
+    assert report.ok
+
+
 # ------------------------------------------------------------ the words beside a quoted value
 
 #: A value a ledger records, as its display is written, one of each kind: a decimal, a whole
@@ -5327,6 +5370,78 @@ def _a_listing_in_a_comment_is_put_back(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reworded_module, "html_comments", lambda text, fences=None: [])
 
 
+def _a_class_of_claim_words_is_not_counted(patch: pytest.MonkeyPatch, kind: str) -> None:
+    patch.setattr(
+        claims_module, "COUNTED", tuple(one for one in claims_module.COUNTED if one != kind)
+    )
+
+
+def _the_ladder_is_read_upside_down(patch: pytest.MonkeyPatch) -> None:
+    read = claims_module._ladder
+    turned = {claims_module.STRONGER: claims_module.WEAKER}
+    turned[claims_module.WEAKER] = claims_module.STRONGER
+    patch.setattr(claims_module, "_ladder", lambda was, now: turned.get(read(was, now), "moved"))
+
+
+def _a_ladder_word_that_only_came_or_left_is_a_claim_moved(patch: pytest.MonkeyPatch) -> None:
+    read = claims_module._ladder
+
+    def ladder(was: list[int], now: list[int]) -> str:
+        both = (Counter(was) - Counter(now)) and (Counter(now) - Counter(was))
+        return read(was, now) if both else claims_module.MOVED
+
+    patch.setattr(claims_module, "_ladder", ladder)
+
+
+def _a_ladder_word_made_another_of_its_rung_is_a_change(patch: pytest.MonkeyPatch) -> None:
+    beyond = claims_module._beyond
+
+    def by_word(words: list[Any], other: list[Any], by_rung: bool = False) -> list[Any]:
+        return beyond(words, other)
+
+    patch.setattr(claims_module, "_beyond", by_word)
+
+
+def _a_capital_is_read_anywhere(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "_capital", lambda word, typed, opens: True)
+
+
+def _a_capital_is_never_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "_capital", lambda word, typed, opens: False)
+
+
+def _a_participle_after_an_article_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "_ARTICLE", re.compile("(?!)"))
+
+
+def _a_word_in_a_compound_is_read(patch: pytest.MonkeyPatch) -> None:
+    edges = (r"\b", r"\b")
+    patch.setattr(claims_module, "lists", cache(lambda: claims_module.read_lists(edges)))
+
+
+def _inline_code_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "code_spans", lambda read: [])
+
+
+def _a_comment_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "mask", lambda text: text)
+
+
+def _the_texts_are_lined_up_by_place_alone(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "_chain", lambda anchors: [])
+
+
+def _a_sentence_added_whole_is_read(patch: pytest.MonkeyPatch) -> None:
+    stretch = claims_module._stretch
+
+    def read(was: list[Any], now: list[Any]) -> list[Any]:
+        if was and now:
+            return stretch(was, now)
+        return [((), tuple(now))] if now else []
+
+    patch.setattr(claims_module, "_stretch", read)
+
+
 def _every_stop_ends_a_sentence(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.checking import produce
 
@@ -6511,6 +6626,57 @@ BROKEN = {
     "a number's sign is no part of it": (
         _a_sign_is_no_part_of_its_number,
         test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    **{
+        f"no {kind} is counted in a sentence's claim": (
+            partial(_a_class_of_claim_words_is_not_counted, kind=kind),
+            test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+        )
+        for kind in ("hedge", "limit", "negation")
+    },
+    "the ladder of a claim is read upside down": (
+        _the_ladder_is_read_upside_down,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a word of the ladder that only came or left is a claim moved": (
+        _a_ladder_word_that_only_came_or_left_is_a_claim_moved,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a word of the ladder made another of its rung is a change": (
+        _a_ladder_word_made_another_of_its_rung_is_a_change,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a claim's word with a capital is read anywhere": (
+        _a_capital_is_read_anywhere,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a claim's word with a capital is never read": (
+        _a_capital_is_never_read,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a participle after an article is read as a claim's word": (
+        _a_participle_after_an_article_is_read,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a word in a compound is read as a claim's word": (
+        _a_word_in_a_compound_is_read,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "inline code is read for a claim's words": (
+        _inline_code_is_read_as_prose,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a comment is read for a claim's words": (
+        _a_comment_is_read_as_prose,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "the sentences of two texts are lined up by place alone": (
+        _the_texts_are_lined_up_by_place_alone,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a sentence added whole is read as a claim made": (
+        _a_sentence_added_whole_is_read,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
     ),
     "a sign of comparison is no part of its number": (
         _a_sign_of_comparison_is_no_part_of_its_number,

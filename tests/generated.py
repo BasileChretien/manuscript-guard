@@ -1033,10 +1033,12 @@ RESIDUE = (
      "The revised manuscript"),
     ("We have now clarified the exposure.", "we-have-now", "We have now clarified"),
     ("We have expanded the Discussion.", "text-edited", "We have expanded the Discussion"),
+    ("These points have now been discussed.", "text-edited-unnamed",
+     "These points have now been discussed"),
     ("It is on page 4, lines 120-125.", "lines-cited", "page 4, lines 120"),
     ("It was moved (lines 120-125).", "lines-cited-alone", "(lines 120-125)"),
     ("The revised text is highlighted in yellow.", "changes-marked",
-     "The revised text is highlighted in"),
+     "The revised text is highlighted"),
     # After a stop, since "in" before either is the stricter rule's.
     ("Done. Tracked changes were accepted.", "tracked-changes", "Tracked changes"),
     ("See the response letter.", "response-letter", "See the response letter"),
@@ -1054,6 +1056,11 @@ RESIDUE_LOOKALIKES = (
     "To address this concern, we used an active comparator.",
     "Reviewer 1 and Reviewer 2 independently extracted the data.",
     "as suggested by\n\nReviewer 2 independently, a heading and a paragraph.",
+    # Round 1 of #377: a thanks that names what it is for, a label's history, a Delphi
+    # panel's draft.
+    "We thank the referee for pointing out an error in the estimator.",
+    "This has now been included in the SmPC.",
+    "Our initial draft comprised 45 items.",
 )  # fmt: skip
 
 

@@ -5123,6 +5123,16 @@ def _a_dossier_is_a_submission(patch: pytest.MonkeyPatch) -> None:
     _residue_rule(patch, "earlier-version-unnamed", without_its_end)
 
 
+def _a_change_is_named_mid_clause(patch: pytest.MonkeyPatch) -> None:
+    # The end of a clause the rule waits for, which keeps "included in the SmPC" out.
+    def without_the_end(rule: dict) -> dict:
+        end = r"(?=\s*(?:[.;:!?)]|$))"
+        assert end in rule["pattern"], "the rule no longer waits for the end of a clause"
+        return {**rule, "pattern": rule["pattern"].replace(end, "")}
+
+    _residue_rule(patch, "text-edited-unnamed", without_the_end)
+
+
 def _lines_in_capitals_are_lines(patch: pytest.MonkeyPatch) -> None:
     def in_any_case(rule: dict) -> dict:
         return {**rule, "pattern": "(?i)" + rule["pattern"]}
@@ -6529,6 +6539,10 @@ BROKEN = {
     ),
     "lines in capitals are lines": (
         _lines_in_capitals_are_lines,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
+    ),
+    "a change is named mid-clause": (
+        _a_change_is_named_mid_clause,
         test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
     ),
     "an argument that turns a figure's estimate off is not read": (

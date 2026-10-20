@@ -316,15 +316,21 @@ SAID_TO_ONE = [
     ("Compared with the previous version of this manuscript, Table 2 is new.",
      "earlier-version"),
     ("The definition differs from an earlier draft of our manuscript.", "earlier-version"),
+    # Round 1 of #377: a verb of writing far before the noun, and a limitation's "We
+    # acknowledge", exempted these as contributions and thanks.
+    ("We revised the Methods because our original submission pooled the cohorts.",
+     "earlier-version"),
+    ("We acknowledge that, compared with the previous version of this manuscript, the sample "
+     "is smaller.", "earlier-version"),
     ("We have now clarified the definition of exposure.", "we-have-now"),
     ("We now have added a paragraph on missing data.", "we-have-now"),
     ("We\N{RIGHT SINGLE QUOTATION MARK}ve now toned down the conclusion.", "we-have-now"),
     ("We have expanded the Discussion to cover confounding.", "text-edited"),
     ("We have rephrased the sentence on causality.", "text-edited"),
-    ("This has now been clarified.", "text-edited"),
+    ("We have modified the text accordingly.", "text-edited"),
+    ("This has now been clarified in the text.", "text-edited"),
     ("The sentence has been amended accordingly.", "text-edited"),
     ("A paragraph has been added to the Limitations.", "text-edited"),
-    ("These points have now been discussed.", "text-edited"),
     ("The definition is on page 4, lines 120\N{EN DASH}125.", "lines-cited"),
     ("See lines 245-250 of the revised manuscript.", "lines-cited"),
     ("The revised text is highlighted in yellow.", "changes-marked"),
@@ -359,6 +365,11 @@ SAID_TO_ANY = [
     ("In the previous version of the manuscript, Table 2 was longer.",
      "earlier-version-unnamed"),
     ("The definition was moved (lines 120\N{EN DASH}125).", "lines-cited-alone"),
+    # Round 1 of #377: a change named with no part of this manuscript, which a regulatory
+    # or a guideline's update writes of itself too.
+    ("This has now been clarified.", "text-edited-unnamed"),
+    ("These points have now been discussed.", "text-edited-unnamed"),
+    ("In this update, we have revised the section on renal dosing.", "text-edited-unnamed"),
     ("Tracked changes were accepted before it was sent.", "tracked-changes"),
     ("The response letter lists every change.", "response-letter-unnamed"),
     ("A point-by-point response accompanies this paper.", "response-letter-unnamed"),
@@ -461,6 +472,21 @@ NOT_SAID_TO_ANYONE = [
     "\N{RIGHT DOUBLE QUOTATION MARK}",
     "Has your daughter started her periods yet?",
     "as suggested by\n\nReviewer 2 independently, a heading and a paragraph.",
+    # Round 1 of #377: a thanks that names what was pointed out, regulatory prose, a
+    # translation, a Delphi panel's drafts, an instrument's wording, a psycholinguistic
+    # study's stimuli, and the ICMJE's approval.
+    "We thank the referee for pointing out an error in the variance estimator.",
+    "We thank the editor for highlighting the need for this review.",
+    "We thank the referee for the suggestion to use the bootstrap.",
+    "This has now been included in the SmPC.",
+    "These issues have now been addressed in the ICH E9(R1) addendum.",
+    "We have adapted the wording of the items to Japanese.",
+    "Our initial draft comprised 45 items.",
+    "This revised draft was circulated for the second round.",
+    "Items whose revised wording is shown in Table 3 were kept.",
+    "New sentences were written by two authors.",
+    "All authors approve this version of the manuscript.",
+    "All authors provided final approval of this version of the manuscript.",
 ]  # fmt: skip
 
 

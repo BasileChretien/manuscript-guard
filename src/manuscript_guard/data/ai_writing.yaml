@@ -166,20 +166,35 @@ residue_words:
   edited: |-
     added|amended|changed|clarified|corrected|deleted|edited|expanded|modified|moved|rephrased
     |reworded|rewritten|removed|revised|shortened|softened|toned\s+down|updated|nuanced|tempered
-  # A part of the text. Not "statements", which a consensus paper adds and includes.
+  # A part of a text, this one's or another's: a guideline's update revises "the section on
+  # renal dosing" too. Not "statements", which a consensus paper adds and includes.
   part: |-
     text|sentences?|wording|paragraphs?|section|subsection|passages?|phrases?|discussion
     |introduction|abstract|title|limitations?|methods\s+section|results\s+section|conclusions?
     |manuscript|clarifications?|explanations?|footnotes?|terminology|keywords
     |figure\s+legends?|table\s+legends?|captions?
+  # A part only this manuscript has: a section by its name, with its capital ("the
+  # Discussion", and not "the discussion of renal dosing"), the manuscript, its main text.
+  # Not "Summary", which opens the Summary of Product Characteristics.
+  section: |-
+    (?-i:Discussion|Introduction|Abstract|Methods|Results|Limitations|Conclusions?)(?:\s+section)?
+    |(?:limitations?|methods|results|discussion|introduction|conclusions?)\s+section
+    |manuscript|main\s+text|revised\s+text
+  # What may stand between "we have" and its verb, and between the verb and the part.
+  adverb: |-
+    also|further|therefore|accordingly|thus|hence|now
+  det: |-
+    the|this|that|these|those|our|a|an|one|two|three|several|some|new|further|additional|more
+    |brief|short|relevant|corresponding|following|entire|whole
 
 residue:
   - id: reviewer-answered
     self_reference: true
     # "In response to the reviewer's comment", "as suggested by Reviewer 2", "following the
     # editor's request", "as the reviewer pointed out", "the reviewer rightly asked whether",
-    # "we thank the reviewer for this point". Not the thanks of the acknowledgements, "for
-    # the helpful comments", in the plural.
+    # "we thank the reviewer for this point". Not the thanks of the acknowledgements, which
+    # names what it thanks for: "for the helpful comments", "for pointing out an error in
+    # the variance estimator", "for the suggestion to use the bootstrap" (round 1 of #377).
     pattern: |-
       (?ix)\b(?:
         {{answer}}\s+{{one}}
@@ -190,9 +205,10 @@ residue:
         |{{one}}\s+(?:(?:rightly|correctly|kindly|also|further|helpfully)\s+)?
           (?:asked\s+(?:us|whether|why|for|that|to|if|how)|requested|suggested|recommended
           |pointed\s+out|raised\s+(?:a|an|the|this|that)|wondered|questioned\s+(?:whether|why|the|our))\b
-        |(?:thank(?:s|ing)?|grateful|indebted)\s+(?:to\s+)?{{one}}\s+for\s+(?:(?:this|that|the|his|her|their)\s+(?:\w+\s+)?
+        |(?:thank(?:s|ing)?|grateful|indebted)\s+(?:to\s+)?{{one}}\s+for\s+(?:(?:this|that)\s+(?:\w+\s+)?
           (?:comment|suggestion|point|question|remark|observation|query|concern)\b
-          |raising|pointing|bringing|highlighting|noting)
+          |(?:raising|pointing\s+out|bringing\s+up|highlighting|noting)\s+(?:this|that|it)\b
+          |pointing\s+(?:this|that|it)\s+out\b)
       )
     why: An answer to one reviewer or to the editor, which the paper's reader never saw
   - id: reviewers-answered
@@ -210,7 +226,8 @@ residue:
         |{{one}}['’]s\s+(?:\w+\s+)?{{speech}}\b
         |thank(?:s|ing)?\s+(?:to\s+)?{{many}}\s+for\s+(?:(?:this|that)\s+(?:\w+\s+)?
           (?:comment|suggestion|point|question|remark|observation|query|concern)\b
-          |raising|pointing|bringing|highlighting|noting)
+          |(?:raising|pointing\s+out|bringing\s+up|highlighting|noting)\s+(?:this|that|it)\b
+          |pointing\s+(?:this|that|it)\s+out\b)
       )
     why: An answer to the reviewers, unless the paper is about peer review
   - id: as-requested
@@ -221,26 +238,29 @@ residue:
     self_reference: true
     # This manuscript before it was revised: "our original submission", "this revised
     # manuscript", "in the previous version of this manuscript". Not "comments on an earlier
-    # version of this manuscript", which is the acknowledgements, and not "an earlier
-    # version of this paper", which a preprint was.
+    # version of this manuscript", which is the acknowledgements, not "an earlier version of
+    # this paper", which a preprint was, and not "our initial draft comprised 45 items",
+    # which a Delphi panel's was (round 1 of #377).
     pattern: |-
       (?ix)\b(?:
         (?:our|this)\s+(?:original|initial|first|previous|earlier|prior|former|revised|resubmitted
           |amended)\s+(?:submission|resubmission)(?!\s+(?:to|of|for)\b)
-        |(?:our|this)\s+(?:original|initial|revised|resubmitted|amended)\s+(?:manuscript|draft)
+        |(?:our|this)\s+(?:original|initial|revised|resubmitted|amended)\s+manuscript
         |(?:in|from|than|unlike|compared\s+(?:with|to)|relative\s+to)\s+(?:the|an?|our)\s+
           (?:original|initial|first|previous|earlier|prior|former|last|revised)\s+(?:version|draft)s?
           \s+of\s+(?:this|our)\s+(?:manuscript|submission)
         |this\s+version\s+of\s+(?:the|this|our)\s+manuscript
       )\b
     exempt: &written
-      # The authors' contributions: "drafted the initial manuscript", "approved this version
-      # of the manuscript".
-      - '(?i)\b(?:wrote|write|written|writing|draft(?:ed|ing)?|prepar(?:ed|ing)|revis(?:ed|ing)|edit(?:ed|ing)|review(?:ed|ing)|read|approv(?:ed|ing)|commented\s+on|contributed\s+to|made\s+(?:\w+\s+)?revisions\s+(?:to|of)|gave\s+(?:\w+\s+)?approval\s+(?:of|to))\b(?:[^.;:\n]|\n(?![ \t]*\n)){0,60}?\b(?:manuscripts?|drafts?|versions?|submissions?|papers?)\b'
+      # The authors' contributions: "drafted the initial manuscript", "provided final approval
+      # of this version of the manuscript". A verb of writing, then only the words a
+      # contribution puts before the noun, so that "We revised the Methods because our
+      # original submission" is read (round 1 of #377).
+      - '(?i)\b(?:wrote|write|written|writing|draft(?:ed|ing)?|prepar(?:ed|ing)|revis(?:ed|ing)|edit(?:ed|ing)|review(?:ed|ing)|read|approv(?:e|es|ed|ing|al)|agree(?:s|d)?\s+(?:to|with|on)|commented\s+on|contributed\s+to|made\s+(?:\w+\s+)?revisions\s+(?:to|of)|(?:gave|provided|granted)\s+(?:\w+\s+)?approval\s+(?:of|to|for))(?:\s+(?:and|the|a|an|this|that|our|its|their|final|first|initial|original|revised|submitted|resubmitted|earlier|previous|prior|last|current|present|whole|entire|complete|draft|drafts|version|versions|of|to|be|published|critically|substantially|approved|read|edited))*\s+(?:manuscripts?|drafts?|versions?|submissions?|papers?)\b'
       # The acknowledgements, to the end of their sentence, where the stop of a title or an
       # initial ends none: "grateful to Dr. Sampaio for their critical review in the
-      # original manuscript".
-      - '(?i)\b(?:thank(?:s|ed|ful)?|grateful|gratitude|indebted|acknowledge[sd]?)\b(?:[^.\n]|\n(?![ \t]*\n)|(?<=\b(?:Dr|Mr|Ms|Mx|St|Jr|Sr|al))\.|(?<=\b(?:Mrs|Drs))\.|(?<=\bProf)\.|(?<=\b[A-Z])\.){0,300}'
+      # original manuscript". Not "acknowledge", which opens a limitation as often.
+      - '(?i)\b(?:thank(?:s|ed|ful)?|grateful|gratitude|indebted)\b(?:[^.\n]|\n(?![ \t]*\n)|(?<=\b(?:Dr|Mr|Ms|Mx|St|Jr|Sr|al))\.|(?<=\b(?:Mrs|Drs))\.|(?<=\bProf)\.|(?<=\b[A-Z])\.){0,300}'
     why: This manuscript's earlier version, which the paper's reader never saw
   - id: earlier-version-unnamed
     # A manuscript's earlier version not said to be this one's: "the revised manuscript",
@@ -275,27 +295,43 @@ residue:
     why: A change to the text described to whoever asked for it
   - id: text-edited
     self_reference: true
-    # A change to a part of the text: "we have expanded the Discussion", "this has now been
-    # clarified", "the sentence has been amended accordingly", "a paragraph has been added to
-    # the Limitations". Not "These have been discussed in the Introduction", a pointer.
+    # A change to a part of this manuscript: "we have expanded the Discussion", "we have
+    # rephrased the sentence", "we have modified the text accordingly", "this has been
+    # clarified in the text", "a paragraph has been added to the Limitations". A change
+    # named with no part that is this manuscript's is the next rule's, since a guideline's
+    # update "revised the section on renal dosing" (round 1 of #377). Not "These have been
+    # discussed in the Introduction", a pointer, nor "we have adapted the wording of the
+    # items", a translation.
     pattern: |-
       (?ix)\b(?:
-        we\s+have\s+(?:also\s+|further\s+|therefore\s+|accordingly\s+|thus\s+|hence\s+|now\s+)?
-          (?:{{edited}}|extended|restructured|reorgani[sz]ed|condensed|streamlined|simplified|inserted
-          |adapted|adjusted)\s+
-          (?:(?:the|this|that|these|those|our|a|an|one|two|three|several|some|new|further|additional
-          |more|brief|short|relevant|corresponding|following|entire|whole)\s+){0,2}(?:{{part}})\b
+        we\s+have\s+(?:(?:{{adverb}})\s+)?(?:{{edited}}|extended|restructured|reorgani[sz]ed|condensed
+          |streamlined|simplified|inserted)\s+(?:(?:{{det}})\s+){0,2}(?:{{section}})\b
+        |we\s+have\s+(?:(?:{{adverb}})\s+)?(?:rephrased|reworded|rewritten|toned\s+down|softened|nuanced
+          |tempered)\s+(?:(?:{{det}})\s+){0,2}(?:{{part}})\b
+        |we\s+have\s+(?:(?:{{adverb}})\s+)?(?:{{edited}}|extended|restructured|reorgani[sz]ed|condensed
+          |streamlined|simplified|inserted)\s+(?:(?:{{det}})\s+){0,2}(?:{{part}})\s+accordingly\b
         |(?:this|these|the\s+(?:{{part}}))\s+(?:has|have)\s+(?:now\s+|also\s+)?been\s+(?:{{edited}})\s+
-          (?:accordingly|throughout|in\s+(?:the|this|our)\s+(?:revised\s+)?(?:{{part}}|paper|methods|results))\b
-        |(?:this|these)\s+(?:(?:points?|issues?|aspects?|limitations?|statements?)\s+)?(?:has|have)\s+now
-          \s+been\s+(?:{{edited}}|included|incorporated|specified|mentioned|discussed|acknowledged|addressed|stated|explained
-          |emphasi[sz]ed)\b
+          (?:accordingly|throughout|in\s+(?:the|this|our)\s+(?:revised\s+)?(?:{{section}}|text))\b
         |(?:a|an|one|two|the|new|further|additional|brief|short)\s+(?:\w+\s+)?(?:sentences?|paragraphs?
           |statements?|clarifications?|explanations?|notes?|sections?|subsections?|passages?|caveats?)
           \s+(?:has|have)\s+(?:now\s+|also\s+)?been\s+(?:added|inserted|included)\s+(?:to|in|into)\s+
-          (?:the|this|our)\s+(?:revised\s+)?(?:{{part}}|paper|methods|results)\b
+          (?:the|this|our)\s+(?:revised\s+)?(?:{{section}}|text)\b
       )
-    why: A change to the text described to whoever asked for it
+    why: A change to this manuscript's text described to whoever asked for it
+  - id: text-edited-unnamed
+    # A change named with no part that is this manuscript's: "we have revised the section",
+    # "this has now been clarified." at the end of its clause. A guideline's update and a
+    # label's history write these of themselves, so they warn; and only where the clause
+    # ends, so "This has now been included in the SmPC" is no change to a text.
+    pattern: |-
+      (?ix)\b(?:
+        we\s+have\s+(?:(?:{{adverb}})\s+)?(?:{{edited}}|extended|restructured|reorgani[sz]ed|condensed
+          |streamlined|simplified|inserted)\s+(?:(?:{{det}})\s+){0,2}(?:{{part}})\b
+        |(?:this|these)\s+(?:(?:points?|issues?|aspects?|limitations?|statements?)\s+)?(?:has|have)\s+now
+          \s+been\s+(?:{{edited}}|included|incorporated|specified|mentioned|discussed|acknowledged|addressed
+          |stated|explained|emphasi[sz]ed)(?=\s*(?:[.;:!?)]|$))
+      )
+    why: A change to a text described to whoever asked for it, unless the text is another's
   - id: lines-cited
     self_reference: true
     # A place in the manuscript's numbered lines: "page 12, lines 245-250", "lines 245-250
@@ -312,13 +348,17 @@ residue:
     why: A place in the reviewers' copy, unless it is a listing's
   - id: changes-marked
     self_reference: true
-    # "The revised text is highlighted in yellow", "shown in track changes". Not "the RBD
-    # was highlighted in yellow", nor "amino acid changes are shown in red".
+    # "The revised text is highlighted in yellow", "new sentences are shown in red", "shown
+    # in track changes". Marked, and not only shown: "the revised wording is shown in Table
+    # 3" and "new sentences were written by two authors" are an instrument and a study's
+    # stimuli (round 1 of #377). Not "the RBD was highlighted in yellow", nor "amino acid
+    # changes are shown in red".
     pattern: |-
       (?ix)\b(?:the\s+)?(?:revised|new|added|amended|changed|edited|inserted)\s+(?:text|passages?
         |sentences?|wording|paragraphs?|parts?\s+of\s+the\s+(?:text|manuscript))\s+(?:is|are|has\s+been
-        |have\s+been|was|were)\s+(?:now\s+)?(?:highlighted|marked|shown|indicated|underlined|colou?red
-        |tracked|written|printed)\s+(?:in|with|using|as|by)\b
+        |have\s+been|was|were)\s+(?:now\s+)?(?:(?:highlighted|underlined|colou?red|tracked)\b
+        |(?:marked|shown|indicated|written|printed)\s+(?:in|with|using|as|by)\s+(?:\w+\s+)?
+        (?:yellow|red|blue|green|grey|gray|bold|italics?|colou?r|underlined|highlighted|track(?:ed)?[-\s]changes?)\b)
       |\b(?:in|with|using|as|via)\s+track(?:ed)?[-\s]changes?\b
     why: Changes marked for the reviewers, which the printed paper does not show
   - id: tracked-changes

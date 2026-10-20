@@ -2001,8 +2001,11 @@ while the paper is written and revised and fails at submission, as G13 and G11 d
 residue harms nobody until the journal reads it. The rest warn at every stage: the
 reviewers together or one not named ("in response to the reviewers' comments"), a
 manuscript's earlier version not said to be this one's ("the revised manuscript"), tracked
-changes, lines in brackets, a response letter not said to be the authors'. A paper about
-peer review writes those of the manuscripts it studied, and must not be stopped.
+changes, lines in brackets, a response letter not said to be the authors', and a change to
+a text that names no part of this manuscript ("we have revised the section on renal
+dosing", "This has now been clarified."). A paper about peer review writes those of the
+manuscripts it studied, and a guideline's update or a label's history writes the last of
+itself; neither must be stopped.
 
 What the rules leave alone was found by running them over the 399 papers of the G6 corpus
 and over the commonest ways a pharmacology or epidemiology paper writes the same words, and
@@ -2010,11 +2013,21 @@ each is a passing case in `tests/test_writing.py`:
 - "revised" in a name, "the Revised Cardiac Risk Index", "the 1987 ACR revised criteria",
   "the Clinical Interview Schedule-Revised", "10th revision";
 - the contributions, "drafted the initial manuscript", "revised the original manuscript",
-  "approved this version of the manuscript", read as a verb of writing before the noun;
+  "provided final approval of this version of the manuscript", read as a verb of writing
+  followed only by the words a contribution puts before the noun, so that "We revised the
+  Methods because our original submission pooled the cohorts" is still read;
 - the acknowledgements, "comments on an earlier version of this manuscript", "two
   anonymous reviewers for their helpful comments", "grateful to Dr. Sampaio for their
   critical review in the original manuscript", read from the thanks to the end of the
-  sentence, the stop of a title or an initial ending none;
+  sentence, the stop of a title or an initial ending none; "We acknowledge that" opens a
+  limitation as often, and is no thanks; a thanks to one referee fails only for "this" or
+  "that", "for raising this point", and not where it names what it is for, "for pointing
+  out an error in the variance estimator";
+- what a study writes of its own instrument: a Delphi panel's "our initial draft
+  comprised 45 items", "the revised wording is shown in Table 3", "new sentences were
+  written by two authors", "we have adapted the wording of the items";
+- a label's history, "This has now been included in the SmPC", since a change that names
+  no part of this manuscript warns only at the end of its clause;
 - a journal's notices, "the publisher, the editors and the reviewers", "the handling
   editor declared a shared affiliation", and an invitation, "at the invitation of the
   editor";
@@ -2028,7 +2041,10 @@ each is a passing case in `tests/test_writing.py`:
 
 Read as at submission, the 399 papers gave no failure, and two warnings: "(LINE 1)", which
 the rule for lines in brackets no longer takes, and "as suggested by one of the reviewers
-of our paper", words to a reviewer that reached print. Europe PMC listed 25 open-access
+of our paper", words to a reviewer that reached print. `tools/g6_baseline.py` judges as at
+submission since round 1 of #377, and its measurement of the 384 papers it uses, taken
+again then, records that one warning and no failure; the held-out check is unchanged, 98.9%
+of the held-out papers with two warnings or fewer. Europe PMC listed 25 open-access
 research articles for the phrase "as suggested by the reviewer", and the text of their XML
 held it in 21: 17 only in the peer-review reports published with them, four in the article
 itself, each as a reply to a reviewer ("as suggested by the reviewer earlier, triglycerides
@@ -9889,14 +9905,18 @@ Open, recorded as each change landed:
   reviewer" with a request is taken for the journal's, so a chart review whose own reader
   is "the reviewer" fails on "following the reviewer's recommendation, the case was
   excluded", and a systematic review on "as suggested by the second reviewer". The
-  contributions are known by a verb of writing within 60 characters before "manuscript",
-  "draft", "version" or "submission", so "we revised the original submission to add" is
-  not read; the acknowledgements by their thanks to the end of the sentence, so a residue
-  later in a sentence of thanks is not read by the rules of an earlier version. "The
-  revised manuscript" warns in a statement of contributions that does not say who
-  approved it. Lines in brackets, "(lines 245-250)", only warn, since a program's listing
-  is pointed at so. "In response to the editor's invitation" passes, and so would an
-  answer to the editor that names an invitation, a call or a note.
+  contributions are known by a verb of writing followed only by the words a contribution
+  puts before "manuscript", "draft", "version" or "submission", so "we revised the
+  original submission to add" is not read; the acknowledgements by their thanks to the end
+  of the sentence, so a residue later in a sentence of thanks is not read by the rules of
+  an earlier version. "The revised manuscript" warns in a statement of contributions that
+  does not say who approved it. A change to the text fails only where it names a section
+  by its capitalised name, the manuscript or its main text, says "accordingly", or is a
+  rephrasing; "we have revised the discussion of renal dosing", in lower case, only warns,
+  and "This has now been clarified" warns only at the end of its clause, so "This has now
+  been clarified in the response" passes. Lines in brackets, "(lines 245-250)", only warn,
+  since a program's listing is pointed at so. "In response to the editor's invitation"
+  passes, and so would an answer to the editor that names an invitation, a call or a note.
 - **G6's thresholds are measured on people only, in one field.** Each rate's threshold is
   the 99th percentile of 291 biomedical research articles of 2010 to 2022 (see "The
   AI-writing lint measures rate, not presence"), so about one paper by people in a hundred

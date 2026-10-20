@@ -6660,7 +6660,8 @@ where each would go. The author decided four things on 2026-10-20:
 - **A thread resolved in Word is filed open**, marked `resolved_in_word`. Word records that
   it was resolved and neither who did it nor why, and either side can click it.
 
-A finding holds the comment word for word, its date, and the replies to it, which Word keeps
+A finding holds the comment word for word, or nothing for a comment that is a picture
+alone, which is filed too. It holds its date, and the replies to it, which Word keeps
 as comments of their own tied to it by `w15:paraIdParent` in `commentsExtended.xml`. It holds
 the words the comment's range covers and the kind of block the range starts in. Where the
 import vouches for the paragraph's identifier, as it must before it merges an edit there and
@@ -12608,6 +12609,20 @@ Open, recorded as each change landed:
     `word/document.xml` is read for ranges.
   - *Writing a record again keeps its values, not its layout*: quoting and line breaks are
     the tool's.
+  - *A record deleted whole is not noticed* (round 1 of #375). The seal covers what is in
+    a record, and nothing outside it says what was filed; git does. Importing the
+    document again files it anew.
+  - *A finding's identifier and its paragraph's digest are those of the import that filed
+    it* (round 1 of #375). A comment on a paragraph whose rewording the same `--apply`
+    merges is said at once to be on a paragraph changed since, which it is; and after a
+    move that `--apply` makes, its identifier, which is a position, can name the
+    neighbour. G11 finds the paragraph by its text, never by the identifier.
+  - *A document refused whole vouches for a value paragraph it may never have carried*
+    (round 1 of #375): with no build to compare with, its comment there is anchored
+    where the import of its edits would first have asked the build.
+  - *Two comments by one person, word for word, in a document that keeps no paragraph
+    ids and had its dates removed (Word's "remove personal information")* share a key,
+    and the second, added in a later copy, is taken for the first (round 1 of #375).
 
 Closed since, and why each mattered (an open gap goes above this line):
 

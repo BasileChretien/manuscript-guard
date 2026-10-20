@@ -26,6 +26,8 @@ from manuscript_guard.text.shown import one_line
 GATE = "G11"
 #: How much of a comment a finding shows.
 SHOWN = 120
+#: What is shown of a comment with no words: a picture alone, or an empty comment.
+NO_WORDS = "(no words: a picture, or nothing Word keeps as text)"
 
 
 def _answered(finding: dict) -> bool:
@@ -120,12 +122,12 @@ def _unanswered(path: Path, document: dict, finding: dict, passages, severity: s
     on += f" {finding['where']}" if finding.get("where") else ""
     said = f"  [{'; '.join(notes)}]" if notes else ""
     anchored = finding.get("anchored") or ""
+    words = one_line(finding["finding"], SHOWN) or NO_WORDS
     return Finding(
         gate=GATE,
         code="comment-unanswered",
         severity=severity,
-        message=f"{_who(path, document)} {finding['id']}, {on}: "
-        f"{one_line(finding['finding'], SHOWN)}{said}",
+        message=f"{_who(path, document)} {finding['id']}, {on}: {words}{said}",
         path=path,
         context=f"made on: {one_line(anchored, 140)}" if anchored else None,
         hint="answer it in this record: what was done in `resolution` (with `resolved_on`), "

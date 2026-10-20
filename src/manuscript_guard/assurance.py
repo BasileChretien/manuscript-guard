@@ -219,12 +219,11 @@ def _comments(project: Project) -> list[str]:
     """The co-authors' Word comments `import` filed, and how many are still unanswered."""
     from manuscript_guard.filed_comments import records
 
-    findings = [
-        finding
-        for path in records(project)
-        for finding in _read(path).get("findings") or []
-        if isinstance(finding, dict)
-    ]
+    findings = []
+    for path in records(project):
+        listed = _read(path).get("findings")
+        # One the schema refuses is G11's to report, as it is G11's to count.
+        findings += [f for f in listed if isinstance(f, dict)] if isinstance(listed, list) else []
     if not findings:
         return []
     open_ = sum(

@@ -990,7 +990,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     except RoundTripError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
-    decided, told = [], set()
+    decided = []
     if offered:
         from manuscript_guard.suggestions import decisions
 
@@ -1000,17 +1000,14 @@ def cmd_import(args: argparse.Namespace) -> int:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2
         # The panel's own comments are its findings, which are in the records, and a reply
-        # to one is an answer, said with the suggestions: `told` keeps them out of the
-        # comments filed.
+        # to one is an answer, said with the suggestions: neither is filed (`_threads`).
     known = tagged_paragraphs(project)
     supplementary = _which_document(project, known, returned, edited.name)
     if supplementary is None:
         # The comments need no identifier to be read, and are the most useful thing in the
         # document: refusing the edits is no reason to drop them. With no telling which
         # document it is they have no record to go in, so they are printed and not filed.
-        threads = _threads(project, edited, {}, told)
-        if threads is None:
-            return 2
+        threads = _threads(project, edited, {}, offered) or []
         _report_comments(threads)
         if threads:
             print(f"\nThe comments are not filed: each is filed with the document it was made "
@@ -1233,10 +1230,10 @@ def cmd_import(args: argparse.Namespace) -> int:
 
     # Each comment, anchored where the import vouches for the paragraph it was made on, with
     # the identifier that paragraph has now, as `respond --open` anchors a point.
-    threads = _threads(project, edited, {name: name for name in trusted} | dict(followed), told)
-    if threads is None:
-        return 2
-    if plan.empty and not threads and not strangers and not unaccounted:
+    threads = _threads(project, edited, {name: name for name in trusted} | dict(followed), offered)
+    unread = threads is None
+    threads = threads or []
+    if plan.empty and not threads and not strangers and not unaccounted and not unread:
         what = "supplement" if supplementary else "manuscript"
         print(f"nothing came back: the document matches the {what} on disk.")
         if unexamined:
@@ -1289,7 +1286,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         or plan.held_back
     ) or (not args.apply and bool(plan.moved or plan.merged))
     # A paragraph not compared is not applied either, nor a comment that could not be filed.
-    return 1 if outstanding or strangers or unaccounted or not filed else 0
+    return 1 if outstanding or strangers or unaccounted or not filed or unread else 0
 
 
 def _answer_suggestions(project, decided, merged, *, applying: bool, named) -> None:
@@ -1376,30 +1373,31 @@ def _report_comments(comments) -> None:
     """Each co-author comment, with what it was made on and the replies to it. The comment
     is the co-author's text, quoted, never the tool's words."""
     from manuscript_guard.filed_comments import made_on
+    from manuscript_guard.gates.comments import NO_WORDS
 
     for comment in comments:
         author = printable(f"{comment.author} ({comment.date})").replace("\n", " ")
         block = getattr(comment, "block", "")
         on = f", {made_on(block)}" if block else ""
         print(f"\ncomment from {author}{on}, quoted:")
-        print(quoted(comment.text))
+        print(quoted(comment.text) if comment.text else f"    {NO_WORDS}")
         for reply in getattr(comment, "replies", ()):
             by = printable(f"{reply.by} ({reply.date})").replace("\n", " ")
             print(f"  reply from {by}, quoted:")
             print(quoted(reply.text))
 
 
-def _threads(project, edited: Path, vouched: dict[str, str], told) -> list | None:
-    """The comment threads of a returned document (`filed_comments.threads_of`), or None
-    once it has said why they cannot be read."""
+def _threads(project, edited: Path, vouched: dict[str, str], offered) -> list | None:
+    """The comment threads of a returned document (`filed_comments.threads_of`), less a
+    review panel's own (`offered`), or None once it has said why they cannot be read."""
     from manuscript_guard.filed_comments import FilingError, threads_of
     from manuscript_guard.roundtrip import tagged_paragraphs
 
     sources = {name: entry[1] for name, entry in tagged_paragraphs(project).items()}
     try:
-        return threads_of(edited, vouched=vouched, sources=sources, told=told)
+        return threads_of(edited, vouched=vouched, sources=sources, panel=offered)
     except FilingError as exc:
-        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        print(f"manuscript-guard: {exc}. Its comments are not filed.", file=sys.stderr)
         return None
 
 
@@ -1411,21 +1409,15 @@ def _comments_all_the_same(
     identifiers say which document it is, and anchored only to a paragraph whose identifier
     the import vouches for, as an edit is merged only there."""
     from manuscript_guard.roundtrip import RoundTripError, read_blocks, tagged_paragraphs
-    from manuscript_guard.tracked import TrackedError
 
     try:
         returned = read_blocks(edited)
-        told: set = set()
-        if offered:
-            from manuscript_guard.suggestions import decisions
-
-            told = decisions(edited, offered)[1]
-    except (RoundTripError, TrackedError) as exc:
+    except RoundTripError as exc:
         print(f"\nThe comments in {edited.name} are not filed: {exc}")
         return
     present = {n for b in returned if not b.table for n in b.names}
     trusted = numbered.trusted | (numbered.unsure & present)
-    threads = _threads(project, edited, {n: n for n in trusted} | dict(numbered.followed), told)
+    threads = _threads(project, edited, {n: n for n in trusted} | dict(numbered.followed), offered)
     if not threads:
         return
     supplementary, _refusal = _document_kind(

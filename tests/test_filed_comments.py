@@ -227,11 +227,13 @@ def test_a_thread_resolved_in_word_reads_as_resolved() -> None:
 def test_a_comment_of_several_paragraphs_keeps_them_and_is_known_with_its_spaces_folded(
     tmp_path: Path,
 ) -> None:
-    """Stored with a line break between its paragraphs, as written. The panel's comments are
-    told by the reader of replies, which joins paragraphs with a space: compared as written,
-    one of two paragraphs would have been filed as a co-author's."""
+    """Stored with a line break between its paragraphs, as written. A panel's comment is
+    known by the digest of its words with their spaces folded, as the document of
+    suggestions records it: by its words as stored here, one of two paragraphs would not
+    have been known, and would have been filed as a co-author's."""
     from manuscript_guard.docxtext import paragraphs_of
     from manuscript_guard.filed_comments import threads_of
+    from manuscript_guard.suggestions import short_digest
 
     returned = commented(FIRST, tmp_path / "two.docx", [
         {"on": "Whether the signal extends", "paragraphs": ["First line.", "Second line."]},
@@ -240,8 +242,54 @@ def test_a_comment_of_several_paragraphs_keeps_them_and_is_known_with_its_spaces
     kept = dict(vouched={n: n for n in names}, sources={n: n for n in names})
     (thread,) = threads_of(returned, **kept)
     assert thread.text == "First line.\nSecond line."
-    told = {("Ann Coauthor", "First line. Second line.")}
-    assert threads_of(returned, **kept, told=told) == []
+    panel = [{"author": "Ann Coauthor", "comment": short_digest("First line. Second line.")}]
+    assert threads_of(returned, **kept, panel=panel) == []
+
+
+def test_the_panel_s_comments_are_known_by_what_they_are_not_by_their_words(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #375: the panel's comments and the replies to them were left out by their
+    author and words wherever they stood, so a co-author's "Agreed." of their own went with
+    the one they wrote under the panel's comment."""
+    from manuscript_guard.docxtext import paragraphs_of
+    from manuscript_guard.filed_comments import threads_of
+    from manuscript_guard.suggestions import short_digest
+
+    finding = "Finding r8-pe-02 is about the wording."
+    returned = commented(FIRST, tmp_path / "panel.docx", [
+        {"on": "Whether the signal extends", "author": "Panel Reader", "text": finding},
+        {"on": "Whether the signal", "author": "Ana Author", "text": "Agreed.", "reply_to": 0},
+        {"on": "Drug-induced hepatic injury", "author": "Ana Author", "text": "Agreed."},
+    ])  # fmt: skip
+    names = {n for p in paragraphs_of(returned) for n in p.names}
+    panel = [{"author": "Panel Reader", "comment": short_digest(finding)}]
+    threads = threads_of(returned, vouched={n: n for n in names}, sources={n: n for n in names},
+                         panel=panel)  # fmt: skip
+    assert [(t.author, t.text, t.replies) for t in threads] == [("Ana Author", "Agreed.", ())]
+
+
+@needs_pandoc
+def test_a_comment_with_no_words_is_filed_and_reported(project: Path, tmp_path: Path) -> None:
+    """Round 1 of #375: a comment that is a picture alone, with a reply, was filed with an
+    empty `finding` the schema refused, and every `check` then failed. Without a reply it
+    was not filed at all."""
+    returned = commented(built(project), tmp_path / "back.docx", [
+        {"on": "Whether the signal extends", "text": ""},
+        {"on": "Whether the signal", "author": "Ben Second", "text": "What do you mean?",
+         "reply_to": 0},
+        {"on": "Drug-induced hepatic injury", "author": "Ben Second", "text": ""},
+    ])  # fmt: skip
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert code == 0, said
+    assert "(no words" in said
+    filed = by_commenter(project)
+    assert [(f["finding"], [r["text"] for r in f.get("replies", [])]) for f in
+            filed["Ann Coauthor"]] == [("", ["What do you mean?"])]  # fmt: skip
+    assert [f["finding"] for f in filed["Ben Second"]] == [""]
+    code, said = run("check", str(project))
+    assert code == 0, said
+    assert said.count("(no words: a picture, or nothing Word keeps as text)") == 2
 
 
 def test_an_unreadable_manuscript_file_does_not_hide_the_comments(project: Path) -> None:

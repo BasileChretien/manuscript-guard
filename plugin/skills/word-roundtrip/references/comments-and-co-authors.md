@@ -39,14 +39,16 @@ A reply in Word is kept with its comment, and Word's Resolve is kept as
 says when the paragraph a comment was made on has changed since: the change may be the
 answer, and it still has to be written down.
 
-Change only `severity` and the answer fields. The record is sealed: a comment reworded or
-deleted by hand is reported as `comments-altered`, and `import` adds nothing more to that
-record until it is put back. Keep notes in the answer fields, not in `# ...` lines, which
-`import` will not write over.
+Change only `severity` and the answer fields. The record is sealed: a comment reworded,
+or taken out of the record, is reported as `comments-altered`, and `import` adds nothing
+more to that record until it is put back. A record deleted whole is not noticed by
+anything, so keep the records in git. Keep notes in the answer fields, not in `# ...`
+lines, which `import` will not write over.
 
 Importing the same document again, or another copy of the same build, files only what is
 new. Word keeps an id for each comment through a save, and that is how a comment is known
-again; a reply added since joins its comment. A comment is filed even when the edit to its
+again; a reply added since joins its comment. A comment with no words, a picture alone,
+is filed too. A comment is filed even when the edit to its
 paragraph is refused. It is filed too when the whole document is refused because the
 manuscript changed since the build. It then has an identifier only where its paragraph still
 reads as it did, and is marked `unmatched` where it does not: find it by the words it was

@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -148,15 +148,21 @@ def threads_of(
     *,
     vouched: dict[str, str],
     sources: dict[str, str],
-    told: Iterable[tuple[str, str]] = (),
+    panel: Sequence[dict] = (),
 ) -> list[Thread]:
     """The comment threads in a returned document, in the order Word keeps them.
 
     `vouched` maps each identifier the document carries that the import vouches for to the
     identifier its paragraph has now (`roundtrip.named_now`); `sources` holds the source
-    text of each paragraph by the identifier it has now. A comment `told` names by its author
-    and words is not a co-author's: a review panel's own, written with its suggested edits,
-    or a reply to one (`suggestions.decisions`).
+    text of each paragraph by the identifier it has now. A comment a review panel wrote
+    with its suggested edits is not a co-author's, and neither is its thread: `panel` is
+    the document's record of them (`tracked.offered_of`), and the comment is known as
+    `suggestions.decisions` knows it, by its author and the digest of its words. Known
+    by words alone, a co-author's "Agreed." in a thread of their own was dropped with
+    the one they wrote under the panel's comment.
+
+    A comment with no words, a picture alone or an empty comment, is filed too: it is a
+    co-author's all the same, and its place says what it is about.
     """
     from manuscript_guard.docxtext import (
         DocumentUnreadable,
@@ -173,9 +179,9 @@ def threads_of(
         paragraphs = paragraphs_of(document)
     except DocumentUnreadable as exc:
         raise FilingError(f"{document.name} is not a readable .docx: {exc}") from exc
-    # By author and words with their spaces folded: Word's reader of replies joins a
-    # comment's paragraphs with a space, and this one with a line break.
-    skipped = {(author, _folded(text)) for author, text in told}
+    from manuscript_guard.suggestions import short_digest
+
+    ours = {(entry["author"], entry["comment"]) for entry in panel}
     starts = {}
     for paragraph in paragraphs:
         for ident in paragraph.comments:
@@ -197,15 +203,13 @@ def threads_of(
 
     out = []
     for comment in comments:
-        if root_of(comment) is not comment or (comment.author, _folded(comment.text)) in skipped:
+        if root_of(comment) is not comment:
+            continue
+        if (comment.author, short_digest(comment.text)) in ours:
             continue
         answers = tuple(
-            Reply(r.author or UNNAMED, r.date[:10], r.text)
-            for r in replies.get(id(comment), ())
-            if r.text and (r.author, _folded(r.text)) not in skipped
+            Reply(r.author or UNNAMED, r.date[:10], r.text) for r in replies.get(id(comment), ())
         )
-        if not comment.text and not answers:
-            continue
         paragraph = starts.get(comment.identifier)
         block = _block(paragraph)
         named = paragraph.names[0] if block == "paragraph" else ""
@@ -230,10 +234,6 @@ def threads_of(
             )
         )
     return out
-
-
-def _folded(text: str) -> str:
-    return " ".join(text.split())
 
 
 def made_on(block: str) -> str:
@@ -467,6 +467,12 @@ def write_filing(filing: Filing) -> None:
 
     if filing.document is None:
         return
+    # Checked as G11 will read it: a record that does not fit its schema is counted by
+    # nothing, its unanswered comments included, and import would add nothing to it.
+    checked = validate(filing.document, "comments", filing.path, gate="G11")
+    if not checked.ok:
+        said = "; ".join(finding.message for finding in checked.failures)
+        raise FilingError(f"{filing.path.name} would not fit its schema ({said}); nothing written")
     text = yaml.safe_dump(filing.document, sort_keys=False, allow_unicode=True, width=88)
     if yaml.safe_load(text) != filing.document:
         raise FilingError(f"{filing.path.name} would not read back as written; nothing written")

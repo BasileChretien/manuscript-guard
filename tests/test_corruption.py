@@ -9230,6 +9230,34 @@ def test_a_comments_record_that_cannot_be_read_fails_at_every_stage(project: Pat
     assert "comments-unreadable" in {f.code for f in _g11(project, submission=False).failures}
 
 
+def test_a_comments_record_with_no_list_of_findings_is_reported_and_not_a_crash(
+    project: Path,
+) -> None:
+    """Round 1 of #375: `check`'s summary counted the findings of every record, and one
+    whose `findings` was not a list took `check` down."""
+    from manuscript_guard.cli import main
+
+    path = _filed(project, "Is there a newer reference?")
+    record = _record_of(path)
+    record["findings"] = 3
+    _rewrite(path, record)
+    assert main(["check", str(project)]) == 1
+    assert "schema-violation" in {f.code for f in _g11(project, submission=False).failures}
+
+
+def test_a_record_that_would_not_fit_its_schema_is_not_written(project: Path) -> None:
+    from manuscript_guard.filed_comments import FilingError, Thread, plan_filing, write_filing
+
+    thread = Thread(key="durable:00000001", author="Ann Coauthor", date="2026-10-19",
+                    text="Fine.", block="paragraph", anchored="words")  # fmt: skip
+    (filing,) = plan_filing(load_project(project)[0], [thread], stamp=_STAMP, printed=None,
+                            supplementary=False, today="2026-10-20")  # fmt: skip
+    filing.document["findings"][0]["block"] = "footnote"
+    with pytest.raises(FilingError, match="would not fit its schema"):
+        write_filing(filing)
+    assert not filing.path.exists()
+
+
 def test_import_adds_nothing_to_a_record_changed_by_hand(project: Path) -> None:
     """Adding to it would seal the change as the commenter's."""
     from manuscript_guard.filed_comments import Thread, plan_filing

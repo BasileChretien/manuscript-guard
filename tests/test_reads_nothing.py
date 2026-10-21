@@ -128,6 +128,8 @@ COMMANDS = {
     "transcribe": Zero("the reporting guidelines' sources",
                        why="a recipe whose source is missing is counted as failed (exit 1)"),
     "verify": Zero("the results fragments, re-run", exits=2, argv=("verify", "{project}")),
+    "package": Zero("the results fragments, and the files that made them", exits=2,
+                    argv=("package", "{project}")),
 }
 
 

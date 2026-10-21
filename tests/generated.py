@@ -989,6 +989,60 @@ FIXED_LINKS = (
     "https://github.com/someone/study/tree/4f2a9c1",
 )
 
+#: The DOI `paper.yaml` gives a deposited package; each way a statement writes it; and DOIs
+#: that begin as it does and are others: a digit more, one fewer, a path after it, another
+#: registrant. What the reading of a statement for its deposit must tell apart.
+DEPOSIT_DOI = "10.5281/zenodo.1234567"
+DOI_NAMED = (
+    "10.5281/zenodo.1234567", "https://doi.org/10.5281/zenodo.1234567.",
+    "doi:10.5281/ZENODO.1234567", "<https://doi.org/10.5281/zenodo.1234567>",
+    "(10.5281/zenodo.1234567)", "*10.5281/zenodo.1234567*", "DOI: 10.5281/zenodo.1234567;",
+)  # fmt: skip
+DOI_NOT_NAMED = (
+    "10.5281/zenodo.12345678", "10.5281/zenodo.123456", "10.5281/zenodo.1234567/files",
+    "10.52810/zenodo.1234567", "https://doi.org/10.5281/zenodo.1234567-v2",
+)  # fmt: skip
+
+
+@st.composite
+def deposit_statements(draw: st.DrawFn) -> tuple[str, list[str], list[str]]:
+    """Drawn words; the same with each way of naming the deposit put in at a place drawn, one
+    text for each; and the same with each DOI that is another put in, one text for each."""
+    text = draw(texts())
+    pieces = text.split(" ")
+
+    def put(written: str) -> str:
+        at = draw(st.integers(0, len(pieces)))
+        return " ".join([*pieces[:at], written, *pieces[at:]])
+
+    return text, [put(written) for written in DOI_NAMED], [put(other) for other in DOI_NOT_NAMED]
+
+
+#: Table cells that state one count, as `{n}` is filled with it; and cells that hold a whole
+#: number and state no count: a decimal, a bound, a label, a range, a share, an interval, a
+#: sign. What the reading of a cell for a count must tell apart.
+COUNT_CELLS = ("{n}", " {n} ", "{n} ({p})", "{n} ({p}%)", "{n} ( {p} % )", "{n}/{m}", "{n} / {m}")
+NO_COUNT_CELLS = (
+    "{n}.0", "{n}.00 (ref)", "<{n}", "\N{LESS-THAN OR EQUAL TO}{n}", "{n} (reference)",
+    "{n}-{m}", "{n} to {m}", "{n}%", "{p}", "-{n}", "+{n}", "{n} ({p} to {q})", "{n}, {m}",
+    "{n} [{p}]", "~{n}", "{n}e3",
+)  # fmt: skip
+
+
+@st.composite
+def count_cells(draw: st.DrawFn) -> list[tuple[str, int | None]]:
+    """A cell of each shape, in an order drawn, each with its own numbers, and the count each
+    states, or None."""
+    shapes = [(shape, True) for shape in COUNT_CELLS] + [(s, False) for s in NO_COUNT_CELLS]
+    out = []
+    for shape, counts in draw(st.permutations(shapes)):
+        n = draw(st.integers(0, 120))
+        p = f"{draw(st.integers(0, 99))}.{draw(st.integers(0, 9))}"
+        q = f"{draw(st.integers(0, 99))}.{draw(st.integers(0, 9))}"
+        cell = shape.format(n=n, p=p, q=q, m=draw(st.integers(1, 9999)))
+        out.append((cell, n if counts else None))
+    return out
+
 
 #: A placeholder of each kind G6 reads, as it is typed and as the rule finds it; the words
 #: that are one in the manuscript only, in lower case; and what looks like one and is prose:
@@ -1829,6 +1883,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reply numbers": texts(NOTATED),
     "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
+    "deposit named": texts(DOI_NAMED + DOI_NOT_NAMED),
+    "count cells": count_cells().map(lambda drawn: [cell for cell, _count in drawn]),
     "placeholders": texts(
         tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
     ),

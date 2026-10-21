@@ -47,6 +47,41 @@
         }
       }
     },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What `manuscript-guard package` deposits besides the code and the results, and the deposit's DOI once it has one.",
+      "properties": {
+        "licence": {
+          "description": "The SPDX identifier of the licence the deposit is under, as CITATION.cff names it, or a list of them (code and data under two): `MIT`, `[MIT, CC-BY-4.0]`. The licence file itself is the project's LICENSE; the tool chooses none.",
+          "oneOf": [
+            { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9.+-]*$" },
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9.+-]*$" }
+            }
+          ]
+        },
+        "share": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Inputs the analysis declared that may be deposited, each as its path in the results' provenance. An input declared synthetic goes without being listed; one declared restricted never goes, and listing it is refused. Every other input is withheld and listed in INPUTS.md.",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "request": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How to obtain the inputs the package withholds: who to apply to, and on what terms. Required by `package` when it withholds any."
+        },
+        "doi": {
+          "type": "string",
+          "pattern": "^10\\.\\d{4,9}/\\S+$",
+          "description": "The DOI of the deposited package, as the repository reserved or gave it, without the resolver. G4 warns while the Data availability statement does not name it, and fails at submission."
+        }
+      }
+    },
     "stage": {
       "enum": ["design", "analysis", "drafting", "internal-review", "submission"],
       "description": "How far along the work is. Every gate runs at every stage; the stage decides which findings fail rather than being reported as not yet due. A checker that demands everything from the first day is a checker that gets switched off on the second. Defaults to drafting.",

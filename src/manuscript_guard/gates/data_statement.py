@@ -192,6 +192,84 @@ def cited_in(statement: str, project: Project) -> str:
     )
 
 
+def names_doi(text: str, doi: str) -> bool:
+    """Whether a statement names this DOI: as one of the DOIs it writes, bare or in a link,
+    in any case, and not as the start of a longer one ("10.5281/zenodo.12345678" does not
+    name 10.5281/zenodo.1234567)."""
+    from manuscript_guard.gates.identifiers import normal_doi
+
+    wanted = _plain_doi(normal_doi(doi))
+    return any(_plain_doi(found.group(0)) == wanted for found in _DOI.finditer(text))
+
+
+def _cited_dois(statement: str, project: Project) -> str:
+    """The DOIs of every work the statement cites by key, whatever its type: a package cited
+    as `[@doe2026code]` is named by its DOI, whether the entry calls it software or data."""
+    from manuscript_guard.literature.bibfile import read_entries
+    from manuscript_guard.zotero import find_citations
+
+    path = project.path("literature") / BIB_FILE
+    if not path.is_file():
+        return ""
+    keys = {use.citekey for use in find_citations(statement, path)}
+    entries = read_entries(path)
+    return " ".join(str(entries[key]["doi"]) for key in sorted(keys)
+                    if entries.get(key, {}).get("doi"))  # fmt: skip
+
+
+def _profile_heading(project: Project) -> str | None:
+    """The heading the journal's profile gives the statement, where it gives one."""
+    from manuscript_guard.contracts._schema import ContractError, read_structured
+    from manuscript_guard.gates.journal import profile_path
+
+    slug = project.target_journal
+    path = profile_path(project, slug) if slug else None
+    try:
+        document = read_structured(path) if path is not None and path.is_file() else None
+    except ContractError:
+        return None  # G4 says the profile cannot be read
+    policy = document.get("data_availability") if isinstance(document, dict) else None
+    return policy.get("heading") if isinstance(policy, dict) else None
+
+
+def check_package_doi(project: Project, *, submission: bool = False) -> Report:
+    """Where `paper.yaml` names the DOI of the deposited package (`package.doi`), the Data
+    availability statement names it: a warning while the paper is written, a failure at
+    submission."""
+    from manuscript_guard.contracts._schema import read_text
+    from manuscript_guard.findings import FAIL
+    from manuscript_guard.gates.numbers import source_files
+
+    package = project.setting("package")
+    doi = package.get("doi") if isinstance(package, dict) else None
+    if not doi:
+        return Report()
+    severity = FAIL if submission else WARN
+    heading = _profile_heading(project)
+    folder = project.path("manuscript")
+    for path in source_files(folder, main_text_only=True) if folder.is_dir() else ():
+        statement = statement_text(read_text(path), heading)
+        if statement is None:
+            continue
+        if names_doi(f"{statement}\n{_cited_dois(statement, project)}", str(doi)):
+            return Report()
+        return Report().with_findings(Finding(
+            gate=GATE, code="package-doi-not-named", severity=severity, path=path,
+            message=f"the data availability statement does not name {doi}, the DOI paper.yaml "
+            "gives the deposited package",
+            context=" ".join(statement.split())[:160],
+            hint="name the deposit and its DOI in the statement, and cite it in the reference "
+            "list; or put package.doi right if the deposit has another",
+        ))  # fmt: skip
+    return Report().with_findings(Finding(
+        gate=GATE, code="package-doi-not-named", severity=severity, path=folder,
+        message=f"the manuscript has no data availability statement, and paper.yaml gives the "
+        f"deposited package the DOI {doi}",
+        hint="add the statement, under a heading such as `# Data availability`, and name the "
+        "deposit and its DOI in it",
+    ))  # fmt: skip
+
+
 def check_data_statement(document: dict, text: str, path: Path, project: Project) -> Report:
     """The statement held to the profile's data policy, where the profile declares one."""
     policy = document.get("data_availability")

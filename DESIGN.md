@@ -5008,6 +5008,72 @@ before `raw_sha256`, is a warning that the input is not fetched (`input-not-fetc
 `input-missing` had failed. A file over 1024 bytes, or one that reads as neither, is the
 data, hashed as before.
 
+## A package to deposit, with what the custodian keeps left out
+
+A journal asks for the code and the results to be deposited where a DOI names them, and the
+Data availability statement to cite it. Everything a deposit needs was already recorded: the
+scripts, the fragments and their digests, the inputs each read, the language and the version
+each was written with, the lockfiles, the plan. Nothing put it together, so an author zipped
+a folder by hand, and the folder held what was in it: the stored PDFs of cited papers, a
+restricted extract that git ignored but the disk did not, and the review records with the
+co-authors' names. `manuscript-guard package` writes `build/package/<name>/` and the .zip of
+it. Basile settled four questions on 2026-10-21; each is below.
+
+**What goes in is a list, and an input goes only by the author's word.** The package is made
+from what may go, not from the project less what may not, so a folder the list does not name
+is never looked in (`deposit/plan.py`): `analysis/` and `figures/` file by file, the
+fragments with their digests, the plan, its frozen copy, the data dictionary and the record
+of the data sources by name, the literature ledger and `references.bib`, the lockfiles, and
+the licence. In a repository, a file git does not track is withheld and said, since it may be
+data kept out of git on purpose, and so is a link. An input goes in only when the analysis
+declared it synthetic or `paper.yaml` lists it in `package.share`; one declared restricted
+never goes, and listing it is refused. Every other input is withheld and listed in INPUTS.md,
+with its size, the SHA-256 of its bytes and how to obtain it (`package.request`, required
+when anything is withheld), so a copy obtained from the custodian can be checked against the
+one the results were computed from. A stored copy of a cited work never goes, and neither do
+the review records, `authors.yaml`, the approvals and sign-offs, or the build.
+
+**A fragment is deposited whole, so the custodian's minimum is read across all of it.** G2
+reads the counts the manuscript prints, and "<5" in the paper holds nothing back when the
+file beside it says 3. Where `custodian.minimum_cell_count` is declared, the package refuses
+while a fragment holds a count from one to below it: a value that is a count as G2 reads one,
+whatever its display; a table cell past the first column that states one count alone, with a
+share in brackets or over a denominator (`count_in_cell`); a model card's rows read, used
+and dropped, its events and its events at each level; a variable card's rows missing
+(`deposit/counts.py`). The data custodian `authors.yaml` names may sign the list off
+(`PACKAGE/custodian/small-counts`), and a list that changes is another statement. Where the
+custodian restricts sending, the package is written only once they have signed off its files
+and their digests as they stand (`PACKAGE/custodian/deposit`, and `-with-manuscript` for the
+package that carries it); a changed script is a package they have not seen.
+
+**The prose stays out.** Whether a manuscript may be deposited before it is published is the
+journal's and the author's to say, so BOUND.md lists instead each value, table and figure the
+manuscript binds, what it prints and the file and section that print it; `--with-manuscript`
+adds the source.
+
+**The tool uploads nothing.** It prints the steps: reserve the DOI where the repository
+allows it, write it as `package.doi`, package again so that README.md and CITATION.cff carry
+it, upload. Once `package.doi` is declared, G4 warns while the Data availability statement
+does not name it, and fails at submission (`package-doi-not-named`): a DOI is named when the
+statement writes it, bare or in a link, in any case, or cites by key an entry that has it, and
+not when it writes a longer one that begins the same way.
+
+The package refuses while G1 fails, as `submit` does while the submission check fails, and
+`--skip-checks` writes it with MANIFEST.yaml saying so. No file it writes holds a date or a
+clock, and the .zip gives every entry the same date and holds them in order, so two packages
+of an unchanged project are the same bytes and a custodian's sign-off of one holds for the
+other. The commit, the tree's state and the version of the tool that packaged it are in
+MANIFEST.yaml, which nobody signs. Each file copied is hashed again in the package and held to
+the plan's digest; one that changed in between stops the package.
+
+What this rests on: deterministic tests in CI (`tests/test_package.py`): the example packaged,
+unzipped and run again by `verify` from the unpacked folder with every value reproduced; an R
+analysis the same way where R is installed; a restricted input, an input nobody declared
+shareable, a pointer in place of an input, a file git does not track and a cited work's stored
+copy each left out of the folder written; each kind of small count refusing it; the
+custodian's two sign-offs; every digest of the manifest; and the generated reading of a cell
+and of a DOI (`tests/test_properties.py`). It has not been used on a real deposit.
+
 ## What a change makes stale
 
 The digests the gates record already form a graph, and each gate reads one edge of it: G1 an
@@ -11933,6 +11999,31 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
+- **A deposited package is not checked against the results once it is deposited.** After the
+  DOI exists, the analysis can be run again and the paper's numbers change, and the statement
+  still names a deposit of the old ones. Nothing records what was deposited for `check` to
+  compare: Basile chose on 2026-10-21 that G4 check only that the statement names
+  `package.doi`, and left this out.
+- **The custodian's minimum is read in the fragments, not in the figures.** A figure drawn
+  from a small count shows it in the package as it does in the paper. A table cell is read for
+  a count only where it states one in a shape `count_in_cell` knows: "3 (0.7)", "3/412", "3";
+  "3 of 412", a count with thousands separators, and a cell in the first column, which names
+  the rows, are not. A reference ratio typed as a bare "1" is read as a count, and the
+  custodian signs it off. A dataset's own file deposited by `package.share` is the author's
+  declaration, and nothing reads it for small cells.
+- **What a file is, the package takes from its folder and its name.** A file of `analysis/`
+  that is data, committed beside the scripts, goes in as a script would; only a declared
+  input is held to the declaration. A data dictionary goes in whole, the wording of a
+  licensed instrument's items with it, and nothing reads `instrument.licence` to withhold it.
+  A file git tracks under another case than the disk's, on a system that ignores case, is
+  taken for one git does not track and withheld.
+- **The package names the versions the results were written with, and installs nothing.**
+  A project with no lockfile is warned of, and the README names only the language versions,
+  the R packages the R emitter recorded and the versions the analysis declared as software.
+  An R analysis that sources the emitter from a path outside the project, as the tests do,
+  runs only where that path is.
+- **BOUND.md does not read a LaTeX manuscript.** The reading of its bindings is not built
+  yet, and the package says so with a warning (`package-bound-not-read`).
 
 Closed since, and why each mattered (an open gap goes above this line):
 

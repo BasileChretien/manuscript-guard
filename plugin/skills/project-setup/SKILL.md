@@ -158,7 +158,7 @@ Each finding names a code. The code says where to go:
 | a co-author should check what no gate can | [co-author-checking](../co-author-checking/SKILL.md) |
 | a co-author's edited .docx | [word-roundtrip](../word-roundtrip/SKILL.md) |
 | `point-unanswered`, `claimed-change-*` | [reviewer-response](../reviewer-response/SKILL.md) |
-| ready to send | [submission-pack](../submission-pack/SKILL.md) |
+| ready to send; `package-doi-not-named`, or the code and results to deposit | [submission-pack](../submission-pack/SKILL.md) |
 | a paper written without the toolkit | [paper-audit](../paper-audit/SKILL.md) |
 
 ## 6. What the hooks do in a project

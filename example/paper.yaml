@@ -21,6 +21,15 @@ target_journal: demo-journal
 reporting_guideline:
   - DEMO-OBS
 
+# What `manuscript-guard package` deposits besides the code and the results: the licence it
+# is under (the licence file is the repository's), and the inputs it may carry. The
+# simulated reports are declared synthetic and go without being listed; the list of event
+# terms is the author's to share, and is listed.
+package:
+  licence: MIT
+  share:
+    - data/event_terms.txt
+
 conventions:
   - pattern: '(?i)\bhalf[- ]normal\b'
     why: Phrase contains no digits; present only to show the extension point.

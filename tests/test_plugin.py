@@ -860,6 +860,7 @@ NAMED_NOWHERE = {
     "build/manuscript.docx": "written by `build`",
     "build/supplementary.docx": "written by `build`",
     "build/records/": "written by `build`",
+    "build/package/": "written by `package`",
     "journals/shortlist.yaml": "written with the author by the journal-profile skill",
     "analysis/00_feasibility.py": "the feasibility script a project writes, an example",
     "profiles/reporting/STROBE.yaml": "written by `transcribe`, and kept out of git",

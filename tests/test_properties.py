@@ -20,6 +20,7 @@ through this one, which is the third thing the reviews did.
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import json
 import math
@@ -84,6 +85,7 @@ from generated import (
     signs,
     sources,
     suggestion_paragraphs,
+    supplements,
     texts,
     typed,
     vector_figures,
@@ -2119,6 +2121,32 @@ def test_the_methods_named_as_such_are_read_before_a_heading_that_only_holds_the
     for text, _methods in papers:
         read = methods_gate.methods_in(text)
         assert read is not None and "Coriander" in read and "Basil" not in read, (text, read)
+
+
+@holds(40, supplements())
+def test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them(
+    drawn: tuple[str, list[tuple[int, bool, bool]]],
+) -> None:
+    """G9 read the main text's Methods alone, and G2 and G15 knew no supplement's name for
+    them: a parameter the supplement's Methods stated was reported absent, a threshold typed
+    under "eMethods 1" was a number nothing classified, and a model's kind typed there was
+    never read. Each section of a file of the supplement is the Methods to each gate exactly
+    where it should be: G9 reads every section whose heading holds "methods" and stands
+    under no Results, and each one under it that names a method, each once; G2's threshold
+    holds and G15 reads a model named only under a supplement's name of the Methods, or a
+    name of a method under one, under no Results. A table under "Supplementary methods" is
+    none of theirs (round 1 of #395)."""
+    text, sections = drawn
+    read = methods_gate.supplement_methods_in(text) or ""
+    assert read.count("Coriander") == sum(g9 for _at, g9, _held in sections), (text, read)
+    assert "Basil" not in read, (text, read)
+    numbers = READINGS["numbers"]()({"text": text})
+    held = [atom["rule"] == "significance-threshold" for atom in numbers if atom["text"] == "0.05"]
+    assert held == [held for _at, _g9, held in sections], text
+    starts = [at for at, _g9, _held in sections]
+    named = [bisect.bisect_right(starts, start) - 1 for start, _end, _kind in
+             models_gate.named_in_methods(text)]  # fmt: skip
+    assert named == [index for index, (_at, _g9, held) in enumerate(sections) if held], text
 
 
 # ------------------------------------------- a number a summary gives and the paper does not
@@ -6237,6 +6265,71 @@ def _the_methods_name_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(journal, "methods_sections", as_typed)
 
 
+def _no_supplement_names_the_methods(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    patch.setattr(classify, "SUPPLEMENT_METHODS", re.compile(r"(?!)"))
+
+
+def _a_supplement_s_name_with_words_after_it_is_no_methods(patch: pytest.MonkeyPatch) -> None:
+    # The name and its number alone: "eMethods 1. Data source" is not the Methods.
+    from manuscript_guard import classify
+
+    was = classify.SUPPLEMENT_METHODS.pattern
+    pattern = was.replace(r"(?:[^\w\n][^\n]*)?$", r"\s*$")
+    assert pattern != was
+    patch.setattr(classify, "SUPPLEMENT_METHODS", re.compile(pattern, re.IGNORECASE))
+
+
+def _only_the_first_of_a_supplement_s_methods_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(methods_gate, "supplement_methods_in", methods_gate.methods_in)
+
+
+def _a_section_under_one_read_is_read_again(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.sections import split_sections
+
+    def every(text: str, abstract_title: str | None = None) -> str | None:
+        found = methods_gate.methods_sections(split_sections(text), abstract_title)
+        return "\n\n".join(section.enclosed for section in found) or None
+
+    patch.setattr(methods_gate, "supplement_methods_in", every)
+
+
+def _a_supplement_s_name_holds_every_section_under_it(patch: pytest.MonkeyPatch) -> None:
+    # As first written in #395: under "Supplementary methods", a table was the Methods.
+    from manuscript_guard import classify
+
+    def any_title(section) -> bool:
+        return any(
+            classify.names_supplement_methods(title)
+            for title in section
+            if not isinstance(title, classify.Unprinted)
+        )
+
+    patch.setattr(classify, "_opened_by_the_supplement", any_title)
+
+
+def _g9_reads_all_under_a_supplement_s_methods(patch: pytest.MonkeyPatch) -> None:
+    # As first written in #395: each section found, with everything under it, once.
+    from manuscript_guard.text.sections import split_sections
+
+    def enclosed(text: str, abstract_title: str | None = None) -> str | None:
+        sections = split_sections(text)
+        found = {id(section) for section in methods_gate.methods_sections(sections, abstract_title)}
+        read: list[str] = []
+        under: int | None = None
+        for section in sections:
+            if under is not None and section.level > under:
+                continue
+            under = None
+            if id(section) in found:
+                read.append(section.enclosed)
+                under = section.level
+        return "\n\n".join(read) if read else None
+
+    patch.setattr(methods_gate, "supplement_methods_in", enclosed)
+
+
 def _the_abstract_s_methods_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
     _methods_found_without_the_paper_s_structure(patch, "below")
 
@@ -7997,6 +8090,30 @@ BROKEN = {
     "the Methods' name is read as typed when they are put first": (
         _the_methods_name_is_read_as_typed,
         test_the_methods_named_as_such_are_read_before_a_heading_that_only_holds_the_word,
+    ),
+    "no supplement's name of the Methods is a place the Methods are": (
+        _no_supplement_names_the_methods,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a supplement's name of the Methods with words after it is not one": (
+        _a_supplement_s_name_with_words_after_it_is_no_methods,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "only the first of a supplement's Methods is read": (
+        _only_the_first_of_a_supplement_s_methods_is_read,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a section of a supplement's Methods under one read is read again": (
+        _a_section_under_one_read_is_read_again,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a supplement's name of the Methods holds every section under it": (
+        _a_supplement_s_name_holds_every_section_under_it,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "G9 reads everything under a supplement's Methods heading": (
+        _g9_reads_all_under_a_supplement_s_methods,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
     ),
     "a number's sign is no part of it": (
         _a_sign_is_no_part_of_its_number,

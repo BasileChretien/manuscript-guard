@@ -25,6 +25,13 @@ text changed since it was read. An anchor in a paragraph that names no step the 
 fails, which is how a claim about a branch the analysis never took is caught. One on a
 heading's line is in no paragraph and is not judged.
 
+The Methods are the main text's and the supplement's, one ledger. In the supplement, the own
+text of a section whose heading holds "methods", "Supplementary methods" or "eMethods 1.
+Data source", and of a section under it that names a method too, is read with the main
+text's Methods for the parameters below. Its paragraphs that point at no step are listed
+where G2 reads them as the Methods, under a supplement's name of them ("Supplementary
+methods", "eMethods 1", not "Detailed methods"); an anchor is read wherever it stands.
+
 Two additions make the prompt useful rather than annoying. The report names *which* files
 changed, so the reconciliation is targeted. And a handful of parameters that must agree —
 the significance threshold, the software versions — are extracted from both sides and
@@ -40,14 +47,14 @@ from pathlib import Path
 
 import yaml
 
-from manuscript_guard.classify import is_methods
+from manuscript_guard.classify import METHODS_SECTIONS, is_methods, names_methods_place
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results, Step
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.emit import sha256_of
 from manuscript_guard.findings import WARN, Finding, Report
-from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.gates.numbers import is_supplementary, source_files
 from manuscript_guard.paths import SOURCE_SUFFIXES
 from manuscript_guard.text.masking import blank_comments
 from manuscript_guard.text.placeholders import parse, substitute
@@ -61,6 +68,12 @@ from manuscript_guard.text.sections import (
 
 GATE = "G9"
 LOCK = "methods.lock"
+#: The lock `methods --reconcile` writes: read against the Methods of the main text and of
+#: the supplement.
+SCHEMA = "manuscript-guard/methods-lock/2"
+#: A lock written before G9 read the supplement's Methods. Valid, and said of once where the
+#: supplement has Methods (`methods-supplement-unreconciled`).
+SCHEMA_MAIN_TEXT_ONLY = "manuscript-guard/methods-lock/1"
 
 
 
@@ -310,10 +323,24 @@ def compare(current: dict[str, str], recorded: dict[str, str]) -> Drift:
 
 
 def methods_text(project: Project) -> str | None:
-    """The Methods as G9 reads them: everything under the heading that is the paper's
-    Methods (`section_names.methods_sections`), the test G4 counts a required Methods
-    section present by. In the main text, as G4 reads it: "Supplementary methods" is not the
-    paper's Methods. None where no heading is.
+    """The Methods as G9 reads them: the main text's (`main_methods`), then each of the
+    supplement's (`supplementary_methods`), one ledger. None where neither has any.
+
+    The main text's alone, as G4 counts a required section, until 2026-10-21: a parameter
+    the supplement's Methods stated was reported absent, and in a paper whose Methods are all
+    in "eMethods" the lock's parameters were compared with no text."""
+    return _joined(main_methods(project), supplementary_methods(project))
+
+
+def _joined(main: str | None, supplement: list[tuple[Path, str]]) -> str | None:
+    parts = ([main] if main is not None else []) + [text for _path, text in supplement]
+    return "\n\n".join(parts) if parts else None
+
+
+def main_methods(project: Project) -> str | None:
+    """The main text's Methods: everything under the heading that is the paper's Methods
+    (`section_names.methods_sections`), the test G4 counts a required Methods section
+    present by, in the first file that has one. None where no heading is.
 
     The pattern this had of its own read "Methods" and "Materials and methods" and nothing
     else, so under "2. Methods" or "Patients and methods" a wrong parameter in the lock was
@@ -328,11 +355,60 @@ def methods_text(project: Project) -> str | None:
     return None
 
 
+def supplementary_methods(project: Project) -> list[tuple[Path, str]]:
+    """Each file of the supplement that has Methods, with its Methods as
+    `supplement_methods_in` reads them, in the order of the files."""
+    from manuscript_guard.gates.journal import abstract_title
+
+    named = abstract_title(project)
+    root = project.path("manuscript")
+    found = []
+    for path in source_files(root):
+        if is_supplementary(root, path):
+            text = supplement_methods_in(read_text(path), named)
+            if text is not None:
+                found.append((path, text))
+    return found
+
+
 def methods_in(text: str, abstract_title: str | None = None) -> str | None:
-    """The Methods of one file, as `methods_text` reads them, or None. `abstract_title` is
-    what the journal's profile calls the abstract, as G4 has it."""
+    """The Methods of one file of the main text, as `main_methods` reads them, or None.
+    `abstract_title` is what the journal's profile calls the abstract, as G4 has it."""
     found = methods_sections(split_sections(text), abstract_title)
     return found[0].enclosed if found else None
+
+
+def supplement_methods_in(text: str, abstract_title: str | None = None) -> str | None:
+    """The Methods of one file of the supplement, or None where they hold no text: the own
+    text of every section that the main text's Methods would be found as
+    (`methods_sections`), and of each section under one read that names a method too
+    (`classify.names_methods_place`: "Statistical analysis", "eMethods 2"), in the order
+    they stand. Every one, not the first: a supplement numbers its Methods, "eMethods 1" to
+    "eMethods 4", with its tables between them.
+
+    Not everything under such a heading, as the main text's Methods are read: a supplement
+    often has "Supplementary methods" over all of it, its tables and its results among them,
+    and a locked parameter matched by a number of theirs would be no check (round 1 of
+    #395). Under one of the main text's names (`classify.METHODS_SECTIONS`, "Statistical
+    analysis") everything is read, as G2 holds it. G2 and G15 read those names wherever they
+    stand, and G9 only under a section it reads (Known gaps)."""
+    sections = split_sections(text)
+    found = {id(section) for section in methods_sections(sections, abstract_title)}
+    read: list[str] = []
+    #: Each open section's level, whether it is read, and whether all under it is.
+    open_: list[tuple[int, bool, bool]] = []
+    for section in sections:
+        while open_ and open_[-1][0] >= section.level:
+            open_.pop()
+        _level, under_read, under_all = open_[-1] if open_ else (0, False, False)
+        reading = id(section) in found or (
+            under_read and (under_all or names_methods_place(section.title))
+        )
+        whole = reading and (under_all or METHODS_SECTIONS.match(section.title) is not None)
+        open_.append((section.level, reading, whole))
+        if reading:
+            read.append(section.body)
+    return "\n\n".join(read) if any(part.strip() for part in read) else None
 
 
 def _no_methods(project: Project) -> Report:
@@ -345,12 +421,46 @@ def _no_methods(project: Project) -> Report:
                 gate=GATE,
                 code="methods-not-found",
                 severity=WARN,
-                message="no heading in the main text names the Methods, so the parameters "
-                "in methods.lock were compared with no text",
+                message="no heading in the main text or the supplement names the Methods, so "
+                "the parameters in methods.lock were compared with no text",
                 path=project.path("manuscript"),
-                hint='a heading of the main text whose title holds "methods" is the Methods, '
-                'outside the abstract and under no Introduction, Results or Discussion: '
-                '"Methods", "2. Methods", "Patients and methods", "Statistical methods"',
+                hint='a heading whose title holds "methods" is the Methods, outside the '
+                'abstract and under no Introduction, Results or Discussion: "Methods", '
+                '"2. Methods", "Patients and methods", "Statistical methods" in the main text, '
+                '"Supplementary methods" or "eMethods 1" in the supplement',
+            ),
+        )
+    )
+
+
+def _supplement_unreconciled(
+    project: Project, lock: dict, supplement: list[tuple[Path, str]]
+) -> Report:
+    """A lock written before G9 read the supplement's Methods, in a project whose supplement
+    has some: said once, and nothing else changes. Its files and its pairs are held as they
+    always were, and `methods --reconcile` writes the lock that clears it."""
+    # A `schema:` left empty is no schema, as one left out is.
+    if not supplement or (lock.get("schema") or SCHEMA_MAIN_TEXT_ONLY) != SCHEMA_MAIN_TEXT_ONLY:
+        return Report()
+
+    def shown(path: Path) -> str:
+        try:
+            return path.relative_to(project.root).as_posix()
+        except ValueError:  # a manuscript folder outside the project
+            return path.as_posix()
+
+    return Report(
+        (
+            Finding(
+                gate=GATE,
+                code="methods-supplement-unreconciled",
+                severity=WARN,
+                message="methods.lock was written when G9 read only the main text's Methods, "
+                "so the supplement's Methods may never have been read against the code",
+                path=lock_path(project),
+                context=", ".join(shown(path) for path, _ in supplement),
+                hint="read the supplement's Methods against the analysis, then "
+                "`manuscript-guard methods --reconcile`",
             ),
         )
     )
@@ -373,7 +483,8 @@ def check_methods(
     if not current:
         return pairs.with_counts(analysis_files=0)
 
-    prose = methods_text(project)
+    supplement = supplementary_methods(project)
+    prose = _joined(main_methods(project), supplement)
     if prose is None:
         pairs = pairs.merge(_no_methods(project))
     recorded = lock.get("analysis", {})
@@ -393,7 +504,7 @@ def check_methods(
         ).with_counts(analysis_files=len(current))
 
     drift = compare(current, recorded)
-    report = pairs
+    report = pairs.merge(_supplement_unreconciled(project, lock, supplement))
     if drift.any:
         report = report.with_findings(
             Finding(
@@ -700,8 +811,9 @@ def _compare_parameters(
     """The few things both sides state explicitly, and where disagreement is checkable.
 
     Read as the Methods print: a value bound there, `{{results.param.alpha}}`, is stated in
-    them, and the source alone does not hold the number. With no Methods found, nothing is
-    compared, and `methods-not-found` says so.
+    them, and the source alone does not hold the number. The Methods are the main text's and
+    the supplement's, and a parameter either states is stated. With no Methods found, nothing
+    is compared, and `methods-not-found` says so.
     """
     report = Report()
     if not prose:
@@ -723,7 +835,8 @@ def _compare_parameters(
                 severity=WARN,
                 message=f"the Methods do not mention {name} = {expected}",
                 path=lock_path(project),
-                hint="either the Methods should state it, or it should not be in the lock",
+                hint="either the Methods, the main text's or the supplement's, should state "
+                "it, or it should not be in the lock",
             )
         )
     return report
@@ -771,8 +884,12 @@ def reconcile(
         for pair in fresh
         if pair.found is not None
     ]
+    # Files read against the main text's Methods alone stay so: the lock of a step's pairs
+    # keeps the files, and the day, that the lock had.
+    keeps_files = steps is not None and analysis
+    schema = (existing.get("schema") or SCHEMA_MAIN_TEXT_ONLY) if keeps_files else SCHEMA
     document = {
-        "schema": "manuscript-guard/methods-lock/1",
+        "schema": schema,
         # The day the files were read against the Methods: of a lock that holds only pairs,
         # no day. Each pair has its own, `read_on`.
         **({"reconciled_on": reconciled_on} if reconciled_on else {}),

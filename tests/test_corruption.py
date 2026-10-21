@@ -8524,6 +8524,246 @@ def test_no_heading_that_names_the_methods_is_said(project: Path) -> None:
     assert "missing-required-section" in codes(_journal(project))
 
 
+# ------------------------------------------------ the supplement's Methods, held to the code
+
+
+def _supplement(root: Path, text: str) -> Path:
+    path = root / "manuscript" / "supplementary" / "S0_methods.md"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+#: How a supplement names its Methods: G9 reads each with the main text's, and G2 and G15
+#: hold their Methods-only rules under each.
+_SUPPLEMENT_METHODS = (
+    "Supplementary methods",
+    "eMethods 1. Statistical analysis",
+    "S1 Methods",
+    "Appendix 1: Methods",
+    "Supplement 1. eMethods 2",
+)
+
+
+def _methods_warnings(root: Path) -> list[str]:
+    from manuscript_guard.gates import check_methods
+
+    report = check_methods(load_project(root)[0])
+    return [f"{f.code}: {f.message}" for f in report.warnings if f.code.startswith("methods-")]
+
+
+@pytest.mark.parametrize("heading", _SUPPLEMENT_METHODS)
+def test_a_wrong_parameter_is_found_where_only_the_supplement_has_methods(
+    project: Path, heading: str
+) -> None:
+    """A research letter with its Methods in eMethods. The main text has no heading for
+    them, and the lock's parameters were compared with no text: a wrong alpha in the lock
+    was told only as `methods-not-found`, and the right one was never found stated. Read
+    with the supplement's Methods, the wrong one is absent and the right one is there. The
+    journal's required Methods are still the main text's."""
+    from manuscript_guard.gates import reconcile
+
+    _methods_retitled(project, "Approach")
+    _supplement(project, f"# {heading}\n\nTests were two-sided at an alpha of "
+                         "{{results.param.alpha}}.\n")  # fmt: skip
+    _wrong_alpha_in_the_lock(project)
+    assert _methods_warnings(project) == [
+        "methods-parameter-absent: the Methods do not mention alpha = 0.07"
+    ]
+    reconcile(load_project(project)[0], parameters={"alpha": "0.05"})
+    assert _methods_warnings(project) == []
+    assert "missing-required-section" in codes(_journal(project))
+
+
+def test_a_parameter_the_supplement_states_outside_its_methods_is_still_absent(
+    project: Path,
+) -> None:
+    """One ledger of the Methods, not the whole supplement. An eTable holds numbers of every
+    kind, and a locked parameter matched by one of them would be no check at all: beside the
+    Methods, or under "Supplementary methods" with a title of its own (round 1 of #395). A
+    section under them that names a method is theirs."""
+    from manuscript_guard.gates import reconcile
+
+    _supplement(project, "# Supplementary methods\n\n## Statistical analysis\n\nRun with R "
+                         "4.6.0.\n\n## eTable 2. Rows by site\n\nStata 18 read them.\n\n"
+                         "# eTable 3. Rows by year\n\nPython 3.99 read them.\n")  # fmt: skip
+    reconcile(load_project(project)[0], parameters={
+        "r": "R 4.6.0", "stata": "Stata 18", "software": "Python 3.99"
+    })  # fmt: skip
+    assert _methods_warnings(project) == [
+        "methods-parameter-absent: the Methods do not mention stata = Stata 18",
+        "methods-parameter-absent: the Methods do not mention software = Python 3.99",
+    ]
+
+
+def _signal_moved_to_the_supplement(root: Path) -> Path:
+    """The example's signal criterion and its anchor, out of the Methods and into eMethods."""
+    main = main_md(root)
+    text = main.read_text(encoding="utf-8")
+    start = text.index("A signal was defined by the classical criterion")
+    end = text.index("{{method.signal}}") + len("{{method.signal}}\n\n")
+    main.write_text(text[:start] + text[end:], encoding="utf-8")
+    return _supplement(root, f"# eMethods 1. Signal criterion\n\n{text[start:end]}")
+
+
+def test_a_step_described_only_in_the_supplement_s_methods_is_held_to_its_code(
+    project: Path,
+) -> None:
+    """An anchor is read wherever it stands. The signal criterion moved to eMethods is the
+    same text of the same step, read as it was; edited there, it is a text changed since it
+    was read, said at its line in the supplement, and its step is one that text describes."""
+    from manuscript_guard.gates import check_methods
+
+    path = _signal_moved_to_the_supplement(project)
+    report = check_methods(load_project(project)[0])
+    assert not report.failures, report.render(project)
+    assert "method-step-undescribed" not in {f.code for f in report.warnings}
+    path.write_text(path.read_text(encoding="utf-8").replace("at least", "at most"), "utf-8")
+    report = check_methods(load_project(project)[0])
+    changed = [f for f in report.failures if f.code == "method-claim-changed"]
+    assert [(f.path.name, f.line) for f in changed] == [("S0_methods.md", 7)], report.render(
+        project
+    )
+
+
+def test_a_step_no_run_took_named_in_the_supplement_s_methods_fails(project: Path) -> None:
+    from manuscript_guard.gates import check_methods
+
+    _supplement(project, "# eMethods 3. Sensitivity analysis\n\nReports from one country were "
+                         "left out. {{method.sensitivity}}\n")  # fmt: skip
+    found = [
+        f for f in check_methods(load_project(project)[0]).failures
+        if f.code == "method-step-unknown"
+    ]  # fmt: skip
+    assert [(f.path.name, f.line) for f in found] == [("S0_methods.md", 3)]
+
+
+def test_explain_lists_the_supplement_s_methods_paragraphs_that_point_at_no_step(
+    project: Path,
+) -> None:
+    """A step described in eMethods with no anchor is text no step backs, and the person
+    reading the Methods against the code is shown it, as a paragraph of the main text's
+    Methods is. A table of results in the supplement is not the Methods."""
+    from manuscript_guard.gates.methods import explain_methods
+
+    _supplement(project, "# eMethods 3. Sensitivity analysis\n\nReports from one country were "
+                         "left out.\n\n# eTable 4. By country\n\nRows of counts.\n")  # fmt: skip
+    said = "\n".join(explain_methods(load_project(project)[0]))
+    assert "open          manuscript/supplementary/S0_methods.md:3  no step points here" in said
+    assert "Rows of counts" not in said
+
+
+@pytest.mark.parametrize("heading", _SUPPLEMENT_METHODS)
+def test_the_kind_of_the_fitted_model_typed_in_the_supplement_s_methods_fails(
+    project: Path, heading: str
+) -> None:
+    """G15 found the Methods by G2's names, none of them a supplement's: the kind of the
+    model the analysis fitted, typed in eMethods, is the copy that stays behind when the
+    model changes, and nothing read it. A table of results in the supplement is still not
+    read for one."""
+    _supplement(project, f"# {heading}\n\nThe estimate was adjusted by logistic "
+                         "regression.\n\n# eTable 5. Model output\n\nA logistic regression "
+                         "of the rows.\n")  # fmt: skip
+    found = [f for f in gate_report(project).failures if f.code == "typed-model-kind"]
+    assert [(f.path.name, f.line) for f in found] == [("S0_methods.md", 3)]
+
+
+@pytest.mark.parametrize("heading", _SUPPLEMENT_METHODS)
+def test_a_declared_parameter_typed_in_the_supplement_s_methods_fails_as_a_typed_copy(
+    project: Path, heading: str
+) -> None:
+    """Under "eMethods" no Methods-only convention held, so a typed copy of the signal
+    criterion failed as a number nothing classifies, with no word of the parameter to bind
+    instead. Read as the Methods, it is the typed copy it is; under a table of results it is
+    still a number nothing classifies."""
+    _supplement(project, f"# {heading}\n\nA signal needed at least 3 cases.\n\n"
+                         "# Signals by drug\n\nOne drug had at least 3 cases.\n")  # fmt: skip
+    report = gate_report(project)
+    # The lines of text: a heading's own number, the 1 of "eMethods 1", is G2's to judge.
+    here = [
+        (f.code, f.line)
+        for f in report.failures
+        if f.path.name == "S0_methods.md" and f.line in (3, 7)
+    ]
+    assert here == [("typed-parameter", 3), ("unclassified-number", 7)], report.render(project)
+    typed = next(f for f in report.failures if f.code == "typed-parameter")
+    assert "{{results.param.signal.min_cases}}" in typed.hint
+
+
+def test_a_p_value_reported_under_a_supplement_s_methods_heading_is_still_bound(
+    project: Path,
+) -> None:
+    """Round 1 of #395: the example's supplement has "Supplementary methods" over all of it,
+    its tables and a paragraph of results among them, as supplements often have. Read as the
+    Methods there, a reported P passed as the threshold chosen in advance, which main
+    reported as unbound, and a model's kind typed in such a paragraph failed."""
+    path = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    said = "the conclusion does not turn on which is\nquoted."
+    text = path.read_text(encoding="utf-8")
+    assert said in text
+    path.write_text(
+        text.replace(said, f"{said} The two differed (p < 0.001), as estimated by logistic "
+                           "regression.", 1),  # fmt: skip
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "0.001" in f.message for f in report.failures
+    ), report.render(project)
+    assert "typed-model-kind" not in codes(report), report.render(project)
+
+
+def _lock_of_the_main_text_only(root: Path, schema: str) -> None:
+    """The example's lock, written by main, with its schema as `schema` says: as main wrote
+    it, left out, or left empty."""
+    path = root / "methods.lock"
+    lock = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert lock["schema"] == "manuscript-guard/methods-lock/1"
+    if schema == "absent":
+        lock.pop("schema")
+    elif schema == "empty":
+        lock["schema"] = None
+    path.write_text(yaml.safe_dump(lock, sort_keys=False), encoding="utf-8")
+
+
+@pytest.mark.parametrize("schema", ["as written", "absent", "empty"])
+def test_a_lock_written_before_the_supplement_was_read_is_said_of_and_holds(
+    project: Path, schema: str
+) -> None:
+    """The lock holds no digest of the Methods, so reading the supplement's makes no record
+    wrong. One written when G9 read the main text's alone may still vouch for eMethods
+    nobody read against the code, and is said of, once, as a warning. A step's pairs read
+    again leave the files as they were read; `methods --reconcile` is the reading of them."""
+    from manuscript_guard.findings import WARN
+    from manuscript_guard.gates import check_methods, reconcile
+
+    _lock_of_the_main_text_only(project, schema)
+    _supplement(project, "# eMethods 1. Data source\n\nReports came from one database.\n")
+    report = check_methods(load_project(project)[0])
+    said = [f for f in report.findings if f.code == "methods-supplement-unreconciled"]
+    assert [(f.severity, f.context) for f in said] == [
+        (WARN, "manuscript/supplementary/S0_methods.md")
+    ], report.render(project)
+    assert not report.failures and len(report.findings) == 1, report.render(project)
+    reconcile(load_project(project)[0], steps=["ror"])
+    assert _methods_warnings(project) == [
+        "methods-supplement-unreconciled: methods.lock was written when G9 read only the main "
+        "text's Methods, so the supplement's Methods may never have been read against the code"
+    ]
+    reconcile(load_project(project)[0])
+    assert _methods_warnings(project) == []
+
+
+def test_a_lock_of_the_main_text_only_is_not_said_of_where_the_supplement_has_no_methods(
+    project: Path,
+) -> None:
+    """The example's supplement has "Supplementary methods" over its tables, and no text of
+    its own under it nor a section that names a method: it has no Methods to read."""
+    from manuscript_guard.gates.methods import supplementary_methods
+
+    assert supplementary_methods(load_project(project)[0]) == []
+    assert _methods_warnings(project) == []
+
+
 def test_a_structured_abstract_s_results_are_not_the_paper_s(project: Path) -> None:
     """Every required section, not only the Methods: the abstract's "Results" answered the
     journal's required Results in a paper whose body called them something else."""

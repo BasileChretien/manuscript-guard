@@ -1668,6 +1668,69 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   dated in the future, one that is not a record, or one filed under another citekey fails
   from internal-review.
 
+### Measured on real papers, 2026-10-21
+
+What G7 says of references was measured on published reference lists, in the way
+paper-preflight measures its own (`evals/README.md` there): papers chosen mechanically,
+every warning and failure judged by hand against the registries' records and the open web,
+and the false alarms counted per 100 references. A finding is a false alarm where what it
+says of the reference is untrue: the work exists, it is the one cited, its authors are the
+ones cited. Network runs are by hand and never in CI; the scripts and the corpus stayed in
+a scratch folder.
+
+The corpus: for each of eight journals (Drug Saf, Pharmacoepidemiol Drug Saf, Clin
+Epidemiol, Eur J Epidemiol, BMC Pharmacol Toxicol, Front Pharmacol, Br J Clin Pharmacol,
+Clin Pharmacol Ther), the first two open-access research or review articles in PubMed
+Central published in March or April 2025, in PMC's order, with 20 references or more: 16
+papers, 740 references, their JATS converted to BibTeX (674 with a DOI, 668 with a PMID,
+57 with neither, 14 of those journal articles). Each paper was run twice: as published,
+and with every DOI and PMID taken out, so that all 740 were searched for by their titles.
+`lookup` then `check --stage internal-review`, with the code of this pull request's last
+head; OpenAlex's free allowance had been spent by the earlier runs, so it was asked for none
+of them, and every verdict rests on PubMed and Crossref.
+
+With the identifiers taken out, 683 of the 740 were found; every identifier offered was the
+one the paper published (639 DOIs, 632 PMIDs) or a correction of it (3: a DOI of the wrong
+article, a supplement's DOI, version 1 of an article cited by version 2's title), and 24 were
+found without one being offered, the copy cited not told apart. 44 were not checked (books,
+reports, web pages, short titles).
+
+| | references | false alarms | per 100 | unclear | real problems |
+|---|---|---|---|---|---|
+| this check, as published | 740 | 5 (4 failures, 1 warning) | 0.68 | 3 | 1 |
+| this check, identifiers taken out | 740 | 8 (7 failures, 1 warning) | 1.08 | 3 | 4 |
+| G7's checks of an identifier, as published | 740 | 6 failures | 0.81 | 0 | 10 |
+
+What the false alarms of this check were: three real works in venues no registry indexes
+(World J Pharm Sci, the Ethiopian Pharmaceutical Journal, a congress poster cited as an
+article), each `reference-not-found` until `lookup.not_indexed` says so; three titles
+typeset otherwise than the registry's, two "mRNA‐1,273" for mRNA-1273 and one with a word
+broken by hyphenation, read as no registry having the work; George Davey Smith cited as
+"Davey, SG" (`reference-authors-disjoint`); and a group's name holding "and" written without
+braces, which BibTeX reads as two people (`reference-authors-differ`). The unclear three are
+articles in small journals (Mediterranean J Pharm Pharm Sci, West Afr J Pharm, J Infertil
+Reprod Biol) found neither in a registry nor on the open web. The real problems: a 2018
+article cited as of 1982 (twice, from "Soc Sci Med (1982)" in the paper's own XML), a JAMA
+article cited as Sci Eng Ethics 2004, and a one-author commentary cited with three more
+authors from another paper. The identifier checks failed six times falsely, all from before
+this pull request: the two "1,273" titles and the hyphenated one again, a title with its
+series appended after a full stop, and two DOIs that are aliases of the one PubMed gives;
+their ten real problems were wrong DOIs, years and PMIDs in the papers' lists. Their
+`reference-details-differ` warnings (51) were not judged one by one: about a third are the
+registries' formatting ("Volume 15", an e-locator, an article number against a page range),
+the rest mostly the papers' own XML (first pages losing a digit, an issue for a page).
+
+The first runs of this measurement changed the rules before these figures were taken: a
+full stop no longer starts a subtitle (U.S. FDA), a subtitle the registry left out no
+longer counts against the cited title, in the search and in the identifier check (two ESC
+guidelines), a family name among the given names is found (Davey Smith filed as given
+"George Davey"), a list Crossref cuts short is not names missing, a record naming nobody
+gives way to one naming the first author (NEJM's letters filed under the article's title),
+records differing in no identifier are one work, PubMed's stopwords are not searched for,
+"Jørgensen" folds to plain letters, Crossref is sent the whole title, and an OpenAlex 429 is
+a search not made. paper-preflight reports 0.79 false alarms per 100 references on
+held-out arXiv papers with its own checks; the figures are not of the same thing.
+
 ## A cited work's copy is taken from Zotero
 
 G7 holds a quote to a stored source, and a co-author asked whether a cited paper says what a

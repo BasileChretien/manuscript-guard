@@ -12085,6 +12085,16 @@ Open, recorded as each change landed:
     dropped the `manuscript-guard-suggestions-*` properties and kept the source stamp would
     have every panel change read as accepted. The `mg-s-` bookmarks would still be there to
     refuse by; no tool is known to drop the one and keep the other.
+- **A suggested edit that moves a claim says so in Word, edit by edit.** Since #371 an edit
+  that only changes how strongly its sentence claims is written, with the move after its
+  finding in the comment (`suggestions._claim_moved`). The review of 12dffd8e recorded:
+  - *Each note is of its edit alone*, against the paragraph as it stands; two edits in one
+    sentence whose moves add up or cancel each say their own, and nothing says what
+    accepting both does.
+  - *The terminal does not say it.* `review --suggestions` lists the edits it wrote
+    without the move, which is seen only in the document.
+  - *Untested*: a recorded suggestion whose `written` digest is null, which `offered_of`
+    refuses, and a reply to a comment that carries a note, which is matched by that digest.
 - **The document of suggestions is built offline.** Its citations are formatted by the
   journal's style from `references.bib`, as `build --offline` formats them, whether the
   author builds live or not. It is for the author, never for a co-author or the journal.

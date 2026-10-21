@@ -1477,9 +1477,13 @@ NAMED = (
 @st.composite
 def edits(draw: st.DrawFn) -> tuple[str, str]:
     """A manuscript and what an edit made of it: the same text, one of its paragraphs moved
-    to the end, one taken out, or another manuscript altogether."""
+    to the end, one taken out, another manuscript altogether, or sentences whose claim was
+    made stronger, weaker or turned round (`claim_edits`)."""
+    kind = draw(st.sampled_from(("the same", "moved", "cut", "another", "claims")))
+    if kind == "claims":
+        before, after, _told = draw(claim_edits())
+        return before, after
     before = draw(texts(HELD))
-    kind = draw(st.sampled_from(("the same", "moved", "cut", "another")))
     if kind == "the same":
         return before, before
     if kind == "another":
@@ -1491,6 +1495,219 @@ def edits(draw: st.DrawFn) -> tuple[str, str]:
     else:
         del paragraphs[at]
     return before, "\n\n".join(paragraphs)
+
+
+# ------------------------------------------------------------- how strongly a sentence claims
+
+#: Words that set how strongly a sentence claims, by what each is: a class, or the rung of
+#: the ladder counted from consistency. Written here and not read from the data file, so
+#: that a rule broken in reading the file does not draw its own inputs.
+CLAIMED: dict[str | int, tuple[str, ...]] = {
+    "hedge": ("may", "might", "could", "possibly", "appears", "seemed"),
+    "limit": ("only", "in this sample", "under these conditions"),
+    "negation": (
+        "not", "no", "never", "didn't", "didn\N{RIGHT SINGLE QUOTATION MARK}t", "cannot",
+        "non-significant",
+    ),
+    0: ("consistent with", "suggests", "suggestive of"),
+    1: ("associated", "correlated", "related to", "linked to"),
+    2: ("predicts", "predicted", "predictive of"),
+    3: ("contributes to", "contributed to"),
+    4: ("increased", "reduces", "led to", "affects", "resulted in"),
+    5: ("caused", "causes", "causal", "demonstrated that"),
+}  # fmt: skip
+_RUNGS = tuple(kind for kind in CLAIMED if isinstance(kind, int))
+#: What looks like a word of those and is not read as one: a word in a compound, joined
+#: before or after; a participle after an article; a capital that marks a name, of a word
+#: read in lower case only too; a word in code or in a comment.
+UNCLAIMED = (
+    "drug-induced", "all-cause", "cause-specific", "an increased", "the associated",
+    "a reduced", "the predicted", "in May", "the Only", "the Never", "Causes", "`may`",
+    "<!-- not -->",
+)  # fmt: skip
+#: What an edit does to one sentence's claim, and what that is told as: nothing, a claim
+#: made stronger or weaker, moved both ways, or turned round; "" where the code is drawn
+#: with the edit. A sentence added, deleted, moved, split, joined or only rewrapped is told
+#: nothing, nor is a month that opens a sentence. The front matter's abstract and an item
+#: of a list are edited as one of `_SIMPLE`.
+CLAIM_EDITS = {
+    "reworded": None, "synonyms": None, "look-alikes gone": None, "look-alikes new": None,
+    "added": None, "deleted": None, "moved": None, "rewrapped": None, "split": None,
+    "joined": None, "opening month": None,
+    "hedge gone": "claim-stronger", "hedge new": "claim-weaker",
+    "limit gone": "claim-stronger", "limit new": "claim-weaker",
+    "negation gone": "claim-negation", "negation new": "claim-negation",
+    "opening negation gone": "claim-negation",
+    "up": "claim-stronger", "down": "claim-weaker",
+    "lowest up": "claim-stronger", "lowest down": "claim-weaker",
+    "lowest kept": "claim-moved",
+    "rung came": "", "rung left": "", "both ways": "claim-moved", "list item": "",
+}  # fmt: skip
+_SIMPLE = (
+    "hedge gone", "hedge new", "limit gone", "limit new", "negation gone", "negation new",
+)  # fmt: skip
+#: What opens a line that opens a block: an item of a list, unordered or ordered, a heading,
+#: a quotation, a row, and a line that holds only a comment, which is blanked and so a
+#: blank line. "2)" is the ordered item no stop also cuts: "1." is one.
+_BLOCK_OPENERS = ("- ", "* ", "+ ", "1. ", "2) ", "# ", "> ", "| ", "<!-- a note -->\n")
+_PLAIN = tuple(word for word in FILLER if word != "the")
+
+
+@st.composite
+def claim_edits(draw: st.DrawFn) -> tuple[str, str, list[tuple[str, int]]]:
+    """A text, what an edit made of it, and what is to be told: each finding's code and the
+    line of the text after that it stands on.
+
+    Every edit of `CLAIM_EDITS` is in every example, in a paragraph of its own and in an
+    order drawn each time, so that a rule broken for one kind is seen under any seed, and
+    every example opens with front matter whose abstract is edited. Each paragraph is
+    followed by one that does not change, and a sentence that changes stands between two
+    that do not: those line the texts up around what changed. The words around a claim's
+    words are drawn again for the text after. That is the rewording, and it is free."""
+    marks = iter(f"x{''.join(chr(97 + int(d)) for d in str(at))}" for at in range(10_000))
+
+    def word(kind: str | int) -> str:
+        return draw(st.sampled_from(CLAIMED[kind]))
+
+    def stable() -> list[str]:
+        return [word(kind) for kind in draw(st.lists(st.sampled_from(tuple(CLAIMED)), max_size=2))]
+
+    def written(
+        claims: list[str], mark: str, opening: str = "", *, stop: bool = True, wrap: bool = True
+    ) -> str:
+        """A sentence of filler words with `claims` among them, each after a word that is
+        no article, and its mark, which makes it a sentence no other is. Ended by a stop
+        or not, and wrapped over lines or on one."""
+        tokens = [opening] if opening else []
+        tokens += [draw(st.sampled_from(_PLAIN)), mark]
+        for claim in claims:
+            tokens += [draw(st.sampled_from(_PLAIN)), *claim.split(" ")]
+        tokens.append(draw(st.sampled_from(_PLAIN)))
+        breaks = (" ", " ", " ", "\n") if wrap else (" ",)
+        gaps = [draw(st.sampled_from(breaks)) for _ in tokens[1:]]
+        text = tokens[0] + "".join(gap + token for gap, token in zip(gaps, tokens[1:], strict=True))
+        return text[0].upper() + text[1:] + ("." if stop else "")
+
+    def ladder(*rungs: int) -> list[str]:
+        return [word(rung) for rung in rungs]
+
+    def pair(did: str) -> tuple[list[str], list[str], str]:
+        """The claim words of one sentence before and after, and the code it is told with."""
+        kept = stable()
+        told = CLAIM_EDITS[did] or ""
+        if did in ("reworded", "rewrapped", "opening negation gone", "opening month"):
+            return kept, list(draw(st.permutations(kept))), told
+        if did == "synonyms":
+            kinds = ("hedge", "limit", "negation", *_RUNGS)
+            was = [word(kind) for kind in kinds]
+            now = [draw(st.sampled_from([other for other in CLAIMED[kind] if other != one]))
+                   for kind, one in zip(kinds, was, strict=True)]  # fmt: skip
+            return was, now, told
+        if did.startswith("look-alikes"):
+            planted = list(draw(st.permutations(UNCLAIMED)))
+            return (planted, [], told) if did.endswith("gone") else ([], planted, told)
+        kind = did.split()[0]
+        if kind in ("hedge", "limit", "negation"):
+            claim = word(kind)
+            if did.endswith("gone"):
+                return [*kept, claim], kept, told
+            return kept, [*kept, claim], told
+        plain = [one for one in kept if not any(one in CLAIMED[rung] for rung in _RUNGS)]
+        low, high = sorted(draw(st.lists(st.sampled_from(_RUNGS), min_size=2, max_size=2,
+                                         unique=True)))  # fmt: skip
+        rung = draw(st.sampled_from(_RUNGS))
+        if did == "up":
+            return kept + ladder(low), kept + ladder(high), told
+        if did == "down":
+            return kept + ladder(high), kept + ladder(low), told
+        if did == "lowest up":
+            return plain + ladder(low, high), plain + ladder(high), told
+        if did == "lowest down":
+            return plain + ladder(high), plain + ladder(low, high), told
+        if did == "lowest kept":
+            return plain + ladder(low, high), plain + ladder(low), told
+        if did == "rung came":
+            return plain, plain + ladder(rung), "claim-weaker" if rung == 0 else "claim-stronger"
+        if did == "rung left":
+            return plain + ladder(rung), plain, "claim-stronger" if rung == 0 else "claim-weaker"
+        # Both ways: a hedge new, and a word moved up the ladder.
+        return ladder(low), [word("hedge"), *ladder(high)], told
+
+    # The front matter: its title stands, and its abstract is edited. Each value is on one
+    # line, as YAML has a plain value.
+    title = written(stable(), next(marks), wrap=False)
+    was, now, told = pair(draw(st.sampled_from(_SIMPLE)))
+    mark = next(marks)
+    ahead = f"---\ntitle: {title}\nabstract: "
+    before: list[str] = [f"{ahead}{written(was, mark, wrap=False)}\n---"]
+    #: The paragraphs after, each with the code it is told with and the text in front of
+    #: the sentence told, where one is.
+    after: list[tuple[str, str, str]] = [(f"{ahead}{written(now, mark, wrap=False)}\n---",
+                                          told, ahead)]  # fmt: skip
+    unchanged = written(stable(), next(marks))
+    before.append(unchanged)
+    after.append((unchanged, "", ""))
+    moved = ""
+    for did in draw(st.permutations(tuple(CLAIM_EDITS))):
+        first, last = written(stable(), next(marks)), written(stable(), next(marks))
+        gap = draw(st.sampled_from((" ", "\n")))
+        if did in ("added", "deleted", "moved"):
+            claims = [*stable(), word(draw(st.sampled_from(tuple(CLAIMED))))]
+            paragraph = written(claims, next(marks))
+            if did != "added":
+                before.append(paragraph)
+            if did == "added":
+                after.append((paragraph, "", ""))
+            elif did == "moved":
+                moved = paragraph
+        elif did in ("split", "joined"):
+            # One sentence made two, or two made one, with the same words of their claim:
+            # an unequal stretch, read whole.
+            one, other = stable(), [*stable(), word(draw(st.sampled_from(tuple(CLAIMED))))]
+            mark, second = next(marks), next(marks)
+            whole = written([*one, *other], mark)
+            halves = f"{written(one, mark)}{gap}{written(other, second)}"
+            was_, now_ = (whole, halves) if did == "split" else (halves, whole)
+            before.append(f"{first}{gap}{was_}{gap}{last}")
+            after.append((f"{first}{gap}{now_}{gap}{last}", "", ""))
+        elif did == "list item":
+            # Lines that open blocks, with no stop at their ends: only the lines cut them.
+            # One paragraph for each way a line opens one, the edited line opened so, since
+            # a rule broken for one of them is seen only there. The lines around it stand.
+            for opener in draw(st.permutations(_BLOCK_OPENERS)):
+                was, now, told = pair(draw(st.sampled_from(_SIMPLE)))
+                mark = next(marks)
+                top = "- " + written(stable(), next(marks), stop=False)
+                low = "- " + written(stable(), next(marks), stop=False)
+                item_was = opener + written(was, mark, stop=False)
+                item_now = opener + written(now, mark, stop=False)
+                before.append(f"{top}\n{item_was}\n{low}")
+                after.append((f"{top}\n{item_now}\n{low}", told, f"{top}\n{opener}"))
+        else:
+            was, now, told = pair(did)
+            mark = next(marks)
+            opening = {"opening negation gone": "not", "opening month": "May"}.get(did, "")
+            sentence = written(was, mark, opening)
+            # Rewrapped, the sentence is its words on one line.
+            edited = " ".join(sentence.split()) if did == "rewrapped" else written(now, mark)
+            before.append(f"{first}{gap}{sentence}{gap}{last}")
+            after.append((f"{first}{gap}{edited}{gap}{last}", told, f"{first}{gap}"))
+        unchanged = written(stable(), next(marks))
+        before.append(unchanged)
+        after.append((unchanged, "", ""))
+    if moved:
+        after.append((moved, "", ""))
+    expected = []
+    line = 1
+    for paragraph, told, ahead in after:
+        if told:
+            expected.append((told, line + ahead.count("\n")))
+        line += paragraph.count("\n") + 2
+    return (
+        "\n\n".join(before) + "\n",
+        "\n\n".join(paragraph for paragraph, _, _ in after) + "\n",
+        expected,
+    )
 
 
 # ------------------------------------------------------------------- a project's settings

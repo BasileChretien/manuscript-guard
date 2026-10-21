@@ -4,8 +4,8 @@ opened_on: 2026-10-21
 manuscript_sha256: e036f05e1f73adef5996cc8b82d25c04f68b04e1823e276dbb87c5505d49c977
 blinded: false
 rationale: 'A revision round for one sentence. The Methods now say what the reports held when
-  they were checked against the data dictionary: the rows checked, the duplicates and the
-  missing age groups, each a count the analysis writes and the sentence binds. The remit that
+  they were checked against the data dictionary: the rows checked, the repeated identifiers
+  and the missing age groups, each a count the analysis writes and the sentence binds. The remit that
   reads denominators and the biases of spontaneous reporting reads it, with the earlier rounds
   in front of it.'
 reviewers:
@@ -14,4 +14,5 @@ reviewers:
   remit: Whether the design can answer the question asked. Case and exposure definitions,
     denominators, the difference between disproportionate reporting and risk, and
     the biases specific to spontaneous reporting.
-  why: The Methods now report the duplicates and the missing values the data checks found.
+  why: The Methods now report the repeated identifiers and the missing values the data checks
+    found, beside why no de-duplication step was applied.

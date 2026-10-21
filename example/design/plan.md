@@ -25,7 +25,7 @@ the reason the question is phrased as it is.
 All reports in the synthetic database for the period it covers, without restriction on age
 or sex. Age group (`age_group`) and sex (`sex`), the two patient characteristics the
 database records, are described among the reports with the drug and the others; the ratio
-adjusted for both was added later (Deviations, item 3). Records carry unique identifiers;
+adjusted for both was added later (Deviations, item 5). Records carry unique identifiers;
 de-duplication is therefore not required for these data, and its absence is a property of
 the generator rather than a decision.
 
@@ -69,7 +69,7 @@ that would not be a different study.
 
 ## Deviations from the plan
 
-Four. The first two came after the first review round, both additive rather than a change
+Six. The first two came after the first review round, both additive rather than a change
 of approach:
 
 1. The 2 x 2 counts were added to the Results as a table. The plan implied them; the first
@@ -80,9 +80,19 @@ of approach:
 No analysis was added, removed or re-run as a result of those two. Recorded here because a
 deviation nobody wrote down is indistinguishable from having tried several things.
 
-3. In the fourth review round (2026-10-09), a reporting odds ratio adjusted for age group
+3. After the second review round (2026-08-04), the Methods replaced the p < 0.05 threshold
+   with a signal criterion: at least three cases and a lower bound of the 95% interval
+   above 1. The plan let the interval carry the conclusion and set no minimum number of
+   cases. The criterion was written after the crude result was known, and no reviewer asked
+   for it; the analysis has applied it since the third round (2026-10-09).
+4. The next day (2026-08-05), the main estimate was also given with its 90% interval, for
+   comparison with signal-detection practice. It is a second interval on the planned
+   estimate, added after that estimate was known; the conclusion and the signal criterion
+   rest on the 95% one. The Methods have said so since the third round (2026-10-09), and
+   until then described every interval as 95%.
+5. In the fourth review round (2026-10-09), a reporting odds ratio adjusted for age group
    (`age_group`) and sex (`sex`) by logistic regression was added beside the planned crude
    ratio. It is an analysis added after the crude result was known; the Methods describe it
    and Table S2 prints its model as it was fitted.
-4. The variables are named in backticks, as a data dictionary names them, so that G12 can
+6. The variables are named in backticks, as a data dictionary names them, so that G12 can
    hold a dictionary to this plan (2026-10-21): a change of wording, not of the analysis.

@@ -169,6 +169,19 @@ def _latex_sections() -> Reading:
     return sections
 
 
+@reading("latex escaped")
+def _latex_escaped() -> Reading:
+    from manuscript_guard.build.latex_values import NotPrintable, escaped
+
+    def written(text: str) -> dict[str, Any]:
+        try:
+            return {"written": escaped(text, "results.x")}
+        except NotPrintable as found:
+            return {"refused": found.character}
+
+    return written
+
+
 @reading("latex bindings")
 def _latex_bindings() -> Reading:
     from manuscript_guard.text.latex.mask import read
@@ -914,6 +927,22 @@ def _passages() -> Reading:
         ]
 
     return passages
+
+
+@reading("recycled passages")
+def _recycled_passages() -> Reading:
+    """The passages of a manuscript file an earlier paper of its authors has too, with their
+    lines, how many words are shared and how many of them quoted, the part of the paper they
+    stand in and whether they cite it: what G7 reports before a similarity check does."""
+    from manuscript_guard.gates.recycling import recycled_in
+
+    def recycled(given: dict[str, str]) -> list[list[Any]]:
+        return [
+            [p.first_line, p.last_line, p.shared, p.quoted, p.kind, p.cited, p.excerpt]
+            for p in recycled_in(given["text"], given["source"], "earlier")
+        ]
+
+    return recycled
 
 
 @reading("checker sentences")

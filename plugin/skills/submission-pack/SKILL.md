@@ -96,7 +96,9 @@ Write it from the project rather than from memory. Four short paragraphs:
    difference immediately.
 3. **What is unusual, if anything.** A preprint, an overlapping submission, a dataset that
    cannot be shared, a conflict that needs declaring. Say it here rather than let it be
-   discovered.
+   discovered. Text reused from the authors' earlier papers is one such thing: each
+   `recycled-methods-cited` note of `check` is a description to name here, with the paper
+   it comes from, before the journal's similarity check shows it.
 4. **The confirmations** the journal asks for: original work, not under consideration
    elsewhere, all authors approved, ethics where applicable. Each author records their own
    approval with `manuscript-guard approve --as <author>`, and `submit` says who has not, or

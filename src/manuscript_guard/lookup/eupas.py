@@ -273,7 +273,8 @@ def eu_pas(identifier: str, ask: Ask, base: str) -> dict[str, Any]:
     if said:
         return said
     page = answer.body.decode("utf-8", errors="replace")
-    candidates = [n for n in dict.fromkeys(_STUDY.findall(page)) if n != digits][:CANDIDATES]
+    linked = [n for n in dict.fromkeys(_STUDY.findall(page)) if n != digits]
+    candidates = linked[:CANDIDATES]
     for study in candidates:
         node = _node(ask, base, study)
         if isinstance(node, dict):
@@ -285,6 +286,9 @@ def eu_pas(identifier: str, ask: Ask, base: str) -> dict[str, Any]:
             return found
     if not candidates and "results" not in page:
         return unresolvable(PAGE)
+    if len(linked) > CANDIDATES:
+        return unresolvable(f"the catalogue's search for {identifier} links more studies than "
+                            f"the {CANDIDATES} read, and none of those gives it")  # fmt: skip
     return {"status": ABSENT, "why": f"no study page of the catalogue gives {identifier}"}
 
 

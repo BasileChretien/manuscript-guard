@@ -63,8 +63,13 @@ from manuscript_guard.text.reader import manuscript_files
 
 GATE = "G12"
 PAPER = Path("paper.yaml")
-#: The words a manuscript says a late registration with, a line break or two between them.
-RETROSPECTIVE = re.compile(r"(?i)\bretrospectiv\w*\s+regist\w*|\bregist\w*\s+retrospectiv\w*")
+#: The words a manuscript says a late registration with, a line break or two between them:
+#: "registered", "registration", never "registry" (round 1 of #390: "a retrospective
+#: registry-based cohort" said it).
+RETROSPECTIVE = re.compile(
+    r"(?i)\bretrospective(?:ly)?\s+regist(?:ered|ration)\b"
+    r"|\bregist(?:ered|ration)\s+(?:was\s+)?retrospective(?:ly)?\b"
+)
 #: The designs a registry calls observational, and the one it calls interventional.
 OBSERVATIONAL = frozenset({"cohort", "case-control", "self-controlled", "disproportionality"})
 #: What ISRCTN writes in the field for a trial that has none.
@@ -111,6 +116,8 @@ class _Context:
     planned: list[design.Planned] | None
     results: Results | None
     frozen: str | None
+    #: Whether the first results were written from synthetic inputs only.
+    dry_run: bool
     late: str
     stage: str | None
 
@@ -119,14 +126,19 @@ def _manuscript(project: Project) -> str:
     return "\n".join(blank_comments(read_text(p)) for p in manuscript_files(project))
 
 
-def _first_results(project: Project) -> str | None:
-    """The day the first results were written, as the plan's frozen copy records it."""
+def _first_results(project: Project) -> tuple[str | None, bool]:
+    """The day the first results were written, as the plan's frozen copy records it, and
+    whether they were written from synthetic inputs only: a dry run, which dates nothing
+    of the study."""
     try:
         record = read_structured(project.root / FROZEN_PLAN)
     except ContractError:
-        return None
-    stamp = record.get("frozen_at") if isinstance(record, dict) else None
-    return stamp[:10] if isinstance(stamp, str) and re.match(r"\d{4}-\d{2}-\d{2}", stamp) else None
+        return None, False
+    if not isinstance(record, dict):
+        return None, False
+    stamp = record.get("frozen_at")
+    day = stamp[:10] if isinstance(stamp, str) and re.match(r"\d{4}-\d{2}-\d{2}", stamp) else None
+    return day, record.get("synthetic") is True
 
 
 def _context(project: Project, results: Results | None, stage: str | None) -> _Context:
@@ -134,13 +146,15 @@ def _context(project: Project, results: Results | None, stage: str | None) -> _C
 
     path = design.plan_path(project)
     plan = design._read_plan(path)[0] if path.is_file() else ""
+    frozen, dry_run = _first_results(project)
     return _Context(
         project=project,
         text=_manuscript(project),
         deviations=design.deviations_said(plan),
         planned=design.planned_results(plan) if plan else None,
         results=results,
-        frozen=_first_results(project),
+        frozen=frozen,
+        dry_run=dry_run,
         late=FAIL if stage == SUBMISSION else WARN,
         stage=stage,
     )
@@ -184,7 +198,8 @@ def _undeclared(project: Project, paper: Path) -> Report:
             "and run `manuscript-guard lookup --registrations`; if each is another study's, "
             "nothing is needed",
         ))  # fmt: skip
-    return Report(tuple(findings), {"registrations": 0})
+    # No count where nothing is listed: a paper with no registration reads as it did before.
+    return Report(tuple(findings))
 
 
 def _one(context: _Context, entry: Declared, paper: Path) -> Report:
@@ -321,28 +336,39 @@ def _timing(context: _Context, entry: Declared, record: dict, path: Path) -> Rep
         # A date after the day the registry was asked is a plan, not a start.
         if dates.get(key) and dates[key][:10] <= asked and _after(registered, dates[key])
     ]
+    noted = Report()
     if context.frozen and _after(registered, context.frozen):
-        late.append(f"the first results ({context.frozen}, by {FROZEN_PLAN.as_posix()})")
+        if context.dry_run:
+            noted = Report((_finding(
+                "registration-after-dry-run",
+                f"{entry.id} was registered on {registered}, after the first results "
+                f"({context.frozen}), which were written from synthetic inputs only: they are "
+                "not taken for the study's first results", INFO, path,
+                f"{FROZEN_PLAN.as_posix()} says so; the study's own start dates still apply",
+            ),))  # fmt: skip
+        else:
+            late.append(f"the first results ({context.frozen}, by {FROZEN_PLAN.as_posix()})")
     if not late:
-        return Report()
+        return noted
     said = f"{entry.id} was registered on {registered}, after {' and '.join(late)}"
     if entry.retrospective and says_retrospective(context.text):
-        return Report((_finding("registration-retrospective", said + ", as the paper says",
-                                INFO, path, entry.retrospective),))  # fmt: skip
+        return noted.with_findings(_finding("registration-retrospective",
+                                            said + ", as the paper says", INFO, path,
+                                            entry.retrospective))  # fmt: skip
     if entry.retrospective:
-        return Report((_finding(
+        return noted.with_findings(_finding(
             "registration-retrospective-unsaid",
             said + "; paper.yaml gives the reason and the manuscript does not say it",
             context.late, context.project.root / PAPER,
             "say in the manuscript, where it gives the identifier, that the study was "
             "registered retrospectively, and why",
-        ),))  # fmt: skip
-    return Report((_finding(
+        ))  # fmt: skip
+    return noted.with_findings(_finding(
         "registration-late", said, context.late, path,
         "a registration made after the study started, or after its results were known, "
         "registered nothing in advance: give the reason under `retrospective` in paper.yaml "
         "and say in the manuscript that it was registered retrospectively",
-    ),))  # fmt: skip
+    ))  # fmt: skip
 
 
 # ------------------------------------------------------------------------------ outcomes

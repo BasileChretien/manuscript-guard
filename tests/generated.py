@@ -976,10 +976,13 @@ def registration_texts(
 RETROSPECTIVE_SAID = (
     "retrospectively registered", "Retrospectively\nregistered", "registered retrospectively",
     "retrospective registration", "REGISTERED RETROSPECTIVELY", "retrospectively\r\nregistered",
+    "the registration was retrospective",
 )  # fmt: skip
+#: Round 1 of #390: "registry" was read as "registered".
 RETROSPECTIVE_NOT = (
     "prospectively registered", "registered prospectively", "retrospectively analysed",
-    "registered in retrospect", "a retrospective cohort",
+    "registered in retrospect", "a retrospective cohort", "a retrospective registry-based cohort",
+    "data from registries retrospectively",
 )  # fmt: skip
 
 

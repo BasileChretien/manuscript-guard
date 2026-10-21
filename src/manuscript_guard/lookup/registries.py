@@ -75,7 +75,10 @@ def _partial(value: Any) -> str | None:
 
 
 def _kept(record: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in record.items() if v not in (None, [], "", {})}
+    """The record without the fields the answer did not have, but for its sections, which
+    a record that was found always holds, none included (round 1 of #390: a study with no
+    outcome listed was written without them, and the schema refused the record)."""
+    return {k: v for k, v in record.items() if k == "sections" or v not in (None, [], "", {})}
 
 
 # ---------------------------------------------------------------------- ClinicalTrials.gov
@@ -380,7 +383,8 @@ def isrctn(identifier: str, ask: Ask, base: str) -> dict[str, Any]:
     if root.tag != f"{_NS}allTrials" or count is None or not count.isdigit():
         return unresolvable(SHAPE)
     number = identifier.removeprefix("ISRCTN")
-    for full in root.findall(f"{_NS}fullTrial"):
+    trials = root.findall(f"{_NS}fullTrial")
+    for full in trials:
         trial = full.find(f"{_NS}trial")
         assigned = trial.find(f"{_NS}isrctn") if trial is not None else None
         if assigned is None or (assigned.text or "").strip() != number:
@@ -389,6 +393,9 @@ def isrctn(identifier: str, ask: Ask, base: str) -> dict[str, Any]:
         if registered is None:
             return unresolvable(SHAPE)
         return _isrctn_record(trial, registered)
+    if int(count) > len(trials):
+        # The trial may be among those the answer did not hold: nothing is known of it.
+        return unresolvable(f"ISRCTN found {count} trials for {identifier}, more than it gave")
     return {"status": ABSENT, "why": f"ISRCTN holds no trial {identifier}"}
 
 

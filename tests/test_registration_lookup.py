@@ -136,6 +136,17 @@ def test_only_clinicaltrials_documented_answers_are_found_or_absent(answer, stat
     assert _ctgov(answer)["status"] == status
 
 
+def test_a_study_with_nothing_listed_is_found_with_no_sections() -> None:
+    """Round 1 of #390: a found record with no section lost the key the schema asks for, and
+    writing it stopped the command."""
+    study = _study()
+    study["protocolSection"]["outcomesModule"] = {}
+    study["protocolSection"]["conditionsModule"] = {}
+    study["protocolSection"]["eligibilityModule"] = {}
+    found = _ctgov(_json(200, study))
+    assert found["status"] == FOUND and found["sections"] == []
+
+
 def test_an_alias_names_the_study_it_stands_for() -> None:
     said = _ctgov(_text(301, "", {"Location": "/api/v2/studies/NCT07654321"}))
     assert "NCT07654321" in said["why"]
@@ -249,6 +260,12 @@ def test_a_template_longer_than_one_page_is_no_answer() -> None:
     assert registries.osf("osf.io/abcde", _ask(table), _OSF)["status"] == UNRESOLVABLE
 
 
+def test_an_osf_registration_with_no_answer_is_found_with_no_sections() -> None:
+    table = _osf_answers(_json(200, _registration(registration_responses={}, withdrawn=True)))
+    found = registries.osf("osf.io/abcde", _ask(table), _OSF)
+    assert found["status"] == FOUND and found["sections"] == [] and found["withdrawn"] is True
+
+
 def test_a_withdrawn_osf_registration_says_so() -> None:
     table = _osf_answers(_json(200, _registration(withdrawn=True)))
     assert registries.osf("osf.io/abcde", _ask(table), _OSF)["withdrawn"] is True
@@ -308,6 +325,13 @@ def test_an_isrctn_trial_is_read_by_its_number_among_what_the_query_found() -> N
 )
 def test_only_isrctn_documented_answers_are_found_or_absent(body, status) -> None:
     assert _isrctn(body)["status"] == status
+
+
+def test_a_trial_isrctn_may_not_have_given_is_not_absent() -> None:
+    """Round 1 of #390: more trials found than the answer held was read as none of them
+    being the one asked, and the registration failed as unknown."""
+    body = _trials("87654321").replace(b'totalCount="1"', b'totalCount="40"')
+    assert _isrctn(body)["status"] == UNRESOLVABLE
 
 
 # ------------------------------------------------------------------------- the EU PAS register
@@ -422,6 +446,17 @@ def test_only_pages_of_the_shape_read_are_found_or_absent(pages, status) -> None
     assert eupas.eu_pas("EUPAS1000000999", _ask(_catalogue(pages)), _EMA)["status"] == status
 
 
+def test_a_search_that_links_more_studies_than_are_read_is_not_absent() -> None:
+    links = " ".join(f'<a href="/study/{n}">x</a>' for n in range(30001, 30009))
+    pages = {"/search?EUPAS11379": _text(200, f"<html>8 results {links}</html>")}
+    for n in range(30001, 30009):
+        pages[f"/study/{n}"] = _found_at(str(n))
+        pages[f"/node/{n}/administrative-details"] = Response(
+            200, {}, _administrative("EUPAS99999"))
+    found = eupas.eu_pas("EUPAS11379", _ask(_catalogue(pages)), _EMA)
+    assert found["status"] == UNRESOLVABLE
+
+
 def test_an_older_number_the_search_does_not_find_is_absent() -> None:
     table = _catalogue({"/search?EUPAS11379": _text(200, "<html>0 results. No results found."
                                                          "</html>")})  # fmt: skip
@@ -448,6 +483,15 @@ def test_an_older_number_the_search_does_not_find_is_absent() -> None:
 )
 def test_an_identifier_names_its_registry_by_its_shape(written, registry, kept) -> None:
     assert identify(written) == (registry, kept)
+
+
+@pytest.mark.parametrize("written, registry", [("EU-PAS 12345", "eu-pas"),
+                                               ("ISRCTN 17072692", "ISRCTN"),
+                                               ("12345678", "clinicaltrials.gov")])  # fmt: skip
+def test_a_registry_with_a_shape_holds_a_named_identifier_to_it(written, registry) -> None:
+    """Round 1 of #390: naming the registry let any text through, which the EU PAS lookup
+    then failed to read as a number."""
+    assert identify(written, registry) == (None, None)
 
 
 def test_an_identifier_of_another_registry_needs_its_name() -> None:

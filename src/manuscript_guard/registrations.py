@@ -109,8 +109,14 @@ def identify(written: str, registry: str | None = None) -> tuple[str | None, str
         if found:
             value = found.group(1)
             return name, kept.format(value.lower() if name == OSF else value)
-    if registry and text and not any(ch in text for ch in "\\/:*?\"<>|\n"):
-        return registry.strip().lower(), text
+    named = registry.strip().lower() if registry else None
+    # A registry whose identifiers have a shape is held to it, even when it is named: an
+    # identifier written otherwise would be asked as written, and found by nobody (round 1
+    # of #390).
+    if named in {name for name, _shape, _kept in _SHAPES}:
+        return None, None
+    if named and text and not any(ch in text for ch in "\\/:*?\"<>|\n"):
+        return named, text
     return None, None
 
 

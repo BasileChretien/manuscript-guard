@@ -4025,14 +4025,19 @@ Which registries, as Basile chose on 2026-10-21, and the shapes they answered in
   that registration: nothing is known of it.
 - *That it was made in advance.* The registered date is held to the study's actual start and
   the actual start of its data analysis, as the registry gives them, and to the day the first
-  results were written, which is `frozen_at` of `design/plan.frozen.yaml`. Two dates are
+  results were written, which is `frozen_at` of `design/plan.frozen.yaml`. First results
+  written from synthetic inputs only, a dry run on simulated data, date nothing of the study:
+  both emitters mark such a copy `synthetic: true`, and a registration after it is a note
+  (`registration-after-dry-run`), as Basile chose in round 1 of #390. Two dates are
   compared as far as the less precise goes, so a study registered on 27 April that started in
   April may have started after it and is not said to have; a start dated after the day the
   registry was asked is a plan, and is not compared. A registration after any of them
   (`registration-late`) warns, and fails at submission unless `paper.yaml` gives the reason
   under `retrospective` and the manuscript says the study was registered retrospectively
-  ("retrospectively registered", "registered retrospectively", a line break between the
-  words allowed); then it is a note. With the reason and not the words, it is
+  ("retrospectively registered", "registered retrospectively", "retrospective
+  registration", "registration was retrospective", a line break between the words allowed,
+  and never "registry": "a retrospective registry-based cohort" says nothing of the
+  registration, round 1 of #390); then it is a note. With the reason and not the words, it is
   `registration-retrospective-unsaid`.
 - *That it is the study.* A registry's interventional study for a paper whose `study_type` is
   observational, or the other way round, is `registration-design-differs`; a withdrawn
@@ -4047,7 +4052,7 @@ Which registries, as Basile chose on 2026-10-21, and the shapes they answered in
   found, it is `registration-outcome-not-registered`, or `registration-outcome-added-later`
   where only the later version has it; found in the other role, `registration-outcome-role-
   changed` (a registered secondary reported as primary, or a registered primary as
-  secondary); with no `reported_as`, the outcome is not reported, and the plan's Deviations
+  secondary; ClinicalTrials.gov's other pre-specified outcomes count as secondary ones); with no `reported_as`, the outcome is not reported, and the plan's Deviations
   section has to quote the same words (`registration-outcome-dropped`); with a key the plan
   does not list, `registration-outcome-unplanned`; with one that emits nothing quoted,
   `registration-outcome-unreported`. A change the Deviations section names by the result's
@@ -4064,7 +4069,8 @@ Which registries, as Basile chose on 2026-10-21, and the shapes they answered in
 
 Each finding of the last four kinds warns while the paper is drafted and fails at submission,
 as Basile decided: a draft can still change, and a paper sent with a switched outcome not said
-is the failure this is for.
+is the failure this is for. Three are less: `registration-secondary-unquoted` is a warning at
+every stage, and `registration-roles-unchecked` and `registration-after-dry-run` are notes.
 
 **What it does not decide.** That the words quoted mean the outcome the paper measures, that
 the population, the exposure and the analysis are the registered ones, and that a reason given
@@ -8282,6 +8288,15 @@ Open, recorded as each change landed:
   project used manuscript-guard, or whose `design/plan.frozen.yaml` was written later than its
   first results, is held to that later date, and a registration made in between is not seen
   as late. The date is this machine's clock when the emitter first wrote results.
+- **A record copied by hand is the copier's word, and has no digest.** A fetched record
+  edited and then marked `source: by-hand`, with a name and a day, is read as a copy: G12
+  notes it and holds the paper to what it says, and `lookup` does not write over it. That is
+  an edit made on purpose, as running the digest again is, and the note is what shows it
+  (round 1 of #390).
+- **Only all-synthetic first results are set aside.** A first run on simulated data marks
+  the frozen plan, and the real data's first results, which come later, are dated by nobody:
+  such a project's registration is held to the registry's own start dates only. A first run
+  with one real input among simulated ones dates the study's first results.
 - **PROSPERO is not asked.** Its records reach its own page through an API that wants a
   header the page makes; a review registered there has a record copied by hand, which G12
   notes as the copier's word and holds like any other.

@@ -915,10 +915,20 @@ def _fold_keeps_dashes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gate, "fold", dashed)
 
 
+def _retrospective_any_regist_word(monkeypatch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import registration as gate
+
+    loose = re.compile(r"(?i)\bretrospectiv\w*\s+regist\w*|\bregist\w*\s+retrospectiv\w*")
+    monkeypatch.setattr(gate, "RETROSPECTIVE", loose)
+
+
 def _retrospective_on_one_line(monkeypatch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import registration as gate
 
-    one_line = re.compile(r"(?i)\bretrospectiv\w* regist\w*|\bregist\w* retrospectiv\w*")
+    one_line = re.compile(
+        r"(?i)\bretrospective(?:ly)? regist(?:ered|ration)\b"
+        r"|\bregist(?:ered|ration) (?:was )?retrospective(?:ly)?\b"
+    )
     monkeypatch.setattr(gate, "RETROSPECTIVE", one_line)
 
 
@@ -5961,6 +5971,10 @@ BROKEN = {
     "a registered outcome keeps its dashes": (
         _fold_keeps_dashes,
         test_a_registered_outcome_is_found_however_it_was_copied_and_not_with_a_word_changed,
+    ),
+    "a registry is read as a registration": (
+        _retrospective_any_regist_word,
+        test_a_late_registration_is_said_in_every_way_a_manuscript_says_it_and_no_other,
     ),
     "a late registration is said on one line only": (
         _retrospective_on_one_line,

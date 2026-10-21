@@ -4303,6 +4303,32 @@ def test_a_retrospective_registration_said_in_paper_and_manuscript_is_a_note(
     assert _registration(project, "submission") == {"registration-retrospective": "info"}
 
 
+def test_a_registry_based_cohort_does_not_say_the_registration_was_late(project: Path) -> None:
+    """Round 1 of #390: "registry" was read as "registered", and a late registration whose
+    manuscript said only this passed as said."""
+    dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
+    stated = f"A retrospective registry-based cohort ({_NCT})."
+    _register(project, record=_ctgov_record(dates=dates), stated=stated,
+              entry={"retrospective": "the custodian agreed the protocol first"})  # fmt: skip
+    said = _registration(project, "submission")
+    assert said == {"registration-retrospective-unsaid": "fail"}
+
+
+def test_a_registration_after_a_dry_run_on_synthetic_data_is_a_note(project: Path) -> None:
+    """Round 1 of #390: the plan is frozen on the first results of any kind, so a study
+    registered after a dry run on simulated data, and before its real analysis, failed as
+    late, and only an untrue sentence cleared it."""
+    frozen = project / "design" / "plan.frozen.yaml"
+    record = json.loads(frozen.read_text(encoding="utf-8"))
+    frozen.write_text(json.dumps({**record, "synthetic": True}), encoding="utf-8")
+    _register(project, record=_ctgov_record(dates={"registered": _days_on(30)}))
+    assert _registration(project, "submission") == {"registration-after-dry-run": "info"}
+    dates = {"registered": _days_on(30), "study_start": _days_on(-3)}
+    _register_again(project, record=_ctgov_record(dates=dates, asked_on=_days_on(-1)))
+    said = _registration(project, "submission")
+    assert said == {"registration-late": "fail", "registration-after-dry-run": "info"}
+
+
 def test_a_retrospective_registration_the_manuscript_does_not_say_fails(project: Path) -> None:
     dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
     _register(project, record=_ctgov_record(dates=dates),
@@ -5448,6 +5474,9 @@ _NOT_THE_MANUSCRIPT = (
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations",
 )  # fmt: skip
+#: Checks that read the manuscript as text in either format, and run on LaTeX too: G12's
+#: registration looks for an identifier and a sentence, which a `.tex` file holds as plainly.
+_EITHER_FORMAT = ("check_registration",)
 
 
 def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
@@ -5463,11 +5492,11 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
     def recorder(name: str):
         return lambda *_args, **_kwargs: called.append(name) or Report()
 
-    for name in _MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT:
+    for name in _MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT + _EITHER_FORMAT:
         monkeypatch.setattr(cli, name, recorder(name))
     _as_latex(project)
     cli._run_gates(project, stage="drafting")
-    assert sorted(called) == sorted(_NOT_THE_MANUSCRIPT)
+    assert sorted(called) == sorted(_NOT_THE_MANUSCRIPT + _EITHER_FORMAT)
     # One entry calls two checks, so the set is pinned name by name as well (round 2). A
     # check an entry of the runner's table gains must be put in one of the two tuples, and
     # the one the runner calls in its own body is `check_format` (round 3).
@@ -5481,7 +5510,7 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
         for name in code.co_names
         if name.startswith("check_")
     }
-    assert runner == set(_MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT)
+    assert runner == set(_MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT + _EITHER_FORMAT)
 
 
 def test_a_main_tex_without_a_class_leaves_a_markdown_manuscript_markdown(project: Path) -> None:

@@ -3719,6 +3719,62 @@ def test_what_a_cited_reference_holds_and_is_no_placeholder_passes(
     assert _placeholders(_g6(project)) == []
 
 
+# ------------------------------------------- words to the reviewers, left in the manuscript
+
+
+def _residue_said(root: Path, *, submission: bool) -> list[str]:
+    from manuscript_guard.gates import check_writing
+
+    project, _ = load_project(root)
+    report = check_writing(project, submission=submission)
+    return [f.severity for f in report.findings if f.code == "revision-residue"]
+
+
+@pytest.mark.parametrize(
+    "residue",
+    [
+        "As requested by Reviewer 2, we added a sensitivity analysis.",
+        "In response to the reviewer's comment, we clarified the exposure.",
+        "In the previous version of this manuscript, the cohort was larger.",
+        "We have now clarified the definition of exposure.",
+        "The definition is given on page 4, lines 120-125.",
+        "I have shortened the Discussion to two paragraphs.",
+    ],
+)
+def test_words_to_the_reviewers_in_the_manuscript_fail_at_submission(
+    project: Path, residue: str
+) -> None:
+    """A revision's words to the reviewers, or a model's to its user, reached the manuscript
+    and no gate read them: the artefacts G6 knew were a chat tool's markup and placeholders.
+    They warn while the paper is revised and fail at submission (Basile, 2026-10-20)."""
+    _with_paragraph(project, residue)
+    assert _residue_said(project, submission=False) == ["warn"]
+    assert _residue_said(project, submission=True) == ["fail"]
+
+
+def test_words_to_the_reviewers_in_the_supplement_fail_too(project: Path) -> None:
+    supplement = project / "manuscript" / "supplementary" / "appendix.md"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_text("# Appendix\n\nAs suggested by the reviewer, we added Table S9.\n",
+                          encoding="utf-8")  # fmt: skip
+    assert _residue_said(project, submission=True) == ["fail"]
+
+
+def test_the_letter_to_the_reviewers_is_not_read_for_residue(project: Path) -> None:
+    """The response is where these words belong: G6 never reads the round's file nor the
+    letter `respond` writes from it, and G13 lets the letter say them."""
+    reply = ("As requested by Reviewer 2, we have now clarified this in the revised "
+             "manuscript (page 4, lines 120-125).")  # fmt: skip
+    _round_with(project, [_point(response=reply, rebutted="No change was needed.")])
+    from manuscript_guard.cli import main
+
+    assert main(["respond", str(project)]) in (0, 1)
+    assert (project / "build" / "response-to-reviewers.md").is_file()
+    assert _residue_said(project, submission=True) == []
+    codes_said = ("response-leak", "response-placeholder", "response-artefact")
+    assert _said(_g13(project), *codes_said) == []
+
+
 def test_a_placeholder_on_an_entrys_first_line_is_found_on_it(project: Path) -> None:
     """Round 1 of #262: a field written on the entry's line was put on the next entry's."""
     bib = project / "literature" / "references.bib"
@@ -15705,16 +15761,16 @@ def test_an_edit_that_changes_a_number_a_binding_or_a_citation_is_not_written(
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: Path) -> None:
-    """Words in the manuscript more than once, nowhere, across two paragraphs, beside
-    emphasis that a merge from Word's text would drop, and two edits of the same words: none
-    is placed by guessing which was meant."""
+    """Words in the manuscript more than once, nowhere, across two paragraphs, across a hard
+    line break that writing them would delete, and two edits of the same words: none is
+    placed by guessing which was meant."""
     from suggesting import finding, suggest, with_edits
 
     path = project / "manuscript" / "main.md"
     path.write_text(
         path.read_text(encoding="utf-8").replace(
-            "Whether the signal extends to example-drug specifically",
-            "Whether the signal extends to *example-drug* specifically",
+            "Whether the signal extends to example-drug specifically has not",
+            "Whether the signal extends to *example-drug* specifically  \nhas not",
         ),
         encoding="utf-8",
     )
@@ -15728,6 +15784,7 @@ def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: 
             ("specifically has not", "has not"),
             ("Reports were included without", "Reports were taken without"),
             ("were included without restriction", "were included with no restriction"),
+            ("example-drug specifically", "the drug specifically"),
         ),
     )
     code, said = suggest(project)
@@ -15735,8 +15792,10 @@ def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: 
     reasons = {
         "the": "in the manuscript",
         "words that are nowhere": "not in the manuscript as it stands",
+        # Quoted as the reader was sent it, across the emphasis the source holds.
+        "example-drug specifically": "only as the build prints them, across markup",
         "has not been examined. Whether": "two paragraphs",
-        "specifically has not": "would not come back into the source as written",
+        "specifically has not": "across a line break",
         "Reports were included without": "same words",
         "were included without restriction": "same words",
     }
@@ -15764,6 +15823,78 @@ def test_a_suggestion_nobody_decided_is_not_imported(project: Path, tmp_path: Pa
         assert (project / "review" / "round-8" / "pharmacoepidemiologist.yaml").read_bytes() == (
             record
         )
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_edit_that_written_in_would_be_more_than_its_words_is_not_written(
+    project: Path,
+) -> None:
+    """An accepted suggestion is written into the source where its words are, not merged
+    from Word's text, so what the source then says is asked before it is offered. New words
+    that open the paragraph as a list item would take it out of the paragraphs the build
+    marks, and new words against a closing underscore would end the emphasis there: written
+    so, neither reads as Word shows it accepted."""
+    from suggesting import document, finding, suggest, with_edits
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "Whether the signal extends to example-drug specifically",
+            "Whether the signal extends to _example-drug_, specifically",
+        ),
+        encoding="utf-8",
+    )
+    with_edits(
+        project,
+        finding("r8-pe-02", ("Whether the signal", "+ Whether the signal"),
+                (", specifically", "s specifically")),
+    )  # fmt: skip
+    code, said = suggest(project)
+    assert code == 0, said
+    reasons = {
+        "Whether the signal": "no longer be a paragraph of its own",
+        ", specifically": "would not read as Word shows it",
+    }
+    for old, why in reasons.items():
+        line = next((ln for ln in said.splitlines() if f"'{old}'" in ln), "")
+        assert why in line, (old, said)
+    assert not document(project).exists()
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("how", ["old-words-changed", "record-gone"])
+def test_an_accepted_suggestion_whose_words_are_not_the_document_s_is_not_merged(
+    project: Path, tmp_path: Path, how: str
+) -> None:
+    """`import` writes an accepted suggestion's words from its sealed record, where the old
+    words are found once and are the ones the document showed. A record sealed again with
+    other old words, which are in the paragraph too, would put the new words in the wrong
+    place; a record that is gone gives no words. Either way the paragraph is refused whole:
+    merged from Word's text instead, it could lose the markup the edit was offered beside."""
+    from suggesting import READING, offered_round, reading, run
+    from word_edits import decide
+
+    from manuscript_guard.gates.review import reading_digest
+
+    main = project / "manuscript" / "main.md"
+    document = offered_round(project)
+    returned = decide(document, tmp_path / "back.docx", {1: "accept", 2: "accept", 3: "accept"})
+    if how == "record-gone":
+        (project / READING).unlink()
+    else:
+        record = reading(project)
+        edit = next(f for f in record["findings"] if f["id"] == "r8-pe-03")["edits"][0]
+        edit["old"] = "example-drug"
+        record["reading_sha256"] = reading_digest(record)
+        (project / READING).write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert code == 1, said
+    assert "cannot be written into the source where its words were" in said, said
+    text = main.read_text(encoding="utf-8")
+    assert "Whether the signal extends to example-drug specifically has not been examined." in (
+        text
+    )
+    assert "in particular" not in text
 
 
 # --------------------------------------------------------------------------------------

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import math
 import os
+import textwrap
 from collections.abc import Callable, Iterable
 from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
 from fractions import Fraction
@@ -925,6 +926,22 @@ def latex_writing(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     return text + _FAR + "\\end{document}\n% TODO cut\nXXX patients\n", planted
 
 
+#: What a display is written in: digits and the signs a number is written with, each of TeX's
+#: specials, and each character the values file writes another way (`build/latex_values.py`).
+LATEX_DISPLAY_CHARACTERS = (
+    *"0123456789.,-+()[]/ <>|'", "--", *"\\{}$&#%_~^", "\N{EN DASH}", "\N{EM DASH}",
+    "\N{MINUS SIGN}", "\N{PLUS-MINUS SIGN}", "\N{MULTIPLICATION SIGN}",
+    "\N{LESS-THAN OR EQUAL TO}", "\N{GREATER-THAN OR EQUAL TO}", "\N{NO-BREAK SPACE}",
+    "\N{THIN SPACE}", "\N{GREEK SMALL LETTER BETA}",
+)  # fmt: skip
+
+
+def latex_displays() -> st.SearchStrategy[str]:
+    """A display holding every character of `LATEX_DISPLAY_CHARACTERS` once, in an order
+    drawn, so that an escape broken for one is seen in each."""
+    return st.permutations(LATEX_DISPLAY_CHARACTERS).map("".join)
+
+
 @st.composite
 def latex_bound(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     """A LaTeX document with a binding in every place of `LATEX_BINDING_PLACES`, in an order
@@ -1512,6 +1529,8 @@ def pdf_document(
     fonts: dict[str, bytes] | None = None,
     forms: dict[str, tuple[bytes, str]] | None = None,
     *,
+    gstates: dict[str, float] | None = None,
+    spaces: dict[str, bytes] | None = None,
     width: float = 216,
     compress: bool = True,
     packed: bool = False,
@@ -1519,7 +1538,9 @@ def pdf_document(
 ) -> bytes:
     """A PDF of one page that draws `content`, with `fonts` (a name and the font's own
     dictionary, which may refer to the objects after it as `{n}`) and `forms` (a name, and
-    the form's content and `/Matrix`). Its fonts are packed in an object stream where
+    the form's content and `/Matrix`) and `gstates` (a name, and the opacity its graphics
+    state sets, filling and stroking) and `spaces` (a name, and the colour space it names, as
+    written). Its fonts are packed in an object stream where
     `packed` is set, and its content in a stream for each line where `split` is. No
     cross-reference table: what reads it reads its objects."""
     fonts = fonts or {"F1": b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"}
@@ -1568,7 +1589,12 @@ def pdf_document(
     objects[2] = (b"<< /Type /Page /Parent 2 0 R /Contents " + contents
                   + b" /Resources << /Font << "
                   + b" ".join(font_refs) + b" >> /XObject << " + b" ".join(form_refs)
-                  + b" >> >> >>")  # fmt: skip
+                  + b" >> /ExtGState << " + b" ".join(
+                      b"/%s << /ca %g /CA %g >>" % (name.encode(), alpha, alpha)
+                      for name, alpha in (gstates or {}).items()
+                  ) + b" >> /ColorSpace << " + b" ".join(
+                      b"/%s %s" % (name.encode(), space) for name, space in (spaces or {}).items()
+                  ) + b" >> >> >>")  # fmt: skip
     out = b"%PDF-1.5\n"
     for number, body in enumerate(objects, 1):
         out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
@@ -1651,6 +1677,115 @@ def pdf_figures(draw: st.DrawFn) -> tuple[bytes, list[float], list[float]]:
     return document, sorted(texts + form_texts), sorted(lines + form_lines)
 
 
+# ------------------------------------------------------------------- a publisher's proof
+
+#: The changes a typesetter makes that are corrections, each planted once in every proof
+#: drawn, in a part of its own: as sent, as printed, and what `proof` calls it.
+PROOF_CORRECTIONS = (
+    ("3.84", "3.48", "number"),
+    ("36.4%", "36,4%", "decimal mark"),
+    ("\N{MINUS SIGN}0.51", "0.51", "sign"),
+    ("12 mg", "12 \N{GREEK SMALL LETTER MU}g", "unit or symbol"),
+    ("[4]", "[5]", "citation"),
+)
+#: The same values set otherwise: shown, and not counted.
+PROOF_TYPOGRAPHY = (
+    ("1737", "1 737"), ("0.001", ".001"), ("\N{MINUS SIGN}0.20", "-0.20"),
+)  # fmt: skip
+#: A word copy-edited, as sent and as printed: no other part holds either.
+PROOF_EDIT = ("remained", "stayed")
+#: What each part starts with, so that no two parts read alike.
+_PROOF_LEADS = (
+    "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India",
+    "Juliet", "Kilo", "Lima", "Mike", "November",
+)  # fmt: skip
+
+
+@st.composite
+def proofs(draw: st.DrawFn, *, planted: bool = True) -> dict[str, Any]:
+    """Parts sent, as (label, text), and the pages of their proof as `pdftotext` writes
+    them: each part wrapped to a width drawn, a running head over each page and its number
+    under it, and the line numbers some proofs print, or not. A long word and a compound are
+    broken at a line's end. With `planted`, one of every change of `PROOF_CORRECTIONS` and
+    `PROOF_TYPOGRAPHY`, and `PROOF_EDIT`, each in a part of its own, and one part the proof
+    leaves out; the dictionary says which part holds which, and how the proof prints it.
+
+    The text reads as text does: each part draws its words from a share of `FILLER` of its
+    own and ends with a word of its own, so that no line stands at the foot of half the
+    pages as a running foot does, and a proof has a dozen lines and its pages six at least.
+    What a reading cannot tell apart from a running foot is in DESIGN.md, Known gaps."""
+
+    def fill(at: int) -> st.SearchStrategy[str]:
+        share = [FILLER[(3 * at + k) % len(FILLER)] for k in range(10)]
+        return st.lists(st.sampled_from(share), min_size=2, max_size=7, unique=True).map(
+            " ".join)  # fmt: skip
+
+    held: list[tuple[str, str, str]] = []  # what a part holds, as sent and as printed
+    if planted:
+        held += [(sent, printed, what) for sent, printed, what in PROOF_CORRECTIONS]
+        held += [(sent, printed, "typography") for sent, printed in PROOF_TYPOGRAPHY]
+        held += [(PROOF_EDIT[0], PROOF_EDIT[1], "copy-edit"), ("", "", "missing")]
+    held += [("pharmacovigilance and example-drug", "pharmacovigilance and example-drug",
+              "broken")]  # fmt: skip
+    held += [("", "", "plain")] * draw(st.integers(0 if planted else 3, 3 if planted else 6))
+    order = draw(st.permutations(range(len(held))))
+    parts, printed_parts, planted_at = [], [], {}
+    for index, (lead, at) in enumerate(zip(_PROOF_LEADS, order, strict=False)):
+        sent, printed, what = held[at]
+        before, after = draw(fill(index)), draw(fill(index))
+        label = f"the paragraph {lead}"
+        parts.append((label, " ".join(p for p in (lead, before, sent, after, lead.lower())
+                                      if p) + "."))  # fmt: skip
+        if what == "missing":
+            planted_at[what] = (label, "")
+            continue
+        # Kept on one line, so that where the proof prints it is one line.
+        kept = printed.replace(" ", "\N{NO-BREAK SPACE}")
+        printed_parts.append(" ".join(p for p in (lead, before, kept, after, lead.lower())
+                                      if p) + ".")  # fmt: skip
+        if what not in ("plain", "broken"):
+            planted_at[what if what != "typography" else f"typography {printed}"] = (label,
+                                                                                  printed)
+    width = draw(st.integers(28, 70))
+    while True:
+        lines = [line for text in printed_parts
+                 for line in textwrap.wrap(text, width, break_on_hyphens=False,
+                                           break_long_words=False)]  # fmt: skip
+        if len(lines) >= 12 or width <= 16:
+            break
+        width -= 8
+    lines = _broken_at_line_ends(lines)
+    numbered = draw(st.booleans())
+    # Two pages at least: on one, what every page repeats cannot be told (DESIGN.md).
+    per_page = draw(st.integers(6, max(6, (len(lines) + 1) // 2)))
+    pages, number, at_line = [], 0, {}
+    for start in range(0, len(lines), per_page):
+        page = []
+        for line in lines[start : start + per_page]:
+            number += 1
+            at_line[number] = (len(pages) + 1, line)
+            page.append(f"{number} {line}" if numbered else line)
+        pages.append("\n".join(["Example et al. J Imag Pharm 2026", *page,
+                                str(101 + len(pages))]))  # fmt: skip
+    return {"parts": parts, "pages": pages, "planted": planted_at, "numbered": numbered,
+            "lines": at_line}  # fmt: skip
+
+
+def _broken_at_line_ends(lines: list[str]) -> list[str]:
+    """The lines with "pharmacovigilance" and "example-drug" each broken at a line's end, as
+    a typesetter hyphenates: "pharmaco-" and "vigilance", "example-" and "drug"."""
+    out = []
+    for line in lines:
+        for whole, cut in (("pharmacovigilance", 8), ("example-drug", 8)):
+            if whole in line:
+                head, tail = line.split(whole, 1)
+                first = head + whole[:cut] + ("" if whole[cut - 1] == "-" else "-")
+                out.append(first.rstrip())
+                line = (whole[cut:] + tail).lstrip()
+        out.append(line)
+    return out
+
+
 # ------------------------------------------------------------- a figure's alternative text
 
 #: What pandoc's Markdown reads as markup in a picture's description unless each mark in it
@@ -1685,6 +1820,222 @@ def alt_texts(draw: st.DrawFn) -> str:
     spaces = draw(st.permutations([*ALT_SPACES, *extra]))
     joined = zip(spaces, pieces[1:], strict=True)
     return pieces[0] + "".join(space + piece for space, piece in joined)
+
+
+# ------------------------------------------------------------------- a figure's colours
+
+#: Colours a figure may paint in, as an SVG writes each of them.
+PAINT_COLOURS = ("#d62728", "#2ca02c", "#1f77b4", "#ff7f0e", "#e69f00", "#56b4e9",
+                 "#009e73", "#cc79a7", "#000000", "#777777")  # fmt: skip
+#: Colours a text may be painted in, none of them a mark's: a text's colour read as a
+#: mark's is then a colour the marks do not have, under every seed.
+TEXT_COLOURS = ("#3b0f70", "#8c2981", "#5a5a5a")
+#: Colours each painted by one kind of mark and by no other, so that a reading that loses
+#: or moves that kind's colour is seen under every seed: what a hidden mark is painted in,
+#: what a form draws in, what a colour set between `q` and `Q` is.
+HIDDEN, FORMED, BETWEEN = "#a0522d", "#ff1493", "#4b0082"
+#: Each way an SVG sets the colour a mark is painted in, and each way it paints none.
+PAINT_KINDS = ("attribute", "style", "class", "inherited", "current", "use", "opacity",
+               "fill-opacity", "named", "function", "text", "hidden", "none", "unused",
+               "inherit", "invisible", "glyphs", "hsl", "stroke-inherit", "cairo")  # fmt: skip
+#: `hsl()` as CSS writes it, and the colour it is.
+_HSL = {"hsl(0, 100%, 50%)": "#ff0000", "hsl(120, 100%, 25%)": "#008000",
+        "hsla(240, 100%, 50%, 1)": "#0000ff"}  # fmt: skip
+_NAMED_COLOURS = {"#ff0000": "red", "#008000": "green", "#0000ff": "blue",
+                  "#ffa500": "orange", "#800080": "purple"}  # fmt: skip
+
+
+def _blend(code: str, alpha: float) -> str:
+    """`code` laid over white at `alpha`, as a hex code, rounded as the reading rounds."""
+    channels = [int(code[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+    return "#" + "".join(f"{round((c * alpha + (1 - alpha)) * 255):02x}" for c in channels)
+
+
+@st.composite
+def painted_svgs(draw: st.DrawFn) -> tuple[str, set[str], set[str]]:
+    """An SVG with a mark painted in every way of `PAINT_KINDS`, each in a colour drawn at
+    random, in an order drawn; with the colours its marks are painted in, as they show over
+    white, and those its texts are."""
+    marks, texts = set(), set()
+    defs, body, rules = [], [], []
+    for number, kind in enumerate(draw(st.permutations(PAINT_KINDS))):
+        colour = draw(st.sampled_from(PAINT_COLOURS))
+        shape = f'd="M0 {number}L9 {number}"'
+        if kind == "attribute":
+            body.append(f'<path {shape} fill="none" stroke="{colour}"/>')
+            marks.add(colour)
+        elif kind == "style":
+            body.append(f'<path {shape} style="fill: {colour}; stroke: none"/>')
+            marks.add(colour)
+        elif kind == "class":
+            rules.append(f".k{number} {{ fill: {colour} }}")
+            body.append(f'<rect class="k{number}" fill="#123456" width="2" height="2"/>')
+            marks.add(colour)
+        elif kind == "inherited":
+            body.append(f'<g fill="{colour}"><g><circle r="2"/></g></g>')
+            marks.add(colour)
+        elif kind == "current":
+            body.append(f'<g color="{colour}"><path {shape} fill="none" '
+                        'stroke="currentColor"/></g>')  # fmt: skip
+            marks.add(colour)
+        elif kind == "use":
+            defs.append(f'<path id="m{number}" {shape} stroke="none"/>')
+            body.append(f'<use xlink:href="#m{number}" style="fill: {colour}"/>')
+            marks.add(colour)
+        elif kind == "opacity":
+            alpha = draw(st.sampled_from((0.25, 0.5, 0.8)))
+            body.append(f'<g opacity="{alpha}"><g opacity="0.5"><path {shape} fill="{colour}"/>'
+                        "</g></g>")  # fmt: skip
+            marks.add(_blend(colour, alpha * 0.5))
+        elif kind == "fill-opacity":
+            alpha = draw(st.sampled_from((0.3, 0.6)))
+            body.append(f'<g fill-opacity="{alpha * 100:g}%"><ellipse rx="2" ry="1" '
+                        f'fill="{colour}"/></g>')  # fmt: skip
+            marks.add(_blend(colour, alpha))
+        elif kind == "named":
+            code, name = draw(st.sampled_from(sorted(_NAMED_COLOURS.items())))
+            body.append(f'<polygon points="0,0 1,1 2,0" fill="{name.upper()}"/>')
+            marks.add(code)
+        elif kind == "function":
+            r, g, b = (int(colour[i : i + 2], 16) for i in (1, 3, 5))
+            body.append(f'<path {shape} fill="none" stroke="rgb({r}, {g}, {b})"/>')
+            marks.add(colour)
+        elif kind == "text":
+            colour = draw(st.sampled_from(TEXT_COLOURS))
+            body.append(f'<text x="1" y="1" fill="{colour}">t{number}</text>')
+            texts.add(colour)
+        elif kind == "hidden":
+            body.append(f'<g style="display: none"><path {shape} fill="{colour}"/></g>')
+        elif kind == "none":
+            body.append(f'<path {shape} fill="none" stroke="{colour}" stroke-width="0"/>')
+        elif kind == "unused":
+            defs.append(f'<path id="u{number}" {shape} fill="{colour}"/>')
+        elif kind == "inherit":
+            body.append(f'<g fill="{colour}"><rect fill="inherit" width="2" height="2"/></g>')
+            marks.add(colour)
+        elif kind == "invisible":
+            # Hidden in a hidden group; shown where it says so itself (round 1 of #398).
+            body.append(f'<g visibility="hidden"><path {shape} fill="{HIDDEN}"/>'
+                        f'<path {shape} fill="{colour}" visibility="visible"/></g>')  # fmt: skip
+            marks.add(colour)
+        elif kind == "glyphs":
+            # A text drawn as glyphs, as matplotlib draws one unless told otherwise.
+            colour = draw(st.sampled_from(TEXT_COLOURS))
+            defs.append(f'<path id="DejaVuSans-{number}" d="M0 0L1 1"/>')
+            body.append(f'<g id="text_{number}" style="fill: {colour}">'
+                        f'<use xlink:href="#DejaVuSans-{number}"/></g>')  # fmt: skip
+            texts.add(colour)
+        elif kind == "hsl":
+            written, code = draw(st.sampled_from(sorted(_HSL.items())))
+            body.append(f'<path {shape} fill="none" stroke="{written}"/>')
+            marks.add(code)
+        elif kind == "stroke-inherit":
+            body.append(f'<g stroke="{colour}"><path {shape} fill="none" stroke="inherit"/></g>')
+            marks.add(colour)
+        elif kind == "cairo":
+            # A text drawn as glyphs, as Cairo draws one for R's svg(), in either spelling.
+            colour = draw(st.sampled_from(TEXT_COLOURS))
+            glyph = draw(st.sampled_from((f"glyph0-{number}", f"glyph-0-{number}")))
+            defs.append(f'<symbol overflow="visible" id="{glyph}"><path d="M0 0L1 1"/></symbol>')
+            body.append(f'<g style="fill: {colour}"><use xlink:href="#{glyph}" x="1" y="1"/></g>')
+            texts.add(colour)
+    document = (
+        '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+        'width="100pt" height="100pt" viewBox="0 0 100 100">'
+        f"<style>{' '.join(rules)}</style><defs>{''.join(defs)}</defs>{''.join(body)}</svg>"
+    )
+    return document, marks, texts
+
+
+#: Each way a PDF sets the colour it fills or strokes in, or shows text in.
+PDF_PAINT_KINDS = ("rg", "RG", "g", "G", "k", "K", "scn", "SCN", "sc", "SC", "alpha",
+                   "restored", "text", "form", "pattern", "icc", "indexed")  # fmt: skip
+#: What a colour space named in the page's resources paints in, one only it paints in: as R's
+#: pdf() names an ICC profile's RGB `/sRGB`.
+PROFILED = "#00ced1"
+
+
+@st.composite
+def painted_pdfs(draw: st.DrawFn) -> tuple[bytes, set[str], set[str]]:
+    """A PDF that paints in every way of `PDF_PAINT_KINDS`, in an order drawn, each in a
+    colour drawn; with the colours it paints marks in, as they show over white, and those
+    it shows text in."""
+    marks, texts = set(), set()
+    ops, forms, states, spaces = [], {}, {}, {}
+    # The stroking colour as it stands between operations: what a Q goes back to.
+    stroking = "#000000"
+
+    def rgb(code: str) -> tuple[float, float, float]:
+        return tuple(round(int(code[i : i + 2], 16) / 255, 4) for i in (1, 3, 5))
+
+    def hexed(values: tuple[float, ...]) -> str:
+        return "#" + "".join(f"{round(v * 255):02x}" for v in values)
+
+    for number, kind in enumerate(draw(st.permutations(PDF_PAINT_KINDS))):
+        colour = rgb(draw(st.sampled_from(PAINT_COLOURS)))
+        r, g, b = colour
+        path = b"0 %d m 9 %d l" % (number, number)
+        if kind in ("rg", "RG"):
+            fill = kind == "rg"
+            ops.append(b"%g %g %g %s %s %s" % (r, g, b, kind.encode(), path,
+                                                b"f" if fill else b"S"))  # fmt: skip
+            painted = hexed(colour)
+        elif kind in ("g", "G"):
+            grey = round(draw(st.sampled_from((0.0, 0.3, 0.6))), 4)
+            ops.append(b"%g %s %s %s" % (grey, kind.encode(), path, b"f" if kind == "g" else b"S"))
+            painted = hexed((grey, grey, grey))
+        elif kind in ("k", "K"):
+            cmyk = draw(st.sampled_from(((0.0, 0.5, 1.0, 0.0), (1.0, 0.0, 0.0, 0.2))))
+            ops.append(b"%g %g %g %g %s %s %s" % (*cmyk, kind.encode(), path,
+                                                   b"f" if kind == "k" else b"S"))  # fmt: skip
+            c, m, y, k = cmyk
+            painted = hexed(((1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)))
+        elif kind in ("sc", "SC"):
+            # In a space of one number, a grey.
+            grey = round(draw(st.sampled_from((0.2, 0.8))), 4)
+            space, paints = (b"cs", b"f") if kind == "sc" else (b"CS", b"S")
+            ops.append(b"/DeviceGray %s %g %s %s %s" % (space, grey, kind.encode(), path,
+                                                       paints))  # fmt: skip
+            painted = hexed((grey, grey, grey))
+        elif kind in ("scn", "SCN"):
+            space, paints = (b"cs", b"f") if kind == "scn" else (b"CS", b"S")
+            ops.append(b"/DeviceRGB %s %g %g %g %s %s %s" % (space, r, g, b, kind.encode(), path,
+                                                            paints))  # fmt: skip
+            painted = hexed(colour)
+        elif kind == "alpha":
+            alpha = draw(st.sampled_from((0.25, 0.5)))
+            states[f"A{number}"] = alpha
+            ops.append(b"q /A%d gs %g %g %g rg %s f Q" % (number, r, g, b, path))
+            marks.add(hexed(tuple(v * alpha + (1 - alpha) for v in colour)))
+        elif kind == "restored":
+            # A colour set inside q and Q is gone after it: the stroke after is the one before.
+            ops.append(b"q %g %g %g RG Q %s S" % (*rgb(BETWEEN), path))
+            marks.add(stroking)
+        elif kind == "text":
+            r, g, b = colour = rgb(draw(st.sampled_from(TEXT_COLOURS)))
+            ops.append(b"q %g %g %g rg BT /F1 9 Tf 1 %d Td (t) Tj ET Q" % (r, g, b, number))
+            texts.add(hexed(colour))
+        elif kind == "form":
+            # A form draws in the colour of what draws it.
+            forms[f"X{number}"] = (b"%s f" % path, "1 0 0 1 0 0")
+            ops.append(b"q %g %g %g rg /X%d Do Q" % (*rgb(FORMED), number))
+            marks.add(hexed(rgb(FORMED)))
+        elif kind == "pattern":
+            # A pattern's colours are not read: it paints nothing that is said.
+            ops.append(b"q /Pattern cs /P0 scn %s f Q" % path)
+        elif kind == "icc":
+            spaces[f"CS{number}"] = b"[/ICCBased 999 0 R]"
+            ops.append(b"q /CS%d cs %g %g %g scn %s f Q" % (number, *rgb(PROFILED), path))
+            marks.add(hexed(rgb(PROFILED)))
+        elif kind == "indexed":
+            # An index into a table of colours is not read either.
+            spaces[f"IX{number}"] = b"[/Indexed /DeviceRGB 1 <ff000000ff00>]"
+            ops.append(b"q /IX%d cs 1 scn %s f Q" % (number, path))
+        if kind in ("rg", "RG", "g", "G", "k", "K", "scn", "SCN", "sc", "SC"):
+            marks.add(painted)
+            if kind.isupper():
+                stroking = painted
+    return pdf_document(b"\n".join(ops), forms=forms, gstates=states, spaces=spaces), marks, texts
 
 
 # -------------------------------------------------------------- the results a plan promises
@@ -2052,6 +2403,21 @@ FIXED_LINKS = (
     "https://github.com/someone/study/releases/tag/v1.0",
     "https://github.com/someone/study/tree/4f2a9c1",
 )
+
+#: How a Data availability statement says the data are had: each way of saying they are asked
+#: for, each way of saying anyone may have them, and the words before the second that deny it
+#: in its clause. With the names of two sources, one anyone may download and one a committee
+#: decides on: what the data sources reading must tell apart.
+ASKED_FOR = (
+    "available on request", "available upon reasonable request", "available on a justified request",
+    "available from the corresponding author", "available by contacting the lead author",
+)  # fmt: skip
+OPENLY_HAD = (
+    "publicly available", "openly accessible", "freely downloadable", "available for download",
+    "available to the public", "in the public domain", "publicly and freely available",
+)  # fmt: skip
+DENIALS = ("are not", "cannot be made", "aren't", "are no longer", "will never be")
+SOURCE_NAMES = ("Open Reports Archive", "ORA", "Example National Claims Database", "ENCD")
 
 
 #: A placeholder of each kind G6 reads, as it is typed and as the rule finds it; the words
@@ -2650,6 +3016,67 @@ def printings(draw: st.DrawFn) -> list[dict[str, Any]]:
         })  # fmt: skip
     return cases
 
+# ------------------------------------------------------- two plans of one data, section by section
+
+#: What an edit of a plan's section may be: none, its lines re-wrapped, a word put in
+#: emphasis, a comment added, its case changed, a word added, a word added under a heading
+#: now numbered, a section the plan keeps of itself (its Deviations) changed, and one
+#: heading under two parents with a word added under the first. The two with a word added
+#: and one heading are sections that read otherwise; the heading that stands twice is not
+#: compared. This plan also ends in an appendix, a second top-level heading, which the
+#: earlier one does not have.
+SECTION_EDITS = ("as it is", "rewrapped", "emphasis", "comment", "case", "numbered",
+                 "word added", "own section", "one heading twice")  # fmt: skip
+TOPICS = ("Exposure", "Outcome", "Population", "Comparator", "Case definition",
+          "Exclusions", "Model", "Study period")  # fmt: skip
+
+
+@st.composite
+def plan_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[str]]:
+    """An earlier plan and this one, one section for each kind of edit, in drawn order, and
+    the headings of the sections whose words differ, as this plan writes them."""
+    kinds = draw(st.permutations(SECTION_EDITS))
+    then, now, changed = ["# Analysis plan", ""], ["# Analysis plan", ""], []
+    for at, kind in enumerate(kinds):
+        tag = TAGS[at % len(TAGS)] + "x" * (at // len(TAGS))
+        title = f"{draw(st.sampled_from(TOPICS))} {tag}"
+        if kind == "own section":
+            title = f"Deviations {tag}"
+        if kind == "one heading twice":
+            # The first Definition differs, the second does not: which answers which is not
+            # guessed, and neither is compared. Taken in order, the first would be said.
+            words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12)))
+            for parent, after in ((f"Exposure {tag}", words + " more"), (f"Outcome {tag}", words)):
+                then += [f"## {parent}", "", f"### Definition {tag}", "", words, ""]
+                now += [f"## {parent}", "", f"### Definition {tag}", "", after, ""]
+            continue
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12))
+        body = " ".join(words)
+        heading, edited = title, body
+        if kind == "rewrapped":
+            edited = body.replace(" ", "\n", draw(st.integers(1, 3)))
+        elif kind == "emphasis":
+            edited = " ".join([f"*{words[0]}*", *words[1:]])
+        elif kind == "comment":
+            edited = " ".join([words[0], "<!-- read again -->", *words[1:]])
+        elif kind == "case":
+            edited = body.upper()
+        if kind == "numbered":
+            heading = f"{at + 1}. {title}"
+        if kind in ("word added", "numbered", "own section"):
+            edited = f"{body} {draw(st.sampled_from(('altered', 'restricted', 'widened')))}"
+        if kind in ("word added", "numbered"):
+            changed.append(heading)
+        then += [f"## {title}", "", body, ""]
+        now += [f"## {heading}", "", edited, ""]
+        if kind == "own section":
+            # What the Deviations hold is theirs too, under a heading of its own that names
+            # no deviation ("Amendment" would be left out by its own name).
+            then += [f"### Second reading {tag}", "", body, ""]
+            now += [f"### Second reading {tag}", "", f"{body} later", ""]
+    now += ["# Appendix", "", "Notes kept apart from the plan.", ""]
+    return {"then": "\n".join(then), "now": "\n".join(now)}, changed
+
 
 # ---------------------------------------------------------------------- what an edit holds
 
@@ -3133,6 +3560,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex printed": latex_texts(),
     "latex words": latex_texts(),
     "latex writing": latex_texts(),
+    "latex escaped": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),
@@ -3177,6 +3605,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reply numbers": texts(NOTATED),
     "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
+    "data sources statement": texts(
+        ASKED_FOR + OPENLY_HAD + tuple(f"{d} {o}" for d in DENIALS[:2] for o in OPENLY_HAD[:2])
+        + SOURCE_NAMES
+    ),
     "placeholders": texts(
         tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
     ),
@@ -3189,6 +3621,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),
     "printed value": printings(),
+    "plan sections": plan_pairs().map(lambda drawn: drawn[0]),
     "units after": texts(BOUND_UNITS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}

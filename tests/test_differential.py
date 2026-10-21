@@ -297,6 +297,12 @@ CHANGED = {
         "    elif MOVED in ways:\n",
         "reworded",
     ),
+    "a denial before a phrase not read": (
+        "data_sources.py",
+        "    return NEGATION.search(FREE.sub(\" \", sentence[: found.start()])) is None\n",
+        "    return True\n",
+        "data sources statement",
+    ),
     "a finding that points at another file": (
         "gates/vocabulary.py",
         "                path=passage.path,\n",

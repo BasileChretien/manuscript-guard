@@ -38,6 +38,10 @@ One remit is worth a reviewer of its own on most papers: **contradiction**. Wher
 say something was done and the Limitations, the Discussion or the registration say otherwise,
 neither section's reader notices, because each reads its own part.
 
+A paper with earlier outputs on the same data, an abstract or an earlier article, needs an
+**earlier outputs** remit: whether each difference from them is a change of method the paper
+states and justifies. The related-outputs skill says how it is read.
+
 A paper that rests on its references needs a second: **citation support**. G7 checks that a
 quoted number is in its stored source, and the lookup that a cited work exists and was not
 retracted. Neither asks whether the work says what the sentence citing it says. A tool cited

@@ -85,6 +85,10 @@ BINDS_AT = {
     # A count the custodian forbids may be read inside the team; not outside it, which a
     # panel sent to a model provider already is.
     "count-below-minimum": INTERNAL_REVIEW,
+    # A minimum or a ban on sending that the record of data sources holds and paper.yaml
+    # does not declare: the check above never runs. Said as a warning before (gates/
+    # data_sources.py), and failing where the count would.
+    "custodian-rule-undeclared": INTERNAL_REVIEW,
     "code-block-text-number": DRAFTING,
     "raw-block": DRAFTING,
     # TeX in the text that the Word writer leaves out. Pandoc is asked for it, and what it
@@ -97,6 +101,10 @@ BINDS_AT = {
     "ref-number-unknown": DRAFTING,
     "pointer-form-unread": DRAFTING,
     "unquoted-result": DRAFTING,
+    # A LaTeX document's values file: a PDF compiled from a stale one shows old numbers.
+    "values-file-missing": DRAFTING,
+    "values-file-stale": DRAFTING,
+    "value-not-printable": DRAFTING,
     "typed-parameter": DRAFTING,
     "typed-software-version": DRAFTING,
     "typed-dictionary-release": DRAFTING,

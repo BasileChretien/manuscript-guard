@@ -1,6 +1,6 @@
 ---
 name: analysis-plan
-description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed or plan-changed-after-results, or when the analysis is about to do something the plan did not say.
+description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed or plan-changed-after-results, or when the analysis is about to do something the plan did not say. Not for finding which dataset could answer the question or how it is reached (use data-sources).
 ---
 
 # Writing down what you meant to do, before you do it
@@ -58,7 +58,9 @@ said they would do":
 - Research question: one question, stated as the quantity you will estimate.
 - Design: the design, and why it answers this question rather than a neighbouring one.
 - Population and data source: who or what is included and excluded, over what period,
-  from which version of which source.
+  from which version of which source. The [data-sources](../data-sources/SKILL.md) skill
+  finds the candidate sources with the author and records how each is reached; name the one
+  chosen here, by a name its record gives, or `check` says so (`plan-source-unnamed`).
 - Exposure: the definition as it will be coded, and the comparator.
 - Outcome: the definition as it will be coded. Where two reasonable definitions would
   give different counts, choose here, before you have seen which one gives the answer.

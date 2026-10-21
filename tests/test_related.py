@@ -20,6 +20,12 @@ from manuscript_guard.contracts import load_namespace, load_project
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import FAIL, INFO, WARN
 from manuscript_guard.gates.related import _printed, _same_printed, check_related
+from manuscript_guard.gates.related_methods import (
+    ambiguous_headings,
+    folded_title,
+    section_keys,
+    sections_compared,
+)
 from manuscript_guard.literature.related import (
     SNAPSHOT_FILE,
     TakeError,
@@ -327,6 +333,209 @@ def test_a_named_output_file_must_be_there(project: Path) -> None:
     _declare(project, _entry(shares=["data", "authors"], citekey=CITED,
                              files=["related/abstract/files/counts.csv"]))  # fmt: skip
     assert _found(_check(project)) == [("related-file-missing", WARN)]
+
+
+# ---------------------------------------------------------------------- methods as data
+
+
+def _card(root: Path, change) -> None:
+    """Change the adjusted model's card, as a different fit would have written it."""
+    path = root / FRAGMENT
+    document = json.loads(path.read_text(encoding="utf-8"))
+    change(document["models"]["adjusted"])
+    path.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+
+
+def _plan(root: Path, old: str, new: str) -> None:
+    """Change the earlier project's plan as it stood when its results were first written."""
+    path = root / "design" / "plan.frozen.yaml"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert old in document["plan"], old
+    document["plan"] = document["plan"].replace(old, new)
+    path.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+
+
+def test_a_model_fitted_otherwise_is_a_method_said_and_never_failed(
+    project: Path, earlier: Path
+) -> None:
+    def changed(card: dict) -> None:
+        card["engine"]["family"] = "Poisson"
+        card["terms"] = [t for t in card["terms"] if t["term"] != "C(sex, Treatment('F'))"]
+
+    _card(earlier, changed)
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    (finding,) = _check(project, submission=True).findings
+    assert (finding.code, finding.severity) == ("related-method-differs", WARN)
+    assert "model adjusted: its family is Poisson/Logit there and Binomial/Logit here" in (
+        finding.message
+    )
+    assert "it enters sex here and not there" in finding.message
+    why = [{"model": "adjusted", "because": "the sex of each report is now recorded"}]
+    _declare(project, _entry(project="../earlier", methods=why))
+    assert _found(_check(project)) == [("related-method-explained", INFO)]
+
+
+def test_a_reference_level_changed_is_said(project: Path, earlier: Path) -> None:
+    def changed(card: dict) -> None:
+        for term in card["terms"]:
+            for entered in term["entered"]:
+                if entered.get("reference") == "F":
+                    entered["reference"] = "M"
+
+    _card(earlier, changed)
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    (finding,) = _check(project).findings
+    assert "sex has the reference M there and F here" in finding.message
+
+
+def test_a_section_of_the_plan_worded_otherwise_is_a_method(project: Path, earlier: Path) -> None:
+    _plan(earlier, "## Outcome\n\n", "## Outcome\n\nOnly serious reports counted. ")
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    (finding,) = _check(project, submission=True).findings
+    assert (finding.code, finding.severity) == ("related-method-differs", WARN)
+    assert "the plan's Outcome: it reads 'only serious reports counted." in finding.message
+    why = [{"plan_section": "2. OUTCOME", "because": "all reports, as the journal asked"}]
+    _declare(project, _entry(project="../earlier", methods=why))
+    assert _found(_check(project)) == [("related-method-explained", INFO)]
+
+
+def test_a_plan_rewrapped_or_its_own_deviations_changed_reads_the_same(
+    project: Path, earlier: Path
+) -> None:
+    path = earlier / "design" / "plan.frozen.yaml"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    plan = document["plan"]
+    outcome = plan.index("## Outcome\n\n") + len("## Outcome\n\n")
+    end = plan.index("\n## ", outcome)
+    body = plan[outcome:end].replace(" ", "\n", 3).replace("hepatic", "*hepatic*", 1)
+    plan = plan[:outcome] + body.replace(" ", " <!-- reread --> ", 1) + plan[end:]
+    document["plan"] = plan + "\nA deviation the abstract recorded.\n"
+    path.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    assert _found(_check(project)) == []
+
+
+def test_a_copy_with_no_frozen_plan_reads_its_plan(project: Path, earlier: Path) -> None:
+    (earlier / "design" / "plan.frozen.yaml").unlink()
+    plan = earlier / "design" / "plan.md"
+    plan.write_bytes(plan.read_bytes().replace(b"## Outcome\n\n", b"## Outcome\n\nNot so. "))
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    assert _found(_check(project)) == [("related-method-differs", WARN)]
+
+
+def test_a_variable_or_an_outcome_entered_by_another_expression_is_said(
+    project: Path, earlier: Path
+) -> None:
+    """Round 1 of #402: the expression is compared, and every way a variable is entered."""
+
+    def changed(card: dict) -> None:
+        card["outcome"]["expression"] = "I(hepatic > 0)"
+        for term in card["terms"]:
+            for entered in term["entered"]:
+                if entered["expression"] == "exposed":
+                    entered["expression"] = "np.log1p(exposed)"
+        card["terms"].append({"term": "exposed:sex", "entered": [
+            {"expression": "exposed:sex", "variables": ["exposed"], "as": "numerical"}]})
+
+    _card(earlier, changed)
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    (finding,) = _check(project).findings
+    assert "its outcome is I(hepatic > 0) there and hepatic here" in finding.message
+    assert "exposed is entered as exposed:sex (numerical); np.log1p(exposed) (numerical) there" in (
+        finding.message
+    )
+    assert "exposed:sex (numerical)" in finding.message
+
+
+def test_a_heading_twice_is_said_by_check_and_a_reason_for_it_explains_nothing(
+    project: Path, earlier: Path
+) -> None:
+    doubled = "## Notes\n\n### Definition\n\nA.\n\n### Definition\n\nB.\n\n## Outcome\n\n"
+    _plan(earlier, "## Outcome\n\n", doubled)
+    plan = project / "design" / "plan.md"
+    plan.write_bytes(plan.read_bytes().replace(b"## Outcome\n\n", doubled.encode()))
+    why = [{"plan_section": "Definition", "because": "x"}]
+    _declare(project, _entry(project="../earlier", methods=why))
+    _take(project)
+    assert _found(_check(project)) == [("related-section-ambiguous", INFO),
+                                       ("related-pair-unmatched", WARN)]  # fmt: skip
+
+
+def test_a_reason_for_a_model_or_section_neither_has_is_said(
+    project: Path, earlier: Path
+) -> None:
+    why = [{"model": "unadjusted", "because": "x"}, {"plan_section": "Comparator", "because": "y"}]
+    _declare(project, _entry(project="../earlier", methods=why))
+    _take(project)
+    found = _check(project, submission=True)
+    assert _found(found) == [("related-pair-unmatched", FAIL)] * 2
+    assert found.counts["related_values_differ"] == 0
+
+
+def test_this_plan_not_in_utf8_is_read_and_not_refused(project: Path, earlier: Path) -> None:
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    plan = project / "design" / "plan.md"
+    plan.write_bytes(plan.read_bytes() + "\nA note of the caf\u00e9.\n".encode("cp1252"))
+    assert _found(_check(project)) == []
+
+
+def test_an_earlier_plan_frozen_with_crlf_reads_the_same(project: Path, earlier: Path) -> None:
+    path = earlier / "design" / "plan.frozen.yaml"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["plan"] = chr(0xFEFF) + document["plan"].replace("\n", "\r\n")
+    path.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    assert _found(_check(project)) == []
+
+
+def test_what_a_plan_s_planned_results_and_deviations_hold_is_not_compared() -> None:
+    then = "# Plan\n\n## Planned results\n\n### Primary\n\n- `a.b`\n"
+    now = "# Plan\n\n## Planned results\n\n### Primary\n\n- `c.d`\n"
+    assert sections_compared(then, now) == []
+
+
+def test_a_heading_that_stands_twice_is_said_and_not_guessed() -> None:
+    then = ("# Plan\n\n## Exposure\n\n### Definition\n\nA drug.\n\n"
+            "## Outcome\n\n### Definition\n\nAn event.\n")
+    now = then.replace("An event.", "A serious event.")
+    assert sections_compared(then, now) == []
+    assert ambiguous_headings(then, now) == ["Definition"]
+    assert "definition" not in section_keys(then)
+
+
+def test_a_plan_with_no_title_has_its_first_section_compared() -> None:
+    """The post-budget round of #402: a first section with a subsection is no title."""
+    then = ("## Exposure\n\nUsers of drug A.\n\n### Definition\n\nA dispensing.\n\n"
+            "## Outcome\n\nAn event.\n")
+    now = then.replace("drug A", "drug B")
+    assert [found[0] for found in sections_compared(then, now)] == ["Exposure"]
+    assert {"exposure", "definition", "outcome"} <= section_keys(then)
+    assert folded_title("2.1 Definition") == folded_title("Definition")
+    assert folded_title("2 Exposure") == folded_title("3 Exposure")
+    assert folded_title("2019 cohort") != folded_title("2020 cohort")
+
+
+def test_a_plan_with_an_appendix_is_matched_without_its_title() -> None:
+    """Round 2 of #402: a second top-level heading kept the title in one plan's paths."""
+    then = "# Analysis plan\n\n## Exposure\n\nA.\n"
+    now = "# Analysis plan\n\n## Exposure\n\nB.\n\n# Appendix\n\nx\n"
+    assert [found[0] for found in sections_compared(then, now)] == ["Exposure"]
+
+
+def test_the_listing_shows_a_method_changed(project: Path, earlier: Path, capsys) -> None:
+    _card(earlier, lambda card: card["engine"].update(link="Probit"))
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    assert main(["related", str(project)]) == 0
+    assert "model adjusted: " in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------- the copy

@@ -45,3 +45,10 @@ own in the dictionary, and that script checks it there: `check_data(analysis,
 dataset="analysis")`. The dictionary is an input of the run, so editing it makes the counts
 `input-changed` until the script runs again. One that does not read is refused with its
 lines, as `check` refuses it. In R, `check_data` needs the yaml package.
+
+## The findings
+
+| Code | Fix |
+|---|---|
+| `quality-not-run` | the project keeps a data dictionary and nothing was checked against it: hand each table to `check_data`. A warning from the analysis stage, a failure at submission |
+| `entry-unchecked`, `rule-unchecked` | no count covers this entry or rule: the table that holds it was not checked, its column has another name, or the variable is derived after the check. A computed rule needs its rows in `computed=`. A warning, a failure at submission |

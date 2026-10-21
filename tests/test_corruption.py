@@ -5053,14 +5053,15 @@ def test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage(
 
 
 def _collection_said(root: Path, text: str, stage: str) -> tuple[list[str], list[str]]:
-    """What the whole check fails on and what G12 warns of the collection plan, at a stage."""
+    """What the whole check fails on and what G12 warns of the collection plan, at a stage:
+    less G1's `input-changed`, since the example's analysis read the dictionary replaced."""
     from manuscript_guard.cli import _run_gates
 
     (root / "design" / "data_dictionary.yaml").write_bytes(text.encode("utf-8"))
     report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
     warned = [f.code for f in report.warnings
               if f.code.startswith(("plan-variable", "dictionary-"))]  # fmt: skip
-    return [f.code for f in report.failures], warned
+    return [f.code for f in report.failures if f.code != "input-changed"], warned
 
 
 @pytest.mark.parametrize("stage", ["design", "submission"])

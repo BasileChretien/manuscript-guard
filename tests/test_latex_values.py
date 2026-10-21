@@ -29,7 +29,9 @@ def _value(display: str) -> Value:
         ("12.5%", r"12.5\%"),
         ("<0.001", r"\ensuremath{<}0.001"),
         ("\N{MINUS SIGN}0.42", r"\ensuremath{-}0.42"),
-        ("3.84 (2.10\N{EN DASH}7.02)", "3.84 (2.10--7.02)"),
+        ("3.84 (2.10\N{EN DASH}7.02)", r"3.84 (2.10\textendash{}7.02)"),
+        # A dash before a minus sign keeps the sign (round 1 of step 4b).
+        ("-0.80\N{EN DASH}-0.12", r"-0.80\textendash{}-0.12"),
         ("1\N{THIN SPACE}234", r"1\,234"),
         ("\N{GREEK SMALL LETTER BETA} = 0.3", r"\ensuremath{\beta} = 0.3"),
         ("A_B & C#1 {x} ~ ^ $ \\", r"A\_B \& C\#1 \{x\} \textasciitilde{} \textasciicircum{} "
@@ -60,15 +62,19 @@ def test_the_file_defines_each_value_table_figure_and_anchor_in_the_order_of_the
     folder = tmp_path / "manuscript"
     figure = tmp_path / "figures" / "forest.pdf"
     namespace = {"results.b": _value("2"), "results.a": _value("1")}
-    written = contents(folder, namespace, _results(tables={"t": table}), {"forest": figure}, "ab")
+    curve = tmp_path / "figures" / "km_curve.pdf"
+    written = contents(folder, namespace, _results(tables={"t": table}),
+                       {"forest": figure, "km_curve": curve}, "ab")  # fmt: skip
     text = written.text
     assert text.startswith("% manuscript-guard values, from the results sha256:ab\n")
     assert text.index("mg@results.a") < text.index("mg@results.b")
     assert r"\includegraphics[#1]{../figures/forest.pdf}" in text
+    # An underscore in a file's name is no special to `\includegraphics` (round 1 of step 4b).
+    assert r"\includegraphics[#1]{../figures/km_curve.pdf}" in text
     assert tabular(table, "table.t") in text and "Caption" not in text
     assert r"B & 7\% \\" in text
     again = contents(folder, dict(reversed(namespace.items())), _results(tables={"t": table}),
-                     {"forest": figure}, "ab")  # fmt: skip
+                     {"km_curve": curve, "forest": figure}, "ab")  # fmt: skip
     assert again.text == text
 
 
@@ -85,10 +91,13 @@ _PDFTOTEXT = shutil.which("pdftotext")
 _PRINTED = (
     "12.5%", "<0.001", ">5", "a|b", "\N{MINUS SIGN}0.42", "\N{PLUS-MINUS SIGN}2",
     "3\N{MULTIPLICATION SIGN}4", "2.10\N{EN DASH}7.02", "A_B", "C#1", "x&y",
+    "-0.80\N{EN DASH}-0.12", "a\N{EM DASH}-b",
 )  # fmt: skip
 #: What pdftotext reads otherwise, measured under MiKTeX 24.4 (2026-10-21), and why: OT1 draws
 #: `\\_` as a rule, which holds no character, and T1's dash has no Unicode in the font's map.
-_READ_AS = {"OT1": {"A_B": "AB"}, "T1": {"2.10\N{EN DASH}7.02": "2.10\x157.02"}}
+_READ_AS = {"OT1": {"A_B": "AB"}, "T1": {"2.10\N{EN DASH}7.02": "2.10\x157.02",
+                                        "-0.80\N{EN DASH}-0.12": "-0.80\x15-0.12",
+                                        "a\N{EM DASH}-b": "a\x16-b"}}  # fmt: skip
 
 
 @pytest.mark.skipif(not (_PDFLATEX and _PDFTOTEXT), reason="pdflatex and pdftotext are needed")

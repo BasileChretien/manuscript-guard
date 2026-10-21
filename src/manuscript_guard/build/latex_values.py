@@ -62,13 +62,16 @@ _GREEK |= dict(zip("ΓΔΘΛΞΠΣΥΦΨΩ", (r"\Gamma", r"\Delta", r"\Theta", r
                    strict=True))  # fmt: skip
 #: Capitals written as the Latin letter they look like, and the small omicron.
 _LATIN_LOOKING = dict(zip("ΑΒΕΖΗΙΚΜΝΟΡΤΧο", "ABEZHIKMNOPTXo", strict=True))
-#: What prints in text with a command or a ligature.
+#: What prints in text with a command. A dash is a command and no ligature: `--` before a
+#: value's minus sign, `-0.80--0.12`, made TeX's em dash and dropped the sign (round 1 of
+#: step 4b).
 _TEXT = {
-    "\N{EN DASH}": "--", "\N{EM DASH}": "---", "\N{NO-BREAK SPACE}": "~",
-    "\N{THIN SPACE}": r"\,", "\N{NARROW NO-BREAK SPACE}": r"\,",
+    "\N{EN DASH}": r"\textendash{}", "\N{EM DASH}": r"\textemdash{}",
+    "\N{NO-BREAK SPACE}": "~", "\N{THIN SPACE}": r"\,", "\N{NARROW NO-BREAK SPACE}": r"\,",
 }  # fmt: skip
-#: A rendered figure's path is written as it is, so a character TeX reads in it is refused.
-_UNSAFE_IN_PATH = set(_SPECIALS) | {" "}
+#: A rendered figure's path is written as it is, so a character TeX reads in it is refused;
+#: `\includegraphics` takes an underscore, `km_curve.pdf` (round 1 of step 4b).
+_UNSAFE_IN_PATH = (set(_SPECIALS) - {"_"}) | {" "}
 
 
 #: The rendered files pdfLaTeX includes, in the order a figure's is chosen.

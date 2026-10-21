@@ -4823,6 +4823,32 @@ a reason (`related-method-explained`), and never a failure, since a method may r
 change between two papers and the review panel, not a gate, weighs whether it was said and
 justified. A software version is not compared: every later paper runs later software.
 
+The same holds of what both projects record of their methods as data (Basile's answer 5).
+A model both fitted under one key is compared by its card: its family and link, its outcome
+as the formula writes it, and every way it enters each variable, its expression, as what and
+its reference ("its family is Poisson/Log there and Binomial/Logit here; it enters sex here
+and not there"; `age` and `np.log(age)` differ though both are numerical, and so do `age`
+alone and `age` with `I(age**2)`: round 1 of #402). And each section both plans have under
+one heading is compared word by word: the earlier plan as it stood when its first results
+were written (the copy's `plan.frozen.yaml`, or its `plan.md` where it kept none), this
+paper's plan as it stands, each read as G12 reads a plan (its line endings made `\n`, a
+byte-order mark left out, and one not in UTF-8 read with what cannot be decoded replaced,
+not refused). The sections are read as G12 reads a plan's, and a heading is matched by its own words,
+without its number ("2.", "2.1" or "2", not "2019"), emphasis or case. A heading that stands
+twice in either plan, a `### Definition` under the Exposure and another under the Outcome, is
+not compared, since which answers which would be a guess, and a note says so
+(`related-section-ambiguous`): matching by the headings above needed the plan's title told
+from its first section, and two rules for that each broke an ordinary plan (rounds 2 and 3 of
+#402); words without comments, emphasis or line breaks and in either case,
+as G13 reads a quotation (`as_quoted`); and the plans' Deviations and Planned results, which
+are each paper's own, are not compared, nor anything under them. A section that reads
+otherwise is said with a few words of each side from where they part. Each is
+`related-method-differs`, a note with a reason under `methods:` (`model:` or
+`plan_section:`, a heading both plans have once, and `because:`), and never a failure. A reason that names no model both fitted, or no section both plans have, explains
+nothing and is said (`related-pair-unmatched`). What the words mean is
+not compared: two sections that say one thing in other words differ, and the panel's
+earlier-outputs remit reads them.
+
 **An overlap of data or study with authors is disclosed.** It is disclosed where the
 manuscript cites the earlier output (its citekey, in a citation a reader sees, comments left
 out), or where `disclosed_by` gives the manuscript's sentence that says so, found as above,
@@ -10793,15 +10819,29 @@ Open, recorded as each change landed:
   an encoding the XML parser cannot read. Each used to crash the reader that met it, the
   import or the audit, on the body, the comments, the styles or the font parts; a part that
   could not be decompressed crashed the import on the build's record as well.
-- **An earlier output is compared value by value, and never as prose.** G8 compares results
-  keys and recorded values. Two Methods sections that define the case, the exposure, the
-  outcome, the exclusions or the model in other words are not compared: the frozen plans are
-  copied in for that, and are not yet read by any gate; until they are, the skill gives the
-  panel an earlier-outputs remit read with both texts side by side. Nor are tables, model
-  cards or the data dictionary compared, though the copy holds them. A count printed only in
-  a table of either paper is compared with nothing. A value printed by only one of the two
-  papers (`quoted: false` on one side) is not compared, though it may show the data
-  changed.
+- **An earlier output's methods are compared as words and cards, never as meaning.** G8
+  compares results keys, recorded values, model cards and the sections both plans have under
+  one heading. Two Methods sections of the manuscripts are not compared, nor what a plan's
+  section means: a section reworded with nothing changed differs, and one that keeps its
+  words under another heading is compared with nothing. A word in emphasis by underscores
+  (`_case_`) is read with them, as G13 reads a quotation. Tables and the data dictionary are
+  not compared, though the copy holds the dictionary. A count printed only in a table of
+  either paper is compared with nothing. A value printed by only one of the two papers
+  (`quoted: false` on one side) is not compared, though it may show the data changed. A
+  model is compared under its key only, so a model renamed since is compared with nothing;
+  its engine's class is not compared (a GLM and a mixed model of one family and link read
+  alike). Markup that G13's reading keeps counts as wording: a list marked `*` there and
+  `-` here differs, and a heading given an attribute (`{#id}`) is another heading. A reason
+  under `methods:` answers for its model or section, not for one difference, so a later
+  change to a model already explained is explained by the old reason. A heading that stands
+  twice in a plan is not compared at all, though one of the two may have changed. A heading
+  that opens with a number of one or two digits loses it, so `12 months` and `24 months` are
+  one heading: in one plan both stand twice, and across the two they are compared as one
+  section (round 2 of #402). A plan with a second top-level heading keeps its title as a
+  section, as G12 reads it: with an appendix in both, the words under the title (a version,
+  a date) are compared, and a title the Deviations rule matches ("amendment 2") leaves the
+  whole plan out. The generator draws only titled plans; the untitled one is held by a unit
+  test (the second post-budget round).
 - **What a comparison read from a PDF cannot see.** A published value is read as printed: an
   estimate rounded to one place is the same as any value within half a unit of it, so a
   change smaller than the earlier rounding is not seen. A printed value that is not one

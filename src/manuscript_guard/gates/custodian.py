@@ -28,13 +28,12 @@ import subprocess
 from decimal import Decimal
 from pathlib import Path
 
-from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import number_in
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
-from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.text.placeholders import parse
+from manuscript_guard.text.reader import bound_files
 
 #: How long `git ls-files` may take before the check says it could not ask.
 GIT_SECONDS = 10
@@ -69,12 +68,13 @@ def check_small_cells(project: Project, results: Results) -> Report:
 
     report = Report()
     said: set[str] = set()
-    # The manuscript's sources, and each figure's alternative text, which the build prints
-    # into its picture (`gates/figure_alt.py`).
-    texts = [(path, read_text(path), True) for path in source_files(project.path("manuscript"))]
-    texts += [(sidecar, literal(raw), False) for _name, sidecar, raw in alt_texts(project)]
-    for path, text, lined in texts:
-        for placeholder in parse(text)[0]:
+    # The manuscript's sources, in its format, and each figure's alternative text, which the
+    # build prints into its picture (`gates/figure_alt.py`).
+    found = [(bound.path, bound.placeholders, True) for bound in bound_files(project)]
+    found += [(sidecar, parse(literal(raw))[0], False)
+              for _name, sidecar, raw in alt_texts(project)]  # fmt: skip
+    for path, placeholders, lined in found:
+        for placeholder in placeholders:
             if placeholder.namespace != "results" or placeholder.key in said:
                 continue
             value = results.values.get(placeholder.key)

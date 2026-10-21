@@ -169,6 +169,27 @@ def _latex_sections() -> Reading:
     return sections
 
 
+@reading("latex bindings")
+def _latex_bindings() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+    from manuscript_guard.text.latex.views import bindings, markdown_view
+
+    def bound(text: str) -> dict[str, Any]:
+        source = Source("main.tex", text, read(text))
+        good, malformed = bindings(source)
+        return {
+            "bound": [[p.ref, p.start, p.end, p.line, p.col] for p in good],
+            "malformed": [[raw, at, line] for raw, at, line in malformed],
+            "view": markdown_view(source, good),
+            "tables": [list(span) for span in source.reading.tables],
+            "listings": [[found.start, found.end, found.language]
+                         for found in source.reading.listings],  # fmt: skip
+        }
+
+    return bound
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden

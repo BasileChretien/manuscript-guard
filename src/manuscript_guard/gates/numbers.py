@@ -14,6 +14,9 @@ from __future__ import annotations
 import json
 import re
 from bisect import bisect_left, bisect_right
+from collections.abc import Callable
+from dataclasses import dataclass
+from dataclasses import field as _field
 from pathlib import Path
 
 from manuscript_guard.classify import (
@@ -32,6 +35,7 @@ from manuscript_guard.contracts.values import Value, number_in
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.labels import labelled, sentence_stops
 from manuscript_guard.roundtrip import splits_a_paragraph
+from manuscript_guard.text.latex import views as latex_views
 from manuscript_guard.text.masking import (
     blank_comments,
     fenced_blocks,
@@ -170,24 +174,12 @@ def check_numbers(
     chosen = chosen_rules(classifier)
     declares = any(value.role == "parameter" for value in choices)
 
-    for path in source_files(project.path("manuscript")):
+    for read in _files_read(project):
         totals["files"] += 1
-        text = read_text(path)
+        path, text, spell = read.path, read.text, read.spell
         loose = 0
-        headings = heading_index(text)
-        notes = footnote_index(text)
-
-        # Read as prose until it is fixed, a `# Methods` in it heads a section here while
-        # pandoc refuses the whole file; see `front_matter_problem`.
-        problem = front_matter_problem(text)
-        if problem is not None:
-            report = report.with_findings(unreadable_header(path, *problem, GATE))
-        # Read here and printed by nothing: the build strips the block.
-        abstract = front_matter_abstract(text)
-        if abstract is not None:
-            report = report.with_findings(abstract_in_header(path, *abstract, GATE))
-
-        placeholders, malformed = parse(text)
+        report = report.merge(read.notes)
+        placeholders, malformed = read.placeholders, read.malformed
         totals["placeholders"] += len(placeholders)
 
         for raw, _offset, line in malformed:
@@ -198,8 +190,9 @@ def check_numbers(
                     message=f"{raw} is not a valid binding and will be printed literally",
                     path=path,
                     line=line,
-                    hint="the form is {{results.key}}, {{lit.key}}, {{table.key}}, "
-                    "{{figure.key}}, {{ref.table.key}}, {{num.table.key}} or {{method.step}}",
+                    hint=spell("the form is {{results.key}}, {{lit.key}}, {{table.key}}, "
+                               "{{figure.key}}, {{ref.table.key}}, {{num.table.key}} or "
+                               "{{method.step}}"),
                 )
             )
 
@@ -228,19 +221,22 @@ def check_numbers(
                         line=placeholder.line,
                         col=placeholder.col,
                         hint="a value is printed inside a sentence; write what it holds in the "
-                        ".md, as a block of its own, and bind only the numbers in it",
+                        f"{path.suffix}, as a block of its own, and bind only the numbers in it",
                     )
                 )
 
-        report = report.merge(_interval_order(placeholders, namespace, path, text))
-        sentenced.append((path, text, in_sentences(placeholders, text)))
+        # The sentences, the labels and the rules are read in the file as Markdown writes
+        # it: a LaTeX file's Markdown view (`text/latex/views.py`), a Markdown file itself.
+        view = read.view
+        report = report.merge(_interval_order(placeholders, namespace, path, view))
+        sentenced.append((path, view, in_sentences(placeholders, view)))
 
         # One scan of this file per rule, reused by every atom in it. Matching each rule
         # against a window around each atom re-read the same characters once per number.
-        scan = classifier.scan(text)
-        releases = typed_releases(text, dictionaries)
+        scan = classifier.scan(read.scanned, blocks=read.blocks)
+        releases = typed_releases(view, dictionaries)
         said: set[int] = set()
-        for atom in find_atoms(text, mask(text)):
+        for atom in find_atoms(text, read.masked):
             totals["atoms"] += 1
             release = _within(releases, atom)
             if release is not None:
@@ -254,9 +250,7 @@ def check_numbers(
             # are a finding, and were passing as a convention.
             # A footnote's text is judged where it stands and at every reference to it in
             # the same file, where pandoc prints it.
-            verdict = classifier.classify_under(
-                atom, chains_at(headings, notes, atom.start), scan
-            )
+            verdict = classifier.classify_under(atom, read.chains(atom.start), scan)
             if verdict.kind != UNCLASSIFIED:
                 totals[verdict.kind] += 1
                 if classifier.is_project_exemption(verdict):
@@ -272,7 +266,7 @@ def check_numbers(
             loose += 1
             if loose > PER_FILE_CAP:
                 continue
-            in_table = atom.line_text.lstrip().startswith("|")
+            in_table = read.in_table(atom)
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -286,7 +280,7 @@ def check_numbers(
                     line=atom.line,
                     col=atom.col,
                     context=atom.line_text.strip()[:160],
-                    hint=(
+                    hint=spell(
                         "tables are generated from results; replace the table with "
                         "{{table.<key>}} and emit it from the analysis"
                         if in_table
@@ -309,7 +303,7 @@ def check_numbers(
                 )
             )
 
-        report = report.merge(_fenced_code(path, text, classifier, headings))
+        report = report.merge(read.code(classifier))
 
     report = report.merge(quoted_whole(sentenced, namespace))
     report = report.merge(labelled(sentenced, namespace))
@@ -355,10 +349,15 @@ def check_numbers(
             )
         )
     # A pointer to a table or a figure is let through above as a cross-reference; what it
-    # points at is held here (`gates/pointers.py`).
+    # points at is held here (`gates/pointers.py`). It reads Markdown's tables and figures
+    # only, and says so of a LaTeX manuscript, which fails at submission until it reads them.
+    from manuscript_guard.gates.formats import not_read_in_latex
     from manuscript_guard.gates.pointers import check_pointers
 
-    report = report.merge(check_pointers(project, results))
+    if _is_latex(project):
+        report = report.with_findings(not_read_in_latex(GATE, "pointers to tables and figures"))
+    else:
+        report = report.merge(check_pointers(project, results))
     return report.with_counts(
         source_files=totals["files"],
         numeric_atoms=totals["atoms"],
@@ -368,6 +367,116 @@ def check_numbers(
         atoms_convention=totals["convention"],
         atoms_project_exempt=totals["project"],
     )
+
+
+@dataclass(frozen=True)
+class _Read:
+    """One manuscript file as G2 reads it, from the Markdown reader or the LaTeX one: the text
+    as typed, from which a finding's line and context come; its numbers' mask; its Markdown
+    view, where sentences and labels are read, and the view the rules read, both the text
+    itself for Markdown; its bindings; the heading chains a number at an offset is judged
+    under; whether a number is in a table typed by hand; and its listings, judged as code."""
+
+    path: Path
+    text: str
+    masked: str
+    view: str
+    scanned: str
+    placeholders: list
+    malformed: list
+    chains: Callable[[int], tuple]
+    in_table: Callable[[object], bool]
+    code: Callable[[Classifier], Report]
+    #: The findings a file's front matter gives, read before the rest.
+    notes: Report = _field(default_factory=Report)
+    #: Whether a heading or a list item may open with typed numbering, as in Markdown.
+    blocks: bool = True
+    #: A hint as it is written for this file's format.
+    spell: Callable[[str], str] = str
+
+
+def _is_latex(project: Project) -> bool:
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    return manuscript_format(project.path("manuscript")) == LATEX
+
+
+def _files_read(project: Project) -> list[_Read]:
+    """Every manuscript file, as G2 reads it: a Markdown file as it always was, a LaTeX
+    manuscript's through its include tree, the main text's files and then the supplement's."""
+    folder = project.path("manuscript")
+    if _is_latex(project):
+        return [_latex_read(found) for found in latex_views.files(folder)]
+    return [_markdown_read(path, read_text(path)) for path in source_files(folder)]
+
+
+def _markdown_read(path: Path, text: str) -> _Read:
+    headings = heading_index(text)
+    notes = footnote_index(text)
+    found = Report()
+    # Read as prose until it is fixed, a `# Methods` in it heads a section here while pandoc
+    # refuses the whole file; see `front_matter_problem`.
+    problem = front_matter_problem(text)
+    if problem is not None:
+        found = found.with_findings(unreadable_header(path, *problem, GATE))
+    # Read here and printed by nothing: the build strips the block.
+    abstract = front_matter_abstract(text)
+    if abstract is not None:
+        found = found.with_findings(abstract_in_header(path, *abstract, GATE))
+    placeholders, malformed = parse(text)
+    return _Read(
+        path, text, mask(text), text, text, placeholders, malformed,
+        chains=lambda offset: chains_at(headings, notes, offset),
+        in_table=lambda atom: atom.line_text.lstrip().startswith("|"),
+        code=lambda classifier: _fenced_code(path, text, classifier, headings),
+        notes=found,
+    )  # fmt: skip
+
+
+#: A binding as Markdown writes one in a hint, `{{results.key}}`, and as LaTeX does.
+_HINTED_BINDING = re.compile(r"\{\{([a-z]+\.[^{}\s]*)\}\}")
+
+
+def _latex_read(found: latex_views.File) -> _Read:
+    source = found.source
+    tables = latex_views.Tables(source.reading.tables)
+    return _Read(
+        found.path, source.text, source.reading.masked, found.view, found.scanned,
+        list(found.placeholders), list(found.malformed),
+        # LaTeX prints a footnote where it is written, so a number is judged there alone.
+        chains=lambda offset: (latex_views.chain(source, offset),),
+        in_table=lambda atom: atom.start in tables,
+        code=lambda classifier: _listings(found.path, source, classifier),
+        blocks=False,
+        spell=lambda hint: _HINTED_BINDING.sub(r"\\mg{\1}", hint),
+    )  # fmt: skip
+
+
+def _listings(path: Path, source, classifier: Classifier) -> Report:
+    """A LaTeX file's listings, judged as code as a fenced block is (`_fenced_code`): what an
+    `lstlisting`'s `language=` names is the language, and a `verbatim` names none."""
+    from manuscript_guard.gates.figure_source import judge_code_numbers
+
+    report = Report()
+    # The line breaks before each listing are counted on from the last, the listings being in
+    # the order they stand (round 1 of #400: each was counted from the top, twice).
+    counted, breaks = 0, 0
+    for listing in source.reading.listings:
+        breaks += source.text.count("\n", counted, listing.start)
+        counted = listing.start
+        report = report.merge(
+            judge_code_numbers(
+                source.text[listing.start : listing.end],
+                listing.language,
+                path=path,
+                line_offset=breaks,
+                gate=GATE,
+                classifier=classifier,
+                what=f"listing at line {breaks + 1}",
+                section=latex_views.chain(source, listing.start),
+            )
+        )
+    return report
 
 
 def _fenced_code(path: Path, text: str, classifier: Classifier, headings=()) -> Report:

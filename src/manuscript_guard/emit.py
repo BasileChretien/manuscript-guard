@@ -1140,7 +1140,7 @@ class Emitter:
     _relations: list[dict] = field(default_factory=list, init=False)
     _flows: dict[str, dict] = field(default_factory=dict, init=False)
     _corrections: dict[str, dict] = field(default_factory=dict, init=False)
-    # The inputs declared restricted, as they were written to `add_input`.
+    # The inputs declared restricted, by the path each is recorded under (`_input_path`).
     _restricted: set[str] = field(default_factory=set, init=False)
     # The inputs declared synthetic: simulated data, a dummy extract, a test fixture.
     _synthetic: set[str] = field(default_factory=set, init=False)
@@ -1508,7 +1508,7 @@ class Emitter:
             full = Path(raw) if Path(raw).is_absolute() else self.root / raw
             if not full.is_file():
                 raise FileNotFoundError(f"dataset {name!r}: no file {full}")
-            rel = os.path.normpath(full.relative_to(self.root)).replace("\\", "/")
+            rel = self._input_path(raw)
             # A file named twice, however it is spelt, is one file of the data (rounds 1
             # and 2 of #392).
             if rel not in {done for done, _full in files}:
@@ -1932,33 +1932,45 @@ class Emitter:
         forbids it leaving their hands: G1 then fails while git tracks it. `synthetic` says it
         is not the real data, a simulation, a dummy extract or a test fixture: G1 then says
         so of every result the manuscript quotes from this run, and fails at submission."""
-        if str(path) not in {str(given) for given in self.inputs}:
+        recorded = self._input_path(path)
+        if recorded not in {self._input_path(given) for given in self.inputs}:
             self.inputs.append(path)
         if restricted:
-            self._restricted.add(str(path))
+            self._restricted.add(recorded)
         if synthetic:
-            self._synthetic.add(str(path))
+            self._synthetic.add(recorded)
+
+    def _input_path(self, path: str | Path) -> str:
+        """The path an input is recorded under: from the project root, with "." and ".."
+        collapsed as text, so that one file spelt two ways is one input (the review of
+        76880fc3, #392). No link is followed: a git-annex input is a link into .git/annex,
+        and its own path is the one that names it. R's `mg_input_path` is the same."""
+        assert self.root is not None
+        given = Path(path)
+        full = os.path.normpath(given if given.is_absolute() else self.root / given)
+        try:
+            return os.path.relpath(full, self.root).replace("\\", "/")
+        except ValueError:  # on another drive than the project
+            return Path(full).as_posix()
 
     def _provenance(self) -> dict:
         root = self.root
         assert root is not None
         inputs = []
-        for raw in self.inputs:
-            path = Path(raw)
-            if not path.is_absolute():
-                path = root / path
+        for recorded in dict.fromkeys(self._input_path(raw) for raw in self.inputs):
+            path = root / recorded
             if not path.exists():
                 raise FileNotFoundError(f"declared input does not exist: {path}")
             inputs.append(
                 {
-                    "path": str(path.relative_to(root)).replace("\\", "/"),
+                    "path": recorded,
                     "sha256": input_digest(path),
                     # The bytes as they are, which a Git LFS or git-annex pointer names the
                     # content by, so G1 can tell an input that is not fetched (item 35).
                     "raw_sha256": sha256_of(path),
                     "bytes": path.stat().st_size,
-                    **({"restricted": True} if str(raw) in self._restricted else {}),
-                    **({"synthetic": True} if str(raw) in self._synthetic else {}),
+                    **({"restricted": True} if recorded in self._restricted else {}),
+                    **({"synthetic": True} if recorded in self._synthetic else {}),
                 }
             )
 

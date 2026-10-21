@@ -265,6 +265,57 @@ mg_input_digest <- function(path) {
   mg_digest_in(path, c(MG_SOURCE_SUFFIXES, MG_DATA_SUFFIXES))
 }
 
+#' The path a file the analysis READ is recorded under
+#'
+#' Mirrors `Emitter._input_path` in the Python emitter and must stay identical to it: the
+#' path from the project root, with "." and ".." collapsed as text, so that one file spelt
+#' two ways is one input (the review of 76880fc3, #392). Unlike `normalizePath`, it follows
+#' no link: a git-annex input is a link into .git/annex, and its own path is the one that
+#' names it. A relative `path` is read from the working directory, as R reads it, and one on
+#' another drive than the project is kept whole.
+#' @noRd
+mg_input_path <- function(path, root) {
+  windows <- .Platform$OS.type == "windows"
+  same <- function(a, b) if (windows) tolower(a) == tolower(b) else a == b
+  split <- function(text) {
+    if (windows) text <- gsub("\\", "/", text, fixed = TRUE)
+    drive <- if (windows) regmatches(text, regexpr("^([A-Za-z]:|//[^/]+/[^/]+)", text)) else ""
+    if (length(drive) == 0) drive <- ""
+    rest <- substring(text, nchar(drive) + 1L)
+    list(drive = drive, rooted = startsWith(rest, "/"),
+         names = strsplit(rest, "/", fixed = TRUE)[[1]])
+  }
+  # As `os.path.normpath` collapses a rooted path: a ".." at the top goes nowhere.
+  collapse <- function(names) {
+    kept <- character()
+    for (name in names) {
+      if (name %in% c("", ".")) next
+      kept <- if (name == "..") head(kept, -1L) else c(kept, name)
+    }
+    kept
+  }
+  home <- split(root)
+  given <- split(path)
+  if (!given$rooted) {
+    here <- split(normalizePath(getwd(), winslash = "/"))
+    given <- list(drive = here$drive, names = c(here$names, given$names))
+  } else if (!nzchar(given$drive)) {
+    given$drive <- home$drive
+  }
+  base <- collapse(home$names)
+  target <- collapse(given$names)
+  if (!same(given$drive, home$drive)) {
+    return(paste0(given$drive, "/", paste(target, collapse = "/")))
+  }
+  shared <- 0L
+  while (shared < min(length(target), length(base)) &&
+         same(target[shared + 1L], base[shared + 1L])) {
+    shared <- shared + 1L
+  }
+  names <- c(rep("..", length(base) - shared), target[seq_along(target) > shared])
+  if (length(names) == 0) "." else paste(names, collapse = "/")
+}
+
 #' The exponent a display carries, whichever of its two spellings was used
 #'
 #' Mirrors `_exponent_of` in the Python emitter. "10^-9" and "10⁻⁹" are the same exponent,
@@ -1093,6 +1144,10 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
          call. = FALSE)
   }
   project_root <- if (is.null(root)) mg_find_root(dirname(script_path)) else normalizePath(root, winslash = "/")
+  # Where a data file is read, as given or from the project root, and the path it is
+  # recorded under, which says whether two spellings are one file (`mg_input_path`).
+  input_full <- function(path) if (file.exists(path)) path else file.path(project_root, path)
+  input_path <- function(path) mg_input_path(input_full(path), project_root)
   state <- new.env(parent = emptyenv())
   state$values <- list()
   state$inputs <- as.character(inputs)
@@ -1342,14 +1397,13 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     if (!is.character(path) || length(path) == 0) {
       stop("dataset ", name, ": name the file or files the data are in", call. = FALSE)
     }
-    full <- vapply(path, function(p) if (file.exists(p)) p else file.path(project_root, p),
-                   character(1), USE.NAMES = FALSE)
+    full <- vapply(path, input_full, character(1), USE.NAMES = FALSE)
     for (i in seq_along(full)) {
       if (!file.exists(full[i]) || dir.exists(full[i])) {
         stop("dataset ", name, ": no file ", path[i], call. = FALSE)
       }
     }
-    rel <- vapply(full, relative, character(1), USE.NAMES = FALSE)
+    rel <- vapply(path, input_path, character(1), USE.NAMES = FALSE)
     # A file named twice, however it is spelt, is one file of the data, as in Python
     # (rounds 1 and 2 of #392).
     once <- !duplicated(rel)
@@ -1364,7 +1418,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     what <- if (length(full) == 1) rel[1] else paste0("the ", length(full), " files")
     stated <- mg_declare(name, extracted, covers, version, dates)
     pin <- mg_pin(name, fingerprint, whole, accepted, what, mg_date_iso(stated$extracted))
-    for (p in path) add_input(p, restricted = restricted, synthetic = synthetic)
+    add_input(path, restricted = restricted, synthetic = synthetic)
     english <- mg_english(project_root)
     parts <- list(extracted = stated$extracted, covers_from = stated$from, covers_to = stated$to)
     for (part in names(parts)) {
@@ -1784,19 +1838,25 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
   # extract or a test fixture: G1 then says so of every result the manuscript quotes from
   # this run, and fails at submission.
   add_input <- function(path, restricted = FALSE, synthetic = FALSE) {
-    # One path or several, as `list.files()` gives them; one already declared is not listed twice.
-    state$inputs <- c(state$inputs, setdiff(as.character(path), state$inputs))
-    if (isTRUE(restricted)) state$restricted <- c(state$restricted, path)
-    if (isTRUE(synthetic)) state$synthetic <- c(state$synthetic, path)
+    # One path or several, as `list.files()` gives them. One already declared, however it is
+    # spelt, is not listed twice, and its marks go by the path it is recorded under.
+    path <- as.character(path)
+    recorded <- vapply(path, input_path, character(1), USE.NAMES = FALSE)
+    known <- vapply(state$inputs, input_path, character(1), USE.NAMES = FALSE)
+    state$inputs <- c(state$inputs, path[!duplicated(recorded) & !(recorded %in% known)])
+    if (isTRUE(restricted)) state$restricted <- c(state$restricted, recorded)
+    if (isTRUE(synthetic)) state$synthetic <- c(state$synthetic, recorded)
     invisible(NULL)
   }
 
   provenance <- function() {
-    input_records <- lapply(state$inputs, function(path) {
-      full <- if (file.exists(path)) path else file.path(project_root, path)
+    recorded <- vapply(state$inputs, input_path, character(1), USE.NAMES = FALSE)
+    input_records <- lapply(which(!duplicated(recorded)), function(i) {
+      path <- recorded[[i]]
+      full <- input_full(state$inputs[[i]])
       if (!file.exists(full)) stop("declared input does not exist: ", full, call. = FALSE)
       record <- list(
-        path = relative(full),
+        path = path,
         sha256 = mg_input_digest(full),
         # The bytes as they are, which a Git LFS or git-annex pointer names the content by,
         # so G1 can tell an input that is not fetched (item 35). As `raw_sha256` in Python.

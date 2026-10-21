@@ -1243,6 +1243,105 @@ def test_r_and_python_declare_a_dataset_alike(tmp_path: Path) -> None:
     assert report.ok, report.render(root)
 
 
+DATASET_INPUTS = {
+    "R": """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s", inputs = "data/../data/demo.csv")
+em$dataset("vigibase", "./data/extract.csv", extracted = "2024-03-01", fingerprint = "%(pin)s")
+em$add_input(factor("data/extract.csv"), restricted = TRUE)
+em$add_input(c("%(root)s/data/demo.csv", "../shared.csv"))
+em$add_input("%(shared)s", synthetic = TRUE)
+em$write()
+""",
+    "py": """
+from manuscript_guard.emit import Emitter
+em = Emitter(__file__, inputs=["data/../data/demo.csv"])
+em.dataset("vigibase", "./data/extract.csv", extracted="2024-03-01", fingerprint="%(pin)s")
+em.add_input("data/extract.csv", restricted=True)
+for path in ("%(root)s/data/demo.csv", "../shared.csv"):
+    em.add_input(path)
+em.add_input("%(shared)s", synthetic=True)
+em.write()
+""",
+}
+
+
+def test_r_and_python_record_a_file_however_spelt_as_one_input_alike(tmp_path: Path) -> None:
+    """The review of 76880fc3 (#392): R declared a dataset's file under its first spelling,
+    and Python under its path from the project, so the same calls wrote different inputs. R
+    resolved links and a leading ".." where Python read the text. Both now record the path
+    from the project with "." and ".." collapsed as text, once, with the marks each spelling
+    gave it; in R a path given as a factor keeps its mark too."""
+    import runpy
+
+    root, pins = _dataset_project(tmp_path)
+    (root.parent / "shared.csv").write_bytes(b"id\n1\n")
+    paths = {"root": root.as_posix(), "shared": (root.parent / "shared.csv").as_posix(), **pins}
+    r_script = root / "analysis" / "inputs_r.R"
+    r_script.write_text(DATASET_INPUTS["R"] % {"emit": EMIT_R.as_posix(),
+                                               "script": r_script.as_posix(), **paths},
+                        encoding="utf-8")  # fmt: skip
+    out = _run_r(r_script, root)
+    assert out.returncode == 0, out.stderr
+    py_script = root / "analysis" / "inputs_py.py"
+    py_script.write_text(DATASET_INPUTS["py"] % paths, encoding="utf-8")
+    runpy.run_path(str(py_script), run_name="__main__")
+
+    def inputs(name: str) -> list[dict]:
+        document = json.loads((root / "results" / name).read_text(encoding="utf-8"))
+        return document["provenance"]["inputs"]
+
+    assert inputs("inputs_r.json") == inputs("inputs_py.json")
+    assert [(i["path"], i.get("restricted"), i.get("synthetic"))
+            for i in inputs("inputs_r.json")] == [
+        ("data/demo.csv", None, None),
+        ("data/extract.csv", True, None),
+        ("../shared.csv", None, True),
+    ]  # fmt: skip
+
+
+LINKED_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$add_input("data/link.csv", restricted = TRUE)
+em$value("n", 1L)
+em$write()
+"""
+
+
+def test_r_and_python_record_a_linked_input_by_its_own_path(tmp_path: Path) -> None:
+    """A git-annex input is a link into the annex, and the link's own path names it. R's
+    `normalizePath` followed it to the annex (the review of 76880fc3, #392)."""
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    (root / "annex").mkdir()
+    (root / "annex" / "SHA256E-s6--0a1b.csv").write_bytes(b"id\n1\n")
+    (root / "data").mkdir()
+    try:
+        (root / "data" / "link.csv").symlink_to(root / "annex" / "SHA256E-s6--0a1b.csv")
+    except OSError:
+        pytest.skip("this system makes no symbolic links")
+    script = root / "analysis" / "linked.R"
+    script.write_text(LINKED_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    from_r = json.loads((root / "results" / "linked.json").read_text(encoding="utf-8"))
+    em = Emitter(script, root=root)
+    em.add_input("data/link.csv", restricted=True)
+    em.value("n", 1)
+    from_python = json.loads(em.write().read_text(encoding="utf-8"))
+    assert from_r["provenance"]["inputs"] == from_python["provenance"]["inputs"]
+    assert [i["path"] for i in from_r["provenance"]["inputs"]] == ["data/link.csv"]
+
+
 REFUSED_R = """
 if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
   cat("MISSING_DEPS\\n"); quit(status = 3)

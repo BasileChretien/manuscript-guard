@@ -1534,7 +1534,17 @@ The result is compiled and packed by the code above, and checked three times:
 - A profile's LaTeX template is read by no gate, so text or digits it prints after
   `\begin{document}` are compared with nothing in `build --latex`.
 - `\date` is read by no gate, since a Markdown build prints no date to compare it with.
-- A word holding an accent command is not read by G14.
+- A word holding an accent command or `\-` is not read by G14, which says how many there are
+  in each file. `\=`, `\'` and `\-` are tab commands in `tabbing`, where the word after one is
+  taken for an accented word all the same (step 7).
+- G14 does not read a figure's caption, as it does not read an image's caption in Markdown; a
+  table's caption it reads (step 7).
+- A P value or another symbol written in maths, `$P < 0.05$`, is not read by G14's notation,
+  as one in Markdown's `$...$` is not. A LaTeX paper writes them in maths more often, so G14
+  says less of its notation (step 7).
+- Only `$_2$`, `$_{12}$` and `\textsubscript{2}` straight after a letter are read as a
+  formula's count; `\(_2\)` and `$_{\mathrm{2}}$` are maths, and `CO` before them is read as
+  an abbreviation (step 7).
 - The author block is written in the class's own commands, and is not compared with
   authors.yaml. A number typed into the author block or `\date` is read by no gate.
 - The Word round trip, `annotate`, `reworded` and `audit` do not read `.tex`.
@@ -1631,7 +1641,25 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    rules. The engine and the files the profile names are the build's, steps 9 and 10. The
    plan as written: the counts, sections and statements, and the profile's `latex:` block.
    Tests: G4's cases on the twin.
-7. G6 and G14. `words`, accents, both gates moved. Tests: `latex words`, planted terms and
+7. G6 and G14, built in two parts. The first: `words.py` gives a file's words as
+   `language._hidden` gives a Markdown file's, the design's `words`: NUL where the reader
+   blanks, in the preamble but an abstract written there, in maths, in code and in a
+   figure's caption; a word an accent command or `\-` splits is NUL as well, and given as
+   unread, which G14 says once a file (`tex-words-not-read`); a count written as a subscript
+   straight after a letter, `CO$_2$`, is written as Markdown's `CO~2~`. G14 reads a LaTeX
+   document in stretches in the order it prints, a file input where its `\input` ends, so
+   that a definition and a use are met in the order a reader meets them; the headings in
+   force are the include tree's, the abstract is where its environment runs or where a file
+   is input inside it, and a reference list typed in `thebibliography` is not read. A file's
+   passages are its Markdown view, so the notation reads a bound value in an interval or a
+   percentage as it does in Markdown. That takes `check_language` out of
+   `_NOT_READ_IN_LATEX`. The scanner records each float that holds a figure
+   (`Reading.figures`) and each typed reference list (`Reading.references`), and the include
+   tree the environments a file is input inside (`Source.environments`). Tests:
+   `tests/test_latex_words.py`, G14 on the twin, `latex words`, `latex_words()` with seven
+   `BROKEN` rules, and the order G14 reads a document of several files in over
+   `latex_trees()` with one. The second: G6, with its citation positions. The plan as
+   written: `words`, accents, both gates moved. Tests: `latex words`, planted terms and
    spellings.
 8. `substituted`, with TeX's specials escaped; G5, G8, G9, G13 and G15 moved. Tests:
    each gate's cases on the twin, and a display holding `%` through G8.

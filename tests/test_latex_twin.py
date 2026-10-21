@@ -129,3 +129,22 @@ def test_g4_counts_the_twins_words_sections_and_display_items_as_the_examples(
     assert Counter((f.code, f.severity) for f in latex.findings) == Counter(
         (f.code, f.severity) for f in example.findings
     )
+
+
+def test_g14_reads_the_twins_words_as_the_examples(project: Path, tmp_path: Path) -> None:
+    """Step 7: the abbreviations, terms, spelling and notation of the twin are read as the
+    example's are, a bound value in an interval or a percentage among them, and G14 says of
+    it what it says of the example."""
+    from manuscript_guard.gates import check_language
+
+    example = check_language(load_project(project)[0])
+    root = tmp_path / "twin"
+    shutil.copytree(project, root)
+    shutil.rmtree(root / "manuscript")
+    shutil.copytree(TWIN, root / "manuscript")
+    latex = check_language(load_project(root)[0])
+    assert latex.counts == example.counts
+    assert example.counts["notation_intervals"] > 0 and example.counts["notation_percents"] > 0
+    assert [(f.code, f.message) for f in latex.findings] == [
+        (f.code, f.message) for f in example.findings
+    ]

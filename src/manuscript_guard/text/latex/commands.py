@@ -230,6 +230,9 @@ FLOATS = frozenset(
     {"figure", "figure*", "table", "table*", "wrapfigure", "wraptable", "sidewaysfigure",
      "sidewaystable"}
 )  # fmt: skip
+#: The floats that hold a figure, whose caption G14 does not read, as it does not read an
+#: image's caption in Markdown.
+FIGURES = frozenset({"figure", "figure*", "wrapfigure", "sidewaysfigure"})
 
 #: LaTeX's own parameters an author sets by defining them again, whose body is a size and
 #: prints nothing: `\\renewcommand{\\arraystretch}{1.5}` (round 1 of #400: its 1.5 failed G2).

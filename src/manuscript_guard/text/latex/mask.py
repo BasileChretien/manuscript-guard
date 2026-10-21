@@ -25,6 +25,7 @@ from manuscript_guard.text.latex.commands import (
     CITATIONS,
     COMMANDS,
     ENVIRONMENTS,
+    FIGURES,
     FLOATS,
     LISTINGS,
     MATHS,
@@ -170,6 +171,8 @@ class Reading:
     #: What a journal's profile states of a LaTeX source, as the file states it: ("class",
     #: name), ("class_option", option), ("bst", style), and ("biblatex", its options).
     declared: tuple[tuple[str, str], ...] = ()
+    #: Where each float that holds a figure runs (`commands.FIGURES`).
+    figures: tuple[tuple[int, int], ...] = ()
     #: Where each reference list typed in `thebibliography` runs.
     references: tuple[tuple[int, int], ...] = ()
 
@@ -362,6 +365,7 @@ class _Reader:
         self.citation_at = -1
         self.maths: list[tuple[int, int, bool]] = []
         self.floats: list[tuple[int, int]] = []
+        self.figures: list[tuple[int, int]] = []
         self.references: list[tuple[int, int]] = []
         self.code: list[tuple[int, int]] = []
         self.declared: list[tuple[str, str]] = []
@@ -393,13 +397,16 @@ class _Reader:
                                 if frame.inherited and frame.closer in FLOATS]  # fmt: skip
         maths = self.maths + [(0, self.n, True) for frame in self.stack
                               if frame.inherited and frame.closer in MATHS]  # fmt: skip
+        figures = self.figures + [(0, self.n) for frame in self.stack
+                                  if frame.inherited and frame.closer in FIGURES]  # fmt: skip
         references = self.references + [(0, self.n) for frame in self.stack
                                         if frame.inherited and frame.closer == REFERENCES]
         found = (tuple(self.inputs), tuple(self.headings), tuple(self.abstracts),
                  tuple(self.packages), tuple(self.bindings), tuple(self.suspects),
                  tuple(sorted(tables)), tuple(self.listings), tuple(self.cited),
                  tuple(sorted(maths)), tuple(sorted(floats)), self.body_start,
-                 tuple(self.code), tuple(self.declared), tuple(sorted(references)))  # fmt: skip
+                 tuple(self.code), tuple(self.declared), tuple(sorted(figures)),
+                 tuple(sorted(references)))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -1029,6 +1036,8 @@ class _Reader:
             self.maths.append((0 if top.inherited else top.start, self.pos, True))
         if name in FLOATS:
             self.floats.append((0 if top.inherited else top.start, self.pos))
+        if name in FIGURES:
+            self.figures.append((0 if top.inherited else top.start, self.pos))
         if name == REFERENCES:
             self.references.append((0 if top.inherited else top.start, self.pos))
 

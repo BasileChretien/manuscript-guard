@@ -827,6 +827,59 @@ def latex_printed(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     return text, planted
 
 
+#: Where a LaTeX document holds a word, as G14 reads it (`text/latex/words.py`): each `{}`
+#: holds a word, and its kind says what the words view makes of it. A word in prose, a
+#: heading, a footnote or a table's caption is read where it stands; one in maths, code, a
+#: figure's caption, a comment or a label is not; one an accent command or `\\-` splits is not
+#: read and is given as unread; and a count written as a subscript after a word's last letter
+#: is written `~2~`.
+LATEX_WORDS_PLACES = (
+    ("prose {} words ", ("read",)),
+    ("\\section{{{}}}\n", ("read",)),
+    ("\\emph{{{}}} ", ("read",)),
+    ("\\footnote{{note {}}} ", ("read",)),
+    ("\\begin{{table}}\\caption{{tab {}}}\\end{{table}}\n", ("read",)),
+    ("\\begin{{figure}}\\caption{{cap {}}}\\end{{figure}}\n", ("hidden",)),
+    ("$a {}$ ", ("hidden",)),
+    ("\\[ {} \\]\n", ("hidden",)),
+    ("\\texttt{{{}}} ", ("hidden",)),
+    ("% {}\n", ("hidden",)),
+    ("\\label{{{}}} ", ("hidden",)),
+    ("caf\\'e{} ", ("split",)),
+    ("{}co\\-op ", ("split",)),
+    ("{}X$_2$ ", ("subscript",)),
+)  # fmt: skip
+
+
+@st.composite
+def latex_words(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A LaTeX document with a word in every place of `LATEX_WORDS_PLACES`, in an order drawn,
+    under a title and after an abstract in the preamble; and each word, with what the words
+    view makes of it. Every place is in every document, so that a rule broken for one is seen
+    in each."""
+    filler = [*_spaced(FILLER)]
+    order = draw(st.permutations(range(len(LATEX_WORDS_PLACES))))
+    between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
+                            max_size=len(order) + 1))  # fmt: skip
+    planted: list[tuple[str, str]] = []
+
+    def key(kind: str) -> str:
+        planted.append((f"k{4101 + len(planted)}", kind))
+        return planted[-1][0]
+
+    text = f"\\documentclass{{article}}\n\\title{{T {key('hidden')}}}\n"
+    text += f"\\abstract{{abs {key('read')}}}\n\\begin{{document}}\n"
+    for piece, index in zip(between, order, strict=False):
+        text += piece
+        template, kinds = LATEX_WORDS_PLACES[index]
+        parts = [part.replace("{{", "{").replace("}}", "}") for part in template.split("{}")]
+        for part, kind in zip(parts, kinds, strict=False):
+            text += part + key(kind)
+        text += parts[-1]
+    text += between[-1] + "\\end{document}\n"
+    return text, planted
+
+
 @st.composite
 def latex_bound(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     """A LaTeX document with a binding in every place of `LATEX_BINDING_PLACES`, in an order
@@ -3021,6 +3074,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex bindings": latex_texts(),
     "latex citations": latex_texts(),
     "latex printed": latex_texts(),
+    "latex words": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),

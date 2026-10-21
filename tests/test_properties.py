@@ -77,6 +77,7 @@ from generated import (
     latex_printed,
     latex_texts,
     latex_trees,
+    latex_words,
     lines,
     mean_tables,
     numbered_displays,
@@ -153,6 +154,7 @@ from manuscript_guard.text.latex import mask as latex_mask
 from manuscript_guard.text.latex import printed as latex_print
 from manuscript_guard.text.latex import structure as latex_structure
 from manuscript_guard.text.latex import views as latex_views
+from manuscript_guard.text.latex import words as latex_words_view
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.placeholders import parse as parse_bindings
 from manuscript_guard.text.sections import (
@@ -823,6 +825,82 @@ def _a_single_quote_opens_a_code_span(patch: pytest.MonkeyPatch) -> None:
 def _an_abstract_in_the_preamble_is_not_printed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_print, "_printed_ranges",
                   lambda reading: [(max(reading.body_start, 0), len(reading.masked))])  # fmt: skip
+
+
+@holds(100, latex_words())
+def test_latex_s_words_hold_each_word_where_latex_prints_it(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A word planted in every place a LaTeX document holds one is in the view G14 reads, at
+    its own offset, where LaTeX prints it as prose; it is not in it in maths, code, a figure's
+    caption, a comment, a label or the preamble's title; a word an accent command or `\\-`
+    splits is not in it and is given as unread, and no other word is; and a count written as
+    a subscript after a letter is written as Markdown writes it (step 7)."""
+    text, planted = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    seen = latex_words_view.words(latex_structure.Source("main.tex", text, reading))
+    assert len(seen.text) == len(text), text
+    unread = [text[start:end] for start, end in seen.unread]
+    for key, kind in planted:
+        if kind == "read":
+            assert seen.text.count(key) == 1 and seen.text.find(key) == text.find(key), key
+        elif kind == "subscript":
+            assert f"{key}X~2~" in seen.text, (key, seen.text)
+        else:
+            assert key not in seen.text, (key, kind, seen.text)
+        if kind == "split":
+            assert [word for word in unread if key in word], (key, unread)
+    assert len(unread) == sum(kind == "split" for _key, kind in planted), unread
+
+
+def _maths_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_words_view, "_maths", lambda reading: [])
+
+
+def _code_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_words_view, "_code", lambda reading: [])
+
+
+def _a_figures_caption_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "FIGURES", frozenset())
+
+
+def _the_preamble_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_words_view, "_preamble", lambda reading: [])
+
+
+def _an_accented_word_is_read_in_pieces(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_words_view, "_split_words", lambda text: [])
+
+
+def _an_accented_word_is_cut_at_its_accent(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_words_view, "_in_word", lambda char: False)
+
+
+def _a_subscripts_count_is_maths(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_words_view, "_subscripts", lambda out, text: None)
+
+
+@holds(60, latex_trees())
+def test_g14_reads_a_latex_document_in_the_order_it_prints(
+    drawn: tuple[dict[str, str], dict[str, list[str]], dict[str, list[str]]],
+) -> None:
+    """The stretches G14 reads a LaTeX manuscript of several files in hold a word written
+    after each heading in the order LaTeX prints it: a file input is read where its `\\input`
+    stands, and the text of the file that input it after it, so that a definition and a use
+    are read in the order a reader meets them (step 7)."""
+    files, _under, marks = drawn
+    document = latex_structure.read_tree(files)
+    assert document.refusals == (), document.refusals
+    stretches = language_gate._stretches(document.sources)
+    read = "".join(source.text[start:end] for source, start, end in stretches)
+    order = [int(found) for found in re.findall(r"\bmark(\d+)\b", read)]
+    assert order == list(range(1, len(marks) + 1)), read
+
+
+def _a_file_input_is_read_after_its_parent(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_input_ends", lambda source: [])
 
 
 def _a_floats_words_are_printed(patch: pytest.MonkeyPatch) -> None:
@@ -7527,6 +7605,38 @@ BROKEN = {
     "in LaTeX, natbib's and biblatex's settings in the preamble are refused": (
         _a_preamble_cite_setting_is_refused,
         test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX's words, maths is words": (
+        _maths_is_words,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, code is words": (
+        _code_is_words,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, a figure's caption is words": (
+        _a_figures_caption_is_words,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, the preamble is words": (
+        _the_preamble_is_words,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, an accented word is read in pieces": (
+        _an_accented_word_is_read_in_pieces,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, an accented word is cut at its accent": (
+        _an_accented_word_is_cut_at_its_accent,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, a subscript's count is maths": (
+        _a_subscripts_count_is_maths,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX, G14 reads a file input after the file that inputs it": (
+        _a_file_input_is_read_after_its_parent,
+        test_g14_reads_a_latex_document_in_the_order_it_prints,
     ),
     "in LaTeX's printed view, a file input is printed after the file that inputs it": (
         _an_input_file_is_printed_after_its_parent,

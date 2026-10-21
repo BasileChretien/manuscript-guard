@@ -5819,8 +5819,8 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
     unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
     # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4). G4
-    # reads it from step 6.
-    expected = ["BUILD", "G13", "G14", "G15", "G2", "G6", "G7", "G8", "G8r", "G9"]
+    # reads it from step 6, G14 from step 7.
+    expected = ["BUILD", "G13", "G15", "G2", "G6", "G7", "G8", "G8r", "G9"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
@@ -5836,7 +5836,7 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 _MARKDOWN_ONLY = (
     "check_related", "check_prose_quotations", "check_reporting",
     "check_writing", "check_methods", "check_reported", "check_recomputed", "check_revision",
-    "check_language", "check_models", "check_shapes", "check_tex", "check_passages",
+    "check_models", "check_shapes", "check_tex", "check_passages",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
@@ -5849,7 +5849,7 @@ _NOT_THE_MANUSCRIPT = (
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
 _READS_LATEX = (
     "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
-    "check_synthetic_inputs", "check_citations", "check_journal",
+    "check_synthetic_inputs", "check_citations", "check_journal", "check_language",
 )  # fmt: skip
 
 
@@ -6146,6 +6146,36 @@ def test_g4_counts_no_word_of_a_float_a_formula_or_the_preamble_in_the_twin(
     _into_results(entry, f"\\begin{{figure}}\\caption{{{words}}}\\end{{figure}}\n"
                          f"\\[ {words} \\]")  # fmt: skip
     assert "over-journal-limit" not in _g4(project)
+
+
+def _g14(root: Path) -> list:
+    from manuscript_guard.gates import check_language
+
+    return list(check_language(load_project(root)[0]).findings)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "code", "word"),
+    [
+        ("The hazard ratio was HR here.", "abbreviation-undefined", "HR is used once"),
+        ("The color of the reports.", "spelling-variant", "'color'"),
+        ("The caf\\'e reports.", "tex-words-not-read", "caf\\\\'e"),
+        ("The SSRI rose. The SSRI (selective serotonin reuptake inhibitor) class.",
+         "abbreviation-used-before-defined", "SSRI"),
+    ],
+)
+def test_g14_finds_in_the_twin_what_it_finds_in_the_example(
+    project: Path, snippet: str, code: str, word: str
+) -> None:
+    """An abbreviation never defined, an American spelling in a British paper, a word an
+    accent command splits, and a use before the definition, each written into the twin's
+    Results, are found there, on the line it is written on (step 7)."""
+    entry = _twin(project)
+    _into_results(entry, snippet)
+    found = [f for f in _g14(project) if f.code == code and word in f.message]
+    assert found and found[0].path == entry, [(f.code, f.message) for f in _g14(project)]
+    text = entry.read_text(encoding="utf-8")
+    assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])

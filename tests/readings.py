@@ -217,6 +217,19 @@ def _latex_printed() -> Reading:
     return printed
 
 
+@reading("latex words")
+def _latex_words() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+    from manuscript_guard.text.latex.words import words
+
+    def seen(text: str) -> dict[str, Any]:
+        found = words(Source("main.tex", text, read(text)))
+        return {"words": found.text, "unread": [list(span) for span in found.unread]}
+
+    return seen
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden

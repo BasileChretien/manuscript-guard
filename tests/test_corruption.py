@@ -7993,6 +7993,14 @@ def test_a_figure_that_draws_a_scale_is_said_not_to_be_compared(project: Path) -
     assert _colours_said(project) == [("figure-colours-scale", "info")]
 
 
+def test_a_line_plot_with_light_bands_is_compared(project: Path) -> None:
+    """The review of #398: three series' bands at an opacity of 0.1 chain by hue at one
+    lightness; taken for a scale, they switched the check off, and red and green, one colour
+    with deuteranopia, went unsaid."""
+    _painted(project, _RED, "#ff7f0e", "#bcbd22", _GREEN, "#fbe9e9", "#fff2e7", "#f8f8e9")
+    assert ("figure-colours-confused", "warn") in _colours_said(project)
+
+
 def test_a_default_figures_greys_make_no_scale(project: Path) -> None:
     """matplotlib's black, its grid's grey, a legend's frame and white chain within the
     threshold; they make no scale, and the figure's red and green are compared."""
@@ -8001,7 +8009,7 @@ def test_a_default_figures_greys_make_no_scale(project: Path) -> None:
     assert ("figure-colours-scale", "info") not in _colours_said(project)
 
 
-def test_a_figure_of_more_colours_than_are_compared_is_said_to_be_a_scale(project: Path) -> None:
+def test_a_figure_of_more_colours_than_are_compared_is_said_so(project: Path) -> None:
     from manuscript_guard.gates.figure_colours import MANY
 
     # A grid of reds and greens, as a heat map drawn as vectors paints one.

@@ -216,7 +216,10 @@ def test_a_figures_greys_and_series_are_no_scale() -> None:
                "#00ba38", "#619cff")  # fmt: skip
     matplotlib = ("#000000", "#2ca02c", "#bcd6e8", "#d62728", "#d6d6d6", "#ffffff", "#b0b0b0",
                   "#cccccc")  # fmt: skip
-    for figure in (ggplot2, matplotlib):
+    # The bands of tab:red, tab:orange and tab:olive at an opacity of 0.1, laid over white:
+    # neighbours in hue, 6.6 and 7.1 apart, at one lightness (the review of #398).
+    bands = ("#fbe9e9", "#fff2e7", "#f8f8e9")
+    for figure in (ggplot2, matplotlib, bands):
         assert colour.scales([colour.parse(code)[0] for code in figure]) == set(), figure
     greys = [colour.parse(code)[0] for code in ("#000000", "#4d4d4d", "#b0b0b0", "#ffffff")]
     assert colour.confusions(greys) == []

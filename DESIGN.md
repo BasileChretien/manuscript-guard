@@ -730,11 +730,16 @@ out took in a series near one of its shades (round 2: tab:red beside a heat map 
 tab:green with it, went unsaid); comparing a series with the shades compared two scales with
 each other, and two series near one scale's shades still went uncompared (the round on the
 fix). Basile chose to narrow the check to what it can decide (2026-10-21): a figure whose
-colours chain within 10 of one another, three or more, is said to draw a scale
-(`figure-colours-scale`, a note), and its colours are not compared; nor are a figure's of more
+colours chain within 10 of one another, three or more, greys apart, and run through 10 of
+lightness or more, is said to draw a scale (`figure-colours-scale`, a note), and its colours
+are not compared; nor are a figure's of more
 than 300 colours (`figure-colours-many`), since finding a scale among them takes time in their
 square. Its review looks at it, and a scale and its series drawn as figures of their own have
-the series compared.
+the series compared. The two conditions on a chain keep an ordinary figure compared: greys
+chain easily (a panel's background, its grid, a legend's frame) and are never confused with
+one another; and the light bands of several series, each laid over white at one opacity,
+chain by hue at one lightness, where a colormap runs through it (the round on the
+narrowing: tab:red, tab:orange and tab:olive at 0.1 are 6.6 and 7.1 apart).
 
 Where two series are told apart by more than colour, a line style or a label on each line,
 the figure's guard file says so under `allow_colours`, the pair (or one colour of it) and
@@ -7895,9 +7900,10 @@ Added by the adversarial review, verified and **not** fixed:
   nor a gradient, a pattern, a shading, or a PDF colour in a separation, an indexed or a Lab
   colour space. A figure that draws a continuous scale is not compared at all, its series
   beside the scale included, and neither is one of more than 300 colours: both are said in a
-  note, and left to the figure's review. A scale drawn with neighbours more than 10 apart is
-  no scale to the check, and its shades are compared as series; a rainbow colormap a
-  deficiency scrambles is not said. A text drawn as glyphs is known for one where
+  note, and left to the figure's review. A scale drawn with neighbours more than 10 apart, or
+  through less than 10 of lightness (a colormap's narrow slice), is no scale to the check,
+  and its shades are compared as series; a rainbow colormap a deficiency scrambles is not
+  said. A text drawn as glyphs is known for one where
   matplotlib (`text_` groups) or Cairo (`glyph` symbols) draws it so, and is a mark where
   another program does. A text's colour is left out, so data told apart only
   by coloured labels is not checked. Every colour painted is compared with every other, the

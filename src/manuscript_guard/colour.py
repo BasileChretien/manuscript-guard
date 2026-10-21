@@ -50,6 +50,10 @@ THRESHOLD = 10.0
 SCALE = 3
 #: Below this chroma (CIELAB C*ab) a colour is a grey, and is no shade of a scale.
 GREY = 5.0
+#: How far a scale's shades run through lightness (CIELAB L*), at the least. A colormap runs
+#: through it; the light tints of a figure's bands, each series' colour laid over white at
+#: one opacity, chain by hue at one lightness and are no scale (the review of #398).
+SPAN = 10.0
 DEFICIENCIES = ("protanopia", "deuteranopia", "tritanopia")
 GREYSCALE = "greyscale"
 
@@ -288,16 +292,22 @@ def difference(first: RGB, second: RGB) -> float:
 
 def scales(colours: Iterable[RGB], threshold: float = THRESHOLD) -> set[str]:
     """The hex codes of `colours` that are the shades of a scale: chained within `threshold`
-    of one another to normal vision, `SCALE` or more, greys apart. A figure's greys chain
-    easily, a panel's background, its grid and a legend's frame, and no grey is ever said
-    to be confused with another, since neither a deficiency nor grey print moves one."""
+    of one another to normal vision, `SCALE` or more, running through `SPAN` of lightness or
+    more, greys apart. A figure's greys chain easily, a panel's background, its grid and a
+    legend's frame, and no grey is ever said to be confused with another, since neither a
+    deficiency nor grey print moves one."""
     distinct = sorted({hex_of(colour) for colour in colours})
     distinct = [code for code in distinct if math.hypot(*lab(parse(code)[0])[1:]) >= GREY]
     labs = [lab(parse(code)[0]) for code in distinct]
     normal = {(i, j): ciede2000(labs[i], labs[j])
               for i in range(len(labs)) for j in range(i + 1, len(labs))}  # fmt: skip
     group = _groups(len(labs), normal, threshold)
-    return {distinct[i] for i in range(len(labs)) if group[i] is not None}
+    lightness: dict[int, list[float]] = {}
+    for i, root in enumerate(group):
+        if root is not None:
+            lightness.setdefault(root, []).append(labs[i][0])
+    running = {root for root, values in lightness.items() if max(values) - min(values) >= SPAN}
+    return {distinct[i] for i in range(len(labs)) if group[i] in running}
 
 
 def _groups(count: int, normal: dict[tuple[int, int], float], threshold: float

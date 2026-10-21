@@ -5312,6 +5312,32 @@ def _the_deviations_end_at_their_first_subsection(patch: pytest.MonkeyPatch) -> 
     patch.setattr(collection, "_deviations", own_text_only)
 
 
+def _the_plan_s_title_may_be_its_deviations(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood before round 1: the title was a heading like any other."""
+    from manuscript_guard.gates import collection
+
+    def every_heading(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, next((later.start for later in headings[i + 1:]
+                                if later.level <= h.level), len(text)))
+                for i, h in enumerate(headings) if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", every_heading)
+
+
+def _the_deviations_run_to_the_next_section(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    def to_a_section(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, next((later.start for later in headings[i + 1:]
+                                if later.level <= 2), len(text)))
+                for i, h in enumerate(headings[1:], 1)
+                if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", to_a_section)
+
+
 def _any_heading_with_a_change_s_word_is_the_deviations(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import collection
 
@@ -6913,6 +6939,8 @@ BROKEN = {
             ("the Deviations name variables", _the_deviations_name_variables),
             ("the Deviations end at their first subsection",
              _the_deviations_end_at_their_first_subsection),
+            ("the plan's title may be its Deviations", _the_plan_s_title_may_be_its_deviations),
+            ("the Deviations run to the next section", _the_deviations_run_to_the_next_section),
             ("any heading with a change's word is the Deviations",
              _any_heading_with_a_change_s_word_is_the_deviations),
             ("a heading naming the planned results is never the Deviations",

@@ -97,11 +97,15 @@ def _first(found: dict[str, Named], named: Named) -> None:
 
 def _deviations(text: str) -> list[tuple[int, int]]:
     """Where each Deviations section is, from its heading to the next heading at its level
-    or above."""
+    or above. The plan's title is none: "Statistical analysis plan (amendment 2)" encloses
+    the plan rather than heading its Deviations (round 1). The title is the first heading
+    where the next is deeper, whatever comes later: an appendix at the title's level after
+    the plan does not make the title the Deviations of everything before it."""
     headings = find_headings(text)
+    titled = len(headings) > 1 and headings[1].level > headings[0].level
     found = []
     for index, heading in enumerate(headings):
-        if not is_deviations(heading.title):
+        if (titled and index == 0) or not is_deviations(heading.title):
             continue
         end = next((later.start for later in headings[index + 1 :]
                     if later.level <= heading.level), len(text))  # fmt: skip
@@ -138,11 +142,13 @@ def check_collection(
         return report
     used, undefined = variables_named(text, dictionary.names)
     findings = [_undefined(plan, one, dictionary) for one in undefined]
-    wanted = needed(dictionary, [one.name for one in used])
+    # An entry kept for a reporting item or a reason needs its inputs too (round 1).
+    kept = [v.name for v in dictionary.variables if v.reporting or v.reason]
+    wanted = needed(dictionary, [one.name for one in used] + kept)
     findings += [
         _unused(dictionary.path, variable)
         for variable in dictionary.variables
-        if variable.name not in wanted and not variable.reporting and not variable.reason
+        if variable.name not in wanted
     ]
     counts = {"plan_variables": len(used) + len(undefined)}
     return report.merge(Report(tuple(findings), counts))
@@ -233,7 +239,8 @@ def _gaps(variable: Variable, dictionary: Dictionary) -> list[tuple[str, str, st
 
 
 def _cycles(dictionary: Dictionary) -> list[list[str]]:
-    """Each cycle of derivations once, from its variable that comes first in the dictionary.
+    """Cycles of derivations, each from its variable that comes first in the dictionary: at
+    least one for each group of variables derived from one another, not every cycle in it.
 
     A depth-first walk of the inputs: a cycle is an input already on the path walked."""
     found: list[list[str]] = []

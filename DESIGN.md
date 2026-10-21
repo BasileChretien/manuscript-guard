@@ -4002,12 +4002,15 @@ two files). A code span that is a dictionary name is a use of it, a dotted one i
 span that reads as a variable's name, letters, digits and underscores from a letter, and
 that the dictionary lacks is `plan-variable-undefined`, at its first mention; where the
 dictionary has the name in another case, the hint says so. Code is written so that it does
-not read as a name, `glm()` or `stats::glm`; a result's key has a dot; a value, `NA` or
-`TRUE`, is not read; nor is what masking hides, a fence or a comment. A heading that names
-both the planned results and a change is the Deviations where the change comes first, as
-the list is read. In the other direction, an entry is needed where the plan names it, where
+not read as a name, `glm()` or `stats::glm`; a result's key has a dot; nine values, `NA`, `NULL`,
+`TRUE`, `FALSE`, `None`, `True`, `False`, `NaN` and `Inf`, are not read; nor is what
+masking hides, a fence or a comment. A heading that names both the planned results and a
+change is the Deviations where the change comes first, as the list is read. The plan's
+title is never its Deviations: "Statistical analysis plan (amendment 2)" heads the plan
+(round 1), and it is the title where the heading after it is deeper. In the other direction, an entry is needed where the plan names it, where
 a variable the plan needs is derived from it or asked under it (`applies_if`), again and
-again, where it names a reporting-checklist item, or where it gives a reason; any other is
+again, where it names a reporting-checklist item, or where it gives a reason, and so are the
+inputs and the condition of an entry kept for an item or a reason (round 1); any other is
 `dictionary-entry-unused`. A reporting item is looked for in the guideline's checklist where
 the project holds one (`dictionary-reporting-item-unknown`), and is a note where it does
 not. Whatever the plan, an entry that leaves its codes undecided, a derivation without its
@@ -7285,7 +7288,11 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   writes in words, "adjusted for age", is not read, and an entry for it is said to be
   unused until the plan writes `age`. A name in backticks that is code and not a variable,
   `lme4` or `R`, is warned of as an undefined variable until it is written as code, `lme4::`
-  or `R()`, or without the backticks. The Deviations are left out whole, so a variable named
+  or `R()`, or without the backticks, and so is a value other than the nine left out,
+  `NA_real_` or a code written `M`. A heading with "deviation" in it is the Deviations, as G12
+  reads the plan, so a subsection "Standard deviation of `bmi_kg`" is not read (round 1).
+  A derivation cycle is said once for each group of variables derived from one another,
+  not once for every cycle in it. The Deviations are left out whole, so a variable named
   only there is unused even where the change kept it. That an entry is needed is all that
   is checked: not that the plan uses it as its type says, that the analysis's own
   `variable()` declarations agree with the dictionary, or that an instrument's `citation` is

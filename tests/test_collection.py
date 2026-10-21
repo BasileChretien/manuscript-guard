@@ -152,6 +152,42 @@ def test_the_inputs_of_a_named_variable_and_the_variable_it_is_asked_under_are_n
     assert said(project(tmp_path, plan, entries)) == []
 
 
+@pytest.mark.parametrize("kept", ["reporting: {STROBE: [14a]}", "reason: asked by the funder"])
+def test_the_inputs_of_an_entry_kept_for_a_reason_or_an_item_are_needed(
+    tmp_path: Path, kept: str
+) -> None:
+    """Round 1: an entry kept for its reporting item or its reason needed nothing, so the
+    inputs the skill tells the author to collect for it were said to be unused."""
+    entries = ENTRIES + (
+        "  - {name: weight_kg, label: Weight, definition: Weight., type: continuous}\n"
+        "  - {name: height_cm, label: Height, definition: Height., type: continuous}\n"
+        "  - {name: bmi, label: BMI, definition: Body mass index., type: continuous, "
+        f"derived_from: [weight_kg, height_cm], derivation: weight over height squared, {kept}}}\n"
+        "  - {name: pregnant, label: Pregnant, definition: Pregnant now., type: binary, "
+        f"code_list: yes_no, applies_if: {{variable: sex, in: [2]}}, {kept}}}\n"
+    )
+    plan = edited(PLAN, "adjusted for `age` and `sex`", "adjusted for `age`")
+    codes = [code for code, _line in said(project(tmp_path, plan, entries))]
+    assert "dictionary-entry-unused" not in codes, codes
+
+
+def test_a_title_that_names_an_amendment_heads_the_plan_and_not_its_deviations() -> None:
+    """Round 1: `# Statistical analysis plan (amendment 2)` was read as the Deviations, and
+    nothing under it was read."""
+    used, undefined = variables_named(
+        "# Statistical analysis plan (amendment 2)\n\n## Analysis\n\n`age` and `weight`\n",
+        ["age"],
+    )
+    assert [n.name for n in used] == ["age"] and [n.name for n in undefined] == ["weight"]
+    # An appendix at the title's level after the plan leaves the title a title.
+    used, undefined = variables_named(
+        "# Statistical analysis plan (amendment 2)\n\n## Analysis\n\n`age`\n\n# Appendix\n\n"
+        "`notes`\n",
+        ["age"],
+    )
+    assert [n.name for n in used] == ["age"] and [n.name for n in undefined] == ["notes"]
+
+
 def test_what_the_deviations_name_is_not_read(tmp_path: Path) -> None:
     plan = edited(PLAN, "None so far.", "We dropped `smoking`.\n\n### Later\n\nAnd `alcohol`.")
     entries = ENTRIES + ("  - {name: smoking, label: Smoking, definition: Smokes now., "

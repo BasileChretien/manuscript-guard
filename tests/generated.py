@@ -1057,8 +1057,10 @@ def collection_plans(
     another; code and values; a Planned results item naming a variable after its key; a fence
     and a comment holding names; a variable named in a subsection; a variable written in
     another case; a list headed "Planned results and amendments", which is not the
-    Deviations; a section headed "Changes to the planned results", which is; and a section
-    naming again a variable and a name named elsewhere."""
+    Deviations; a section headed "Changes to the planned results", which is; a section
+    naming again a variable and a name named elsewhere; and a Deviations subsection of
+    another section, followed by a subsection that is read. All under a title that names an
+    amendment, which heads the plan and not its Deviations."""
     words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=5).map(" ".join)
     defined = draw(st.permutations(DEFINED))
     undefined = draw(st.permutations(UNDEFINED))
@@ -1085,9 +1087,12 @@ def collection_plans(
         (f"## Changes to the planned results\n\n`{undefined[4]}` {draw(words)}.\n", [], []),
         (f"## Repeated\n\n`{defined[0]}` and `{undefined[0]}` {draw(words)}.\n",
          [defined[0]], [undefined[0]]),
+        (f"## Exposure details\n\n{draw(words)}.\n\n### {deviation}\n\n`{undefined[5]}` "
+         f"{draw(words)}.\n\n### Timing\n\n`{defined[7]}` {draw(words)}.\n", [defined[7]], []),
     ]  # fmt: skip
     order = draw(st.permutations(range(len(kinds))))
-    plan = "# Analysis plan\n\n"
+    # A title that names an amendment encloses the plan, and is not its Deviations.
+    plan = f"# Statistical analysis plan (amendment {draw(st.integers(1, 9))})\n\n"
     first: dict[str, dict[str, int]] = {"used": {}, "undefined": {}}
     for index in order:
         text, used, lacked = kinds[index]

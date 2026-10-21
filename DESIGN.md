@@ -8411,7 +8411,10 @@ Open, recorded as each change landed:
 - **Only all-synthetic first results are set aside.** A first run on simulated data marks
   the frozen plan, and the real data's first results, which come later, are dated by nobody:
   such a project's registration is held to the registry's own start dates only. A first run
-  with one real input among simulated ones dates the study's first results.
+  with one real input among simulated ones dates the study's first results. The mark, like
+  `frozen_at`, is in no digest: added by hand to the frozen copy of a real first run, it
+  turns a late registration into a note (round 2 of #390). The write hook keeps an agent
+  from that edit, and a person's is theirs to answer for.
 - **PROSPERO is not asked.** Its records reach its own page through an API that wants a
   header the page makes; a review registered there has a record copied by hand, which G12
   notes as the copier's word and holds like any other.

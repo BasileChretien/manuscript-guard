@@ -4163,6 +4163,19 @@ def test_an_identifier_that_names_no_registry_fails(project: Path) -> None:
     assert _registration(project, "internal-review") == {"registration-id-malformed": "fail"}
 
 
+def test_an_identifier_not_written_as_its_named_registry_writes_it_fails_and_says_so(
+    project: Path,
+) -> None:
+    """Round 2 of #390: the finding told an author who had named the registry to name it."""
+    from manuscript_guard.gates.registration import check_registration
+
+    _register(project, entry={"id": "ISRCTN 17072692", "registry": "ISRCTN"},
+              stated="ISRCTN 17072692", record={})  # fmt: skip
+    assert _registration(project, "internal-review") == {"registration-id-malformed": "fail"}
+    [said] = check_registration(load_project(project)[0]).findings
+    assert "not written as ISRCTN writes" in said.message and "registry:" not in said.hint
+
+
 def test_a_registration_the_manuscript_does_not_give_fails(project: Path) -> None:
     _register(project, stated=None)
     assert _registration(project, "internal-review") == {"registration-not-in-manuscript": "fail"}

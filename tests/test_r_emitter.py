@@ -849,11 +849,13 @@ em$write()
 
 
 @pytest.mark.parametrize("real", [False, True])
-def test_r_and_python_mark_a_plan_frozen_on_synthetic_inputs_alike(
+def test_r_marks_a_plan_frozen_on_synthetic_inputs_as_python_does(
     tmp_path: Path, real: bool
 ) -> None:
     """Round 1 of #390: both emitters say when the first results came from synthetic
-    inputs only, which G12 then does not take for the study's first results."""
+    inputs only, which G12 then does not take for the study's first results. Python's
+    mark is held by `test_a_plan_frozen_on_synthetic_inputs_only_says_so`, on the same
+    inputs."""
     root = _parameter_project(tmp_path)
     (root / "design").mkdir()
     (root / "design" / "plan.md").write_text("# Analysis plan\n", encoding="utf-8")

@@ -98,6 +98,8 @@ class Declared:
     #: Whether `outcomes` was given at all: an empty list is an author saying none.
     outcomes_given: bool
     index: int
+    #: The registry `paper.yaml` names under `registry`, as written, where it names one.
+    named: str | None = None
 
 
 def identify(written: str, registry: str | None = None) -> tuple[str | None, str | None]:
@@ -136,7 +138,8 @@ def declared(project: Project) -> list[Declared]:
         if not isinstance(entry, dict):
             continue
         written = str(entry.get("id") or "")
-        registry, kept = identify(written, _text_of(entry.get("registry")))
+        named = _text_of(entry.get("registry"))
+        registry, kept = identify(written, named)
         outcomes = tuple(
             Outcome(
                 registered=_text_of(item.get("registered")) or "",
@@ -156,6 +159,7 @@ def declared(project: Project) -> list[Declared]:
                 outcomes=outcomes,
                 outcomes_given="outcomes" in entry,
                 index=index,
+                named=named,
             )
         )
     return out

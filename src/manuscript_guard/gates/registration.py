@@ -203,6 +203,16 @@ def _undeclared(project: Project, paper: Path) -> Report:
 
 
 def _one(context: _Context, entry: Declared, paper: Path) -> Report:
+    if entry.id is None and entry.named:
+        # Round 2 of #390: the registry was named, and the finding said it was not.
+        name = NAMES.get(entry.named.strip().lower(), entry.named)
+        return Report((_finding(
+            "registration-id-malformed",
+            f"registration {entry.written!r} in paper.yaml is not written as {name} writes its "
+            "identifiers", FAIL, paper,
+            "write it as the registry does, its letters and digits with no space between them: "
+            "NCT04368728, EUPAS1000000417, ISRCTN17072692, osf.io/abcde, CRD42020123456",
+        ),))  # fmt: skip
     if entry.id is None:
         return Report((_finding(
             "registration-id-malformed",

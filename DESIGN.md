@@ -1685,13 +1685,13 @@ Central published in March or April 2025, in PMC's order, with 20 references or 
 papers, 740 references, their JATS converted to BibTeX (674 with a DOI, 668 with a PMID,
 57 with neither, 14 of those journal articles). Each paper was run twice: as published,
 and with every DOI and PMID taken out, so that all 740 were searched for by their titles.
-`lookup` then `check --stage internal-review`, with the code of this pull request's last
-head; OpenAlex's free allowance had been spent by the earlier runs, so it was asked for none
+`lookup` then `check --stage internal-review`: the searches with the queries this pull
+request ends with, and `check` re-run offline after its last change to G7; OpenAlex's free allowance had been spent by the earlier runs, so it was asked for none
 of them, and every verdict rests on PubMed and Crossref.
 
 With the identifiers taken out, 683 of the 740 were found; every identifier offered was the
-one the paper published (639 DOIs, 632 PMIDs) or a correction of it (3: a DOI of the wrong
-article, a supplement's DOI, version 1 of an article cited by version 2's title), and 24 were
+one the paper published (642 DOIs, 635 PMIDs) or a correction of it (3: a DOI of the wrong
+article, a supplement's DOI, version 1 of an article cited by version 2's title), and 21 were
 found without one being offered, the copy cited not told apart. 44 were not checked (books,
 reports, web pages, short titles).
 
@@ -1700,6 +1700,7 @@ reports, web pages, short titles).
 | this check, as published | 740 | 5 (4 failures, 1 warning) | 0.68 | 3 | 1 |
 | this check, identifiers taken out | 740 | 8 (7 failures, 1 warning) | 1.08 | 3 | 4 |
 | G7's checks of an identifier, as published | 740 | 6 failures | 0.81 | 0 | 10 |
+| all of G7's reference checks, as published | 740 | 11 (10 failures, 1 warning) | 1.49 | 3 | 11 |
 
 What the false alarms of this check were: three real works in venues no registry indexes
 (World J Pharm Sci, the Ethiopian Pharmaceutical Journal, a congress poster cited as an
@@ -8338,7 +8339,11 @@ Open, recorded as each change landed:
   the entry names none of them, or OpenAlex alone has the copies, which keeps no journal,
   no identifier is offered and no retraction of any copy is said; so too for an article
   and its own congress abstract in the same journal (an ASCO abstract in J Clin Oncol, then
-  the article there), whose identifiers then differ (round 2 of #379). A made-up subtitle after
+  the article there), whose identifiers then differ (round 2 of #379). Two records of one
+  work that share no identifier, a PubMed record with no DOI and Crossref's, are two works
+  where the registries write the journal otherwise ("Pharmacotherapy" against Crossref's
+  "Pharmacotherapy: The Journal of Human Pharmacology and Drug Therapy"), and the copy is
+  then told by the cited journal or not at all. A made-up subtitle after
   a real main title of four words or more is read as one the registry left out, by the
   search and by the DOI check alike. Crossref's search is filtered by the date Crossref
   publishes, which is the earlier of print and online, so a paper online two years or more

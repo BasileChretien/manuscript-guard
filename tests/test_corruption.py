@@ -5935,6 +5935,23 @@ def test_records_in_two_journals_are_two_works(project: Path) -> None:
     assert "10.5555/abstract" not in said and f"PMID {_SEARCHED_PMID}" in said, said
 
 
+def test_one_work_whose_registries_write_its_journal_otherwise_is_one_work(project: Path) -> None:
+    """The round after the budget of #379: PubMed writes "Pharmacotherapy", Crossref
+    "Pharmacotherapy: The Journal of Human Pharmacology and Drug Therapy"; the records share
+    their DOI, and were split into two works, Crossref's retraction lost with it."""
+    notice = {"type": "retraction", "doi": "10.5555/notice.1", "date": "2023-02-06"}
+    pubmed = {**_PUBMED_HIT, "journal": "Pharmacotherapy",
+              "journal_abbreviation": "Pharmacotherapy"}  # fmt: skip
+    crossref = {**_CROSSREF_HIT, "updated_by": [notice], "container":
+                "Pharmacotherapy: The Journal of Human Pharmacology and Drug Therapy"}  # fmt: skip
+    _bib_field(project, "journal", None)
+    _searched(project, pubmed_search=_hits(pubmed), crossref_search=_hits(crossref))
+    found = _g7_codes(project)
+    assert found.get("reference-retracted") == "fail", found
+    said = _finding_of(project, "reference-found").message
+    assert "several works" not in said and f"with DOI {_LOOKED_DOI}" in said, said
+
+
 def test_a_record_naming_nobody_keeps_the_notices_of_the_work_it_shares(project: Path) -> None:
     """Round 2 of #379: Crossref's record of a work can name nobody where PubMed's names
     the people, and it is Crossref's that carries the retraction."""

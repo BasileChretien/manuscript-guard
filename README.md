@@ -378,9 +378,10 @@ Alpha. No real manuscript has been through it yet, its author's or anyone else's
 inputs only. `audit`, which reads a paper written some other way, has been pointed at one
 submitted paper, and what it found is recorded in DESIGN.md. G7's reference checks were
 measured on 2026-10-21 against the 740 references of 16 published open-access pharmacology
-and epidemiology papers: 0.68 false alarms per 100 references as published, 1.08 with every
-DOI and PMID taken out so that each was searched for by its title (DESIGN.md, "Measured on
-real papers"). What it claims rests on its
+and epidemiology papers: as published, 1.49 false alarms per 100 references in all,
+of which 0.68 from the search by title and the comparison of authors; 1.08
+from those two with every DOI and PMID taken out, so that each reference was searched for
+(DESIGN.md, "Measured on real papers"). What it claims rests on its
 tests and on the measurements recorded in [DESIGN.md](DESIGN.md), under "What a claim rests
 on". The gates still change from week to week: interfaces, file formats and what a gate
 reports can change without a migration path. Every round of review so far has found

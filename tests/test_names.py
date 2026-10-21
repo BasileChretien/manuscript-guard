@@ -106,6 +106,23 @@ def test_a_journal_s_abbreviation_is_its_name_and_its_plural_is_another() -> Non
         assert not same_journal(one, other), (one, other)
 
 
+def test_records_are_one_work_only_where_no_two_of_them_differ() -> None:
+    """Every two records that share no identifier are compared, not each with the first
+    (the round after the budget of #379)."""
+    from manuscript_guard.gates.searched import Work, _one
+
+    def work(doi: str | None, *journals: str) -> Work:
+        return Work("Crossref", "t", ("t",), (2021,), (), doi, None, {}, journals=journals)
+
+    first = Work("PubMed", "t", ("t",), (2021,), (), None, "1", {},
+                 journals=("Journal of Alpha", "J Beta"))  # fmt: skip
+    # The first holds a name of each other, which differ, and share no identifier.
+    assert not _one([first, work("10.5/a", "Journal of Alpha"), work(None, "J Beta")])
+    # Two that share a DOI are one work however each registry writes the journal.
+    assert _one([work("10.5/a", "Pharmacotherapy"),
+                 work("10.5/a", "Pharmacotherapy: The Journal of Human Pharmacology")])  # fmt: skip
+
+
 def test_a_double_surname_filed_among_the_given_names_is_one_person_s() -> None:
     """Crossref files George Davey Smith as given "George Davey", family "Smith"; a paper of
     the measurement of 2026-10-20 cites him as "Davey, SG"."""

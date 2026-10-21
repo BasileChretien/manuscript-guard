@@ -365,12 +365,23 @@ def _one(works: list[Work]) -> bool:
     """Whether the records are of one work: no two DOIs and no two PMIDs among them, and no
     two journals. A PubMed record with no DOI and Crossref's of the same work share no
     identifier, and nothing in them differs; a congress abstract of the same title and
-    first author is in another journal (round 2 of #379)."""
-    placed = [w.journals for w in works if w.journals]
-    one_place = all(any(same_journal(a, b) for a in names for b in placed[0])
-                    for names in placed[1:])  # fmt: skip
-    return (len({w.doi for w in works if w.doi}) <= 1
-            and len({w.pmid for w in works if w.pmid}) <= 1 and one_place)  # fmt: skip
+    first author is in another journal (round 2 of #379). Journals are compared only between
+    records that share no identifier, each two of them: two that share a DOI are one work
+    however each registry writes its journal, "Pharmacotherapy" in PubMed and
+    "Pharmacotherapy: The Journal of Human Pharmacology and Drug Therapy" in Crossref."""
+    if len({w.doi for w in works if w.doi}) > 1 or len({w.pmid for w in works if w.pmid}) > 1:
+        return False
+    for at, one in enumerate(works):
+        for other in works[at + 1 :]:
+            if _shared(one, other) or not (one.journals and other.journals):
+                continue
+            if not any(same_journal(a, b) for a in one.journals for b in other.journals):
+                return False
+    return True
+
+
+def _shared(one: Work, other: Work) -> bool:
+    return bool((one.doi and one.doi == other.doi) or (one.pmid and one.pmid == other.pmid))
 
 
 def _cited_copy(fields: dict[str, str], lead: list[Work]) -> list[Work] | None:
@@ -385,7 +396,7 @@ def _cited_copy(fields: dict[str, str], lead: list[Work]) -> list[Work] | None:
     if not named or not _one(named):
         return None
     ids = {x for w in named for x in (w.doi, w.pmid) if x}
-    return named + [w for w in lead if not w.journals and {w.doi, w.pmid} & ids]
+    return named + [w for w in lead if w not in named and {w.doi, w.pmid} & ids]
 
 
 def _found(citekey, fields, cited, lead: list[Work], path, excuse) -> list[Finding]:

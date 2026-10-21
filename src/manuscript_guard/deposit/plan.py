@@ -36,7 +36,7 @@ import re
 import subprocess
 import unicodedata
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from manuscript_guard.contracts.project import Project
@@ -146,23 +146,45 @@ def name_of(project: Project) -> str:
     return f"{slug}-package" if slug else "package"
 
 
-def _git(root: Path, *args: str) -> str | None:
+#: The program asked which files are tracked.
+GIT = "git"
+
+
+def _ask_git(root: Path, *args: str) -> subprocess.CompletedProcess | None:
+    """git in the project, in English so that its words can be read, or None where it could
+    not be run or did not answer in time."""
     try:
-        done = subprocess.run(
-            ["git", "-c", "core.fsmonitor=false", "-c", "core.quotepath=off", *args],
+        return subprocess.run(
+            [GIT, "-c", "core.fsmonitor=false", "-c", "core.quotepath=off", *args],
             cwd=root, capture_output=True, encoding="utf-8", errors="replace",
-            timeout=GIT_SECONDS, check=False,
+            timeout=GIT_SECONDS, check=False, env={**os.environ, "LC_ALL": "C", "LANGUAGE": "C"},
         )  # fmt: skip
     except (OSError, subprocess.TimeoutExpired):
         return None
-    return done.stdout if done.returncode == 0 else None
+
+
+def _git(root: Path, *args: str) -> str | None:
+    done = _ask_git(root, *args)
+    return done.stdout if done is not None and done.returncode == 0 else None
+
+
+def repository(root: Path) -> bool | None:
+    """Whether git takes the project for part of a repository: True, False where git says it
+    is not one (a `.git` beyond a mount or a ceiling is none), None where git could not say,
+    not installed, refusing the folder as of dubious ownership, or out of time."""
+    done = _ask_git(root, "rev-parse", "--is-inside-work-tree")
+    if done is None:
+        return None
+    if done.returncode == 0:
+        return True
+    return False if "not a git repository" in done.stderr.lower() else None
 
 
 def tracked_files(root: Path) -> set[str] | None:
     """The files git tracks under `root`, relative to it and in the case the system compares
     names in, or None where it is no repository or git could not be asked: then every file of
     the named folders is taken."""
-    if _git(root, "rev-parse", "--is-inside-work-tree") is None:
+    if repository(root) is not True:
         return None
     listed = _git(root, "ls-files", "-z")
     return None if listed is None else {os.path.normcase(n) for n in listed.split("\0") if n}
@@ -171,6 +193,15 @@ def tracked_files(root: Path) -> set[str] | None:
 def in_a_repository(root: Path) -> bool:
     """Whether a `.git` folder or file is at the project's root or above it."""
     return any((place / ".git").exists() for place in (root, *root.parents))
+
+
+def git_unanswered(root: Path, tracked: set[str] | None) -> bool:
+    """Whether the project is in a repository git could not answer for: git took it for one
+    and could not list its files, or could not say, with a `.git` at the root or above."""
+    if tracked is not None:
+        return False
+    found = repository(root)
+    return found is True or (found is None and in_a_repository(root))
 
 
 def _identity(path: Path) -> tuple[int, int] | None:
@@ -259,8 +290,14 @@ class _Collector:
         """Whether a folder `paths:` names may be walked: one that is the project itself
         would take every file of it (round 1 of #388), and one outside it none of its own."""
         here = Path(os.path.normpath(folder))
-        same = _identity(here)
-        if here == Path(os.path.normpath(self.root)) or (same and same == _identity(self.root)):
+        led, root = here.resolve(), self.root.resolve()
+        if led != root and not led.is_relative_to(root):
+            self.refused.append(Finding(GATE, "package-outside", f"paths.{setting} leads to "
+                                        f"{led}, outside the project", path=self.root /
+                                        "paper.yaml", hint=f"keep the {setting} in a folder "
+                                        "of the project's own"))  # fmt: skip
+            return False
+        if here == Path(os.path.normpath(self.root)) or led == root:
             self.refused.append(Finding(GATE, "package-folder-is-root", f"paths.{setting} "
                                         "is the project itself, and a package takes the "
                                         "files of that folder whole", path=self.root /
@@ -327,7 +364,10 @@ def _declared(results: Results) -> dict[str, dict]:
                 continue
             seen = declared.setdefault(_key(record["path"]), {
                 "path": canonical(record["path"]), "read_by": [], "synthetic": True,
-                "restricted": False, "record": record})  # fmt: skip
+                "restricted": False, "outside": False, "record": record})  # fmt: skip
+            # As written: "data/../x.csv" spelt one way is "x.csv", and is another file where
+            # `data` is a link (the fix round of #388).
+            seen["outside"] |= not inside(str(record["path"]))
             seen["read_by"].append(fragment.generated_by)
             seen["restricted"] |= bool(record.get("restricted"))
             # Synthetic only where every run that read it says so.
@@ -367,7 +407,7 @@ def _inputs(project: Project, results: Results) -> tuple[list[Input], list[Findi
         size = record.get("bytes") if isinstance(record.get("bytes"), int) else None
         read_by = tuple(sorted(set(seen["read_by"])))
         file = project.root / path
-        if not inside(path):
+        if seen["outside"] or not inside(path):
             # A fragment is a file anyone can write: a path out of the project would be read
             # from outside it and written outside the package.
             included, why = False, "a path outside the project"
@@ -391,7 +431,21 @@ def _inputs(project: Project, results: Results) -> tuple[list[Input], list[Findi
             included = True
             why = "declared synthetic" if seen["synthetic"] else "listed in package.share"
         out.append(Input(path, digest, size, read_by, included, why))
-    return out, refused
+    return _held_to_the_withheld(project, out), refused
+
+
+def _held_to_the_withheld(project: Project, inputs: list[Input]) -> list[Input]:
+    """Each input that goes, held to the files of those that do not: another name for a
+    withheld file, a hard link or its name in another case on a system that ignores case, is
+    withheld with it (the fix round of #388)."""
+    kept = {found for i in inputs if not i.included and inside(i.path)
+            and (found := _identity(project.root / i.path))}  # fmt: skip
+    return [
+        replace(i, included=False, why="the same file as an input that is withheld")
+        if i.included and i.why != RESULTS_INPUT and _identity(project.root / i.path) in kept
+        else i
+        for i in inputs
+    ]
 
 
 def deposit_id(with_manuscript: bool) -> str:
@@ -445,7 +499,7 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
     collect = _Collector(project, tracked, {i.path for i in inputs if i.why != RESULTS_INPUT})
     licence = _collect(collect, project, results, inputs, with_manuscript)
     findings = refused + collect.refused + _licence_findings(project, licence)
-    if tracked is None and in_a_repository(project.root):
+    if git_unanswered(project.root, tracked):
         findings.append(Finding(GATE, "package-git-unanswered", "the project is in a git "
                                 "repository, and git could not say which files it tracks, so "
                                 "what is kept out of git cannot be kept out of the package",
@@ -459,7 +513,10 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
                                  in_git=tracked is not None)
     entries.sort(key=lambda entry: entry.path)
     signables: list[Signable] = []
-    small, settled = settled_small_counts(project, results)
+    withheld_results = frozenset(i.path for i in inputs if not i.included
+                                 and any(i.path == f.path.relative_to(project.root).as_posix()
+                                         for f in results.fragments))  # fmt: skip
+    small, settled = settled_small_counts(project, results, withheld_results)
     if small is not None:
         signables.append(small)
         findings += settled
@@ -483,6 +540,9 @@ def _collect(collect: _Collector, project: Project, results: Results, inputs: li
             collect.entries[found.path] = copied(project.root / found.path, found.path,
                                                  f"an input the analysis read, {found.why}")
     for fragment in sorted(results.fragments, key=lambda f: f.path.name):
+        at = collect.at(fragment.path)
+        if at is None or collect.held_out(fragment.path, at):
+            continue  # declared restricted by a script that read it
         collect.take(fragment.path, "a results file", if_tracked=False)
         sidecar = fragment.path.with_name(fragment.path.name + ".sha256")
         if sidecar.is_file():

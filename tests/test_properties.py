@@ -5889,7 +5889,7 @@ def _a_share_is_digits_and_a_point(patch: pytest.MonkeyPatch) -> None:
 
 def _a_cell_ends_at_its_brackets(patch: pytest.MonkeyPatch) -> None:
     """The rule as it stood at def0e2f1 (round 2 of #388): no footnote mark, no square
-    brackets, a share with a digit before its point, and a bound with no percent sign."""
+    brackets, and a share with a digit before its point."""
     share = r"[<>]?\s*\d+(?:[.,]\d+)?\s*%?"
     old = rf"\s*(?P<count>\d+)\s*(?:/\s*\d+\s*)?(?:\(\s*{share}\s*\))?\s*"
     patch.setattr(deposit_counts, "_COUNT_CELL", re.compile(old))
@@ -6100,7 +6100,7 @@ BROKEN = {
         _a_share_is_digits_and_a_point,
         test_a_cell_is_read_as_a_count_only_where_it_states_one,
     ),
-    "a cell ends at its brackets, and a bound takes no percent sign": (
+    "a cell ends at its round brackets, with no footnote mark": (
         _a_cell_ends_at_its_brackets,
         test_a_cell_is_read_as_a_count_only_where_it_states_one,
     ),

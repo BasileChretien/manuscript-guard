@@ -736,12 +736,26 @@ def test_the_readme_names_the_licence_file_copied(project: Path) -> None:
 # ------------------------------------------------------------ round 2 of the review
 
 
-def test_a_repository_git_cannot_answer_for_is_refused(project: Path) -> None:
+def test_a_repository_git_cannot_answer_for_is_refused(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Round 2: in a repository git could not be asked about, every file was taken as though
     there were none, the files git ignores with them, and the README said there was none."""
+    from manuscript_guard.deposit import plan
+
     ready(project)
-    (project / ".git").mkdir()  # a repository git refuses: no HEAD, no objects
+    (project / ".git").mkdir()
+    monkeypatch.setattr(plan, "GIT", "git-that-is-not-installed")
     assert "package-git-unanswered" in refused(project)
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_a_git_folder_git_says_is_no_repository_refuses_nothing(project: Path) -> None:
+    """The fix round: a `.git` above the project that git does not take for a repository, as
+    beyond a mount or a ceiling, refused an ordinary project."""
+    ready(project)
+    (project / ".git").mkdir()  # git says: not a git repository
+    assert "package-git-unanswered" not in refused(project)
 
 
 def test_two_spellings_of_one_input_are_one_input(project: Path) -> None:
@@ -771,8 +785,11 @@ def test_a_results_file_declared_restricted_stays_out(tmp_path: Path) -> None:
                       'em.value("n.b", 41)\n',
     }, "package:\n  licence: MIT\n  request: Write to the authors.\n")  # fmt: skip
     assert main(["package", str(root)]) == 0
-    assert "results/01_first.json" not in contents(built(root))
-    assert "results/02_next.json" in contents(built(root))
+    held = contents(built(root))
+    assert "results/01_first.json" not in held
+    # The fix round: its digest went in without it.
+    assert "results/01_first.json.sha256" not in held
+    assert "results/02_next.json" in held
 
 
 @pytest.mark.parametrize(
@@ -780,14 +797,20 @@ def test_a_results_file_declared_restricted_stays_out(tmp_path: Path) -> None:
     [
         ("3 (0.7%)*", 3), ("3\N{MODIFIER LETTER SMALL A}", 3), ("3 (.7%)", 3),
         ("3 [0.7%]", 3), ("3 (0.7%)\N{DAGGER}", 3), ("3^a^", 3), ("3/412 [0.7%]", 3),
-        ("1 (<0.001)", None), ("3 (<1)", None),
+        # The fix round: a share behind a bound with no percent sign is a share, "2 (<0.1)"
+        # in an "n (%)" column, so "1 (<0.001)" is read as a count too, and signed off.
+        ("2 (<0.1)", 2), ("1 (<0.001)", 1), ("3 (<1)", 3),
+        ("3\N{MODIFIER LETTER SMALL A}\N{MODIFIER LETTER SMALL B}", 3), ("3^a,b^", 3),
+        ("3\N{SUPERSCRIPT ONE}", 3), ("3\N{MODIFIER LETTER SMALL A} (0.7%)", 3),
+        ("3* (0.7%)", 3), ("3^a^ (0.7%)\N{DAGGER}", 3),
     ],
 )  # fmt: skip
-def test_a_cell_is_read_with_its_footnote_and_a_bound_takes_a_percent(
+def test_a_cell_is_read_with_its_footnote_marks_and_its_share_behind_a_bound(
     cell: str, count: int | None
 ) -> None:
     """Round 2: a footnote mark after a count, a share with no digit before its point, and a
-    share in square brackets hid the count; a P behind a bound read as a share."""
+    share in square brackets hid the count. The fix round: two marks, a superscript digit, a
+    mark before the share."""
     from manuscript_guard.deposit.counts import count_in_cell
 
     assert count_in_cell(cell) == count
@@ -826,6 +849,65 @@ def test_a_doi_in_curly_quotes_or_with_an_escaped_underscore_is_named(text: str,
     from manuscript_guard.gates.data_statement import names_doi
 
     assert names_doi(text, doi)
+
+
+# ------------------------------------------------------- the fix round of the review
+
+
+def test_an_input_is_held_to_the_file_a_withheld_input_is(project: Path) -> None:
+    """The fix round: a shared input that is the same file as a restricted one, a hard link
+    here and the name in another case on macOS, deposited the restricted bytes."""
+    ready(project)
+    terms = project / "data" / "event_terms.txt"
+    os.link(terms, project / "data" / "terms_kept.txt")
+
+    def declare(document: dict) -> None:
+        document["provenance"]["inputs"].append(
+            {"path": "data/terms_kept.txt", "sha256": "0" * 64, "bytes": 50,
+             "restricted": True}
+        )  # fmt: skip
+
+    edit_fragment(project, declare)
+    with_package(project, request="Apply to the custodian.")
+    assert main(["package", str(project), "--skip-checks"]) == 0
+    held = contents(built(project))
+    assert "data/event_terms.txt" not in held and "data/terms_kept.txt" not in held
+
+
+def test_a_declared_path_through_a_step_up_is_outside(project: Path) -> None:
+    """The fix round: "data/../x.csv" was read as "x.csv", and is the wrong file where
+    `data` is a link."""
+    ready(project)
+
+    def declare(document: dict) -> None:
+        document["provenance"]["inputs"].append(
+            {"path": "data/../secret.csv", "sha256": "0" * 64, "bytes": 5, "synthetic": True}
+        )
+
+    edit_fragment(project, declare)
+    with_package(project, request="Apply to the custodian.")
+    assert "package-outside" in refused(project)
+
+
+def test_a_folder_that_leads_above_the_project_is_refused(project: Path) -> None:
+    """The fix round: `paths.analysis` set to a link to the folder above walked the project
+    as one of its folders, and its neighbours with it."""
+    ready(project)
+    link = project / "code"
+    try:
+        os.symlink(project.parent, link, target_is_directory=True)
+    except OSError:
+        made = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(project.parent)],
+                              capture_output=True) if sys.platform == "win32" else None  # fmt: skip
+        if made is None or made.returncode != 0:
+            pytest.skip("cannot make a link to a folder here")
+    document = paper(project)
+    document["paths"] = {"analysis": "code"}
+    set_paper(project, document)
+    try:
+        assert "package-outside" in refused(project)
+    finally:
+        link.unlink() if link.is_symlink() else os.rmdir(link)
 
 
 # ---------------------------------------------------------------------------- R

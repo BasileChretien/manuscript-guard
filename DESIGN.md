@@ -5032,11 +5032,16 @@ declared input is held out of the folders by its name and by the file it is: ano
 the same file, a hard link, or its name in another case where the system ignores case, is the
 input all the same (round 1). Declared paths are compared in one spelling, so that
 `./data/raw.csv` declared restricted by one script and `data/raw.csv` declared shared by
-another are one input, and restricted (round 2). A project inside a git repository that git
-cannot answer for, with git not on PATH or refusing the folder, is refused, since what git
-would have kept out could not be (round 2). An input that is itself a results file of the
-project, one script reading what another wrote, goes in as results unless it is declared
-restricted. An input goes in only when the analysis
+another are one input, and restricted (round 2); a path that steps up, "data/../x.csv", is
+held to be outside the project as written. An input that goes is held to the files of those
+that do not, so that another name for a withheld file stays out with it (the fix round). A
+folder `paths:` names that leads out of the project by a link is refused. A project git takes
+for part of a repository and cannot list, or one git cannot be asked about with a `.git` at
+its root or above it, is refused, since what git would have kept out could not be (round 2);
+one git says is no repository, beyond a mount or a ceiling, is none (the fix round). An input
+that is itself a results file of the project, one script reading what another wrote, goes in
+as results unless it is declared restricted, and then its digest stays out with it and its
+counts are not asked to be signed off. An input goes in only when the analysis
 declared it synthetic or `paper.yaml` lists it in `package.share`; one declared restricted
 never goes, and listing it is refused. Every other input is withheld and listed in INPUTS.md,
 with its size, the SHA-256 of its bytes and how to obtain it (`package.request`, required
@@ -5051,8 +5056,11 @@ while a fragment holds a count from one to below it: a value that is a count as 
 whatever its display; a table cell past the first column that states one count alone, over a
 denominator, with a share in round or square brackets, or both, the share with a point, a
 middle dot or a decimal comma, "3/412 (0.7%)" (`count_in_cell`, round 1 of #388), and a
-footnote mark after it or none, "3 (0.7%)*" (round 2). A share behind a bound is one with its
-percent sign, "3 (<1%)"; without it, "1 (<0.001)", it is a P (round 2). A model card's rows
+footnote marks after the count or the share or none, "3 (0.7%)*", "3ᵃ (0.7%)", "3^a,b^"
+(round 2 and the fix round). A share behind a bound is a share with its percent sign or
+without, "3 (<1%)" or "2 (<0.1)" in a column of n (%); a P behind a bound, "1 (<0.001)", reads
+the same, and is signed off: requiring the sign let the small count through (the fix round).
+A model card's rows
 read, used and dropped, its events and its events at each level, and a variable card's rows
 missing are counts too (`deposit/counts.py`). The data custodian `authors.yaml` names may sign the list off
 (`PACKAGE/custodian/small-counts`), and a list that changes is another statement. Where the
@@ -12023,11 +12031,13 @@ Open, recorded as each change landed:
 - **The custodian's minimum is read in the fragments, not in the figures.** A figure drawn
   from a small count shows it in the package as it does in the paper. A table cell is read for
   a count only where it states one in a shape `count_in_cell` knows: "3", "3/412", "3 (0.7%)",
-  "3/412 [0.7%]", "3 (<1%)", "3 (0.7%)*"; "3 of 412", "3 (0.7% to 1.2%)", "3 (<1)", a count
-  with thousands separators, and a cell in the first column, which names the rows, are not.
-  A decimal comma cannot be told from a list: "4 (2,7)", a median and two whole numbers, is
-  read as the count 4 and its share 2.7, and "2 (2020)" as 2 and a share. These, and a
-  reference ratio typed as a bare "1", are read as counts, and the
+  "3/412 [0.7%]", "3 (<1%)", "3 (0.7%)*", "3ᵃ"; "3 of 412", "3 (0.7% to 1.2%)", a count
+  with thousands separators, a footnote mark other than `*†‡§¶`, ᵃ to ᵉ and the superscript
+  digits, and a cell in the first column, which names the rows, are not. A decimal comma
+  cannot be told from a list: "4 (2,7)", a median and two whole numbers, is read as the count
+  4 and its share 2.7, and "2 (2020)" as 2 and a share; "1 (<0.001)", an estimate and its P, is
+  read as the count 1. These, and a reference ratio typed as a bare "1", are read as counts,
+  and the
   custodian signs it off. A dataset's own file deposited by `package.share` is the author's
   declaration, and nothing reads it for small cells.
 - **What a file is, the package takes from its folder and its name.** A file of `analysis/`

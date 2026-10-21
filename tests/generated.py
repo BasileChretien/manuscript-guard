@@ -1033,11 +1033,14 @@ COUNT_CELLS = (
     # Round 2: a footnote mark, a share with no digit before its point, square brackets.
     "{n} ({p}%)*", "{n}\N{MODIFIER LETTER SMALL A}", "{n} ({frac}%)", "{n} [{p}%]",
     "{n}/{m} [{p}]\N{DAGGER}", "{n}^a^",
+    # The fix round: a bound with no percent sign, marks two at a time, before the share.
+    "{n} (<{p})", "{n}\N{MODIFIER LETTER SMALL A}\N{MODIFIER LETTER SMALL B}", "{n}^a,b^",
+    "{n}\N{SUPERSCRIPT ONE}", "{n}* ({p}%)",
 )  # fmt: skip
 NO_COUNT_CELLS = (
     "{n}.0", "{n}.00 (ref)", "<{n}", "\N{LESS-THAN OR EQUAL TO}{n}", "{n} (reference)",
     "{n}-{m}", "{n} to {m}", "{n}%", "{p}", "-{n}", "+{n}", "{n} ({p} to {q})", "{n}, {m}",
-    "{n} (<{p})", "~{n}", "{n}e3",
+    "{n} [{p} to {q}]", "~{n}", "{n}e3",
 )  # fmt: skip
 
 

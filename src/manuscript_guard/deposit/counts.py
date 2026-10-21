@@ -40,23 +40,29 @@ ROLE = "data_custodian"
 #: A share's number: with a point, a middle dot or a decimal comma, or with nothing before
 #: its point (".7", round 2 of #388).
 _NUMBER = r"(?:\d+(?:[.,\N{MIDDLE DOT}]\d+)?|[.\N{MIDDLE DOT}]\d+)"
-#: A share as a cell writes it in brackets: the number, with a percent sign or none, or
-#: behind a bound and with its percent sign ("<1%"); behind a bound and with none, "(<0.001)",
-#: it is a P (round 2 of #388).
+#: A share as a cell writes it in brackets: the number, with a percent sign or none, behind a
+#: bound or not. A P behind a bound, "1 (<0.001)", is read as a share too: in a column of
+#: n (%), "2 (<0.1)" is a count, and a small count let through is worse than one signed off
+#: (the fix round of #388).
 _BOUND = r"[<>\N{LESS-THAN OR EQUAL TO}\N{GREATER-THAN OR EQUAL TO}]"
-_SHARE = rf"(?:{_NUMBER}\s*%?|{_BOUND}\s*{_NUMBER}\s*%)"
-#: The footnote marks a cell may end in: "*", "†", "‡", "§", "¶", Markdown's "^a^", or a
-#: superscript letter "ᵃ" to "ᵉ" (round 2 of #388).
-_MARKS = (
-    r"(?:[*\N{DAGGER}\N{DOUBLE DAGGER}\N{SECTION SIGN}\N{PILCROW SIGN}]+|\^[a-z0-9*]+\^"
-    r"|[\N{MODIFIER LETTER SMALL A}\N{MODIFIER LETTER SMALL B}\N{MODIFIER LETTER SMALL C}"
-    r"\N{MODIFIER LETTER SMALL D}\N{MODIFIER LETTER SMALL E}])?"
+_SHARE = rf"{_BOUND}?\s*{_NUMBER}\s*%?"
+#: A footnote mark: "*", "†", "‡", "§", "¶", a superscript letter "ᵃ" to "ᵉ", or a
+#: superscript digit (round 2 and the fix round of #388).
+_MARK = (
+    r"[*\N{DAGGER}\N{DOUBLE DAGGER}\N{SECTION SIGN}\N{PILCROW SIGN}"
+    r"\N{MODIFIER LETTER SMALL A}\N{MODIFIER LETTER SMALL B}\N{MODIFIER LETTER SMALL C}"
+    r"\N{MODIFIER LETTER SMALL D}\N{MODIFIER LETTER SMALL E}\N{SUPERSCRIPT ZERO}"
+    r"\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO}\N{SUPERSCRIPT THREE}"
+    r"\N{SUPERSCRIPT FOUR}-\N{SUPERSCRIPT NINE}]"
 )
+#: Footnote marks, one or several, with commas between or none, or Markdown's "^a,b^".
+_MARKS = rf"(?:{_MARK}+(?:,{_MARK}+)*|\^[a-z0-9*]+(?:,[a-z0-9*]+)*\^)?"
 #: A cell that states one count: the count alone, over its denominator, with its share in
-#: round or square brackets, or both ("3/412 (0.7%)", round 1 of #388), and a footnote mark
-#: after it or none. The count is a whole number with no sign and no point.
+#: round or square brackets, or both ("3/412 (0.7%)", round 1 of #388), with footnote marks
+#: after the count or after the share. The count is a whole number with no sign and no point.
 _COUNT_CELL = re.compile(
-    rf"\s*(?P<count>\d+)\s*(?:/\s*\d+\s*)?(?:[(\[]\s*{_SHARE}\s*[)\]])?\s*{_MARKS}\s*"
+    rf"\s*(?P<count>\d+)\s*{_MARKS}\s*(?:/\s*\d+\s*)?"
+    rf"(?:[(\[]\s*{_SHARE}\s*[)\]])?\s*{_MARKS}\s*"
 )
 
 #: The fields of a model card that count rows or events.
@@ -136,9 +142,11 @@ def _cards(document: dict) -> list[tuple[str, int]]:
     return out
 
 
-def small_counts(project: Project, results: Results) -> list[Small]:
+def small_counts(
+    project: Project, results: Results, withheld: frozenset[str] = frozenset()
+) -> list[Small]:
     """Every count below the custodian's minimum in the fragments as they would be deposited,
-    in the order of the fragments and of the keys."""
+    in the order of the fragments and of the keys; none of a fragment the package withholds."""
     minimum = minimum_cell_count(project)
     if minimum is None:
         return []
@@ -146,16 +154,20 @@ def small_counts(project: Project, results: Results) -> list[Small]:
     for fragment in sorted(results.fragments, key=lambda f: f.path.name):
         document = read_fragment(fragment.path)
         named = fragment.path.relative_to(project.root).as_posix()
+        if named in withheld:
+            continue
         for where, count in _values(document) + _cells(document) + _cards(document):
             if 1 <= count < minimum:
                 found.append(Small(named, where, count))
     return found
 
 
-def small_count_signable(project: Project, results: Results) -> Signable | None:
+def small_count_signable(
+    project: Project, results: Results, withheld: frozenset[str] = frozenset()
+) -> Signable | None:
     """The small counts as one statement the data custodian may sign off, or None where the
     fragments hold none."""
-    found = small_counts(project, results)
+    found = small_counts(project, results, withheld)
     if not found:
         return None
     minimum = minimum_cell_count(project)
@@ -176,9 +188,11 @@ def small_count_signable(project: Project, results: Results) -> Signable | None:
     return Signable(ROLE, SMALL_COUNTS, digest, findings)
 
 
-def settled_small_counts(project: Project, results: Results) -> tuple[Signable | None, tuple]:
+def settled_small_counts(
+    project: Project, results: Results, withheld: frozenset[str] = frozenset()
+) -> tuple[Signable | None, tuple]:
     """The signable and its findings as they stand: refused, or signed off."""
-    signable = small_count_signable(project, results)
+    signable = small_count_signable(project, results, withheld)
     return signable, (settle(project, signable) if signable else ())
 
 

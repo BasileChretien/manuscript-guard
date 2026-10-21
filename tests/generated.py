@@ -1883,6 +1883,11 @@ def plan_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[str]]:
             changed.append(heading)
         then += [f"## {title}", "", body, ""]
         now += [f"## {heading}", "", edited, ""]
+        if kind == "own section":
+            # What the Deviations hold is theirs too, under a heading of its own that names
+            # no deviation ("Amendment" would be left out by its own name).
+            then += [f"### Second reading {TAGS[at]}", "", body, ""]
+            now += [f"### Second reading {TAGS[at]}", "", f"{body} later", ""]
     return {"then": "\n".join(then), "now": "\n".join(now)}, changed
 
 

@@ -20,6 +20,7 @@ from manuscript_guard.contracts import load_namespace, load_project
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import FAIL, INFO, WARN
 from manuscript_guard.gates.related import _printed, _same_printed, check_related
+from manuscript_guard.gates.related_methods import folded_title, sections_compared
 from manuscript_guard.literature.related import (
     SNAPSHOT_FILE,
     TakeError,
@@ -420,6 +421,75 @@ def test_a_copy_with_no_frozen_plan_reads_its_plan(project: Path, earlier: Path)
     _declare(project, _entry(project="../earlier"))
     _take(project)
     assert _found(_check(project)) == [("related-method-differs", WARN)]
+
+
+def test_a_variable_or_an_outcome_entered_by_another_expression_is_said(
+    project: Path, earlier: Path
+) -> None:
+    """Round 1 of #402: the expression is compared, and every way a variable is entered."""
+
+    def changed(card: dict) -> None:
+        card["outcome"]["expression"] = "I(hepatic > 0)"
+        for term in card["terms"]:
+            for entered in term["entered"]:
+                if entered["expression"] == "exposed":
+                    entered["expression"] = "np.log1p(exposed)"
+        card["terms"].append({"term": "exposed:sex", "entered": [
+            {"expression": "exposed:sex", "variables": ["exposed"], "as": "numerical"}]})
+
+    _card(earlier, changed)
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    (finding,) = _check(project).findings
+    assert "its outcome is I(hepatic > 0) there and hepatic here" in finding.message
+    assert "exposed is entered as exposed:sex (numerical); np.log1p(exposed) (numerical) there" in (
+        finding.message
+    )
+    assert "exposed:sex (numerical)" in finding.message
+
+
+def test_a_reason_for_a_model_or_section_neither_has_is_said(
+    project: Path, earlier: Path
+) -> None:
+    why = [{"model": "unadjusted", "because": "x"}, {"plan_section": "Comparator", "because": "y"}]
+    _declare(project, _entry(project="../earlier", methods=why))
+    _take(project)
+    found = _check(project, submission=True)
+    assert _found(found) == [("related-pair-unmatched", FAIL)] * 2
+    assert found.counts["related_values_differ"] == 0
+
+
+def test_this_plan_not_in_utf8_is_read_and_not_refused(project: Path, earlier: Path) -> None:
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    plan = project / "design" / "plan.md"
+    plan.write_bytes(plan.read_bytes() + "\nA note of the caf\u00e9.\n".encode("cp1252"))
+    assert _found(_check(project)) == []
+
+
+def test_an_earlier_plan_frozen_with_crlf_reads_the_same(project: Path, earlier: Path) -> None:
+    path = earlier / "design" / "plan.frozen.yaml"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["plan"] = chr(0xFEFF) + document["plan"].replace("\n", "\r\n")
+    path.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    assert _found(_check(project)) == []
+
+
+def test_what_a_plan_s_planned_results_and_deviations_hold_is_not_compared() -> None:
+    then = "# Plan\n\n## Planned results\n\n### Primary\n\n- `a.b`\n"
+    now = "# Plan\n\n## Planned results\n\n### Primary\n\n- `c.d`\n"
+    assert sections_compared(then, now) == []
+
+
+def test_a_heading_is_matched_with_the_headings_above_it() -> None:
+    then = ("# Plan\n\n## Exposure\n\n### Definition\n\nA drug.\n\n"
+            "## Outcome\n\n### Definition\n\nAn event.\n")
+    now = then.replace("An event.", "A serious event.")
+    assert [found[0] for found in sections_compared(then, now)] == ["Outcome / Definition"]
+    assert folded_title("2.1 Definition") == folded_title("Definition")
+    assert folded_title("2019 cohort") != folded_title("2020 cohort")
 
 
 def test_the_listing_shows_a_method_changed(project: Path, earlier: Path, capsys) -> None:

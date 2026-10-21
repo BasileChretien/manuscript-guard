@@ -672,7 +672,8 @@ def _plan_sections_compared() -> Reading:
     from manuscript_guard.gates.related_methods import sections_compared
 
     def compared(given: dict[str, str]) -> list[str]:
-        return [title for title, _there, _here in sections_compared(given["then"], given["now"])]
+        found = sections_compared(given["then"], given["now"])
+        return [title for title, _key, _there, _here in found]
 
     return compared
 

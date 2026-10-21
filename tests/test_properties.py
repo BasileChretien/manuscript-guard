@@ -6175,6 +6175,10 @@ def _the_deviations_are_compared(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(related_methods_gate, "_OWN", ())
 
 
+def _what_the_deviations_hold_is_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "subsections", lambda sections, index: [sections[index]])
+
+
 def _only_the_first_words_are_compared(patch: pytest.MonkeyPatch) -> None:
     real = related_methods_gate._words
     patch.setattr(related_methods_gate, "_words", lambda text: real(text)[:3])
@@ -6784,6 +6788,10 @@ BROKEN = {
     ),
     "the plans' own Deviations are compared": (
         _the_deviations_are_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "what the plans' Deviations hold is compared": (
+        _what_the_deviations_hold_is_compared,
         test_a_section_of_two_plans_differs_only_where_its_words_do,
     ),
     "only a section's first words are compared": (

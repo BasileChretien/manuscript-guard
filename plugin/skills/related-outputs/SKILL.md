@@ -150,7 +150,7 @@ why:
 
 ```yaml
     methods:
-      - plan_section: Case definition
+      - plan_section: Case definition     # a subsection: "Outcome / Case definition"
         because: the later guideline's definition of drug-induced liver injury
       - model: adjusted
         because: sex is now recorded for every report

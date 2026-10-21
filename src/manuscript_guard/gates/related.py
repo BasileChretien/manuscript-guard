@@ -37,9 +37,11 @@ from manuscript_guard.gates.design import plan_path
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.gates.related_methods import (
     earlier_plan,
-    folded_title,
     models_compared,
+    section_key,
+    section_keys,
     sections_compared,
+    this_plan,
 )
 from manuscript_guard.gates.revision import as_quoted, rendered_manuscript
 from manuscript_guard.literature.related import (
@@ -87,6 +89,8 @@ class Compared:
     then: str
     now: str
     state: str
+    #: A model or a section of the plan, which the counts of values compared leave out.
+    method: bool = False
 
 
 @dataclass
@@ -153,8 +157,8 @@ def compare_related(
             )
     counted = report.with_counts(
         related_outputs=len(related.outputs),
-        related_values_compared=len(seen.rows),
-        related_values_differ=sum(1 for row in seen.rows if row.state != "same"),
+        related_values_compared=sum(1 for row in seen.rows if not row.method),
+        related_values_differ=sum(1 for row in seen.rows if not row.method and row.state != "same"),
     )
     return counted, seen.rows
 
@@ -353,20 +357,22 @@ def _against_copy(
             )
             continue
         report = report.merge(_compare(related, output, then, now, pair, strict, seen))
-    return report.merge(_methods(project, related, output, snapshot.folder, earlier, results, seen))
+    return report.merge(
+        _methods(project, (related, output), snapshot.folder, (earlier, results), strict, seen)
+    )
 
 
 def _methods(
     project: Project,
-    related: Related,
-    output: Output,
+    entry: tuple[Related, Output],
     folder: Path,
-    earlier: Results,
-    results: Results,
+    both: tuple[Results, Results],
+    strict: str,
     seen: _Seen,
 ) -> Report:
     """The models both fitted under one key, and the sections both plans have under one
     heading: each that differs is a change of method, said and never judged."""
+    (related, output), (earlier, results) = entry, both
     report = Report()
     for key, said in models_compared(earlier.models, results.models):
         because = next((c.because for c in output.methods if c.model == key), None)
@@ -375,18 +381,33 @@ def _methods(
             _method(related, output, f"model {key}", said, because, (then, now), seen)
         )
     plan, then_plan = plan_path(project), earlier_plan(folder)
-    if then_plan is None or not plan.is_file():
-        return report
-    for title, there, here in sections_compared(then_plan, read_text(plan)):
-        because = next(
-            (c.because for c in output.methods
-             if c.plan_section is not None and folded_title(c.plan_section) == folded_title(title)),
-            None,
-        )  # fmt: skip
+    plans = (then_plan, this_plan(plan)) if then_plan is not None and plan.is_file() else None
+    for title, key, there, here in sections_compared(*plans) if plans else ():
+        because = next((c.because for c in output.methods
+                        if c.plan_section is not None and section_key(c.plan_section) == key),
+                       None)  # fmt: skip
         said = f"it reads '{there}' there and '{here}' here"
         report = report.merge(
             _method(related, output, f"the plan's {title}", said, because, (there, here), seen)
         )
+    # A reason that names no model both fitted, or no section both plans have, explains
+    # nothing, as a pair naming a key nobody emits compares nothing (round 1 of #402).
+    keys = section_keys(plans[0]) & section_keys(plans[1]) if plans else set()
+    for changed in output.methods:
+        if changed.model is not None:
+            named = changed.model in earlier.models and changed.model in results.models
+        else:
+            named = section_key(str(changed.plan_section)) in keys
+        if not named:
+            what = f"model {changed.model}" if changed.model else f"section {changed.plan_section}"
+            report = report.with_findings(
+                _finding(related, "related-pair-unmatched",
+                         f"{output.name}: `methods:` names the {what}, which the two projects "
+                         f"do not both have, so its reason explains nothing",
+                         severity=strict, line=output.line,
+                         hint="name a model both fitted, or a section of both plans by its "
+                         "headings from the outermost, parted by `/`")  # fmt: skip
+            )
     return report
 
 
@@ -413,7 +434,7 @@ def _method(
             hint="say in the Methods why it changed, and record why under `methods:`; the "
             "review panel weighs it, nothing here judges it",
         )
-    seen.rows.append(Compared(output.id, what, what, *printed, STATES[found.code]))
+    seen.rows.append(Compared(output.id, what, what, *printed, STATES[found.code], method=True))
     return Report((found,))
 
 

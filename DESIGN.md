@@ -4133,17 +4133,25 @@ change between two papers and the review panel, not a gate, weighs whether it wa
 justified. A software version is not compared: every later paper runs later software.
 
 The same holds of what both projects record of their methods as data (Basile's answer 5).
-A model both fitted under one key is compared by its card: its family and link, its outcome,
-each variable it enters, how it enters it and its reference ("its family is Poisson/Log there
-and Binomial/Logit here; it enters sex here and not there"). And each section both plans have
-under one heading is compared word by word: the earlier plan as it stood when its first
-results were written (the copy's `plan.frozen.yaml`, or its `plan.md` where it kept none),
-this paper's plan as it stands. A heading is matched without its number, emphasis or case;
-words without comments, emphasis or line breaks and in either case, as G13 reads a quotation
-(`as_quoted`); and the plans' Deviations and Planned results, which are each paper's own,
-are not compared. A section that reads otherwise is said with a few words of each side from
-where they part. Each is `related-method-differs`, a note with a reason under `methods:`
-(`model:` or `plan_section:`, and `because:`), and never a failure. What the words mean is
+A model both fitted under one key is compared by its card: its family and link, its outcome
+as the formula writes it, and every way it enters each variable, its expression, as what and
+its reference ("its family is Poisson/Log there and Binomial/Logit here; it enters sex here
+and not there"; `age` and `np.log(age)` differ though both are numerical, and so do `age`
+alone and `age` with `I(age**2)`: round 1 of #402). And each section both plans have under
+one heading is compared word by word: the earlier plan as it stood when its first results
+were written (the copy's `plan.frozen.yaml`, or its `plan.md` where it kept none), this
+paper's plan as it stands, each read as G12 reads a plan (its line endings made `\n`, a
+byte-order mark left out, and one not in UTF-8 read with what cannot be decoded replaced,
+not refused). A heading is matched with the headings above it, so a `### Definition` under
+the Exposure is not the one under the Outcome, each without its number ("2." or "2.1", not
+"2019"), emphasis or case; words without comments, emphasis or line breaks and in either case,
+as G13 reads a quotation (`as_quoted`); and the plans' Deviations and Planned results, which
+are each paper's own, are not compared, nor anything under them. A section that reads
+otherwise is said with a few words of each side from where they part. Each is
+`related-method-differs`, a note with a reason under `methods:` (`model:` or
+`plan_section:`, its headings from the outermost parted by `/`, and `because:`), and never a
+failure. A reason that names no model both fitted, or no section both plans have, explains
+nothing and is said (`related-pair-unmatched`). What the words mean is
 not compared: two sections that say one thing in other words differ, and the panel's
 earlier-outputs remit reads them.
 
@@ -9741,7 +9749,13 @@ Open, recorded as each change landed:
   not compared, though the copy holds the dictionary. A count printed only in a table of
   either paper is compared with nothing. A value printed by only one of the two papers
   (`quoted: false` on one side) is not compared, though it may show the data changed. A
-  model is compared under its key only, so a model renamed since is compared with nothing.
+  model is compared under its key only, so a model renamed since is compared with nothing;
+  its engine's class is not compared (a GLM and a mixed model of one family and link read
+  alike). Markup that G13's reading keeps counts as wording: a list marked `*` there and
+  `-` here differs, and a heading given an attribute (`{#id}`) is another heading. A reason
+  under `methods:` answers for its model or section, not for one difference, so a later
+  change to a model already explained is explained by the old reason. Two sections with one
+  heading under one parent are one: the first is compared (round 1 of #402).
 - **What a comparison read from a PDF cannot see.** A published value is read as printed: an
   estimate rounded to one place is the same as any value within half a unit of it, so a
   change smaller than the earlier rounding is not seen. A printed value that is not one

@@ -15,15 +15,17 @@ is held as prose's is: one that is a result, typed, is stale in waiting.
   profile says it requires one (`figures.alt_text: required`); a note at every stage where
   the profile applies its artwork rules from acceptance.
 * `figure-alt-long`: the text is longer than the journal takes (`alt_text_max_chars`), counted
-  as the build prints it, with each binding's display. A note while drafting, then a warning.
+  as the build prints it, with each binding's display. A note while drafting, then a
+  warning; a note at every stage where the profile applies its rules from acceptance.
 * `figure-alt-number`: a number in it is bound to nothing and is not a convention, a label or
   a declared term, as G2 would say of it in prose; or it types a parameter, a software
   version or a dictionary's release the analysis declares.
 * `figure-alt-binding`: a binding in it names a value nothing emits, or is a table, a figure
   or an anchor, which print no words.
 
-The text is read as the build prints it, character for character, and not as Markdown: an
-HTML comment in it is printed, and its bindings and numbers are read like the rest. Whether
+An HTML comment in the text is printed by the build, and its bindings and numbers are read
+like the rest. The prose's mask still hides a link's target, a URL, a citation key and
+attributes in it, which the build prints as written. Whether
 the text says what the figure shows is not checked: that is the figure review's, and a
 person's (`readable-and-accessible`).
 """

@@ -5024,8 +5024,8 @@ _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations",
-    # It reads the figures a manuscript places by binding and their guard files, and runs on
-    # a LaTeX manuscript as G3's other check does (round 1 of #387).
+    # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
+    # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
     "check_figure_alt",
 )  # fmt: skip
 

@@ -1601,12 +1601,15 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    as Markdown would print it, the design's `printed_view`: each heading as a `#` line, the
    body only, an abstract closed where it ends, bindings as `{{...}}` and citations as
    `[@...]`, a float as the bindings it places, maths and typed tables as nothing but an
-   inline formula's one word, `\verb` and `\texttt` as code spans. G4's `main_text` gives it
+   inline formula's one word, `\verb` and `\texttt` as code spans, and each file input
+   where its `\input` ends, so that an abstract input inside its environment is the
+   abstract. G4's `main_text` gives it
    for a LaTeX manuscript, so its counts, required sections and statements read the twin as
    they read the example, which takes `check_journal` out of `_NOT_READ_IN_LATEX`. The
    scanner records the spans it needs (`maths`, `floats`, `code`, `body_start`, each
    heading's end). Tests: the twin's counts and findings against the example's, G4's cases on
-   the twin, `latex_printed()` with five `BROKEN` rules. The second: the profile's `latex:`
+   the twin, `latex_printed()` with five `BROKEN` rules, and the order a document of several
+   files prints in over `latex_trees()` with one. The second: the profile's `latex:`
    block in the schema, each of its parts a rule quoted as `latex.<part>`; the scanner
    records the class and its options, `\bibliographystyle` and biblatex's options
    (`Reading.declared`), outside a comment; G4 warns `latex-class-differs` and

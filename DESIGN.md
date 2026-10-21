@@ -846,7 +846,8 @@ duplicated key, where both keep the last.
 ## LaTeX manuscripts
 
 Status: designed 2026-10-20. Built: the first half of step 1, the format, the reader's file
-list, `two-formats`, `other-format-file` and `not-read-in-latex`. Where the design depends on
+list, `two-formats`, `other-format-file` and `not-read-in-latex`; and step 2, the scanner
+and its mask, which no gate reads yet. Where the design depends on
 what LaTeX does, the pull request that relies on it checks the statement against TeX Live and
 MiKTeX and records the measurement. On the author's machine, 2026-10-20: MiKTeX 24.4 and
 latexmk 4.88, with pdfLaTeX, LuaLaTeX, XeLaTeX, BibTeX and Biber on PATH.
@@ -945,10 +946,11 @@ for each such gate. The commands not yet moved refuse a LaTeX project with a sen
 ### What the LaTeX reader reads
 
 The reader lives in `text/latex/`, apart from `text/tex.py`, which reads TeX inside Markdown:
-- `scan.py` cuts a file into tokens with their offsets, under TeX's default category codes;
 - `commands.py` is the closed table of what each known command takes, and what each argument
   is;
-- `mask.py`, `structure.py` and `cite.py` answer the reader's questions from the tokens.
+- `mask.py` scans a file as it reads it, under TeX's default category codes, and gives the
+  masked text and the first refusal (step 2);
+- `structure.py` and `cite.py` answer the reader's other questions (steps 3 and 5).
 
 It is one pass, linear in the file.
 
@@ -968,7 +970,7 @@ NUL. Two additions keep the length:
 | the letters, digits and signs in maths, in subscripts and superscripts too, as Markdown's `mask` keeps them in `$x_1 = 10^{-8}$` | maths' commands, braces and delimiters |
 | `\verb` and `\texttt`, read as a code span is | `verbatim`, `Verbatim`, `lstlisting`, read by G2's code check as fenced blocks are |
 | table cells | a `tabular`'s column specification, `\multicolumn`'s first two arguments, rules |
-| the arguments, optional ones too, of a command not in the table | comments (an unescaped `%` to the end of the line, the `comment` environment, a plain `\iffalse` … `\fi` block), the layout commands `text/tex.py` knows, everything after `\end{document}`, bindings whole |
+| the arguments, optional ones too, of a command not in the table | comments (an unescaped `%` to the end of the line, the `comment` environment, a plain `\iffalse` block to its `\fi`, or to its `\else`, whose branch is read), the layout commands `text/tex.py` knows, everything after `\end{document}`, bindings whole |
 
 **Maths** is hidden from `words`, so G14 and G15 never read it as words. Its digits and signs
 stay in `mask`, as they do in `$...$` in Markdown today, because blanking `$\beta = 0.42$` would
@@ -1026,8 +1028,10 @@ order is `printed_order`.
   `abstract:` in Markdown's front matter is.
 - An environment not in the table is read as an unknown command is, and so is its body.
 
-**Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`, `\def` or
-`\DeclareMathOperator` is read where it is written, and its body is prose there, in the preamble
+**Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`,
+`\DeclareRobustCommand`, `\def` or `\DeclareMathOperator`, or one of xparse's definers, whose
+argument specification is read for the defaults it prints, is read where it is written, and
+its body is prose there, in the preamble
 too, and in a package file of the author's (above). So `\newcommand{\n}{4100}` is one
 unclassified number, at its definition. The parameter tokens `#1` to `#9` in a body are blanked.
 A use of the macro is read as an unknown command is: its name is blanked and its arguments are
@@ -1042,7 +1046,8 @@ Refused:
 - anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
   `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
   active;
-- in the body, any conditional but a plain `\iffalse` block.
+- in the body, any conditional but a plain `\iffalse` block and `\ifthenelse`, a command whose
+  branches are its arguments and are both read.
 
 **Characters.**
 - `--` and `---` stay as typed, as in Markdown.
@@ -1260,6 +1265,14 @@ The result is compiled and packed by the code above, and checked three times:
 
 ### Known gaps, from the start
 
+- `babel` with a language whose shorthands make a character active is not refused yet (step
+  2): a shorthand changes letters, not digits, so it is left to step 7, which reads words.
+- A bibliography typed by hand, `thebibliography`, is read as prose, so its years and pages are
+  numbers G2 reads; a Markdown project's reference list is built and never read.
+- Only the first refusal of a file is reported: past it the file is read as prose, and the
+  next is found once the first is put right.
+- A file whose only `\begin{document}` stands in a `\verb`, a listing or an `\iffalse` opens in
+  the preamble; refused, it keeps that reading, and what stands before the refusal is blanked.
 - A `.tex` file in a Markdown manuscript is not refused, as a Markdown file in a LaTeX one is
   (`other-format-file`): a project written before LaTeX was read may keep a `.tex` beside its
   Markdown for pandoc's header, and refusing it would fail a paper that passed. It is read by
@@ -1308,10 +1321,13 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    check in `_NOT_READ_IN_LATEX`, a set each later step takes its check out of. The second:
    the refusing commands, after the open pull requests that change the same commands. Tests:
    the differential unchanged, the corruption cases, rows in `test_reads_nothing.py`.
-2. The scanner and `mask`. `scan.py`, `commands.py`, `mask.py`, the refusals under BUILD.
-   Tests: `latex_texts()`, `latex mask` and `latex refusals`, their properties and `BROKEN`.
-   The likeliest to pass 600 lines; if it does, comments and the preamble go first, then maths
-   and listings.
+2. The scanner and `mask`, built: `commands.py` and `mask.py`, which scans as it reads, so
+   that no `scan.py` stands apart. `read(text, body=...)` gives the masked text and the first
+   refusal. Tests: `latex_texts()`, `latex_planted()`, `latex mask` and `latex refusals`,
+   their properties and eight `BROKEN` rules, and a test of each rule in
+   `tests/test_latex_mask.py`. It passed 600 lines and was not split: comments, the preamble,
+   maths and listings share one scanner. The refusals reach BUILD with the reader in step 3,
+   which finds the files they are refused in.
 3. Structure. Includes, `printed_order`, inherited headings, sections, the abstract. Tests:
    `latex sections`.
 4. Bindings and G2. `bindings`, `uncommented`, `table_at`, `mgvalues.sty` and its escape

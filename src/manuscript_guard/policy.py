@@ -236,6 +236,10 @@ BINDS_AT = {
     # A sealed reading whose words changed: a major finding softened or deleted binds
     # nothing any more, so this binds where the major findings do.
     "reading-altered": SUBMISSION,
+    # A co-author's comment from Word, filed by `import`: answered before the paper goes
+    # anywhere, whatever its severity, and its record held to what was filed.
+    "comment-unanswered": SUBMISSION,
+    "comments-altered": SUBMISSION,
 }
 
 

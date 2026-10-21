@@ -10467,6 +10467,215 @@ def test_a_refused_build_into_the_build_directory_itself_does_not_crash(
     assert main(["build", str(project), "--offline", "--skip-checks", "-o", str(out)]) == 1
 
 
+# ------------------------------------------------- a co-author's Word comment, filed and answered
+#
+# `import` files each Word comment as a finding in review/comments/ (`filed_comments`), and
+# G11 holds every one until it is answered (`gates/comments.py`). Each way of making one stop
+# binding without answering it is here, and each record `import` must not add to.
+
+_STAMP = "a" * 64
+
+
+def _filed(project: Path, *texts: str, commenter: str = "Ann Coauthor") -> Path:
+    """A comments record as `import` files it, holding one finding for each of `texts`."""
+    from manuscript_guard.filed_comments import Thread, plan_filing, write_filing
+
+    threads = [
+        Thread(key=f"durable:{n:08X}", author=commenter, date="2026-10-19", text=text,
+               block="paragraph", anchored="the words")  # fmt: skip
+        for n, text in enumerate(texts, start=1)
+    ]
+    (filing,) = plan_filing(
+        load_project(project)[0], threads, stamp=_STAMP, printed=None, supplementary=False,
+        today="2026-10-20",
+    )  # fmt: skip
+    write_filing(filing)
+    return filing.path
+
+
+def _g11(project: Path, *, submission: bool):
+    from manuscript_guard.gates import check_review
+
+    return check_review(load_project(project)[0], submission=submission)
+
+
+def _record_of(path: Path) -> dict:
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def _rewrite_comments(path: Path, record: dict) -> None:
+    path.write_text(yaml.safe_dump(record, sort_keys=False, allow_unicode=True), "utf-8")
+
+
+def test_an_unanswered_co_author_comment_fails_the_submission(project: Path) -> None:
+    _filed(project, "Is there a newer reference?")
+    report = _g11(project, submission=True)
+    (found,) = [f for f in report.failures if f.code == "comment-unanswered"]
+    assert "Is there a newer reference?" in found.message
+    assert not [f for f in _g11(project, submission=False).failures if f.code.startswith("comment")]
+
+
+def test_a_comment_lowered_to_the_least_severity_still_binds(project: Path) -> None:
+    """Severity is the author's to set and not sealed; it decides nothing here."""
+    path = _filed(project, "Rename the heading.")
+    record = _record_of(path)
+    record["findings"][0]["severity"] = "comment"
+    _rewrite_comments(path, record)
+    assert "comment-unanswered" in {f.code for f in _g11(project, submission=True).failures}
+
+
+@pytest.mark.parametrize("answer", ["", "   ", "\n"])
+def test_an_empty_answer_answers_nothing(project: Path, answer: str) -> None:
+    path = _filed(project, "Say which years.")
+    record = _record_of(path)
+    record["findings"][0]["resolution"] = answer
+    record["findings"][0]["overridden"] = answer
+    _rewrite_comments(path, record)
+    assert "comment-unanswered" in {f.code for f in _g11(project, submission=True).failures}
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        pytest.param(lambda r: r["findings"][0].update(finding="Fine as it is."), id="reworded"),
+        pytest.param(lambda r: r["findings"].pop(0), id="deleted"),
+        pytest.param(lambda r: r["findings"][1].update(where="mg-p-mainx-1"), id="re-anchored"),
+        pytest.param(lambda r: r["findings"][0].pop("anchored") and None, id="unanchored"),
+        pytest.param(lambda r: r.update(commenter="Someone Else"), id="re-attributed"),
+    ],
+)
+def test_a_filed_comment_changed_by_hand_is_caught(project: Path, change) -> None:
+    """A comment reworded into something answered, deleted, or moved to another paragraph
+    or person stops saying what the co-author wrote."""
+    path = _filed(project, "Is there a newer reference?", "Rename the heading.")
+    record = _record_of(path)
+    change(record)
+    _rewrite_comments(path, record)
+    codes_found = {f.code for f in _g11(project, submission=True).failures}
+    assert "comments-altered" in codes_found or "schema-violation" in codes_found
+
+
+def test_answering_a_filed_comment_is_not_an_alteration(project: Path) -> None:
+    path = _filed(project, "Is there a newer reference?")
+    record = _record_of(path)
+    record["findings"][0].update(
+        severity="major", overridden="The 2019 review is the latest.", overridden_by="Ana Author"
+    )
+    _rewrite_comments(path, record)
+    report = _g11(project, submission=True)
+    assert not [f for f in report.findings if f.code.startswith("comment")]
+
+
+def test_a_comments_record_that_cannot_be_read_fails_at_every_stage(project: Path) -> None:
+    """While it cannot be parsed none of its comments is counted, unanswered ones included."""
+    path = _filed(project, "Is there a newer reference?")
+    path.write_text("findings: [\nresolution: Done: it now says reporting\n", "utf-8")
+    assert "comments-unreadable" in {f.code for f in _g11(project, submission=False).failures}
+
+
+def test_a_comments_record_with_no_list_of_findings_is_reported_and_not_a_crash(
+    project: Path,
+) -> None:
+    """Round 1 of #375: `check`'s summary counted the findings of every record, and one
+    whose `findings` was not a list took `check` down."""
+    from manuscript_guard.cli import main
+
+    path = _filed(project, "Is there a newer reference?")
+    record = _record_of(path)
+    record["findings"] = 3
+    _rewrite_comments(path, record)
+    assert main(["check", str(project)]) == 1
+    assert "schema-violation" in {f.code for f in _g11(project, submission=False).failures}
+
+
+def test_a_record_that_would_not_fit_its_schema_is_not_written(project: Path) -> None:
+    from manuscript_guard.filed_comments import FilingError, Thread, plan_filing, write_filing
+
+    thread = Thread(key="durable:00000001", author="Ann Coauthor", date="2026-10-19",
+                    text="Fine.", block="paragraph", anchored="words")  # fmt: skip
+    (filing,) = plan_filing(load_project(project)[0], [thread], stamp=_STAMP, printed=None,
+                            supplementary=False, today="2026-10-20")  # fmt: skip
+    filing.document["findings"][0]["block"] = "footnote"
+    with pytest.raises(FilingError, match="would not fit its schema"):
+        write_filing(filing)
+    assert not filing.path.exists()
+
+
+def test_import_adds_nothing_to_a_record_changed_by_hand(project: Path) -> None:
+    """Adding to it would seal the change as the commenter's."""
+    from manuscript_guard.filed_comments import Thread, plan_filing
+
+    path = _filed(project, "Is there a newer reference?")
+    record = _record_of(path)
+    record["findings"][0]["finding"] = "Fine as it is."
+    _rewrite_comments(path, record)
+    new = Thread(key="durable:0000FFFF", author="Ann Coauthor", date="2026-10-20",
+                 text="And this one.", block="heading", anchored="Methods")  # fmt: skip
+    (filing,) = plan_filing(load_project(project)[0], [new], stamp=_STAMP, printed=None,
+                            supplementary=False, today="2026-10-21")  # fmt: skip
+    assert filing.document is None and "changed since it was filed" in filing.refused
+
+
+def test_import_does_not_drop_a_note_written_in_a_record(project: Path) -> None:
+    """Writing the record again would lose a YAML comment the author typed in it."""
+    from manuscript_guard.filed_comments import Thread, plan_filing
+
+    path = _filed(project, "Is there a newer reference?")
+    path.write_text(path.read_text(encoding="utf-8") + "# ask Ben first\n", "utf-8")
+    new = Thread(key="durable:0000FFFF", author="Ann Coauthor", date="2026-10-20",
+                 text="And this one.", block="heading", anchored="Methods")  # fmt: skip
+    (filing,) = plan_filing(load_project(project)[0], [new], stamp=_STAMP, printed=None,
+                            supplementary=False, today="2026-10-21")  # fmt: skip
+    assert filing.document is None and "YAML comment" in filing.refused
+    # A `#` inside a value is no comment.
+    path = _filed(project, "Use #2 instead.", commenter="Ben Second")
+    (filing,) = plan_filing(
+        load_project(project)[0],
+        [Thread(key="durable:0000EEEE", author="Ben Second", date="2026-10-20", text="Next.",
+                block="heading", anchored="Methods")],
+        stamp=_STAMP, printed=None, supplementary=False, today="2026-10-21",
+    )  # fmt: skip
+    assert filing.refused == "" and filing.added == ("c2",)
+
+
+def test_import_adds_nothing_to_a_record_moved_from_another_build(project: Path) -> None:
+    from manuscript_guard.filed_comments import Thread, plan_filing, record_path
+
+    path = _filed(project, "Is there a newer reference?")
+    other = "b" * 64
+    moved = record_path(load_project(project)[0], other, False, "Ann Coauthor")
+    moved.parent.mkdir(parents=True)
+    path.rename(moved)
+    new = Thread(key="durable:0000FFFF", author="Ann Coauthor", date="2026-10-20",
+                 text="And this one.", block="heading", anchored="Methods")  # fmt: skip
+    (filing,) = plan_filing(load_project(project)[0], [new], stamp=other, printed=None,
+                            supplementary=False, today="2026-10-21")  # fmt: skip
+    assert filing.document is None and "another commenter, document or build" in filing.refused
+
+
+def test_a_record_import_could_not_add_to_makes_import_exit_one(
+    project: Path, tmp_path: Path
+) -> None:
+    from test_filed_comments import built, commented, records, run
+
+    if shutil.which("pandoc") is None:
+        pytest.skip("pandoc is not installed")
+    returned = commented(built(project), tmp_path / "back.docx",
+                         [{"on": "Whether the signal extends", "text": "First."}])  # fmt: skip
+    assert run("import", str(returned), str(project), "--apply")[0] == 0
+    (name,) = records(project)
+    path = project / "review" / "comments" / name
+    record = _record_of(path)
+    record["findings"][0]["finding"] = "Fine as it is."
+    _rewrite_comments(path, record)
+    again = commented(built(project), tmp_path / "again.docx", [
+        {"on": "Whether the signal extends", "text": "First."},
+        {"on": "Drug-induced hepatic injury", "text": "Second."},
+    ])  # fmt: skip
+    code, said = run("import", str(again), str(project), "--apply")
+    assert code == 1 and "not filed in review/comments/" in said, said
+
+
 # ------------------------------------------------- a document reviewed blind names no author
 
 _W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'

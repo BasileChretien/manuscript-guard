@@ -460,6 +460,19 @@ def test_an_equation_word_saved_unchanged_is_no_change(tmp_path: Path) -> None:
     assert made.counts == {} and _changes(made.path) == []
 
 
+@needs_pandoc
+def test_an_equation_set_as_normal_text_is_a_change(tmp_path: Path) -> None:
+    """A switch OMML writes bare is on: `<m:nor/>` sets a run as normal text, and an equation
+    that gained it is another equation, its letters the same (round 3 of #396)."""
+    old, new = _pair(tmp_path, EQUATION, EQUATION)
+    plain = '<m:rPr><m:sty m:val="p" /></m:rPr>'
+    normal = '<m:rPr><m:nor /><m:sty m:val="p" /></m:rPr>'
+    _rewrite(old, "word/document.xml", lambda xml: xml.replace(plain, normal))
+    assert "<m:nor />" in _xml(old)
+    made = write(old, new, tmp_path / "copy.docx", date=DAY)
+    assert made.counts != {} and _changes(made.path)
+
+
 #: An equation whose upright word pandoc writes a letter to a run.
 EQUATION = "$$\\mathrm{dose}^2$$\n"
 
@@ -679,6 +692,13 @@ def test_at_a_revision_the_pack_holds_the_marked_up_copy_beside_the_manuscript(
     said = capsys.readouterr().out
     assert "the supplement is not marked up" in said and "--since" not in said
     assert not (pack / "supplementary-marked-up.docx").exists()
+    # A pack stopped at the gates leaves no copy of an older source (round 3 of #396).
+    assert list((project / "build" / "marked-up").glob("*.docx"))
+    source = _source(project)
+    source.write_text(source.read_text(encoding="utf-8") + "\nThe cohort held 4321 reports.\n",
+                      encoding="utf-8")  # fmt: skip
+    assert main(["submit", str(project), "--offline"]) == 1
+    assert not list((project / "build" / "marked-up").glob("*.docx"))
 
 
 @needs_pandoc
@@ -696,7 +716,7 @@ def test_since_supplement_is_refused_where_no_supplement_is_built(
     capsys.readouterr()
     assert main(["build", str(project), "--offline", "--skip-checks", "--marked-up",
                  "--since", str(sent), "--since-supplement", str(sent)]) == 1  # fmt: skip
-    assert "this project builds none" in capsys.readouterr().err
+    assert "none was built" in capsys.readouterr().err
 
 
 # ----------------------------------------------------------------------------- Word itself

@@ -2223,7 +2223,7 @@ def _marked_up(
     from manuscript_guard.roundtrip import RoundTripError, cited_of
 
     if since_supplement is not None and supplement is None:
-        raise MarkedUpError("`--since-supplement` names a supplement, and this project builds none")
+        raise MarkedUpError("`--since-supplement` names a supplement, and none was built")
     numbers = [n for n, _path in rounds(project)]
     if round_number is not None and round_number not in numbers:
         raise MarkedUpError(f"there is no revision round {round_number}")
@@ -2485,6 +2485,12 @@ def cmd_submit(args: argparse.Namespace) -> int:
     from manuscript_guard.build import SubmissionError, assemble_pack
 
     report, project, _stage, _deferred = _run_gates(args.path, submission=True)
+    from manuscript_guard.gates.revision import rounds
+
+    if rounds(project):
+        # Before anything can stop the pack, as `build` does: a copy left by an earlier run
+        # is of an older source (round 3 of #396).
+        _cleared_marked_up(project)
     if not report.ok and not args.skip_checks:
         print(report.render(project.root))
         print(
@@ -2559,12 +2565,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
     # journals ask for beside the manuscript itself.
     marked: list[tuple[Path, str]] = []
     marked_notes: list[str] = []
-    from manuscript_guard.gates.revision import rounds
-
     if rounds(project):
         from manuscript_guard.markedup import MarkedUpError
 
-        _cleared_marked_up(project)
         form = "highlighted" if args.highlight else "tracked"
         try:
             made, marked_notes = _marked_up(

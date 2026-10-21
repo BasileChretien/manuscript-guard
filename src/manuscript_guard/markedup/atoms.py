@@ -143,18 +143,22 @@ _MATHS_FORMAT = frozenset((W + "rPr", M + "ctrlPr"))
 
 def _maths_values(node: ET.Element | None) -> tuple:
     """What a property element of an equation sets: each value under it, by name, in order;
-    nothing where it sets none."""
+    nothing where it sets none. A switch written bare, `<m:nor/>` or `<m:degHide/>`, is on,
+    as OMML reads it (round 3 of #396); a property element holding nothing sets nothing."""
     if node is None:
         return ()
     found = []
     for inner in node.iter():
         if inner is node or inner.tag in _MATHS_FORMAT:
             continue
+        name = inner.tag.rsplit("}", 1)[-1]
         values = sorted(
             (k.rsplit("}", 1)[-1], v) for k, v in inner.attrib.items() if k.startswith(M)
         )
+        if not values and not len(inner) and not name.endswith("Pr"):
+            values = [("val", "on")]
         if values:
-            found.append((inner.tag.rsplit("}", 1)[-1], tuple(values)))
+            found.append((name, tuple(values)))
     return tuple(found)
 
 
@@ -173,8 +177,12 @@ def _maths_key(equation: ET.Element) -> str:
         name = node.tag.rsplit("}", 1)[-1]
         if node.tag == M + "r":
             text = "".join(t.text or "" for t in node.iter(M + "t"))
-            values = _maths_values(node.find(M + "rPr"))
-            if parts and parts[-1][0] == "run" and parts[-1][1] == values:
+            # What else a run holds, a break or a symbol, is part of it, and so is in its key.
+            held = tuple(
+                child.tag for child in node if child.tag not in (M + "t", M + "rPr", W + "rPr")
+            )
+            values = (_maths_values(node.find(M + "rPr")), held)
+            if parts and parts[-1][0] == "run" and parts[-1][1] == values and not held:
                 parts[-1] = ("run", values, parts[-1][2] + text)
             else:
                 parts.append(("run", values, text))

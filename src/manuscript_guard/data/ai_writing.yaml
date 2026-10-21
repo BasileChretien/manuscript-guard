@@ -77,6 +77,104 @@ artefacts:
     pattern: '(?i)\blorem\s+ipsum\b|\b(?:fill|replace)\s+(?:this\s+|it\s+)?(?:in\s+)?later(?=[ \t]*(?:[.)\]:;,]|\r?\n[ \t]*(?:\r?\n|\Z|[-*+][ \t]|\d+[.)][ \t]|\|)|\Z))|\bthis\s+section\s+is\s+a\s+template\b|\bdiscussion\s+prompts?[ \t]*:|\bdelete\s+this\s+(?:section|paragraph)\b|\badd\s+your\s+[^.\n]{1,40}?\s+here\b'
     why: Unfilled placeholder text, or an instruction left for the writer
     elsewhere: true
+  # A journal template's instructions to its authors, which papers are printed with: "In this
+  # section you can acknowledge any support given ...", "This section may be divided by
+  # subheadings", "Please add: "This research received no external funding" ...", and Word's
+  # "Click or tap here to enter text." No kind of sentence tells such an instruction from
+  # prose, since "authors should report the interval" is both, so each is found by its
+  # template's own words, the opening of each instruction, read 2026-10-21 in the templates
+  # of MDPI, Frontiers, PLOS, BMC, Springer Nature, Elsevier and Wiley; and only words that
+  # none of the 399 papers by people of `tools/g6_baseline.py` writes, nor any of the 18,335
+  # works they cite. Two kinds are wider than one template: "in this section" with "you" or
+  # "please" and a verb that asks for something, and the words of a statement offered for
+  # copying after "please add", "please state" or "or state". Not "In this section, we",
+  # nor 'Please state "yes" or "no"' on a form a paper reproduces, nor PLOS's "Click here
+  # for additional data file".
+  - id: placeholder-template
+    pattern: |-
+      (?ix)\b(?:
+      # Two kinds: "In this section, please provide details regarding where data ...", and
+      # 'Please add: "This research received no external funding"', 'Declare conflicts of
+      # interest or state "The authors declare no conflicts of interest."' (MDPI).
+      in\s+this\s+section,?\s+(?:you\s+(?:can|could|may|might|should|must)|please)\s+
+        (?:add|acknowledge|provide|state|include|declare|describe|list|insert|give|write
+        |mention|indicate|specify)\b
+      |(?:please\s+(?:add|state)|or\s+state)[ \t]*:?\s*["“'‘`]{1,2}[ \t]*
+        (?:this|the|informed|written|ethical|patient|not\s+applicable)\b
+      # Word's prompt in a field left empty: "Click or tap here to enter text."
+      |(?-i:C)lick\s+(?:or\s+tap\s+)?(?:here\s+)?to\s+enter\s+(?:text|a\s+date)\.
+      # MDPI.
+      |this\s+section\s+(?:may\s+be\s+divided\s+by\s+subheadings|is\s+not\s+mandatory)\b
+      |the\s+appendix\s+is\s+an\s+optional\s+section\b
+      |a\s+single\s+paragraph\s+of\s+about\s+\d+\s+words\s+maximum\b
+      |we\s+strongly\s+encourage\s+authors\s+to\s+use\s+the\s+following\s+style\b
+      |list\s+three\s+to\s+ten\s+pertinent\s+keywords\b
+      |keyword\s*1\s*[;,]\s*keyword\s*2\b
+      |the\s+introduction\s+should\s+briefly\s+place\s+the\s+study\b
+      |materials\s+and\s+methods\s+should\s+be\s+described\s+with\s+sufficient\s+details?\s+
+        to\s+allow\s+others\s+to\s+replicate\b
+      |publication\s+of\s+your\s+manuscript\s+implicates\b
+      |please\s+state\s+that\s+they\s+will\s+be\s+provided\s+during\s+review\b
+      |authors\s+should\s+discuss\s+the\s+results\s+and\s+how\s+they\s+can\s+be\s+interpreted\b
+      |for\s+research\s+articles\s+with\s+several\s+authors\b
+      |please\s+turn\s+to\s+the\s+CRediT\s+taxonomy\b
+      |use\s+the\s+standard\s+spelling\s+of\s+funding\s+agency\s+names\b
+      |you\s+might\s+(?:also\s+)?choose\s+to\s+exclude\s+this\s+statement\b
+      |involving\s+humans\s+should\s+contain\s+this\s+statement\b
+      |we\s+encourage\s+all\s+authors\s+of\s+articles\s+published\s+in\b
+      |authors\s+must\s+identify\s+and\s+declare\b
+      |where\s+GenAI\s+has\s+been\s+used\s+for\s+purposes\s+such\s+as\b
+      |the\s+template\s+details\s+the\s+sections\b
+      |schemes\s+follow\s+the\s+same\s+formatting\b
+      |tables\s+should\s+be\s+placed\s+in\s+the\s+main\s+text\s+near\b
+      |tables\s+may\s+have\s+a\s+footer\b
+      # Frontiers.
+      |for\s+full\s+guidelines\s+regarding\s+your\s+manuscript\b
+      |the\s+abstract\s+should\s+render\s+the\s+general\s+significance\b
+      |keyword,\s*keyword,\s*keyword\b
+      |the\s+introduction\s+should\s+be\s+succinct,?\s+with\s+no\s+subheadings\b
+      |please\s+refer\s+to\s+the\s+article\s+types\b
+      |equations\s+should\s+be\s+inserted\s+in\s+editable\s+format\b
+      |requires\s+figures\s+to\s+be\s+submitted\s+individually\b
+      |please\s+build\s+your\s+table\b
+      |in\s+your\s+current\s+manuscript\b
+      |section\s+is\s+mandatory\s+for\s+all\s+articles\b
+      |details\s+of\s+all\s+funding\s+sources\s+should\s+be\s+provided\b
+      |please\s+ensure\s+to\s+add\b
+      |this\s+is\s+a\s+short\s+text\s+to\s+acknowledge\b
+      |should\s+be\s+uploaded\s+separately\s+on\s+submission\b
+      |enter\s+the\s+caption\s+for\s+your\s+figure\b
+      # PLOS.
+      |bold\s+the\s+(?:figure\s+|table\s+)?title(?:\s+sentence)?[ \t]*\.
+      |add\s+descriptive\s+text\s+after\s+the\s+title\b
+      # BMC, where "Text for this section" opens a line or follows a stop or a colon.
+      |(?:(?<![^\n])|(?<=[.:][ \t]))text\s+(?:and\s+results\s+)?for\s+this\s+section\b
+      |sample\s+(?:article|figure|table|additional\s+file)\s+title\b
+      |additional\s+file\s+descriptions?\s+text\b
+      # Springer Nature.
+      |sample\s+body\s+text\b
+      |example\s+(?:for\s+)?(?:theorem|proposition|definition|proof)\s+text\b
+      |authors\s+are\s+advised\s+to\s+check\s+the\s+author\s+instructions\b
+      |some\s+overlap\s+with\s+the\s+abstract\s+is\s+acceptable\b
+      |topical\s+subheadings\s+are\s+allowed\b
+      |discussions\s+should\s+be\s+brief\s+and\s+focused\b
+      |please\s+refer\s+to\s+journal-level\s+guidance\b
+      |conclusions\s+may\s+be\s+used\s+to\s+restate\s+your\b
+      |please\s+state\s+so\s+here\b
+      |acknowledge?ments\s+are\s+not\s+compulsory\b
+      |the\s+journal\s+to\s+which\s+you\s+are\s+submitting\b
+      |not\s+relevant\s+to\s+your\s+manuscript\b
+      |for\s+sample\s+purpose\b
+      # Elsevier, where "Section text." is a line's first words.
+      |research\s+highlight\s+[1-9]\b
+      |(?<![^\n])(?:abstract|section|subsection|subsubsection)\s+text\.(?!\S)
+      # Wiley.
+      |this\s+is\s+sample\s+(?:for|abstract)\b
+      |this\s+is\s+the\s+sample\s+(?:article\s+title|figure\s+caption|table\s+caption)\b
+      |example\s+for\s+quote\s+text\b
+      )
+    why: A journal template's instruction to its authors, left in the text
+    elsewhere: true
   # The words that mark a gap: TODO, TBD, FIXME, a doubled TKTK (a single "TK" is a kinase in
   # medicine), a run of X, "n = XXXX", a date of Xs, "2025-XX-XX", and a name in capitals
   # joined by underscores, "INSERT_SOURCE_URL". A karyotype, 45 to 49 chromosomes and then the

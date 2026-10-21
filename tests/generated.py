@@ -1103,7 +1103,9 @@ FIXED_LINKS = (
 #: a karyotype, a syndrome, a link, a title translated into English in brackets, a phrase
 #: that goes on, a kinase. What the placeholder reading must tell apart. With round 2 of
 #: #262's shapes: a phrase before a list item, an instruction marked or linked, a slot that
-#: is a whole field of a cited entry.
+#: is a whole field of a cited entry. And a journal template's instructions, one of each
+#: kind and one hard-wrapped, beside a section the authors describe, a form a paper
+#: reproduces and the caption PLOS prints under a file.
 PLACEHOLDERS = (
     ("XXXX", "XXXX"), ("[TO BE COMPLETED]", "[TO BE COMPLETED]"),
     ("[Repository]", "[Repository]"), ("[describe the cohort]", "[describe the cohort]"),
@@ -1113,12 +1115,21 @@ PLACEHOLDERS = (
     ("Dose: fill in later\n- Route: oral", "fill in later"),
     ("[insert the date]{.mark}", "[insert the date]"), ("[insert link](#)", "[insert link]"),
     ("[DOI]", "[DOI]"),
+    ("In this section you can acknowledge any support",
+     "In this section you can acknowledge"),
+    ('Please add: "This research received no external funding"', 'Please add: "This'),
+    ("This section may be divided by\nsubheadings.", "This section may be divided by\nsubheadings"),
+    ("Click or tap here to enter text.", "Click or tap here to enter text."),
+    ("This is a short text to acknowledge the contributions",
+     "This is a short text to acknowledge"),
+    ("Sample body text.", "Sample body text"),
 )  # fmt: skip
 LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
 LOOKALIKES = (
     "47,XXX", "XXX syndrome", "[repository](https://example.org)",
     "[Add-on therapy in epilepsy]", "replace later lines", "replace later\nlines",
-    "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]",
+    "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]", "In this section, you can see the code.",
+    'Please state "yes" or "no".', "Click here for additional data file.",
 )  # fmt: skip
 
 

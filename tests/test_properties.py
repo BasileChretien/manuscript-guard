@@ -5209,6 +5209,27 @@ def _an_instruction_marked_or_linked_is_a_link_s_text(patch: pytest.MonkeyPatch)
     _placeholder_rule(patch, "placeholder", lambda p: p + r"(?![(\[{])")
 
 
+def _in_the_template_rule(patch: pytest.MonkeyPatch, written: str, broken: str) -> None:
+    def change(pattern: str) -> str:
+        assert written in pattern, "the template rule no longer reads this way"
+        return pattern.replace(written, broken)
+
+    _placeholder_rule(patch, "placeholder-template", change)
+
+
+def _words_prompt_is_read_without_what_it_asks_for(patch: pytest.MonkeyPatch) -> None:
+    # "Click here" alone heads each file PLOS lists under a paper.
+    _in_the_template_rule(patch, r"(?:here\s+)?to\s+enter\s+(?:text|a\s+date)\.", r"here\b")
+
+
+def _any_verb_after_this_section_asks_for_something(patch: pytest.MonkeyPatch) -> None:
+    _in_the_template_rule(patch, "(?:add|acknowledge|", r"(?:\w+|add|acknowledge|")
+
+
+def _any_quoted_word_after_please_state_is_a_statement(patch: pytest.MonkeyPatch) -> None:
+    _in_the_template_rule(patch, "(?:this|the|informed|", r"(?:\w+|this|the|informed|")
+
+
 def _a_field_wholly_in_brackets_is_read_without_them(patch: pytest.MonkeyPatch) -> None:
     # As `_untranslated` read a cited entry's field, until round 2 of #262.
     from manuscript_guard.gates import writing
@@ -6743,6 +6764,18 @@ BROKEN = {
     ),
     "an instruction marked or linked is not read": (
         _an_instruction_marked_or_linked_is_a_link_s_text,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "Word's prompt is read without what it asks for": (
+        _words_prompt_is_read_without_what_it_asks_for,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "any verb after 'in this section, you can' asks for something": (
+        _any_verb_after_this_section_asks_for_something,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "any quoted word after 'please state' is a statement offered": (
+        _any_quoted_word_after_please_state_is_a_statement,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
     ),
     "a cited entry's field wholly in brackets is read without them": (

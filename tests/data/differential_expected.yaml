@@ -24,6 +24,13 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: placeholders
+    why: >-
+      a journal template's instruction to its authors, "In this section you can acknowledge
+      any support given ...", "This section may be divided by subheadings", Word's "Click or
+      tap here to enter text.", is found as a placeholder, `placeholder-template`; the inputs
+      now hold such instructions, and a section the authors describe, a form a paper
+      reproduces and PLOS's "Click here for additional data file", which it is not
   - reading: reworded
     why: >-
       each sentence an edit changed is compared with what it was for the words of its

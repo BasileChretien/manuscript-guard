@@ -49,3 +49,53 @@ def test_a_citation_command_defined_by_the_author_is_refused_where_it_is_used() 
     (refusal,) = read(text).refusals
     assert refusal.offset == text.index("\\mycite{smith")
     assert _cited(DOC + "\\newcommand{\\mycite}[1]{\\cite{#1}}\n" + END) == []
+
+
+def test_a_comment_in_a_citations_keys_is_no_part_of_a_key() -> None:
+    """LaTeX drops `%` to the end of its line, a brace in it too (round 1 of step 5)."""
+    assert _cited(DOC + "\\citep{a,%\n b}\n" + END) == [("a", 3, False), ("b", 4, False)]
+    assert _cited(DOC + "\\cite{a, % old}\n b}\n" + END) == [("a", 3, False), ("b", 4, False)]
+
+
+def test_natbib_and_biblatex_commands_that_cite_or_set_the_style_are_read() -> None:
+    """The preamble's settings are not refused, and the commands that cite are read (round 1
+    of step 5: `\\setcitestyle` was refused, and the document read as typed past it)."""
+    text = (
+        "\\documentclass{article}\n\\usepackage{natbib}\n\\setcitestyle{authoryear,round}\n"
+        "\\defcitealias{a}{Paper I}\n\\DeclareCiteCommand{\\citeyearonly}{}{}{}{}\n"
+        "\\begin{document}\n\\citetalias{a} and \\citepalias{a}, \\footfullcite{b},\n"
+        "\\citeurl{c} and \\citedate{c}.\n" + END
+    )
+    assert read(text).refusals == ()
+    assert _cited(text) == [("a", 7, True), ("a", 7, False), ("b", 7, False), ("c", 8, False),
+                            ("c", 8, False)]  # fmt: skip
+
+
+def test_a_multi_citations_global_note_may_be_a_phrase() -> None:
+    text = DOC + "\\textcites(see the reviews of this question in)()[p.~2]{ghost}{b}.\n" + END
+    assert _cited(text) == [("ghost", 3, True), ("b", 3, True)]
+
+
+def test_sync_bib_refuses_a_manuscript_its_reader_refuses(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The keys after a refusal are not read, so a bibliography written from the rest would
+    lose them (round 1 of step 5)."""
+    from manuscript_guard import zotero
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.citations import sync_bib
+    from manuscript_guard.text.reader import CitationsUnknown
+
+    asked: list[list[str]] = []
+    monkeypatch.setattr(zotero, "export", lambda keys: asked.append(list(keys)) or "")
+    folder = project / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+    entry = folder / "main.tex"
+    entry.write_text(DOC + "\\citep{a} and \\citep{b}.\n" + END, encoding="utf-8")
+    sync_bib(load_project(project)[0])
+    assert asked == [["a", "b"]]
+    entry.write_text(DOC + "\\citep{a}, \\citeA{x}, \\citep{b}.\n" + END, encoding="utf-8")
+    with pytest.raises(CitationsUnknown, match=r"manuscript/main\.tex:3 is refused"):
+        sync_bib(load_project(project)[0])
+    assert asked == [["a", "b"]]

@@ -704,6 +704,19 @@ def test_a_latex_citation_is_read_where_it_prints_and_nowhere_else(
         assert text[use.start : use.start + len(use.citekey)] == use.citekey, (use, text)
 
 
+def _a_comment_in_a_key_list_is_a_key(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_key_list", lambda keys: keys)
+
+
+def _a_long_global_note_hides_its_citations(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_NOTE_REACH", 32)
+
+
+def _a_preamble_cite_setting_is_refused(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_unknown_citation",
+                  lambda self, name: "cite" in name.lower() and not self.definitions)  # fmt: skip
+
+
 def _a_citations_keys_are_not_split(patch: pytest.MonkeyPatch) -> None:
     def broken(self, at: int) -> None:
         end = self._group_end(at)
@@ -7361,6 +7374,18 @@ BROKEN = {
     ),
     "in LaTeX, a multi-citation reads its first group only": (
         _a_multi_citation_reads_its_first_group_only,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a comment in a citation's keys is a key": (
+        _a_comment_in_a_key_list_is_a_key,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a long global note hides a multi-citation's keys": (
+        _a_long_global_note_hides_its_citations,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, natbib's and biblatex's settings in the preamble are refused": (
+        _a_preamble_cite_setting_is_refused,
         test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
     ),
     "in LaTeX, a command the table lacks hides its arguments": (

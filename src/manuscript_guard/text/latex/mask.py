@@ -281,6 +281,16 @@ def _opens_comment(text: str, start: int, end: int) -> bool:
     return False
 
 
+#: How far a multi-citation's global note is looked for, `\\cites(see)(p.~5){a}{b}`.
+_NOTE_REACH = 300
+
+
+def _key_list(keys: str) -> str:
+    """A citation's keys with each comment in them blanked, at the same offsets: LaTeX drops
+    `%` to the end of its line, so `\\citep{a,%` and `b}` on the next line cite a and b."""
+    return re.sub(r"(?<!\\)%[^\n]*", lambda found: " " * len(found.group(0)), keys)
+
+
 def _comment_end(text: str, at: int) -> int:
     """Where a comment opened at `at` ends: before its line's break."""
     end = text.find("\n", at)
@@ -431,9 +441,11 @@ class _Reader:
                 self.pending = self.pending[1:]
                 continue
             if spec[0] == "(":
-                # A trim such as `(lr)` is a few letters: looked for that far, on its line.
-                end = self.text.find(")", at, at + 32) if here == "(" else -1
-                if end >= 0 and "\n" not in self.text[at:end]:
+                # A trim such as `(lr)` is a few letters: looked for that far, on its line. A
+                # multi-citation's global note is a phrase, and may wrap (round 1 of step 5).
+                reach, stop = (_NOTE_REACH, "\n\n") if self.command in CITATIONS else (32, "\n")
+                end = self.text.find(")", at, at + reach) if here == "(" else -1
+                if end >= 0 and stop not in self.text[at:end]:
                     self._blank(at, end + 1)
                     self.pos = end + 1
                     self.pending = self.pending[1:]
@@ -516,30 +528,34 @@ class _Reader:
     def _cite(self, at: int) -> None:
         """Record each key the citation's braces at `at` name, where it stands: split at the
         commas, as natbib and biblatex split them, a space round each taken off."""
-        end = self._group_end(at)
+        end = self._group_end(at, comments=True)
         if end < 0:
             return  # the brace left open is refused where it stands
         narrative = CITATIONS[self.command]
         offset = at + 1
-        for part in self.text[at + 1 : end - 1].split(","):
+        for part in _key_list(self.text[at + 1 : end - 1]).split(","):
             key = part.strip()
             if key:
                 self.cited.append(Cited(key, offset + part.index(key), narrative,
                                         self.citation_at, end))  # fmt: skip
             offset += len(part) + 1
 
-    def _group_end(self, at: int) -> int:
+    def _group_end(self, at: int, *, comments: bool = False) -> int:
         """Where a brace group opened at `at` ends, read as characters: `%` and `#` are no
-        signs in a URL."""
-        depth = 0
-        for index in range(at, self.n):
+        signs in a URL. With `comments`, a brace in a comment is passed over, as LaTeX passes
+        over a comment in a citation's keys."""
+        depth, index = 0, at
+        while index < self.n:
             character = self.text[index]
-            if character == "{":
+            index += 1
+            if comments and character == "%" and self.text[index - 2] != "\\":
+                index = _comment_end(self.text, index - 1)
+            elif character == "{":
                 depth += 1
             elif character == "}":
                 depth -= 1
                 if depth == 0:
-                    return index + 1
+                    return index
         return -1
 
     # -- one token -------------------------------------------------------------------------
@@ -723,13 +739,21 @@ class _Reader:
             if name in CITATIONS:
                 self.citation_at = at
             self.command, self.pending = name, COMMANDS[name]
-        elif "cite" in name.lower() and not self.definitions:
+        elif self._unknown_citation(name):
             # A citation command the reader does not know would hide its keys from G7 (DESIGN.md,
             # "Citations"); one an author defines is refused where it is used.
-            said = "a citation command the reader does not know; cite with \\cite, natbib's or "
-            self._refuse("tex-refused", at, f"\\{name} is not read: {said}biblatex's commands")
+            said = ("a citation command the reader does not know, whose keys G7 would not see; "
+                    "cite with \\cite or one of the natbib and biblatex commands it reads")
+            self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
         elif _near_binding(name) and _LOOKS_BOUND.match(self.text, end):
             self.suspects.append((at, self._suspect_end(at)))
+
+    def _unknown_citation(self, name: str) -> bool:
+        """Whether a command the reader does not know is one that cites, where what it cites
+        would print: its name holds `cite`, outside a definition's body and outside the
+        preamble, where natbib's and biblatex's settings stand, `\\setcitestyle` and
+        `\\DeclareCiteCommand` among them (round 1 of step 5)."""
+        return "cite" in name.lower() and not self.definitions and self._role() != PREAMBLE
 
     def _binding(self, at: int, end: int) -> None:
         """Record a `\\mg` where it stands, with what its braces hold. In a siunitx command

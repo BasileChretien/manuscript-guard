@@ -134,16 +134,28 @@ def bound_files(project) -> list[Bound]:
     return bound
 
 
-def citation_uses(project) -> list:
+class CitationsUnknown(Exception):
+    """A LaTeX manuscript holds a part its reader refuses, so the citations after it are not
+    known."""
+
+
+def citation_uses(project, *, whole: bool = False) -> list:
     """Every citation of the manuscript, as `zotero.find_citations` gives the `CitationUse`
     records: a Markdown file's `[@key]` and `@key`, and a LaTeX file's citation commands
     (`text/latex/cite.py`), `\\nocite{*}` as each key of `references.bib`. A Markdown file
-    that cannot be read raises `Unreadable`, as `read_text` does."""
+    that cannot be read raises `Unreadable`, as `read_text` does. With `whole`, a LaTeX
+    manuscript that holds a part its reader refuses raises `CitationsUnknown`: the keys
+    after the refusal are not read, and a bibliography written from the rest would lose them
+    (round 1 of step 5)."""
     folder = project.path("manuscript")
     if manuscript_format(folder) == LATEX:
         from manuscript_guard.gates.citations import bib_keys
         from manuscript_guard.text.latex.cite import citations
+        from manuscript_guard.text.latex.structure import read_document
         from manuscript_guard.text.latex.views import files
+
+        if whole:
+            _refuse_unread(folder, read_document)
 
         every = tuple(sorted(bib_keys(project)))
         return [use for found in files(folder) for use in citations(found.source, found.path,
@@ -156,3 +168,15 @@ def citation_uses(project) -> list:
     for path in source_files(folder):
         uses.extend(find_citations(read_text(path), path))
     return uses
+
+
+def _refuse_unread(folder: Path, read_document) -> None:
+    """Raise `CitationsUnknown` where either document of a LaTeX manuscript holds a refusal."""
+    for supplementary in (False, True):
+        for path, refusal in read_document(folder, supplementary=supplementary).refusals:
+            text = (folder / path).read_text(encoding="utf-8", errors="replace")
+            line = text.count("\n", 0, refusal.offset) + 1
+            raise CitationsUnknown(
+                f"manuscript/{path}:{line} is refused ({refusal.message}), so the citations "
+                "after it are not read: put it right, then run this again"
+            )

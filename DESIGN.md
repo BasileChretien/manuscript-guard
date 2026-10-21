@@ -1491,10 +1491,19 @@ The result is compiled and packed by the code above, and checked three times:
   (round 2 of #400). A siunitx key with no `=`, `\qty[sticky-per]`, is taken for a value and
   read as prose words; it holds no number (round 3).
 - A multi-citation's global notes, `\cites(see)(p.~5)[...]{a}{b}`, are blanked, so a number in
-  one is read by no gate; its per-group notes are read (step 5).
+  one is read by no gate; its per-group notes are read (step 5). A global note is looked for
+  up to 300 characters on, and not past a blank line; one longer is read as prose, and the
+  keys after it are not recorded (round 1 of step 5).
 - apacite's `\citeA` and `\citeNP`, and an author's own command whose name holds `cite`, are
   refused where they are used, as the design asks: the reader knows natbib's and biblatex's
-  (step 5).
+  (step 5). In the preamble such a command is not refused, since natbib's and biblatex's
+  settings stand there, `\setcitestyle` and `\DeclareCiteCommand` among them, and nothing of
+  it prints; biblatex's `\volcite` family is refused in the body (round 1 of step 5).
+- A citation in a hook's body, `\AtBeginDocument{\nocite{smith2019}}`, is not recorded, as one
+  in a definition's body is not, and G7 warns that its key is cited nowhere (round 1 of
+  step 5).
+- `sync-bib` refuses a LaTeX manuscript the reader refuses anywhere, since the keys after the
+  refusal are not read; `lookup` looks up the keys before it (round 1 of step 5).
 - `\nocite{*}` cites what `literature/references.bib` holds, not a bibliography a class or a
   `\bibliography{}` names elsewhere (step 5).
 - Past a refusal a file's bindings are found by their shape, in a comment too, so that a

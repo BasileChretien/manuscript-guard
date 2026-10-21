@@ -3061,12 +3061,13 @@ def cmd_sign(args: argparse.Namespace) -> int:
 
 def cmd_sync_bib(args: argparse.Namespace) -> int:
     """Rewrite literature/references.bib from what the manuscript cites."""
+    from manuscript_guard.text.reader import CitationsUnknown
     from manuscript_guard.zotero import ZoteroUnavailable
 
     project, _ = load_project(args.path)
     try:
         path, count = sync_bib(project)
-    except ZoteroUnavailable as exc:
+    except (ZoteroUnavailable, CitationsUnknown) as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     print(f"wrote {count} reference{'' if count == 1 else 's'} to {path}")

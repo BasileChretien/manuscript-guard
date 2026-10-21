@@ -221,7 +221,7 @@ def sync_bib(project: Project) -> tuple[Path, int]:
     from manuscript_guard.text.reader import citation_uses
     from manuscript_guard.zotero import export
 
-    citekeys = sorted({use.citekey for use in citation_uses(project)})
+    citekeys = sorted({use.citekey for use in citation_uses(project, whole=True)})
     if not citekeys:
         raise ZoteroUnavailable("the manuscript cites nothing, so there is no bibliography")
 

@@ -697,7 +697,8 @@ LATEX_PREAMBLE_BINDINGS = (("\\title{{T \\mg{{results.{}}}}}\n", "bound"),)
 #: Where a citation stands in LaTeX, and what each key in it is there: each `{}` holds a key,
 #: cited (in brackets, as `\\cite` prints it), narrative (the authors' names in the sentence),
 #: or nothing (in a comment, an `\\iffalse` block, or a definition's body, where it is text to
-#: be expanded where the definition is used).
+#: be expanded where the definition is used). A comment inside a key list is dropped, and a
+#: multi-citation's global note may be a phrase (round 1 of step 5).
 LATEX_CITATION_PLACES = (
     ("\\cite{{{}}} ", ("cited",)),
     ("\\citet{{{}}} ", ("narrative",)),
@@ -710,7 +711,16 @@ LATEX_CITATION_PLACES = (
     ("% \\cite{{{}}}\n", ("none",)),
     ("\\iffalse \\cite{{{}}} \\fi ", ("none",)),
     ("\\newcommand{{\\later}}[1]{{\\cite{{{}}}}} ", ("none",)),
+    ("\\citep{{{},% old\n {}}} ", ("cited", "cited")),
+    ("\\cites(see the reviews of this question in)(){{{}}}{{{}}} ", ("cited", "cited")),
+    ("\\citetalias{{{}}} ", ("narrative",)),
+    ("\\footfullcite{{{}}} ", ("cited",)),
 )  # fmt: skip
+#: A preamble that sets natbib's and biblatex's styles, which cite nothing.
+LATEX_CITATION_PREAMBLE = (
+    "\\documentclass{article}\n\\usepackage{natbib}\n\\setcitestyle{authoryear}\n"
+    "\\DeclareCiteCommand{\\citeyearonly}{}{}{}{}\n\\begin{document}\n"
+)
 
 
 @st.composite
@@ -722,7 +732,7 @@ def latex_cited(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     order = draw(st.permutations(range(len(LATEX_CITATION_PLACES))))
     between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
                             max_size=len(order) + 1))  # fmt: skip
-    text, planted = "\\documentclass{article}\n\\begin{document}\n", []
+    text, planted = LATEX_CITATION_PREAMBLE, []
     for piece, index in zip(between, order, strict=False):
         text += piece
         template, kinds = LATEX_CITATION_PLACES[index]

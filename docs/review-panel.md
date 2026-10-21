@@ -132,10 +132,11 @@ edit a Word tracked change under its reader's name, with its finding as a commen
 for you, not for the journal. An edit is written only where it can be placed exactly: its
 words found once in the manuscript's prose and once in their paragraph as the build printed
 it, in a paragraph the round trip brings back, holding no markup, and changing no number,
-binding or citation, which is the rule `reworded` holds a rewording to. An edit that would
-come back into the source otherwise than written, beside emphasis or code for instance, is
-not written either. Each one that is not is listed with the reason, and stays a finding to
-answer in its record.
+binding or citation, which is the rule `reworded` holds a rewording to. Emphasis, code or a
+link beside the words stays as it is, and emphasis around them goes round the new words, as
+Word shows them; words that cross the edge of the markup, or would make the paragraph read
+otherwise than Word shows it, are not written. Each one that is not is listed with the
+reason, and stays a finding to answer in its record.
 
 In Word, accept or reject each change. To refuse one with a reason, reply to its comment.
 Then:
@@ -145,8 +146,10 @@ manuscript-guard import build/suggestions/round-2.docx --apply
 ```
 
 `import` refuses the document while any of the panel's changes is undecided. The accepted
-words are merged into the source as any rewording from Word is, and each finding is answered
-in its record: an accepted edit becomes its `resolution`, dated; a refused one with your
+words are written into the source where the edit found them, so the markup beside them
+stays; anything else you changed in that paragraph is merged as any rewording from Word is.
+Where the words can no longer be written there exactly, the paragraph is refused with the
+reason. Each finding is answered in its record: an accepted edit becomes its `resolution`, dated; a refused one with your
 reply becomes its `overridden`, with the reply as the reason and its author as
 `overridden_by`. A refused edit with no reply leaves its finding open, since turning down a
 wording does not answer what the finding says. Nothing in the reader's words changes, so the

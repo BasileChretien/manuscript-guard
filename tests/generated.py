@@ -1223,6 +1223,42 @@ def _broken_at_line_ends(lines: list[str]) -> list[str]:
     return out
 
 
+# ------------------------------------------------------------- a figure's alternative text
+
+#: What pandoc's Markdown reads as markup in a picture's description unless each mark in it
+#: is escaped: emphasis, a link, a citation, maths, code, raw HTML and a comment, quotation
+#: marks and dashes it would curl and join, a sub- and superscript, a struck word, a
+#: backslash that would escape the bracket closing the description, and a binding left as
+#: written. Every alternative text drawn holds each, so that one mark left unescaped is read
+#: as markup under every seed.
+ALT_MARKUP = (
+    "*emphasis*", "**strong**", "_under_", "[a link](x.png)", "![a picture](y.png)",
+    "@citekey", "[@citekey]", "$x^2$", "`code`", "<b>bold</b>", "<!-- comment -->", "&amp;",
+    '"quoted"', "'single'", "--", "...", "^up^", "~down~", "~~struck~~", "\\", "\\*",
+    "{{results.key}}", "#", "|", "50%",
+)  # fmt: skip
+#: Words with no markup, some beyond ASCII.
+ALT_WORDS = (*FILLER[:12], "\N{PLUS-MINUS SIGN}2", "caf\N{LATIN SMALL LETTER E WITH ACUTE}",
+             "\N{GREATER-THAN OR EQUAL TO}", "0.5\N{EN DASH}2")  # fmt: skip
+#: What may stand between two pieces: nothing, a space, a run of them, a line break, a
+#: blank line, a tab, a no-break space. Each is drawn once in every text.
+ALT_SPACES = ("", " ", "   ", "\n", "\n \n", "\t", "\N{NO-BREAK SPACE}")
+
+
+@st.composite
+def alt_texts(draw: st.DrawFn) -> str:
+    """An alternative text as an author may write it in a figure's guard file: every piece
+    of `ALT_MARKUP` and some words, in an order drawn, each kind of `ALT_SPACES` between two
+    of them at least once."""
+    words = draw(st.lists(st.sampled_from(ALT_WORDS), max_size=6))
+    pieces = draw(st.permutations([*ALT_MARKUP, *words]))
+    extra = draw(st.lists(st.sampled_from(ALT_SPACES), min_size=len(pieces) - 1 - len(ALT_SPACES),
+                          max_size=len(pieces) - 1 - len(ALT_SPACES)))  # fmt: skip
+    spaces = draw(st.permutations([*ALT_SPACES, *extra]))
+    joined = zip(spaces, pieces[1:], strict=True)
+    return pieces[0] + "".join(space + piece for space, piece in joined)
+
+
 # -------------------------------------------------------------- the results a plan promises
 
 _STEMS = ("ror", "case", "cohort", "hr", "events")
@@ -1847,6 +1883,76 @@ def mean_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Meant]]:
     return "\n".join(lines), [label.lower() for label in labels], expected
 
 
+# ------------------------------------------------- a number an earlier output printed
+
+#: The ways a paper prints one number that this one prints otherwise: as it is, its
+#: thousands grouped, a middle dot for the point, a percent sign after it, a minus sign
+#: before it, to fewer or more places than this paper, and below one with no zero before its
+#: point (".45").
+PRINTINGS = ("as it is", "grouped", "middle dot", "percent", "minus", "coarser", "finer",
+             "no leading zero")  # fmt: skip
+#: What a paper groups thousands with: a comma, a space, a thin space, a no-break space and
+#: a narrow no-break one, by code point since each looks like a space.
+GROUPS = (",", " ", chr(0x2009), chr(0x00A0), chr(0x202F))
+
+
+def _grouped(text: str, by: str) -> str:
+    whole, point, fraction = text.partition(".")
+    sign, digits = ("-", whole[1:]) if whole.startswith("-") else ("", whole)
+    parts = []
+    while len(digits) > 3:
+        digits, parts = digits[:-3], [digits[-3:], *parts]
+    return sign + by.join([digits, *parts]) + point + fraction
+
+
+def _printed_as(text: str, kind: str, by: str) -> str:
+    if kind == "grouped":
+        return _grouped(text, by)
+    if kind == "middle dot":
+        return text.replace(".", chr(0x00B7))
+    if kind == "percent":
+        return text + "%"
+    if kind == "minus":
+        return text.replace("-", chr(0x2212))
+    if kind == "no leading zero" and text.lstrip("-").startswith("0."):
+        return text.replace("0.", ".", 1)
+    return text
+
+
+@st.composite
+def printings(draw: st.DrawFn) -> list[dict[str, Any]]:
+    """One number of this paper, printed by an earlier output in each of the ways a paper
+    prints one, and the same printing of a number a unit and a half of the coarser
+    printing away. The first is the value; the second is not, however it was rounded:
+    each side is at most half a unit from what it rounds."""
+    cases = []
+    for kind in PRINTINGS:
+        here = draw(st.integers(1 if kind == "coarser" else 0, 3))
+        if kind == "coarser":
+            there = draw(st.integers(0, here - 1))
+        elif kind == "finer":
+            there = draw(st.integers(here + 1, 4))
+        else:
+            there = draw(st.integers(1 if kind == "no leading zero" else 0, 3))
+        low, high = {"grouped": (1000.0, 1e7), "no leading zero": (0.001, 0.94)}.get(
+            kind, (0.001, 999.0)
+        )
+        value = draw(st.floats(low, high, allow_nan=False, allow_infinity=False))
+        if kind == "minus" or (kind != "grouped" and draw(st.booleans())):
+            value = -value
+        unit = 10.0 ** -min(here, there)
+        moved = value + draw(st.sampled_from((1.5, -1.5))) * unit
+        by = draw(st.sampled_from(GROUPS))
+        cases.append({
+            "kind": kind,
+            "value": value,
+            "display": f"{value:.{here}f}",
+            "printed": _printed_as(f"{value:.{there}f}", kind, by),
+            "moved": _printed_as(f"{moved:.{there}f}", kind, by),
+        })  # fmt: skip
+    return cases
+
+
 # ---------------------------------------------------------------------- what an edit holds
 
 #: A binding, a citation and a number in each of the ways one is written: what `reworded`
@@ -2236,6 +2342,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "whole-number means": mean_tables().map(
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),
+    "printed value": printings(),
     "units after": texts(BOUND_UNITS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}

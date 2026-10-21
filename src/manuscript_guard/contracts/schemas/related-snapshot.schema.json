@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/related-snapshot/1",
+  "title": "manuscript-guard record of an earlier project's files, copied by `related --take`",
+  "description": "What `manuscript-guard related --take` copied from an earlier output's manuscript-guard project into literature/related/<id>/: its results, its plan as frozen and its data dictionary, each file by its path in the copy with its digest as an analysis input's (line endings folded for .json, .yaml and .md), and where it came from. G8 reads the copy and never the project, so that every machine gives the same answer, and says when a copied file no longer has its digest.",
+  "type": "object",
+  "required": ["schema", "id", "project", "taken_on", "files"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/related-snapshot/1" },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "project": { "type": "string", "pattern": "\\S" },
+    "revision": {
+      "type": ["string", "null"],
+      "description": "The revision named in literature/related.yaml, or null where the project's files were copied as they stood."
+    },
+    "commit": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+      "description": "The commit that revision named when it was copied, or the project's HEAD where none was named; null outside git."
+    },
+    "uncommitted": {
+      "type": "boolean",
+      "description": "Copied as the files stood, and some of them differed from HEAD."
+    },
+    "taken_on": { "type": "string", "format": "date" },
+    "files": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^(results|design)/(?!\\.\\.?$)[^/\\\\]+$" },
+      "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+    }
+  }
+}

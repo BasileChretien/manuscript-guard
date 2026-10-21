@@ -888,6 +888,17 @@ def test_a_change_of_order_alone_warns_and_passes(
 
 
 @needs_git
+def test_a_claim_made_weaker_warns_and_passes(
+    paper: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    edit(paper / "manuscript" / "main.md", "were serious, as", "may have been serious, as")
+    assert main(["reworded"]) == 0
+    out = capsys.readouterr().out
+    assert "main.md:6" in out and "this sentence claims less than it did" in out, out
+    assert "'may' is new" in out and "0 failing, 1 warning" in out, out
+
+
+@needs_git
 def test_one_file_can_be_named(paper: Path) -> None:
     edit(paper / "manuscript" / "supplementary" / "s1.md", "4 centres", "5 centres")
     assert main(["reworded", "manuscript/main.md"]) == 0

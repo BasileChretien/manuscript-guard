@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured
+from manuscript_guard.contracts.dictionary import load_dictionary
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.emit import FROZEN_PLAN, source_digest_matches
@@ -413,10 +414,18 @@ def _frozen(project: Project, path: Path, text: str) -> Report:
 def check_design(
     project: Project, results: Results | None = None, stage: str | None = None
 ) -> Report:
-    """The plan's sections, and, while it is being written, whether the data were looked at.
+    """The plan's sections, and, while it is being written, whether the data were looked at;
+    and the data dictionary, where there is one.
 
     `results` and `stage` are what `check` has; called without them, the feasibility
-    results are not asked for."""
+    results are not asked for. A dictionary that cannot be read or breaks its schema is said
+    here once (`dictionary-invalid`), for every reader of it: the data-quality checks read
+    the same file and say nothing of its shape."""
+    _dictionary, read = load_dictionary(project)
+    return _check_plan(project, results, stage).merge(read)
+
+
+def _check_plan(project: Project, results: Results | None, stage: str | None) -> Report:
     path = plan_path(project)
     analysis = analysis_digests(project)
 

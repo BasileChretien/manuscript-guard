@@ -356,4 +356,3 @@ def _cited(project: Project) -> tuple[set[str], str]:
     if methods is not None:
         keys |= plan_citations(methods)
     return keys, "design/plan.md or the manuscript's Methods"
-

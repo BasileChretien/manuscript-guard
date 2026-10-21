@@ -139,6 +139,36 @@ def _mask() -> Reading:
     return mask
 
 
+@reading("latex mask")
+def _latex_mask() -> Reading:
+    from manuscript_guard.text.latex.mask import mask
+
+    return mask
+
+
+@reading("latex refusals")
+def _latex_refusals() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+
+    return lambda text: [[r.code, r.offset] for r in read(text).refusals]
+
+
+@reading("latex sections")
+def _latex_sections() -> Reading:
+    # `Heading` came with the headings, so that a base without them has no such reading.
+    from manuscript_guard.text.latex.mask import Heading, read  # noqa: F401
+
+    def sections(text: str) -> dict[str, Any]:
+        reading = read(text)
+        return {
+            "headings": [[h.start, h.level, h.title] for h in reading.headings],
+            "abstracts": [list(span) for span in reading.abstracts],
+            "inputs": [[i.offset, i.path, i.body, list(i.environments)] for i in reading.inputs],
+        }
+
+    return sections
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden
@@ -865,6 +895,21 @@ def _quote_placement() -> Reading:
         if placement is None:
             return None
         return [placement.found, list(placement.lines), said(placement)]
+
+    return placed
+
+
+@reading("suggested edit")
+def _suggested_edit() -> Reading:
+    """Where a reviewer's suggested edit is found in a text, as typed or as pandoc printed
+    it, and whether its words are words: what `review --suggestions` places an edit by."""
+    from manuscript_guard.suggestions import found_in, refused_words
+
+    def placed(given: dict[str, str]) -> dict[str, Any]:
+        return {
+            "found": [list(span) for span in found_in(given["text"], given["old"])],
+            "refused": refused_words(given["old"], given["new"]),
+        }
 
     return placed
 

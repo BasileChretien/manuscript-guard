@@ -279,6 +279,12 @@ CHANGED = {
         '        relation = ""\n',
         "reworded",
     ),
+    "a claim moved both ways told as the first way": (
+        "claims.py",
+        "    elif MOVED in ways or len(set(ways)) > 1:\n",
+        "    elif MOVED in ways:\n",
+        "reworded",
+    ),
     "a finding that points at another file": (
         "gates/vocabulary.py",
         "                path=passage.path,\n",

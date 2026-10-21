@@ -29,14 +29,19 @@ import shutil
 import subprocess
 import sys
 from bisect import bisect_left
+from collections import Counter
+from functools import cache, partial
 from pathlib import Path
 from typing import Any
 
 import pytest
 from generated import (
     AGREED,
+    CLAIMED,
     CREDITING,
     DATA_IDENTIFIERS,
+    EDIT_GAPS,
+    EDIT_WORDS,
     FILLER,
     FIXED_LINKS,
     FOLDED,
@@ -51,11 +56,16 @@ from generated import (
     TEMPORARY_LINKS,
     TERMS,
     TYPOGRAPHY,
+    UNCLAIMED,
     bindings,
+    claim_edits,
     commented,
     credited_plans,
     generated,
     holds,
+    latex_planted,
+    latex_texts,
+    latex_trees,
     lines,
     mean_tables,
     passage_files,
@@ -75,6 +85,7 @@ from hypothesis import strategies as st
 from hypothesis.database import InMemoryExampleDatabase
 from readings import MAIN, PAPER, PEOPLE, READINGS, Unavailable, answer
 
+from manuscript_guard import claims as claims_module
 from manuscript_guard import reworded as reworded_module
 from manuscript_guard.build import blinding
 from manuscript_guard.build.blinding import names_in, sought
@@ -117,6 +128,8 @@ from manuscript_guard.reworded import (
     facts,
 )
 from manuscript_guard.text import placeholders, tokens
+from manuscript_guard.text.latex import mask as latex_mask
+from manuscript_guard.text.latex import structure as latex_structure
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.placeholders import parse as parse_bindings
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -133,6 +146,9 @@ pytestmark = pytest.mark.usefixtures("stopped_if_stuck")
 #: seconds; its sessions have a file of their own, `tests/test_generated_sessions.py`, and
 #: here it is only asked twice for the same one.
 PAIRS = dict.fromkeys(READINGS, 75) | {"check": 6, "import": 1}
+
+#: The quotation marks the LaTeX reader writes for ``` `` ``` and `''`.
+LEFT_QUOTE, RIGHT_QUOTE = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
 
 
 # ---------------------------------------------------------------- the generators themselves
@@ -413,6 +429,189 @@ def _found_in_order(text: str) -> None:
         assert before < heading.start < max(len(text), 1), (text, heading)
         assert heading.start == 0 or text[heading.start - 1] == "\n", (text, heading)
         before = heading.start
+
+
+# ------------------------------------------------------------------------- the LaTeX reader
+
+
+@holds(200, latex_texts())
+def test_the_latex_mask_keeps_every_character_in_its_place(text: str) -> None:
+    """The LaTeX reader keeps the Markdown mask's contract: the same length, every line break
+    where it was, and each character itself, a NUL, or what TeX prints for it there (a space,
+    a quotation mark, or at an escape's backslash the character it stands for). Past a refusal
+    the text is as it was typed, so that nothing the reader did not understand is hidden."""
+    reading = latex_mask.read(text)
+    masked = reading.masked
+    assert len(masked) == len(text), text
+    for at, (was, now) in enumerate(zip(text, masked, strict=True)):
+        assert (now in "\r\n") == (was in "\r\n"), (at, text)
+        # A space only where TeX prints one: a tie, a cell's `&`, or a command's backslash
+        # (round 1 of #380: any character could become one, and `4100` read as `41 00`).
+        allowed = {was, NUL} | ({" "} if was in " \t~&\\" else set())
+        if was == "\\" and at + 1 < len(text):
+            allowed.add(text[at + 1])
+        allowed |= {"`": {LEFT_QUOTE}, "'": {RIGHT_QUOTE}}.get(was, set())
+        assert now in allowed, (at, was, now, text)
+    for refusal in reading.refusals:
+        assert masked[refusal.offset :] == text[refusal.offset :], (refusal, text)
+
+
+@holds(100, latex_planted())
+def test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else(
+    drawn: tuple[str, list[tuple[int, str, bool]]],
+) -> None:
+    """A number planted in every place LaTeX puts one, among whole pieces, is found where it
+    prints and blanked where it does not: in prose, a footnote, a caption, a citation's note,
+    maths, a `\\verb` and the title it is read; in a comment, a label, a key, a binding, a URL,
+    a listing, an `\\iffalse`, a length, the preamble and after the document it is not."""
+    text, planted = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    for at, number, read in planted:
+        seen = reading.masked[at : at + len(number)]
+        if read:
+            assert seen == number, (number, seen, text)
+        else:
+            assert set(seen) == {NUL}, (number, seen, text)
+
+
+def _an_escaped_percent_opens_a_comment(patch: pytest.MonkeyPatch) -> None:
+    symbol = latex_mask._Reader._symbol
+
+    def broken(self, character: str, at: int) -> None:
+        if character != "%":
+            symbol(self, character, at)
+            return
+        end = latex_mask._comment_end(self.text, at)
+        self._blank(at, end)
+        self.pos = end
+
+    patch.setattr(latex_mask._Reader, "_symbol", broken)
+
+
+def _a_latex_comment_runs_past_its_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_comment_end", lambda text, at: len(text))
+
+
+def _latex_maths_is_blanked_whole(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_maths_keeps", lambda character: False)
+
+
+def _a_citations_notes_are_blanked(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_note_role", lambda kind: latex_mask.BLANK)
+
+
+def _a_latex_group_closes_at_the_first_brace(patch: pytest.MonkeyPatch) -> None:
+    step = latex_mask._Reader._step
+
+    def broken(self) -> None:
+        nested = self.stack and self.stack[-1].kind in ("arg", "opt")
+        if self.text[self.pos] == "{" and nested:
+            self._keep_or_blank(self.pos, self.pos + 1)
+            self.pos += 1
+            return
+        step(self)
+
+    patch.setattr(latex_mask._Reader, "_step", broken)
+
+
+def _verb_takes_only_a_bar(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(
+        latex_mask, "_verb_delimiter", lambda text, at: "|" if text[at : at + 1] == "|" else ""
+    )
+
+
+def _the_preamble_ends_at_the_first_begin(patch: pytest.MonkeyPatch) -> None:
+    environment = latex_mask._Reader._environment
+
+    def broken(self, which: str, at: int, end: int) -> None:
+        self.body = True
+        environment(self, which, at, end)
+
+    patch.setattr(latex_mask._Reader, "_environment", broken)
+
+
+@holds(60, latex_trees())
+def test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input(
+    drawn: tuple[dict[str, str], dict[str, list[str]], dict[str, list[str]]],
+) -> None:
+    """A file input under `\\section{Methods}` is read under Methods, and one input after a
+    file that opened a section is read under that section, as LaTeX prints them: worked out
+    apart from the reader, over manuscripts of a few files that input one another. So is the
+    text after each heading (`Source.chain_at`), a heading where an `\\input` ends and a
+    chapter under its part among them."""
+    files, expected, marks = drawn
+    document = latex_structure.read_tree(files)
+    found = {source.path: [h.title for h in source.under] for source in document.sources}
+    for path, titles in expected.items():
+        assert found.get(path) == titles, (path, found, files)
+    assert document.refusals == (), document.refusals
+    for mark, titles in marks.items():
+        (source,) = [s for s in document.sources if f"{mark} " in s.text]
+        chain = source.chain_at(source.text.index(f"{mark} "))
+        assert [h.title for h in chain] == titles, (mark, source.path, files)
+
+
+def _an_input_file_starts_under_no_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_starts_under", lambda chain: ())
+
+
+def _a_heading_of_an_input_file_stays_in_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_resumed", lambda before, after: before)
+
+
+def _a_heading_where_an_input_ends_comes_before_it(patch: pytest.MonkeyPatch) -> None:
+    def broken(self, offset: int):
+        events = sorted(
+            [(heading.start, heading, ()) for heading in self.reading.headings]
+            + [(end, None, after) for end, after in self.resumes],
+            key=lambda event: event[0],
+        )
+        chain = self.under
+        for start, heading, after in events:
+            if start >= offset:
+                break
+            chain = latex_structure._folded(chain, heading) if heading is not None else after
+        return chain
+
+    patch.setattr(latex_structure.Source, "chain_at", broken)
+
+
+def _a_chapter_closes_its_part(patch: pytest.MonkeyPatch) -> None:
+    patch.setitem(latex_mask.LEVELS, "part", 0)
+
+
+def _an_abstract_in_the_preamble_is_blanked(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "PRINTED_IN_PREAMBLE", latex_mask.PRINTED_IN_PREAMBLE - {"abstract"})
+
+
+def _iffalse_hides_its_else(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_CONDITIONALS", re.compile(r"\\(?:if[A-Za-z]*|fi)(?![A-Za-z])"))
+
+
+def _a_line_break_takes_a_bracket_on_the_next_line(patch: pytest.MonkeyPatch) -> None:
+    argument = latex_mask._Reader._argument
+
+    def broken(self) -> bool:
+        command, self.command = self.command, "" if self.command == "\\" else self.command
+        try:
+            return argument(self)
+        finally:
+            if self.command == "":
+                self.command = command
+
+    patch.setattr(latex_mask._Reader, "_argument", broken)
+
+
+def _an_unknown_command_hides_its_arguments(patch: pytest.MonkeyPatch) -> None:
+    word = latex_mask._Reader._word
+
+    def broken(self, name: str, at: int, end: int) -> None:
+        word(self, name, at, end)
+        if name not in latex_mask.COMMANDS and not self.pending and self.refused is None:
+            self.command, self.pending = name, ("{b}",)
+
+    patch.setattr(latex_mask._Reader, "_word", broken)
 
 
 # ------------------------------------------------------- the sentences a co-author is shown
@@ -3219,6 +3418,73 @@ def _any_run_of_hyphens_is_an_em_dash(patch: pytest.MonkeyPatch) -> None:
     _em_dash_rule(patch, pattern="\N{EM DASH}|-{2,}")
 
 
+# ------------------------------------------------------------------- a suggested edit
+
+
+@st.composite
+def _edit_words_planted(
+    draw: st.DrawFn,
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Every word of `EDIT_WORDS` and every gap of `EDIT_GAPS` at least once, in an order
+    drawn each time, with some words drawn again so that a run of them stands twice."""
+    words = [*EDIT_WORDS, *draw(st.lists(st.sampled_from(EDIT_WORDS), min_size=2, max_size=6))]
+    words = list(draw(st.permutations(words)))
+    gaps = [*EDIT_GAPS, *draw(st.lists(st.sampled_from(EDIT_GAPS), min_size=len(words),
+                                         max_size=len(words)))]  # fmt: skip
+    return words, list(draw(st.permutations(gaps)))[: len(words) - 1]
+
+
+@holds(100, _edit_words_planted())
+def test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else(
+    planted: tuple[list[tuple[str, str]], list[tuple[str, str]]],
+) -> None:
+    """`review --suggestions` places an edit where its words are found once, in the source
+    as typed and in the document as pandoc printed it. Every run of up to three words is
+    looked for, in both, and has to be found at each place that run stands and at no other:
+    across a line break, beside a no-break space, typeset, and never inside a longer word."""
+    from manuscript_guard.suggestions import found_in
+
+    words, gaps = planted
+    for side in (0, 1):
+        text, starts, ends = "", [], []
+        for index, word in enumerate(words):
+            text += gaps[index - 1][side] if index else ""
+            starts.append(len(text))
+            text += word[side]
+            ends.append(len(text))
+        for length in (1, 2, 3):
+            for first in range(len(words) - length + 1):
+                run = [typed for typed, _printed in words[first : first + length]]
+                expected = [
+                    (starts[at], ends[at + length - 1])
+                    for at in range(len(words) - length + 1)
+                    if [typed for typed, _printed in words[at : at + length]] == run
+                ]
+                assert found_in(text, " ".join(run)) == expected, (" ".join(run), text)
+
+
+def _an_edit_is_found_only_as_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    patch.setattr(suggestions, "_TYPESET", ())
+
+
+def _an_edit_is_found_inside_longer_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    real = suggestions.pattern_of
+    edges = ("(?<![^\\W_])", "(?![^\\W_])")
+    patch.setattr(suggestions, "pattern_of", lambda old: re.compile(
+        real(old).pattern.replace(edges[0], "").replace(edges[1], "")
+    ))  # fmt: skip
+
+
+def _a_line_break_between_an_edit_s_words_is_no_space(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    patch.setattr(suggestions, "_SPACE", "[ \\t\\u00a0]+")
+
+
 # ------------------------------------------------------------------------- a rewording
 
 #: A fact as a finding names it. A number by its figures and the mark after them: its
@@ -3522,6 +3788,43 @@ def _held_to_its_edit(drawn: tuple[str, str, str, list[str], int]) -> None:
         assert what in by_code[code].message, (before, after, said)
     if "fact-new" in by_code:
         assert by_code["fact-new"].line == line, (before, after, said)
+
+
+# ------------------------------------------------------------ how strongly a sentence claims
+
+
+def test_every_word_planted_as_a_claim_is_read_as_one_and_nothing_else_is() -> None:
+    """The edits plant the words of `CLAIMED` and `UNCLAIMED`, which are written in the tests
+    so that a rule broken in reading the data file does not draw its own inputs. Here they
+    are held to the file: a word planted as a hedge is read as a hedge, and a look-alike or
+    a filler word as nothing."""
+    for kind, words in CLAIMED.items():
+        for word in words:
+            (sentence,) = claims_module.sentences(f"Here {word} stands.")
+            read = word.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'")
+            assert sentence.words == ((read, kind),), (word, sentence)
+    for word in (*UNCLAIMED, *FILLER):
+        (sentence,) = claims_module.sentences(f"Here {word} stands.")
+        assert sentence.words == (), (word, sentence)
+
+
+@holds(30, claim_edits())
+def test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands(
+    drawn: tuple[str, str, list[tuple[str, int]]],
+) -> None:
+    """Each sentence an edit changed is compared with what it was, and only those. A hedge,
+    a limit, a negation or a word of the ladder that came or went is told on the line the
+    sentence stands on now, as a warning; a word made another of its class or rung, a
+    look-alike, a sentence added, deleted, moved or rewrapped is told nothing. `reworded`
+    tells the same, beside the facts, and passes."""
+    before, after, expected = drawn
+    found = claims_module.moved(before, after, MAIN)
+    said = [(one.code, one.line, one.message) for one in found]
+    assert [(one.code, one.line) for one in found] == expected, (before, after, said)
+    assert all((one.gate, one.severity, one.path) == ("REWORDED", "warn", MAIN) for one in found)
+    report = compare(before, after, MAIN)
+    assert [(one.code, one.line) for one in report.findings] == expected, report.findings
+    assert report.ok
 
 
 # ------------------------------------------------------------ the words beside a quoted value
@@ -5368,6 +5671,129 @@ def _a_listing_in_a_comment_is_put_back(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reworded_module, "html_comments", lambda text, fences=None: [])
 
 
+def _a_class_of_claim_words_is_not_counted(patch: pytest.MonkeyPatch, kind: str) -> None:
+    patch.setattr(
+        claims_module, "COUNTED", tuple(one for one in claims_module.COUNTED if one != kind)
+    )
+
+
+def _the_ladder_is_read_upside_down(patch: pytest.MonkeyPatch) -> None:
+    read = claims_module._ladder
+    turned = {claims_module.STRONGER: claims_module.WEAKER}
+    turned[claims_module.WEAKER] = claims_module.STRONGER
+    def ladder(was: list[int], now: list[int]) -> str:
+        return turned.get(read(was, now), claims_module.MOVED)
+
+    patch.setattr(claims_module, "_ladder", ladder)
+
+
+def _a_ladder_word_that_only_came_or_left_is_a_claim_moved(patch: pytest.MonkeyPatch) -> None:
+    read = claims_module._ladder
+
+    def ladder(was: list[int], now: list[int]) -> str:
+        both = (Counter(was) - Counter(now)) and (Counter(now) - Counter(was))
+        return read(was, now) if both else claims_module.MOVED
+
+    patch.setattr(claims_module, "_ladder", ladder)
+
+
+def _a_ladder_word_made_another_of_its_rung_is_a_change(patch: pytest.MonkeyPatch) -> None:
+    beyond = claims_module._beyond
+
+    def by_word(words: list[Any], other: list[Any], by_rung: bool = False) -> list[Any]:
+        return beyond(words, other)
+
+    patch.setattr(claims_module, "_beyond", by_word)
+
+
+def _a_capital_is_read_anywhere(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "_capital", lambda word, typed, opens: True)
+
+
+def _a_capital_is_never_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "_capital", lambda word, typed, opens: False)
+
+
+def _a_participle_after_an_article_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "_ARTICLE", re.compile("(?!)"))
+
+
+def _a_word_in_a_compound_is_read(patch: pytest.MonkeyPatch) -> None:
+    edges = (r"\b", r"\b")
+    patch.setattr(claims_module, "lists", cache(lambda: claims_module.read_lists(edges)))
+
+
+def _inline_code_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "code_spans", lambda read: [])
+
+
+def _a_comment_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "mask", lambda text: text)
+
+
+def _the_texts_are_lined_up_by_place_alone(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "_chain", lambda anchors: [])
+
+
+def _a_stop_ends_no_sentence_of_a_claim(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "_STOP", re.compile("(?!)"))
+
+
+def _a_line_that_opens_a_block_opens_no_sentence(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "_BLOCK", re.compile("(?!)"))
+
+
+def _block_opens_no_sentence_at(patch: pytest.MonkeyPatch, kind: str, read_as: str) -> None:
+    pattern = claims_module._BLOCK.pattern
+    assert kind in pattern, pattern
+    patch.setattr(claims_module, "_BLOCK", re.compile(pattern.replace(kind, read_as)))
+
+
+def _the_front_matter_is_read_as_one_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "front_matter_end", lambda text: 0)
+
+
+def _may_is_read_with_a_capital_where_it_opens_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    def capital(word: str, typed: str, opens: bool) -> bool:
+        return opens and typed[1:] == typed[1:].lower()
+
+    patch.setattr(claims_module, "_capital", capital)
+
+
+def _the_lowest_rung_kept_is_a_claim_made_weaker(patch: pytest.MonkeyPatch) -> None:
+    read = claims_module._ladder
+
+    def ladder(was: list[int], now: list[int]) -> str:
+        both = (Counter(was) - Counter(now)) and (Counter(now) - Counter(was))
+        if not both and was and now and min(was) == min(now):
+            return claims_module.WEAKER
+        return read(was, now)
+
+    patch.setattr(claims_module, "_ladder", ladder)
+
+
+def _a_split_sentence_is_compared_by_place(patch: pytest.MonkeyPatch) -> None:
+    stretch = claims_module._stretch
+
+    def by_place(was: list[Any], now: list[Any]) -> list[Any]:
+        if not was or not now or len(was) == len(now):
+            return stretch(was, now)
+        return [((one,), (other,)) for one, other in zip(was, now, strict=False)]
+
+    patch.setattr(claims_module, "_stretch", by_place)
+
+
+def _a_sentence_added_whole_is_read(patch: pytest.MonkeyPatch) -> None:
+    stretch = claims_module._stretch
+
+    def read(was: list[Any], now: list[Any]) -> list[Any]:
+        if was and now:
+            return stretch(was, now)
+        return [((), tuple(now))] if now else []
+
+    patch.setattr(claims_module, "_stretch", read)
+
+
 def _every_stop_ends_a_sentence(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.checking import produce
 
@@ -5809,6 +6235,66 @@ BROKEN = {
     "no abbreviation is known": (
         _no_abbreviation_is_known,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
+    "in LaTeX, an escaped percent opens a comment": (
+        _an_escaped_percent_opens_a_comment,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a comment runs past its line": (
+        _a_latex_comment_runs_past_its_line,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, maths is blanked whole": (
+        _latex_maths_is_blanked_whole,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a citation's notes are blanked": (
+        _a_citations_notes_are_blanked,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a group closes at the first brace": (
+        _a_latex_group_closes_at_the_first_brace,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, \\verb takes only | as its delimiter": (
+        _verb_takes_only_a_bar,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, the preamble ends at the first \\begin": (
+        _the_preamble_ends_at_the_first_begin,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, \\iffalse hides its \\else branch": (
+        _iffalse_hides_its_else,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, \\\\ takes a bracket that opens the next line": (
+        _a_line_break_takes_a_bracket_on_the_next_line,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, an input file starts under no heading": (
+        _an_input_file_starts_under_no_heading,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a heading of an input file does not reach the text after its \\input": (
+        _a_heading_of_an_input_file_stays_in_it,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a heading where an \\input ends is put before what the input left": (
+        _a_heading_where_an_input_ends_comes_before_it,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a chapter closes its part": (
+        _a_chapter_closes_its_part,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, an abstract in the preamble is blanked": (
+        _an_abstract_in_the_preamble_is_blanked,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a command the table lacks hides its arguments": (
+        _an_unknown_command_hides_its_arguments,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
     ),
     "a piece with no word of its own is left alone": (
         _a_wordless_piece_is_left_alone,
@@ -6526,6 +7012,18 @@ BROKEN = {
         _an_em_dash_typed_is_not_counted,
         test_an_em_dash_is_counted_however_it_is_typed,
     ),
+    "an edit's words are found only as they are typed": (
+        _an_edit_is_found_only_as_typed,
+        test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else,
+    ),
+    "an edit's words are found inside longer words": (
+        _an_edit_is_found_inside_longer_words,
+        test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else,
+    ),
+    "a line break between an edit's words is no space": (
+        _a_line_break_between_an_edit_s_words_is_no_space,
+        test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else,
+    ),
     "a rule's or a table's dashes are em dashes": (
         _a_rule_or_a_table_s_dashes_are_em_dashes,
         test_an_em_dash_is_counted_however_it_is_typed,
@@ -6649,6 +7147,89 @@ BROKEN = {
     "a number's sign is no part of it": (
         _a_sign_is_no_part_of_its_number,
         test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
+    ),
+    **{
+        f"no {kind} is counted in a sentence's claim": (
+            partial(_a_class_of_claim_words_is_not_counted, kind=kind),
+            test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+        )
+        for kind in ("hedge", "limit", "negation")
+    },
+    "the ladder of a claim is read upside down": (
+        _the_ladder_is_read_upside_down,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a word of the ladder that only came or left is a claim moved": (
+        _a_ladder_word_that_only_came_or_left_is_a_claim_moved,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a word of the ladder made another of its rung is a change": (
+        _a_ladder_word_made_another_of_its_rung_is_a_change,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a claim's word with a capital is read anywhere": (
+        _a_capital_is_read_anywhere,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a claim's word with a capital is never read": (
+        _a_capital_is_never_read,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a participle after an article is read as a claim's word": (
+        _a_participle_after_an_article_is_read,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a word in a compound is read as a claim's word": (
+        _a_word_in_a_compound_is_read,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "inline code is read for a claim's words": (
+        _inline_code_is_read_as_prose,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a comment is read for a claim's words": (
+        _a_comment_is_read_as_prose,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "the sentences of two texts are lined up by place alone": (
+        _the_texts_are_lined_up_by_place_alone,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a sentence added whole is read as a claim made": (
+        _a_sentence_added_whole_is_read,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a stop ends no sentence whose claim is read": (
+        _a_stop_ends_no_sentence_of_a_claim,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a line that opens a block opens no sentence whose claim is read": (
+        _a_line_that_opens_a_block_opens_no_sentence,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "an ordered item of a list opens no sentence whose claim is read": (
+        partial(_block_opens_no_sentence_at, kind=r"|\d+[.)][ \t]", read_as=""),
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a line of blanked text is no blank line between claims": (
+        partial(_block_opens_no_sentence_at, kind=r"[ \t\x00]", read_as=r"[ \t]"),
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "the front matter is read for a claim as one line": (
+        _the_front_matter_is_read_as_one_line,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a month that opens a sentence is read as a claim's hedge": (
+        _may_is_read_with_a_capital_where_it_opens_a_sentence,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "the lowest rung of a claim kept is read as a claim made weaker": (
+        _the_lowest_rung_kept_is_a_claim_made_weaker,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a sentence split in two is compared for its claim by place": (
+        _a_split_sentence_is_compared_by_place,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
     ),
     "a sign of comparison is no part of its number": (
         _a_sign_of_comparison_is_no_part_of_its_number,

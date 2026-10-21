@@ -846,7 +846,9 @@ duplicated key, where both keep the last.
 ## LaTeX manuscripts
 
 Status: designed 2026-10-20. Built: the first half of step 1, the format, the reader's file
-list, `two-formats`, `other-format-file` and `not-read-in-latex`. Where the design depends on
+list, `two-formats`, `other-format-file` and `not-read-in-latex`; step 2, the scanner and
+its mask; and step 3, the include tree and its refusals under BUILD. No gate reads the
+manuscript's prose through them yet. Where the design depends on
 what LaTeX does, the pull request that relies on it checks the statement against TeX Live and
 MiKTeX and records the measurement. On the author's machine, 2026-10-20: MiKTeX 24.4 and
 latexmk 4.88, with pdfLaTeX, LuaLaTeX, XeLaTeX, BibTeX and Biber on PATH.
@@ -945,10 +947,11 @@ for each such gate. The commands not yet moved refuse a LaTeX project with a sen
 ### What the LaTeX reader reads
 
 The reader lives in `text/latex/`, apart from `text/tex.py`, which reads TeX inside Markdown:
-- `scan.py` cuts a file into tokens with their offsets, under TeX's default category codes;
 - `commands.py` is the closed table of what each known command takes, and what each argument
   is;
-- `mask.py`, `structure.py` and `cite.py` answer the reader's questions from the tokens.
+- `mask.py` scans a file as it reads it, under TeX's default category codes, and gives the
+  masked text and the first refusal (step 2);
+- `structure.py` and `cite.py` answer the reader's other questions (steps 3 and 5).
 
 It is one pass, linear in the file.
 
@@ -962,13 +965,13 @@ NUL. Two additions keep the length:
 | Read as prose | Blanked |
 |---|---|
 | the body, `\begin{document}` to `\end{document}`, and the files input from it | the preamble of `main.tex` and the files input from it, except what the next row reads |
-| in the preamble, `\title`'s argument, read as the title in Markdown's front matter is and compared with paper.yaml's (`two-titles`); `\thanks`'s outside `\author`, read as a footnote is; the arguments of `\AtBeginDocument`, `\AtEndDocument`, `\AddToHook` and `\AfterEndPreamble`, read as the body is, or as the package is in an author's package | the author block, `\author` with what it holds, which is what authors.yaml holds for a Markdown project and G2 does not read; `\date`, which a Markdown build never prints (a known gap) |
+| in the preamble, `\title`'s argument, read as the title in Markdown's front matter is and compared with paper.yaml's (`two-titles`); an abstract, read under Abstract; `\thanks`'s outside `\author`, read as a footnote is; the arguments of `\AtBeginDocument`, `\AtEndDocument`, `\AddToHook` and `\AfterEndPreamble`, read as the body is, or as the package is in an author's package | the author block, `\author` with what it holds, which is what authors.yaml holds for a Markdown project and G2 does not read; `\date`, which a Markdown build never prints (a known gap) |
 | the arguments of text commands: `\emph`, `\textbf`, `\footnote`, `\caption` and its short form, `\section` and its kin, `\href`'s text | command names and braces; `\label`, `\ref` and its kin, `\url`, `\href`'s address, `\includegraphics` |
 | a citation's notes, as Markdown's prefix and suffix are read | citation keys |
 | the letters, digits and signs in maths, in subscripts and superscripts too, as Markdown's `mask` keeps them in `$x_1 = 10^{-8}$` | maths' commands, braces and delimiters |
 | `\verb` and `\texttt`, read as a code span is | `verbatim`, `Verbatim`, `lstlisting`, read by G2's code check as fenced blocks are |
 | table cells | a `tabular`'s column specification, `\multicolumn`'s first two arguments, rules |
-| the arguments, optional ones too, of a command not in the table | comments (an unescaped `%` to the end of the line, the `comment` environment, a plain `\iffalse` … `\fi` block), the layout commands `text/tex.py` knows, everything after `\end{document}`, bindings whole |
+| the arguments, optional ones too, of a command not in the table | comments (an unescaped `%` to the end of the line, the `comment` environment, a plain `\iffalse` block to its `\fi`, or to its `\else`, whose branch is read), the layout commands `text/tex.py` knows, everything after `\end{document}`, bindings whole |
 
 **Maths** is hidden from `words`, so G14 and G15 never read it as words. Its digits and signs
 stay in `mask`, as they do in `$...$` in Markdown today, because blanking `$\beta = 0.42$` would
@@ -989,13 +992,17 @@ order is `printed_order`.
 - Each file is read on its own, so a finding names that file's line.
 - A file starts in the state its `\input` stands in. One input from the body is body, and one
   input from the preamble is preamble. The headings in force there stand before the file's first
-  character in `headings(text, path)`, so `p < 0.05` in a file input under `\section{Methods}`
-  is read under Methods. So does the environment that encloses the `\input`: a file input inside
-  `abstract` is abstract, and one inside a `tabular` is table cells.
+  character (`Source.under`, and `Source.chain_at` at any point of the file), so `p < 0.05` in a
+  file input under `\section{Methods}` is read under Methods. So does the environment that
+  encloses the `\input`: a file input inside `abstract` is abstract, and one inside a `tabular`
+  is table cells. A heading of a file input reaches the text after its `\input`, as LaTeX
+  prints it.
 - An `\input` in a comment, in a plain `\iffalse` block or in the `comment` environment is no
   input. A file named only there is one that nothing inputs, below.
-- A package or class file in `manuscript/`, such as `\usepackage{macros}` with
+- A package file in `manuscript/`, such as `\usepackage{macros}` with
   `manuscript/macros.sty` beside the entry file, is followed as a file input from the preamble.
+  A class file is not: a journal's `.cls` is shipped beside the entry file and is not the
+  author's.
   It is read as LaTeX reads a package, with `@` a letter. Its definitions are then read where
   they are written, below. In it, and in the preamble, both branches of a conditional other than
   a plain `\iffalse` block are read, since a package tests what is loaded. A package found
@@ -1003,9 +1010,11 @@ order is `printed_order`.
   tool writes it, its definitions are the bindings, and `check` compares it with what `values`
   would write.
 - Refused:
-  - a path that is not written out in full;
+  - a path that is not written out in full, or not written in braces;
   - a path outside `manuscript/` or under a `_` folder;
-  - a missing file, or a cycle;
+  - a missing file, or a cycle. A bare name input from the preamble that `manuscript/` does not
+    hold, such as `\input{glyphtounicode}`, is the distribution's and is passed over, as a
+    package is, and so is TeX's form without braces there, `\input glyphtounicode`;
   - `\import`, `\subfile` and `\InputIfFileExists`;
   - a command that prints a file no gate reads: `\lstinputlisting` and its kin,
     `\verbatiminput`, csvsimple's `\csvautotabular` and `\csvreader`, pgfplotstable's
@@ -1022,12 +1031,17 @@ order is `printed_order`.
 - `equation`, `align`, `gather` and `multline`, their starred forms, `\[`, `$$` and `\(` are
   maths.
 - `abstract`, or `\abstract{…}`, opens a section titled Abstract for every reader, so the
-  counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is refused, as an
-  `abstract:` in Markdown's front matter is.
+  counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is read as prose
+  there, as `\title`'s argument is, since a class such as PNAS's prints it from there. This
+  design first refused it, as an `abstract:` in Markdown's front matter is refused. Round 2
+  of #385 found that this failed such a class, and failed `\let\oldabstract\abstract`, which
+  only names the command. Where a class does not print it, the compile fails (step 9).
 - An environment not in the table is read as an unknown command is, and so is its body.
 
-**Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`, `\def` or
-`\DeclareMathOperator` is read where it is written, and its body is prose there, in the preamble
+**Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`,
+`\DeclareRobustCommand`, `\def` or `\DeclareMathOperator`, or one of xparse's definers, whose
+argument specification is read for the defaults it prints, is read where it is written, and
+its body is prose there, in the preamble
 too, and in a package file of the author's (above). So `\newcommand{\n}{4100}` is one
 unclassified number, at its definition. The parameter tokens `#1` to `#9` in a body are blanked.
 A use of the macro is read as an unknown command is: its name is blanked and its arguments are
@@ -1037,12 +1051,15 @@ expanded, because an expansion is text at a place the file does not hold, with n
 give a finding.
 
 Refused:
-- a definition, in a file of the author's, of any command the reader reads, `\mg` among them;
+- a definition, in a file of the author's, of any command the reader reads, `\mg` among them,
+  but `\abstract`, which the reader read as an unknown command before it opened a section and
+  which an author restyles;
 - `\def` with delimited parameters;
 - anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
   `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
   active;
-- in the body, any conditional but a plain `\iffalse` block.
+- in the body, any conditional but a plain `\iffalse` block and `\ifthenelse`, a command whose
+  branches are its arguments and are both read.
 
 **Characters.**
 - `--` and `---` stay as typed, as in Markdown.
@@ -1260,6 +1277,14 @@ The result is compiled and packed by the code above, and checked three times:
 
 ### Known gaps, from the start
 
+- `babel` with a language whose shorthands make a character active is not refused yet (step
+  2): a shorthand changes letters, not digits, so it is left to step 7, which reads words.
+- A bibliography typed by hand, `thebibliography`, is read as prose, so its years and pages are
+  numbers G2 reads; a Markdown project's reference list is built and never read.
+- Only the first refusal of a file is reported: past it the file is read as prose, and the
+  next is found once the first is put right.
+- A file whose only `\begin{document}` stands in a `\verb`, a listing or an `\iffalse` opens in
+  the preamble; refused, it keeps that reading, and what stands before the refusal is blanked.
 - A `.tex` file in a Markdown manuscript is not refused, as a Markdown file in a LaTeX one is
   (`other-format-file`): a project written before LaTeX was read may keep a `.tex` beside its
   Markdown for pandoc's header, and refusing it would fail a paper that passed. It is read by
@@ -1278,6 +1303,27 @@ The result is compiled and packed by the code above, and checked three times:
     says nothing when a `.tex` is saved (round 2 of #370).
 - An author's macro is not expanded where it is used, so a word its body prints there is in no
   sentence that G6 or G14 reads; its body is read once, at the definition.
+- An `\input` records the environments open around it, not the command whose argument it is
+  in, so `\title{\input{title}}` reads `title.tex` as preamble, blanked, though LaTeX prints it
+  (round 1 of #385).
+- A file input past a refusal in the file that inputs it, from inside a definition, or from
+  `\AtBeginDocument{\input{x}}` is not followed. It is warned of as `tex-not-input`, whose
+  message says no `\input` the reader follows names it, and is read under no heading (round 1
+  of #385).
+- An `\input` from the preamble without braces, `\input macros`, is not followed, so an
+  author's `macros.tex` is read as a file nothing inputs, warned of, and its definitions are
+  not known where they are used. A file input from the preamble by a path with no folder that
+  `manuscript/` lacks, `\input{settings.tex}` too, is taken for the distribution's and passes;
+  the compile finds it missing (step 9) (rounds 1 and 2 of #385).
+- After `\renewcommand{\abstract}` or `\let\abstract\relax`, `\abstract{…}` still opens a
+  section titled Abstract, though LaTeX prints what the author defined (round 2 of #385).
+- The Abstract an abstract opens stays in force to the next heading of its level, so text
+  between `\end{abstract}` and the first `\section` stands under Abstract, in the preamble's
+  case as in the body's. No gate reads LaTeX's headings yet; the counts, G4 and G5 close it
+  where the abstract ends (`Reading.abstracts`) when they move (round 3 of #385).
+- In the preamble, `\g@addto@macro\abstract{…}` or `\pretocmd\abstract{…}` reads the group
+  after `\abstract` as an abstract, and so is one in the branch of a conditional that is not
+  taken, both read there (round 3 of #385).
 - A class or package that changes how a character is read, beyond those refused, is not seen.
 - A package not in the refused list that prints a table or text from a data file is not seen:
   what it prints is read by no gate.
@@ -1308,12 +1354,21 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    check in `_NOT_READ_IN_LATEX`, a set each later step takes its check out of. The second:
    the refusing commands, after the open pull requests that change the same commands. Tests:
    the differential unchanged, the corruption cases, rows in `test_reads_nothing.py`.
-2. The scanner and `mask`. `scan.py`, `commands.py`, `mask.py`, the refusals under BUILD.
-   Tests: `latex_texts()`, `latex mask` and `latex refusals`, their properties and `BROKEN`.
-   The likeliest to pass 600 lines; if it does, comments and the preamble go first, then maths
-   and listings.
-3. Structure. Includes, `printed_order`, inherited headings, sections, the abstract. Tests:
-   `latex sections`.
+2. The scanner and `mask`, built: `commands.py` and `mask.py`, which scans as it reads, so
+   that no `scan.py` stands apart. `read(text, body=...)` gives the masked text and the first
+   refusal. Tests: `latex_texts()`, `latex_planted()`, `latex mask` and `latex refusals`,
+   their properties and eight `BROKEN` rules, and a test of each rule in
+   `tests/test_latex_mask.py`. It passed 600 lines and was not split: comments, the preamble,
+   maths and listings share one scanner. The refusals reach BUILD with the reader in step 3,
+   which finds the files they are refused in.
+3. Structure, built: `structure.py` reads the include tree over a mapping of paths to
+   texts, with `read_document` reading it from the folder; each file starts in the state
+   its `\input` stands in, and a heading of a file input reaches the text after its
+   `\input`, as LaTeX prints it (`Source.chain_at`). `Reader.printed_order` takes the
+   tree's order. The scanner records each `\input`, heading, abstract and package as it
+   reads. `build/latex_check.py` puts each refusal under BUILD at its file and line, and
+   warns of a file nothing inputs. Tests: `tests/test_latex_structure.py`, the corruption
+   cases, `latex sections`, and `latex_trees()` with two `BROKEN` rules.
 4. Bindings and G2. `bindings`, `uncommented`, `table_at`, `mgvalues.sty` and its escape
    table, `values` and its README row, `values-file-stale`; G2 and the custodian's counts
    moved, and G1's synthetic-input check. Tests: the twin, G2's corruption cases on it,
@@ -3170,6 +3225,81 @@ with what pandoc drops blanked, and `find_citations`. A test holds the bindings 
 `parse` counted each binding's line from the top of the file, and a comparison of two long
 texts showed it; #213 has since put that right.
 
+## A rewording keeps what a sentence claims
+
+Holding an edit to its facts leaves the words free, and some words carry the claim. "Use was
+associated with a higher risk" made "use increased the risk" keeps every binding and
+citation and claims an effect where the analysis showed an association. A "may" dropped
+makes a possibility a finding, and a "did not" dropped turns the result round. A language
+pass by a model does each of these as it smooths a sentence, and an AI reviewer's suggested
+edit (#367) can do it too.
+
+So `reworded` compares each sentence the edit changed with what it was, for the words that
+set how strongly it claims, and warns where they moved. The words are in
+`src/manuscript_guard/data/claim_strength.yaml`. The idea and the ladder are adapted from
+the Claim-Strength Contract of Yila-AI/awesome-research-skills (Apache-2.0, credited in
+ATTRIBUTION.md), which asks that a draft never move a claim silently in either direction.
+There are four kinds of word:
+
+- a **hedge**, "may", "might", "appears": one gone makes the claim stronger, one new
+  weaker;
+- a **limit**, "only", "in this sample", "under these conditions": the same;
+- a **negation**, "not", "no", "never", "non-significant": one gone or new turns the claim
+  round, whatever else moved, and is told as that;
+- a word of the **ladder**, whose rungs run from consistency ("consistent with",
+  "suggests") through association, prediction, contribution and effect ("increased",
+  "led to") to causation ("caused", "demonstrated that"). A word moved up makes the claim
+  stronger, down weaker, and within a rung it is free: "associated" made "linked to".
+
+Basile chose the four terms on 2026-10-20.
+
+**A move is a warning, and the command passes.** A list of words cannot know whether the
+author meant the move, and a reviewer who asked for "associated" where the text said
+"caused" meant it. A warning needs no acknowledging: the author reads it, and the next
+commit makes the edit the text before. The codes are `claim-stronger`, `claim-weaker`,
+`claim-moved` (moves both ways, or ladder words changed with no direction to tell) and
+`claim-negation`, collected as `reworded.CLAIM_CODES`.
+
+**Only the sentences the edit changed are read.** A causal verb that stood before the edit
+passes, in an observational paper as anywhere. Reading the whole text against the design
+`study_type` declares would be another gate, with more false alarms, and is not built.
+
+**The words are a list, in English.** Each is read as a whole word, in the forms listed and
+no others, in lower case or with a capital where it opens its sentence; "may" in lower case
+only, since "May" is a month. A word joined by a hyphen to the one before or after is part
+of a compound and is not read, "drug-induced", "cause-specific"; nor is a form in "-ed" after
+"a", "an" or "the", "an increased risk", which is an adjective. What `mask` blanks is not read,
+and inline code is blanked too.
+
+**A suggested edit that moves a claim is written, and says so.** A review panel's suggested
+edit (#367) is dropped where `reworded` finds anything to say of it. Basile chose on
+2026-10-20 that a claim's warning be the one exception: the edit is written as a tracked
+change, and its comment in Word carries the warning, so that the author sees the move where
+they decide it. `CLAIM_CODES` is how the edits tell the two kinds of finding apart.
+
+**Hedges, limits and negations are counted; the ladder by its rungs.** "May" made "might"
+is the same count of hedges and no change. Where ladder words left some rungs and came to
+others, the move is up when every rung that came is above every rung that left, and down the
+other way, and otherwise it cannot be told. Where words only left or only came, the
+sentence is read by its lowest rung, which is its claim where one word of the ladder holds
+another: "associated with increased mortality" claims an association, and made "increased
+mortality" it claims an effect. A sentence with no word of the ladder states, and a word of
+consistency makes it claim less than that.
+
+**The sentences are lined up as patience diff does.** Each text is cut into sentences at a
+stop and a space before anything but a lower-case letter, at a blank line, at a line that
+opens a block, and at each line of the front matter. A sentence's key is its words with
+every run of spaces and blanked text made one, so rewrapping changes nothing. Those that
+stand once in each text are lined up first, the longest run of them in order, in n log n:
+the time stays linear in the manuscript, as the facts' comparison does. Between two of them
+lies what the edit changed, its ends that stand in both taken off. Where a stretch has as
+many sentences before as after, they are compared one by one; where it has not, a sentence
+was split or joined and the stretch is compared whole. Where it has none on one side, a
+sentence was added or deleted whole, and nothing is compared: that is no rewording of a
+sentence, and its facts are held by the facts' comparison. A finding is placed on the
+sentence that holds a word that came, or on the stretch's first sentence where words only
+left.
+
 ## Review panels: the record is the contract
 
 Every other gate checks a property of the text. G11 checks that somebody competent
@@ -3365,6 +3495,105 @@ reconciliation of the Methods with the code, so the prompt asks a reader to say 
 numbers and tables already reported cannot answer it, and an open major finding that asks
 for one says so. The ask is the reader's, and sealed with the reading where it is given:
 only there, so that every record sealed before findings could ask keeps its seal.
+
+## A reading may suggest the wording, and the author decides it in Word
+
+Basile asked on 2026-10-20 whether the panel's readers could make their changes the way a
+co-author does, as Word tracked changes the author accepts or refuses. They can, for prose,
+and only where the change is placed exactly. Four terms were his, chosen that day from the
+recommendations put to him: the edit is found by its words and not by a paragraph's
+identifier, every model reading is offered edits, the command is `review --suggestions`, and
+a refused edit is answered only by a reply in Word.
+
+**An edit belongs to a finding, and is the reader's.** A finding may carry `edits`, each the
+manuscript's words as they stand (`old`) and the words to put in their place (`new`), and
+ten at most are written from a reading. The reply schema takes them, null and an empty list
+read as left out, as null is for `where` and `ask`. They are optional, so a reply is not
+refused for one that cannot be placed: one that is empty, or past the ten, is dropped when
+the document is made, and said to be (round 1 of #367 found the empty list, which the prompt
+invites, refusing the whole paid reading). A design round's reader is not offered them,
+and a design reply that carries some is refused, since what it read was the plan. They are
+sealed with the reading where a finding has them (`SEALED_WHERE_GIVEN`), so every record
+sealed before edits existed keeps its seal, and an edit changed after filing is
+`reading-altered`: Word shows it under the reader's name. A reading written by hand or by an
+agent in the session carries them the same way, before `review --seal`.
+
+**The words say where, and only once.** A model is sent the manuscript as the build prints
+it, with no identifiers, so an edit cannot name a paragraph; it names its words. They have
+to be found exactly once in the manuscript's prose, front matter and comments left out,
+inside one paragraph that carries an identifier, and exactly once in that paragraph as the
+build printed it. Pandoc's typesetting is read as what it is, a straight quote finding a
+curly one and `--` an en dash, and a space a line break or a no-break space; the words are
+whole words, so "the" is not found in "other". Words found twice are not placed by choosing
+one: the reader is told to quote more of them. A generated property holds the finding to
+every run of words, typed and printed (`test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else`).
+
+**Prose only, by the rule `reworded` applies.** An edit holds no character Markdown reads as
+markup, so it can open no binding, citation, emphasis or link; its words lie inside no
+binding, citation, code, link, footnote or other inline construct; and the paragraph before
+and after it gives `reworded.compare` nothing to say of a binding, a citation or a typed
+number. An edit that changes "2 x 2" to "3 x 2" is a finding, not a tracked change.
+
+**What is accepted comes back as written, or is not offered.** `import` merges an accepted
+edit as it merges any rewording from Word, and that merge rebuilds the edited stretch
+between two tokens from Word's text, which holds no markup. So each edit is put through the
+same merge before it is written (`roundtrip.align`, with the paragraph as Word would return
+it and the token extents of the marked build), and it is dropped unless the result is the
+source with `old` replaced by `new`, line wrapping aside. An edit beside emphasis in its
+stretch would flatten the emphasis on import, and is dropped here instead. Two edits of the
+same words are both dropped; one whose paragraph would not come back with the edits before
+it accepted too is dropped. Each dropped edit is listed with its reason and stays a finding.
+
+**The document is the build, with the changes in it.** `review --suggestions --round N` builds
+the document offline, as `build --offline` does, into `build/suggestions/round-N.docx` (and
+`round-N-supplementary.docx` where an edit is in the supplement). Not into `build/` itself:
+`check` holds every document there to the source, and this one is stale the moment an
+accepted edit is imported. The build's own record of what it printed is written as every
+build's is, and the document names it, so `import` reads it as exactly as the document a
+co-author is sent. `tracked.write` then makes each edit in the runs pandoc wrote: the old words
+moved into `w:del`, the new ones in a `w:ins` with the first old run's formatting, both under
+the reader's name, a comment over them holding the finding, and a bookmark `mg-s-<n>` around
+them. Only runs that hold nothing but text are edited: never inside a field, a link or a
+symbol, nor across a bookmark the build placed. The file is kept only if, read with every
+change rejected, it is the build character for character, and read with every change
+accepted, it is the build with each edit made.
+
+What the document records of its suggestions is in its properties, split as the paragraph
+record is: each suggestion's number, round, reviewer, reader, finding and author, and
+digests of its old words, its new words and its comment. Never the words: a document's
+properties stay with it through everything an author deletes before sending it on.
+
+**Word 16, as seen over COM on 2026-10-20.** Each change appears as a revision by the reader's
+name, accepted or rejected one at a time or with Accept All and Reject All. The bookmark and
+the comment stay through either, around what is left: the new words once accepted, the old
+once rejected. Accepting the deletion and rejecting the insertion leaves nothing inside the
+bookmark, and Word removes the bookmark, the comment and its mark. A reply is a comment of
+its own over the same words, which `word/commentsExtended.xml` ties to the comment it
+answers (`w15:paraIdParent`), under the name Word has for the person replying. Word merges
+runs and renumbers comments when it saves; nothing here reads either.
+
+**`import` refuses an undecided suggestion, and answers what was decided.** It reads every
+tracked change as accepted, and read so, a suggestion nobody looked at would merge. So a
+document that records suggestions is refused, with nothing written, while it holds a change
+under one of their authors. Changes by anybody else are read as they always were. Once all
+are decided, the text inside each bookmark is the new words (accepted), the old (refused),
+other words (typed in after deciding), or the bookmark is gone. The panel's own comments are
+its findings, already in the records, and are not listed as a co-author's; nor are the
+replies to them, which are said with the suggestions. With `--apply`, each finding is
+answered in its record (`record.answer_finding`, which adds the lines after the finding's
+last and changes nothing else in the file):
+
+- an accepted edit is the finding's `resolution`, dated, naming the words, once `import` has
+  merged its paragraph with the new words in it; refused beside it in the same finding, the
+  other edits are named as refused;
+- a finding whose edits were all refused is `overridden` by the author's reply in Word,
+  `overridden_by` the reply's author, and with no reply it stays open: turning down a
+  wording does not answer what the finding says, and G11 asks for a reason;
+- a finding with an edit changed in Word or gone, one answered already, or one whose record
+  no longer holds the edit the document was made from or no longer reads as sealed, is left
+  to the author, with the reason.
+
+The answers are outside the seal, so the reading stays sealed.
 
 ## A panel read by several providers
 
@@ -3924,6 +4153,56 @@ paper follows, so G5 says (`reporting-guideline-for-design`) when the design is 
 none of them is declared; the reporting-checklist skill shows the table, and a test holds
 the two to one another. A project that names no design is asked for the seven, as before.
 What the sections say is the author's and the panel's to judge, never a gate's.
+
+## The data dictionary is one contract with three readers
+
+A plan that sets out an analysis of data that do not exist yet (a survey, a chart review, a
+cohort, a trial, an extraction form) has a second thing to settle before the data do:
+exactly what will be collected. `design/data_dictionary.yaml` says it, one entry for each
+variable: its name as the data will hold it, its label, a definition precise enough that
+two people recording it from the same source record the same value, its type, its unit, its
+codes or its range, the codes that mean missing, whether it is required and where it
+applies, the form and the visit it belongs to, who records it and from what, the variables
+it is derived from and how, the validated instrument and item it records, the standard
+definition it follows (MedDRA, CTCAE, ICD-10), the reporting-checklist items that need it,
+and, where nothing in the plan needs it, the reason it is collected. The same file describes
+data that already exist: a dataset in several tables names them (`datasets`), and a name may
+hold capitals or dots, since an existing dataset's columns do.
+
+Three readers take it as it is written. G12 holds it to the plan. The data-quality checks
+hold the collected data to it: its `study_period`, `pattern`, `within_study_period` and
+`rules` (an order between dates, a set of variables unique per row, or a rule the author's
+script tests) are for them, and were agreed with that work so that the schema changes once.
+And the export gives it to whoever builds the form. One loader serves all three,
+`contracts/dictionary.py`, and what it accepts is what all three trust.
+
+**A dictionary that does not read fails, at every stage.** G12 warns and never blocks, but
+a malformed contract is not a plan with a gap in it: a data check that read a variable's
+codes from the wrong list, or an export that wrote them, would be worse than none. The
+schema says the shape; the loader says what a schema cannot, each as `dictionary-invalid`
+at its line: a name or an id given twice, a reference to a form, a list of codes, an
+instrument, a dataset or a variable that is not there, codes on a type that has none, a
+binary variable without two, a code given twice or as both a value and a missing code, a
+range on a type that has none or a bound its type cannot read, a pattern that does not
+compile, a condition on a variable with no codes. It is said once, by G12; the other readers
+are handed nothing and say nothing of the file's shape. A gap in the plan is not a fault of
+the file: a categorical variable whose codes are not decided yet, or a derived variable whose
+inputs are not in the dictionary, reads, and is G12's to warn of. A project with no
+dictionary is not asked for one.
+
+**A value is compared as text, so YAML may not read it first.** `1` and `"1"` are one code.
+PyYAML reads some plain values as something else before any check sees them: `010` as the
+number 8, `8:30` as 510, `1_000` as 1000, an unquoted `No` or `off` as false. A code `010`
+read as 8 would never match the data's "010", and `label: No` would fail the schema with
+"False is not of type 'string'". Each is refused at its line with the words to write
+instead, in quotes, and the schema's own finding on that line is left out as the same
+fault said less usefully. Where the value is a yes or a no, `required: yes`, the word means
+what it says and is read (round 1 of #382). A code written `1.0` or `+1` is refused too:
+JSON Schema takes the first for an integer, and as text the two are "1.0" and "1". A number
+written as it reads, `200.0` or `-0.5`, is left alone. And a key given twice in one mapping
+is refused at the second: YAML keeps the last without a word, so a code list given twice
+under one name handed its second codes to every variable that named it (round 1 of #382).
+A variable that gives both `values` and a `code_list` is refused for the same reason.
 
 ## A plan learns from how others answered its question
 
@@ -7261,6 +7540,17 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   "Planned results and amendments", or a list nested under the Deviations heading, is
   read as the list and as the Deviations, so its items stand down their own keys' warnings
   (rounds 2 and 3 of #351; telling the two apart made other plans warned of).
+- **A data dictionary says one condition, and reads its range by its type alone.**
+  `applies_if` names one coded variable and the codes under which the variable is recorded;
+  a variable asked where two conditions hold, or where a number passes a threshold, cannot be
+  said, and is written without the condition. A `count`'s bounds are held to be numbers, not
+  whole ones. A datetime's bounds are compared only where both or neither carry a time zone.
+  What YAML reads as another value is found only where it is written plain; a value YAML
+  reads as written but the author meant otherwise, `1.5` for the item "1.50", is not. A
+  rule's `order` takes dates and datetimes as one family, so the data checks that read it
+  have to compare a date with a datetime by the date, and it refuses an order between two
+  times (round 1 of #382). A bound in the basic ISO form, `20200101`, or with a fraction of
+  a second, reads on Python 3.11 and later and is refused on 3.10 (round 2 of #382).
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the
@@ -11499,9 +11789,11 @@ Open, recorded as each change landed:
   while timing. Both are left to the wall clock.
 
 - **`reworded` holds bindings, citation keys and typed numbers, and nothing else.**
-  - A unit, a "not" and "increased" for "decreased" are words, and are not held: "5 mg"
-    made "5 g" and "did not differ" made "differed" both pass. So does a number written in
-    words: "three" made "four".
+  - A unit and "increased" for "decreased" are words, and are not held: "5 mg" made "5 g"
+    passes, and so does "increased" made "decreased", two words of one rung of the
+    ladder. So does a number written in words: "three" made "four". "Did not differ" made
+    "differed" passes with a warning, as every move of a claim's words does (the next
+    entry).
   - A sign of comparison is held only as a sign. Spelt out, "P < 0.05" made "P less than
     0.05" fails as a sign gone, though the sentence says the same; "less than" made
     "more than" passes. Typed in TeX, `$p \leq 0.05$`, it is letters and not held. A
@@ -11570,6 +11862,49 @@ Open, recorded as each change landed:
     limit stops the wrapper and not the git it started. `emit.py` asks git the same way.
   - The text before is what git holds for the commit. A file under a
     `working-tree-encoding` or a filter is compared as git stores it.
+
+- **`reworded` reads how strongly a sentence claims from a list of words.**
+  - A word not in the list moves nothing: "raised", "lowered", "drives", "explains", "is
+    responsible for", "due to", "attributable to". Nor does a form not listed:
+    "suggestion", "increasing". A noun of effect is not read, "an effect of", "a reduction
+    in", and the noun "causes" is read as causation: "the leading causes of death" made
+    "the leading reasons" is a claim made weaker.
+  - "Increased", "reduced" and the rest of the effect rung are read as an effect where they
+    describe a trend too: "incidence rose" made "incidence increased" is a claim made
+    stronger. A participle is taken for an adjective only directly after "a", "an" or
+    "the", so "its increased risk" and "an unexpectedly increased risk" are read as the
+    verb.
+  - The direction comes from the words, not from the grammar. A sentence of two clauses is
+    read by its lowest rung where ladder words only came or left: "X caused Y, which was
+    associated with Z" made "X caused Y and Z" claims more by this reading.
+  - Negations are counted, not read: "not uncommon" made "common" is a negation gone, and
+    "failed to show" made "did not show" is a negation new.
+  - A capital away from the start of a sentence marks a name, so a heading in title case,
+    "Factors Associated With Injury", is not read, nor a word in capitals.
+  - A sentence ends at a stop and a space before anything but a lower-case letter, so "et
+    al. Smith" and "Fig. 2" end one, and a sentence that opens in lower case, "p values
+    were small", is joined to the one before. The two texts are cut alike, so this only
+    makes the pieces one stretch, compared whole.
+  - A stretch compared whole hides a word that moved between its sentences: a sentence
+    split, with its "may" carried from one half to the other, is no change.
+  - A sentence added or deleted whole is not read. A limitation dropped in a polish, "This
+    may reflect confounding.", is told by nothing here, though its facts are held.
+  - A sentence that stands twice in a text lines nothing up. Where it ends a stretch it is
+    set aside as unchanged. In the middle of one it is compared with what stands at its
+    place where the stretch has as many sentences on each side, and read with the rest of
+    the stretch where it has not.
+  - A stretch with as many sentences before as after is compared sentence by sentence in
+    order, so a sentence deleted and another added in one stretch pair each sentence with
+    its neighbour: "Kept. Use may be linked to harm. Age was associated with risk. Kept."
+    made "Kept. Age was linked to risk. Smoking increased risk. Kept." warns twice of a
+    claim made stronger.
+  - In a stretch compared whole, a finding is placed on the first sentence that holds a
+    word that came, and where that word stands in several of them, the first is taken: "A
+    may hold, and B holds." split into "A may hold." and "B may hold." is told on the
+    first.
+  - Each line of the front matter is read as a sentence, so an abstract folded over several
+    lines there is cut at each line. Rewrapped, its lines are compared as a stretch.
+  - English only, as every gate.
 
 - **G14 reads a definition by its shape, and an abbreviation by its capitals.**
   - A definition written as a sentence is not seen: "hereafter ROR", "which we call the
@@ -12017,6 +12352,84 @@ Open, recorded as each change landed:
   `similar-decision-not-human`, as it fails `attested_by` and `judged_by`, and only a guess
   at which Claude is meant would tell them apart (round 1 of #386; pinned in
   `tests/test_methods_review.py`).
+
+- **A suggested edit is placed only where nothing else is in its way.** `review
+  --suggestions` writes an edit only where its words are found once and its acceptance
+  comes back into the source exactly (see "A reading may suggest the wording"). What that
+  leaves out:
+  - *Words beside markup.* An accepted edit is merged by `import`, which rebuilds the
+    edited stretch between two tokens from Word's text, so an edit in a stretch that also
+    holds emphasis, code or a link is dropped rather than offered. In a Results paragraph
+    with an italic *P* that is most of the paragraph. Writing the accepted words into the
+    source directly, at the range the edit was found at, would keep the markup; it would
+    also be a second way of merging Word's text beside `import`'s, and was not built.
+  - *A heading, a caption, a list item, a quotation or a table cell* carries no identifier
+    and so takes no edit, as `import` brings back none of them.
+  - *Several edits in one paragraph* are tried alone and each with the ones before it
+    accepted. With three or more, a mix accepted in Word that was not tried could come
+    back otherwise; `import` then refuses or merges that paragraph by its own rules, and
+    the findings stay open where it refuses.
+  - *The inserted words are shown as typed*, a straight apostrophe in a paragraph pandoc
+    curled, because the merge keeps Word's quotes and the source should get what the reader
+    wrote. The next build prints them curled.
+  - *The source as it stands.* Edits are placed in the manuscript when the command runs;
+    a reading of an earlier version has its edits placed where its words still stand once,
+    and dropped where they do not.
+- **What was decided in Word is read from the bookmark and the comment.** An author who
+  deletes the words of a suggestion whole, or accepts its deletion and rejects its
+  insertion, removes the bookmark, and that finding is left to answer by hand. A comment
+  whose text the author edited is not known as the finding's, so a reply to it is not read,
+  and a refused edit then leaves its finding open. A reply is known only by
+  `word/commentsExtended.xml`, which Word writes; an editor that writes none has no replies
+  here. Nothing of this answers a finding wrongly: each leaves it open.
+- **What round 1 of #367's review recorded and left.** Each is non-blocking under the bar:
+  - *A failure of `tracked.write` is a traceback.* `write_round` turns a build's failure into
+    a message and not the writer's (a document with no comments part, or the check that
+    the written file reads as built and as edited), and the build is then left in
+    `build/suggestions/` without its changes. No plausible document reaches it: pandoc
+    always writes the comments part.
+  - *An accepted edit answers its finding beside a refused one.* In a finding with two
+    edits, one accepted and one refused with no reply, the acceptance is its `resolution`,
+    major or not; the refusal is named in it. Only a finding whose edits were all refused
+    needs a reply to be answered.
+  - *The ten a reading may have written are counted as suggested.* A reading whose first
+    ten edits all fail to place has its eleventh dropped for the cap, though none was
+    written.
+  - *An edit dropped when the document was made goes unmentioned.* A finding with one edit
+    written and accepted and another dropped is resolved by the first, and its resolution
+    does not say the second was never offered.
+  - *A reply in Word with no author is listed again as a co-author's comment*, since the
+    import's comment reader names such a comment "an unnamed reviewer" and the reader of
+    replies does not. Said twice, answered once.
+  - *The refusal of undecided suggestions rests on the document's list of them.* A tool that
+    dropped the `manuscript-guard-suggestions-*` properties and kept the source stamp would
+    have every panel change read as accepted. The `mg-s-` bookmarks would still be there to
+    refuse by; no tool is known to drop the one and keep the other.
+- **A suggested edit that moves a claim says so in Word, edit by edit.** Since #371 an edit
+  that only changes how strongly its sentence claims is written, with the move after its
+  finding in the comment (`suggestions._claim_moved`). The review of 12dffd8e recorded:
+  - *Each note is of its edit alone*, against the paragraph as it stands; two edits in one
+    sentence whose moves add up or cancel each say their own, and nothing says what
+    accepting both does.
+  - *The terminal does not say it.* `review --suggestions` lists the edits it wrote
+    without the move, which is seen only in the document.
+  - *Untested*: a recorded suggestion whose `written` digest is null, which `offered_of`
+    refuses, and a reply to a comment that carries a note, which is matched by that digest.
+- **The document of suggestions is built offline.** Its citations are formatted by the
+  journal's style from `references.bib`, as `build --offline` formats them, whether the
+  author builds live or not. It is for the author, never for a co-author or the journal.
+- **The tests import documents edited the way Word edits them, not ones Word saved.** On
+  2026-10-20 a document of the example's round 8 was decided in Word 16 over COM and saved,
+  and `import --apply` of it merged the accepted words and answered both findings as the
+  tests expect; a copy with eight changes left open was refused. The two documents Word
+  saved are kept (`tests/data/word/`) and their reading is tested, but importing them needs
+  the example as it stood that day, so the import tests use `tests/word_edits.py`, which
+  makes Word's edits to a document built now. Those edits were each seen in Word.
+- **Round 2 of #367 recorded** that the pass choosing which documents to build looks for
+  every edit's words before the placement drops the empty ones and those past ten. An edit
+  of no words finds one match at every character of the manuscript, a list that is then
+  thrown away; and an edit to be dropped in a supplement paragraph has the supplement built,
+  then deleted. Both come out right.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

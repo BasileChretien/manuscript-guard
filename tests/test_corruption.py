@@ -4231,6 +4231,67 @@ def test_a_planned_group_of_tables_or_models_is_looked_for_among_them(project: P
                                        "- `model.crude.*`: the crude models")]  # fmt: skip
 
 
+# ------------------------------------------------- the data dictionary
+
+#: The example's report file, described as a dictionary describes it.
+_EXAMPLE_DICTIONARY = """\
+schema: manuscript-guard/data-dictionary/1
+code_lists:
+  yes_no:
+    - {code: 1, label: "Yes"}
+    - {code: 0, label: "No"}
+variables:
+  - name: report_id
+    label: Report
+    definition: The report's identifier in the database.
+    type: identifier
+    reason: the record's own identifier
+  - name: serious
+    label: Serious
+    definition: The report was classed as serious.
+    type: binary
+    code_list: yes_no
+    reason: the proportion of the cases that were serious
+"""
+
+
+def _dictionary_failures(root: Path, text: str, stage: str) -> list[str]:
+    """What the whole check fails on at a stage, with this dictionary in the example."""
+    from manuscript_guard.cli import _run_gates
+
+    path = root / "design" / "data_dictionary.yaml"
+    path.write_bytes(text.encode("utf-8"))
+    report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
+    return [f"{f.gate} {f.code}" for f in report.failures]
+
+
+@pytest.mark.parametrize("stage", ["design", "submission"])
+def test_a_dictionary_that_reads_leaves_the_example_as_it_was(project: Path, stage: str) -> None:
+    assert _dictionary_failures(project, _EXAMPLE_DICTIONARY, stage) == []
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        ("    code_list: yes_no", "    code_list: yes_or_no"),
+        ("{code: 0, label: \"No\"}", "{code: 0, label: No}"),
+        ("{code: 1, label: \"Yes\"}", "{code: 01, label: \"Yes\"}"),
+        ("  - name: serious", "  - name: report_id"),
+        ("    type: binary", "    type: yes-no"),
+    ],
+)
+@pytest.mark.parametrize("stage", ["design", "submission"])
+def test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage(
+    project: Path, stage: str, old: str, new: str
+) -> None:
+    """A dictionary read as written would hand the data checks another variable's codes, or
+    codes the data never hold: it fails, as a malformed contract does, where everything
+    else G12 says warns."""
+    assert old in _EXAMPLE_DICTIONARY
+    failed = _dictionary_failures(project, _EXAMPLE_DICTIONARY.replace(old, new), stage)
+    assert failed and set(failed) == {"G12 dictionary-invalid"}, failed
+
+
 # ------------------------------------------------- the unit of analysis
 
 
@@ -5192,6 +5253,8 @@ _NOT_THE_MANUSCRIPT = (
     "check_consistency", "check_restricted_inputs", "check_relations",
     "check_method_passages", "check_methods_review",
 )  # fmt: skip
+#: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
+_READS_LATEX = ("check_latex",)
 
 
 def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
@@ -5207,13 +5270,13 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
     def recorder(name: str):
         return lambda *_args, **_kwargs: called.append(name) or Report()
 
-    for name in _MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT:
+    for name in _MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT + _READS_LATEX:
         monkeypatch.setattr(cli, name, recorder(name))
     _as_latex(project)
     cli._run_gates(project, stage="drafting")
-    assert sorted(called) == sorted(_NOT_THE_MANUSCRIPT)
+    assert sorted(called) == sorted(_NOT_THE_MANUSCRIPT + _READS_LATEX)
     # One entry calls two checks, so the set is pinned name by name as well (round 2). A
-    # check an entry of the runner's table gains must be put in one of the two tuples, and
+    # check an entry of the runner's table gains must be put in one of the tuples, and
     # the one the runner calls in its own body is `check_format` (round 3).
     assert set(_MARKDOWN_ONLY) == cli._NOT_READ_IN_LATEX
     body = {name for name in cli._run_gates.__code__.co_names if name.startswith("check_")}
@@ -5225,7 +5288,7 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
         for name in code.co_names
         if name.startswith("check_")
     }
-    assert runner == set(_MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT)
+    assert runner == set(_MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT + _READS_LATEX)
 
 
 def test_a_main_tex_without_a_class_leaves_a_markdown_manuscript_markdown(project: Path) -> None:
@@ -5238,6 +5301,29 @@ def test_a_main_tex_without_a_class_leaves_a_markdown_manuscript_markdown(projec
     report, _project, _stage, _deferred = _run_gates(project, stage="submission")
     said = {f.code for f in report.findings}
     assert not {"two-formats", "other-format-file", "not-read-in-latex"} & said
+
+
+def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project: Path) -> None:
+    """A brace left open in an input file, and an `\\input` of a file that is not there, each
+    fail BUILD at every stage where they stand; a file nothing inputs is a warning."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\input{methods}\n\\input{gone}\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+    (folder / "methods.tex").write_text("Of 4100.\nAn {open brace\n", encoding="utf-8")
+    (folder / "notes.tex").write_text("Nobody inputs this.\n", encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    found = {(f.code, f.path.name, f.line) for f in report.failures if f.gate == "BUILD"}
+    assert ("tex-unbalanced", "methods.tex", 2) in found, report.render(project)
+    assert ("tex-refused", "main.tex", 4) in found, report.render(project)
+    warned = [f for f in report.findings if f.code == "tex-not-input"]
+    assert [f.path.name for f in warned] == ["notes.tex"]
+    assert "tex-not-input" not in codes(report)
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])
@@ -15179,6 +15265,167 @@ def test_a_supplementary_file_s_own_title_is_compared_with_the_paper_s(tmp_path:
 
 
 # --------------------------------------------------------------------------------------
+# A suggested edit is placed exactly, and decided before it is imported. A finding may carry
+# the wording it asks for (`edits`); `review --suggestions` writes each as a tracked change
+# under its reader's name, and `import` brings back what the author accepted. An edit that
+# changed after it was filed would be shown in Word as the reader's; one placed anywhere but
+# exactly would change other words; and one nobody decided would be imported as accepted.
+# --------------------------------------------------------------------------------------
+
+_A_MODEL_SUGGESTED = [
+    {
+        "severity": "minor",
+        "where": "Introduction",
+        "finding": "Say plainly that nobody has looked.",
+        "edits": [{"old": "has not been examined", "new": "remains unexamined"}],
+    },
+]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: d["findings"][0]["edits"][0].update(new="was never examined by anyone"),
+        lambda d: d["findings"][0]["edits"].append({"old": "specifically", "new": "alone"}),
+        lambda d: d["findings"][0].pop("edits"),
+    ],
+    ids=["new-words-changed", "an-edit-added", "the-edits-deleted"],
+)
+def test_a_model_s_suggested_edit_changed_after_it_was_filed_fails(
+    project: Path, monkeypatch, mutate
+) -> None:
+    """The edit is the reader's, and Word shows it under the reader's name: changed after
+    the reading was filed, the reading is altered."""
+    from test_review_run import Providers, answer, configure, reply_text
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    transport = Providers()
+    transport.default = lambda request: answer(reply_text("minor-revision", _A_MODEL_SUGGESTED))
+    monkeypatch.setattr(client, "default_transport", transport)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-0123456789SECRETA")
+    shutil.rmtree(project / "review")
+    configure(project, "openai/model-a")
+    assert main(["review", str(project), "--run", "--yes"]) == 0
+    path = sorted((project / "review" / "round-1").glob("*.*.yaml"))[0]
+    filed = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert filed["findings"][0]["edits"] == _A_MODEL_SUGGESTED[0]["edits"]
+    assert "reading-altered" not in _review_failures(project)
+    _edit(path, mutate)
+    assert "reading-altered" in _review_failures(project)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_edit_that_changes_a_number_a_binding_or_a_citation_is_not_written(
+    project: Path,
+) -> None:
+    """By the rule `reworded` applies: a typed number changed, words that are only in the
+    text with a value printed into them, words inside a citation, and new words that would
+    open a binding or a citation. Each stays a finding to answer, and no document is made
+    for edits none of which could be placed."""
+    from suggesting import document, finding, suggest, with_edits
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "Whether the signal extends to example-drug specifically has not been examined.",
+            "Whether the signal extends to example-drug specifically has not been examined, "
+            "as the agency said [see @fictionalClassSignal2019, p. 4].",
+        ),
+        encoding="utf-8",
+    )
+    with_edits(
+        project,
+        finding(
+            "r8-pe-02",
+            ("computed from a 2 x 2 table", "computed from a 3 x 2 table"),
+            ("a period of 10 years", "ten years"),
+            ("as the agency said", "as {{results.ror.point}} said"),
+            ("has not been examined", "has not been examined @fictionalClassSignal2019"),
+        ),
+        finding("r8-pe-03", ("p. 4", "p. 5")),
+    )
+    code, said = suggest(project)
+    assert code == 0, said
+    reasons = {
+        "computed from a 2 x 2 table": "more than a change of words",
+        "a period of 10 years": "only with a value",
+        "as the agency said": "Markdown reads as markup",
+        "has not been examined": "Markdown reads as markup",
+        "p. 4": "inside a citation",
+    }
+    for old, why in reasons.items():
+        line = next((ln for ln in said.splitlines() if f"'{old}" in ln), "")
+        assert why in line, (old, said)
+    assert "written as tracked changes" not in said
+    assert not document(project).exists()
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: Path) -> None:
+    """Words in the manuscript more than once, nowhere, across two paragraphs, beside
+    emphasis that a merge from Word's text would drop, and two edits of the same words: none
+    is placed by guessing which was meant."""
+    from suggesting import finding, suggest, with_edits
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "Whether the signal extends to example-drug specifically",
+            "Whether the signal extends to *example-drug* specifically",
+        ),
+        encoding="utf-8",
+    )
+    with_edits(
+        project,
+        finding(
+            "r8-pe-02",
+            ("the", "THE"),
+            ("words that are nowhere", "other words"),
+            ("has not been examined.\n\nWhether", "x"),
+            ("specifically has not", "has not"),
+            ("Reports were included without", "Reports were taken without"),
+            ("were included without restriction", "were included with no restriction"),
+        ),
+    )
+    code, said = suggest(project)
+    assert code == 0, said
+    reasons = {
+        "the": "in the manuscript",
+        "words that are nowhere": "not in the manuscript as it stands",
+        "has not been examined. Whether": "two paragraphs",
+        "specifically has not": "would not come back into the source as written",
+        "Reports were included without": "same words",
+        "were included without restriction": "same words",
+    }
+    for old, why in reasons.items():
+        line = next((ln for ln in said.splitlines() if f"'{old}" in ln), "")
+        assert why in line, (old, said)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_suggestion_nobody_decided_is_not_imported(project: Path, tmp_path: Path) -> None:
+    """Read as accepted, as `import` reads every tracked change, a suggestion the author
+    never looked at would merge. Nothing is imported while one is left, whichever."""
+    from suggesting import offered_round, run
+    from word_edits import decide
+
+    document = offered_round(project)
+    before = (project / "manuscript" / "main.md").read_bytes()
+    record = (project / "review" / "round-8" / "pharmacoepidemiologist.yaml").read_bytes()
+    for choices in ({}, {1: "accept"}, {1: "accept", 2: "reject"}, {2: "reject", 3: "accept"}):
+        returned = decide(document, tmp_path / "back.docx", choices)
+        code, said = run("import", str(returned), str(project), "--apply")
+        assert code == 1, said
+        assert "Accept or reject each one in Word first" in said
+        assert (project / "manuscript" / "main.md").read_bytes() == before
+        assert (project / "review" / "round-8" / "pharmacoepidemiologist.yaml").read_bytes() == (
+            record
+        )
+
+
+# --------------------------------------------------------------------------------------
 # G14: an abbreviation is defined once, before it is used. Each test below makes one of the
 # edits a hurried revision makes, and the gate has to report that edit and no other.
 # --------------------------------------------------------------------------------------
@@ -16850,6 +17097,57 @@ def test_a_language_pass_that_only_reworded_passes(project: Path) -> None:
     assert not report.findings, report.render(project)
     assert report.counts["reworded_bindings"] > 10
     assert report.counts["reworded_citations"] > 2
+
+
+# A language pass that kept every fact and changed what a sentence claims. `check` passes
+# each, and so does the comparison of facts; the words of the claim are compared too, and
+# each move is a warning, since a list of words cannot know whether it was meant.
+
+
+def _claim_moved(project: Path, old: str, new: str, opening: str) -> tuple[str, str]:
+    """What is said of the one edit, which is placed on the line its sentence opens on."""
+    after, report = after_a_language_pass(project, old, new)
+    assert gate_report(project).ok, "the gates see nothing wrong with it"
+    (finding,) = report.findings
+    assert finding.severity == "warn" and report.ok
+    assert finding.line == line_of(after, opening)
+    return finding.code, finding.message.split(": ", 1)[1]
+
+
+def test_a_language_pass_that_made_a_disproportion_a_cause_is_shown(project: Path) -> None:
+    assert _claim_moved(
+        project,
+        "Reporting of hepatic injury is disproportionate for example-drug",
+        "Example-drug causes disproportionate reporting of hepatic injury",
+        "Example-drug causes",
+    ) == ("claim-stronger", "'causes' (causation) is new")
+
+
+def test_a_language_pass_that_hedged_a_comparison_is_shown(project: Path) -> None:
+    assert _claim_moved(
+        project,
+        "The reporting odds ratio observed here exceeds",
+        "The reporting odds ratio observed here appears to exceed",
+        "The reporting odds ratio observed here appears",
+    ) == ("claim-weaker", "'appears' is new")
+
+
+def test_a_language_pass_that_dropped_a_not_is_shown(project: Path) -> None:
+    assert _claim_moved(
+        project,
+        "specifically has not been examined.",
+        "specifically has been examined.",
+        "Whether the signal extends",
+    ) == ("claim-negation", "'not' is gone")
+
+
+def test_a_language_pass_that_hedged_a_claim_and_widened_it_is_shown(project: Path) -> None:
+    assert _claim_moved(
+        project,
+        "is the only population-level figure available",
+        "may be the sole population-level figure available",
+        "rate. The cohort",
+    ) == ("claim-moved", "'may' is new; 'only' is gone")
 
 
 # --------------------------------------------------------------------------------------

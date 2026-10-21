@@ -24,6 +24,12 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: reworded
+    why: >-
+      each sentence an edit changed is compared with what it was for the words of its
+      claim, and a hedge, a limit or a negation that came or went, or a word moved along
+      the ladder from consistency to causation, is a warning, `claim-stronger`,
+      `claim-weaker`, `claim-moved` or `claim-negation`; the inputs now hold such edits
   - reading: notation
     why: >-
       a level typed after the letters hard against a negative bound, "CI 95%-0.3 to 0.4",

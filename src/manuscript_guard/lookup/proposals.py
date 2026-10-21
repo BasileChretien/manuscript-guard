@@ -135,20 +135,25 @@ def _same(entry: dict[str, Any], one: dict[str, str]) -> bool:
 
 def _later(hits: list[Hit]) -> tuple[dict[str, Any], ...]:
     """Each later version once, with what each registry gave of it (round 1 of #369: PubMed's
-    PMID and DOI and Europe PMC's PMID alone were two)."""
+    PMID and DOI and Europe PMC's PMID alone were two), and whose each identifier is (round 1
+    of #376: a registry that gave the PMID alone was named beside another's DOI)."""
     found: list[dict[str, Any]] = []
     for hit in hits:
         for one in hit.later:
             entry = next((e for e in found if _same(e, one)), None)
             if entry is None:
-                entry = {"said_by": []}
+                entry = {"said_by": [], "given_by": {}}
                 found.append(entry)
             for key, value in one.items():
                 entry.setdefault(key, value)
+            for key in ("doi", "pmid"):
+                if one.get(key) and hit.registry not in entry["given_by"].setdefault(key, []):
+                    entry["given_by"][key].append(hit.registry)
             if hit.registry not in entry["said_by"]:
                 entry["said_by"].append(hit.registry)
-    return tuple({**{k: v for k, v in e.items() if k != "said_by"}, "said_by": e["said_by"]}
-                 for e in found)  # fmt: skip
+    # The identifiers first, then whose they are.
+    return tuple({**{k: v for k, v in e.items() if k not in ("said_by", "given_by")},
+                  "said_by": e["said_by"], "given_by": e["given_by"]} for e in found)  # fmt: skip
 
 
 def _disagree(hits: list[Hit], name: str, label: str) -> tuple[str, ...]:
@@ -213,6 +218,19 @@ def planned(query: str, filters: Filters, credentials: Credentials,
     return [(name, first[name]()) for name in REGISTRIES if not skipped[name]]
 
 
+def _unanswered(failed: dict[str, str], asked: int) -> str:
+    """Why Crossref did not answer: the reason, and of several preprints for how many and
+    which. Where the reasons differ, each is beside its DOI (round 1 of #376: they were listed
+    before the DOIs, and a DOI Crossref throttled is worth asking again where a 503 may not be)."""
+    reasons = set(failed.values())
+    if asked == 1 or not failed:
+        return "".join(failed.values())
+    if len(reasons) == 1:
+        return f"{reasons.pop()}, for {len(failed)} of {asked}: {', '.join(failed)}"
+    each = ", ".join(f"{doi} ({why})" for doi, why in failed.items())
+    return f"for {len(failed)} of {asked}: {each}"
+
+
 def run(
     query: str,
     filters: Filters,
@@ -251,10 +269,7 @@ def run(
         found = tuple(h for h in said.values() if isinstance(h, Hit))
         failed = {doi: a.why for doi, a in said.items() if isinstance(a, Answer)}
         status = UNRESOLVABLE if failed else FOUND if found else ABSENT
-        why = "; ".join(dict.fromkeys(failed.values()))
-        if failed and len(said) > 1:
-            why += f", for {len(failed)} of {len(said)}: {', '.join(failed)}"
-        answers["crossref"] = Answer(status, found, len(found), why=why)
+        answers["crossref"] = Answer(status, found, len(found), why=_unanswered(failed, len(said)))
         hits += found
         pool = [replace(c, unchecked_by=("crossref",)) if c.doi in failed else c
                 for c in ranked([candidate(g) for g in merge(hits)], sort)]  # fmt: skip
@@ -296,10 +311,18 @@ def _registry(name: str, answer: Answer) -> str:
 
 
 def _version(one: dict[str, Any]) -> str:
-    ids = [f"{k.upper()} {one[k]}" for k in ("doi", "pmid") if one.get(k)]
-    named = ", ".join(NAMES[n] for n in one["said_by"])
+    """The registries are named once where each gave every identifier, and beside each
+    identifier where they did not (round 1 of #376)."""
+    keys = [k for k in ("doi", "pmid") if one.get(k)]
     reference = f": {one['reference']}" if one.get("reference") else ""
-    return f"a later version, {' / '.join(ids)}{reference} ({named})"
+    if all(one["given_by"][k] == one["said_by"] for k in keys):
+        ids = " / ".join(f"{k.upper()} {one[k]}" for k in keys)
+        named = ", ".join(NAMES[n] for n in one["said_by"])
+        return f"a later version, {ids}{reference} ({named})"
+    ids = " / ".join(
+        f"{k.upper()} {one[k]} ({', '.join(NAMES[n] for n in one['given_by'][k])})" for k in keys
+    )
+    return f"a later version, {ids}{reference}"
 
 
 def _lines(number: int, c: Candidate) -> list[str]:

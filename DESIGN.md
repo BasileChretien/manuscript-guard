@@ -1028,8 +1028,10 @@ order is `printed_order`.
   `abstract:` in Markdown's front matter is.
 - An environment not in the table is read as an unknown command is, and so is its body.
 
-**Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`, `\def` or
-`\DeclareMathOperator` is read where it is written, and its body is prose there, in the preamble
+**Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`,
+`\DeclareRobustCommand`, `\def` or `\DeclareMathOperator`, or one of xparse's definers, whose
+argument specification is read for the defaults it prints, is read where it is written, and
+its body is prose there, in the preamble
 too, and in a package file of the author's (above). So `\newcommand{\n}{4100}` is one
 unclassified number, at its definition. The parameter tokens `#1` to `#9` in a body are blanked.
 A use of the macro is read as an unknown command is: its name is blanked and its arguments are

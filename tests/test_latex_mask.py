@@ -207,10 +207,14 @@ def test_the_reader_is_linear_in_the_file(assert_linear, unit: str) -> None:
         ("\\documentclass{a}\n\\DeclareRobustCommand{\\ci}[1][95]{CI #1}\n"
          "\\begin{document}\\ci\\end{document}", "95"),
         ("\\NewDocumentCommand{\\ci}{O{95}}{CI #1}", "95"),
+        ("\\documentclass{a}\n\\NewDocumentCommand{\\ci}{O{95}}{CI #1}\n"
+         "\\begin{document}\\ci\\end{document}", "95"),
     ],
 )  # fmt: skip
 def test_what_round_four_found_blanked_is_read(text: str, printed: str) -> None:
-    assert printed in mask(text, body=None if text.startswith("\\doc") else True)
+    """Read, and not left as typed past a refusal (round 5)."""
+    reading = read(text, body=None if text.startswith("\\doc") else True)
+    assert reading.refusals == () and printed in reading.masked
 
 
 def test_what_round_three_found_is_read_as_latex_reads_it(assert_linear) -> None:

@@ -114,6 +114,9 @@ COMMANDS = _specs(
         # (`O{95}`, round 4 of #380), and the body.
         **dict.fromkeys(("NewDocumentCommand", "RenewDocumentCommand", "ProvideDocumentCommand",
                          "DeclareDocumentCommand"), "{c}{p}{d}"),
+        # xparse's processors in a specification, whose arguments print nothing.
+        "SplitArgument": "{b}{b}",
+        "SplitList": "{b}",
     }
 )  # fmt: skip
 
@@ -144,7 +147,8 @@ ENVIRONMENTS = _specs(
 TABLES = frozenset(
     {"tabular", "tabular*", "tabularx", "tabulary", "longtable", "array", "align", "align*",
      "alignat", "alignat*", "flalign", "flalign*", "eqnarray", "eqnarray*", "matrix", "pmatrix",
-     "bmatrix", "vmatrix", "cases", "split", "aligned", "gathered"}
+     "bmatrix", "Bmatrix", "vmatrix", "Vmatrix", "smallmatrix", "cases", "split", "aligned",
+     "gathered", "alignedat"}
 )  # fmt: skip
 
 #: Environments that are maths.

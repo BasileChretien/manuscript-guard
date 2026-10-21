@@ -24,21 +24,22 @@ the reason the question is phrased as it is.
 
 All reports in the synthetic database for the period it covers, without restriction on age
 or sex. Age group (`age_group`) and sex (`sex`), the two patient characteristics the
-database records, are described among the reports with the drug and the others. Records
-carry unique identifiers; de-duplication is therefore not required for these
-data, and its absence is a property of the generator rather than a decision.
+database records, are described among the reports with the drug and the others; the ratio
+adjusted for both was added later (Deviations, item 3). Records carry unique identifiers;
+de-duplication is therefore not required for these data, and its absence is a property of
+the generator rather than a decision.
 
 ## Exposure
 
 Reports naming example-drug (`exposed`, from `drug`), against all reports naming any other
-drug. No stratification by
-dose, indication or concomitant medication: the generator emits none of those.
+drug. No stratification by dose, indication or concomitant medication: the generator emits
+none of those.
 
 ## Outcome
 
 Reports of hepatic injury (`hepatic`, from `event`), the single event term the generator
-emits. Real data would need
-an explicit case definition, and the choice would change the counts.
+emits. Real data would need an explicit case definition, and the choice would change the
+counts.
 
 ## Analysis
 
@@ -68,15 +69,20 @@ that would not be a different study.
 
 ## Deviations from the plan
 
-Three. The first two came after the first review round, both additive rather than a change
+Four. The first two came after the first review round, both additive rather than a change
 of approach:
 
 1. The 2 x 2 counts were added to the Results as a table. The plan implied them; the first
    draft reported only the ratio, which left the estimate unreconstructable.
 2. The Methods gained explicit paragraphs on de-duplication and the case definition. Both
    were assumptions in this plan rather than statements in the paper.
-3. The variables were named in backticks, as the data dictionary names them, when the
-   dictionary was added (2026-10-21): a change of wording, not of the analysis.
 
-No analysis was added, removed or re-run as a result. Recorded here because a deviation
-nobody wrote down is indistinguishable from having tried several things.
+No analysis was added, removed or re-run as a result of those two. Recorded here because a
+deviation nobody wrote down is indistinguishable from having tried several things.
+
+3. In the fourth review round (2026-10-09), a reporting odds ratio adjusted for age group
+   (`age_group`) and sex (`sex`) by logistic regression was added beside the planned crude
+   ratio. It is an analysis added after the crude result was known; the Methods describe it
+   and Table S2 prints its model as it was fitted.
+4. The variables are named in backticks, as a data dictionary names them, so that G12 can
+   hold a dictionary to this plan (2026-10-21): a change of wording, not of the analysis.

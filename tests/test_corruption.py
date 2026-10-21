@@ -4313,10 +4313,12 @@ variables:
     reason: the proportion of the cases that were serious
   - {name: drug, label: Drug, definition: The suspected drug the report names., type: text}
   - {name: event, label: Event, definition: The event term the report names., type: text}
-  - {name: exposed, label: Exposed, definition: The report names example-drug., type: binary,
-     code_list: yes_no, derived_from: [drug], derivation: drug is example-drug}
-  - {name: hepatic, label: Hepatic injury, definition: The event is hepatic injury.,
-     type: binary, code_list: yes_no, derived_from: [event], derivation: event is hepatic injury}
+  # The corruptions below replace `    type: binary` and `    code_list: yes_no` wherever
+  # they stand, so these entries keep both off the start of a line: one entry is broken.
+  - {name: exposed, type: binary, code_list: yes_no, label: Exposed, derived_from: [drug],
+     definition: The report names example-drug., derivation: drug is example-drug}
+  - {name: hepatic, type: binary, code_list: yes_no, label: Hepatic injury,
+     definition: The event is hepatic injury., derived_from: [event], derivation: by its term}
   - {name: sex, label: Sex, definition: Sex as reported., type: categorical,
      values: [{code: F, label: Female}, {code: M, label: Male}]}
   - {name: age_group, label: Age group, definition: The age group as reported.,
@@ -4390,7 +4392,7 @@ def test_an_entry_nothing_needs_is_warned_of(project: Path, stage: str) -> None:
     which the plan does not name, does."""
     unneeded = _EXAMPLE_DICTIONARY.replace(
         "    reason: the proportion of the cases that were serious\n", ""
-    ) + "  - {name: year, label: Year, definition: The year of the report., type: count}\n"
+    ) + "  - {name: year, label: Year, definition: The year of the report., type: continuous}\n"
     failed, warned = _collection_said(project, unneeded, stage)
     assert failed == [] and warned == ["dictionary-entry-unused"]
     _plan_edited(project, "carry unique identifiers",

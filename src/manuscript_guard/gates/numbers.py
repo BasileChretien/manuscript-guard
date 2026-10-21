@@ -357,7 +357,7 @@ def check_numbers(
     if _is_latex(project):
         report = report.with_findings(not_read_in_latex(GATE, "pointers to tables and figures"))
     else:
-        report = report.merge(check_pointers(project))
+        report = report.merge(check_pointers(project, results))
     return report.with_counts(
         source_files=totals["files"],
         numeric_atoms=totals["atoms"],

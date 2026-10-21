@@ -11482,7 +11482,8 @@ def test_a_heading_an_identifier_slid_onto_is_not_read_as_joined_away(
             encoding="utf-8",
         )
         first, second = "The database contained", "Table 2 gives the reports by drug group."
-        was, now = ">Reports by drug group.", ">Baseline characteristics by drug group."
+        # The caption as the build prints it, after the table's number.
+        was, now = ">Table 1. Reports by drug group.", ">Table 1. Baseline characteristics."
     else:
         first, second = "The synthetic dataset", "This work received no funding."
         was, now = ">Competing interests</w:t>", ">Funding and competing interests</w:t>"

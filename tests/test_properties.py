@@ -60,6 +60,7 @@ from generated import (
     holds,
     latex_planted,
     latex_texts,
+    latex_trees,
     lines,
     mean_tables,
     pdf_figures,
@@ -120,6 +121,7 @@ from manuscript_guard.reworded import (
 )
 from manuscript_guard.text import placeholders, tokens
 from manuscript_guard.text.latex import mask as latex_mask
+from manuscript_guard.text.latex import structure as latex_structure
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.placeholders import parse as parse_bindings
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -519,6 +521,60 @@ def _the_preamble_ends_at_the_first_begin(patch: pytest.MonkeyPatch) -> None:
         environment(self, which, at, end)
 
     patch.setattr(latex_mask._Reader, "_environment", broken)
+
+
+@holds(60, latex_trees())
+def test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input(
+    drawn: tuple[dict[str, str], dict[str, list[str]], dict[str, list[str]]],
+) -> None:
+    """A file input under `\\section{Methods}` is read under Methods, and one input after a
+    file that opened a section is read under that section, as LaTeX prints them: worked out
+    apart from the reader, over manuscripts of a few files that input one another. So is the
+    text after each heading (`Source.chain_at`), a heading where an `\\input` ends and a
+    chapter under its part among them."""
+    files, expected, marks = drawn
+    document = latex_structure.read_tree(files)
+    found = {source.path: [h.title for h in source.under] for source in document.sources}
+    for path, titles in expected.items():
+        assert found.get(path) == titles, (path, found, files)
+    assert document.refusals == (), document.refusals
+    for mark, titles in marks.items():
+        (source,) = [s for s in document.sources if f"{mark} " in s.text]
+        chain = source.chain_at(source.text.index(f"{mark} "))
+        assert [h.title for h in chain] == titles, (mark, source.path, files)
+
+
+def _an_input_file_starts_under_no_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_starts_under", lambda chain: ())
+
+
+def _a_heading_of_an_input_file_stays_in_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_resumed", lambda before, after: before)
+
+
+def _a_heading_where_an_input_ends_comes_before_it(patch: pytest.MonkeyPatch) -> None:
+    def broken(self, offset: int):
+        events = sorted(
+            [(heading.start, heading, ()) for heading in self.reading.headings]
+            + [(end, None, after) for end, after in self.resumes],
+            key=lambda event: event[0],
+        )
+        chain = self.under
+        for start, heading, after in events:
+            if start >= offset:
+                break
+            chain = latex_structure._folded(chain, heading) if heading is not None else after
+        return chain
+
+    patch.setattr(latex_structure.Source, "chain_at", broken)
+
+
+def _a_chapter_closes_its_part(patch: pytest.MonkeyPatch) -> None:
+    patch.setitem(latex_mask.LEVELS, "part", 0)
+
+
+def _an_abstract_in_the_preamble_is_blanked(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "PRINTED_IN_PREAMBLE", latex_mask.PRINTED_IN_PREAMBLE - {"abstract"})
 
 
 def _iffalse_hides_its_else(patch: pytest.MonkeyPatch) -> None:
@@ -6007,6 +6063,26 @@ BROKEN = {
     ),
     "in LaTeX, \\\\ takes a bracket that opens the next line": (
         _a_line_break_takes_a_bracket_on_the_next_line,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, an input file starts under no heading": (
+        _an_input_file_starts_under_no_heading,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a heading of an input file does not reach the text after its \\input": (
+        _a_heading_of_an_input_file_stays_in_it,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a heading where an \\input ends is put before what the input left": (
+        _a_heading_where_an_input_ends_comes_before_it,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a chapter closes its part": (
+        _a_chapter_closes_its_part,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, an abstract in the preamble is blanked": (
+        _an_abstract_in_the_preamble_is_blanked,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
     ),
     "in LaTeX, a command the table lacks hides its arguments": (

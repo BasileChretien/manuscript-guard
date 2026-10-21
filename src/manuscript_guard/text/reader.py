@@ -66,9 +66,20 @@ class Reader:
         )
 
     def printed_order(self, paths: list[Path], *, supplementary: bool) -> list[Path]:
-        """The files of one document in the order the build prints them: the entry file
-        first, the rest by name. A LaTeX file's place comes from `\\input` once the include
-        tree is read; until then it is this order, which nothing yet builds from."""
+        """The files of one document in the order the build prints them: for Markdown the
+        entry file first and the rest by name; for LaTeX the order `\\input` reads them in, a
+        file nothing inputs after them by name."""
+        if self.format == LATEX:
+            from manuscript_guard.text.latex.structure import read_document
+
+            document = read_document(self.manuscript_dir, supplementary=supplementary)
+            rank = {source.path: index for index, source in enumerate(document.sources)}
+
+            def placed(path: Path) -> tuple[int, str]:
+                name = path.relative_to(self.manuscript_dir).as_posix()
+                return rank.get(name, len(rank)), name
+
+            return sorted(paths, key=placed)
         if supplementary:
             return sorted(paths, key=lambda path: path.name)
         entry = ENTRY[self.format]

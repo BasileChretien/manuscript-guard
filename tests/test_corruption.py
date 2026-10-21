@@ -5818,8 +5818,9 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     _as_latex(project)
     drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
     unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
-    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4).
-    expected = ["BUILD", "G13", "G14", "G15", "G2", "G4", "G6", "G7", "G8", "G8r", "G9"]
+    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4). G4
+    # reads it from step 6.
+    expected = ["BUILD", "G13", "G14", "G15", "G2", "G6", "G7", "G8", "G8r", "G9"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
@@ -5833,7 +5834,7 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
-    "check_related", "check_prose_quotations", "check_journal", "check_reporting",
+    "check_related", "check_prose_quotations", "check_reporting",
     "check_writing", "check_methods", "check_reported", "check_recomputed", "check_revision",
     "check_language", "check_models", "check_shapes", "check_tex", "check_passages",
 )  # fmt: skip
@@ -5848,7 +5849,7 @@ _NOT_THE_MANUSCRIPT = (
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
 _READS_LATEX = (
     "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
-    "check_synthetic_inputs", "check_citations",
+    "check_synthetic_inputs", "check_citations", "check_journal",
 )  # fmt: skip
 
 
@@ -6096,12 +6097,55 @@ def test_g7_reads_the_twins_citations_as_the_examples(project: Path) -> None:
     entry = _twin(project)
     clean = {(f.code, f.severity) for f in _g7(project).findings}
     _into_results(entry, "A claim \\citep[p.~2]{ghostKey2020,\n  fictionalHepaticCohort2021}.")
+    text = entry.read_text(encoding="utf-8")
     found = [f for f in _g7(project).failures if "ghostKey2020" in f.message]
-    assert [f.line for f in found] == [entry.read_text("utf-8").splitlines().index(
-        next(line for line in entry.read_text("utf-8").splitlines() if "ghostKey2020" in line)
-    ) + 1], _g7(project).render(project)  # fmt: skip
+    line = text.count("\n", 0, text.index("ghostKey2020")) + 1
+    assert [f.line for f in found] == [line], _g7(project).render(project)
     assert not [f for f in _g7(project).failures if "fictionalHepaticCohort2021" in f.message]
     assert clean <= {(f.code, f.severity) for f in _g7(project).findings}
+
+
+def _g4(root: Path) -> set[str]:
+    from manuscript_guard.gates import check_journal
+
+    return {f.code for f in check_journal(load_project(root)[0]).findings}
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "code"),
+    [
+        ("\\section{Methods}", "\\section{Approach}", "missing-required-section"),
+        ("\\section{Funding}", "\\textbf{Funding}", "missing-required-statement"),
+        ("\\end{abstract}", " ".join(["word"] * 320) + "\n\\end{abstract}",
+         "over-journal-limit"),
+    ],
+)
+def test_g4_reads_the_twins_sections_statements_and_limits(
+    project: Path, before: str, after: str, code: str
+) -> None:
+    """A required section renamed, a required statement left without its heading, an
+    abstract over its limit: each is found in the twin as in the example (step 6)."""
+    entry = _twin(project)
+    assert code not in _g4(project)
+    text = entry.read_text(encoding="utf-8")
+    assert before in text
+    entry.write_text(text.replace(before, after, 1), encoding="utf-8")
+    assert code in _g4(project)
+
+
+def test_g4_counts_no_word_of_a_float_a_formula_or_the_preamble_in_the_twin(
+    project: Path,
+) -> None:
+    """A caption, a displayed formula and the preamble print no word of the text, as a journal
+    counts it: 4,000 of them in each leave the main text under its limit (step 6)."""
+    entry = _twin(project)
+    words = " ".join(["word"] * 4000)
+    text = entry.read_text(encoding="utf-8")
+    text = text.replace("\\begin{document}", f"\\author{{{words}}}\n\\begin{{document}}", 1)
+    entry.write_text(text, encoding="utf-8")
+    _into_results(entry, f"\\begin{{figure}}\\caption{{{words}}}\\end{{figure}}\n"
+                         f"\\[ {words} \\]")  # fmt: skip
+    assert "over-journal-limit" not in _g4(project)
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])

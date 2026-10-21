@@ -106,3 +106,26 @@ def test_g2_counts_and_judges_the_twin_as_it_does_the_example(
         "G2 does not read pointers to tables and figures in LaTeX yet, so it did not check them "
         "here"
     ]
+
+
+def test_g4_counts_the_twins_words_sections_and_display_items_as_the_examples(
+    project: Path, tmp_path: Path
+) -> None:
+    """Step 6: the journal's limits, its required sections and its statements read the twin
+    as Markdown would print it, and find what they find in the example."""
+    from manuscript_guard.gates import check_journal
+
+    example = check_journal(load_project(project)[0])
+    root = tmp_path / "twin"
+    shutil.copytree(project, root)
+    shutil.rmtree(root / "manuscript")
+    shutil.copytree(TWIN, root / "manuscript")
+    latex = check_journal(load_project(root)[0])
+    counted = ("abstract_words", "main_text_words", "display_items")
+    assert {key: latex.counts[key] for key in counted} == {
+        key: example.counts[key] for key in counted
+    }
+    assert example.counts["main_text_words"] > 0 and example.counts["display_items"] > 0
+    assert Counter((f.code, f.severity) for f in latex.findings) == Counter(
+        (f.code, f.severity) for f in example.findings
+    )

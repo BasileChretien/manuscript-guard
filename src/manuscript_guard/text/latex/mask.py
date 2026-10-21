@@ -25,6 +25,7 @@ from manuscript_guard.text.latex.commands import (
     CITATIONS,
     COMMANDS,
     ENVIRONMENTS,
+    FLOATS,
     LISTINGS,
     MATHS,
     PARAMETERS,
@@ -92,11 +93,13 @@ class Input:
 
 @dataclass(frozen=True)
 class Heading:
-    """A heading where its command stands, its level as Markdown counts `#`, and its title."""
+    """A heading where its command stands, its level as Markdown counts `#`, its title, and
+    where its title's argument ends, or -1 where nothing of it is the title (an abstract)."""
 
     start: int
     level: int
     title: str
+    end: int = -1
 
 
 @dataclass(frozen=True)
@@ -152,6 +155,16 @@ class Reading:
     listings: tuple[Listing, ...] = ()
     #: Each key a citation command names, outside a definition's body.
     cited: tuple[Cited, ...] = ()
+    #: Where each formula runs, and whether it is displayed rather than inline.
+    maths: tuple[tuple[int, int, bool], ...] = ()
+    #: Where each float runs, `\\begin{figure}` or `\\begin{table}` to its `\\end`.
+    floats: tuple[tuple[int, int], ...] = ()
+    #: Where the body starts: past `\\begin{document}`, 0 in a file that opens in it, or -1
+    #: in one that never reaches it.
+    body_start: int = 0
+    #: Each code span, `\\verb` or `\\texttt`, from its opening delimiter to past its closing
+    #: one: read as prose, and as Markdown's code span is where words are counted.
+    code: tuple[tuple[int, int], ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -340,6 +353,10 @@ class _Reader:
         self.listings: list[Listing] = []
         self.cited: list[Cited] = []
         self.citation_at = -1
+        self.maths: list[tuple[int, int, bool]] = []
+        self.floats: list[tuple[int, int]] = []
+        self.code: list[tuple[int, int]] = []
+        self.body_start = 0 if body else -1
         self.siunitx = 0
         #: The command a definition being read defines, until its body opens.
         self.defining = ""
@@ -362,9 +379,16 @@ class _Reader:
         # A table the file was input inside and does not close runs to its end.
         tables = self.tables + [(0, self.n) for frame in self.stack
                                 if frame.inherited and frame.closer in TYPED_TABLES]  # fmt: skip
+        # So does a float or a displayed formula: a figure's file input inside `figure`.
+        floats = self.floats + [(0, self.n) for frame in self.stack
+                                if frame.inherited and frame.closer in FLOATS]  # fmt: skip
+        maths = self.maths + [(0, self.n, True) for frame in self.stack
+                              if frame.inherited and frame.closer in MATHS]  # fmt: skip
         found = (tuple(self.inputs), tuple(self.headings), tuple(self.abstracts),
                  tuple(self.packages), tuple(self.bindings), tuple(self.suspects),
-                 tuple(sorted(tables)), tuple(self.listings), tuple(self.cited))  # fmt: skip
+                 tuple(sorted(tables)), tuple(self.listings), tuple(self.cited),
+                 tuple(sorted(maths)), tuple(sorted(floats)), self.body_start,
+                 tuple(self.code))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -639,7 +663,11 @@ class _Reader:
                 self.abstracts.append((frame.origin, at + width))
             else:
                 title = " ".join("".join(self.out[frame.start + 1 : at]).replace(NUL, "").split())
-                self.headings.append(Heading(frame.origin, frame.heading, title))
+                self.headings.append(Heading(frame.origin, frame.heading, title, at + width))
+        if frame.kind == "maths":
+            self.maths.append((frame.start, at + width, frame.closer in ("$$", "\\]")))
+        if frame.kind == "arg" and frame.command == "texttt" and not self.definitions:
+            self.code.append((frame.start, at + width))
 
     def _dollar(self, at: int) -> None:
         top = self.stack[-1] if self.stack else None
@@ -859,6 +887,8 @@ class _Reader:
         self._keep_or_blank(start + 1, close)
         self._blank(close, close + 1)
         self.pos = close + 1
+        if not self.definitions:
+            self.code.append((start, close + 1))
         bound = _MG_USE.search(self.text, start + 1, close)
         if bound is not None:
             self._refuse("tex-refused", bound.start(), _bound_as_typed("\\verb"))
@@ -919,6 +949,7 @@ class _Reader:
             self._refuse("tex-refused", at, f"{name} is not read: {REFUSED_ENVIRONMENTS[name]}")
         elif name == "document":
             self.body = True
+            self.body_start = self.pos
         elif name in RAW:
             ending = re.compile(r"\\end\s*\{" + re.escape(name) + r"\}")
             closing = ending.search(self.text, self.pos)
@@ -965,6 +996,10 @@ class _Reader:
             self.abstracts.append((top.start, self.pos))
         if name in TYPED_TABLES:
             self.tables.append((0 if top.inherited else top.start, at))
+        if name in MATHS:
+            self.maths.append((0 if top.inherited else top.start, self.pos, True))
+        if name in FLOATS:
+            self.floats.append((0 if top.inherited else top.start, self.pos))
 
     def _listing(self, name: str, end: int) -> None:
         """Record what a listing holds, and the language an `lstlisting`'s options name."""

@@ -746,6 +746,57 @@ def latex_cited(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     return text, planted
 
 
+#: What a LaTeX document prints, as G4 reads it in Markdown (`text/latex/printed.py`): each
+#: `{}` holds a word, and its kind says what the view makes of it. A heading's title is its
+#: `#` line, of its level; prose is read once; a float's caption, maths and a comment are not
+#: read; a binding is `{{...}}` and a citation `[@...]`; an abstract's text is under Abstract,
+#: and the text after it is not.
+LATEX_PRINTED_PLACES = (
+    ("\\section{{{}}}\n", ("heading1",)),
+    ("\\subsection*{{{}}}\n", ("heading2",)),
+    ("prose {} words ", ("prose",)),
+    ("\\emph{{{}}} ", ("prose",)),
+    ("\\footnote{{note {}}} ", ("prose",)),
+    ("\\begin{{figure}}\\caption{{cap {}}}\\end{{figure}}\n", ("hidden",)),
+    ("\\begin{{table}}\\caption{{tab {}}}\\mg{{table.{}}}\\end{{table}}\n", ("hidden", "table")),
+    ("\\[ {} = 1 \\]\n", ("hidden",)),
+    ("\\begin{{equation}}{}\\end{{equation}}\n", ("hidden",)),
+    ("$a {}$ ", ("hidden",)),
+    ("% {}\n", ("hidden",)),
+    ("\\mg{{results.{}}} ", ("bound",)),
+    ("\\cite{{{}}} ", ("cited",)),
+)  # fmt: skip
+
+
+@st.composite
+def latex_printed(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A LaTeX document with a word in every place of `LATEX_PRINTED_PLACES`, in an order
+    drawn, after an abstract with text of its own and words after it, under a title in the
+    preamble; and each word, with what the printed view makes of it. Every place is in every
+    document, so that a rule broken for one is seen in each."""
+    filler = [*_spaced(FILLER)]
+    order = draw(st.permutations(range(len(LATEX_PRINTED_PLACES))))
+    between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
+                            max_size=len(order) + 1))  # fmt: skip
+    planted: list[tuple[str, str]] = []
+
+    def key(kind: str) -> str:
+        planted.append((f"k{4101 + len(planted)}", kind))
+        return planted[-1][0]
+
+    text = f"\\documentclass{{article}}\n\\title{{T {key('hidden')}}}\n\\begin{{document}}\n"
+    text += f"\\begin{{abstract}}abs {key('abstract')}\\end{{abstract}}\nafter {key('after')}\n"
+    for piece, index in zip(between, order, strict=False):
+        text += piece
+        template, kinds = LATEX_PRINTED_PLACES[index]
+        parts = [part.replace("{{", "{").replace("}}", "}") for part in template.split("{}")]
+        for part, kind in zip(parts, kinds, strict=False):
+            text += part + key(kind)
+        text += parts[-1]
+    text += between[-1] + "\\end{document}\n"
+    return text, planted
+
+
 @st.composite
 def latex_bound(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     """A LaTeX document with a binding in every place of `LATEX_BINDING_PLACES`, in an order

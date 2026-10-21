@@ -73,6 +73,7 @@ from generated import (
     latex_bound,
     latex_cited,
     latex_planted,
+    latex_printed,
     latex_texts,
     latex_trees,
     lines,
@@ -148,11 +149,17 @@ from manuscript_guard.reworded import (
 from manuscript_guard.text import placeholders, tokens
 from manuscript_guard.text.latex import cite as latex_cite
 from manuscript_guard.text.latex import mask as latex_mask
+from manuscript_guard.text.latex import printed as latex_print
 from manuscript_guard.text.latex import structure as latex_structure
 from manuscript_guard.text.latex import views as latex_views
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.placeholders import parse as parse_bindings
-from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
+from manuscript_guard.text.sections import (
+    chains_at,
+    footnote_index,
+    heading_index,
+    split_sections,
+)
 from manuscript_guard.text.tex import tex_outside_maths
 from manuscript_guard.text.tokens import DIGIT, find_atoms
 
@@ -746,6 +753,56 @@ def _no_latex_citation_is_narrative(patch: pytest.MonkeyPatch) -> None:
 def _a_multi_citation_reads_its_first_group_only(patch: pytest.MonkeyPatch) -> None:
     for name in ("parencites", "Parencites"):
         patch.setitem(latex_mask.COMMANDS, name, ("(b)", "(b)", "[p]", "[p]", "{b}"))
+
+
+@holds(100, latex_printed())
+def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A word planted in every place a LaTeX document holds one is in the view G4 reads where
+    LaTeX prints it, once: a heading's title as its `#` line, prose as prose, a binding as
+    `{{...}}`, a citation as `[@...]`; a float's caption, maths, a comment and the preamble's
+    title are not in it; and an abstract's text is under Abstract and the text after it is
+    not (step 6)."""
+    text, planted = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    view = latex_print.printed_view([latex_structure.Source("main.tex", text, reading)])
+    headings = [line for line in view.splitlines() if line.startswith("#")]
+    for key, kind in planted:
+        if kind.startswith("heading"):
+            assert f"{'#' * int(kind[-1])} {key}" in headings and view.count(key) == 1, view
+        elif kind in ("prose", "abstract", "after"):
+            assert view.count(key) == 1, (key, view)
+        elif kind == "hidden":
+            assert key not in view, (key, view)
+        else:
+            written = {"bound": "{{results.%s}}", "table": "{{table.%s}}", "cited": "[@%s]"}
+            assert written[kind] % key in view, (key, view)
+    sections = {section.title: section.body for section in split_sections(view)}
+    ((abstract,), (after,)) = ([k for k, kind in planted if kind == which]
+                               for which in ("abstract", "after"))  # fmt: skip
+    assert abstract in sections["Abstract"] and after not in sections["Abstract"], view
+
+
+def _a_floats_words_are_printed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "FLOATS", frozenset())
+
+
+def _the_preamble_is_printed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_body", lambda reading: 0)
+
+
+def _a_headings_title_is_printed_twice(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_title_end", lambda heading: heading.start)
+
+
+def _an_abstract_runs_on_to_the_next_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_abstracts_closed", lambda reading: [])
+
+
+def _a_formula_is_printed_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_formulas", lambda reading: [])
 
 
 def _iffalse_hides_its_else(patch: pytest.MonkeyPatch) -> None:
@@ -7387,6 +7444,26 @@ BROKEN = {
     "in LaTeX, natbib's and biblatex's settings in the preamble are refused": (
         _a_preamble_cite_setting_is_refused,
         test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX's printed view, a float's words are printed": (
+        _a_floats_words_are_printed,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, the preamble is printed": (
+        _the_preamble_is_printed,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a heading's title is printed twice": (
+        _a_headings_title_is_printed_twice,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, an abstract runs on to the next heading": (
+        _an_abstract_runs_on_to_the_next_heading,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a formula is printed as typed": (
+        _a_formula_is_printed_as_typed,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
     ),
     "in LaTeX, a command the table lacks hides its arguments": (
         _an_unknown_command_hides_its_arguments,

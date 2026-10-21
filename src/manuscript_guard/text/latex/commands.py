@@ -224,6 +224,13 @@ LISTINGS = RAW - {"comment"}
 #: table's row is. Maths' alignments separate cells too, and are no tables.
 TYPED_TABLES = frozenset({"tabular", "tabular*", "tabularx", "tabulary", "longtable"})
 
+#: Floats: a journal does not count their words against the text's limit, as it counts a
+#: table or a figure as a display item.
+FLOATS = frozenset(
+    {"figure", "figure*", "table", "table*", "wrapfigure", "wraptable", "sidewaysfigure",
+     "sidewaystable"}
+)  # fmt: skip
+
 #: LaTeX's own parameters an author sets by defining them again, whose body is a size and
 #: prints nothing: `\\renewcommand{\\arraystretch}{1.5}` (round 1 of #400: its 1.5 failed G2).
 PARAMETERS = frozenset(

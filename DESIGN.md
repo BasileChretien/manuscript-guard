@@ -1510,6 +1510,11 @@ The result is compiled and packed by the code above, and checked three times:
   refusal are not read; `lookup` looks up the keys before it (round 1 of step 5).
 - `\nocite{*}` cites what `literature/references.bib` holds, not a bibliography a class or a
   `\bibliography{}` names elsewhere (step 5).
+- G4 counts an inline formula as one word and a displayed one as none; Markdown's count reads
+  a formula's tokens as words. A LaTeX paper and its Markdown twin with maths in their prose
+  count differently by that much (step 6).
+- The heading with no title that closes an abstract is a section of its own to G4, which
+  counts it as text and finds no required section in it (step 6).
 - Past a refusal a file's bindings are found by their shape, in a comment too, so that a
   result quoted there is not said to be quoted nowhere.
 - A class or package that changes how a character is read, beyond those refused, is not seen.
@@ -1592,8 +1597,19 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    G7, `lookup` and G6's citation positions moved; the twin's
    comparison with the example takes in the citations. Tests: `latex citations`, G7's cases on
    the twin.
-6. G4. The counts, sections and statements, and the profile's `latex:` block. Tests: G4's
-   cases on the twin.
+6. G4, in two pull requests. The first, built: `printed.py` writes the main text's document
+   as Markdown would print it, the design's `printed_view`: each heading as a `#` line, the
+   body only, an abstract closed where it ends, bindings as `{{...}}` and citations as
+   `[@...]`, a float as the bindings it places, maths and typed tables as nothing but an
+   inline formula's one word, `\verb` and `\texttt` as code spans. G4's `main_text` gives it
+   for a LaTeX manuscript, so its counts, required sections and statements read the twin as
+   they read the example, which takes `check_journal` out of `_NOT_READ_IN_LATEX`. The
+   scanner records the spans it needs (`maths`, `floats`, `code`, `body_start`, each
+   heading's end). Tests: the twin's counts and findings against the example's, G4's cases on
+   the twin, `latex_printed()` with five `BROKEN` rules. The second: the profile's `latex:`
+   block, and G4's warnings where the class or the bibliography's style differs from it.
+   The plan as written: the counts, sections and statements, and the profile's `latex:`
+   block. Tests: G4's cases on the twin.
 7. G6 and G14. `words`, accents, both gates moved. Tests: `latex words`, planted terms and
    spellings.
 8. `substituted`, with TeX's specials escaped; G5, G8, G9, G13 and G15 moved. Tests:

@@ -65,8 +65,22 @@ def main_text(project: Project) -> str:
     heading. `title: Methods of the online appendix` satisfied a required Methods section.
     The build strips every file's block, so the gate reads none of them, and a `# Funding`
     comment in the YAML no longer stands in for a funding statement either.
+
+    A LaTeX manuscript's main text is its document as Markdown would write what it prints
+    (`text/latex/printed.py`), the files the build prints in their order: a file nothing
+    inputs and the author's packages are not the text.
     """
-    sources = source_files(project.path("manuscript"), main_text_only=True)
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    folder = project.path("manuscript")
+    if manuscript_format(folder) == LATEX:
+        from manuscript_guard.text.latex.printed import printed_view
+        from manuscript_guard.text.latex.structure import read_document
+
+        document = read_document(folder, supplementary=False)
+        return printed_view([source for source in document.sources
+                             if not source.loose and source.path.endswith(".tex")])  # fmt: skip
+    sources = source_files(folder, main_text_only=True)
     return "\n\n".join(without_front_matter(read_text(p)) for p in sources)
 
 

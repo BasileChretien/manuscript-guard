@@ -148,6 +148,7 @@ Each finding names a code. The code says where to go:
 |---|---|
 | `no-analysis-plan`, `plan-section-*`, `feasibility-not-run` | [analysis-plan](../analysis-plan/SKILL.md) |
 | `data-source-*`, `data-sources-schema`, `custodian-rule-undeclared`, `plan-source-unnamed`, `data-statement-source-unnamed`, `data-statement-route-differs`; which dataset could answer the question, and how it is reached | [data-sources](../data-sources/SKILL.md) |
+| `dictionary-*`, `plan-variable-undefined` | [data-dictionary](../data-dictionary/SKILL.md) |
 | `unclassified-number`, `unresolved-binding`, `unquoted-result`, `typed-parameter`, `parameter-unread`, `hand-authored-table`, G1 and G8 codes | [results-binding](../results-binding/SKILL.md) |
 | `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact`, `revision-residue`, `abbreviation-*`, `term-avoided`, `vocabulary-conflict`, `spelling-*`, `notation-*` | [manuscript-writing](../manuscript-writing/SKILL.md) |
 | `methods-drift`, `methods-never-reconciled`, `method-…`, G15 codes (`model-…`, `variable-…`, `typed-model-kind`; `model-binary-as-number`, `variable-not-binary` and `model-engine-unknown` are among them) | [methods-writer](../methods-writer/SKILL.md) |

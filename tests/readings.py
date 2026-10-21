@@ -487,6 +487,20 @@ def _planned_results() -> Reading:
     return read
 
 
+@reading("plan variables")
+def _plan_variables() -> Reading:
+    from manuscript_guard.gates.collection import variables_named
+
+    def read(given: dict[str, Any]) -> Any:
+        """The dictionary's variables the plan names and the names it gives that the
+        dictionary lacks, each with the line of its first mention."""
+        used, undefined = variables_named(given["plan"], given["names"])
+        return {"used": [[n.name, n.line] for n in used],
+                "undefined": [[n.name, n.line] for n in undefined]}  # fmt: skip
+
+    return read
+
+
 @reading("interval order")
 def _interval_order() -> Reading:
     from manuscript_guard.contracts.values import RESULTS, Value

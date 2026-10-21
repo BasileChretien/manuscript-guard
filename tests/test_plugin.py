@@ -510,10 +510,12 @@ def test_the_routing_cases_are_whole_and_name_only_our_skills() -> None:
 
 #: The routed cases that start in an empty folder: one starts a project, one carries its own
 #: paragraph, one is about the plan before any analysis code, which the example has (round 1
-#: of #338), and one asks for data before any are chosen, where the example has its own.
-#: Every other one speaks of a finished project, and starts in a copy of the example.
+#: of #338), one asks for data before any are chosen, where the example has its own, and one
+#: is about what to collect before any data. Every other one speaks of a finished project,
+#: and starts in a copy of the example.
 EMPTY_CASES = frozenset({"route-project-setup", "route-manuscript-writing",
-                         "route-analysis-plan", "route-data-sources"})  # fmt: skip
+                         "route-analysis-plan", "route-data-sources",
+                         "route-data-dictionary"})  # fmt: skip
 
 
 def test_a_case_that_speaks_of_a_project_starts_in_a_copy_of_the_example(
@@ -862,7 +864,7 @@ NAMED_NOWHERE = {
     "build/records/": "written by `build`",
     "journals/shortlist.yaml": "written with the author by the journal-profile skill",
     "design/data_sources.yaml": "written with the author by the data-sources skill",
-    "design/data_dictionary.yaml": "the data dictionary a project may keep",
+    "design/data_dictionary.yaml": "written with the author by the data-dictionary skill",
     "analysis/00_feasibility.py": "the feasibility script a project writes, an example",
     "profiles/reporting/STROBE.yaml": "written by `transcribe`, and kept out of git",
     "profiles/reporting/sources/": "where `fetch` puts the guidelines, kept out of git",

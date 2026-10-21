@@ -1776,11 +1776,17 @@ link, the same from Europe PMC, OpenAlex's `is_retracted`, or Crossref's retract
 withdrawal or removal of a preprint. A record at PubMed or Europe PMC with neither mark is
 that registry saying no, and is shown as "retracted: no" with its name; "not known" is shown
 only where no registry that answered said either way, never as "no". A Crossref that did not
-answer is said, and is not read as having found nothing (round 1 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of" or "Update
-in", or Crossref's `is-preprint-of`, and all three are asked because they do not agree: on
-2026-10-20 a medRxiv preprint had PubMed's link to its journal version and none at Crossref,
-and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with whose word
-it is.
+answer is said, and is not read as having found nothing (round 1 of #369). Of several
+preprints, the line says for how many of them, with their DOIs and each reason given, and
+each preprint left unchecked says "Crossref did not answer" beside its retraction
+(`unchecked_by` in the JSON), since its "retracted: no" is then another registry's word
+alone (round 2 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of"
+or "Update in", or Crossref's `is-preprint-of`, and all three are asked because they do not
+agree: on 2026-10-20 a medRxiv preprint had PubMed's link to its journal version and none at
+Crossref, and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with
+whose word it is. Two links are one version where they share a PMID or a DOI and give
+neither differently; a registry giving PubMed's PMID with another DOI is shown as a second
+version under its own name, not as having said PubMed's DOI (round 2 of #369).
 
 A registry asked for a kind it does not type is not asked. OpenAlex types a review and a
 preprint and nothing finer, so with a systematic review, a meta-analysis, a guideline, a
@@ -4474,6 +4480,40 @@ written as it reads, `200.0` or `-0.5`, is left alone. And a key given twice in 
 is refused at the second: YAML keeps the last without a word, so a code list given twice
 under one name handed its second codes to every variable that named it (round 1 of #382).
 A variable that gives both `values` and a `code_list` is refused for the same reason.
+
+**The dictionary is held to the plan, both ways.** Every variable the analysis uses is to be
+collected, with its definition, and nothing collected that nothing needs (Basile,
+2026-10-20). So G12 reads the plan for the variables it names, and the plan names one by
+writing it in backticks exactly as the dictionary names it, `age`, anywhere outside its
+Deviations section and the sections under it (Basile chose this of three ways, 2026-10-21:
+names read from the Planned results alone would have left a covariate named only in the
+Analysis unchecked, and a list of uses kept in each entry would have been the same fact in
+two files). A code span that is a dictionary name is a use of it, a dotted one included. A
+span that reads as a variable's name, letters, digits and underscores from a letter, and
+that the dictionary lacks is `plan-variable-undefined`, at its first mention; where the
+dictionary has the name in another case, the hint says so. Code is written so that it does
+not read as a name, `glm()` or `stats::glm`; a result's key has a dot; nine values, `NA`, `NULL`,
+`TRUE`, `FALSE`, `None`, `True`, `False`, `NaN` and `Inf`, are not read; nor is what
+masking hides, a fence or a comment. A heading that names both the planned results and a
+change is the Deviations where the change comes first, as the list is read. The plan's
+title is not its Deviations: "Statistical analysis plan (amendment 2)" heads the plan
+(round 1). The title is a first heading at level 1 with a deeper one after it, whatever
+follows, so an appendix at its level leaves it a title; a first heading at level 2 is a
+section, so a plan with no title that opens with "## Amendment history" is not read there
+(round 2; Basile chose the level, 2026-10-21). In the other direction, an entry is needed
+where the plan names it, where
+a variable the plan needs is derived from it or asked under it (`applies_if`), again and
+again, where it names a reporting-checklist item, or where it gives a reason, and so are the
+inputs and the condition of an entry kept for an item or a reason (round 1); any other is
+`dictionary-entry-unused`. A reporting item is looked for in the guideline's checklist where
+the project holds one (`dictionary-reporting-item-unknown`), and is a note where it does
+not. Whatever the plan, an entry that leaves its codes undecided, a derivation without its
+inputs or inputs without it, an input the dictionary lacks, or a derivation that ends in
+itself, is said. All of these warn at every stage, as the rest of G12 does (Basile,
+2026-10-21); without a plan only the last group is asked. The `data-dictionary` skill
+drafts the dictionary with the author from the plan, and names a validated instrument and
+its licence rather than writing its items. The reading is held over generated plans
+(`plan variables` in `tests/readings.py`), one section of every kind in each.
 
 ## Stages: not every gate binds on day one
 
@@ -7816,7 +7856,29 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   rule's `order` takes dates and datetimes as one family, so the data checks that read it
   have to compare a date with a datetime by the date, and it refuses an order between two
   times (round 1 of #382). A bound in the basic ISO form, `20200101`, or with a fraction of
-  a second, reads on Python 3.11 and later and is refused on 3.10 (round 2 of #382).
+  a second of other than three or six digits, reads on Python 3.11 and later and is refused
+  on 3.10 (rounds 2 and 3 of #382). A sign YAML drops is a misreading in a code, an item and
+  a condition's codes, not in a reporting item: `reporting: {STROBE: [+6]}` reads as item 6
+  (round 3 of #382).
+- **The plan names a variable by its backticks, and nothing else.** A covariate the plan
+  writes in words, "adjusted for age", is not read, and an entry for it is said to be
+  unused until the plan writes `age`. A name in backticks that is code and not a variable,
+  `lme4` or `R`, is warned of as an undefined variable until it is written as code, `lme4::`
+  or `R()`, or without the backticks, and so is a value other than the nine left out,
+  `NA_real_` or a code written `M`. A heading with "deviation" in it is the Deviations, as G12
+  reads the plan, so a subsection "Standard deviation of `bmi_kg`" is not read (round 1).
+  A derivation cycle is said once for each group of variables derived from one another,
+  not once for every cycle in it. A plan written in `#` sections with no title, opening
+  with `# Amendment history` over a `## Version 2` that names a dropped variable, takes the
+  history for a title and reads it, so the dropped variable is not said to be unused (round
+  2; `test_a_history_at_the_title_s_level_is_read_as_a_title`). A title followed by a
+  heading at its own level is the Deviations of its text up to that heading, where it
+  names an amendment. The Deviations are left out whole, so a variable named
+  only there is unused even where the change kept it. That an entry is needed is all that
+  is checked: not that the plan uses it as its type says, that the analysis's own
+  `variable()` declarations agree with the dictionary, or that an instrument's `citation` is
+  in `references.bib`. An entry for an existing dataset's column the study does not use
+  needs its reason like any other.
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the

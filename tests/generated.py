@@ -1202,6 +1202,84 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
     return plan, [*listed, (secondary, False)]
 
 
+# ------------------------------------------------------------ the variables a plan names
+
+#: Names a dictionary gives its variables, a dotted one and one with capitals among them,
+#: and names it does not give.
+DEFINED = ("age", "sex", "bmi_kg", "visit2", "smoker", "dose_mg", "Sex_at_birth", "x1")
+UNDEFINED = ("weight", "eGFR", "height_cm", "alt", "site_id", "n_prior")
+#: Headings of a plan's Deviations section, as G12 reads them.
+_DEVIATION_TITLES = ("Deviations from the plan", "Changes to the plan", "Protocol amendments")
+#: Code and values in backticks, which are not variables.
+_NOT_VARIABLES = ("glm()", "stats::glm", "lme4::glmer()", "NA", "TRUE", "results.dose")
+
+
+@st.composite
+def collection_plans(
+    draw: st.DrawFn,
+) -> tuple[str, list[str], list[tuple[str, int]], list[tuple[str, int]], int]:
+    """A plan that names variables in backticks in each way a plan holds one, the names the
+    dictionary has, the dictionary's variables the plan names and the names it gives that the
+    dictionary lacks, each at the line of its first mention, and the plan's last line before
+    the drawn text that ends it.
+
+    Each example holds one section of every kind, in an order drawn each time: a variable the
+    dictionary has; one with a dot in its name; a name it lacks; a Deviations section, under a
+    heading drawn among its names, naming one of each with a subsection under it naming
+    another; code and values; a Planned results item naming a variable after its key; a fence
+    and a comment holding names; a variable named in a subsection; a variable written in
+    another case; a list headed "Planned results and amendments", which is not the
+    Deviations; a section headed "Changes to the planned results", which is; a section
+    naming again a variable and a name named elsewhere; and a Deviations subsection of
+    another section, followed by a subsection that is read. All under a title that names an
+    amendment, which heads the plan and not its Deviations."""
+    words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=5).map(" ".join)
+    defined = draw(st.permutations(DEFINED))
+    undefined = draw(st.permutations(UNDEFINED))
+    dotted = "BEN.SEX"
+    cased = defined[6][0].swapcase() + defined[6][1:]
+    deviation = draw(st.sampled_from(_DEVIATION_TITLES))
+    # Each section: its text, then the names it uses and the names it lacks, as written.
+    kinds = [
+        (f"## Analysis\n\n{draw(words)} `{defined[0]}` {draw(words)}.\n", [defined[0]], []),
+        (f"## Population\n\n{draw(words)} `{dotted}` {draw(words)}.\n", [dotted], []),
+        (f"## Exposure\n\n{draw(words)} `{undefined[0]}` {draw(words)}.\n", [], [undefined[0]]),
+        (f"## {deviation}\n\n{draw(words)} `{defined[1]}` and `{undefined[1]}`.\n\n"
+         f"### Later\n\n`{defined[2]}` {draw(words)}.\n", [], []),
+        (f"## Outcome\n\n{draw(words)} " + " ".join(f"`{code}`" for code in _NOT_VARIABLES)
+         + f" {draw(words)}.\n", [], []),
+        (f"## Planned results\n\n- `ror.point`: {draw(words)} `{defined[3]}`\n", [defined[3]],
+         []),
+        (f"## Sensitivity analyses\n\n```r\nfit(`{undefined[2]}`)\n```\n\n"
+         f"<!-- `{undefined[3]}` -->\n", [], []),
+        (f"## Covariates\n\n{draw(words)}.\n\n### Adjustment\n\n`{defined[4]}` {draw(words)}.\n",
+         [defined[4]], []),
+        (f"## Outcome measures\n\n`{cased}` {draw(words)}.\n", [], [cased]),
+        (f"## Planned results and amendments\n\n- `ror.n`: `{defined[5]}`\n", [defined[5]], []),
+        (f"## Changes to the planned results\n\n`{undefined[4]}` {draw(words)}.\n", [], []),
+        (f"## Repeated\n\n`{defined[0]}` and `{undefined[0]}` {draw(words)}.\n",
+         [defined[0]], [undefined[0]]),
+        (f"## Exposure details\n\n{draw(words)}.\n\n### {deviation}\n\n`{undefined[5]}` "
+         f"{draw(words)}.\n\n### Timing\n\n`{defined[7]}` {draw(words)}.\n", [defined[7]], []),
+    ]  # fmt: skip
+    order = draw(st.permutations(range(len(kinds))))
+    # A title that names an amendment encloses the plan, and is not its Deviations.
+    plan = f"# Statistical analysis plan (amendment {draw(st.integers(1, 9))})\n\n"
+    first: dict[str, dict[str, int]] = {"used": {}, "undefined": {}}
+    for index in order:
+        text, used, lacked = kinds[index]
+        for kind, names in (("used", used), ("undefined", lacked)):
+            for name in names:
+                line = plan.count("\n") + text[: text.index(f"`{name}`")].count("\n") + 1
+                first[kind].setdefault(name, line)
+        plan += text + "\n"
+    last = plan.count("\n")
+    plan += f"## Notes\n\n{draw(texts())}\n"
+    ordered = {kind: sorted(found.items(), key=lambda pair: pair[1])
+               for kind, found in first.items()}  # fmt: skip
+    return plan, [*defined, dotted], ordered["used"], ordered["undefined"], last
+
+
 #: What can stand in a stored source between two words of a quote taken from it: line
 #: numbers, figures, a column's or a header's words, a hyphen at the end of a line, a symbol.
 INTERRUPTIONS = (
@@ -2397,6 +2475,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "labels": texts(LABELLED),
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
+    "plan variables": collection_plans().map(lambda drawn: {"plan": drawn[0],
+                                                            "names": drawn[1]}),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
     "vector figure": vector_figures().map(lambda drawn: drawn[0]),
     # As text, a byte a character, so that the bytes pass to a reader as they are.

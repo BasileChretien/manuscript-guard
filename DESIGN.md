@@ -5082,7 +5082,11 @@ number, which the analysis may have computed from the data as the example comput
 and last year. The words are read in the binding's sentence, as `labels` reads one, with each
 binding and each comment in it blanked: a key named `extracted` says nothing. The property is
 `test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data`, over the
-reading `data dates`, with eight broken rules each caught under seeds 1 to 12. One more
+reading `data dates`, with eight broken rules each caught under seeds 1 to 12. The
+supplement is held to the rules of the main text (Basile, 2026-10-21), and G2 reads it as it
+reads the main text (`source_files`): an extraction date typed in Supplementary Methods
+fails, one typed into the script is warned of there, at that file, and a dataset's date bound
+only there is quoted. One more
 warning reads no text: a dataset's date printed in another English than `paper.yaml` declares
 now (`dataset-date-english`), since the emitter reads it when the analysis runs.
 

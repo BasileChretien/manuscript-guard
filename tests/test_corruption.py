@@ -16928,6 +16928,47 @@ def test_a_report_dated_outside_the_years_covered_is_refused(project: Path) -> N
     )
 
 
+#: The example's supplement, which every gate that reads prose reads as it reads the main text.
+_SUPPLEMENT = "manuscript/supplementary/S1_code_lists.md"
+
+
+@pytest.mark.parametrize("where", ["manuscript/main.md", _SUPPLEMENT])
+def test_a_date_of_the_data_in_the_supplement_is_held_as_in_the_methods(
+    project: Path, where: str
+) -> None:
+    """The supplement is held to the rules of the main text (Basile, 2026-10-21): an
+    extraction date typed in Supplementary Methods fails as one typed in the Methods does,
+    and one typed into the script is warned of there too, at the file it stands in."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["data.extracted"] = {"value": "2026-08-03", "display": "3 August 2026"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    page = project / where
+    page.write_text(page.read_text(encoding="utf-8") + "\n\nThe data were extracted on 3 August "
+                    "2026. They were downloaded on {{results.data.extracted}}.\n",
+                    encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    typed = {f.message.split(" is ")[0] for f in report.failures
+             if f.code == "unclassified-number" and f.path.name == page.name}  # fmt: skip
+    assert typed == {"'3'", "'2026'"}, report.render(project)
+    warned = [f for f in report.findings if f.code == "data-date-not-declared"]
+    assert [f.path.name for f in warned] == [page.name]
+
+
+def test_a_dataset_date_bound_in_the_supplement_alone_is_quoted(project: Path) -> None:
+    """The date bound only in Supplementary Methods is quoted, as one bound in the Methods
+    is: direction two reads the supplement too."""
+    _replace_once(main_md(project), "generated on\n{{results.dataset.reports.extracted}} to cover",
+                  "made to cover")  # fmt: skip
+    page = project / _SUPPLEMENT
+    page.write_text(page.read_text(encoding="utf-8") + "\n\nThe database was generated on "
+                    "{{results.dataset.reports.extracted}}.\n", encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+    assert "unquoted-result" not in {f.code for f in report.findings}
+
+
 def test_a_parameter_declared_and_never_read_fails(project: Path) -> None:
     """The example's signal criterion before this check: stated, declared, bound, and
     applied nowhere. Binding the threshold printed the right number for a step that was not

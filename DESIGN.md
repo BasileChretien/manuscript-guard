@@ -2029,14 +2029,18 @@ tells an instruction to the authors from a paper's prose, since "authors should 
 interval" is both, so the rule `placeholder-template` holds the opening words of each
 instruction in the manuscript templates of MDPI, Frontiers, PLOS, BMC, Springer Nature,
 Elsevier and Wiley, read on 2026-10-21, and Word's "Click or tap here to enter text." in a
-field left empty. Two kinds are wider than one template, since the templates write them in
-several places: "in this section" with "you" or "please" and a verb that asks for something
-("you can acknowledge", "please provide"), and the first words of a statement offered for
-copying after "please add", "please state" or "or state" ('Please add: "This research
-received no external funding"'). Not "In this section, we", nor 'Please state "yes" or
-"no"' on a form a paper reproduces, nor "Click here for additional data file", which PLOS
-prints under each supporting file: "click here" stands in 105 of the 399 papers. It is read
-wherever the placeholders are: MDPI's template captions its sample table with one.
+field left empty. MDPI's back matter is found by what follows "in this section" ("you can
+acknowledge any support", "please provide details regarding where data") and by the
+statement it offers for copying after "please add", "please state" or "or state" ('Please
+add: "This research received no external funding"'). The first version took any verb
+after "In this section, please" and any quotation after "please state", and round 1 of its
+review showed what a questionnaire reproduced in a supplement says: "In this section,
+please indicate how often you took each medicine", 'If none, please state "not
+applicable"'. Nor is "Click here for additional data file" a prompt, which PLOS prints
+under each supporting file: "click here" stands in 105 of the 399 papers. BMC's "Text for
+this section." is read with its capital and its stop, since a hard wrap puts "text" at the
+start of a line in prose. It is read wherever the placeholders are: MDPI's template
+captions its sample table with one.
 
 Europe PMC shows how often they are printed. Of the open-access articles its full-text search
 returned for MDPI's "This section may be divided by subheadings" (Results), for its

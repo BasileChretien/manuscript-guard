@@ -84,23 +84,24 @@ artefacts:
   # prose, since "authors should report the interval" is both, so each is found by its
   # template's own words, the opening of each instruction, read 2026-10-21 in the templates
   # of MDPI, Frontiers, PLOS, BMC, Springer Nature, Elsevier and Wiley; and only words that
-  # none of the 399 papers by people of `tools/g6_baseline.py` writes, nor any of the 18,335
-  # works they cite. Two kinds are wider than one template: "in this section" with "you" or
-  # "please" and a verb that asks for something, and the words of a statement offered for
-  # copying after "please add", "please state" or "or state". Not "In this section, we",
-  # nor 'Please state "yes" or "no"' on a form a paper reproduces, nor PLOS's "Click here
-  # for additional data file".
+  # none of the 399 papers by people of `tools/g6_baseline.py` writes, but for the two
+  # printed with MDPI's, nor any of the 18,335 works they cite. MDPI's back matter is found
+  # by what follows "in this section" and the statement it offers for copying, and not by
+  # "In this section, please" or 'please state "' alone, which a questionnaire a paper
+  # reproduces writes too: "In this section, please indicate how often ...", 'If none,
+  # please state "not applicable"'. Nor PLOS's "Click here for additional data file".
   - id: placeholder-template
     pattern: |-
       (?ix)\b(?:
-      # Two kinds: "In this section, please provide details regarding where data ...", and
+      # MDPI's back matter: "In this section you can acknowledge any support given ...", and
       # 'Please add: "This research received no external funding"', 'Declare conflicts of
-      # interest or state "The authors declare no conflicts of interest."' (MDPI).
-      in\s+this\s+section,?\s+(?:you\s+(?:can|could|may|might|should|must)|please)\s+
-        (?:add|acknowledge|provide|state|include|declare|describe|list|insert|give|write
-        |mention|indicate|specify)\b
+      # interest or state "The authors declare no conflicts of interest."'.
+      in\s+this\s+section,?\s+(?:you\s+can\s+acknowledge\s+any\s+support
+        |(?:you\s+should|please)\s+add\s+the\s+institutional\s+review\s+board
+        |please\s+provide\s+details\s+regarding\s+where\s+data)\b
       |(?:please\s+(?:add|state)|or\s+state)[ \t]*:?\s*["“'‘`]{1,2}[ \t]*
-        (?:this|the|informed|written|ethical|patient|not\s+applicable)\b
+        (?:this\s+research|the\s+(?:study|animal\s+study|authors)|informed\s+consent
+        |written\s+informed|ethical\s+review|patient\s+consent)\b
       # Word's prompt in a field left empty: "Click or tap here to enter text."
       |(?-i:C)lick\s+(?:or\s+tap\s+)?(?:here\s+)?to\s+enter\s+(?:text|a\s+date)\.
       # MDPI.
@@ -147,8 +148,10 @@ artefacts:
       # PLOS.
       |bold\s+the\s+(?:figure\s+|table\s+)?title(?:\s+sentence)?[ \t]*\.
       |add\s+descriptive\s+text\s+after\s+the\s+title\b
-      # BMC, where "Text for this section" opens a line or follows a stop or a colon.
-      |(?:(?<![^\n])|(?<=[.:][ \t]))text\s+(?:and\s+results\s+)?for\s+this\s+section\b
+      # BMC, where "Text for this section" opens a sentence, with its capital, and ends one:
+      # a hard wrap puts "text" at a line's start in prose.
+      |(?-i:T)ext\s+(?:and\s+results\s+)?for\s+this\s+section
+        (?:[ \t]*(?:\.|…|\\ldots)|,\s+as\s+per\b)
       |sample\s+(?:article|figure|table|additional\s+file)\s+title\b
       |additional\s+file\s+descriptions?\s+text\b
       # Springer Nature.
@@ -165,9 +168,9 @@ artefacts:
       |the\s+journal\s+to\s+which\s+you\s+are\s+submitting\b
       |not\s+relevant\s+to\s+your\s+manuscript\b
       |for\s+sample\s+purpose\b
-      # Elsevier, where "Section text." is a line's first words.
+      # Elsevier, where "Section text." is a line's first words, with its capital.
       |research\s+highlight\s+[1-9]\b
-      |(?<![^\n])(?:abstract|section|subsection|subsubsection)\s+text\.(?!\S)
+      |(?<![^\n])(?-i:Abstract|Section|Subsection|Subsubsection)\s+text\.(?!\S)
       # Wiley.
       |this\s+is\s+sample\s+(?:for|abstract)\b
       |this\s+is\s+the\s+sample\s+(?:article\s+title|figure\s+caption|table\s+caption)\b

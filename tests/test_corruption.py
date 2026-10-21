@@ -3366,6 +3366,14 @@ def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None
         "AB wrote the text for this section and CD the rest.",
         "This is the sample size we needed.",
         "The research highlights the role of the liver.",
+        # Round 1: a questionnaire a supplement reproduces, and a hard wrap before words a
+        # template opens a line with.
+        "In this section, please indicate how often you took each medicine.",
+        'If none, please state "not applicable".',
+        'Participants were told: please state "the first word that comes to mind".',
+        'Respondents could answer yes or no, or state "not applicable".',
+        "AB wrote the\ntext for this section and CD the rest.",
+        "We screened each title and\nabstract text. Two reviewers read each.",
     ],
 )
 def test_what_looks_like_a_placeholder_and_is_prose_passes(project: Path, prose: str) -> None:
@@ -3436,6 +3444,9 @@ def test_what_looks_like_a_placeholder_and_is_prose_passes(project: Path, prose:
         ),
         pytest.param("**Bold the figure title.** Panel A shows the cohort.", id="plos-caption"),
         pytest.param("Text for this section.", id="bmc-section"),
+        pytest.param(
+            "Results.  Text for this section \N{HORIZONTAL ELLIPSIS}", id="bmc-two-spaces"
+        ),
         pytest.param("Sample body text.", id="springer-body"),
         pytest.param(
             "If any of the sections are not relevant to your manuscript, please include the"

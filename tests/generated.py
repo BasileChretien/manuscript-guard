@@ -1115,9 +1115,9 @@ PLACEHOLDERS = (
     ("Dose: fill in later\n- Route: oral", "fill in later"),
     ("[insert the date]{.mark}", "[insert the date]"), ("[insert link](#)", "[insert link]"),
     ("[DOI]", "[DOI]"),
-    ("In this section you can acknowledge any support",
-     "In this section you can acknowledge"),
-    ('Please add: "This research received no external funding"', 'Please add: "This'),
+    ("In this section you can acknowledge any support given",
+     "In this section you can acknowledge any support"),
+    ('Please add: "This research received no external funding"', 'Please add: "This research'),
     ("This section may be divided by\nsubheadings.", "This section may be divided by\nsubheadings"),
     ("Click or tap here to enter text.", "Click or tap here to enter text."),
     ("This is a short text to acknowledge the contributions",
@@ -1129,7 +1129,8 @@ LOOKALIKES = (
     "47,XXX", "XXX syndrome", "[repository](https://example.org)",
     "[Add-on therapy in epilepsy]", "replace later lines", "replace later\nlines",
     "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]", "In this section, you can see the code.",
-    'Please state "yes" or "no".', "Click here for additional data file.",
+    "In this section, please indicate how often", 'Please state "yes" or "no".',
+    'If none, please state "not applicable".', "Click here for additional data file.",
 )  # fmt: skip
 
 

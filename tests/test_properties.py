@@ -5222,12 +5222,17 @@ def _words_prompt_is_read_without_what_it_asks_for(patch: pytest.MonkeyPatch) ->
     _in_the_template_rule(patch, r"(?:here\s+)?to\s+enter\s+(?:text|a\s+date)\.", r"here\b")
 
 
-def _any_verb_after_this_section_asks_for_something(patch: pytest.MonkeyPatch) -> None:
-    _in_the_template_rule(patch, "(?:add|acknowledge|", r"(?:\w+|add|acknowledge|")
+def _any_request_after_in_this_section_is_a_template_s(patch: pytest.MonkeyPatch) -> None:
+    # As the rule read it before round 1, and with any verb: a questionnaire asks so too.
+    _in_the_template_rule(
+        patch,
+        r"(?:you\s+can\s+acknowledge\s+any\s+support",
+        r"(?:(?:you\s+\w+|please)\s+\w+|you\s+can\s+acknowledge\s+any\s+support",
+    )
 
 
 def _any_quoted_word_after_please_state_is_a_statement(patch: pytest.MonkeyPatch) -> None:
-    _in_the_template_rule(patch, "(?:this|the|informed|", r"(?:\w+|this|the|informed|")
+    _in_the_template_rule(patch, r"(?:this\s+research|", r"(?:\w+|this\s+research|")
 
 
 def _a_field_wholly_in_brackets_is_read_without_them(patch: pytest.MonkeyPatch) -> None:
@@ -6770,8 +6775,8 @@ BROKEN = {
         _words_prompt_is_read_without_what_it_asks_for,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
     ),
-    "any verb after 'in this section, you can' asks for something": (
-        _any_verb_after_this_section_asks_for_something,
+    "any request after 'in this section' is a template's": (
+        _any_request_after_in_this_section_is_a_template_s,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
     ),
     "any quoted word after 'please state' is a statement offered": (

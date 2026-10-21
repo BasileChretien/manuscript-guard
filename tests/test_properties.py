@@ -74,6 +74,7 @@ from generated import (
     latex_trees,
     lines,
     mean_tables,
+    numbered_displays,
     passage_files,
     pdf_figures,
     planned_plans,
@@ -2902,6 +2903,25 @@ def test_a_pointer_names_what_the_document_carries_or_is_said(
         (at["kind"], bool(at["s"]), int(at["n"])) for at in named if at is not None
     }
     assert found == expected, (main, supplement, report.findings)
+
+
+@holds(100, numbered_displays())
+def test_a_ref_prints_the_number_its_display_has_or_is_said(
+    drawn: tuple[dict[str, str], dict[tuple[str, int], str], set[tuple[str, str, int]]],
+) -> None:
+    """Each ref and num binding prints the number the document gives its table or figure:
+    counted in the order the files print, which is not the order of their paths, and the
+    supplement's apart from the main text's. G2 says of the pointers exactly what was
+    planted, a ref to a key nothing places and a num after words that point at another kind
+    or at the other document, and nothing of the rest, which cite each display in order."""
+    files, prints, planted = drawn
+    said = READINGS["pointers"]()({"files": files})
+    printed = {(relative, start): shown for relative, start, shown in said["printed"]}
+    assert {at: shown for at, shown in printed.items() if shown is not None} == prints, files
+    assert sum(shown is None for shown in printed.values()) == 2, (files, printed)
+    findings = said["report"]["findings"]
+    found = {(f["code"], f["path"].split("manuscript/")[-1], f["line"]) for f in findings}
+    assert found == planted, (files, findings)
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -5857,7 +5877,10 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
 def _a_list_of_pointers_is_its_first(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import pointers
 
-    patch.setattr(pointers, "_numbers", lambda found: [(bool(found["s0"]), int(found["n0"]))])
+    patch.setattr(
+        pointers, "_numbers",
+        lambda found: [(bool(found["s0"]), int(found["n0"]), found.start("n0"))],
+    )  # fmt: skip
 
 
 def _the_supplement_s_tables_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
@@ -5868,7 +5891,9 @@ def _the_supplement_s_tables_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
     read = pointers.pointers_in
     patch.setattr(
         pointers, "pointers_in",
-        lambda text, path: [replace(p, supplementary=False) for p in read(text, path)],
+        lambda text, path, *numbers: [
+            replace(p, supplementary=False) for p in read(text, path, *numbers)
+        ],
     )
 
 
@@ -5891,10 +5916,42 @@ def _one_figure_more_is_counted_than_the_supplement_carries(patch: pytest.Monkey
 
     def one_more(text: str):
         found = placed(text)
-        figures = ("figure",) if "figure" in found.bound else ()
+        figures = (("figure", "f0"),) if any(k == "figure" for k, _ in found.bound) else ()
         return type(found)(found.bound + figures, found.by_hand)
 
     patch.setattr(pointers, "placed_in", one_more)
+
+
+def _a_bound_pointer_points_where_its_binding_does(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.crossref import Display
+    from manuscript_guard.gates import pointers
+
+    read = pointers.pointers_in
+
+    def as_named(text: str, path: Path, numbers=None):
+        found = []
+        for pointer in read(text, path, numbers):
+            named = numbers.display(pointer.binding) if numbers and pointer.binding else None
+            if isinstance(named, Display):
+                pointer = replace(pointer, kind=named.kind, supplementary=named.supplementary)
+            found.append(pointer)
+        return found
+
+    patch.setattr(pointers, "pointers_in", as_named)
+
+
+def _displays_are_numbered_in_the_order_of_their_paths(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "printed_order", lambda paths, supplementary: sorted(paths))
+
+
+def _the_supplement_s_displays_are_numbered_with_the_paper_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "is_supplementary", lambda root, path: False)
 
 
 def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
@@ -7659,6 +7716,18 @@ BROKEN = {
     "a document's figures are counted one too many": (
         _one_figure_more_is_counted_than_the_supplement_carries,
         test_a_pointer_names_what_the_document_carries_or_is_said,
+    ),
+    "a bound pointer is read as pointing where its binding does": (
+        _a_bound_pointer_points_where_its_binding_does,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "tables and figures are numbered in the order of their files' paths": (
+        _displays_are_numbered_in_the_order_of_their_paths,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "the supplement's tables are numbered with the paper's": (
+        _the_supplement_s_displays_are_numbered_with_the_paper_s,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
     ),
     "the Methods are read by the name G9 had for them": (
         _the_methods_are_read_by_their_old_name,

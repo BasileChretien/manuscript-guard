@@ -419,6 +419,72 @@ checklist runs to 27 items. "Step 1204" is a count. A list after a plural is rea
 pointers by G2 too, where only its first number was before: "Tables 1 and 2 show" left its
 2 unbound.
 
+## A pointer the build numbers
+
+A typed pointer can only be checked. It goes stale every time a table moves, and the author
+renumbers it by hand once G2 says so. LaTeX's `\ref`, and the cross-references of MyST
+(Jupyter Book) and pandoc-crossref, print the number from a label instead. Jupyter Book was
+looked at on 2026-10-20 for ideas, and this is the one taken: its executed inline expressions
+would run code at build time, and its web and JATS outputs are not what journals take. The
+label is the key the display is placed by already, so nothing new is declared:
+`{{ref.table.baseline}}` prints "Table 2" where `{{table.baseline}}` is the second table the
+main text places, and "Table S1" where it is the supplement's first. The count is G2's
+(`gates/pointers.py`, `display_numbers`), so the gate and the build cannot disagree about
+it: one document at a time, its files in the order the build prints them. Move the table and
+every mention follows, and a mention cannot point at a table that is not there.
+
+Basile's choices of 2026-10-20, each asked with the alternatives:
+
+- **Two forms.** `{{ref.table.key}}` prints the pointer whole. `{{num.table.key}}` prints the
+  number alone, "2" or "S1", for a list or a range the author writes: "Tables
+  {{num.table.a}} and {{num.table.b}}". A list binding that wrote the "and" itself was the
+  other choice, and it would have decided the serial comma and the dash for every paper. A
+  num is held to the words before it: G2 reads the text with each binding printed, and a num
+  that the pointer around it reads as another kind or the other document ("Figure
+  {{num.table.a}}", "Supplementary Table {{num.table.a}}" for a table of the main text), or
+  that no pointer word stands before, is `pointer-word-mismatch`. That fails from the
+  internal review, as a typed pointer's findings do: the words go stale as the table moves,
+  the way a typed number does. A ref is held the same way, so "Supplementary
+  {{ref.table.a}}" is refused too.
+- **The journal's form.** How a pointer is written is the target journal's: the profile's
+  `pointers:` gives a form for each kind of each document, "eTable {n}", "Fig. {n}",
+  "Supplementary Table {n}", quoted under `pointers.<kind>` like any rule of the page. Where
+  it gives none: Table {n}, Figure {n}, Table S{n}, Figure S{n}. A num prints the word of the
+  form that holds the number, so "S1" under "Table S{n}" and "1" under "eTable {n}". A form
+  G2 does not read back, whole, as a pointer to that kind of that document is
+  `pointer-form-unread`, from the start: a ref printed in it would be a pointer G2 could not
+  hold to anything.
+- **Exact numbers only.** Where a document also places a kind by hand, or sends some to the
+  journal as files of their own (`displays:`), where a bound one falls among them is not
+  known, and a ref to that kind of that document is `ref-number-unknown`. So is a ref to a
+  key placed twice, which has two numbers. These fail from the drafting stage, since the
+  build would have nothing to print, and the build refuses them too. Numbering the files
+  after the placed ones was the other choice, and it is wrong for the usual case, a flow
+  chart drawn by hand that is Figure 1.
+
+A ref to a key nothing places, or one that names no kind (`{{ref.baseline}}`), is
+`unresolved-binding`, as a value's typo is. G2 reads a printed ref as a citation where it
+stands, so the main text's tables are cited in order and each one cited
+(`cited-out-of-order`, `display-not-cited`) with refs and typed pointers mixed; it is never
+`pointer-to-nothing`. The build, the annotated copy (green, labelled with the key and the
+display it was counted from), `render`, the text a review panel is sent, the response to the
+reviewers, the copy of the manuscript a revision round keeps as submitted and the abstract
+for the journal's portal print the same number (`revision.displays`); the response round
+looked for a quoted sentence in text that still read `{{ref.` until round 1 of #378.
+`explain` lists each ref with what it prints and from which display.
+
+In Word, the number a ref prints is a binding like any other: the marked build bookmarks it,
+and a co-author who changes "Table 2" to "Table 3" has the paragraph refused, with "'Table 2'
+comes from ref.table.two_by_two, numbered where the build places it". A paragraph that is
+only a ref gets an identifier, as one that is only a value does. `reworded` reads a ref as a
+binding, so a pointer typed and then bound is not a rewording.
+
+`bind --pointers` turns typed pointers into refs, a list's numbers into nums, each only where
+the binding prints what is typed, character for character: "Table S1" under "Table S{n}", not
+"Supplementary Table 1", which would print as "Table S1". A range that names a number it does
+not write ("Tables 1-3") is not offered. With `--apply` the example's every pointer is bound
+and its build prints what it printed before.
+
 ## The corruption harness
 
 The claim "no stale number" is worth exactly as much as the evidence that the gate catches
@@ -8639,9 +8705,10 @@ Open, recorded as each change landed:
   checked in them. Reading those languages is weeks of work, for word splitting, their
   conventions and numerals, and counting characters against a limit, and waits until
   somebody writing in one of them asks.
-- **A pointer is held to the number of a placement, not to its key, and only where every
-  placement is a binding.** "Table 2" passes wherever the main text places two tables,
+- **A typed pointer is held to the number of a placement, not to its key, and only where
+  every placement is a binding.** "Table 2" passes wherever the main text places two tables,
   whichever two they are: the check sees the numbering, not which table a sentence means.
+  `{{ref.table.<key>}}` names the table, and is the way out.
   A paper that writes any of its tables or places any of its figures by hand has no
   pointer of that kind checked, only a note; one that sends some as files of their own and
   does not declare them in `paper.yaml` (`displays`) has a pointer past the bound ones
@@ -8650,6 +8717,36 @@ Open, recorded as each change landed:
   target and not counted as the citation that numbers a table. "Table 3 of Smith et al."
   is read as a pointer to the paper's own Table 3. "Box", "Section" and "Equation" point at
   nothing the check counts.
+- **A ref numbers only what is placed by binding, and only one kind of one document at a
+  time.** Where the main text also places a table by hand, or `paper.yaml` sends one of its
+  figures as a file, a ref to that kind of that document is refused (`ref-number-unknown`)
+  and the pointer is typed, as before refs; so is a ref to a key placed twice (Basile's
+  choice, 2026-10-20). A form G2 does not read as a pointer cannot be printed: a journal
+  that letters its appendix tables "Table A1", or writes "Exhibit 2", has its pointers typed
+  (`pointer-form-unread`). So does JAMA's own form, "eTable 1 in Supplement 1": G2 reads "in
+  the Supplement" after a pointer and not "in Supplement 1" (round 1 of #378).
+- **`bind --pointers` offers what G2 reads as a pointer, and some of that is not one.**
+  "Table 3 of Smith et al." is offered as the paper's own Table 3, and "in Tables 1, 2
+  patients were excluded" offers the 2. Either prints as typed when it is applied, and
+  prints another number once the tables move. The list is printed before `--apply`, and
+  `--only FILE:LINE` takes the ones meant (round 1 of #378).
+- **A ref counts no word.** The word count masks every binding, so "Table 2" typed counts two
+  words and `{{ref.table.a}}` none, as a value bound counts none where it typed counted one.
+  A paper binding its pointers near the limit is counted a few words short (round 1 of
+  #378).
+- **A range between two nums covers what the build numbers between them.** "Tables
+  {{num.table.a}}-{{num.table.c}}", written when a and c were Tables 1 and 3, cites Tables 1
+  to 5 once two tables are placed between them, and nothing says the range grew. Each end is
+  right; what the dash takes in is not held to anything. A range written with two refs reads
+  as two pointers and is held like them.
+- **The build numbers no caption.** `{{ref.figure.forest}}` opening a figure's caption prints
+  its number, and a caption typed as "Figure 2." under the first figure is checked only for
+  pointing at a figure the document has, not for being the caption of that one. An emitted
+  table's caption prints with no number at all.
+- **A ref G2 does not see is still printed.** G2 reads the text as the build prints it less
+  its fenced listings, comments and front matter. A ref inside a listing is printed by the
+  build, which refuses one it cannot number, and is no citation to G2: a table cited only in
+  a listing is `display-not-cited`.
 - **The Methods are a heading that holds the word, and two gates read fewer headings than
   G4 counts.** G4 and G9 take for the Methods a heading whose title holds "methods" where
   the paper's structure allows it. In a paper with no heading G2 reads as the Methods, the

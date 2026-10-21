@@ -231,6 +231,12 @@ CHANGED = {
         "MANY = 2\n",
         "spelling",
     ),
+    "a residue read across a blank line": (
+        "gates/writing.py",
+        "    return [*spans, (start, len(text))]\n",
+        "    return [(0, len(text))]\n",
+        "residue",
+    ),
     "a planned item read past its paragraph": (
         "gates/design.py",
         '_BLANK_LINE = re.compile(r"\\n[ \\t]*\\n")\n',

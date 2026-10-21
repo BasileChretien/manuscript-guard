@@ -152,4 +152,15 @@ reply becomes its `overridden`, with the reply as the reason and its author as
 wording does not answer what the finding says. Nothing in the reader's words changes, so the
 seal still holds.
 
+## Comments a co-author left in Word
+
+A co-author's comments are not a panel's reading, and they are not lost either. `import
+--apply` files each comment of a returned document in
+`review/comments/<manuscript|supplementary>-<build>/<commenter>.yaml`, outside every round:
+the comment word for word, its replies, the words it was made on and its paragraph. G11
+reports each one until it has a `resolution` or an `overridden` reason, whatever its
+severity, and `check --submission` fails while one has neither. The records are sealed like a
+reading, so a comment reworded or deleted by hand is `comments-altered`, and they never go
+into a build or the submission pack. The word-roundtrip skill has the details.
+
 [Back to the README](../README.md)

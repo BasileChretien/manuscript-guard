@@ -170,6 +170,186 @@ POINTED = (
     "item 25", "panel 2A",
 )  # fmt: skip
 
+#: The files of each document a generated paper places its tables and figures in, in the order
+#: the build prints them: `main.md` first and the rest by name, so `1_methods.md` prints after
+#: `main.md` though its path sorts before it; the supplement's by name.
+DISPLAY_FILES = {
+    False: ("main.md", "1_methods.md", "3_results.md"),
+    True: ("supplementary/S1.md", "supplementary/S2.md"),
+}
+#: The words a num binding of each kind of each document may follow, the number it prints
+#: holding the supplement's `S`.
+_NUM_WORDS = {
+    (False, "table"): ("Table",),
+    (False, "figure"): ("Figure", "Fig."),
+    (True, "table"): ("Table", "Supplementary Table"),
+    (True, "figure"): ("Figure", "Supplementary Figure"),
+}
+
+
+@st.composite
+def numbered_displays(
+    draw: st.DrawFn,
+) -> tuple[dict[str, str], dict[tuple[str, int], str], set[tuple[str, str, int]]]:
+    """Tables and figures placed by their bindings across the files of the main text and of
+    the supplement, in a drawn order, each cited just before it is placed by a ref or by a
+    num after its word, and the main text's tables listed once more, by num, at the end of
+    `main.md`. Four pointers are planted there too, one of each kind in every example, in a
+    drawn order: a ref to a key nothing places, a ref that calls a table a figure, a num after
+    a figure's word, and a num after the supplement's words. `main.md` and `1_methods.md`
+    each place one of the main text's tables, so that numbering them in the order of their
+    paths would give the two the other's number, and the supplement places a table.
+
+    Some displays have a caption beside them, typed or opened by their ref: under a figure,
+    above or under a table. Two are planted wrong in every example, naming another display
+    of the main text: one under a figure and one above a table. A table outside `main.md` may
+    go uncited where it is placed, so that it stands straight under the block before it, and
+    `supplementary/S2.md` ends in every example with two tables placed one after the other
+    with a caption between them, which names one of them (round 1 of #381: it was held to
+    both).
+
+    Returns each file's text by its path under `manuscript/`; what each ref and num binding
+    prints, by its file and the offset it starts at; and the findings the planted pointers
+    and captions make, by code, file and line."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    counts = {
+        (False, "table"): draw(st.integers(2, 4)),
+        (False, "figure"): draw(st.integers(2, 3)),
+        (True, "table"): draw(st.integers(1, 2)),
+        (True, "figure"): draw(st.integers(0, 2)),
+    }
+    keys = iter(draw(st.permutations([f"k{index}" for index in range(16)])))
+    placed: dict[str, list[tuple[str, str]]] = {
+        file: [] for files in DISPLAY_FILES.values() for file in files
+    }
+    for (supplementary, kind), count in counts.items():
+        files = DISPLAY_FILES[supplementary]
+        for index in range(count):
+            spread = not supplementary and kind == "table" and index < 2
+            file = files[index] if spread else draw(st.sampled_from(files))
+            placed[file].append((kind, next(keys)))
+    #: The two tables `supplementary/S2.md` ends with, one straight after the other.
+    pair = (next(keys), next(keys))
+    last = DISPLAY_FILES[True][-1]
+    numbers: dict[tuple[str, str], tuple[bool, int]] = {}
+    seen: dict[tuple[bool, str], int] = {}
+    for supplementary, files in DISPLAY_FILES.items():
+        for file in files:
+            placed[file] = draw(st.permutations(placed[file]))
+            if file == last:
+                placed[file] += [("table", key) for key in pair]
+            for kind, key in placed[file]:
+                number = seen[supplementary, kind] = seen.get((supplementary, kind), 0) + 1
+                numbers[kind, key] = (supplementary, number)
+
+    def alone(kind: str, key: str) -> str:
+        supplementary, number = numbers[kind, key]
+        return f"{'S' if supplementary else ''}{number}"
+
+    def whole(kind: str, key: str) -> str:
+        return f"{kind.capitalize()} {alone(kind, key)}"
+
+    # The two displays whose caption is planted wrong, and the number it names instead: that
+    # of another display of their kind in the main text.
+    wrong: dict[tuple[str, str], int] = {}
+    for kind in ("figure", "table"):
+        mine = [key for (k, key), (s, _n) in numbers.items() if k == kind and not s]
+        chosen, other = draw(st.permutations(mine))[:2]
+        wrong[kind, chosen] = numbers[kind, other][1]
+
+    def line_of(parts: list[tuple[str, str | None, str | None]]) -> int:
+        return "".join(part[0] + (part[1] or "") for part in parts).count("\n") + 1
+
+    def caption(file: str, kind: str, key: str, parts: list, where: str) -> None:
+        """A caption beside the display, standing `where` says, or none."""
+        if (kind, key) in wrong and where == ("under" if kind == "figure" else "above"):
+            planted.add(("caption-names-another", file, line_of(parts)))
+            bold = "**" if where == "above" else ""
+            text = f"{bold}{kind.capitalize()} {wrong[kind, key]}.{bold} {words()}\n\n"
+            parts.append((text, None, None))
+            return
+        how = draw(st.sampled_from(("none", "typed", "ref")))
+        if how == "typed":
+            parts.append((f"{whole(kind, key)}. {words()}\n\n", None, None))
+        elif how == "ref":
+            parts.append(("", f"{{{{ref.{kind}.{key}}}}}", whole(kind, key)))
+            parts.append((f". {words()}\n\n", None, None))
+
+    texts: dict[str, str] = {}
+    prints: dict[tuple[str, int], str] = {}
+    planted: set[tuple[str, str, int]] = set()
+
+    def write(file: str, parts: list[tuple[str, str | None, str | None]]) -> None:
+        """`parts` as (text, binding, what it prints): each binding's offset recorded."""
+        out = ""
+        for text, binding, printed in parts:
+            out += text
+            if binding is not None:
+                prints[file, len(out)] = str(printed)
+                out += binding
+        texts[file] = out
+
+    for supplementary, files in DISPLAY_FILES.items():
+        for file in files:
+            parts: list[tuple[str, str | None, str | None]] = [("# Results\n\n", None, None)]
+            for kind, key in placed[file]:
+                if key in pair:
+                    continue
+                # The main text's tables are all cited again at the end of `main.md`, which
+                # prints first, so one placed elsewhere need not be cited where it stands.
+                # The table whose caption is planted wrong is, so that only one table stands
+                # beside that caption.
+                uncited = kind == "table" and file != "main.md" and (kind, key) not in wrong
+                how = draw(st.sampled_from(("ref", "num", "none") if uncited else ("ref", "num")))
+                lead = f"{words().capitalize()} in "
+                if how == "ref":
+                    parts.append((lead, f"{{{{ref.{kind}.{key}}}}}", whole(kind, key)))
+                elif how == "num":
+                    word = draw(st.sampled_from(_NUM_WORDS[supplementary, kind]))
+                    parts.append((f"{lead}{word} ", f"{{{{num.{kind}.{key}}}}}", alone(kind, key)))
+                if how != "none":
+                    parts.append((".\n\n", None, None))
+                if kind == "table":
+                    caption(file, kind, key, parts, "above")
+                parts.append((f"{{{{{kind}.{key}}}}}\n\n", None, None))
+                caption(file, kind, key, parts, "under")
+            if file == "main.md":
+                listed = sorted(
+                    (key for kind, key in numbers if kind == "table" and not numbers[kind, key][0]),
+                    key=lambda key: numbers["table", key][1],
+                )
+                parts.append((f"{words().capitalize()} in Tables ", None, None))
+                for index, key in enumerate(listed):
+                    join = "" if index == 0 else " and " if index == len(listed) - 1 else ", "
+                    parts.append((join, f"{{{{num.table.{key}}}}}", alone("table", key)))
+                parts.append((".\n\n", None, None))
+                table = draw(st.sampled_from(listed))
+                plants = [
+                    ("unresolved-binding", "", "{{ref.table.nothing}}", None),
+                    ("unresolved-binding", "", f"{{{{ref.figure.{table}}}}}", None),
+                    ("pointer-word-mismatch", "Figure ", f"{{{{num.table.{table}}}}}",
+                     alone("table", table)),
+                    ("pointer-word-mismatch", "Supplementary Table ",
+                     f"{{{{num.table.{table}}}}}", alone("table", table)),
+                ]  # fmt: skip
+                for code, word, binding, printed in draw(st.permutations(plants)):
+                    planted.add((code, file, line_of(parts)))
+                    lead = f"{words().capitalize()} in {word}"
+                    printing = (lead, binding, printed)
+                    parts.append(printing if printed else (lead + binding, None, None))
+                    parts.append((".\n\n", None, None))
+            if file == last:
+                # Under the first table and above the second, naming one of them.
+                named = whole("table", draw(st.sampled_from(pair)))
+                first, second = (f"{{{{table.{key}}}}}" for key in pair)
+                parts.append((f"{first}\n\n{named}. {words()}\n\n{second}\n", None, None))
+            write(file, parts)
+    return texts, prints, planted
+
+
 #: Spaces a manuscript holds that are not the space bar's.
 SPACES = (
     "\t", "\N{NO-BREAK SPACE}", "\N{THIN SPACE}", "\N{NARROW NO-BREAK SPACE}", "\x0c", "\x0b",
@@ -319,10 +499,11 @@ _SIGNS = (
 
 
 @cache
-def _pool(terms: tuple[str, ...]) -> tuple[str, ...]:
+def _pool(terms: tuple[str, ...], blocks: tuple[str, ...] = ()) -> tuple[str, ...]:
     """Everything a manuscript is drawn from, each piece as often as it should come up:
     words most of all, then what ends a sentence, then numbers, citations, bindings and
-    code, then what opens a block, and the bare signs once each."""
+    code, then what opens a block, and the bare signs once each. `blocks` are whole blocks
+    a reading is to meet as often as `_WHOLE`'s."""
     return (
         *_spaced(FILLER) * 2,
         *FILLER,
@@ -337,11 +518,13 @@ def _pool(terms: tuple[str, ...]) -> tuple[str, ...]:
         *_WHOLE * 3,
         *SPACES,
         *_SIGNS,
+        *blocks * 3,
     )
 
 
-def texts(terms: tuple[str, ...] = ()) -> st.SearchStrategy[str]:
-    """A manuscript file, with `terms` written into it in every way a term is written.
+def texts(terms: tuple[str, ...] = (), blocks: tuple[str, ...] = ()) -> st.SearchStrategy[str]:
+    """A manuscript file, with `terms` written into it in every way a term is written, and
+    `blocks` among its whole blocks.
 
     Drawn piece by piece from one pool, as the reviews drew their lines from an alphabet,
     and not block by block from a grammar of Markdown. A grammar writes only what its
@@ -359,7 +542,7 @@ def texts(terms: tuple[str, ...] = ()) -> st.SearchStrategy[str]:
 
     return st.tuples(
         st.sampled_from(("", "", "", "", *_HEADERS)),
-        _in_a_row(_pool(terms), few=20, many=70),
+        _in_a_row(_pool(terms, blocks), few=20, many=70),
         st.sampled_from(("\n", "\n", "\n", "\r\n")),
     ).map(file)
 
@@ -481,6 +664,69 @@ def latex_planted(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     return text, planted
 
 
+#: Where a binding stands in LaTeX, and what it is there: each `{}` holds the key's last part,
+#: and the kind says whether it is a binding, one in a typed table, something meant for one
+#: and none, a word in a listing, or nothing. A binding in a comment, an `\\iffalse` block or
+#: the `comment` environment is nothing, and so is the milligram siunitx defines as `\\mg`,
+#: and a `\\mg` that names no key in a `\\verb`.
+LATEX_BINDING_PLACES = (
+    ("prose \\mg{{results.{}}} ", "bound"),
+    ("\\footnote{{in \\mg{{results.{}}}}} ", "bound"),
+    ("\\caption{{Of \\mg{{results.{}}}}} ", "bound"),
+    ("\\begin{{tabular}}{{l}}\\mg{{results.{}}} \\\\\\end{{tabular}}\n", "table"),
+    ("\\mg\n  {{results.{}}} ", "bound"),
+    ("\\begin{{lstlisting}}[language=R]\nx <- {}\n\\end{{lstlisting}}\n", "listing"),
+    ("\\verb|\\mg| ", "none"),
+    ("\\emph{{{{results.{}}}}} ", "malformed"),
+    ("$x = \\mg{{results.{}}}$ ", "bound"),
+    ("\\newcommand{{\\nn}}{{\\mg{{results.{}}}}} ", "bound"),
+    ("\\mg[width=3cm]{{figure.{}}} ", "bound"),
+    ("\\mg {{ lit.{} }} ", "bound"),
+    ("% \\mg{{results.{}}}\n", "none"),
+    ("\\iffalse \\mg{{results.{}}} \\fi ", "none"),
+    ("\\begin{{comment}}\n\\mg{{results.{}}}\n\\end{{comment}}\n", "none"),
+    ("\\qty{{5}}{{\\mg}} and \\SI{{3}}{{\\mg\\per\\kg}} ", "none"),
+    ("\\Mg{{results.{}}} ", "malformed"),
+    ("\\mgg{{results.{}}} ", "malformed"),
+    ("{{{{results.{}}}}} ", "malformed"),
+    ("\\mg{{Results.{}}} ", "malformed"),
+    ("\\mg results.{} ", "malformed"),
+)  # fmt: skip
+#: Where a binding stands in the preamble: the title prints it.
+LATEX_PREAMBLE_BINDINGS = (("\\title{{T \\mg{{results.{}}}}}\n", "bound"),)
+
+
+@st.composite
+def latex_bound(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A LaTeX document with a binding in every place of `LATEX_BINDING_PLACES`, in an order
+    drawn, among whole pieces; and the last part of each key planted, with what it is where
+    it stands. Every place is in every document, so that a rule broken for one is seen in
+    each."""
+    filler = (*_spaced(FILLER), *(piece for piece in _LATEX_WHOLE if "\\mg" not in piece))
+    order = draw(st.permutations(range(len(LATEX_BINDING_PLACES))))
+    between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
+                            max_size=len(order) + 1))  # fmt: skip
+    text, planted = "\\documentclass{article}\n", []
+
+    def plant(template: str, kind: str) -> None:
+        nonlocal text
+        pieces = [piece.replace("{{", "{").replace("}}", "}") for piece in template.split("{}")]
+        for piece in pieces[:-1]:
+            key = f"k{4101 + len(planted)}"
+            planted.append((key, kind))
+            text += piece + key
+        text += pieces[-1]
+
+    for template, kind in LATEX_PREAMBLE_BINDINGS:
+        plant(template, kind)
+    text += "\\begin{document}\n"
+    for piece, index in zip(between, order, strict=False):
+        text += piece
+        plant(*LATEX_BINDING_PLACES[index])
+    text += between[-1] + "\\end{document}\n"
+    return text, planted
+
+
 _SECTIONING = {-1: "part", 0: "chapter", 1: "section", 2: "subsection", 3: "subsubsection"}
 
 
@@ -564,6 +810,68 @@ def summaries() -> st.SearchStrategy[str]:
             lambda gaps: "".join(gap + piece for gap, piece in zip(gaps, order, strict=True))
         )
     )
+
+
+#: What a supplement calls its Methods, each a way `classify.SUPPLEMENT_METHODS` takes: with
+#: a number before or after it, with the title of its part after a stop or a colon, under the
+#: label of an appendix. G9 reads each with the main text's Methods, and G2 and G15 hold their
+#: Methods-only rules under each.
+SUPPLEMENT_METHODS = (
+    "Supplementary methods", "Supplemental Methods 2", "Online methods", "eMethods",
+    "eMethods 1. Data source", "eMethods 3: Sensitivity", "S1 Methods", "Appendix 1: Methods",
+    "Appendix S1. Supplementary methods", "eAppendix 2. Methods", "Supplement 1. eMethods 4",
+    "2. Supplementary methods", "Supplementary Methods S3",
+)  # fmt: skip
+#: What else a supplement's headings say. The last two hold "methods", so G9 reads them, as G4
+#: would count them, and they name results, so G2 and G15 do not, as of the main text's
+#: "Methods and results".
+SUPPLEMENT_OTHERS = (
+    "eTable 1. Counts by year", "eFigure 2", "Supplementary results", "eAppendix 3. Data",
+    "Supplementary material", "Supplementary methods and results", "eMethods 5. Results by site",
+)  # fmt: skip
+
+
+@st.composite
+def supplements(draw: st.DrawFn) -> tuple[str, list[tuple[int, bool, bool]]]:
+    """A file of the supplement holding every heading of `SUPPLEMENT_METHODS` and
+    `SUPPLEMENT_OTHERS`, in an order and a case drawn each time and with words drawn under
+    each, and where each section starts and what it is: Methods to G9 (its heading holds
+    "methods" and stands under no Results, or it names a method under one G9 reads) and to G2
+    and G15 (its heading is a supplement's name of the Methods, or a name of a method under
+    one, under no Results). Among them are a section of the Methods under one, a table under
+    one, which neither reads (round 1 of #395), a heading G9 reads and G2 does not over a
+    section of each kind, and a section under the Results. Each section says "p < 0.05" and
+    names a logistic regression, and those G9 reads say "Coriander" where the rest say
+    "Basil". Every heading is in every example: a rule broken for one way of naming the
+    Methods is seen whatever the seed."""
+    blocks = [
+        *([(1, heading, True, True)] for heading in SUPPLEMENT_METHODS),
+        *([(1, heading, "methods" in heading.lower(), False)] for heading in SUPPLEMENT_OTHERS),
+        [(1, "Supplemental methods", True, True), (2, "eMethods 7. Linkage", True, True)],
+        [(1, "eMethods 8. Signals", True, True), (2, "Table S2. The adjusted model", False, False)],
+        [
+            (1, "Detailed methods", True, False),
+            (2, "Record linkage", False, False),
+            (2, "Statistical analysis", True, True),
+        ],
+        [(1, "Results", False, False), (2, "eMethods 6. Linkage", False, False)],
+    ]
+    text, sections = "", []
+    for block in draw(st.permutations(blocks)):
+        for level, heading, read, held in block:
+            written = draw(st.sampled_from((heading, heading.lower(), heading.upper())))
+            words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            text += "\n" if text else ""
+            sections.append((len(text), read, held))
+            text += (
+                f"{'#' * level} {written}\n\n{'Coriander' if read else 'Basil'} {words}, "
+                f"p < 0.05 by logistic regression {words}.\n"
+            )
+    return text, sections
+
+
+#: The supplement's names of the Methods as headings in a manuscript drawn from the pool.
+SUPPLEMENT_HEADINGS = tuple(f"\n\n# {heading}\n\n" for heading in SUPPLEMENT_METHODS)
 
 
 #: Quotations as a sentence writes them, with the citation that says whose words they are.
@@ -975,6 +1283,8 @@ def pdf_document(
     fonts: dict[str, bytes] | None = None,
     forms: dict[str, tuple[bytes, str]] | None = None,
     *,
+    gstates: dict[str, float] | None = None,
+    spaces: dict[str, bytes] | None = None,
     width: float = 216,
     compress: bool = True,
     packed: bool = False,
@@ -982,7 +1292,9 @@ def pdf_document(
 ) -> bytes:
     """A PDF of one page that draws `content`, with `fonts` (a name and the font's own
     dictionary, which may refer to the objects after it as `{n}`) and `forms` (a name, and
-    the form's content and `/Matrix`). Its fonts are packed in an object stream where
+    the form's content and `/Matrix`) and `gstates` (a name, and the opacity its graphics
+    state sets, filling and stroking) and `spaces` (a name, and the colour space it names, as
+    written). Its fonts are packed in an object stream where
     `packed` is set, and its content in a stream for each line where `split` is. No
     cross-reference table: what reads it reads its objects."""
     fonts = fonts or {"F1": b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"}
@@ -1031,7 +1343,12 @@ def pdf_document(
     objects[2] = (b"<< /Type /Page /Parent 2 0 R /Contents " + contents
                   + b" /Resources << /Font << "
                   + b" ".join(font_refs) + b" >> /XObject << " + b" ".join(form_refs)
-                  + b" >> >> >>")  # fmt: skip
+                  + b" >> /ExtGState << " + b" ".join(
+                      b"/%s << /ca %g /CA %g >>" % (name.encode(), alpha, alpha)
+                      for name, alpha in (gstates or {}).items()
+                  ) + b" >> /ColorSpace << " + b" ".join(
+                      b"/%s %s" % (name.encode(), space) for name, space in (spaces or {}).items()
+                  ) + b" >> >> >>")  # fmt: skip
     out = b"%PDF-1.5\n"
     for number, body in enumerate(objects, 1):
         out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
@@ -1264,6 +1581,222 @@ def alt_texts(draw: st.DrawFn) -> str:
     return pieces[0] + "".join(space + piece for space, piece in joined)
 
 
+# ------------------------------------------------------------------- a figure's colours
+
+#: Colours a figure may paint in, as an SVG writes each of them.
+PAINT_COLOURS = ("#d62728", "#2ca02c", "#1f77b4", "#ff7f0e", "#e69f00", "#56b4e9",
+                 "#009e73", "#cc79a7", "#000000", "#777777")  # fmt: skip
+#: Colours a text may be painted in, none of them a mark's: a text's colour read as a
+#: mark's is then a colour the marks do not have, under every seed.
+TEXT_COLOURS = ("#3b0f70", "#8c2981", "#5a5a5a")
+#: Colours each painted by one kind of mark and by no other, so that a reading that loses
+#: or moves that kind's colour is seen under every seed: what a hidden mark is painted in,
+#: what a form draws in, what a colour set between `q` and `Q` is.
+HIDDEN, FORMED, BETWEEN = "#a0522d", "#ff1493", "#4b0082"
+#: Each way an SVG sets the colour a mark is painted in, and each way it paints none.
+PAINT_KINDS = ("attribute", "style", "class", "inherited", "current", "use", "opacity",
+               "fill-opacity", "named", "function", "text", "hidden", "none", "unused",
+               "inherit", "invisible", "glyphs", "hsl", "stroke-inherit", "cairo")  # fmt: skip
+#: `hsl()` as CSS writes it, and the colour it is.
+_HSL = {"hsl(0, 100%, 50%)": "#ff0000", "hsl(120, 100%, 25%)": "#008000",
+        "hsla(240, 100%, 50%, 1)": "#0000ff"}  # fmt: skip
+_NAMED_COLOURS = {"#ff0000": "red", "#008000": "green", "#0000ff": "blue",
+                  "#ffa500": "orange", "#800080": "purple"}  # fmt: skip
+
+
+def _blend(code: str, alpha: float) -> str:
+    """`code` laid over white at `alpha`, as a hex code, rounded as the reading rounds."""
+    channels = [int(code[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+    return "#" + "".join(f"{round((c * alpha + (1 - alpha)) * 255):02x}" for c in channels)
+
+
+@st.composite
+def painted_svgs(draw: st.DrawFn) -> tuple[str, set[str], set[str]]:
+    """An SVG with a mark painted in every way of `PAINT_KINDS`, each in a colour drawn at
+    random, in an order drawn; with the colours its marks are painted in, as they show over
+    white, and those its texts are."""
+    marks, texts = set(), set()
+    defs, body, rules = [], [], []
+    for number, kind in enumerate(draw(st.permutations(PAINT_KINDS))):
+        colour = draw(st.sampled_from(PAINT_COLOURS))
+        shape = f'd="M0 {number}L9 {number}"'
+        if kind == "attribute":
+            body.append(f'<path {shape} fill="none" stroke="{colour}"/>')
+            marks.add(colour)
+        elif kind == "style":
+            body.append(f'<path {shape} style="fill: {colour}; stroke: none"/>')
+            marks.add(colour)
+        elif kind == "class":
+            rules.append(f".k{number} {{ fill: {colour} }}")
+            body.append(f'<rect class="k{number}" fill="#123456" width="2" height="2"/>')
+            marks.add(colour)
+        elif kind == "inherited":
+            body.append(f'<g fill="{colour}"><g><circle r="2"/></g></g>')
+            marks.add(colour)
+        elif kind == "current":
+            body.append(f'<g color="{colour}"><path {shape} fill="none" '
+                        'stroke="currentColor"/></g>')  # fmt: skip
+            marks.add(colour)
+        elif kind == "use":
+            defs.append(f'<path id="m{number}" {shape} stroke="none"/>')
+            body.append(f'<use xlink:href="#m{number}" style="fill: {colour}"/>')
+            marks.add(colour)
+        elif kind == "opacity":
+            alpha = draw(st.sampled_from((0.25, 0.5, 0.8)))
+            body.append(f'<g opacity="{alpha}"><g opacity="0.5"><path {shape} fill="{colour}"/>'
+                        "</g></g>")  # fmt: skip
+            marks.add(_blend(colour, alpha * 0.5))
+        elif kind == "fill-opacity":
+            alpha = draw(st.sampled_from((0.3, 0.6)))
+            body.append(f'<g fill-opacity="{alpha * 100:g}%"><ellipse rx="2" ry="1" '
+                        f'fill="{colour}"/></g>')  # fmt: skip
+            marks.add(_blend(colour, alpha))
+        elif kind == "named":
+            code, name = draw(st.sampled_from(sorted(_NAMED_COLOURS.items())))
+            body.append(f'<polygon points="0,0 1,1 2,0" fill="{name.upper()}"/>')
+            marks.add(code)
+        elif kind == "function":
+            r, g, b = (int(colour[i : i + 2], 16) for i in (1, 3, 5))
+            body.append(f'<path {shape} fill="none" stroke="rgb({r}, {g}, {b})"/>')
+            marks.add(colour)
+        elif kind == "text":
+            colour = draw(st.sampled_from(TEXT_COLOURS))
+            body.append(f'<text x="1" y="1" fill="{colour}">t{number}</text>')
+            texts.add(colour)
+        elif kind == "hidden":
+            body.append(f'<g style="display: none"><path {shape} fill="{colour}"/></g>')
+        elif kind == "none":
+            body.append(f'<path {shape} fill="none" stroke="{colour}" stroke-width="0"/>')
+        elif kind == "unused":
+            defs.append(f'<path id="u{number}" {shape} fill="{colour}"/>')
+        elif kind == "inherit":
+            body.append(f'<g fill="{colour}"><rect fill="inherit" width="2" height="2"/></g>')
+            marks.add(colour)
+        elif kind == "invisible":
+            # Hidden in a hidden group; shown where it says so itself (round 1 of #398).
+            body.append(f'<g visibility="hidden"><path {shape} fill="{HIDDEN}"/>'
+                        f'<path {shape} fill="{colour}" visibility="visible"/></g>')  # fmt: skip
+            marks.add(colour)
+        elif kind == "glyphs":
+            # A text drawn as glyphs, as matplotlib draws one unless told otherwise.
+            colour = draw(st.sampled_from(TEXT_COLOURS))
+            defs.append(f'<path id="DejaVuSans-{number}" d="M0 0L1 1"/>')
+            body.append(f'<g id="text_{number}" style="fill: {colour}">'
+                        f'<use xlink:href="#DejaVuSans-{number}"/></g>')  # fmt: skip
+            texts.add(colour)
+        elif kind == "hsl":
+            written, code = draw(st.sampled_from(sorted(_HSL.items())))
+            body.append(f'<path {shape} fill="none" stroke="{written}"/>')
+            marks.add(code)
+        elif kind == "stroke-inherit":
+            body.append(f'<g stroke="{colour}"><path {shape} fill="none" stroke="inherit"/></g>')
+            marks.add(colour)
+        elif kind == "cairo":
+            # A text drawn as glyphs, as Cairo draws one for R's svg(), in either spelling.
+            colour = draw(st.sampled_from(TEXT_COLOURS))
+            glyph = draw(st.sampled_from((f"glyph0-{number}", f"glyph-0-{number}")))
+            defs.append(f'<symbol overflow="visible" id="{glyph}"><path d="M0 0L1 1"/></symbol>')
+            body.append(f'<g style="fill: {colour}"><use xlink:href="#{glyph}" x="1" y="1"/></g>')
+            texts.add(colour)
+    document = (
+        '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+        'width="100pt" height="100pt" viewBox="0 0 100 100">'
+        f"<style>{' '.join(rules)}</style><defs>{''.join(defs)}</defs>{''.join(body)}</svg>"
+    )
+    return document, marks, texts
+
+
+#: Each way a PDF sets the colour it fills or strokes in, or shows text in.
+PDF_PAINT_KINDS = ("rg", "RG", "g", "G", "k", "K", "scn", "SCN", "sc", "SC", "alpha",
+                   "restored", "text", "form", "pattern", "icc", "indexed")  # fmt: skip
+#: What a colour space named in the page's resources paints in, one only it paints in: as R's
+#: pdf() names an ICC profile's RGB `/sRGB`.
+PROFILED = "#00ced1"
+
+
+@st.composite
+def painted_pdfs(draw: st.DrawFn) -> tuple[bytes, set[str], set[str]]:
+    """A PDF that paints in every way of `PDF_PAINT_KINDS`, in an order drawn, each in a
+    colour drawn; with the colours it paints marks in, as they show over white, and those
+    it shows text in."""
+    marks, texts = set(), set()
+    ops, forms, states, spaces = [], {}, {}, {}
+    # The stroking colour as it stands between operations: what a Q goes back to.
+    stroking = "#000000"
+
+    def rgb(code: str) -> tuple[float, float, float]:
+        return tuple(round(int(code[i : i + 2], 16) / 255, 4) for i in (1, 3, 5))
+
+    def hexed(values: tuple[float, ...]) -> str:
+        return "#" + "".join(f"{round(v * 255):02x}" for v in values)
+
+    for number, kind in enumerate(draw(st.permutations(PDF_PAINT_KINDS))):
+        colour = rgb(draw(st.sampled_from(PAINT_COLOURS)))
+        r, g, b = colour
+        path = b"0 %d m 9 %d l" % (number, number)
+        if kind in ("rg", "RG"):
+            fill = kind == "rg"
+            ops.append(b"%g %g %g %s %s %s" % (r, g, b, kind.encode(), path,
+                                                b"f" if fill else b"S"))  # fmt: skip
+            painted = hexed(colour)
+        elif kind in ("g", "G"):
+            grey = round(draw(st.sampled_from((0.0, 0.3, 0.6))), 4)
+            ops.append(b"%g %s %s %s" % (grey, kind.encode(), path, b"f" if kind == "g" else b"S"))
+            painted = hexed((grey, grey, grey))
+        elif kind in ("k", "K"):
+            cmyk = draw(st.sampled_from(((0.0, 0.5, 1.0, 0.0), (1.0, 0.0, 0.0, 0.2))))
+            ops.append(b"%g %g %g %g %s %s %s" % (*cmyk, kind.encode(), path,
+                                                   b"f" if kind == "k" else b"S"))  # fmt: skip
+            c, m, y, k = cmyk
+            painted = hexed(((1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)))
+        elif kind in ("sc", "SC"):
+            # In a space of one number, a grey.
+            grey = round(draw(st.sampled_from((0.2, 0.8))), 4)
+            space, paints = (b"cs", b"f") if kind == "sc" else (b"CS", b"S")
+            ops.append(b"/DeviceGray %s %g %s %s %s" % (space, grey, kind.encode(), path,
+                                                       paints))  # fmt: skip
+            painted = hexed((grey, grey, grey))
+        elif kind in ("scn", "SCN"):
+            space, paints = (b"cs", b"f") if kind == "scn" else (b"CS", b"S")
+            ops.append(b"/DeviceRGB %s %g %g %g %s %s %s" % (space, r, g, b, kind.encode(), path,
+                                                            paints))  # fmt: skip
+            painted = hexed(colour)
+        elif kind == "alpha":
+            alpha = draw(st.sampled_from((0.25, 0.5)))
+            states[f"A{number}"] = alpha
+            ops.append(b"q /A%d gs %g %g %g rg %s f Q" % (number, r, g, b, path))
+            marks.add(hexed(tuple(v * alpha + (1 - alpha) for v in colour)))
+        elif kind == "restored":
+            # A colour set inside q and Q is gone after it: the stroke after is the one before.
+            ops.append(b"q %g %g %g RG Q %s S" % (*rgb(BETWEEN), path))
+            marks.add(stroking)
+        elif kind == "text":
+            r, g, b = colour = rgb(draw(st.sampled_from(TEXT_COLOURS)))
+            ops.append(b"q %g %g %g rg BT /F1 9 Tf 1 %d Td (t) Tj ET Q" % (r, g, b, number))
+            texts.add(hexed(colour))
+        elif kind == "form":
+            # A form draws in the colour of what draws it.
+            forms[f"X{number}"] = (b"%s f" % path, "1 0 0 1 0 0")
+            ops.append(b"q %g %g %g rg /X%d Do Q" % (*rgb(FORMED), number))
+            marks.add(hexed(rgb(FORMED)))
+        elif kind == "pattern":
+            # A pattern's colours are not read: it paints nothing that is said.
+            ops.append(b"q /Pattern cs /P0 scn %s f Q" % path)
+        elif kind == "icc":
+            spaces[f"CS{number}"] = b"[/ICCBased 999 0 R]"
+            ops.append(b"q /CS%d cs %g %g %g scn %s f Q" % (number, *rgb(PROFILED), path))
+            marks.add(hexed(rgb(PROFILED)))
+        elif kind == "indexed":
+            # An index into a table of colours is not read either.
+            spaces[f"IX{number}"] = b"[/Indexed /DeviceRGB 1 <ff000000ff00>]"
+            ops.append(b"q /IX%d cs 1 scn %s f Q" % (number, path))
+        if kind in ("rg", "RG", "g", "G", "k", "K", "scn", "SCN", "sc", "SC"):
+            marks.add(painted)
+            if kind.isupper():
+                stroking = painted
+    return pdf_document(b"\n".join(ops), forms=forms, gstates=states, spaces=spaces), marks, texts
+
+
 # -------------------------------------------------------------- the results a plan promises
 
 _STEMS = ("ror", "case", "cohort", "hr", "events")
@@ -1315,6 +1848,84 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
         f"## Outcome\n\n{draw(texts())}\n"
     )
     return plan, [*listed, (secondary, False)]
+
+
+# ------------------------------------------------------------ the variables a plan names
+
+#: Names a dictionary gives its variables, a dotted one and one with capitals among them,
+#: and names it does not give.
+DEFINED = ("age", "sex", "bmi_kg", "visit2", "smoker", "dose_mg", "Sex_at_birth", "x1")
+UNDEFINED = ("weight", "eGFR", "height_cm", "alt", "site_id", "n_prior")
+#: Headings of a plan's Deviations section, as G12 reads them.
+_DEVIATION_TITLES = ("Deviations from the plan", "Changes to the plan", "Protocol amendments")
+#: Code and values in backticks, which are not variables.
+_NOT_VARIABLES = ("glm()", "stats::glm", "lme4::glmer()", "NA", "TRUE", "results.dose")
+
+
+@st.composite
+def collection_plans(
+    draw: st.DrawFn,
+) -> tuple[str, list[str], list[tuple[str, int]], list[tuple[str, int]], int]:
+    """A plan that names variables in backticks in each way a plan holds one, the names the
+    dictionary has, the dictionary's variables the plan names and the names it gives that the
+    dictionary lacks, each at the line of its first mention, and the plan's last line before
+    the drawn text that ends it.
+
+    Each example holds one section of every kind, in an order drawn each time: a variable the
+    dictionary has; one with a dot in its name; a name it lacks; a Deviations section, under a
+    heading drawn among its names, naming one of each with a subsection under it naming
+    another; code and values; a Planned results item naming a variable after its key; a fence
+    and a comment holding names; a variable named in a subsection; a variable written in
+    another case; a list headed "Planned results and amendments", which is not the
+    Deviations; a section headed "Changes to the planned results", which is; a section
+    naming again a variable and a name named elsewhere; and a Deviations subsection of
+    another section, followed by a subsection that is read. All under a title that names an
+    amendment, which heads the plan and not its Deviations."""
+    words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=5).map(" ".join)
+    defined = draw(st.permutations(DEFINED))
+    undefined = draw(st.permutations(UNDEFINED))
+    dotted = "BEN.SEX"
+    cased = defined[6][0].swapcase() + defined[6][1:]
+    deviation = draw(st.sampled_from(_DEVIATION_TITLES))
+    # Each section: its text, then the names it uses and the names it lacks, as written.
+    kinds = [
+        (f"## Analysis\n\n{draw(words)} `{defined[0]}` {draw(words)}.\n", [defined[0]], []),
+        (f"## Population\n\n{draw(words)} `{dotted}` {draw(words)}.\n", [dotted], []),
+        (f"## Exposure\n\n{draw(words)} `{undefined[0]}` {draw(words)}.\n", [], [undefined[0]]),
+        (f"## {deviation}\n\n{draw(words)} `{defined[1]}` and `{undefined[1]}`.\n\n"
+         f"### Later\n\n`{defined[2]}` {draw(words)}.\n", [], []),
+        (f"## Outcome\n\n{draw(words)} " + " ".join(f"`{code}`" for code in _NOT_VARIABLES)
+         + f" {draw(words)}.\n", [], []),
+        (f"## Planned results\n\n- `ror.point`: {draw(words)} `{defined[3]}`\n", [defined[3]],
+         []),
+        (f"## Sensitivity analyses\n\n```r\nfit(`{undefined[2]}`)\n```\n\n"
+         f"<!-- `{undefined[3]}` -->\n", [], []),
+        (f"## Covariates\n\n{draw(words)}.\n\n### Adjustment\n\n`{defined[4]}` {draw(words)}.\n",
+         [defined[4]], []),
+        (f"## Outcome measures\n\n`{cased}` {draw(words)}.\n", [], [cased]),
+        (f"## Planned results and amendments\n\n- `ror.n`: `{defined[5]}`\n", [defined[5]], []),
+        (f"## Changes to the planned results\n\n`{undefined[4]}` {draw(words)}.\n", [], []),
+        (f"## Repeated\n\n`{defined[0]}` and `{undefined[0]}` {draw(words)}.\n",
+         [defined[0]], [undefined[0]]),
+        (f"## Exposure details\n\n{draw(words)}.\n\n### {deviation}\n\n`{undefined[5]}` "
+         f"{draw(words)}.\n\n### Timing\n\n`{defined[7]}` {draw(words)}.\n", [defined[7]], []),
+    ]  # fmt: skip
+    order = draw(st.permutations(range(len(kinds))))
+    # A title that names an amendment encloses the plan, and is not its Deviations.
+    plan = f"# Statistical analysis plan (amendment {draw(st.integers(1, 9))})\n\n"
+    first: dict[str, dict[str, int]] = {"used": {}, "undefined": {}}
+    for index in order:
+        text, used, lacked = kinds[index]
+        for kind, names in (("used", used), ("undefined", lacked)):
+            for name in names:
+                line = plan.count("\n") + text[: text.index(f"`{name}`")].count("\n") + 1
+                first[kind].setdefault(name, line)
+        plan += text + "\n"
+    last = plan.count("\n")
+    plan += f"## Notes\n\n{draw(texts())}\n"
+    ordered = {kind: sorted(found.items(), key=lambda pair: pair[1])
+               for kind, found in first.items()}  # fmt: skip
+    return plan, [*defined, dotted], ordered["used"], ordered["undefined"], last
 
 
 #: What can stand in a stored source between two words of a quote taken from it: line
@@ -1558,7 +2169,9 @@ FIXED_LINKS = (
 #: a karyotype, a syndrome, a link, a title translated into English in brackets, a phrase
 #: that goes on, a kinase. What the placeholder reading must tell apart. With round 2 of
 #: #262's shapes: a phrase before a list item, an instruction marked or linked, a slot that
-#: is a whole field of a cited entry.
+#: is a whole field of a cited entry. And a journal template's instructions, one of each
+#: kind and one hard-wrapped, beside a section the authors describe, a form a paper
+#: reproduces and the caption PLOS prints under a file.
 PLACEHOLDERS = (
     ("XXXX", "XXXX"), ("[TO BE COMPLETED]", "[TO BE COMPLETED]"),
     ("[Repository]", "[Repository]"), ("[describe the cohort]", "[describe the cohort]"),
@@ -1568,12 +2181,22 @@ PLACEHOLDERS = (
     ("Dose: fill in later\n- Route: oral", "fill in later"),
     ("[insert the date]{.mark}", "[insert the date]"), ("[insert link](#)", "[insert link]"),
     ("[DOI]", "[DOI]"),
+    ("In this section you can acknowledge any support given",
+     "In this section you can acknowledge any support"),
+    ('Please add: "This research received no external funding"', 'Please add: "This research'),
+    ("This section may be divided by\nsubheadings.", "This section may be divided by\nsubheadings"),
+    ("Click or tap here to enter text.", "Click or tap here to enter text."),
+    ("This is a short text to acknowledge the contributions",
+     "This is a short text to acknowledge"),
+    ("Sample body text.", "Sample body text"),
 )  # fmt: skip
 LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
 LOOKALIKES = (
     "47,XXX", "XXX syndrome", "[repository](https://example.org)",
     "[Add-on therapy in epilepsy]", "replace later lines", "replace later\nlines",
-    "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]",
+    "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]", "In this section, you can see the code.",
+    "In this section, please indicate how often", 'Please state "yes" or "no".',
+    'If none, please state "not applicable".', "Click here for additional data file.",
 )  # fmt: skip
 
 #: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
@@ -2137,6 +2760,67 @@ def printings(draw: st.DrawFn) -> list[dict[str, Any]]:
         })  # fmt: skip
     return cases
 
+# ------------------------------------------------------- two plans of one data, section by section
+
+#: What an edit of a plan's section may be: none, its lines re-wrapped, a word put in
+#: emphasis, a comment added, its case changed, a word added, a word added under a heading
+#: now numbered, a section the plan keeps of itself (its Deviations) changed, and one
+#: heading under two parents with a word added under the first. The two with a word added
+#: and one heading are sections that read otherwise; the heading that stands twice is not
+#: compared. This plan also ends in an appendix, a second top-level heading, which the
+#: earlier one does not have.
+SECTION_EDITS = ("as it is", "rewrapped", "emphasis", "comment", "case", "numbered",
+                 "word added", "own section", "one heading twice")  # fmt: skip
+TOPICS = ("Exposure", "Outcome", "Population", "Comparator", "Case definition",
+          "Exclusions", "Model", "Study period")  # fmt: skip
+
+
+@st.composite
+def plan_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[str]]:
+    """An earlier plan and this one, one section for each kind of edit, in drawn order, and
+    the headings of the sections whose words differ, as this plan writes them."""
+    kinds = draw(st.permutations(SECTION_EDITS))
+    then, now, changed = ["# Analysis plan", ""], ["# Analysis plan", ""], []
+    for at, kind in enumerate(kinds):
+        tag = TAGS[at % len(TAGS)] + "x" * (at // len(TAGS))
+        title = f"{draw(st.sampled_from(TOPICS))} {tag}"
+        if kind == "own section":
+            title = f"Deviations {tag}"
+        if kind == "one heading twice":
+            # The first Definition differs, the second does not: which answers which is not
+            # guessed, and neither is compared. Taken in order, the first would be said.
+            words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12)))
+            for parent, after in ((f"Exposure {tag}", words + " more"), (f"Outcome {tag}", words)):
+                then += [f"## {parent}", "", f"### Definition {tag}", "", words, ""]
+                now += [f"## {parent}", "", f"### Definition {tag}", "", after, ""]
+            continue
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12))
+        body = " ".join(words)
+        heading, edited = title, body
+        if kind == "rewrapped":
+            edited = body.replace(" ", "\n", draw(st.integers(1, 3)))
+        elif kind == "emphasis":
+            edited = " ".join([f"*{words[0]}*", *words[1:]])
+        elif kind == "comment":
+            edited = " ".join([words[0], "<!-- read again -->", *words[1:]])
+        elif kind == "case":
+            edited = body.upper()
+        if kind == "numbered":
+            heading = f"{at + 1}. {title}"
+        if kind in ("word added", "numbered", "own section"):
+            edited = f"{body} {draw(st.sampled_from(('altered', 'restricted', 'widened')))}"
+        if kind in ("word added", "numbered"):
+            changed.append(heading)
+        then += [f"## {title}", "", body, ""]
+        now += [f"## {heading}", "", edited, ""]
+        if kind == "own section":
+            # What the Deviations hold is theirs too, under a heading of its own that names
+            # no deviation ("Amendment" would be left out by its own name).
+            then += [f"### Second reading {tag}", "", body, ""]
+            now += [f"### Second reading {tag}", "", f"{body} later", ""]
+    now += ["# Appendix", "", "Notes kept apart from the plan.", ""]
+    return {"then": "\n".join(then), "now": "\n".join(now)}, changed
+
 
 # ---------------------------------------------------------------------- what an edit holds
 
@@ -2429,6 +3113,144 @@ def settings_typed() -> st.SearchStrategy[str]:
 # ----------------------------------------------------------------------------- sessions
 
 
+#: The word each paragraph of a generated revision opens with, which no other block has.
+MARKED_TAGS = ("amber", "basil", "cedar", "dune", "ember", "fern", "grove", "heath", "iris")
+#: Words no generated paragraph holds until an edit puts them in: what a reworded word
+#: becomes, and what a paragraph inserted says.
+MARKED_NEW = ("altered", "amended", "corrected", "replaced", "updated", "revised")
+#: Every edit a generated revision makes, each in every example: to the paragraph its kind
+#: is given, to the table, the figure and the note.
+MARKED_EDITS = (
+    "reworded", "number re-run", "set in italics", "moved", "list item deleted",
+    "restyled", "note reworded", "inserted", "cell re-run", "row added", "figure replaced",
+)  # fmt: skip
+#: The paragraph each `MARKED_TAGS` word is given, in the order they stand in the document
+#: sent; "deleted" is the first item of its list, and two are kept as they were.
+_MARKED_ROLES = (
+    "reworded", "number re-run", "kept", "note reworded", "set in italics", "moved",
+    "restyled", "kept too", "deleted",
+)  # fmt: skip
+
+
+@st.composite
+def revisions(draw: st.DrawFn) -> tuple[dict[str, list], list[tuple[str, str]]]:
+    """A document sent and its revision, as `readings.document_of` writes them, and what
+    the marked-up copy must show: for each edit, a word of the line it is on, and what the
+    line holds. Every edit of `MARKED_EDITS` is in every example, each in a paragraph of its
+    own, the paragraphs in an order drawn each time, so that a rule broken for one kind is
+    seen under any seed; two paragraphs are left as they were, and must show no change. A
+    paragraph's words are drawn into runs, cut where drawn as pandoc cuts them at a line's
+    end, and its number is a count or a decimal."""
+
+    def number() -> str:
+        whole = draw(st.integers(10, 9999))
+        return draw(st.sampled_from((str(whole), f"{whole // 100}.{whole % 100:02d}")))
+
+    def words() -> list[str]:
+        return draw(st.lists(st.sampled_from(_PLAIN), min_size=4, max_size=8))
+
+    def runs(tokens: list[str]) -> list[list[str]]:
+        text = " ".join(tokens) + "."
+        cuts = sorted(set(draw(st.lists(st.integers(1, len(text) - 1), max_size=3))))
+        bounds = zip([0, *cuts], [*cuts, len(text)], strict=True)
+        return [[text[a:b], ""] for a, b in bounds]
+
+    def paragraph(tokens: list[str], **more: Any) -> dict[str, Any]:
+        return {"kind": "p", "runs": runs(tokens), **more}
+
+    tags = list(draw(st.permutations(MARKED_TAGS)))
+    roles = dict(zip(_MARKED_ROLES, tags, strict=True))
+    said = {tag: [tag, *words(), number(), *words()] for tag in tags}
+    note = [*words(), "first"]
+    before: list[dict[str, Any]] = [{"kind": "p", "runs": [["Methods", ""]], "style": "Heading1"}]
+    at: dict[str, int] = {}
+    for role in _MARKED_ROLES:
+        if role in ("deleted", "kept too"):
+            continue
+        at[role] = len(before)
+        before.append(paragraph(said[roles[role]]))
+        if role == "note reworded":
+            before[-1]["note"] = [[" ".join(note), ""]]
+    items = [roles["deleted"], *draw(st.permutations(("item", "entry")))]
+    for word in items:
+        if word == roles["deleted"]:
+            at["deleted"] = len(before)
+        before.append(paragraph(said.get(word) or [word, *words()], list=True))
+    cells = [[f"row{n}", number(), number()] for n in range(draw(st.integers(2, 4)))]
+    at["table"] = len(before)
+    before.append({"kind": "table", "rows": cells})
+    at["figure"] = len(before)
+    before.append({"kind": "figure", "picture": "red"})
+    at["kept too"] = len(before)
+    before.append(paragraph(said[roles["kept too"]]))
+
+    after = [dict(block) for block in before]
+    expected: list[tuple[str, str]] = []
+
+    # A word reworded, into one no paragraph holds.
+    tokens = said[roles["reworded"]]
+    where = draw(st.sampled_from([i for i, token in enumerate(tokens) if i and token.isalpha()]))
+    new = draw(st.sampled_from(MARKED_NEW))
+    after[at["reworded"]] = paragraph([*tokens[:where], new, *tokens[where + 1 :]])
+    expected.append((roles["reworded"], f"[-{tokens[where]}-]{{+{new}+}}"))
+
+    # A number re-run.
+    tokens = said[roles["number re-run"]]
+    where = next(i for i, token in enumerate(tokens) if token[0].isdigit())
+    now = draw(st.sampled_from([n for n in (number(), "77777") if n != tokens[where]]))
+    after[at["number re-run"]] = paragraph([*tokens[:where], now, *tokens[where + 1 :]])
+    expected.append((roles["number re-run"], f"[-{tokens[where]}-]{{+{now}+}}"))
+
+    # A word set in italics, a run of its own.
+    tokens = said[roles["set in italics"]]
+    where = draw(st.integers(1, len(tokens) - 2))
+    after[at["set in italics"]] = {"kind": "p", "runs": [
+        [" ".join(tokens[:where]) + " ", ""], [tokens[where], "i"],
+        [" " + " ".join(tokens[where + 1 :]) + ".", ""],
+    ]}  # fmt: skip
+    expected.append((roles["set in italics"], f"~{tokens[where]}~"))
+
+    # A paragraph made a heading.
+    after[at["restyled"]] = {**before[at["restyled"]], "style": "Heading1"}
+    expected.append((roles["restyled"], "style "))
+
+    # The note's last word reworded.
+    new = draw(st.sampled_from(MARKED_NEW))
+    after[at["note reworded"]] = {**before[at["note reworded"]],
+                                  "note": [[" ".join([*note[:-1], new]), ""]]}  # fmt: skip
+    expected.append(("note:", f"[-first-]{{+{new}+}}"))
+
+    # A cell re-run, and a row added.
+    row = draw(st.integers(0, len(cells) - 1))
+    column = draw(st.sampled_from((1, 2)))
+    rows = [list(one) for one in cells]
+    was = rows[row][column]
+    rows[row][column] = draw(st.sampled_from([n for n in ("88888", "0.01") if n != was]))
+    rows.append(["rowadded", "1", "2"])
+    after[at["table"]] = {"kind": "table", "rows": rows}
+    expected.append((f"row{row} ", f"[-{was}-]{{+{rows[row][column]}+}}"))
+    expected.append(("rowadded", "row+ "))
+
+    # The figure's picture replaced.
+    after[at["figure"]] = {"kind": "figure", "picture": "blue"}
+    expected.append(("(picture red)", "\N{PILCROW SIGN}- [-(picture red)-]"))
+    expected.append(("(picture blue)", "\N{PILCROW SIGN}+ {+(picture blue)+}"))
+
+    # A list item deleted; a paragraph moved past five blocks or more; and one inserted, of
+    # new words. The later place first, so that each leaves the other's where it was.
+    del after[at["deleted"]]
+    expected.append((roles["deleted"], "\N{PILCROW SIGN}- [-"))
+    moved = after.pop(at["moved"])
+    after.insert(len(after) - 1, moved)
+    expected.append((roles["moved"], "moved"))
+    # Not last: the document's last paragraph keeps its mark untracked (`writer._last_mark_kept`).
+    after.insert(draw(st.integers(1, len(after) - 1)), paragraph(["newly", *words()]))
+    expected.append(("newly", "\N{PILCROW SIGN}+ {+"))
+    for role in ("kept", "kept too"):
+        expected.append((roles[role], "unchanged"))
+    return {"before": before, "after": after}, expected
+
+
 @st.composite
 def sessions(draw: st.DrawFn) -> dict[str, Any]:
     """A paper, what a co-author did to it in Word, and what its author did meanwhile.
@@ -2477,6 +3299,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex mask": latex_texts(),
     "latex refusals": latex_texts(),
     "latex sections": latex_texts(),
+    "latex bindings": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),
@@ -2486,17 +3309,20 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "numbers": st.fixed_dictionaries(
         {
-            "text": texts(POINTED),
+            "text": texts(POINTED, SUPPLEMENT_HEADINGS),
             "terms": st.lists(
                 st.sampled_from(("CYP3A4", "COVID-19", "CO2", "HbA1c", "1,3-BDG")), max_size=2
             ),
         }
     ),
     "interval order": intervals(),
+    "pointers": numbered_displays().map(lambda drawn: {"files": drawn[0]}),
     "quoted whole": texts(WHOLE),
     "labels": texts(LABELLED),
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
+    "plan variables": collection_plans().map(lambda drawn: {"plan": drawn[0],
+                                                            "names": drawn[1]}),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
     "vector figure": vector_figures().map(lambda drawn: drawn[0]),
     # As text, a byte a character, so that the bytes pass to a reader as they are.
@@ -2530,6 +3356,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),
     "printed value": printings(),
+    "plan sections": plan_pairs().map(lambda drawn: drawn[0]),
     "units after": texts(BOUND_UNITS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}
@@ -2540,6 +3367,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "tex outside maths": lines(),
     "title": lines(),
     "title held": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),
+    "title alike": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),
+    "search words": lines(),
+    "authors cited": lines(),
+    "same family name": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),
     "blind names": texts(NAMED),
     "quotation": st.tuples(
         quotations(),
@@ -2554,5 +3385,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "import": sessions(),
+    "supplementary methods": supplements().map(lambda drawn: drawn[0]),
     "reworded": edits(),
+    "marked up": revisions().map(lambda drawn: drawn[0]),
 }

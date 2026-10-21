@@ -167,7 +167,7 @@ class Classifier:
         )
         return cls(conventions + project_rules, structural, merged_terms, project_terms)
 
-    def scan(self, text: str, *, lines_are_blocks: bool = False) -> Scan:
+    def scan(self, text: str, *, lines_are_blocks: bool = False, blocks: bool = True) -> Scan:
         """Find every rule's matches in one document, so `classify` is a lookup.
 
         `text` is read as Markdown, where a heading or a list item starts only where pandoc
@@ -176,9 +176,17 @@ class Classifier:
         text one element per line. Read as Markdown, every line after the first would be a
         wrapped line of one long paragraph, and typed numbering there would stop counting.
         Every line then starts a list item where one is typed, and none is a heading.
+
+        `blocks` False is for a LaTeX file's view (`text/latex/views.py`), whose headings and
+        list items are commands: LaTeX numbers them, so no number typed there is their
+        numbering, and the rules that read a heading's or an item's numbering hold nowhere in
+        it. The NUL the reader writes for what does not print is taken out before the rules
+        read it (`_printed`).
         """
         rules = (*self.structural, *self.conventions)
-        return _scan(rules, text, lines_are_blocks=lines_are_blocks)
+        if not blocks:
+            rules = tuple(rule for rule in rules if not (rule.heading_only or rule.list_only))
+        return _scan(rules, text, lines_are_blocks=lines_are_blocks, blanked=not blocks)
 
     def classify(
         self, atom: Atom, section: Sequence[str] | None = None, scan: Scan | None = None
@@ -254,6 +262,69 @@ METHODS_SECTIONS = re.compile(
     re.IGNORECASE,
 )
 
+#: What labels a part of a supplement: "Appendix 1:", "eAppendix 2.", "Appendix S1.",
+#: "Supplement 1.", "S1 Appendix.", "S1 Text".
+_SUPPLEMENT_LABEL = (
+    r"(?:e?appendix|supplement|S\d+\s+(?:appendix|text|file))"
+    r"(?:\s+(?:S?\d+[A-Z]?|[A-Z]))?(?:\s*[.:]\s*|\s+)"
+)
+
+# What a supplement calls its Methods, which none of the names above is: "Supplementary
+# methods", "Supplemental methods 2", "Online methods", "eMethods", "eMethods 1. Data
+# source", "S1 Methods", "Appendix 1: Methods", "Appendix S1. Supplementary methods",
+# "Supplement 1. eMethods". Under these, G2's Methods-only conventions passed nowhere and a
+# model's kind typed in them was never read by G15, although every gate reads the supplement:
+# `is_methods` takes them, for their own text and for a section under them that names a
+# method too (`_opened_by_the_supplement`). The name marks the section as the supplement's
+# Methods, so words may follow it after a stop, a colon or a space, as a numbered part's
+# title does; a word glued to it ("eMethodsX") is another name, and "Methods" alone is the
+# list above's.
+SUPPLEMENT_METHODS = re.compile(
+    # The look ahead first, where it is tried once: after the number, as in the list above,
+    # it was tried again at each place the number could end, and "1." typed a thousand times
+    # took a second. A number holds no word, so it is read the same.
+    r"^(?!.*\b(?:results?|findings|discussion|conclusions?)\b)"
+    r"\s*(?:\d+(?:\.\d+)*[.)]?\s*|[IVXLC]+[.)]\s*)?"
+    rf"(?:{_SUPPLEMENT_LABEL}(?:(?:supplementary|supplemental)\s+)?methods"
+    rf"|(?:{_SUPPLEMENT_LABEL})?(?:(?:supplementary|supplemental|online)\s+methods"
+    r"|e-?methods|S\d+\s+methods))"
+    r"(?:\s*\d+[A-Z]?|\s+S\d+[A-Z]?|\s+[IVXLC]+\b)?"
+    r"(?:[^\w\n][^\n]*)?$",
+    re.IGNORECASE,
+)
+
+
+def names_supplement_methods(title: str) -> bool:
+    """Whether a heading's title, as typed, is a supplement's name of the Methods
+    (`SUPPLEMENT_METHODS`). Such a name holds the word, and the pattern is tried only on a
+    title that does: `is_methods` reads every title for every number."""
+    return "methods" in title.lower() and SUPPLEMENT_METHODS.match(title) is not None
+
+
+def names_methods_place(title: str) -> bool:
+    """Whether a heading's title, as typed, names a place the method is described: a name of
+    `METHODS_SECTIONS` or of `SUPPLEMENT_METHODS`. Where it stands is `is_methods`'s to say."""
+    return bool(METHODS_SECTIONS.match(title)) or names_supplement_methods(title)
+
+
+def _opened_by_the_supplement(section: Sequence[str]) -> bool:
+    """Whether a supplement's name of the Methods opens the run of headings, innermost
+    outwards, that each name a method: "eMethods 1", or "Supplementary methods" over
+    "Statistical analysis" or "eMethods 2". Not a heading of another name under one.
+
+    A supplement often has "Supplementary methods" over all of it, its tables and a paragraph
+    of results among them, as the example's has. Read as the Methods there, a P the paragraph
+    reported passed as the threshold chosen in advance, which main failed as unbound (round 1
+    of #395). The main text's names hold everything under them, as they always have."""
+    for title in reversed(section):
+        if isinstance(title, Unprinted):
+            continue  # a line pandoc prints as text, inside the section above, as for main's
+        if not names_methods_place(title):
+            return False
+        if names_supplement_methods(title):
+            return True
+    return False
+
 
 # Headings that make everything under them a report of what happened, whatever the
 # subheadings are called. Several names in METHODS_SECTIONS are ambiguous — "Sensitivity
@@ -294,9 +365,11 @@ def is_methods(section: Sequence[str] | None) -> bool:
         return False
     if any(rules_out_methods(title) for title in section):
         return False
-    return any(
+    if any(
         METHODS_SECTIONS.match(title) for title in section if not isinstance(title, Unprinted)
-    )
+    ):
+        return True
+    return _opened_by_the_supplement(section)
 
 
 def rules_out_methods(title: str) -> bool:
@@ -386,23 +459,34 @@ class Scan:
         return index >= 0 and self.reach[rule_id][index] >= end
 
 
-def _printed(text: str) -> tuple[str, list[int] | None]:
+def _printed(text: str, *, blanked: bool = False) -> tuple[str, list[int] | None]:
     """`text` without the backslashes that escape a comparison, and where each character of
     that came from; see `comparison_escapes`. `ROR \\> 2` prints as `ROR > 2`, and a rule
     reads what prints.
 
     Removed, not blanked. A space kept every offset and satisfied any rule that wants one
     there: `412)\\>ULOQ` at the start of a line read as a list marker, and 412 passed.
+
+    `blanked` is for a LaTeX file's view, where the reader writes NUL for what does not
+    print: those go too, so that `per 100\\,000 person-years`, a space and a NUL there, reads
+    as it prints.
     """
     gone = set(comparison_escapes(text))
+    if blanked:
+        gone.update(found.start() for found in _BLANK.finditer(text))
     if not gone:
         return text, None
     origin = [index for index in range(len(text) + 1) if index not in gone]
     return "".join(text[index] for index in origin[:-1]), origin
 
 
-def _scan(rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False) -> Scan:
-    printed, origin = _printed(text)
+_BLANK = re.compile("\x00")
+
+
+def _scan(
+    rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False, blanked: bool = False
+) -> Scan:
+    printed, origin = _printed(text, blanked=blanked)
     starts: dict[str, list[int]] = {}
     reach: dict[str, list[int]] = {}
     ends: dict[str, list[int]] = {}

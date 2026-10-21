@@ -147,9 +147,10 @@ Each finding names a code. The code says where to go:
 | Codes | Skill |
 |---|---|
 | `no-analysis-plan`, `plan-section-*`, `feasibility-not-run` | [analysis-plan](../analysis-plan/SKILL.md) |
+| `dictionary-*`, `plan-variable-undefined` | [data-dictionary](../data-dictionary/SKILL.md) |
 | `unclassified-number`, `unresolved-binding`, `unquoted-result`, `typed-parameter`, `parameter-unread`, `hand-authored-table`, G1 and G8 codes | [results-binding](../results-binding/SKILL.md) |
 | `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact`, `revision-residue`, `abbreviation-*`, `term-avoided`, `vocabulary-conflict`, `spelling-*`, `notation-*` | [manuscript-writing](../manuscript-writing/SKILL.md) |
-| `methods-drift`, `methods-never-reconciled`, `method-…`, G15 codes (`model-…`, `variable-…`, `typed-model-kind`; `model-binary-as-number`, `variable-not-binary` and `model-engine-unknown` are among them) | [methods-writer](../methods-writer/SKILL.md) |
+| `methods-drift`, `methods-never-reconciled`, `methods-supplement-unreconciled`, `method-…`, G15 codes (`model-…`, `variable-…`, `typed-model-kind`; `model-binary-as-number`, `variable-not-binary` and `model-engine-unknown` are among them) | [methods-writer](../methods-writer/SKILL.md) |
 | `literature-source-missing`, `quote-not-in-source`, `value-not-in-quote`, `quote-too-short`, `quotation-not-in-source`, `quotation-unchecked`, `passage-not-in-source`, `passage-unchecked`, `passage-too-short`, `passage-stale`, `statements-without-passage`, `judgement-not-human`, `passage-does-not-support`, `passage-partly-supports` | [literature-verify](../literature-verify/SKILL.md) |
 | `figure-unreviewed`, `figure-review-stale` | [figure-review](../figure-review/SKILL.md) |
 | `journal-profile-missing`, `over-journal-limit`, `missing-required-*` | [journal-profile](../journal-profile/SKILL.md) |
@@ -157,7 +158,7 @@ Each finding names a code. The code says where to go:
 | `related-…`: a number, a method or an overlap of an earlier output of the same data | [related-outputs](../related-outputs/SKILL.md) |
 | `no-review`, `review-missing`, `reading-missing`, `reading-misfiled`, `reading-unreadable`, `reading-altered`, `reading-unsealed`, `review-stale`, `open-major-finding` | [review-panel](../review-panel/SKILL.md) |
 | a co-author should check what no gate can | [co-author-checking](../co-author-checking/SKILL.md) |
-| a co-author's edited .docx | [word-roundtrip](../word-roundtrip/SKILL.md) |
+| a co-author's edited .docx; `comment-unanswered`, `comments-altered`, `comments-unreadable` | [word-roundtrip](../word-roundtrip/SKILL.md) |
 | `point-unanswered`, `claimed-change-*` | [reviewer-response](../reviewer-response/SKILL.md) |
 | ready to send | [submission-pack](../submission-pack/SKILL.md) |
 | a paper written without the toolkit | [paper-audit](../paper-audit/SKILL.md) |

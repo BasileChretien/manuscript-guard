@@ -6,6 +6,8 @@ Three substitutions, all of which resolve to something machine-written, and one 
 * `{{table.key}}` becomes a pipe table built from the emitted table;
 * `{{figure.key}}` becomes an image reference to the rendered figure, its description the
   alternative text its `<key>.guard.yaml` gives (`gates/figure_alt.py`);
+* `{{ref.table.key}}` and `{{num.table.key}}` become the number the document gives that
+  table or figure, as "Table 2" and as "2" (`crossref.py`);
 * `{{method.key}}`, an anchor pointing Methods text at a step of the code, prints nothing.
 
 Citations are left exactly as they are. `[@key]` has to survive into pandoc untouched, so
@@ -57,8 +59,11 @@ class Assembled:
     text: str
 
 
-def render_table(table: Table) -> str:
-    """A pandoc pipe table. Column widths are padded only so the source stays readable."""
+def render_table(table: Table, label: str | None = None) -> str:
+    """A pandoc pipe table. Column widths are padded only so the source stays readable.
+
+    `label` is the table's pointer, "Table 2", printed before its caption ("Table 2. Reports
+    by drug group."), or as the caption of a table that emits none (`caption_label`)."""
     columns = list(table.columns)
     widths = [len(c) for c in columns]
     for row in table.rows:
@@ -80,9 +85,12 @@ def render_table(table: Table) -> str:
 
     out = [line(columns), "| " + " | ".join(rule) + " |"]
     out.extend(line(row) for row in table.rows)
-    if table.caption:
+    caption = table.caption
+    if label:
+        caption = f"{label}. {caption}" if caption else label
+    if caption:
         out.append("")
-        out.append(f": {table.caption}")
+        out.append(f": {caption}")
     return "\n".join(out)
 
 
@@ -283,8 +291,14 @@ def assemble(
     `mark` wraps each binding and citation in a bookmark of its own, for the build `import`
     compares with and for nothing else; see `roundtrip.tag`.
     """
+    from manuscript_guard.crossref import Refused
+    from manuscript_guard.gates.pointers import caption_label, display_numbers
+
     report = Report()
     out: list[Assembled] = []
+    # Counted once, over every file: Table 2 is the main text's second, whichever file
+    # places it.
+    numbers = display_numbers(project)
 
     for path in source_files(project.path("manuscript")):
         # Tagged before substitution, so each identifier names a *source* paragraph. They
@@ -320,6 +334,23 @@ def assemble(
                     replacement = value.display
             elif placeholder.is_anchor:
                 replacement = ""
+            elif placeholder.is_ref:
+                display = numbers.display(placeholder)
+                if isinstance(display, Refused):
+                    # Refused in the build as in `check`: the pointer would print as the
+                    # binding's own text.
+                    report = report.with_findings(
+                        Finding(
+                            gate=GATE,
+                            code=display.code,
+                            message=display.why,
+                            path=path,
+                            line=placeholder.line,
+                            hint=display.hint,
+                        )
+                    )
+                    continue
+                replacement = numbers.printed(placeholder)
             elif placeholder.namespace == "table":
                 table = results.tables.get(placeholder.key)
                 if table is None:
@@ -334,7 +365,8 @@ def assemble(
                         )
                     )
                     continue
-                replacement = render_table(table)
+                label = caption_label(numbers, placeholder.key, table.caption)
+                replacement = render_table(table, label)
             elif placeholder.namespace == "figure":
                 figure = find_figure(project, placeholder.key)
                 if figure is None:

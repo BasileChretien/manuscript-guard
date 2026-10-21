@@ -286,11 +286,12 @@ def pubmed_search(query: str, filters: Filters, credentials: Credentials,
     return _eutils(services.esearch, params, credentials)
 
 
-def pubmed(query: str, filters: Filters, ask: Ask, services: Services,
-           credentials: Credentials) -> Answer:  # fmt: skip
-    """ESearch for the PMIDs, by PubMed's relevance, then ESummary for what each is. Both
-    answer an error with a 200: `ERROR` in the search's result, `error` beside it."""
-    answer = _ask(ask, pubmed_search(query, filters, credentials, services))
+def esearch(request: Request, ask: Ask) -> tuple[list[str], int, tuple[str, ...]] | Answer:
+    """ESearch's answer: the PMIDs, how many works matched in all, and the words PubMed did
+    not find, which it says only in `errorlist.phrasesnotfound`. It answers an error with a
+    200: `ERROR` in the result, or `error` beside it. Also what `lookup` searches a reference
+    with no identifier by (`lookup/unidentified`)."""
+    answer = _ask(ask, request)
     said = _said(answer)
     if said:
         return said
@@ -310,6 +311,17 @@ def pubmed(query: str, filters: Filters, ask: Ask, services: Services,
     dropped = tuple(
         p for p in errors.get("phrasesnotfound") or [] if isinstance(p, str) and p.strip()
     )
+    return ids, int(count), dropped
+
+
+def pubmed(query: str, filters: Filters, ask: Ask, services: Services,
+           credentials: Credentials) -> Answer:  # fmt: skip
+    """ESearch for the PMIDs, by PubMed's relevance, then ESummary for what each is. Both
+    answer an error with a 200: `ERROR` in the search's result, `error` beside it."""
+    read = esearch(pubmed_search(query, filters, credentials, services), ask)
+    if isinstance(read, Answer):
+        return read
+    ids, count, dropped = read
     ids = ids[: filters.limit]
     if not ids:
         return Answer(ABSENT, count=0, dropped=dropped)
@@ -597,6 +609,7 @@ __all__ = [
     "Services",
     "asks",
     "crossref",
+    "esearch",
     "europepmc",
     "europepmc_search",
     "openalex",

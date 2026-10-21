@@ -21,7 +21,10 @@ from dataclasses import dataclass
 
 SVG = "{http://www.w3.org/2000/svg}"
 #: The properties the figure checks read; the rest of a rule is not kept.
-READ = ("font-size", "font", "stroke", "stroke-width", "display", "visibility")
+READ = (
+    "font-size", "font", "stroke", "stroke-width", "display", "visibility", "fill",
+    "fill-opacity", "stroke-opacity", "opacity", "color",
+)  # fmt: skip
 
 _COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 _COMPOUND = re.compile(r"(?P<tag>\*|[A-Za-z][\w-]*)?(?P<rest>(?:[.#][\w-]+)*)")

@@ -91,6 +91,8 @@ COMMANDS = {
                     argv=("checker", "build", "{project}")),
     "checklist": Zero("the reporting guidelines the paper declares", exits=2,
                       argv=("checklist", "{project}")),
+    "dictionary": Zero("the data dictionary", exits=2,
+                       argv=("dictionary", "{project}", "--csv", "{project}/out.csv")),
     "explain": Zero("the numbers of the file it is given",
                     why="it explains one file and says when that file holds no number"),
     "fetch": Zero("a reporting guideline's published checklist",

@@ -4,16 +4,71 @@ Part of the word-roundtrip skill, read when a returned document carries comments
 more than one co-author sends theirs back, or when an import is refused because the
 manuscript changed after the build.
 
-Comments are printed, never stored. Recording them is the reader's job:
+## Each comment is filed, and answered
 
-- A co-author's or internal reviewer's comment belongs in an internal review record, so G11
-  sees it answered: `manuscript-guard review --record <reviewer> --remit "…" --verdict …`,
-  then write each comment into its `findings` with a severity. The
-  [review-panel](../../review-panel/SKILL.md) skill covers the record.
-- A journal reviewer's comment belongs in a revision round. Run
-  `manuscript-guard respond --open --from returned.docx` **before** `import --apply`, because
-  applying changes the source the comments point at. See
-  [reviewer-response](../../reviewer-response/SKILL.md).
+`import --apply` files every comment in the returned document as a finding; the dry run says
+where each would go. Each commenter (the comment's author as Word names them) gets one record
+per document built: `review/comments/<manuscript|supplementary>-<build>/<commenter>.yaml`.
+A finding there holds:
+- the comment word for word, its date and the replies to it in Word;
+- the words it was made on and the kind of block (paragraph, heading, caption, table, list
+  item, quotation, reference list);
+- the paragraph's identifier, where the import vouches that it still names the text it was
+  built from.
+
+It is filed as `comment`; raise it to `minor` or `major` as you judge.
+
+G11 reports every filed comment that has neither a `resolution` nor an `overridden` reason,
+whatever its severity: a warning while you write, a failure in `check --submission`. Answer
+each in its record, under the finding:
+
+```yaml
+  resolution: Added the 2024 review to the Introduction.
+  resolved_on: 2026-10-21
+```
+
+or, to leave it as it is:
+
+```yaml
+  overridden: The 2019 review is the latest that covers the class.
+  overridden_by: <who decided>
+```
+
+A reply in Word is kept with its comment, and Word's Resolve is kept as
+`resolved_in_word: true`. Neither is an answer, since neither says what was done. G11 also
+says when the paragraph a comment was made on has changed since: the change may be the
+answer, and it still has to be written down.
+
+Change only `severity` and the answer fields. The record is sealed: a comment reworded,
+or taken out of the record, is reported as `comments-altered`, and `import` adds nothing
+more to that record until it is put back. A record deleted whole is not noticed by
+anything, so keep the records in git. Keep notes in the answer fields, not in `# ...`
+lines, which `import` will not write over.
+
+Importing the same document again, or another copy of the same build, files only what is
+new. Word keeps an id for each comment through a save, and that is how a comment is known
+again; a reply added since joins its comment. A comment with no words, a picture alone,
+is filed too. A comment is filed even when the edit to its
+paragraph is refused. It is filed too when the whole document is refused because the
+manuscript changed since the build. It then has an identifier only where its paragraph still
+reads as it did, and is marked `unmatched` where it does not: find it by the words it was
+made on.
+
+Not filed:
+- a review panel's own comments in a document of its suggested edits, and replies to them:
+  they are the panel's findings, answered in its records;
+- a journal reviewer's comment already seeded into a revision round. Run
+  `manuscript-guard respond --open --from returned.docx` **before** `import --apply`,
+  because applying changes the source the comments point at; the import then says which
+  comments are points of that round. See [reviewer-response](../../reviewer-response/SKILL.md);
+- comments in a document whose identifiers do not say whether it is the manuscript or the
+  supplement: they are printed, and have to be carried over by hand.
+
+The comments records are internal. Nothing in them goes into a build, a blinded build or the
+submission pack, and a commenter's name is a label, not an identity: "Dr. Tanaka" and
+"Dr Tanaka" share a record.
+
+## What a build records of each paragraph
 
 A built document records what each of its paragraphs said in the source, what came before
 it, and the headings, captions, tables and comments around it. `import` merges an edit only

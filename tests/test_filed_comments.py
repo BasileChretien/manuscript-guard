@@ -263,10 +263,15 @@ def test_the_panel_s_comments_are_known_by_what_they_are_not_by_their_words(
         {"on": "Drug-induced hepatic injury", "author": "Ana Author", "text": "Agreed."},
     ])  # fmt: skip
     names = {n for p in paragraphs_of(returned) for n in p.names}
+    kept = dict(vouched={n: n for n in names}, sources={n: n for n in names})
     panel = [{"author": "Panel Reader", "comment": short_digest(finding)}]
-    threads = threads_of(returned, vouched={n: n for n in names}, sources={n: n for n in names},
-                         panel=panel)  # fmt: skip
+    threads = threads_of(returned, **kept, panel=panel)
     assert [(t.author, t.text, t.replies) for t in threads] == [("Ana Author", "Agreed.", ())]
+    # Where the edit moves a claim, the comment Word holds says so after the finding, and
+    # the document records its digest as `written` (#367): that is the one it is known by.
+    moved = [{"author": "Panel Reader", "comment": short_digest("the finding alone"),
+              "written": short_digest(finding)}]  # fmt: skip
+    assert [t.text for t in threads_of(returned, **kept, panel=moved)] == ["Agreed."]
 
 
 @needs_pandoc

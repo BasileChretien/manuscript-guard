@@ -181,7 +181,9 @@ def threads_of(
         raise FilingError(f"{document.name} is not a readable .docx: {exc}") from exc
     from manuscript_guard.suggestions import short_digest
 
-    ours = {(entry["author"], entry["comment"]) for entry in panel}
+    # The comment as Word holds it, `written`, which says more than the finding's digest
+    # where the edit moves a claim; a document written before it was recorded has none.
+    ours = {(entry["author"], entry.get("written", entry["comment"])) for entry in panel}
     starts = {}
     for paragraph in paragraphs:
         for ident in paragraph.comments:

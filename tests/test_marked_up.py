@@ -842,6 +842,7 @@ def test_a_word_reformatted_keeps_each_part_s_own_properties() -> None:
     for one, other in pairs:
         merged = _segments(((one, "exp"), (other, "osed")), ((italic, "exposed"),))
         assert [text for text, _now, _was in merged] == ["exposed"]
-    for one, other in ((french, english), (run("<w:webHidden/>"), run(""))):
+    hidden = ((run("<w:webHidden/>"), run("")), (run("<w:specVanish/>"), run("")))
+    for one, other in ((french, english), *hidden):
         parts = _segments(((one, "exp"), (other, "osed")), ((italic, "exposed"),))
         assert [(text, was) for text, _now, was in parts] == [("exp", one), ("osed", other)]

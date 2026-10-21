@@ -2056,6 +2056,33 @@ def cmd_reworded(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_proof(args: argparse.Namespace) -> int:
+    """Compare the publisher's proof with the document sent, and list the corrections.
+
+    Exit 1 where the proof needs a correction, 0 where it needs none, and 2 where there is
+    nothing to compare: no proof that can be read, no document sent, or a proof that reads
+    as too little of it. Nothing is sent, and nothing is written but `--out`."""
+    from manuscript_guard.proof import NotSent, NotThisProof, UnreadableProof, check_proof
+    from manuscript_guard.proof.report import as_json, markdown, render
+
+    if not args.proof.is_file():
+        print(f"manuscript-guard proof: {args.proof} does not exist", file=sys.stderr)
+        return 2
+    project, _ = load_project(args.path)
+    try:
+        report = check_proof(project, args.proof, against=args.against,
+                             supplementary=args.supplementary)  # fmt: skip
+    except (NotSent, UnreadableProof, NotThisProof) as exc:
+        print(f"manuscript-guard proof: {exc}", file=sys.stderr)
+        return 2
+    print(as_json(report) if args.json else render(report, project.root))
+    if args.out is not None:
+        args.out.write_text(markdown(report), encoding="utf-8", newline="\n")
+        if not args.json:
+            print(f"\nThe corrections are written to {args.out}, to paste into your reply.")
+    return 1 if report.corrections else 0
+
+
 def cmd_render(args: argparse.Namespace) -> int:
     """Substitute bindings into build/, without producing a document yet."""
     project, _ = load_project(args.path)
@@ -3595,6 +3622,33 @@ def build_parser() -> argparse.ArgumentParser:
     explain = sub.add_parser("explain", help="show how each number in a file was classified")
     explain.add_argument("file", type=Path)
     explain.set_defaults(func=cmd_explain)
+
+    proof = sub.add_parser(
+        "proof",
+        help="compare the publisher's proof with the document sent, and list the corrections",
+        description="Reads the typeset proof (PDF, JATS XML, HTML or text) and holds it to "
+        "the document in the submission pack, part by part and table cell by cell, and its "
+        "title page to authors.yaml. A changed number, sign, decimal mark, unit, citation, "
+        "reference, name, affiliation, ORCID iD or e-mail address, or a part the proof "
+        "leaves out, is a correction; a copy-editor's change of words is shown for you to "
+        "accept or query. Nothing is sent.",
+    )
+    proof.add_argument("proof", type=Path, help="the proof: .pdf, .xml, .html or .txt")
+    proof.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    proof.add_argument(
+        "--against", type=Path, metavar="DOCX",
+        help="the document to compare with, where it is not the submission pack's",
+    )  # fmt: skip
+    proof.add_argument(
+        "--supplementary", action="store_true",
+        help="the proof is of the supplement, typeset as its own document",
+    )  # fmt: skip
+    proof.add_argument(
+        "--out", type=Path, metavar="FILE",
+        help="also write the corrections as a numbered list, to paste into the reply",
+    )  # fmt: skip
+    proof.add_argument("--json", action="store_true", help="the report as JSON")
+    proof.set_defaults(func=cmd_proof)
 
     impact = sub.add_parser(
         "impact",

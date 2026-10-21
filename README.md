@@ -279,6 +279,7 @@ number in the file and the rule that classified it.
 | `reworded` | check that an edit changed the wording and no binding, citation or typed number, and warn where it made a sentence claim more, less or the opposite |
 | `respond` | open a revision round, or write the point-by-point response |
 | `submit` | assemble the submission pack, with a checklist of the journal's rules no gate checks |
+| `proof` | compare the publisher's proof (PDF, JATS XML, HTML or text) with the document in the submission pack, table cell by cell, and its title page with `authors.yaml`; list each changed number, sign, decimal mark, unit, citation, reference, name or affiliation, and each part left out, with its page and line, as corrections to send; nothing is sent |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |
 | `install-skills` | copy the skills to a folder an agent tool reads; `--verify` checks the copy, `--remove` takes it away |
 

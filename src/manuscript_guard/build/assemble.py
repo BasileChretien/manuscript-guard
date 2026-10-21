@@ -6,6 +6,8 @@ Three substitutions, all of which resolve to something machine-written, and one 
 * `{{table.key}}` becomes a pipe table built from the emitted table;
 * `{{figure.key}}` becomes an image reference to the rendered figure, its description the
   alternative text its `<key>.guard.yaml` gives (`gates/figure_alt.py`);
+* `{{ref.table.key}}` and `{{num.table.key}}` become the number the document gives that
+  table or figure, as "Table 2" and as "2" (`crossref.py`);
 * `{{method.key}}`, an anchor pointing Methods text at a step of the code, prints nothing.
 
 Citations are left exactly as they are. `[@key]` has to survive into pandoc untouched, so
@@ -283,8 +285,14 @@ def assemble(
     `mark` wraps each binding and citation in a bookmark of its own, for the build `import`
     compares with and for nothing else; see `roundtrip.tag`.
     """
+    from manuscript_guard.crossref import Refused
+    from manuscript_guard.gates.pointers import display_numbers
+
     report = Report()
     out: list[Assembled] = []
+    # Counted once, over every file: Table 2 is the main text's second, whichever file
+    # places it.
+    numbers = display_numbers(project)
 
     for path in source_files(project.path("manuscript")):
         # Tagged before substitution, so each identifier names a *source* paragraph. They
@@ -320,6 +328,23 @@ def assemble(
                     replacement = value.display
             elif placeholder.is_anchor:
                 replacement = ""
+            elif placeholder.is_ref:
+                display = numbers.display(placeholder)
+                if isinstance(display, Refused):
+                    # Refused in the build as in `check`: the pointer would print as the
+                    # binding's own text.
+                    report = report.with_findings(
+                        Finding(
+                            gate=GATE,
+                            code=display.code,
+                            message=display.why,
+                            path=path,
+                            line=placeholder.line,
+                            hint=display.hint,
+                        )
+                    )
+                    continue
+                replacement = numbers.printed(placeholder)
             elif placeholder.namespace == "table":
                 table = results.tables.get(placeholder.key)
                 if table is None:

@@ -1,6 +1,6 @@
 ---
 name: literature-verify
-description: Retrieve a source, extract a value with its verbatim quote, and record it so the chain from manuscript to published sentence can be verified. Use when adding a number from the literature, when check reports literature-source-missing or quote-not-in-source, or when a citation needs a stored source.
+description: Retrieve a source, extract a value with its verbatim quote, and record it so the chain from manuscript to published sentence can be verified; and record the passage of a cited work that supports a sentence citing it. Use when adding a number from the literature, when check reports literature-source-missing, quote-not-in-source, passage-not-in-source, passage-stale or statements-without-passage, or when a citation needs a stored source or a supporting passage.
 ---
 
 # Recording a number from the literature
@@ -154,6 +154,57 @@ to it. Say what was read, where in it, and why it could not be stored:
 
 Leave `attested_by` empty and ask. Filling it in on the user's behalf defeats the only
 thing the file exists to record.
+
+## 5. A passage for a cited statement
+
+A sentence that cites a work for what it says, with no number from it, can carry the
+passage of the work that supports it. `check` then finds the passage in the stored source,
+and a co-author reads the sentence beside it instead of from memory. List the sentences
+still without one:
+
+```bash
+manuscript-guard passages --missing          # --json gives each sentence exactly as cut
+```
+
+For each, read the work's stored source and copy the words that say what the sentence says,
+**verbatim**, marking words left out with `[...]`. Then add an entry to
+`literature/passages.yaml`:
+
+```yaml
+schema: manuscript-guard/passages/1
+passages:
+  - sentence: >-
+      Hepatotoxicity has been reported with the drug in adults over 65 [@smith2020Prevalence].
+    citekey: smith2020Prevalence
+    passage: "Of the 412 patients aged over 65, 23 developed drug-induced liver injury"
+    locator: "Results, p. 415, second paragraph"
+```
+
+The sentence is matched on its words: its citations, case, line breaks and final stop may
+differ from the manuscript, its words may not. Where no passage of the work supports the
+sentence, do not stretch one to fit: tell the author, who rewords the sentence or cites
+another work. A citation of software, or of where a method comes from, needs no passage.
+
+What `check` reports: `passage-not-in-source`, the words were retyped or are another work's;
+`passage-unchecked`, the work has no stored copy that can be read; `passage-too-short`,
+fewer than four words; `passage-stale`, the sentence was reworded or no longer cites the
+work, so write the sentence as it now reads and read the passage against it again;
+`statements-without-passage`, how many cited sentences carry none.
+
+**Whether a passage supports its sentence is a person's judgement.** You draft the passage;
+the author, or a co-author through the checker, reads it against the sentence. Leave
+`support`, `judged_by` and `judged_on` out of what you write. Where the author tells you their
+judgement, ask them to record it themselves:
+
+```yaml
+    support: supports           # supports | partly | does-not
+    judged_by: "Their Name"
+    judged_on: 2026-10-20
+```
+
+`check` refuses a model's name there, and the hook puts to the author any edit of yours that
+names a judge or changes the words of a judged entry. A `does-not` fails from internal-review
+and a `partly` is a warning: the sentence should say only what the work says.
 
 ## What good looks like
 

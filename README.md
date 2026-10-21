@@ -129,12 +129,12 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G0 | the manuscript can be read: each source is UTF-8, and it is written in one format, Markdown or LaTeX (`main.md` or a `main.tex` that declares its class), with no Markdown file in a LaTeX manuscript; on a LaTeX manuscript, each gate not yet taught LaTeX says it read nothing, a note that fails at submission |
 | G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since, an input Git LFS or git-annex keeps judged by its pointer where it is not fetched; an input the data custodian keeps is not in git; no result quoted from synthetic data at submission, unless the paper is a demonstration; a warning where a lockfile pinning its packages has |
 | G2 | every number is classified, in the manuscript and in the replies to the reviewers, every declared value is quoted, every pointer to a table or figure placed by its binding names one the document places, and a p value, a share or an interval is quoted with what it belongs to; the level written beside an interval and the label beside a standard deviation or error are the ones emitted (warnings); a unit written after a binding is the one emitted; no bound count is printed below the data custodian's minimum |
-| G3 | numbers in a figure's output *and in its source* trace back to results, and a script that estimates, samples or draws at random while it plots says why (a warning) |
+| G3 | numbers in a figure's output *and in its source* trace back to results, and a script that estimates, samples or draws at random while it plots says why (a warning); each figure placed has alternative text, its numbers bound as prose's are (a warning, and a failure at submission where the journal requires it) |
 | G4 | word counts, required sections and required statements match the target journal, and each rule of its profile is quoted from the journal's stored page, its rules no gate checks signed off by the corresponding author, the Data availability statement says what the journal's data policy asks, and the figure files meet its artwork rules, an SVG's or a PDF's smallest text and thinnest line at the width it prints and a PDF's fonts among them, and the journal chosen from `journals/shortlist.yaml` is indexed for MEDLINE and, if open access, listed in DOAJ, as `lookup --journals` recorded, and the citation style it names is kept unchanged for the offline build and numbers citations as the profile says (warnings) |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason, and a declared study design has one of its guidelines; a guideline its authors have replaced is pointed out |
 | G6 | model artefacts, unfilled placeholders and a journal template's instructions, in the prose, the figures, the tables' captions and the cited references; AI phrasing; and unsupported appeals to authority |
-| G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote (with fewer than four words beside it, a warning); a quotation of four words or more in a sentence that cites a work is looked for in its stored source (a warning where it is not there, a note where no source can be read); each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there; from the records `lookup` keeps, no cited work is retracted and each DOI and PMID names the work cited, and no work is cited under two keys; a value the ledger says is a mean of whole numbers can be one of its n (a warning) |
-| G8 | one quantity is not emitted twice under two names, a family of p values says how it is corrected, a number the abstract or a conclusion gives is one the paper reports, and the arithmetic the analysis declares between its results holds: a sum, a difference, a ratio, an order, and each stage of a flow less its exclusions; a P printed after a t, F, chi-squared or z follows from it, an estimate stands inside its confidence interval and a ratio at its middle on the log scale, and an interval and its P agree about the null (warnings) |
+| G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote (with fewer than four words beside it, a warning); a quotation of four words or more in a sentence that cites a work is looked for in its stored source (a warning where it is not there, a note where no source can be read); a passage `literature/passages.yaml` records as supporting a cited sentence is in the cited work's stored source, and belongs to a sentence the manuscript still has (a note where it does not), a person's judgement that it does not support its sentence fails from internal-review, and the cited sentences with no passage are counted (a warning from internal-review); each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there; from the records `lookup` keeps, no cited work is retracted and each DOI and PMID names the work cited, and no work is cited under two keys; a value the ledger says is a mean of whole numbers can be one of its n (a warning) |
+| G8 | one quantity is not emitted twice under two names, a family of p values says how it is corrected, a number the abstract or a conclusion gives is one the paper reports, and the arithmetic the analysis declares between its results holds: a sum, a difference, a ratio, an order, and each stage of a flow less its exclusions; a P printed after a t, F, chi-squared or z follows from it, an estimate stands inside its confidence interval and a ratio at its middle on the log scale, and an interval and its P agree about the null (warnings); a number an earlier output of the same data printed otherwise, with no reason the manuscript gives, and an overlap of data and authors not disclosed (warnings, failures at submission) |
 | G9 | the analysis has not changed since the Methods were last read against it, and, step by step, neither a marked step nor the text pointing at it has |
 | G10 | every figure has a current review by someone who looked at it |
 | G11 | a recorded panel has reviewed the manuscript, its major findings are answered, and no reading was changed after it was sealed |
@@ -183,7 +183,8 @@ and nothing sent anywhere by the page. The person presses a button and sends bac
 file.
 
 What is asked is found from the project's own files: the values quoted from the literature with
-the passage each came from, the sentences that cite something, the references, and the authors.
+the passage each came from, the sentences that cite something, with the passage of the cited
+work recorded as supporting each where there is one, the references, and the authors.
 A number transcribed from a table in a source document is not among them and cannot be — only
 the project knows which row it came from — so a project that traces its own numbers adds them in
 `checks/items.json`.
@@ -255,6 +256,7 @@ number in the file and the rule that classified it.
 | `check` | run every gate; `--submission` holds the manuscript to submission standards |
 | `bind` | show every unbound number and how to give it a source |
 | `explain` | show how each number in a file was classified |
+| `passages` | list each sentence that cites a work, with the passage of that work recorded as supporting it and what G7 found of it; `--missing` lists those with none |
 | `impact` | list what depends on a file, or on each file changed since a commit: results, the sentences that bind them, figures, Methods paragraphs, panel readings and co-author answers |
 | `verify` | re-run the analysis and check it still produces the recorded results |
 | `build` | produce the .docx; `--annotated` colours every number by what backs it |
@@ -273,13 +275,14 @@ number in the file and the rule that classified it.
 | `style` | fetch the journal's citation style from the CSL style repository once, and keep it in `profiles/journals/styles/` for the offline build |
 | `methods` | check or record that the Methods were read against the code; `--explain` lists each claim beside the step that backs it |
 | `models` | print each fitted model as its card, with what G15 says of it |
-| `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` does the same for a design round, which reads the plan |
+| `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` does the same for a design round, which reads the plan; `--suggestions` writes the edits a round's findings suggest into a Word document as tracked changes, for you to accept or refuse there and `import` |
 | `checker` | send a co-author one file of things to confirm, and record what they answered |
 | `import` | bring a co-author's Word edits back into the manuscript source |
 | `reworded` | check that an edit changed the wording and no binding, citation or typed number, and warn where it made a sentence claim more, less or the opposite |
 | `respond` | open a revision round, or write the point-by-point response |
 | `submit` | assemble the submission pack, with a checklist of the journal's rules no gate checks |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |
+| `related` | compare the paper with the earlier outputs of the same data in `literature/related.yaml`, value by value; `--take` copies an earlier project's results and plan in, at the revision the author names |
 | `install-skills` | copy the skills to a folder an agent tool reads; `--verify` checks the copy, `--remove` takes it away |
 
 Each takes `--help`. `verify` is a separate command because it executes your analysis, which
@@ -301,7 +304,7 @@ claude plugin marketplace add BasileChretien/manuscript-guard
 claude plugin install manuscript-guard@manuscript-guard
 ```
 
-Fifteen skills. Start with `project-setup`; most of the others name the finding codes that
+Sixteen skills. Start with `project-setup`; most of the others name the finding codes that
 should send you to them.
 
 | Skill | For |
@@ -317,6 +320,7 @@ should send you to them.
 | `reporting-checklist` | STROBE, CONSORT, PRISMA and the rest, retrieved rather than remembered |
 | `review-panel` | an internal review panel, recorded and answered |
 | `co-author-checking` | the question no gate can ask, put to a person who can answer it |
+| `related-outputs` | the earlier abstract, preprint or article on the same data: its numbers compared, its differences explained, the overlap disclosed |
 | `word-roundtrip` | a co-author's Word edits, back into the source |
 | `reviewer-response` | the point-by-point response to a journal, checked against the revision |
 | `submission-pack` | everything the journal asks for, and the covering letter |
@@ -341,7 +345,7 @@ By Codex's documentation, it runs a hook only after you have trusted it, under `
 ### Gemini CLI, Mistral Vibe, Kimi Code CLI and other tools
 
 By their own documentation these read skills from a folder, and one command copies the
-fifteen there:
+sixteen there:
 
 ```bash
 manuscript-guard install-skills              # for you, in every project: ~/.agents/skills

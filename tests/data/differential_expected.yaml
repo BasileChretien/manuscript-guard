@@ -50,8 +50,10 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G8 counts the relations and flows the analysis declared, `relations_checked`, which
-      is 0 in a project that declares none
+      G7 counts the sentences that cite and those with a supporting passage in
+      literature/passages.yaml, `cited_statements` and `cited_statements_with_passage`, and
+      the passages by what it found of them, and says in a note (a warning from
+      internal-review) how many cited sentences carry no passage
   - reading: numbers
     why: >-
       a step, a panel or a box takes a number up to 20 and an item up to 99, so a count

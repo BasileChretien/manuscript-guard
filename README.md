@@ -277,7 +277,7 @@ number in the file and the rule that classified it.
 | `checker` | send a co-author one file of things to confirm, and record what they answered |
 | `import` | bring a co-author's Word edits back into the manuscript source |
 | `reworded` | check that an edit changed the wording and no binding, citation or typed number, and warn where it made a sentence claim more, less or the opposite |
-| `respond` | open a revision round, keeping the document the journal received, or write the point-by-point response |
+| `respond` | open a revision round, or write the point-by-point response |
 | `submit` | assemble the submission pack, with a checklist of the journal's rules no gate checks, and at a revision the marked-up copy beside the manuscript |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |
 | `install-skills` | copy the skills to a folder an agent tool reads; `--verify` checks the copy, `--remove` takes it away |

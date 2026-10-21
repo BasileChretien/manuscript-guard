@@ -10411,6 +10411,42 @@ Open, recorded as each change landed:
   PDF or an email still means typing the points in, which is where a point quietly becomes
   the easier point next to it. So does a document that has lost its build stamp: it is
   refused, `--force` included, because there is no baseline to force past.
+- **The marked-up copy compares what the two documents print, and shows a change only as
+  the writer knows to write it.** See "The marked-up copy shows every change since the
+  document sent". What that leaves:
+  - *A moved paragraph is a deletion and an insertion*, not Word's move, and which of two
+    paragraphs that changed places is shown moved is the one `difflib` did not keep.
+  - *Paragraphs alike only by half their words or fewer* are one deleted and one inserted,
+    not one edited, however close their places; a paragraph rewritten past half its words
+    reads as replaced. A run of changed blocks is paired in time that grows with the
+    product of its lengths on the two sides: hundreds of paragraphs rewritten at once are
+    slow to mark up.
+  - *The last paragraph of a story keeps its mark* (see above), so Accept All leaves an
+    empty paragraph at the end where the last one was deleted, and Reject All where it
+    was inserted. A note inserted or deleted whole is tracked whole, its last mark too,
+    which Word 16 accepted and rejected.
+  - *A table whose columns changed, or whose cells span or merge*, is replaced whole; and
+    the empty paragraph between the old and the new is left by Reject All after the old
+    table, which the check, reading text, does not tell.
+  - *How a word looks is its run's properties less its language, proofing, Word's script
+    hint and revision ids.* A document sent after Word saved it, with properties Word adds
+    of its own, can show a change of formatting nobody made.
+  - *A citation of a live build is compared by what it cites*, and a reference list Zotero
+    refreshed into the document sent is a field across paragraphs, which shows deleted
+    whole beside the build's placeholder. The build says so where the two documents made
+    their citations differently (`CITED_PROPERTY`); building both offline avoids it.
+  - *Headers, footers, comments, endnotes and text boxes are the revision's*, not compared.
+    A deleted part that points at anything but a picture (a chart, an embedded object, an
+    endnote) is refused, and the copy is not made.
+  - *A deleted link is its words*, without its address; an inline equation is compared and
+    tracked whole, and the check, which reads text, does not read its text, only a display
+    equation's (Word 16 accepted and rejected both as written, above).
+  - *The supplement is marked up only against the round's kept copy*: `--since` names the
+    paper's. A round opened once revising had begun keeps no copy, by the round's own rule.
+  - *In the highlighted copy* a deleted picture is left out, an inserted one is not
+    highlighted, and a change of formatting or style is highlighted as new text is.
+  - *Word itself is not asked*: CI has no Word, and the three copies above are the evidence
+    that Word reads the copy as the check does.
 - **A paragraph identifier is positional, so `import --apply` can re-point it.** The index
   is the paragraph's position in the file, and applying a reorder moves text between slots,
   so a `where:` anchor recorded before the reorder afterwards names different text. G13 no
@@ -12035,42 +12071,6 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
-- **The marked-up copy compares what the two documents print, and shows a change only as
-  the writer knows to write it.** See "The marked-up copy shows every change since the
-  document sent". What that leaves:
-  - *A moved paragraph is a deletion and an insertion*, not Word's move, and which of two
-    paragraphs that changed places is shown moved is the one `difflib` did not keep.
-  - *Paragraphs alike only by half their words or fewer* are one deleted and one inserted,
-    not one edited, however close their places; a paragraph rewritten past half its words
-    reads as replaced. A run of changed blocks is paired in time that grows with the
-    product of its lengths on the two sides: hundreds of paragraphs rewritten at once are
-    slow to mark up.
-  - *The last paragraph of a story keeps its mark* (see above), so Accept All leaves an
-    empty paragraph at the end where the last one was deleted, and Reject All where it
-    was inserted. A note inserted or deleted whole is tracked whole, its last mark too,
-    which Word 16 accepted and rejected.
-  - *A table whose columns changed, or whose cells span or merge*, is replaced whole; and
-    the empty paragraph between the old and the new is left by Reject All after the old
-    table, which the check, reading text, does not tell.
-  - *How a word looks is its run's properties less its language, proofing, Word's script
-    hint and revision ids.* A document sent after Word saved it, with properties Word adds
-    of its own, can show a change of formatting nobody made.
-  - *A citation of a live build is compared by what it cites*, and a reference list Zotero
-    refreshed into the document sent is a field across paragraphs, which shows deleted
-    whole beside the build's placeholder. The build says so where the two documents made
-    their citations differently (`CITED_PROPERTY`); building both offline avoids it.
-  - *Headers, footers, comments, endnotes and text boxes are the revision's*, not compared.
-    A deleted part that points at anything but a picture (a chart, an embedded object, an
-    endnote) is refused, and the copy is not made.
-  - *A deleted link is its words*, without its address; an inline equation is compared and
-    tracked whole, and the check, which reads text, does not read its text, only a display
-    equation's (Word 16 accepted and rejected both as written, above).
-  - *The supplement is marked up only against the round's kept copy*: `--since` names the
-    paper's. A round opened once revising had begun keeps no copy, by the round's own rule.
-  - *In the highlighted copy* a deleted picture is left out, an inserted one is not
-    highlighted, and a change of formatting or style is highlighted as new text is.
-  - *Word itself is not asked*: CI has no Word, and the three copies above are the evidence
-    that Word reads the copy as the check does.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

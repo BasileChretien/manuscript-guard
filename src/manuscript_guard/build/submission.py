@@ -23,6 +23,7 @@ import hashlib
 import re
 import shutil
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -645,8 +646,17 @@ def abstract_text(project: Project) -> tuple[str | None, str | None]:
     return (plain.strip() + "\n", None) if plain.strip() else (None, None)
 
 
-def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> Pack:
+def assemble_pack(
+    project: Project,
+    document: Path,
+    *,
+    checked: bool = True,
+    extra: Sequence[tuple[Path, str]] = (),
+) -> Pack:
     """Copy or generate every part of the submission into build/submission/.
+
+    `extra` is further documents to pack, each under the name given: at a revision, the
+    marked-up copies that show what changed since the round's document.
 
     `checked=False` records in the manifest that the submission check was overridden. A
     pack assembled with `--skip-checks` was previously byte-indistinguishable from one that
@@ -675,6 +685,10 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
     if document.exists():
         target = directory / document.name
         shutil.copy2(document, target)
+        files.append(target)
+    for path, name in extra:
+        target = directory / name
+        shutil.copy2(path, target)
         files.append(target)
 
     from manuscript_guard.gates.journal_quotes import journal_checklist

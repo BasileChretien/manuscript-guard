@@ -851,6 +851,8 @@ def cmd_import(args: argparse.Namespace) -> int:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
 
+    if _refused_marked_up(edited, "imported"):
+        return 1
     if carried is None:
         print(
             f"{edited.name} carries no record of the source it was built from, so there is "
@@ -1497,6 +1499,8 @@ def cmd_respond(args: argparse.Namespace) -> int:
             except RoundTripError as exc:
                 print(f"manuscript-guard: {exc}", file=sys.stderr)
                 return 2
+            if _refused_marked_up(args.source, "read for comments"):
+                return 1
             if carried is None:
                 # Not offered --force: there is no baseline to override. The refusal used to
                 # suggest it, and then refused it.
@@ -1585,6 +1589,16 @@ def cmd_respond(args: argparse.Namespace) -> int:
             f"renders now, so a response that quotes the revised text is checked for saying "
             f"something the journal has not read"
         )
+        from manuscript_guard.markedup.rounds import keep_sent
+
+        kept, missing = keep_sent(project, number)
+        for path in kept:
+            print(
+                f"  {path.relative_to(project.root).as_posix()} is the document the journal "
+                f"received, which `build --marked-up` shows the revision's changes against"
+            )
+        if missing:
+            print(f"  {missing}")
         if args.source:
             seeded = sum(len(r["points"]) for r in document["reviewers"])
             anchored = sum(
@@ -2169,6 +2183,100 @@ def _print_assembly_warnings(report: Report, project) -> None:
         print(Report(report.findings).render(project.root))
 
 
+def _refused_marked_up(document: Path, what: str) -> bool:
+    """Say so and return True where `document` is a marked-up copy, which shows changes
+    and is never the manuscript."""
+    from manuscript_guard.markedup import marked_up_of
+
+    if marked_up_of(document) is None:
+        return False
+    print(
+        f"{document.name} is a marked-up copy: it shows the changes since a submission and "
+        f"is not the manuscript, so it is not {what}. Use the document it was made from."
+    )
+    return True
+
+
+def _marked_up(
+    project, paper: Path, supplement: Path | None, *, since: Path | None,
+    round_number: int | None, form: str,
+) -> tuple[list[tuple[Path, Path]], list[str]]:  # fmt: skip
+    """The marked-up copies of a built paper and supplement, each with the document it was
+    compared with; and what to say of any not made. Raises `MarkedUpError` where none can
+    be."""
+    from manuscript_guard.gates.revision import rounds
+    from manuscript_guard.markedup import MarkedUpError
+    from manuscript_guard.markedup.rounds import (
+        PAPER,
+        SUPPLEMENT,
+        Asked,
+        describe,
+        make,
+        sent_copy,
+        target_for,
+    )
+    from manuscript_guard.roundtrip import RoundTripError, cited_of
+
+    numbers = [n for n, _path in rounds(project)]
+    if round_number is not None and round_number not in numbers:
+        raise MarkedUpError(f"there is no revision round {round_number}")
+    number = round_number if round_number is not None else max(numbers, default=None)
+    if since is not None:
+        before = since
+    else:
+        before = sent_copy(project, number, PAPER) if number is not None else None
+    if before is None:
+        where = (
+            "no revision round is open"
+            if number is None
+            else f"round {number} kept no copy of the document the journal received"
+        )
+        raise MarkedUpError(
+            f"{where}; name the document sent with `--since`, or put it at "
+            f"revision/round-<n>/submitted/{PAPER}"
+        )
+    if not before.is_file():
+        raise MarkedUpError(f"{before} does not exist")
+    asked = [(before, paper)]
+    notes: list[str] = []
+    if supplement is not None:
+        sent = sent_copy(project, number, SUPPLEMENT) if number is not None else None
+        if sent is None:
+            notes.append(
+                "the supplement is not marked up: the round kept no copy of the one the "
+                "journal received"
+            )
+        else:
+            asked.append((sent, supplement))
+    made = []
+    for old, new in asked:
+        try:
+            differ = cited_of(old) != cited_of(new)
+        except RoundTripError:
+            differ = False
+        if differ:
+            notes.append(
+                f"{old.name} and {new.name} format their citations differently (live Zotero "
+                f"fields against citeproc, or another style), so a citation may show as "
+                f"changed that is not; build as the document sent was built"
+            )
+        target = target_for(project, new, form)
+        result = make(project, Asked(old, new, target, number), form)
+        print(
+            f"marked up {target.relative_to(project.root).as_posix()} against "
+            f"{_shown_path(project, old)}: {describe(result)}"
+        )
+        made.append((old, target))
+    return made, notes
+
+
+def _shown_path(project, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(project.root.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     """Produce the .docx. Gates run first unless the author insists otherwise.
 
@@ -2259,6 +2367,25 @@ def cmd_build(args: argparse.Namespace) -> int:
     named = any(f.code == CODE for f in result.report.failures)
     if supplement is not None:
         named = named or not check_blinded(project, supplement).ok
+    if getattr(args, "marked_up", False):
+        from manuscript_guard.markedup import MarkedUpError
+
+        form = "highlighted" if args.highlight else "tracked"
+        try:
+            made, notes = _marked_up(
+                project, result.output, supplement, since=args.since,
+                round_number=args.round, form=form,
+            )  # fmt: skip
+        except MarkedUpError as exc:
+            print(f"manuscript-guard: no marked-up copy: {exc}", file=sys.stderr)
+            return 1
+        for note in notes:
+            print(f"  {note}")
+        for _old, marked in made:
+            blind = check_blinded(project, marked)
+            if not blind.ok:
+                print(blind.render(project.root))
+                named = True
     if named:
         print("The document names an author, and the journal's review is blind: do not send it.")
         return 1
@@ -2313,6 +2440,8 @@ def cmd_submit(args: argparse.Namespace) -> int:
     _print_assembly_warnings(assemble_report, project)
 
     document = args.document
+    if document is not None and _refused_marked_up(document, "packed as the manuscript"):
+        return 1
     if document is None:
         mode = OFFLINE if args.offline else LIVE
         style = _journal_style(project, args)
@@ -2364,8 +2493,30 @@ def cmd_submit(args: argparse.Namespace) -> int:
     # author fields come from; the build checked only the one it made.
     from manuscript_guard.build.blinding import check_blinded
 
+    # At a revision, the copy that shows what changed since the round's document, which
+    # journals ask for beside the manuscript itself.
+    marked: list[tuple[Path, str]] = []
+    marked_notes: list[str] = []
+    from manuscript_guard.gates.revision import rounds
+
+    if rounds(project):
+        from manuscript_guard.markedup import MarkedUpError
+
+        form = "highlighted" if args.highlight else "tracked"
+        try:
+            made, marked_notes = _marked_up(
+                project, document, supplement if wants_supplement else None,
+                since=None, round_number=None, form=form,
+            )  # fmt: skip
+        except MarkedUpError as exc:
+            marked_notes = [f"no marked-up copy is packed: {exc}"]
+            made = []
+        suffix = "-highlighted" if form == "highlighted" else "-marked-up"
+        marked = [(path, f"{path.name.split('.')[0]}{suffix}.docx") for _old, path in made]
+
     packed = [document] if args.document is not None else []
     packed += [supplement] if wants_supplement else []
+    packed += [path for path, _name in marked]
     blind = merge_all([check_blinded(project, path) for path in packed])
     if not blind.ok:
         print(blind.render(project.root))
@@ -2374,7 +2525,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        pack = assemble_pack(project, document, checked=report.ok)
+        pack = assemble_pack(project, document, checked=report.ok, extra=marked)
     except SubmissionError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -2385,7 +2536,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
     for path in pack.files:
         print(f"  {path.relative_to(pack.directory)}")
     print(f"  {pack.manifest.name}")
-    for note in pack.notes:
+    for note in (*pack.notes, *marked_notes):
         print(f"  {note}")
     # Said, and not refused: whether to send without an approval is the corresponding
     # author's call, and an approval given by e-mail is still one.
@@ -3679,6 +3830,25 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="the version you send anywhere: unanswered review findings fail the build",
     )
+    build.add_argument(
+        "--marked-up",
+        action="store_true",
+        help="also write build/marked-up/: the revision with every change since the document "
+        "the journal received shown as Word tracked changes",
+    )
+    build.add_argument(
+        "--since",
+        type=Path,
+        help="with --marked-up: the document sent, where the revision round kept none",
+    )
+    build.add_argument(
+        "--round", type=int, help="with --marked-up: the revision round, the latest by default"
+    )
+    build.add_argument(
+        "--highlight",
+        action="store_true",
+        help="with --marked-up: show the changes highlighted and struck through, not tracked",
+    )
     build.set_defaults(func=cmd_build)
 
     syncbib = sub.add_parser("sync-bib", help="rewrite references.bib from Zotero")
@@ -3780,6 +3950,11 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("--csl", type=Path)
     submit.add_argument("--document", type=Path, help="use an existing .docx instead of building")
     submit.add_argument("--skip-checks", action="store_true")
+    submit.add_argument(
+        "--highlight",
+        action="store_true",
+        help="at a revision, pack the changes highlighted and struck through, not tracked",
+    )
     submit.set_defaults(func=cmd_submit)
 
     checker = sub.add_parser(

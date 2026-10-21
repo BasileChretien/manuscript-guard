@@ -5773,6 +5773,108 @@ which the journal never sees; the marker `[AUTHOR: ...]` that the `reviewer-resp
 writes where the author still has to supply something; and the template's own text in a
 `comment`. Each warns during the revision and fails at submission, as the rest of G13.
 
+## The marked-up copy shows every change since the document sent
+
+At resubmission a journal asks for the revised manuscript twice: clean, and with every change
+since the last submission shown, as Word's tracked changes or highlighted. Made by hand, with
+Word's Compare on two files the author has to find, it shows whatever those two files
+differ by, and nobody checks that they are the two the journal and the revision hold. Basile
+asked for it on 2026-10-21 and chose the four terms that day from the recommendations put to
+him: the document the round kept as the one sent, an exact comparison of printed text, tracked
+changes with highlights on request, and an option of `build` that `submit` uses too.
+
+**What is compared.** The document the journal received against the revision as it is just
+built, both as a reader sees them, block by block and word by word (`markedup`). A number the
+analysis printed anew is a change like a word typed: the comparison is of what the two
+documents print, never of the source, so a re-run shows where it changed the text, a table's
+cells or the abstract, with nothing typed. A citation of a live build is a field, known by what
+it cites (`citationfields`), so Zotero's refresh of its words is no change; one of an offline
+build is its printed words, so a reference added shows in the text and in the list, and the
+numbers of a numeric style move as they do.
+
+**Which document was sent.** `respond --open` keeps it, beside the rendered text it already
+kept, in `revision/round-<n>/submitted/`: the submission pack's document where that was built
+from the manuscript as it stands, and otherwise the one in `build/` that was, the paper and
+its supplement each. A document built from anything else is not what the journal received
+by the round's own measure (open the round before revising), and none is kept: the command
+says so, and where to put the file. `build --marked-up --since <file>` names the paper's for
+a round that kept none. Not rebuilt from the round's rendered text, which every round has:
+built with today's bibliography and figures, a reference corrected or a figure drawn again
+since would not show as changed.
+
+**How the two are lined up** (`markedup.align`). Blocks identical in print, their style and
+numbering included, are paired first, in order (`difflib`, its heuristic for frequent items
+off, so nothing but the two sequences decides). What lies between two such pairs is paired
+only where alike: two paragraphs that share more than half their words in order are one
+paragraph edited, a table with a table of as many columns, a row with a row that shares a
+cell, and in a cell its paragraphs in order whatever they say ("426" edited to "430"). What
+is left was deleted or inserted, and a paragraph moved is one of each. Within a paragraph the
+atoms are lined up the same way (`markedup.atoms`): a word, with the stops and commas inside
+it, so that "3.84" and "41,200" are one; a space; a mark; a tab; a picture; a note's
+reference; and, whole, a field, a link or an equation. A short unchanged stretch between two
+changes is taken into them, as diff-match-patch's clean-up does, where it holds no word or is
+shorter than the change on each side; two numbers apart stay two changes.
+
+**What is written** (`markedup.writer`). The copy is the revision's document with the changes
+in it, every one by the author "Revision", which names nobody, dated the day it is made. Text
+kept is the revision's runs. Text deleted is the sent document's runs, with their formatting,
+in `w:del`, and what it points at is carried into the copy's package under names of its own:
+a picture, the numbering of its list (a copy, so that a deleted item joins none of the
+revision's lists), a style the revision lacks, a footnote. A link deleted is written as its
+words. A word whose formatting alone changed keeps the revision's and records the old in
+`w:rPrChange`; a paragraph whose style or numbering changed records the old in `w:pPrChange`,
+a list's numbering compared by what it draws, since two builds number their lists in their
+own order. A table of the same columns is merged row by row and cell by cell, a row added or
+removed tracked as a row; a table of other columns, or whose cells span or merge, is replaced
+whole, with an empty paragraph tracked as deleted between the two, because Word runs two
+tables that touch into one. A footnote is merged word by word in its own part.
+
+**Every copy is checked before it is kept** (`markedup.verify`). With every change accepted
+it must read as the revision, and with every one rejected as the document sent, block by
+block as `docxtext` reads any document, roles, tables and figures included, with each
+footnote's text in the order the body refers to them. Rejecting is accepting the inverse
+(every insertion read as a deletion, every deletion as an insertion, every change of
+formatting the other way round), and accepting runs a paragraph whose mark was deleted into
+the one after it, as Word does. A copy that does not read so raises, and nothing is written:
+a copy that hid a change, or showed one never made, would be worse than none.
+
+**Word 16, as seen over COM on 2026-10-21.** Copies were opened in Word of two pandoc
+documents holding a re-run, a reworded sentence, a moved paragraph, a list item deleted, a
+cell re-run and a row added, a footnote reworded, one added and one removed, a figure
+replaced, a reference added, a heading made text and text made a heading, a link's address
+changed, an inline and a display equation changed, a paragraph deleted before a table, a
+table of other columns, a word made italic, and the document's last paragraphs deleted; and
+of the example, after its analysis was run again with another seed (74 revisions). Each
+opened without a repair. Accept All and Reject All, run on every story range as the button
+does (the document's `Revisions` holds the main text only, and a footnote's change stayed),
+left each reading as the revision and as the document sent, by the same reading the check
+uses; the first copy and Word's two are in `tests/data/word/`. Word rewrote an equation
+deleted whole as one deletion inside each of its runs, and read both.
+
+One thing Word cannot do is take away a story's last paragraph mark. Given a document whose
+last paragraph was deleted with its mark tracked as deleted, Accept All never returned, and
+Word had to be stopped. So the last paragraph of a story the writer merges, the document's,
+a cell's or a note's, keeps its mark untracked whatever became of it, and only its words are
+tracked: the
+paragraph is left empty where they go, and an empty paragraph reads as nothing
+(`writer._last_mark_kept`).
+
+**The highlighted copy** (`--highlight`), for a journal that asks for highlights: the tracked
+copy, once checked, with what was inserted highlighted yellow, what was deleted struck
+through, a change of formatting or style highlighted, and nothing tracked. A deleted picture
+is left out of it.
+
+**The copy is never the manuscript.** It carries a property saying what it is and which
+document it was compared with (`manuscript-guard-marked-up`: its form, the SHA-256 of the
+document sent, the round), and none of the build's stamps, so nothing reads it as a build:
+`import`, `respond --from` and `submit --document` refuse it by name, and `check` does not
+hold it to the source, since it is written to `build/marked-up/` and not to `build/`. A blind
+review's check reads it as it reads the document, deleted text included: a sentence that
+named an author, taken out since, is in the copy, and the build says not to send it. `submit`
+at a revision packs it beside the manuscript, `manuscript-marked-up.docx` (or
+`-highlighted`), listed in the manifest with the rest; where no document sent is known, the
+pack is assembled without it and says why.
+
 ## Round five, and what it says about the last two days
 
 Four reviewers, all able to run their reproductions this time. The revision cycle and the
@@ -11933,6 +12035,42 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
+- **The marked-up copy compares what the two documents print, and shows a change only as
+  the writer knows to write it.** See "The marked-up copy shows every change since the
+  document sent". What that leaves:
+  - *A moved paragraph is a deletion and an insertion*, not Word's move, and which of two
+    paragraphs that changed places is shown moved is the one `difflib` did not keep.
+  - *Paragraphs alike only by half their words or fewer* are one deleted and one inserted,
+    not one edited, however close their places; a paragraph rewritten past half its words
+    reads as replaced. A run of changed blocks is paired in time that grows with the
+    product of its lengths on the two sides: hundreds of paragraphs rewritten at once are
+    slow to mark up.
+  - *The last paragraph of a story keeps its mark* (see above), so Accept All leaves an
+    empty paragraph at the end where the last one was deleted, and Reject All where it
+    was inserted. A note inserted or deleted whole is tracked whole, its last mark too,
+    which Word 16 accepted and rejected.
+  - *A table whose columns changed, or whose cells span or merge*, is replaced whole; and
+    the empty paragraph between the old and the new is left by Reject All after the old
+    table, which the check, reading text, does not tell.
+  - *How a word looks is its run's properties less its language, proofing, Word's script
+    hint and revision ids.* A document sent after Word saved it, with properties Word adds
+    of its own, can show a change of formatting nobody made.
+  - *A citation of a live build is compared by what it cites*, and a reference list Zotero
+    refreshed into the document sent is a field across paragraphs, which shows deleted
+    whole beside the build's placeholder. The build says so where the two documents made
+    their citations differently (`CITED_PROPERTY`); building both offline avoids it.
+  - *Headers, footers, comments, endnotes and text boxes are the revision's*, not compared.
+    A deleted part that points at anything but a picture (a chart, an embedded object, an
+    endnote) is refused, and the copy is not made.
+  - *A deleted link is its words*, without its address; an inline equation is compared and
+    tracked whole, and the check, which reads text, does not read its text, only a display
+    equation's (Word 16 accepted and rejected both as written, above).
+  - *The supplement is marked up only against the round's kept copy*: `--since` names the
+    paper's. A round opened once revising had begun keeps no copy, by the round's own rule.
+  - *In the highlighted copy* a deleted picture is left out, an inserted one is not
+    highlighted, and a change of formatting or style is highlighted as new text is.
+  - *Word itself is not asked*: CI has no Word, and the three copies above are the evidence
+    that Word reads the copy as the check does.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -257,7 +257,7 @@ number in the file and the rule that classified it.
 | `explain` | show how each number in a file was classified |
 | `impact` | list what depends on a file, or on each file changed since a commit: results, the sentences that bind them, figures, Methods paragraphs, panel readings and co-author answers |
 | `verify` | re-run the analysis and check it still produces the recorded results |
-| `build` | produce the .docx; `--annotated` colours every number by what backs it |
+| `build` | produce the .docx; `--annotated` colours every number by what backs it; `--marked-up` also writes the revision with every change since the document the journal received shown as Word tracked changes, or highlighted (`--highlight`) |
 | `approve` | record an author's approval of the manuscript as it stands, which `submit` holds to the manuscript sent; the author's own act |
 | `sign` | record a named person's sign-off of a finding only they may close, a G15 warning for the statistician `authors.yaml` names, the journal's rules no gate checks for the corresponding author, a model provider the manuscript may be sent to for the data custodian; that person's own act |
 | `render` | substitute the bindings and stop there |
@@ -277,8 +277,8 @@ number in the file and the rule that classified it.
 | `checker` | send a co-author one file of things to confirm, and record what they answered |
 | `import` | bring a co-author's Word edits back into the manuscript source |
 | `reworded` | check that an edit changed the wording and no binding, citation or typed number, and warn where it made a sentence claim more, less or the opposite |
-| `respond` | open a revision round, or write the point-by-point response |
-| `submit` | assemble the submission pack, with a checklist of the journal's rules no gate checks |
+| `respond` | open a revision round, keeping the document the journal received, or write the point-by-point response |
+| `submit` | assemble the submission pack, with a checklist of the journal's rules no gate checks, and at a revision the marked-up copy beside the manuscript |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |
 | `install-skills` | copy the skills to a folder an agent tool reads; `--verify` checks the copy, `--remove` takes it away |
 

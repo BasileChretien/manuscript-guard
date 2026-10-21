@@ -32,6 +32,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import number_in
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
+from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.reader import bound_files
 
 #: How long `git ls-files` may take before the check says it could not ask.
@@ -63,11 +64,17 @@ def check_small_cells(project: Project, results: Results) -> Report:
     minimum = minimum_cell_count(project)
     if minimum is None:
         return Report()
+    from manuscript_guard.gates.figure_alt import alt_texts, literal
+
     report = Report()
     said: set[str] = set()
-    for bound in bound_files(project):
-        path = bound.path
-        for placeholder in bound.placeholders:
+    # The manuscript's sources, in its format, and each figure's alternative text, which the
+    # build prints into its picture (`gates/figure_alt.py`).
+    found = [(bound.path, bound.placeholders, True) for bound in bound_files(project)]
+    found += [(sidecar, parse(literal(raw))[0], False)
+              for _name, sidecar, raw in alt_texts(project)]  # fmt: skip
+    for path, placeholders, lined in found:
+        for placeholder in placeholders:
             if placeholder.namespace != "results" or placeholder.key in said:
                 continue
             value = results.values.get(placeholder.key)
@@ -82,7 +89,7 @@ def check_small_cells(project: Project, results: Results) -> Report:
                     message=f"results.{placeholder.key} is {value.display}, {wrong} the data "
                     f"custodian's minimum of {minimum}",
                     path=path,
-                    line=placeholder.line,
+                    line=placeholder.line if lined else None,
                     hint=f"report it as fewer than the minimum, \"<{minimum}\", or merge the "
                     "category with another, in the analysis; a number that is no count of "
                     "people is emitted with its unit",

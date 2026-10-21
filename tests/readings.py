@@ -300,6 +300,40 @@ def _numbers() -> Reading:
     return numbers
 
 
+@reading("pointers")
+def _pointers() -> Reading:
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.pointers import check_pointers, display_numbers
+    from manuscript_guard.text.placeholders import parse
+
+    def pointers(given: dict[str, Any]) -> dict[str, Any]:
+        """What G2 says of the pointers of a project with these files under `manuscript/`,
+        and what each ref and num binding in them prints, by file and offset."""
+        folder = Path(tempfile.mkdtemp(prefix="mg-pointers-"))
+        try:
+            root = folder / "paper"
+            (root / "manuscript").mkdir(parents=True)
+            (root / PAPER).write_text("title: A paper\n", encoding="utf-8")
+            for relative, text in given["files"].items():
+                path = root / "manuscript" / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8", newline="")
+            project = load_project(root)[0]
+            numbers = display_numbers(project)
+            printed = [
+                [relative, found.start, numbers.printed(found)]
+                for relative, text in sorted(given["files"].items())
+                for found in parse(text)[0]
+                if found.is_ref
+            ]
+            said = _from_root(_told(check_pointers(project)), root)
+            return {"report": said, "printed": printed}
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    return pointers
+
+
 #: The coding dictionaries a generated text may type the release of.
 DICTIONARIES = {"meddra": "26.1", "whodrug": "Global B3 March 2025", "icd_10": "2019"}
 
@@ -485,6 +519,20 @@ def _planned_results() -> Reading:
         line; None where the plan has no such section."""
         found = planned_results(plan)
         return None if found is None else [[p.key, p.group, p.line] for p in found]
+
+    return read
+
+
+@reading("plan variables")
+def _plan_variables() -> Reading:
+    from manuscript_guard.gates.collection import variables_named
+
+    def read(given: dict[str, Any]) -> Any:
+        """The dictionary's variables the plan names and the names it gives that the
+        dictionary lacks, each with the line of its first mention."""
+        used, undefined = variables_named(given["plan"], given["names"])
+        return {"used": [[n.name, n.line] for n in used],
+                "undefined": [[n.name, n.line] for n in undefined]}  # fmt: skip
 
     return read
 

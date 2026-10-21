@@ -92,6 +92,10 @@ The database contained {{results.cohort.n_reports}} reports, of which
 {{results.ror.point}} (95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}}).
 ```
 
+A table or a figure is placed by its key, `{{table.baseline}}`, and pointed at by it:
+`{{ref.table.baseline}}` prints "Table 2" if it is the second table the main text places,
+and the number follows the table when it moves.
+
 Your analysis publishes those values through an emitter, which records where they came
 from. There is one for Python and one for R, and anything that can write JSON can take part:
 
@@ -128,7 +132,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 |---|---|
 | G0 | the manuscript can be read: each source is UTF-8, and it is written in one format, Markdown or LaTeX (`main.md` or a `main.tex` that declares its class), with no Markdown file in a LaTeX manuscript; on a LaTeX manuscript, each gate not yet taught LaTeX says it read nothing, a note that fails at submission |
 | G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since, an input Git LFS or git-annex keeps judged by its pointer where it is not fetched; an input the data custodian keeps is not in git; no result quoted from synthetic data at submission, unless the paper is a demonstration; a dataset's extraction date is pinned to the files the results were computed from; a warning where a lockfile pinning its packages has |
-| G2 | every number is classified, in the manuscript and in the replies to the reviewers, every declared value is quoted, every pointer to a table or figure placed by its binding names one the document places, and a p value, a share or an interval is quoted with what it belongs to; the level written beside an interval and the label beside a standard deviation or error are the ones emitted (warnings); a unit written after a binding is the one emitted; a day emitted as a date is printed as that day or a coarser statement of it, and a date of the data typed into the analysis rather than declared with its data is warned of; no bound count is printed below the data custodian's minimum |
+| G2 | every number is classified, in the manuscript and in the replies to the reviewers, every declared value is quoted, every pointer to a table or figure placed by its binding names one the document places, and one the build numbers (`{{ref.table.<key>}}`) a display it can number, and a p value, a share or an interval is quoted with what it belongs to; the level written beside an interval and the label beside a standard deviation or error are the ones emitted (warnings); a unit written after a binding is the one emitted; a day emitted as a date is printed as that day or a coarser statement of it, and a date of the data typed into the analysis rather than declared with its data is warned of; no bound count is printed below the data custodian's minimum |
 | G3 | numbers in a figure's output *and in its source* trace back to results, and a script that estimates, samples or draws at random while it plots says why (a warning); each figure placed has alternative text, its numbers bound as prose's are (a warning, and a failure at submission where the journal requires it) |
 | G4 | word counts, required sections and required statements match the target journal, and each rule of its profile is quoted from the journal's stored page, its rules no gate checks signed off by the corresponding author, the Data availability statement says what the journal's data policy asks, and the figure files meet its artwork rules, an SVG's or a PDF's smallest text and thinnest line at the width it prints and a PDF's fonts among them, and the journal chosen from `journals/shortlist.yaml` is indexed for MEDLINE and, if open access, listed in DOAJ, as `lookup --journals` recorded, and the citation style it names is kept unchanged for the offline build and numbers citations as the profile says (warnings) |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason, and a declared study design has one of its guidelines; a guideline its authors have replaced is pointed out |
@@ -138,7 +142,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G9 | the analysis has not changed since the Methods were last read against it, and, step by step, neither a marked step nor the text pointing at it has |
 | G10 | every figure has a current review by someone who looked at it |
 | G11 | a recorded panel has reviewed the manuscript, its major findings are answered, and no reading was changed after it was sealed |
-| G12 | there was an analysis plan, its sections say something, and so do those its declared study design needs; while it is written the data were counted (a warning), a change to it after the first results is said under Deviations, each result its Planned results section lists by key is emitted and quoted, or the Deviations say why not (a warning), a design round's readings are of the plan as it stands, with their major findings answered (a warning until submission), and a data dictionary, where there is one, reads as its schema and its references say (a failure where it does not) |
+| G12 | there was an analysis plan, its sections say something, and so do those its declared study design needs; while it is written the data were counted (a warning), a change to it after the first results is said under Deviations, each result its Planned results section lists by key is emitted and quoted, or the Deviations say why not (a warning), a design round's readings are of the plan as it stands, with their major findings answered (a warning until submission), and a data dictionary, where there is one, reads as its schema and its references say (a failure where it does not), defines every variable the plan names in backticks, and holds no entry that the plan, a reporting item or a reason does not need (a warning) |
 | G13 | every reviewer point is answered, every claimed revision really happened, a quoted revision is new, and nothing in a reply should not reach the journal |
 | G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, it is spelt in one English, a P value, an interval and a percentage are each written one way, and prose in a script the gates do not read is said (warnings only) |
 | G15 | each model is the model its variables call for: the outcome is one its kind of model is for, each variable entered as the kind it was declared, with its declared reference and levels, the fit converged with events at every level, the rows of one declared unit are not taken as independent, a crude and an adjusted model were fitted on the same rows, a Poisson model of a binary outcome has a robust variance, and the Methods name the model that was fitted |
@@ -254,7 +258,7 @@ number in the file and the rule that classified it.
 |---|---|
 | `init` | scaffold a new manuscript project |
 | `check` | run every gate; `--submission` holds the manuscript to submission standards |
-| `bind` | show every unbound number and how to give it a source |
+| `bind` | show every unbound number and how to give it a source; `--pointers` offers the `{{ref.…}}` binding that prints each typed "Table 2" |
 | `explain` | show how each number in a file was classified |
 | `passages` | list each sentence that cites a work, with the passage of that work recorded as supporting it and what G7 found of it; `--missing` lists those with none |
 | `impact` | list what depends on a file, or on each file changed since a commit: results, the sentences that bind them, figures, Methods paragraphs, panel readings and co-author answers |
@@ -312,6 +316,7 @@ should send you to them.
 | `project-setup` | starting a paper project, and the daily loop from analysis to .docx |
 | `results-binding` | publishing values from the analysis, and turning a red number into a bound one |
 | `analysis-plan` | writing the plan before the analysis, and recording deviations from it |
+| `data-dictionary` | deciding what a study collects, one defined entry per variable, held to the plan |
 | `manuscript-writing` | prose that reads as written |
 | `methods-writer` | Methods that describe the code that was actually run |
 | `literature-verify` | a number from a paper, with its verbatim quote and stored source |

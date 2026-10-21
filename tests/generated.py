@@ -169,6 +169,130 @@ POINTED = (
     "item 25", "panel 2A",
 )  # fmt: skip
 
+#: The files of each document a generated paper places its tables and figures in, in the order
+#: the build prints them: `main.md` first and the rest by name, so `1_methods.md` prints after
+#: `main.md` though its path sorts before it; the supplement's by name.
+DISPLAY_FILES = {
+    False: ("main.md", "1_methods.md", "3_results.md"),
+    True: ("supplementary/S1.md", "supplementary/S2.md"),
+}
+#: The words a num binding of each kind of each document may follow, the number it prints
+#: holding the supplement's `S`.
+_NUM_WORDS = {
+    (False, "table"): ("Table",),
+    (False, "figure"): ("Figure", "Fig."),
+    (True, "table"): ("Table", "Supplementary Table"),
+    (True, "figure"): ("Figure", "Supplementary Figure"),
+}
+
+
+@st.composite
+def numbered_displays(
+    draw: st.DrawFn,
+) -> tuple[dict[str, str], dict[tuple[str, int], str], set[tuple[str, str, int]]]:
+    """Tables and figures placed by their bindings across the files of the main text and of
+    the supplement, in a drawn order, each cited just before it is placed by a ref or by a
+    num after its word, and the main text's tables listed once more, by num, at the end of
+    `main.md`. Four pointers are planted there too, one of each kind in every example, in a
+    drawn order: a ref to a key nothing places, a ref that calls a table a figure, a num after
+    a figure's word, and a num after the supplement's words. `main.md` and `1_methods.md`
+    each place one of the main text's tables, so that numbering them in the order of their
+    paths would give the two the other's number, and the supplement places a table.
+
+    Returns each file's text by its path under `manuscript/`; what each ref and num binding
+    prints, by its file and the offset it starts at; and the findings the planted pointers
+    make, by code, file and line."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    counts = {
+        (False, "table"): draw(st.integers(2, 4)),
+        (False, "figure"): draw(st.integers(0, 2)),
+        (True, "table"): draw(st.integers(1, 2)),
+        (True, "figure"): draw(st.integers(0, 2)),
+    }
+    keys = iter(draw(st.permutations([f"k{index}" for index in range(12)])))
+    placed: dict[str, list[tuple[str, str]]] = {
+        file: [] for files in DISPLAY_FILES.values() for file in files
+    }
+    for (supplementary, kind), count in counts.items():
+        files = DISPLAY_FILES[supplementary]
+        for index in range(count):
+            spread = not supplementary and kind == "table" and index < 2
+            file = files[index] if spread else draw(st.sampled_from(files))
+            placed[file].append((kind, next(keys)))
+    numbers: dict[tuple[str, str], tuple[bool, int]] = {}
+    seen: dict[tuple[bool, str], int] = {}
+    for supplementary, files in DISPLAY_FILES.items():
+        for file in files:
+            placed[file] = draw(st.permutations(placed[file]))
+            for kind, key in placed[file]:
+                number = seen[supplementary, kind] = seen.get((supplementary, kind), 0) + 1
+                numbers[kind, key] = (supplementary, number)
+
+    def alone(kind: str, key: str) -> str:
+        supplementary, number = numbers[kind, key]
+        return f"{'S' if supplementary else ''}{number}"
+
+    def whole(kind: str, key: str) -> str:
+        return f"{kind.capitalize()} {alone(kind, key)}"
+
+    texts: dict[str, str] = {}
+    prints: dict[tuple[str, int], str] = {}
+    planted: set[tuple[str, str, int]] = set()
+
+    def write(file: str, parts: list[tuple[str, str | None, str | None]]) -> None:
+        """`parts` as (text, binding, what it prints): each binding's offset recorded."""
+        out = ""
+        for text, binding, printed in parts:
+            out += text
+            if binding is not None:
+                prints[file, len(out)] = str(printed)
+                out += binding
+        texts[file] = out
+
+    for supplementary, files in DISPLAY_FILES.items():
+        for file in files:
+            parts: list[tuple[str, str | None, str | None]] = [("# Results\n\n", None, None)]
+            for kind, key in placed[file]:
+                how = draw(st.sampled_from(("ref", "num")))
+                lead = f"{words().capitalize()} in "
+                if how == "ref":
+                    parts.append((lead, f"{{{{ref.{kind}.{key}}}}}", whole(kind, key)))
+                else:
+                    word = draw(st.sampled_from(_NUM_WORDS[supplementary, kind]))
+                    parts.append((f"{lead}{word} ", f"{{{{num.{kind}.{key}}}}}", alone(kind, key)))
+                parts.append((f".\n\n{{{{{kind}.{key}}}}}\n\n", None, None))
+            if file == "main.md":
+                listed = sorted(
+                    (key for kind, key in numbers if kind == "table" and not numbers[kind, key][0]),
+                    key=lambda key: numbers["table", key][1],
+                )
+                parts.append((f"{words().capitalize()} in Tables ", None, None))
+                for index, key in enumerate(listed):
+                    join = "" if index == 0 else " and " if index == len(listed) - 1 else ", "
+                    parts.append((join, f"{{{{num.table.{key}}}}}", alone("table", key)))
+                parts.append((".\n\n", None, None))
+                table = draw(st.sampled_from(listed))
+                plants = [
+                    ("unresolved-binding", "", "{{ref.table.nothing}}", None),
+                    ("unresolved-binding", "", f"{{{{ref.figure.{table}}}}}", None),
+                    ("pointer-word-mismatch", "Figure ", f"{{{{num.table.{table}}}}}",
+                     alone("table", table)),
+                    ("pointer-word-mismatch", "Supplementary Table ",
+                     f"{{{{num.table.{table}}}}}", alone("table", table)),
+                ]  # fmt: skip
+                for code, word, binding, printed in draw(st.permutations(plants)):
+                    line = "".join(part[0] + (part[1] or "") for part in parts).count("\n") + 1
+                    planted.add((code, file, line))
+                    lead = f"{words().capitalize()} in {word}"
+                    printing = (lead, binding, printed)
+                    parts.append(printing if printed else (lead + binding, None, None))
+                    parts.append((".\n\n", None, None))
+            write(file, parts)
+    return texts, prints, planted
+
 #: Spaces a manuscript holds that are not the space bar's.
 SPACES = (
     "\t", "\N{NO-BREAK SPACE}", "\N{THIN SPACE}", "\N{NARROW NO-BREAK SPACE}", "\x0c", "\x0b",
@@ -1200,6 +1324,84 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
         f"## Outcome\n\n{draw(texts())}\n"
     )
     return plan, [*listed, (secondary, False)]
+
+
+# ------------------------------------------------------------ the variables a plan names
+
+#: Names a dictionary gives its variables, a dotted one and one with capitals among them,
+#: and names it does not give.
+DEFINED = ("age", "sex", "bmi_kg", "visit2", "smoker", "dose_mg", "Sex_at_birth", "x1")
+UNDEFINED = ("weight", "eGFR", "height_cm", "alt", "site_id", "n_prior")
+#: Headings of a plan's Deviations section, as G12 reads them.
+_DEVIATION_TITLES = ("Deviations from the plan", "Changes to the plan", "Protocol amendments")
+#: Code and values in backticks, which are not variables.
+_NOT_VARIABLES = ("glm()", "stats::glm", "lme4::glmer()", "NA", "TRUE", "results.dose")
+
+
+@st.composite
+def collection_plans(
+    draw: st.DrawFn,
+) -> tuple[str, list[str], list[tuple[str, int]], list[tuple[str, int]], int]:
+    """A plan that names variables in backticks in each way a plan holds one, the names the
+    dictionary has, the dictionary's variables the plan names and the names it gives that the
+    dictionary lacks, each at the line of its first mention, and the plan's last line before
+    the drawn text that ends it.
+
+    Each example holds one section of every kind, in an order drawn each time: a variable the
+    dictionary has; one with a dot in its name; a name it lacks; a Deviations section, under a
+    heading drawn among its names, naming one of each with a subsection under it naming
+    another; code and values; a Planned results item naming a variable after its key; a fence
+    and a comment holding names; a variable named in a subsection; a variable written in
+    another case; a list headed "Planned results and amendments", which is not the
+    Deviations; a section headed "Changes to the planned results", which is; a section
+    naming again a variable and a name named elsewhere; and a Deviations subsection of
+    another section, followed by a subsection that is read. All under a title that names an
+    amendment, which heads the plan and not its Deviations."""
+    words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=5).map(" ".join)
+    defined = draw(st.permutations(DEFINED))
+    undefined = draw(st.permutations(UNDEFINED))
+    dotted = "BEN.SEX"
+    cased = defined[6][0].swapcase() + defined[6][1:]
+    deviation = draw(st.sampled_from(_DEVIATION_TITLES))
+    # Each section: its text, then the names it uses and the names it lacks, as written.
+    kinds = [
+        (f"## Analysis\n\n{draw(words)} `{defined[0]}` {draw(words)}.\n", [defined[0]], []),
+        (f"## Population\n\n{draw(words)} `{dotted}` {draw(words)}.\n", [dotted], []),
+        (f"## Exposure\n\n{draw(words)} `{undefined[0]}` {draw(words)}.\n", [], [undefined[0]]),
+        (f"## {deviation}\n\n{draw(words)} `{defined[1]}` and `{undefined[1]}`.\n\n"
+         f"### Later\n\n`{defined[2]}` {draw(words)}.\n", [], []),
+        (f"## Outcome\n\n{draw(words)} " + " ".join(f"`{code}`" for code in _NOT_VARIABLES)
+         + f" {draw(words)}.\n", [], []),
+        (f"## Planned results\n\n- `ror.point`: {draw(words)} `{defined[3]}`\n", [defined[3]],
+         []),
+        (f"## Sensitivity analyses\n\n```r\nfit(`{undefined[2]}`)\n```\n\n"
+         f"<!-- `{undefined[3]}` -->\n", [], []),
+        (f"## Covariates\n\n{draw(words)}.\n\n### Adjustment\n\n`{defined[4]}` {draw(words)}.\n",
+         [defined[4]], []),
+        (f"## Outcome measures\n\n`{cased}` {draw(words)}.\n", [], [cased]),
+        (f"## Planned results and amendments\n\n- `ror.n`: `{defined[5]}`\n", [defined[5]], []),
+        (f"## Changes to the planned results\n\n`{undefined[4]}` {draw(words)}.\n", [], []),
+        (f"## Repeated\n\n`{defined[0]}` and `{undefined[0]}` {draw(words)}.\n",
+         [defined[0]], [undefined[0]]),
+        (f"## Exposure details\n\n{draw(words)}.\n\n### {deviation}\n\n`{undefined[5]}` "
+         f"{draw(words)}.\n\n### Timing\n\n`{defined[7]}` {draw(words)}.\n", [defined[7]], []),
+    ]  # fmt: skip
+    order = draw(st.permutations(range(len(kinds))))
+    # A title that names an amendment encloses the plan, and is not its Deviations.
+    plan = f"# Statistical analysis plan (amendment {draw(st.integers(1, 9))})\n\n"
+    first: dict[str, dict[str, int]] = {"used": {}, "undefined": {}}
+    for index in order:
+        text, used, lacked = kinds[index]
+        for kind, names in (("used", used), ("undefined", lacked)):
+            for name in names:
+                line = plan.count("\n") + text[: text.index(f"`{name}`")].count("\n") + 1
+                first[kind].setdefault(name, line)
+        plan += text + "\n"
+    last = plan.count("\n")
+    plan += f"## Notes\n\n{draw(texts())}\n"
+    ordered = {kind: sorted(found.items(), key=lambda pair: pair[1])
+               for kind, found in first.items()}  # fmt: skip
+    return plan, [*defined, dotted], ordered["used"], ordered["undefined"], last
 
 
 #: What can stand in a stored source between two words of a quote taken from it: line
@@ -2389,11 +2591,14 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "interval order": intervals(),
+    "pointers": numbered_displays().map(lambda drawn: {"files": drawn[0]}),
     "quoted whole": texts(WHOLE),
     "labels": texts(LABELLED),
     "data dates": texts(DATED),
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
+    "plan variables": collection_plans().map(lambda drawn: {"plan": drawn[0],
+                                                            "names": drawn[1]}),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
     "vector figure": vector_figures().map(lambda drawn: drawn[0]),
     # As text, a byte a character, so that the bytes pass to a reader as they are.

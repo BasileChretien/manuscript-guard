@@ -64,6 +64,7 @@ from generated import (
     alt_texts,
     bindings,
     claim_edits,
+    collection_plans,
     commented,
     generated,
     holds,
@@ -73,6 +74,7 @@ from generated import (
     latex_trees,
     lines,
     mean_tables,
+    numbered_displays,
     passage_files,
     pdf_figures,
     planned_plans,
@@ -1075,6 +1077,28 @@ def test_a_planned_result_is_read_from_its_own_item_and_nowhere_else(
     read = planned_results(plan)
     assert read is not None, plan
     assert [(found.key, found.group) for found in read] == listed, plan
+
+
+# ------------------------------------------------------------ the variables a plan names
+
+
+@holds(100, collection_plans())
+def test_a_variable_is_read_from_the_plan_outside_its_deviations_and_nowhere_else(
+    drawn: tuple[str, list[str], list[tuple[str, int]], list[tuple[str, int]], int],
+) -> None:
+    """Each variable the dictionary has, dotted or not, is read where the plan names it in
+    backticks, its subsections and a list headed "Planned results and amendments" included,
+    at its first mention; each name that reads as a variable's and that the dictionary lacks
+    is read the same way, one written in another case among them; and nothing is read from
+    the Deviations or the sections under them, from "Changes to the planned results", from
+    code, values, a fence or a comment. Of the text drawn after the plan, nothing is
+    compared: only that it changes nothing before it."""
+    from manuscript_guard.gates.collection import variables_named
+
+    plan, names, used, undefined, last = drawn
+    read_used, read_undefined = variables_named(plan, names)
+    assert [(n.name, n.line) for n in read_used if n.line <= last] == used, plan
+    assert [(n.name, n.line) for n in read_undefined if n.line <= last] == undefined, plan
 
 
 # ------------------------------------------------------------------------------ parameters
@@ -2952,6 +2976,25 @@ def test_a_pointer_names_what_the_document_carries_or_is_said(
         (at["kind"], bool(at["s"]), int(at["n"])) for at in named if at is not None
     }
     assert found == expected, (main, supplement, report.findings)
+
+
+@holds(100, numbered_displays())
+def test_a_ref_prints_the_number_its_display_has_or_is_said(
+    drawn: tuple[dict[str, str], dict[tuple[str, int], str], set[tuple[str, str, int]]],
+) -> None:
+    """Each ref and num binding prints the number the document gives its table or figure:
+    counted in the order the files print, which is not the order of their paths, and the
+    supplement's apart from the main text's. G2 says of the pointers exactly what was
+    planted, a ref to a key nothing places and a num after words that point at another kind
+    or at the other document, and nothing of the rest, which cite each display in order."""
+    files, prints, planted = drawn
+    said = READINGS["pointers"]()({"files": files})
+    printed = {(relative, start): shown for relative, start, shown in said["printed"]}
+    assert {at: shown for at, shown in printed.items() if shown is not None} == prints, files
+    assert sum(shown is None for shown in printed.values()) == 2, (files, printed)
+    findings = said["report"]["findings"]
+    found = {(f["code"], f["path"].split("manuscript/")[-1], f["line"]) for f in findings}
+    assert found == planted, (files, findings)
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -5879,6 +5922,112 @@ def _the_planned_results_subsections_are_not_read(patch: pytest.MonkeyPatch) -> 
     patch.setattr(design, "subsections", lambda sections, index: [sections[index]])
 
 
+def _the_deviations_name_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "_deviations", lambda text: [])
+
+
+def _the_deviations_end_at_their_first_subsection(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    def own_text_only(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, headings[i + 1].start if i + 1 < len(headings) else len(text))
+                for i, h in enumerate(headings) if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", own_text_only)
+
+
+def _the_plan_s_title_may_be_its_deviations(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood before round 1: the title was a heading like any other."""
+    from manuscript_guard.gates import collection
+
+    def every_heading(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, next((later.start for later in headings[i + 1:]
+                                if later.level <= h.level), len(text)))
+                for i, h in enumerate(headings) if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", every_heading)
+
+
+def _the_deviations_run_to_the_next_section(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    def to_a_section(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, next((later.start for later in headings[i + 1:]
+                                if later.level <= 2), len(text)))
+                for i, h in enumerate(headings[1:], 1)
+                if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", to_a_section)
+
+
+def _any_heading_with_a_change_s_word_is_the_deviations(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "is_deviations",
+                  lambda title: bool(re.search(collection._DEVIATIONS, title)))  # fmt: skip
+
+
+def _a_heading_that_names_the_planned_results_is_never_the_deviations(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import collection
+    from manuscript_guard.gates.design import PLANNED
+
+    patch.setattr(collection, "is_deviations",
+                  lambda title: bool(re.search(collection._DEVIATIONS, title))
+                  and not re.search(PLANNED, title))  # fmt: skip
+
+
+def _code_in_brackets_is_a_variable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "VARIABLE", re.compile(r"[A-Za-z][A-Za-z0-9_():]*"))
+
+
+def _a_value_in_backticks_is_a_variable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "LITERALS", frozenset())
+
+
+def _a_dotted_name_is_never_a_variable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    reads_as = collection._reads_as
+    patch.setattr(collection, "_reads_as",
+                  lambda said, known: None if "." in said else reads_as(said, known))  # fmt: skip
+
+
+def _a_variable_is_matched_without_its_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    reads_as = collection._reads_as
+
+    def folded(said: str, known) -> str | None:
+        if said.casefold() in {name.casefold() for name in known}:
+            return "used"
+        return reads_as(said, known)
+
+    patch.setattr(collection, "_reads_as", folded)
+
+
+def _a_variable_is_said_at_its_last_mention(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "_first", lambda found, named: found.update({named.name: named}))
+
+
+def _fences_and_comments_name_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "mask", lambda text: text)
+
+
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
@@ -5886,7 +6035,10 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
 def _a_list_of_pointers_is_its_first(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import pointers
 
-    patch.setattr(pointers, "_numbers", lambda found: [(bool(found["s0"]), int(found["n0"]))])
+    patch.setattr(
+        pointers, "_numbers",
+        lambda found: [(bool(found["s0"]), int(found["n0"]), found.start("n0"))],
+    )  # fmt: skip
 
 
 def _the_supplement_s_tables_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
@@ -5897,7 +6049,9 @@ def _the_supplement_s_tables_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
     read = pointers.pointers_in
     patch.setattr(
         pointers, "pointers_in",
-        lambda text, path: [replace(p, supplementary=False) for p in read(text, path)],
+        lambda text, path, *numbers: [
+            replace(p, supplementary=False) for p in read(text, path, *numbers)
+        ],
     )
 
 
@@ -5920,10 +6074,42 @@ def _one_figure_more_is_counted_than_the_supplement_carries(patch: pytest.Monkey
 
     def one_more(text: str):
         found = placed(text)
-        figures = ("figure",) if "figure" in found.bound else ()
+        figures = (("figure", "f0"),) if any(k == "figure" for k, _ in found.bound) else ()
         return type(found)(found.bound + figures, found.by_hand)
 
     patch.setattr(pointers, "placed_in", one_more)
+
+
+def _a_bound_pointer_points_where_its_binding_does(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.crossref import Display
+    from manuscript_guard.gates import pointers
+
+    read = pointers.pointers_in
+
+    def as_named(text: str, path: Path, numbers=None):
+        found = []
+        for pointer in read(text, path, numbers):
+            named = numbers.display(pointer.binding) if numbers and pointer.binding else None
+            if isinstance(named, Display):
+                pointer = replace(pointer, kind=named.kind, supplementary=named.supplementary)
+            found.append(pointer)
+        return found
+
+    patch.setattr(pointers, "pointers_in", as_named)
+
+
+def _displays_are_numbered_in_the_order_of_their_paths(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "printed_order", lambda paths, supplementary: sorted(paths))
+
+
+def _the_supplement_s_displays_are_numbered_with_the_paper_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "is_supplementary", lambda root, path: False)
 
 
 def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
@@ -7690,6 +7876,29 @@ BROKEN = {
         _the_planned_results_subsections_are_not_read,
         test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
     ),
+    **{
+        f"in a plan, {said}": (
+            broken,
+            test_a_variable_is_read_from_the_plan_outside_its_deviations_and_nowhere_else,
+        )
+        for said, broken in (
+            ("the Deviations name variables", _the_deviations_name_variables),
+            ("the Deviations end at their first subsection",
+             _the_deviations_end_at_their_first_subsection),
+            ("the plan's title may be its Deviations", _the_plan_s_title_may_be_its_deviations),
+            ("the Deviations run to the next section", _the_deviations_run_to_the_next_section),
+            ("any heading with a change's word is the Deviations",
+             _any_heading_with_a_change_s_word_is_the_deviations),
+            ("a heading naming the planned results is never the Deviations",
+             _a_heading_that_names_the_planned_results_is_never_the_deviations),
+            ("code in brackets is a variable", _code_in_brackets_is_a_variable),
+            ("a value in backticks is a variable", _a_value_in_backticks_is_a_variable),
+            ("a dotted name is never a variable", _a_dotted_name_is_never_a_variable),
+            ("a variable is matched without its case", _a_variable_is_matched_without_its_case),
+            ("a variable is said at its last mention", _a_variable_is_said_at_its_last_mention),
+            ("fences and comments name variables", _fences_and_comments_name_variables),
+        )
+    },
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
@@ -7713,6 +7922,18 @@ BROKEN = {
     "a document's figures are counted one too many": (
         _one_figure_more_is_counted_than_the_supplement_carries,
         test_a_pointer_names_what_the_document_carries_or_is_said,
+    ),
+    "a bound pointer is read as pointing where its binding does": (
+        _a_bound_pointer_points_where_its_binding_does,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "tables and figures are numbered in the order of their files' paths": (
+        _displays_are_numbered_in_the_order_of_their_paths,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "the supplement's tables are numbered with the paper's": (
+        _the_supplement_s_displays_are_numbered_with_the_paper_s,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
     ),
     "the Methods are read by the name G9 had for them": (
         _the_methods_are_read_by_their_old_name,

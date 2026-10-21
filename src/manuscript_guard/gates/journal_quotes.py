@@ -85,6 +85,8 @@ def rules_of(document: dict) -> dict[str, object]:
             rules[name] = document[name]
     if document.get("reporting_guidelines"):
         rules["reporting_guidelines"] = document["reporting_guidelines"]
+    for name, form in (document.get("pointers") or {}).items():
+        rules[f"pointers.{name}"] = form
     return rules
 
 

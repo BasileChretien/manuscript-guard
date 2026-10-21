@@ -419,6 +419,72 @@ checklist runs to 27 items. "Step 1204" is a count. A list after a plural is rea
 pointers by G2 too, where only its first number was before: "Tables 1 and 2 show" left its
 2 unbound.
 
+## A pointer the build numbers
+
+A typed pointer can only be checked. It goes stale every time a table moves, and the author
+renumbers it by hand once G2 says so. LaTeX's `\ref`, and the cross-references of MyST
+(Jupyter Book) and pandoc-crossref, print the number from a label instead. Jupyter Book was
+looked at on 2026-10-20 for ideas, and this is the one taken: its executed inline expressions
+would run code at build time, and its web and JATS outputs are not what journals take. The
+label is the key the display is placed by already, so nothing new is declared:
+`{{ref.table.baseline}}` prints "Table 2" where `{{table.baseline}}` is the second table the
+main text places, and "Table S1" where it is the supplement's first. The count is G2's
+(`gates/pointers.py`, `display_numbers`), so the gate and the build cannot disagree about
+it: one document at a time, its files in the order the build prints them. Move the table and
+every mention follows, and a mention cannot point at a table that is not there.
+
+Basile's choices of 2026-10-20, each asked with the alternatives:
+
+- **Two forms.** `{{ref.table.key}}` prints the pointer whole. `{{num.table.key}}` prints the
+  number alone, "2" or "S1", for a list or a range the author writes: "Tables
+  {{num.table.a}} and {{num.table.b}}". A list binding that wrote the "and" itself was the
+  other choice, and it would have decided the serial comma and the dash for every paper. A
+  num is held to the words before it: G2 reads the text with each binding printed, and a num
+  that the pointer around it reads as another kind or the other document ("Figure
+  {{num.table.a}}", "Supplementary Table {{num.table.a}}" for a table of the main text), or
+  that no pointer word stands before, is `pointer-word-mismatch`. That fails from the
+  internal review, as a typed pointer's findings do: the words go stale as the table moves,
+  the way a typed number does. A ref is held the same way, so "Supplementary
+  {{ref.table.a}}" is refused too.
+- **The journal's form.** How a pointer is written is the target journal's: the profile's
+  `pointers:` gives a form for each kind of each document, "eTable {n}", "Fig. {n}",
+  "Supplementary Table {n}", quoted under `pointers.<kind>` like any rule of the page. Where
+  it gives none: Table {n}, Figure {n}, Table S{n}, Figure S{n}. A num prints the word of the
+  form that holds the number, so "S1" under "Table S{n}" and "1" under "eTable {n}". A form
+  G2 does not read back, whole, as a pointer to that kind of that document is
+  `pointer-form-unread`, from the start: a ref printed in it would be a pointer G2 could not
+  hold to anything.
+- **Exact numbers only.** Where a document also places a kind by hand, or sends some to the
+  journal as files of their own (`displays:`), where a bound one falls among them is not
+  known, and a ref to that kind of that document is `ref-number-unknown`. So is a ref to a
+  key placed twice, which has two numbers. These fail from the drafting stage, since the
+  build would have nothing to print, and the build refuses them too. Numbering the files
+  after the placed ones was the other choice, and it is wrong for the usual case, a flow
+  chart drawn by hand that is Figure 1.
+
+A ref to a key nothing places, or one that names no kind (`{{ref.baseline}}`), is
+`unresolved-binding`, as a value's typo is. G2 reads a printed ref as a citation where it
+stands, so the main text's tables are cited in order and each one cited
+(`cited-out-of-order`, `display-not-cited`) with refs and typed pointers mixed; it is never
+`pointer-to-nothing`. The build, the annotated copy (green, labelled with the key and the
+display it was counted from), `render`, the text a review panel is sent, the response to the
+reviewers, the copy of the manuscript a revision round keeps as submitted and the abstract
+for the journal's portal print the same number (`revision.displays`); the response round
+looked for a quoted sentence in text that still read `{{ref.` until round 1 of #378.
+`explain` lists each ref with what it prints and from which display.
+
+In Word, the number a ref prints is a binding like any other: the marked build bookmarks it,
+and a co-author who changes "Table 2" to "Table 3" has the paragraph refused, with "'Table 2'
+comes from ref.table.two_by_two, numbered where the build places it". A paragraph that is
+only a ref gets an identifier, as one that is only a value does. `reworded` reads a ref as a
+binding, so a pointer typed and then bound is not a rewording.
+
+`bind --pointers` turns typed pointers into refs, a list's numbers into nums, each only where
+the binding prints what is typed, character for character: "Table S1" under "Table S{n}", not
+"Supplementary Table 1", which would print as "Table S1". A range that names a number it does
+not write ("Tables 1-3") is not offered. With `--apply` the example's every pointer is bound
+and its build prints what it printed before.
+
 ## The corruption harness
 
 The claim "no stale number" is worth exactly as much as the evidence that the gate catches
@@ -1776,11 +1842,17 @@ link, the same from Europe PMC, OpenAlex's `is_retracted`, or Crossref's retract
 withdrawal or removal of a preprint. A record at PubMed or Europe PMC with neither mark is
 that registry saying no, and is shown as "retracted: no" with its name; "not known" is shown
 only where no registry that answered said either way, never as "no". A Crossref that did not
-answer is said, and is not read as having found nothing (round 1 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of" or "Update
-in", or Crossref's `is-preprint-of`, and all three are asked because they do not agree: on
-2026-10-20 a medRxiv preprint had PubMed's link to its journal version and none at Crossref,
-and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with whose word
-it is.
+answer is said, and is not read as having found nothing (round 1 of #369). Of several
+preprints, the line says for how many of them, with their DOIs and each reason given, and
+each preprint left unchecked says "Crossref did not answer" beside its retraction
+(`unchecked_by` in the JSON), since its "retracted: no" is then another registry's word
+alone (round 2 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of"
+or "Update in", or Crossref's `is-preprint-of`, and all three are asked because they do not
+agree: on 2026-10-20 a medRxiv preprint had PubMed's link to its journal version and none at
+Crossref, and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with
+whose word it is. Two links are one version where they share a PMID or a DOI and give
+neither differently; a registry giving PubMed's PMID with another DOI is shown as a second
+version under its own name, not as having said PubMed's DOI (round 2 of #369).
 
 A registry asked for a kind it does not type is not asked. OpenAlex types a review and a
 preprint and nothing finer, so with a systematic review, a meta-analysis, a guideline, a
@@ -4474,6 +4546,40 @@ written as it reads, `200.0` or `-0.5`, is left alone. And a key given twice in 
 is refused at the second: YAML keeps the last without a word, so a code list given twice
 under one name handed its second codes to every variable that named it (round 1 of #382).
 A variable that gives both `values` and a `code_list` is refused for the same reason.
+
+**The dictionary is held to the plan, both ways.** Every variable the analysis uses is to be
+collected, with its definition, and nothing collected that nothing needs (Basile,
+2026-10-20). So G12 reads the plan for the variables it names, and the plan names one by
+writing it in backticks exactly as the dictionary names it, `age`, anywhere outside its
+Deviations section and the sections under it (Basile chose this of three ways, 2026-10-21:
+names read from the Planned results alone would have left a covariate named only in the
+Analysis unchecked, and a list of uses kept in each entry would have been the same fact in
+two files). A code span that is a dictionary name is a use of it, a dotted one included. A
+span that reads as a variable's name, letters, digits and underscores from a letter, and
+that the dictionary lacks is `plan-variable-undefined`, at its first mention; where the
+dictionary has the name in another case, the hint says so. Code is written so that it does
+not read as a name, `glm()` or `stats::glm`; a result's key has a dot; nine values, `NA`, `NULL`,
+`TRUE`, `FALSE`, `None`, `True`, `False`, `NaN` and `Inf`, are not read; nor is what
+masking hides, a fence or a comment. A heading that names both the planned results and a
+change is the Deviations where the change comes first, as the list is read. The plan's
+title is not its Deviations: "Statistical analysis plan (amendment 2)" heads the plan
+(round 1). The title is a first heading at level 1 with a deeper one after it, whatever
+follows, so an appendix at its level leaves it a title; a first heading at level 2 is a
+section, so a plan with no title that opens with "## Amendment history" is not read there
+(round 2; Basile chose the level, 2026-10-21). In the other direction, an entry is needed
+where the plan names it, where
+a variable the plan needs is derived from it or asked under it (`applies_if`), again and
+again, where it names a reporting-checklist item, or where it gives a reason, and so are the
+inputs and the condition of an entry kept for an item or a reason (round 1); any other is
+`dictionary-entry-unused`. A reporting item is looked for in the guideline's checklist where
+the project holds one (`dictionary-reporting-item-unknown`), and is a note where it does
+not. Whatever the plan, an entry that leaves its codes undecided, a derivation without its
+inputs or inputs without it, an input the dictionary lacks, or a derivation that ends in
+itself, is said. All of these warn at every stage, as the rest of G12 does (Basile,
+2026-10-21); without a plan only the last group is asked. The `data-dictionary` skill
+drafts the dictionary with the author from the plan, and names a validated instrument and
+its licence rather than writing its items. The reading is held over generated plans
+(`plan variables` in `tests/readings.py`), one section of every kind in each.
 
 ## Stages: not every gate binds on day one
 
@@ -7834,7 +7940,29 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   rule's `order` takes dates and datetimes as one family, so the data checks that read it
   have to compare a date with a datetime by the date, and it refuses an order between two
   times (round 1 of #382). A bound in the basic ISO form, `20200101`, or with a fraction of
-  a second, reads on Python 3.11 and later and is refused on 3.10 (round 2 of #382).
+  a second of other than three or six digits, reads on Python 3.11 and later and is refused
+  on 3.10 (rounds 2 and 3 of #382). A sign YAML drops is a misreading in a code, an item and
+  a condition's codes, not in a reporting item: `reporting: {STROBE: [+6]}` reads as item 6
+  (round 3 of #382).
+- **The plan names a variable by its backticks, and nothing else.** A covariate the plan
+  writes in words, "adjusted for age", is not read, and an entry for it is said to be
+  unused until the plan writes `age`. A name in backticks that is code and not a variable,
+  `lme4` or `R`, is warned of as an undefined variable until it is written as code, `lme4::`
+  or `R()`, or without the backticks, and so is a value other than the nine left out,
+  `NA_real_` or a code written `M`. A heading with "deviation" in it is the Deviations, as G12
+  reads the plan, so a subsection "Standard deviation of `bmi_kg`" is not read (round 1).
+  A derivation cycle is said once for each group of variables derived from one another,
+  not once for every cycle in it. A plan written in `#` sections with no title, opening
+  with `# Amendment history` over a `## Version 2` that names a dropped variable, takes the
+  history for a title and reads it, so the dropped variable is not said to be unused (round
+  2; `test_a_history_at_the_title_s_level_is_read_as_a_title`). A title followed by a
+  heading at its own level is the Deviations of its text up to that heading, where it
+  names an amendment. The Deviations are left out whole, so a variable named
+  only there is unused even where the change kept it. That an entry is needed is all that
+  is checked: not that the plan uses it as its type says, that the analysis's own
+  `variable()` declarations agree with the dictionary, or that an instrument's `citation` is
+  in `references.bib`. An entry for an existing dataset's column the study does not use
+  needs its reason like any other.
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the
@@ -8677,9 +8805,10 @@ Open, recorded as each change landed:
   checked in them. Reading those languages is weeks of work, for word splitting, their
   conventions and numerals, and counting characters against a limit, and waits until
   somebody writing in one of them asks.
-- **A pointer is held to the number of a placement, not to its key, and only where every
-  placement is a binding.** "Table 2" passes wherever the main text places two tables,
+- **A typed pointer is held to the number of a placement, not to its key, and only where
+  every placement is a binding.** "Table 2" passes wherever the main text places two tables,
   whichever two they are: the check sees the numbering, not which table a sentence means.
+  `{{ref.table.<key>}}` names the table, and is the way out.
   A paper that writes any of its tables or places any of its figures by hand has no
   pointer of that kind checked, only a note; one that sends some as files of their own and
   does not declare them in `paper.yaml` (`displays`) has a pointer past the bound ones
@@ -8688,6 +8817,36 @@ Open, recorded as each change landed:
   target and not counted as the citation that numbers a table. "Table 3 of Smith et al."
   is read as a pointer to the paper's own Table 3. "Box", "Section" and "Equation" point at
   nothing the check counts.
+- **A ref numbers only what is placed by binding, and only one kind of one document at a
+  time.** Where the main text also places a table by hand, or `paper.yaml` sends one of its
+  figures as a file, a ref to that kind of that document is refused (`ref-number-unknown`)
+  and the pointer is typed, as before refs; so is a ref to a key placed twice (Basile's
+  choice, 2026-10-20). A form G2 does not read as a pointer cannot be printed: a journal
+  that letters its appendix tables "Table A1", or writes "Exhibit 2", has its pointers typed
+  (`pointer-form-unread`). So does JAMA's own form, "eTable 1 in Supplement 1": G2 reads "in
+  the Supplement" after a pointer and not "in Supplement 1" (round 1 of #378).
+- **`bind --pointers` offers what G2 reads as a pointer, and some of that is not one.**
+  "Table 3 of Smith et al." is offered as the paper's own Table 3, and "in Tables 1, 2
+  patients were excluded" offers the 2. Either prints as typed when it is applied, and
+  prints another number once the tables move. The list is printed before `--apply`, and
+  `--only FILE:LINE` takes the ones meant (round 1 of #378).
+- **A ref counts no word.** The word count masks every binding, so "Table 2" typed counts two
+  words and `{{ref.table.a}}` none, as a value bound counts none where it typed counted one.
+  A paper binding its pointers near the limit is counted a few words short (round 1 of
+  #378).
+- **A range between two nums covers what the build numbers between them.** "Tables
+  {{num.table.a}}-{{num.table.c}}", written when a and c were Tables 1 and 3, cites Tables 1
+  to 5 once two tables are placed between them, and nothing says the range grew. Each end is
+  right; what the dash takes in is not held to anything. A range written with two refs reads
+  as two pointers and is held like them.
+- **The build numbers no caption.** `{{ref.figure.forest}}` opening a figure's caption prints
+  its number, and a caption typed as "Figure 2." under the first figure is checked only for
+  pointing at a figure the document has, not for being the caption of that one. An emitted
+  table's caption prints with no number at all.
+- **A ref G2 does not see is still printed.** G2 reads the text as the build prints it less
+  its fenced listings, comments and front matter. A ref inside a listing is printed by the
+  build, which refuses one it cannot number, and is no citation to G2: a table cited only in
+  a listing is `display-not-cited`.
 - **The Methods are a heading that holds the word, and two gates read fewer headings than
   G4 counts.** G4 and G9 take for the Methods a heading whose title holds "methods" where
   the paper's structure allows it. In a paper with no heading G2 reads as the Methods, the

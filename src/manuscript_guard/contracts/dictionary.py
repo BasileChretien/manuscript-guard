@@ -45,7 +45,7 @@ TEMPORAL = ("date", "datetime", "time")
 #: The types a pattern is matched against.
 PATTERNED = ("text", "identifier")
 
-_HINT = "see the data-dictionary schema, which says what each entry holds"
+_HINT = "the data-dictionary skill says what each entry holds"
 
 
 @dataclass(frozen=True)

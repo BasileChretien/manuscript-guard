@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed or duplicate-quantity. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch or ref-number-unknown. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
 ---
 
 # Binding the numbers
@@ -150,14 +150,27 @@ The database held {{results.cohort.n_reports}} reports. The reporting odds ratio
 - `{{results.…}}` resolves against `results/`; `{{lit.…}}` against `literature/ledger.yaml`
   and `attested.yaml` (the [literature-verify](../literature-verify/SKILL.md) skill).
 - `{{table.key}}` goes on its own line and becomes the table with its caption.
-  `{{figure.key}}` inserts `figures/<key>.<ext>`. Neither is numbered for you. A mistyped
-  figure key passes `check` and fails at `build`; a mistyped table key is named only at
-  `build`, though `check` reports the intended table as `unplaced-table`.
+  `{{figure.key}}` inserts `figures/<key>.<ext>`. The build prints no number in either
+  caption. A mistyped figure key passes `check` and fails at `build`; a mistyped table key
+  is named only at `build`, though `check` reports the intended table as `unplaced-table`.
 - `{{method.key}}` prints nothing. It ends Methods text and points it at a step the
   analysis marked with `em.step("key")`; the [methods-writer](../methods-writer/SKILL.md)
   skill covers it.
-- Cross-references such as "Table 2" and "Figure 1" are accepted as structural and never
-  checked against the real numbering. Number them by hand and look.
+- Point at a table or a figure by its key, and the build prints its number:
+  `{{ref.table.baseline}}` prints "Table 1" if it is the first table the main text places
+  (its files in print order, `main.md` first), and "Table S1" for the supplement's first, or
+  the form the journal profile's `pointers:` gives ("eTable 1"). Move the table and every
+  mention follows. For a list or a range, `{{num.table.key}}` prints the number alone:
+  "Tables {{num.table.a}} and {{num.table.b}}". The words before a num have to name its kind
+  and its document, or `pointer-word-mismatch`. A ref to a key nothing places is
+  `unresolved-binding`. Where a document also places that kind by hand, sends some to the
+  journal as files (`displays:` in paper.yaml), or places the key twice, the count is not
+  known and the ref is `ref-number-unknown`: type that pointer.
+- A pointer typed as text ("Table 2") is held to what each document places by binding:
+  `pointer-to-nothing` past the last one, and in the main text `display-not-cited` and
+  `cited-out-of-order` (ICMJE's order of first citation). Refs count as citations.
+  `manuscript-guard bind --pointers` lists each typed pointer with the binding that prints it
+  as it reads now, and `--apply` writes them.
 - Text inside HTML comments is ignored and never reaches the document. A number inside a
   fenced code block is judged as code, and a number in a string literal there is a claim.
 - A sign beside a binding is typed as itself (`≈`, `±`, `≤`) or as maths between dollar
@@ -264,6 +277,9 @@ checked like any other.
 | `parameter-unread` | the script declares a parameter and never reads the value `parameter()` returns: use it in the step it stands for, or remove it |
 | `threshold-undeclared` | a warning: a threshold typed in the Methods that no declared parameter has. Declare it if the code applies it; if the code applies another value, the Methods are wrong |
 | `unplaced-table` | an emitted table is never placed with `{{table.key}}` |
+| `pointer-to-nothing`, `display-not-cited`, `cited-out-of-order` | a typed "Table 3" names no table the document places, a table is cited nowhere, or the first citations are not in the order the tables are numbered. Name it with `{{ref.table.key}}` (`bind --pointers` does it), or move the table |
+| `pointer-word-mismatch` | the words around a `{{num.…}}` or `{{ref.…}}` name another kind or the other document ("Figure {{num.table.a}}"). Fix the words, or write the ref whole |
+| `ref-number-unknown` | the build cannot number this ref: its kind is also placed by hand or sent as files in that document, or its key is placed twice. Type that pointer |
 | `hand-authored-table` | emit the table |
 | `script-newer`, `input-changed` | re-run the script that wrote the results; where the input is a dataset's, with the date of the new extraction and its pin |
 | `dataset-pin-mismatch`, `dataset-read-differs`, `dataset-value-unrecorded` | the results were computed from other data than the extraction the dataset dates, or a dataset's value was typed into a fragment: re-run the scripts that read the old data, through the emitter |

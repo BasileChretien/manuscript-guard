@@ -4228,9 +4228,10 @@ def test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage(
 
 #: What the example's Methods say of its data checks.
 _CHECKED_SAID = (
-    "Each report was checked against the data dictionary: of the {{results.quality.rows}}\n"
-    "reports, {{results.quality.rule.one_row_per_report}} repeated another's identifier and\n"
-    "{{results.quality.age_group.missing}} gave no age group."
+    "Each of the {{results.quality.rows}} reports was checked against the data dictionary:\n"
+    "{{results.quality.rule.one_row_per_report}} repeated another's identifier, so no\n"
+    "de-duplication step was applied, and {{results.quality.age_group.missing}} gave no age "
+    "group."
 )
 
 
@@ -4254,10 +4255,11 @@ def _dictionary_edited(root: Path, old: str, new: str) -> None:
 
 
 def _unsaid(root: Path) -> str:
-    """Take the example's sentence on its data checks out of the Methods, and return it."""
+    """Take the example's sentence on its data checks, the last of the Methods' first
+    paragraph, out of the Methods, and return it."""
     text = main_md(root).read_text(encoding="utf-8")
-    assert _CHECKED_SAID in text
-    main_md(root).write_text(text.replace(_CHECKED_SAID + "\n\n", "", 1), encoding="utf-8")
+    assert _CHECKED_SAID + "\n\n" in text
+    main_md(root).write_text(text.replace(_CHECKED_SAID + "\n", "", 1), encoding="utf-8")
     return _CHECKED_SAID
 
 

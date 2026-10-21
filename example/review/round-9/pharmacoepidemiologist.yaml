@@ -5,9 +5,9 @@ round: 9
 reviewer: pharmacoepidemiologist
 reviewed_by: Claude Code
 reviewed_on: '2026-10-21'
-manuscript_sha256: 69995649fbae64c3c862e7b05bed83e1d24979e09987008972218a2b63a201ac
+manuscript_sha256: c3f81d6fc0d88fdd72f93720684b6eda06c1987e6126d3b6835e1453d06ad433
 file_sha256:
-  main.md: 33b9e2ecab739f1a01260e7fd4ca2c75329ef3b724ac9f8cd590e3493224b596
+  main.md: c11b422a632e8b4bed1dcf4b30c04792d26b51c4df2a67729e14fa817d0e9f52
   supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
 verdict: pass
 summary: 'The Methods now say that each report was checked against the data dictionary, and
@@ -19,8 +19,8 @@ findings:
 - id: r9-pe-01
   severity: comment
   where: Methods
-  finding: The paragraph before says the generator emits no duplicates, and the count now
-    shows it rather than asserting it. In a real database the count would be above nought,
-    and the sentence would then have to say what was done with the duplicates, which the
-    count alone does not.
-reading_sha256: 44d72b4537577f37091c250cb726c094501ee713f6bfb093d58428a10ee3bd4a
+  finding: The sentence now says no de-duplication step was applied because the count of
+    repeated identifiers is nought, where it used to say so because the generator was said to
+    emit none. In a real database the count would be above nought, and the sentence would then
+    have to say what was done with the duplicates, which the count alone does not.
+reading_sha256: 5b8575578ec562cec9768dbfc75c7d6f4b7a3545d6e19076f189c4505aeb2dbf

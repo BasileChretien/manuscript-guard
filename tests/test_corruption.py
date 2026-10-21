@@ -5833,8 +5833,7 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
-    "check_related",
-    "check_citations", "check_prose_quotations", "check_journal", "check_reporting",
+    "check_related", "check_prose_quotations", "check_journal", "check_reporting",
     "check_writing", "check_methods", "check_reported", "check_recomputed", "check_revision",
     "check_language", "check_models", "check_shapes", "check_tex", "check_passages",
 )  # fmt: skip
@@ -5849,7 +5848,7 @@ _NOT_THE_MANUSCRIPT = (
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
 _READS_LATEX = (
     "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
-    "check_synthetic_inputs",
+    "check_synthetic_inputs", "check_citations",
 )  # fmt: skip
 
 
@@ -6089,6 +6088,20 @@ def test_the_custodian_and_g1_read_the_twins_bindings(project: Path) -> None:
                 if "\\mg{results.case.n_serious}" in text)  # fmt: skip
     assert _small(project) == [("results.case.n_serious", line)]
     assert "results.case.n_serious" in quoted_refs(load_project(project)[0])
+
+
+def test_g7_reads_the_twins_citations_as_the_examples(project: Path) -> None:
+    """The twin's citations pass G7 as the example's do; a key cited in a group with another,
+    and wrapped onto the next line, that is in no bibliography is said (step 5)."""
+    entry = _twin(project)
+    clean = {(f.code, f.severity) for f in _g7(project).findings}
+    _into_results(entry, "A claim \\citep[p.~2]{ghostKey2020,\n  fictionalHepaticCohort2021}.")
+    found = [f for f in _g7(project).failures if "ghostKey2020" in f.message]
+    assert [f.line for f in found] == [entry.read_text("utf-8").splitlines().index(
+        next(line for line in entry.read_text("utf-8").splitlines() if "ghostKey2020" in line)
+    ) + 1], _g7(project).render(project)  # fmt: skip
+    assert not [f for f in _g7(project).failures if "fictionalHepaticCohort2021" in f.message]
+    assert clean <= {(f.code, f.severity) for f in _g7(project).findings}
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])

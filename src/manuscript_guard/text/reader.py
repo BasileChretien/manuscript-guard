@@ -132,3 +132,27 @@ def bound_files(project) -> list[Bound]:
         text = read_text(path)
         bound.append(Bound(path, text, text, parse(text)[0]))
     return bound
+
+
+def citation_uses(project) -> list:
+    """Every citation of the manuscript, as `zotero.find_citations` gives the `CitationUse`
+    records: a Markdown file's `[@key]` and `@key`, and a LaTeX file's citation commands
+    (`text/latex/cite.py`), `\\nocite{*}` as each key of `references.bib`. A Markdown file
+    that cannot be read raises `Unreadable`, as `read_text` does."""
+    folder = project.path("manuscript")
+    if manuscript_format(folder) == LATEX:
+        from manuscript_guard.gates.citations import bib_keys
+        from manuscript_guard.text.latex.cite import citations
+        from manuscript_guard.text.latex.views import files
+
+        every = tuple(sorted(bib_keys(project)))
+        return [use for found in files(folder) for use in citations(found.source, found.path,
+                                                                     every)]  # fmt: skip
+    from manuscript_guard.contracts._schema import read_text
+    from manuscript_guard.gates.numbers import source_files
+    from manuscript_guard.zotero import find_citations
+
+    uses = []
+    for path in source_files(folder):
+        uses.extend(find_citations(read_text(path), path))
+    return uses

@@ -71,6 +71,7 @@ from generated import (
     holds,
     laid_out,
     latex_bound,
+    latex_cited,
     latex_planted,
     latex_texts,
     latex_trees,
@@ -145,6 +146,7 @@ from manuscript_guard.reworded import (
     facts,
 )
 from manuscript_guard.text import placeholders, tokens
+from manuscript_guard.text.latex import cite as latex_cite
 from manuscript_guard.text.latex import mask as latex_mask
 from manuscript_guard.text.latex import structure as latex_structure
 from manuscript_guard.text.latex import views as latex_views
@@ -680,6 +682,57 @@ def _a_listings_language_is_not_read(patch: pytest.MonkeyPatch) -> None:
 def _a_line_break_before_a_bindings_brace_makes_it_malformed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_BINDING",
                   re.compile(r"[ \t]*(?:\[[^\]\n]*\])?[ \t]*\{(?P<inner>[^{}\n]*)\}"))  # fmt: skip
+
+
+@holds(100, latex_cited())
+def test_a_latex_citation_is_read_where_it_prints_and_nowhere_else(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A key planted in every citation command LaTeX prints, in prose and a note, alone or
+    with others and in a multi-citation, is cited there, narrative where the command prints
+    the authors' names; a key in a comment, an `\\iffalse` block or a definition's body is
+    cited nowhere (step 5)."""
+    text, planted = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    source = latex_structure.Source("main.tex", text, reading)
+    uses = latex_cite.citations(source, Path("main.tex"))
+    assert sorted((use.citekey, use.narrative) for use in uses) == sorted(
+        (key, kind == "narrative") for key, kind in planted if kind != "none"
+    ), text
+    for use in uses:
+        assert text[use.start : use.start + len(use.citekey)] == use.citekey, (use, text)
+
+
+def _a_citations_keys_are_not_split(patch: pytest.MonkeyPatch) -> None:
+    def broken(self, at: int) -> None:
+        end = self._group_end(at)
+        narrative = latex_mask.CITATIONS[self.command]
+        key = self.text[at + 1 : end - 1].strip()
+        self.cited.append(latex_mask.Cited(key, at + 1, narrative, self.citation_at, end))
+
+    patch.setattr(latex_mask._Reader, "_cite", broken)
+
+
+def _a_key_in_a_definitions_body_is_cited(patch: pytest.MonkeyPatch) -> None:
+    opened = latex_mask._Reader._open
+
+    def broken(self, kind, spec, at, closer, **options):
+        citing = kind == "arg" and spec == "b" and self.command in latex_mask.CITATIONS
+        if citing and self.definitions:
+            self._cite(at)
+        return opened(self, kind, spec, at, closer, **options)
+
+    patch.setattr(latex_mask._Reader, "_open", broken)
+
+
+def _no_latex_citation_is_narrative(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "CITATIONS", dict.fromkeys(latex_mask.CITATIONS, False))
+
+
+def _a_multi_citation_reads_its_first_group_only(patch: pytest.MonkeyPatch) -> None:
+    for name in ("parencites", "Parencites"):
+        patch.setitem(latex_mask.COMMANDS, name, ("(b)", "(b)", "[p]", "[p]", "{b}"))
 
 
 def _iffalse_hides_its_else(patch: pytest.MonkeyPatch) -> None:
@@ -7293,6 +7346,22 @@ BROKEN = {
     "in LaTeX, a line break before a binding's brace makes it malformed": (
         _a_line_break_before_a_bindings_brace_makes_it_malformed,
         test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a citation's keys are not split at its commas": (
+        _a_citations_keys_are_not_split,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a key in a definition's body is cited": (
+        _a_key_in_a_definitions_body_is_cited,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, no citation is narrative": (
+        _no_latex_citation_is_narrative,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a multi-citation reads its first group only": (
+        _a_multi_citation_reads_its_first_group_only,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
     ),
     "in LaTeX, a command the table lacks hides its arguments": (
         _an_unknown_command_hides_its_arguments,

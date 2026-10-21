@@ -29,6 +29,29 @@ def _specs(table: dict[str, str]) -> dict[str, tuple[str, ...]]:
 
 
 _CITE = "*[p][p]{b}"
+#: natbib's and biblatex's citation commands, and whether each prints the authors' names in
+#: the sentence (narrative), as `@key` does in Markdown; `\\cite` does not. Each has a
+#: capitalised form.
+_CITATIONS = {
+    "cite": False, "nocite": False, "citep": False, "citet": True, "citealt": True,
+    "citealp": False, "citeauthor": True, "citeyear": False, "citeyearpar": False,
+    "citenum": False, "parencite": False, "textcite": True, "autocite": False,
+    "footcite": False, "footcitetext": False, "smartcite": False, "supercite": False,
+    "fullcite": False, "citetitle": False,
+}  # fmt: skip
+_MULTI_CITATIONS = {
+    "cites": False, "parencites": False, "textcites": True, "autocites": False,
+    "footcites": False, "smartcites": False, "supercites": False,
+}  # fmt: skip
+#: Every citation command the reader reads, the multi-citation forms among them.
+CITATIONS = {
+    **{name: narrative for table in (_CITATIONS, _MULTI_CITATIONS)
+       for name, narrative in table.items()},
+    **{name[0].upper() + name[1:]: narrative for table in (_CITATIONS, _MULTI_CITATIONS)
+       for name, narrative in table.items() if name != "nocite"},
+}  # fmt: skip
+_CITATION_NAMES = [name for name in CITATIONS if name.lower() not in _MULTI_CITATIONS]
+_MULTI_CITATION_NAMES = [name for name in CITATIONS if name.lower() in _MULTI_CITATIONS]
 _REF = "{b}"
 _SECTION = "*[p]{p}"
 _DEFINE = "*{c}[b][p]{d}"
@@ -121,15 +144,11 @@ COMMANDS = _specs(
         **dict.fromkeys(("qtyrange", "SIrange"), "[b]{p}{p}{b}"),
         "si": "[b]{b}",
         "unit": "[o]{b}",
-        # Citations: the notes are read, the keys are not.
-        **dict.fromkeys(
-            ("cite", "citep", "citet", "citealt", "citealp", "citeauthor", "citeyear",
-             "citeyearpar", "citenum", "Citep", "Citet", "Citealt", "Citealp", "Citeauthor",
-             "parencite", "Parencite", "textcite", "Textcite", "autocite", "Autocite",
-             "footcite", "footcitetext", "smartcite", "Smartcite", "supercite", "fullcite",
-             "citetitle"),
-            _CITE,
-        ),
+        # Citations: the notes are read, the keys are not (`CITATIONS`).
+        **dict.fromkeys((name for name in _CITATION_NAMES if name != "nocite"), _CITE),
+        # The multi-citation forms: a global prenote and postnote in parentheses, blanked,
+        # then groups of notes and keys, as many as follow.
+        **dict.fromkeys(_MULTI_CITATION_NAMES, "(b)(b)" + "[p][p]{b}" * 16),
         # Definitions: what they define is checked, their bodies read where they stand.
         **dict.fromkeys(("newcommand", "renewcommand", "providecommand",
                          "DeclareRobustCommand"), _DEFINE),

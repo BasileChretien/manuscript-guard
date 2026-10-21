@@ -1490,6 +1490,13 @@ The result is compiled and packed by the code above, and checked three times:
 - physics' `\qty[a = b]` holds an `=`, so it is taken for siunitx's option list and blanked
   (round 2 of #400). A siunitx key with no `=`, `\qty[sticky-per]`, is taken for a value and
   read as prose words; it holds no number (round 3).
+- A multi-citation's global notes, `\cites(see)(p.~5)[...]{a}{b}`, are blanked, so a number in
+  one is read by no gate; its per-group notes are read (step 5).
+- apacite's `\citeA` and `\citeNP`, and an author's own command whose name holds `cite`, are
+  refused where they are used, as the design asks: the reader knows natbib's and biblatex's
+  (step 5).
+- `\nocite{*}` cites what `literature/references.bib` holds, not a bibliography a class or a
+  `\bibliography{}` names elsewhere (step 5).
 - Past a refusal a file's bindings are found by their shape, in a comment too, so that a
   result quoted there is not said to be quoted nowhere.
 - A class or package that changes how a character is read, beyond those refused, is not seen.
@@ -1560,7 +1567,16 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    `values` and its README row, `values-file-stale` and `values-file-missing`. The escape
    table's compile test needs LaTeX, so it skips on CI until step 9 installs TeX Live, and its
    first measurement is recorded in the pull request.
-5. Citations and G7. `cite.py`; G7, `lookup` and G6's citation positions moved; the twin's
+5. Citations and G7, built in its first part: the scanner records each key a citation command
+   names, where its braces stand (`Reading.cited`), outside a definition's body, and refuses a
+   command whose name holds `cite` that it does not know; `cite.py` gives them as
+   `CitationUse` records, `\nocite{*}` as each key of `references.bib`; `reader.citation_uses`
+   gives either format's, and G7's citation check, `sync-bib` and `lookup` read it, which
+   takes `check_citations` out of `_NOT_READ_IN_LATEX`. The multi-citation forms are in the
+   table, their global notes blanked. Tests: `tests/test_latex_cite.py`, the twin's citations
+   against the example's, G7 on the twin, `latex citations`, `latex_cited()` with four
+   `BROKEN` rules. G6's citation positions move with G6 (step 7). The plan as written: `cite.py`;
+   G7, `lookup` and G6's citation positions moved; the twin's
    comparison with the example takes in the citations. Tests: `latex citations`, G7's cases on
    the twin.
 6. G4. The counts, sections and statements, and the profile's `latex:` block. Tests: G4's

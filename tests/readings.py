@@ -190,6 +190,19 @@ def _latex_bindings() -> Reading:
     return bound
 
 
+@reading("latex citations")
+def _latex_citations() -> Reading:
+    from manuscript_guard.text.latex.cite import citations
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    def cited(text: str) -> list[list[Any]]:
+        uses = citations(Source("main.tex", text, read(text)), Path("main.tex"), ("every",))
+        return [[use.citekey, use.start, use.line, use.narrative, use.raw] for use in uses]
+
+    return cited
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden

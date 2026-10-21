@@ -56,6 +56,26 @@ def test_the_twin_binds_the_examples_keys_in_order_under_the_same_headings(
     assert _latex_bindings(twin) == _markdown_bindings(built_example)
 
 
+def _cited(root: Path) -> list[tuple[str, str, bool]]:
+    """Each citation, in the order the files print them and each file writes them: its file,
+    its key, and whether it is narrative."""
+    from manuscript_guard.text.reader import citation_uses
+
+    uses = citation_uses(load_project(root)[0])
+    files = list(dict.fromkeys(use.path for use in uses))
+    written = sorted(uses, key=lambda use: (files.index(use.path), use.start))
+    return [(use.path.name, use.citekey, use.narrative) for use in written]
+
+
+def test_the_twin_cites_the_examples_keys_in_order_as_the_example_does(
+    built_example: Path, twin: Path
+) -> None:
+    """Step 5: the citations join the comparison when the citation reader does."""
+    twin_cited = [(key, narrative) for _name, key, narrative in _cited(twin)]
+    example = [(key, narrative) for _name, key, narrative in _cited(built_example)]
+    assert twin_cited == example and example
+
+
 def _numbers(root: Path):
     loaded, _ = load_project(root)
     namespace, results, literature, _ = load_namespace(loaded)

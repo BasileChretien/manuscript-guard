@@ -694,6 +694,47 @@ LATEX_BINDING_PLACES = (
 #: Where a binding stands in the preamble: the title prints it.
 LATEX_PREAMBLE_BINDINGS = (("\\title{{T \\mg{{results.{}}}}}\n", "bound"),)
 
+#: Where a citation stands in LaTeX, and what each key in it is there: each `{}` holds a key,
+#: cited (in brackets, as `\\cite` prints it), narrative (the authors' names in the sentence),
+#: or nothing (in a comment, an `\\iffalse` block, or a definition's body, where it is text to
+#: be expanded where the definition is used).
+LATEX_CITATION_PLACES = (
+    ("\\cite{{{}}} ", ("cited",)),
+    ("\\citet{{{}}} ", ("narrative",)),
+    ("\\Citet*{{{}}} ", ("narrative",)),
+    ("\\citep[see][p.~3]{{{}, {} }} ", ("cited", "cited")),
+    ("\\textcite{{{}}} ", ("narrative",)),
+    ("\\footnote{{As \\citeauthor{{{}}} wrote.}} ", ("narrative",)),
+    ("\\parencites[a]{{{}}}[b]{{{},{}}} ", ("cited", "cited", "cited")),
+    ("\\nocite{{{}}} ", ("cited",)),
+    ("% \\cite{{{}}}\n", ("none",)),
+    ("\\iffalse \\cite{{{}}} \\fi ", ("none",)),
+    ("\\newcommand{{\\later}}[1]{{\\cite{{{}}}}} ", ("none",)),
+)  # fmt: skip
+
+
+@st.composite
+def latex_cited(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A LaTeX document with a citation in every place of `LATEX_CITATION_PLACES`, in an order
+    drawn, among whole pieces; and each key planted, with what it is where it stands. Every
+    place is in every document, so that a rule broken for one is seen in each."""
+    filler = (*_spaced(FILLER), *(piece for piece in _LATEX_WHOLE if "cite" not in piece))
+    order = draw(st.permutations(range(len(LATEX_CITATION_PLACES))))
+    between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
+                            max_size=len(order) + 1))  # fmt: skip
+    text, planted = "\\documentclass{article}\n\\begin{document}\n", []
+    for piece, index in zip(between, order, strict=False):
+        text += piece
+        template, kinds = LATEX_CITATION_PLACES[index]
+        pieces = [part.replace("{{", "{").replace("}}", "}") for part in template.split("{}")]
+        for part, kind in zip(pieces, kinds, strict=False):
+            key = f"k{4101 + len(planted)}"
+            planted.append((key, kind))
+            text += part + key
+        text += pieces[-1]
+    text += between[-1] + "\\end{document}\n"
+    return text, planted
+
 
 @st.composite
 def latex_bound(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
@@ -2887,6 +2928,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex refusals": latex_texts(),
     "latex sections": latex_texts(),
     "latex bindings": latex_texts(),
+    "latex citations": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),

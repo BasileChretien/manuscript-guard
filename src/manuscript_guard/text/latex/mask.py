@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 from manuscript_guard.text.latex.commands import (
     AMSMATH,
+    CITATIONS,
     COMMANDS,
     ENVIRONMENTS,
     LISTINGS,
@@ -119,6 +120,18 @@ class Listing:
 
 
 @dataclass(frozen=True)
+class Cited:
+    """One key a citation command names: the key, where it stands, whether the command prints
+    the authors' names in the sentence, and the command to its keys' closing brace."""
+
+    key: str
+    offset: int
+    narrative: bool
+    start: int
+    end: int
+
+
+@dataclass(frozen=True)
 class Reading:
     masked: str
     refusals: tuple[Refusal, ...]
@@ -137,6 +150,8 @@ class Reading:
     tables: tuple[tuple[int, int], ...] = ()
     #: Each listing, read by G2's code check as a fenced block is.
     listings: tuple[Listing, ...] = ()
+    #: Each key a citation command names, outside a definition's body.
+    cited: tuple[Cited, ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -313,6 +328,8 @@ class _Reader:
         self.suspects: list[tuple[int, int]] = []
         self.tables: list[tuple[int, int]] = []
         self.listings: list[Listing] = []
+        self.cited: list[Cited] = []
+        self.citation_at = -1
         self.siunitx = 0
         #: The command a definition being read defines, until its body opens.
         self.defining = ""
@@ -337,7 +354,7 @@ class _Reader:
                                 if frame.inherited and frame.closer in TYPED_TABLES]  # fmt: skip
         found = (tuple(self.inputs), tuple(self.headings), tuple(self.abstracts),
                  tuple(self.packages), tuple(self.bindings), tuple(self.suspects),
-                 tuple(sorted(tables)), tuple(self.listings))  # fmt: skip
+                 tuple(sorted(tables)), tuple(self.listings), tuple(self.cited))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -481,6 +498,8 @@ class _Reader:
         if kind == "arg" and spec == "p" and heads and not self.definitions and chosen == PROSE:
             frame.heading = LEVELS.get(self.command, 1)
             frame.origin = self.heading_at
+        if kind == "arg" and spec == "b" and self.command in CITATIONS and not self.definitions:
+            self._cite(at)
         self.definitions += frame.definition
         self.stack.append(frame)
         # A Markdown binding as a command's argument, `\\emph{{results.x}}` (round 1 of #400:
@@ -493,6 +512,21 @@ class _Reader:
         self._blank(at, at + 1)
         self.pos = at + 1
         self.pending = ()
+
+    def _cite(self, at: int) -> None:
+        """Record each key the citation's braces at `at` name, where it stands: split at the
+        commas, as natbib and biblatex split them, a space round each taken off."""
+        end = self._group_end(at)
+        if end < 0:
+            return  # the brace left open is refused where it stands
+        narrative = CITATIONS[self.command]
+        offset = at + 1
+        for part in self.text[at + 1 : end - 1].split(","):
+            key = part.strip()
+            if key:
+                self.cited.append(Cited(key, offset + part.index(key), narrative,
+                                        self.citation_at, end))  # fmt: skip
+            offset += len(part) + 1
 
     def _group_end(self, at: int) -> int:
         """Where a brace group opened at `at` ends, read as characters: `%` and `#` are no
@@ -686,7 +720,14 @@ class _Reader:
         elif name in COMMANDS:
             if name in LEVELS or name == "abstract":
                 self.heading_at = at
+            if name in CITATIONS:
+                self.citation_at = at
             self.command, self.pending = name, COMMANDS[name]
+        elif "cite" in name.lower() and not self.definitions:
+            # A citation command the reader does not know would hide its keys from G7 (DESIGN.md,
+            # "Citations"); one an author defines is refused where it is used.
+            said = "a citation command the reader does not know; cite with \\cite, natbib's or "
+            self._refuse("tex-refused", at, f"\\{name} is not read: {said}biblatex's commands")
         elif _near_binding(name) and _LOOKS_BOUND.match(self.text, end):
             self.suspects.append((at, self._suspect_end(at)))
 

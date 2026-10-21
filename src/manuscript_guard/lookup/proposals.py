@@ -10,7 +10,7 @@ whether a work supports a claim: that is the author's to decide, with the work r
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from manuscript_guard.lookup import search as registries
@@ -75,6 +75,9 @@ class Candidate:
     found_by: dict[str, int] = field(default_factory=dict)
     #: Identifiers two registries gave differently, said in words.
     disagree: tuple[str, ...] = ()
+    #: Registries asked about this work that did not answer, so that its retraction and
+    #: later versions rest on the others' word alone.
+    unchecked_by: tuple[str, ...] = ()
     score: float = 0.0
 
 
@@ -124,8 +127,10 @@ def _names(hits: list[Hit], keep: Callable[[Hit], bool]) -> tuple[str, ...]:
 
 
 def _same(entry: dict[str, Any], one: dict[str, str]) -> bool:
-    """Two links to one later version: the same PMID, or the same DOI."""
-    return any(entry.get(k) and entry.get(k) == one.get(k) for k in ("pmid", "doi"))
+    """Two links to one later version: the same PMID or the same DOI, and neither given
+    differently (round 2 of #369: one registry's DOI for a PMID was listed as the other's)."""
+    both = [k for k in ("pmid", "doi") if entry.get(k) and one.get(k)]
+    return bool(both) and all(entry[k] == one[k] for k in both)
 
 
 def _later(hits: list[Hit]) -> tuple[dict[str, Any], ...]:
@@ -242,14 +247,17 @@ def run(
     pool = ranked([candidate(g) for g in merge(hits)], sort)
     preprints = [c.doi for c in pool[: filters.limit] if "preprint" in c.kinds and c.doi]
     if preprints:
-        said = [registries.crossref(doi, ask, services, credentials) for doi in preprints]
-        found = tuple(h for h in said if isinstance(h, Hit))
-        failed = [a.why for a in said if isinstance(a, Answer)]
+        said = {doi: registries.crossref(doi, ask, services, credentials) for doi in preprints}
+        found = tuple(h for h in said.values() if isinstance(h, Hit))
+        failed = {doi: a.why for doi, a in said.items() if isinstance(a, Answer)}
         status = UNRESOLVABLE if failed else FOUND if found else ABSENT
-        why = f"{failed[0]}, for {len(failed)} of {len(said)}" if len(failed) > 1 else ""
-        answers["crossref"] = Answer(status, found, len(found), why=why or "".join(failed))
+        why = "; ".join(dict.fromkeys(failed.values()))
+        if failed and len(said) > 1:
+            why += f", for {len(failed)} of {len(said)}: {', '.join(failed)}"
+        answers["crossref"] = Answer(status, found, len(found), why=why)
         hits += found
-        pool = ranked([candidate(g) for g in merge(hits)], sort)
+        pool = [replace(c, unchecked_by=("crossref",)) if c.doi in failed else c
+                for c in ranked([candidate(g) for g in merge(hits)], sort)]  # fmt: skip
     return Result(query, filters, sort, answers, tuple(pool[: filters.limit]),
                   max(0, len(pool) - filters.limit),
                   keyless=not credentials.openalex_key)  # fmt: skip
@@ -311,6 +319,7 @@ def _lines(number: int, c: Candidate) -> list[str]:
         facts.append(f"retracted: no ({named})")
     else:
         facts.append("retracted: not known")
+    facts += [f"{NAMES[n]} did not answer" for n in c.unchecked_by]
     if c.concern_per:
         facts.append(f"expression of concern ({', '.join(NAMES[n] for n in c.concern_per)})")
     if c.cited_by:
@@ -381,7 +390,7 @@ def _candidate_json(c: Candidate) -> dict[str, Any]:
         "expression_of_concern_per": list(c.concern_per),
         "later_versions": [dict(v) for v in c.later_versions], "open_copy": c.open_copy,
         "cited_by": dict(c.cited_by), "found_by": dict(c.found_by),
-        "disagree": list(c.disagree),
+        "disagree": list(c.disagree), "unchecked_by": list(c.unchecked_by),
         # What Zotero's Add Item by Identifier is given for it.
         "for_zotero": c.doi or c.pmid,
     }  # fmt: skip

@@ -8,6 +8,7 @@ documentation.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -1300,6 +1301,64 @@ def test_r_and_python_record_a_file_however_spelt_as_one_input_alike(tmp_path: P
         ("data/demo.csv", None, None),
         ("data/extract.csv", True, None),
         ("../shared.csv", None, True),
+    ]  # fmt: skip
+
+
+SPELT_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$dataset("vigibase", "~/paper/data/extract.csv", extracted = "2024-03-01",
+           fingerprint = "%(pin)s")
+em$add_input("%(via)s/data/extract.csv", restricted = TRUE)
+em$add_input("~/paper/data/demo.csv")
+em$add_input("%(via)s/data/demo.csv", synthetic = TRUE)
+em$write()
+"""
+
+
+def test_r_and_python_name_a_file_spelt_from_home_or_through_a_link_from_the_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 1 of #409: the root is resolved and an input was read as text, so a path from
+    the home folder, or through a folder that links to the project, was recorded as written
+    where #392's R recorded the path from the project."""
+    from test_review_plan import link_directory
+
+    from manuscript_guard.emit import Emitter
+
+    root, pins = _dataset_project(tmp_path)
+    link_directory(tmp_path / "via", root)
+    home = {"HOME": str(tmp_path), "R_USER": str(tmp_path), "USERPROFILE": str(tmp_path)}
+    script = root / "analysis" / "spelt.R"
+    script.write_text(SPELT_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                                 "via": (tmp_path / "via").as_posix(), **pins},
+                      encoding="utf-8")  # fmt: skip
+    out = subprocess.run(
+        [RSCRIPT, "--vanilla", str(script)], capture_output=True, text=True, encoding="utf-8",
+        errors="replace", cwd=root, env={**os.environ, **home},
+    )  # fmt: skip
+    if out.returncode == 3:
+        pytest.skip("R packages jsonlite and digest are not installed")
+    assert out.returncode == 0, out.stderr
+    from_r = json.loads((root / "results" / "spelt.json").read_text(encoding="utf-8"))
+    for name, value in home.items():
+        monkeypatch.setenv(name, value)
+    em = Emitter(script, root=root)
+    em.dataset("vigibase", "~/paper/data/extract.csv", extracted="2024-03-01",
+               fingerprint=pins["pin"])  # fmt: skip
+    em.add_input(tmp_path / "via" / "data" / "extract.csv", restricted=True)
+    em.add_input("~/paper/data/demo.csv")
+    em.add_input(tmp_path / "via" / "data" / "demo.csv", synthetic=True)
+    from_python = em.document()
+    assert from_r["provenance"]["inputs"] == from_python["provenance"]["inputs"]
+    assert from_r["datasets"] == from_python["datasets"]
+    assert [(i["path"], i.get("restricted"), i.get("synthetic"))
+            for i in from_r["provenance"]["inputs"]] == [
+        ("data/extract.csv", True, None),
+        ("data/demo.csv", None, True),
     ]  # fmt: skip
 
 

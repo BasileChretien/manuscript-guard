@@ -271,10 +271,36 @@ mg_input_digest <- function(path) {
 #' path from the project root, with "." and ".." collapsed as text, so that one file spelt
 #' two ways is one input (the review of 76880fc3, #392). Unlike `normalizePath`, it follows
 #' no link: a git-annex input is a link into .git/annex, and its own path is the one that
-#' names it. A relative `path` is read from the working directory, as R reads it, and one on
-#' another drive than the project is kept whole.
+#' names it. Where the path as written leaves the project, as one written through a link to
+#' it does (a home folder that is a link, on a cluster), the folder it is in is resolved, as
+#' the root is, and the name kept (round 1 of #409). A relative `path` is read from the
+#' working directory, as R reads it.
 #' @noRd
 mg_input_path <- function(path, root) {
+  path <- path.expand(path)
+  recorded <- mg_path_from(path, root)
+  if (!mg_path_outside(recorded)) return(recorded)
+  folder <- normalizePath(dirname(path), winslash = "/", mustWork = FALSE)
+  inside <- mg_path_from(paste0(folder, "/", basename(path)), root)
+  if (mg_path_outside(inside)) recorded else inside
+}
+
+#' Whether a recorded path is outside the project: above it, or on another drive
+#'
+#' As `_outside` in the Python emitter.
+#' @noRd
+mg_path_outside <- function(recorded) {
+  recorded == ".." || startsWith(recorded, "../") || startsWith(recorded, "/") ||
+    substr(recorded, 2, 2) == ":"
+}
+
+#' A path from the project root, with "." and ".." collapsed as text
+#'
+#' As `_from_root` in the Python emitter, `os.path.relpath` of `os.path.normpath`: on
+#' Windows the drive and the names compare in any case, and a path on another drive than
+#' the project is kept whole.
+#' @noRd
+mg_path_from <- function(path, root) {
   windows <- .Platform$OS.type == "windows"
   same <- function(a, b) if (windows) tolower(a) == tolower(b) else a == b
   split <- function(text) {
@@ -1151,6 +1177,9 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
   state <- new.env(parent = emptyenv())
   state$values <- list()
   state$inputs <- as.character(inputs)
+  # The path each input is recorded under, beside it, so that `add_input` lists a file once
+  # without working out the path of every input before it.
+  state$recorded <- vapply(state$inputs, input_path, character(1), USE.NAMES = FALSE)
   state$restricted <- character()
   state$synthetic <- character()
   state$tables <- list()
@@ -1842,17 +1871,18 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     # spelt, is not listed twice, and its marks go by the path it is recorded under.
     path <- as.character(path)
     recorded <- vapply(path, input_path, character(1), USE.NAMES = FALSE)
-    known <- vapply(state$inputs, input_path, character(1), USE.NAMES = FALSE)
-    state$inputs <- c(state$inputs, path[!duplicated(recorded) & !(recorded %in% known)])
+    new <- !duplicated(recorded) & !(recorded %in% state$recorded)
+    state$inputs <- c(state$inputs, path[new])
+    state$recorded <- c(state$recorded, recorded[new])
     if (isTRUE(restricted)) state$restricted <- c(state$restricted, recorded)
     if (isTRUE(synthetic)) state$synthetic <- c(state$synthetic, recorded)
     invisible(NULL)
   }
 
   provenance <- function() {
-    recorded <- vapply(state$inputs, input_path, character(1), USE.NAMES = FALSE)
-    input_records <- lapply(which(!duplicated(recorded)), function(i) {
-      path <- recorded[[i]]
+    # Each file once, digested where the analysis read it.
+    input_records <- lapply(which(!duplicated(state$recorded)), function(i) {
+      path <- state$recorded[[i]]
       full <- input_full(state$inputs[[i]])
       if (!file.exists(full)) stop("declared input does not exist: ", full, call. = FALSE)
       record <- list(

@@ -8532,8 +8532,14 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `validUTF8` with Python's decoder on overlong, surrogate and out-of-range forms. R reads
   a relative input from its working directory where a file of that name is there, and
   Python always from the project root, so an analysis run from another folder that holds
-  one may read and record another file in R. A `.txt` input is digested as its bytes, so a
-  copy checked out with CRLF line ends reads as changed.
+  one may read and record another file in R; and on Windows `~` is R's home (Documents) and
+  the user's folder to Python. An input's path is collapsed as text inside the project
+  (round 1 of #409): `data/linked/../x.csv`, where `data/linked` is a link, is recorded as
+  `data/x.csv`, while on Linux and macOS the file read and digested is the one beside the
+  link's target. On Windows a path is recorded in the case it was written in, so one file
+  spelt in two cases is two inputs, and a path in another case than the disk's names no
+  file in a clone on Linux. A `.txt` input is digested as its bytes, so a copy checked out
+  with CRLF line ends reads as changed.
 - **The plan's sections.** A heading "### Standard deviation of the dose" is read by G12 as
   a Deviations section.
 - **Inputs kept by Git LFS or git-annex.** Results written from an analysis run on an
@@ -12847,7 +12853,12 @@ Closed since, and why each mattered (an open gap goes above this line):
   `write()`; and a path R was given as a factor lost its `restricted` mark. Both now record
   an input once, by its path from the project with "." and ".." collapsed as text and no
   link followed, and mark it by that path (the review of 76880fc3, #392;
-  `test_r_and_python_record_a_file_however_spelt_as_one_input_alike`).
+  `test_r_and_python_record_a_file_however_spelt_as_one_input_alike`). Read only as text,
+  a path from the home folder, `~/proj/data/x.csv`, or one written through a folder that
+  links to the project, as a home folder on a cluster can, was recorded as written, since
+  the root is resolved (round 1 of #409). So `~` is expanded, and where the path as written
+  leaves the project, the folder it is in is resolved and its name kept; an input is
+  digested where the analysis read it.
 - **A suggested edit beside emphasis, code or a link was not offered.** `import` merged an
   accepted suggestion as any rewording, rebuilding its stretch from Word's text, so an edit
   in a stretch that also held markup was dropped by `review --suggestions` rather than

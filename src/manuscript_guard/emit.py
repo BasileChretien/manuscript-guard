@@ -329,6 +329,21 @@ def input_digest_matches(path: Path, recorded: str) -> bool:
     return _matches(path, recorded, _TEXT_SUFFIXES)
 
 
+def _from_root(path: Path, root: Path) -> str:
+    """`path` from `root`, with "." and ".." collapsed as text, or whole where it is on
+    another drive."""
+    full = os.path.normpath(path)
+    try:
+        return os.path.relpath(full, root).replace("\\", "/")
+    except ValueError:  # on another drive than the project
+        return Path(full).as_posix()
+
+
+def _outside(recorded: str) -> bool:
+    """Whether a recorded path is outside the project: above it, or on another drive."""
+    return recorded == ".." or recorded.startswith(("../", "/")) or recorded[1:2] == ":"
+
+
 def source_digest(path: Path) -> str:
     """The digest of a *script*, ignoring line endings.
 
@@ -1140,7 +1155,10 @@ class Emitter:
     _relations: list[dict] = field(default_factory=list, init=False)
     _flows: dict[str, dict] = field(default_factory=dict, init=False)
     _corrections: dict[str, dict] = field(default_factory=dict, init=False)
-    # The inputs declared restricted, by the path each is recorded under (`_input_path`).
+    # The path each input is recorded under (`_input_path`), so that `add_input` lists a
+    # file once without working out the path of every input before it.
+    _recorded: set[str] = field(default_factory=set, init=False)
+    # The inputs declared restricted, by the path each is recorded under.
     _restricted: set[str] = field(default_factory=set, init=False)
     # The inputs declared synthetic: simulated data, a dummy extract, a test fixture.
     _synthetic: set[str] = field(default_factory=set, init=False)
@@ -1154,6 +1172,7 @@ class Emitter:
             raise ValueError(
                 f"ci_level {self.ci_level!r}: a level is a percentage, \"95%\" or \"90%\""
             )
+        self._recorded = {self._input_path(given) for given in self.inputs}
 
     @staticmethod
     def cell(template: str, *parts: object) -> Composed:
@@ -1505,7 +1524,7 @@ class Emitter:
         assert self.root is not None
         files: list[tuple[str, Path]] = []
         for raw in given:
-            full = Path(raw) if Path(raw).is_absolute() else self.root / raw
+            full = self._read_at(raw)
             if not full.is_file():
                 raise FileNotFoundError(f"dataset {name!r}: no file {full}")
             rel = self._input_path(raw)
@@ -1933,32 +1952,45 @@ class Emitter:
         is not the real data, a simulation, a dummy extract or a test fixture: G1 then says
         so of every result the manuscript quotes from this run, and fails at submission."""
         recorded = self._input_path(path)
-        if recorded not in {self._input_path(given) for given in self.inputs}:
+        if recorded not in self._recorded:
+            self._recorded.add(recorded)
             self.inputs.append(path)
         if restricted:
             self._restricted.add(recorded)
         if synthetic:
             self._synthetic.add(recorded)
 
+    def _read_at(self, path: str | Path) -> Path:
+        """Where an input is read: as written, from the project root where it is relative."""
+        assert self.root is not None
+        given = Path(path).expanduser()
+        return given if given.is_absolute() else self.root / given
+
     def _input_path(self, path: str | Path) -> str:
         """The path an input is recorded under: from the project root, with "." and ".."
         collapsed as text, so that one file spelt two ways is one input (the review of
         76880fc3, #392). No link is followed: a git-annex input is a link into .git/annex,
-        and its own path is the one that names it. R's `mg_input_path` is the same."""
+        and its own path is the one that names it. Where the path as written leaves the
+        project, as one written through a link to it does (a home folder that is a link,
+        on a cluster), the folder it is in is resolved, as the root is, and the name kept
+        (round 1 of #409). R's `mg_input_path` is the same."""
         assert self.root is not None
-        given = Path(path)
-        full = os.path.normpath(given if given.is_absolute() else self.root / given)
-        try:
-            return os.path.relpath(full, self.root).replace("\\", "/")
-        except ValueError:  # on another drive than the project
-            return Path(full).as_posix()
+        written = self._read_at(path)
+        recorded = _from_root(written, self.root)
+        if not _outside(recorded):
+            return recorded
+        inside = _from_root(Path(os.path.realpath(written.parent)) / written.name, self.root)
+        return recorded if _outside(inside) else inside
 
     def _provenance(self) -> dict:
         root = self.root
         assert root is not None
         inputs = []
-        for recorded in dict.fromkeys(self._input_path(raw) for raw in self.inputs):
-            path = root / recorded
+        # Each file once, digested where the analysis read it.
+        reads: dict[str, Path] = {}
+        for raw in self.inputs:
+            reads.setdefault(self._input_path(raw), self._read_at(raw))
+        for recorded, path in reads.items():
             if not path.exists():
                 raise FileNotFoundError(f"declared input does not exist: {path}")
             inputs.append(

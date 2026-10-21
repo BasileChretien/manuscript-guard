@@ -585,6 +585,36 @@ def test_a_file_outside_the_project_is_named_from_it_however_spelt(scratch: Path
     assert [(i["path"], i.get("restricted")) for i in inputs] == [("../shared.csv", True)]
 
 
+def test_a_file_spelt_through_a_link_to_the_project_is_named_from_it(scratch: Path) -> None:
+    """Round 1 of #409: the root is resolved, so a path written through a folder that links
+    to the project, a home folder that is a link on a cluster, left it as text."""
+    from test_review_plan import link_directory
+
+    link_directory(scratch.parent / "via", scratch)
+    em = emitter(scratch)
+    em.add_input(scratch.parent / "via" / "data" / "extract.csv", restricted=True)
+    em.dataset("vigibase", "data/extract.csv", extracted="2024-03-01", fingerprint=pin(scratch))
+    inputs = em.document()["provenance"]["inputs"]
+    assert [(i["path"], i.get("restricted")) for i in inputs] == [("data/extract.csv", True)]
+
+
+def test_a_file_spelt_from_the_home_folder_is_named_from_the_project(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 1 of #409: "~" was read as a folder's name."""
+    monkeypatch.setenv("HOME", str(scratch.parent))
+    monkeypatch.setenv("USERPROFILE", str(scratch.parent))
+    em = emitter(scratch)
+    em.dataset("vigibase", "~/paper/data/extract.csv", extracted="2024-03-01",
+               fingerprint=pin(scratch))  # fmt: skip
+    em.add_input("~/paper/data/extract.csv", restricted=True)
+    document = em.document()
+    assert document["datasets"]["vigibase"]["inputs"] == ["data/extract.csv"]
+    assert [(i["path"], i.get("restricted")) for i in document["provenance"]["inputs"]] == [
+        ("data/extract.csv", True)
+    ]
+
+
 @pytest.mark.parametrize("role", ["software", "dictionary"])
 def test_a_release_named_by_a_year_is_no_date_typed(role: str) -> None:
     """Round 1 of #392: ICD-10's release is "2019", and declared with `dictionary()` it is no

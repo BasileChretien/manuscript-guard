@@ -1542,6 +1542,8 @@ The result is compiled and packed by the code above, and checked three times:
   definition written in the body is read as typed (round 3 of step 7b).
 - A typed reference list is judged entry by entry as a cited entry's fields are, capitals
   only: a todonotes `\todo{...}` or a lower-case `% todo` in it passes (round 3 of step 7b).
+  A finding in an entry is named at its `\bibitem` line, one above a placeholder on the next
+  line (round 4).
 - G6's boldface rate counts `**...**` and so never counts LaTeX's `\textbf{...}`, which the
   reader blanks. A typed table's cells are not read by G6's rates, phrases, residue or vague
   attributions (round 1 of step 7b).

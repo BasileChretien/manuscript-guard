@@ -238,6 +238,7 @@ LATEX = {
     "methods": ("refuses", ("methods", "{project}")),
     "models": ("refuses", ("models", "{project}")),
     "passages": ("refuses", ("passages", "{project}")),
+    "related": ("refuses", ("related", "{project}")),
     "render": ("refuses", ("render", "{project}")),
     "respond": ("refuses", ("respond", "{project}")),
     "review": ("refuses", ("review", "{project}", "--run")),
@@ -313,5 +314,7 @@ def test_the_refusal_is_for_a_latex_manuscript_only(empty: Path) -> None:
         # #404).
         ("review", "{project}", "--design", "--run"),
         ("sign", "{project}", "--as", "A", "--finding", "G12/design-override/1/x"),
+        # Taking an earlier output's copy reads no manuscript.
+        ("related", "{project}", "--take"),
     ):  # fmt: skip
         assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv

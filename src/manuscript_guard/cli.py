@@ -4259,6 +4259,8 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
         _always,
     ),
     "lookup": lambda args: not args.journals,
+    # Its comparison reads the manuscript; taking an earlier output's copy does not.
+    "related": lambda args: args.take is None,
     # A design round reads the plan, not the manuscript (round 1 of #404).
     "review": lambda args: bool((args.run or args.dry_run) and not args.design
                                 or args.suggestions),

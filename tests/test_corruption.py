@@ -3590,6 +3590,62 @@ def test_what_a_cited_reference_holds_and_is_no_placeholder_passes(
     assert _placeholders(_g6(project)) == []
 
 
+# ------------------------------------------- words to the reviewers, left in the manuscript
+
+
+def _residue_said(root: Path, *, submission: bool) -> list[str]:
+    from manuscript_guard.gates import check_writing
+
+    project, _ = load_project(root)
+    report = check_writing(project, submission=submission)
+    return [f.severity for f in report.findings if f.code == "revision-residue"]
+
+
+@pytest.mark.parametrize(
+    "residue",
+    [
+        "As requested by Reviewer 2, we added a sensitivity analysis.",
+        "In response to the reviewer's comment, we clarified the exposure.",
+        "In the previous version of this manuscript, the cohort was larger.",
+        "We have now clarified the definition of exposure.",
+        "The definition is given on page 4, lines 120-125.",
+        "I have shortened the Discussion to two paragraphs.",
+    ],
+)
+def test_words_to_the_reviewers_in_the_manuscript_fail_at_submission(
+    project: Path, residue: str
+) -> None:
+    """A revision's words to the reviewers, or a model's to its user, reached the manuscript
+    and no gate read them: the artefacts G6 knew were a chat tool's markup and placeholders.
+    They warn while the paper is revised and fail at submission (Basile, 2026-10-20)."""
+    _with_paragraph(project, residue)
+    assert _residue_said(project, submission=False) == ["warn"]
+    assert _residue_said(project, submission=True) == ["fail"]
+
+
+def test_words_to_the_reviewers_in_the_supplement_fail_too(project: Path) -> None:
+    supplement = project / "manuscript" / "supplementary" / "appendix.md"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_text("# Appendix\n\nAs suggested by the reviewer, we added Table S9.\n",
+                          encoding="utf-8")  # fmt: skip
+    assert _residue_said(project, submission=True) == ["fail"]
+
+
+def test_the_letter_to_the_reviewers_is_not_read_for_residue(project: Path) -> None:
+    """The response is where these words belong: G6 never reads the round's file nor the
+    letter `respond` writes from it, and G13 lets the letter say them."""
+    reply = ("As requested by Reviewer 2, we have now clarified this in the revised "
+             "manuscript (page 4, lines 120-125).")  # fmt: skip
+    _round_with(project, [_point(response=reply, rebutted="No change was needed.")])
+    from manuscript_guard.cli import main
+
+    assert main(["respond", str(project)]) in (0, 1)
+    assert (project / "build" / "response-to-reviewers.md").is_file()
+    assert _residue_said(project, submission=True) == []
+    codes_said = ("response-leak", "response-placeholder", "response-artefact")
+    assert _said(_g13(project), *codes_said) == []
+
+
 def test_a_placeholder_on_an_entrys_first_line_is_found_on_it(project: Path) -> None:
     """Round 1 of #262: a field written on the entry's line was put on the next entry's."""
     bib = project / "literature" / "references.bib"
@@ -3926,6 +3982,322 @@ def test_a_table_cited_nowhere_is_said(project: Path) -> None:
     said = _pointer_findings(project)
     assert [code for code, _ in said] == ["display-not-cited"], said
     assert said[0][1].startswith("Table 2 ")
+
+
+# ------------------------------------------------------------ a pointer the build numbers
+# `{{ref.table.<key>}}` prints the number the document gives the table placed by
+# `{{table.<key>}}`, and `{{num.table.<key>}}` the number alone, for a list the author writes
+# (Basile's choices of 2026-10-20). Typed, "Table 2" went on naming the second table after
+# the first moved, and only G2 said so.
+
+#: Every finding about a pointer, typed or printed by a binding.
+_REF_CODES = (
+    "pointer-to-nothing", "cited-out-of-order", "display-not-cited", "unresolved-binding",
+    "ref-number-unknown", "pointer-word-mismatch", "pointer-form-unread",
+)  # fmt: skip
+
+
+def _ref_findings(root: Path) -> list[tuple[str, str]]:
+    return [(f.code, f.message) for f in gate_report(root).findings if f.code in _REF_CODES]
+
+
+def _rewrite(root: Path, *changes: tuple[str, str], file: Path | None = None) -> None:
+    path = file or main_md(root)
+    text = path.read_text(encoding="utf-8")
+    for was, now in changes:
+        assert was in text, was
+        text = text.replace(was, now, 1)
+    path.write_text(text, encoding="utf-8")
+
+
+def _assembled_main(root: Path) -> str:
+    """The main text as the build assembles it, every binding substituted."""
+    from manuscript_guard.build.assemble import assemble
+
+    project, _ = load_project(root)
+    namespace, results, _literature, _ = load_namespace(project)
+    assembled, report = assemble(project, namespace, results)
+    assert report.ok, report.findings
+    return next(item.text for item in assembled if item.path.name == "main.md")
+
+
+#: The example's two typed pointers to its main text's tables, as refs.
+_BY_REF = (
+    ("shown in Table 1.", "shown in {{ref.table.baseline}}."),
+    ("in Table 2, so", "in {{ref.table.two_by_two}}, so"),
+)
+
+
+def test_a_ref_prints_the_number_the_document_gives(project: Path) -> None:
+    _rewrite(project, *_BY_REF)
+    assert _ref_findings(project) == []
+    printed = _assembled_main(project)
+    assert "shown in Table 1." in printed
+    assert "in Table 2, so" in printed
+
+
+def test_a_moved_table_renumbers_every_ref_and_its_order_is_said(project: Path) -> None:
+    """The two tables swapped: each ref prints its table's new number, where the typed
+    pointers would go on naming the old one with nothing said. The first citation is now of
+    Table 2, which ICMJE's order refuses."""
+    _rewrite(project, *_BY_REF)
+    _rewrite(
+        project,
+        ("{{table.baseline}}", "{{table.swapped}}"),
+        ("{{table.two_by_two}}", "{{table.baseline}}"),
+        ("{{table.swapped}}", "{{table.two_by_two}}"),
+    )
+    printed = _assembled_main(project)
+    assert "shown in Table 2." in printed
+    assert "in Table 1, so" in printed
+    assert [code for code, _ in _ref_findings(project)] == ["cited-out-of-order"]
+
+
+def test_a_ref_counts_as_a_citation(project: Path) -> None:
+    """Table 2 cited nowhere, then cited by its ref."""
+    _rewrite(project, ("in Table 2, so", "below, so"))
+    assert [code for code, _ in _ref_findings(project)] == ["display-not-cited"]
+    _rewrite(project, ("below, so", "in {{ref.table.two_by_two}}, so"))
+    assert _ref_findings(project) == []
+
+
+@pytest.mark.parametrize(
+    ("ref", "named"),
+    [
+        ("{{ref.table.nothing}}", "names a table nothing places"),
+        ("{{num.figure.nothing}}", "names a figure nothing places"),
+        ("{{ref.baseline}}", "names no table and no figure"),
+        ("{{ref.model.baseline}}", "names no table and no figure"),
+    ],
+)
+def test_a_ref_to_a_key_nothing_places_is_unresolved(
+    project: Path, ref: str, named: str
+) -> None:
+    """In `check` and in the build: printed, it would be the binding's own text."""
+    from manuscript_guard.build.assemble import assemble
+
+    _rewrite(project, ("shown in Table 1.", f"shown in Table 1 and {ref}."))
+    said = _ref_findings(project)
+    assert [code for code, _ in said] == ["unresolved-binding"], said
+    assert named in said[0][1]
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _ = load_namespace(projekt)
+    _assembled, report = assemble(projekt, namespace, results)
+    assert [f.code for f in report.failures] == ["unresolved-binding"]
+
+
+def _journal_forms(root: Path, forms: str) -> None:
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    profile.write_text(
+        profile.read_text(encoding="utf-8") + f"\npointers: {forms}\n", encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("forms", "whole", "alone"),
+    [
+        (None, "Table S1", "S1"),
+        ('{supplementary_table: "eTable {n}"}', "eTable 1", "1"),
+        ('{supplementary_table: "Supplementary Table {n}"}', "Supplementary Table 1", "1"),
+        ('{supplementary_table: "Table {n} in the Supplement"}', "Table 1 in the Supplement",
+         "1"),
+    ],
+)  # fmt: skip
+def test_a_ref_to_the_supplement_prints_the_journal_s_form(
+    project: Path, forms: str | None, whole: str, alone: str
+) -> None:
+    if forms:
+        _journal_forms(project, forms)
+    _rewrite(project, ("shown in Table 1.", "shown in Table 1 and {{ref.table.outcome_codes}}."))
+    assert _ref_findings(project) == []
+    assert f"shown in Table 1 and {whole}." in _assembled_main(project)
+    _rewrite(project, ("{{ref.table.outcome_codes}}", "{{num.table.outcome_codes}}"))
+    printed = _assembled_main(project)
+    assert f"shown in Table 1 and {alone}." in printed
+
+
+def test_a_form_g2_does_not_read_is_refused(project: Path) -> None:
+    """"Tab. 2" is no pointer G2 reads, so a ref printed in it could not be held to anything."""
+    _journal_forms(project, '{table: "Tab. {n}"}')
+    said = _ref_findings(project)
+    assert [code for code, _ in said] == ["pointer-form-unread"], said
+    assert "'Tab. {n}'" in said[0][1]
+
+
+def test_a_form_without_its_number_breaks_the_profile(project: Path) -> None:
+    _journal_forms(project, '{figure: "Figure"}')
+    from manuscript_guard.cli import _run_gates
+
+    assert "schema-violation" in codes(_run_gates(project)[0])
+
+
+def test_a_list_of_nums_is_read_whole(project: Path) -> None:
+    _rewrite(
+        project,
+        ("shown in Table 1.", "shown in Tables {{num.table.baseline}} and "
+         "{{num.table.two_by_two}}."),
+        ("in Table 2, so", "below, so"),
+    )  # fmt: skip
+    assert _ref_findings(project) == []
+    assert "shown in Tables 1 and 2." in _assembled_main(project)
+
+
+@pytest.mark.parametrize(
+    ("written", "read_as"),
+    [
+        # the word names a figure
+        ("Figure {{num.table.baseline}}", "a figure of the main text"),
+        # the words name the supplement
+        ("Supplementary Table {{num.table.baseline}}", "a table of the supplement"),
+        ("{{ref.table.baseline}} in the Supplement", "a table of the supplement"),
+        ("Supplementary {{ref.table.baseline}}", "a table of the supplement"),
+        # no word at all
+        ("number {{num.table.baseline}}", "no word before it"),
+    ],
+)
+def test_words_around_a_bound_pointer_that_point_elsewhere_are_said(
+    project: Path, written: str, read_as: str
+) -> None:
+    _rewrite(project, ("shown in Table 1.", f"shown in {written}."))
+    # Read as pointing elsewhere, it cites nothing, so Table 1 is cited nowhere, and Table 2
+    # first.
+    consequences = ("display-not-cited", "cited-out-of-order")
+    said = [s for s in _ref_findings(project) if s[0] not in consequences]
+    assert [code for code, _ in said] == ["pointer-word-mismatch"], said
+    assert read_as in said[0][1], said
+
+
+def test_a_word_mismatch_fails_from_the_internal_review(project: Path) -> None:
+    """Like a typed pointer that names the wrong table: the words go stale as tables move."""
+    from manuscript_guard.cli import _run_gates
+
+    _rewrite(project, ("shown in Table 1.", "shown in Figure {{num.table.baseline}}."))
+    drafting, *_ = _run_gates(project, stage="drafting")
+    assert [f.severity for f in drafting.findings if f.code == "pointer-word-mismatch"] == [
+        "info"
+    ]
+    reviewing, *_ = _run_gates(project, stage="internal-review")
+    assert "pointer-word-mismatch" in codes(reviewing)
+
+
+def _assembled_all(root: Path) -> dict[str, str]:
+    from manuscript_guard.build.assemble import assemble
+
+    project, _ = load_project(root)
+    namespace, results, _literature, _ = load_namespace(project)
+    assembled, _report = assemble(project, namespace, results)
+    # Spaces as pandoc reads them: "Table\nS2" bound is "{{ref...}}" on one line.
+    return {item.path.name: " ".join(item.text.split()) for item in assembled}
+
+
+def test_bind_pointers_binds_each_typed_pointer_and_prints_the_same(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`bind --pointers --apply` on the example: every typed pointer becomes the binding that
+    prints it, a list's numbers each a num, and the build prints what it printed before,
+    word for word, with nothing for G2 to say."""
+    from manuscript_guard.cli import main
+
+    _rewrite(project, ("in Table 2, so", "in Tables 1 and 2, so"))
+    before = _assembled_all(project)
+    assert main(["bind", str(project), "--pointers"]) == 0
+    assert "{{ref.table.baseline}}" in capsys.readouterr().out
+    assert main(["bind", str(project), "--pointers", "--apply"]) == 0
+    text = main_md(project).read_text(encoding="utf-8")
+    for bound in ("shown in {{ref.table.baseline}}.", "{{ref.figure.forest}}",
+                  "Tables {{num.table.baseline}} and {{num.table.two_by_two}}, so",
+                  "published in\n{{ref.table.outcome_codes}},", "{{ref.table.model_adjusted}}"):
+        assert bound in text, bound
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    assert "## {{ref.table.outcome_codes}}. Code lists" in supplement.read_text(encoding="utf-8")
+    assert _assembled_all(project) == before
+    assert _ref_findings(project) == []
+    capsys.readouterr()
+    assert main(["bind", str(project), "--pointers"]) == 0
+    assert "no typed pointer" in capsys.readouterr().out
+
+
+def test_bind_pointers_offers_nothing_that_would_print_otherwise(project: Path) -> None:
+    """"Supplementary Table 1" under the default form would print "Table S1": not offered.
+    Nor is a range that names a table it does not write, "Tables 1-3", nor a figure sent as
+    a file. The supplement's headings, "## Table S1. Code lists", are."""
+    from manuscript_guard.binding import typed_pointers
+
+    _rewrite(
+        project,
+        ("Table S1, emitted", "Supplementary Table 1, emitted"),
+        ("in Table 2, so", "in Tables 1\N{EN DASH}3, so"),
+    )
+    _declare(project, "displays: {figures_as_files: 1}")
+    offered = sorted(item.text for item in typed_pointers(load_project(project)[0]))
+    assert offered == sorted(["Table 1", "Table S1", "Table S2", "Table\nS2"]), offered
+
+
+def test_a_ref_in_the_response_to_the_reviewers_reads_as_printed(project: Path) -> None:
+    """Round 1 of #378: the response round read the manuscript with its values filled in and
+    its refs as written. A sentence quoted as the paper prints it, "Table 2", was absent from
+    it; the copy kept as submitted held `{{ref.`; a ref in a reply printed as written."""
+    from manuscript_guard.build.submission import response_letter
+
+    _in_the_discussion(project, "The counts are given again in {{ref.table.two_by_two}}.")
+    _round_with(project, [_point(
+        response="We now say so, in {{ref.table.baseline}}.",
+        changed=[{"kind": "text", "quote": "The counts are in Table 2.",
+                  "section": "Discussion"}],
+    )])  # fmt: skip
+    submitted = (project / "revision" / "round-1" / "submitted").rglob("*.md")
+    kept = "".join(path.read_text(encoding="utf-8") for path in submitted)
+    assert "given again in Table 2." in kept and "{{ref." not in kept
+    # Now "The counts are in {{ref.table.two_by_two}}.", which prints as quoted.
+    _rewrite(project, ("given again in {{ref.table.two_by_two}}", "in {{ref.table.two_by_two}}"))
+    assert _said(_g13(project), "quoted-text-absent") == []
+    letter = response_letter(load_project(project)[0])
+    assert "We now say so, in Table 1." in letter and "{{" not in letter
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_ref_in_the_abstract_is_printed_in_the_pack(project: Path) -> None:
+    from manuscript_guard.build.submission import assemble_pack
+
+    _rewrite(project, ("The reporting odds ratio was", "In {{ref.figure.forest}}, the reporting "
+                       "odds ratio was"))  # fmt: skip
+    projekt, _ = load_project(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+    text = (assemble_pack(projekt, document).directory / "abstract.txt").read_text("utf-8")
+    assert "In Figure 1, the reporting odds ratio was" in text and "{{" not in text
+
+
+@pytest.mark.parametrize(
+    ("change", "ref", "why"),
+    [
+        # a figure sent as a file: where the bound one falls among the two is not known
+        (None, "{{ref.figure.forest}}", "sends 1 of the main text's figures as files"),
+        # a table placed by hand beside the bound ones
+        (("{{table.baseline}}", "{{table.baseline}}\n\n| A | B |\n|:--|--:|\n| x | y |"),
+         "{{ref.table.two_by_two}}", "also places a table by hand"),
+        # one table placed twice has two numbers
+        (("{{table.two_by_two}}", "{{table.two_by_two}}\n\n{{table.baseline}}"),
+         "{{ref.table.baseline}}", "placed 2 times"),
+    ],
+)  # fmt: skip
+def test_a_ref_the_count_cannot_number_is_refused_from_the_start(
+    project: Path, change: tuple[str, str] | None, ref: str, why: str
+) -> None:
+    """Exact numbers only, Basile's choice on 2026-10-20: refused, and from the drafting
+    stage on, since the build would have nothing to print."""
+    from manuscript_guard.cli import _run_gates
+
+    if change is None:
+        _declare(project, "displays: {figures_as_files: 1}")
+    else:
+        _rewrite(project, change)
+    _rewrite(project, ("can reconstruct it.", f"can reconstruct it. See {ref}."))
+    said = [s for s in _ref_findings(project) if s[0] == "ref-number-unknown"]
+    assert len(said) == 1 and why in said[0][1], _ref_findings(project)
+    drafting, *_ = _run_gates(project, stage="drafting")
+    assert "ref-number-unknown" in codes(drafting)
 
 
 @pytest.mark.parametrize(
@@ -4293,6 +4665,39 @@ def test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage(
     assert old in _EXAMPLE_DICTIONARY
     failed = _dictionary_failures(project, _EXAMPLE_DICTIONARY.replace(old, new), stage)
     assert failed and set(failed) == {"G12 dictionary-invalid"}, failed
+
+
+def _collection_said(root: Path, text: str, stage: str) -> tuple[list[str], list[str]]:
+    """What the whole check fails on and what G12 warns of the collection plan, at a stage."""
+    from manuscript_guard.cli import _run_gates
+
+    (root / "design" / "data_dictionary.yaml").write_bytes(text.encode("utf-8"))
+    report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
+    warned = [f.code for f in report.warnings
+              if f.code.startswith(("plan-variable", "dictionary-"))]  # fmt: skip
+    return [f.code for f in report.failures], warned
+
+
+@pytest.mark.parametrize("stage", ["design", "submission"])
+def test_a_variable_the_plan_uses_and_nobody_collects_is_warned_of(
+    project: Path, stage: str
+) -> None:
+    """A covariate the analysis adjusts for and the dictionary does not define is found
+    when the data come in: G12 says so while the plan is written, and warns at every stage."""
+    _plan_edited(project, "No stratification by", "Adjusted for `age_years`. No stratification by")
+    failed, warned = _collection_said(project, _EXAMPLE_DICTIONARY, stage)
+    assert failed == [] and warned == ["plan-variable-undefined"]
+
+
+@pytest.mark.parametrize("stage", ["design", "submission"])
+def test_an_entry_nothing_needs_is_warned_of(project: Path, stage: str) -> None:
+    unneeded = _EXAMPLE_DICTIONARY.replace(
+        "    reason: the proportion of the cases that were serious\n", ""
+    )
+    failed, warned = _collection_said(project, unneeded, stage)
+    assert failed == [] and warned == ["dictionary-entry-unused"]
+    _plan_edited(project, "Seriousness is reported", "Seriousness, `serious`, is reported")
+    assert _collection_said(project, unneeded, stage) == ([], [])
 
 
 # ------------------------------------------------- the unit of analysis
@@ -15576,16 +15981,16 @@ def test_an_edit_that_changes_a_number_a_binding_or_a_citation_is_not_written(
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: Path) -> None:
-    """Words in the manuscript more than once, nowhere, across two paragraphs, beside
-    emphasis that a merge from Word's text would drop, and two edits of the same words: none
-    is placed by guessing which was meant."""
+    """Words in the manuscript more than once, nowhere, across two paragraphs, across a hard
+    line break that writing them would delete, and two edits of the same words: none is
+    placed by guessing which was meant."""
     from suggesting import finding, suggest, with_edits
 
     path = project / "manuscript" / "main.md"
     path.write_text(
         path.read_text(encoding="utf-8").replace(
-            "Whether the signal extends to example-drug specifically",
-            "Whether the signal extends to *example-drug* specifically",
+            "Whether the signal extends to example-drug specifically has not",
+            "Whether the signal extends to *example-drug* specifically  \nhas not",
         ),
         encoding="utf-8",
     )
@@ -15599,6 +16004,7 @@ def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: 
             ("specifically has not", "has not"),
             ("Reports were included without", "Reports were taken without"),
             ("were included without restriction", "were included with no restriction"),
+            ("example-drug specifically", "the drug specifically"),
         ),
     )
     code, said = suggest(project)
@@ -15606,8 +16012,10 @@ def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: 
     reasons = {
         "the": "in the manuscript",
         "words that are nowhere": "not in the manuscript as it stands",
+        # Quoted as the reader was sent it, across the emphasis the source holds.
+        "example-drug specifically": "only as the build prints them, across markup",
         "has not been examined. Whether": "two paragraphs",
-        "specifically has not": "would not come back into the source as written",
+        "specifically has not": "across a line break",
         "Reports were included without": "same words",
         "were included without restriction": "same words",
     }
@@ -15635,6 +16043,78 @@ def test_a_suggestion_nobody_decided_is_not_imported(project: Path, tmp_path: Pa
         assert (project / "review" / "round-8" / "pharmacoepidemiologist.yaml").read_bytes() == (
             record
         )
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_edit_that_written_in_would_be_more_than_its_words_is_not_written(
+    project: Path,
+) -> None:
+    """An accepted suggestion is written into the source where its words are, not merged
+    from Word's text, so what the source then says is asked before it is offered. New words
+    that open the paragraph as a list item would take it out of the paragraphs the build
+    marks, and new words against a closing underscore would end the emphasis there: written
+    so, neither reads as Word shows it accepted."""
+    from suggesting import document, finding, suggest, with_edits
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "Whether the signal extends to example-drug specifically",
+            "Whether the signal extends to _example-drug_, specifically",
+        ),
+        encoding="utf-8",
+    )
+    with_edits(
+        project,
+        finding("r8-pe-02", ("Whether the signal", "+ Whether the signal"),
+                (", specifically", "s specifically")),
+    )  # fmt: skip
+    code, said = suggest(project)
+    assert code == 0, said
+    reasons = {
+        "Whether the signal": "no longer be a paragraph of its own",
+        ", specifically": "would not read as Word shows it",
+    }
+    for old, why in reasons.items():
+        line = next((ln for ln in said.splitlines() if f"'{old}'" in ln), "")
+        assert why in line, (old, said)
+    assert not document(project).exists()
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("how", ["old-words-changed", "record-gone"])
+def test_an_accepted_suggestion_whose_words_are_not_the_document_s_is_not_merged(
+    project: Path, tmp_path: Path, how: str
+) -> None:
+    """`import` writes an accepted suggestion's words from its sealed record, where the old
+    words are found once and are the ones the document showed. A record sealed again with
+    other old words, which are in the paragraph too, would put the new words in the wrong
+    place; a record that is gone gives no words. Either way the paragraph is refused whole:
+    merged from Word's text instead, it could lose the markup the edit was offered beside."""
+    from suggesting import READING, offered_round, reading, run
+    from word_edits import decide
+
+    from manuscript_guard.gates.review import reading_digest
+
+    main = project / "manuscript" / "main.md"
+    document = offered_round(project)
+    returned = decide(document, tmp_path / "back.docx", {1: "accept", 2: "accept", 3: "accept"})
+    if how == "record-gone":
+        (project / READING).unlink()
+    else:
+        record = reading(project)
+        edit = next(f for f in record["findings"] if f["id"] == "r8-pe-03")["edits"][0]
+        edit["old"] = "example-drug"
+        record["reading_sha256"] = reading_digest(record)
+        (project / READING).write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert code == 1, said
+    assert "cannot be written into the source where its words were" in said, said
+    text = main.read_text(encoding="utf-8")
+    assert "Whether the signal extends to example-drug specifically has not been examined." in (
+        text
+    )
+    assert "in particular" not in text
 
 
 # --------------------------------------------------------------------------------------

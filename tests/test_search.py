@@ -31,6 +31,7 @@ QUERY = "hepatic injury in a fictional cohort"
 REVIEW, META = "10.5555/demo.review.2024", "10.5555/demo.meta.2023"
 TRIAL = "10.5555/demo.trial.2020"
 PREPRINT, PUBLISHED = "10.5555/demo.preprint.2025", "10.5555/demo.published.2026"
+SECOND, THIRD = "10.5555/demo.preprint.2025b", "10.5555/demo.preprint.2025c"
 OTHER = "10.5555/demo.other.2022"
 SERVICES = registries.Services(
     esearch="https://registry.test/eutils/esearch.fcgi",
@@ -142,10 +143,16 @@ def crossref_preprint(doi: str = PREPRINT, published: str = PUBLISHED, **extra) 
     return _json(200, {"status": "ok", "message-type": "work", "message": message})
 
 
-class Table:
-    """A transport that answers by service, and keeps what it was sent."""
+def preprints(*dois: str) -> list[dict]:
+    """Europe PMC's record of a preprint, once for each DOI."""
+    return [{**EPMC_PREPRINT, "id": f"PPR90000{n}", "doi": doi} for n, doi in enumerate(dois, 1)]
 
-    def __init__(self, **answers: Response) -> None:
+
+class Table:
+    """A transport that answers by service, and keeps what it was sent. Crossref's answer
+    may be given for each DOI, as {doi: answer}."""
+
+    def __init__(self, **answers: Response | dict[str, Response]) -> None:
         self.answers = {
             "esearch": esearch("31000101", "31000102", "31000103"),
             "esummary": esummary(*PUBMED_ITEMS),
@@ -172,7 +179,10 @@ class Table:
 
     def __call__(self, request: Request, timeout: float) -> Response:
         self.sent.append(request)
-        return self.answers.get(self.name(request), _json(404, {}))
+        answer = self.answers.get(self.name(request), _json(404, {}))
+        if isinstance(answer, dict):
+            answer = answer.get(unquote(request.base).split("/works/", 1)[1], _json(404, {}))
+        return answer
 
     def asked(self) -> list[str]:
         return [self.name(r) for r in self.sent]
@@ -447,6 +457,35 @@ def test_crossref_that_did_not_answer_is_not_read_as_finding_nothing() -> None:
     assert result.answers["crossref"].status == "absent"
 
 
+def test_crossref_answering_some_preprints_says_how_many_it_did_not_and_which() -> None:
+    """Round 2 of #369: one preprint of three unanswered read "unresolvable (HTTP 503)", with
+    neither how many nor which, and of two reasons only the first was said."""
+    epmc = europepmc(*preprints(PREPRINT, SECOND, THIRD))
+    result = _run(Table(europepmc=epmc, crossref={PREPRINT: crossref_preprint(),
+                                                  SECOND: _json(503, {})}))  # fmt: skip
+    assert result.answers["crossref"].why == f"HTTP 503, for 1 of 3: {SECOND}"
+    assert f"unresolvable (HTTP 503, for 1 of 3: {SECOND})" in proposals.render(result)
+    result = _run(Table(europepmc=epmc, crossref={SECOND: _json(503, {}),
+                                                  THIRD: _json(429, {})}))  # fmt: skip
+    why = result.answers["crossref"].why
+    assert why.startswith("HTTP 503; throttled (HTTP 429)")
+    assert why.endswith(f", for 2 of 3: {SECOND}, {THIRD}")
+
+
+def test_a_preprint_crossref_did_not_answer_is_marked_beside_its_retraction() -> None:
+    """Round 2 of #369: its "retracted: no (Europe PMC)" read as the whole answer, and only the
+    header said that Crossref had not been heard."""
+    table = Table(europepmc=europepmc(*preprints(PREPRINT, SECOND)),
+                  crossref={PREPRINT: crossref_preprint(), SECOND: _json(503, {})})  # fmt: skip
+    result = _run(table)
+    by_doi = {c.doi: c for c in result.candidates}
+    assert (by_doi[SECOND].unchecked_by, by_doi[PREPRINT].unchecked_by) == (("crossref",), ())
+    said = proposals.render(result)
+    assert said.count("retracted: no (Europe PMC) · Crossref did not answer") == 1
+    data = {c["doi"]: c for c in proposals.as_json(result)["candidates"]}
+    assert (data[SECOND]["unchecked_by"], data[PREPRINT]["unchecked_by"]) == (["crossref"], [])
+
+
 def test_one_later_version_two_registries_give_is_said_once() -> None:
     hits = [_hit("pubmed", 1, doi=PREPRINT, later=({"pmid": "9", "doi": "10.5/x"},)),
             _hit("europepmc", 1, doi=PREPRINT, later=({"pmid": "9", "reference": "J. 2026"},)),
@@ -454,6 +493,23 @@ def test_one_later_version_two_registries_give_is_said_once() -> None:
     [one] = proposals.candidate(hits).later_versions
     assert one == {"pmid": "9", "doi": "10.5/x", "reference": "J. 2026",
                    "said_by": ["pubmed", "europepmc", "crossref"]}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [({"pmid": "9", "doi": "10.5/x"}, {"pmid": "9", "doi": "10.5/y"}),
+     ({"pmid": "9", "doi": "10.5/x"}, {"pmid": "8", "doi": "10.5/x"})],
+)  # fmt: skip
+def test_two_links_that_share_one_identifier_and_differ_on_the_other_are_two(first, second) -> None:
+    """Round 2 of #369: Europe PMC giving PubMed's PMID with another DOI was listed as saying
+    PubMed's DOI."""
+    hits = [_hit("pubmed", 1, doi=PREPRINT, later=(first,)),
+            _hit("europepmc", 1, doi=PREPRINT, later=(second,)),
+            _hit("crossref", 0, doi=PREPRINT, later=({"doi": "10.5/x"},))]  # fmt: skip
+    assert proposals.candidate(hits).later_versions == (
+        {**first, "said_by": ["pubmed", "crossref"]},
+        {**second, "said_by": ["europepmc"]},
+    )
 
 
 def test_openalex_asked_without_a_key_is_said_when_only_asked_by_doi() -> None:

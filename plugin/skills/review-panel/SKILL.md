@@ -133,7 +133,9 @@ the seal:
 
 `old` is the manuscript's words exactly as the `.md` has them, enough of them to appear only
 once in the manuscript's prose. An edit is words only: no number, binding, citation, table or
-figure changes, no markup, nothing across two paragraphs, and at most ten in a reading. The
+figure changes, no markup, nothing across two paragraphs, and at most ten in a reading.
+Words beside emphasis, code or a link are fine, and so are words inside emphasis; words
+that cross the edge of one are not. The
 author sees each one as a Word tracked change under the reader's name (step 3), so write
 only the edits the reader would sign. One that cannot be placed exactly is not written, and
 the finding still stands.

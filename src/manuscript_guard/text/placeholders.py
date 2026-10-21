@@ -1,5 +1,7 @@
 """The binding syntax: `{{results.key}}`, `{{lit.key}}`, `{{table.key}}`, `{{figure.key}}`,
-and `{{method.step}}`, the anchor that points a Methods claim at the code step it describes.
+`{{method.step}}`, the anchor that points a Methods claim at the code step it describes, and
+`{{ref.table.key}}` and `{{num.table.key}}`, which print the number the document gives a
+table or a figure (`crossref.py`).
 
 There is deliberately no formatting option. How a value is written is decided once, at emit
 time, by the script that computed it, and every place that quotes the value gets the same
@@ -20,7 +22,13 @@ BLOCK_NAMESPACES = ("table", "figure")
 #: An anchor prints nothing. It says which step of the analysis the text before it describes,
 #: back to the anchor before it or the start of its paragraph (`gates/methods.py`).
 ANCHOR_NAMESPACE = "method"
-NAMESPACES = VALUE_NAMESPACES + BLOCK_NAMESPACES + (ANCHOR_NAMESPACE,)
+#: A pointer the build numbers: `ref` prints "Table 2", `num` the number alone, "2", for a
+#: list the author writes ("Tables {{num.table.a}} and {{num.table.b}}"). The key is the
+#: kind, then the display's own key.
+REF_NAMESPACES = ("ref", "num")
+NAMESPACES = VALUE_NAMESPACES + BLOCK_NAMESPACES + (ANCHOR_NAMESPACE,) + REF_NAMESPACES
+#: What prints text into its paragraph, a number or a pointer, rather than a block.
+INLINE_NAMESPACES = VALUE_NAMESPACES + REF_NAMESPACES
 
 PLACEHOLDER = re.compile(
     r"\{\{\s*(?P<ns>[a-z]+)\.(?P<key>[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*)\s*\}\}"
@@ -63,6 +71,10 @@ class Placeholder:
     @property
     def is_anchor(self) -> bool:
         return self.namespace == ANCHOR_NAMESPACE
+
+    @property
+    def is_ref(self) -> bool:
+        return self.namespace in REF_NAMESPACES
 
 
 def _without_comments(text: str) -> str:

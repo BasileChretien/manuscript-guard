@@ -94,7 +94,13 @@ _OFFERED = {
     "old": str,
     "new": str,
     "comment": str,
+    "written": str,
 }
+#: Keys a suggestion may be recorded without. `written` is the digest of the comment as
+#: Word holds it, which says more than `comment`, the finding's digest, where the edit
+#: moves a claim; a document written before it was recorded has none, and its comment is
+#: the finding's.
+_OPTIONAL = frozenset({"written"})
 
 
 class TrackedError(Exception):
@@ -555,9 +561,9 @@ def offered_of(document: Path) -> list[dict] | None:
         listed = None
     ok = isinstance(listed, list) and all(
         isinstance(entry, dict)
-        and set(entry) == set(_OFFERED)
+        and set(_OFFERED) - _OPTIONAL <= set(entry) <= set(_OFFERED)
         and all(isinstance(entry[key], kind) and not isinstance(entry[key], bool)
-                for key, kind in _OFFERED.items())
+                for key, kind in _OFFERED.items() if key in entry)
         for entry in listed
     )  # fmt: skip
     if not ok or len({entry["n"] for entry in listed}) != len(listed):

@@ -183,6 +183,13 @@ def test_each_edit_is_a_tracked_change_by_its_reader_with_its_finding_as_a_comme
     comments, _parents = tracked.comments_of(document)
     assert [c.author for c in comments] == ["pharmacoepidemiologist (Claude Code)"]
     assert comments[0].text.startswith("r8-pe-02 (minor): Finding r8-pe-02")
+    # The edit takes a "not" out, which `reworded` warns of: the edit is written, and its
+    # comment says so after the finding (Basile, 2026-10-20). "Unexamined" says the same,
+    # and no list knows its prefix, so the note is one the author can dismiss.
+    assert comments[0].text.endswith(
+        "Note: This sentence may now say the opposite of what it said before the edit: "
+        "'not' is gone."
+    ), comments[0].text
     assert tracked.pending(document, {"pharmacoepidemiologist (Claude Code)"}) == 2
     # Never the submission build, and nothing the freshness gate holds to the source.
     assert document.parent.name == "suggestions"

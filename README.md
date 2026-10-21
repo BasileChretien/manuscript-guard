@@ -126,6 +126,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 
 | Gate | Checks |
 |---|---|
+| G0 | the manuscript can be read: each source is UTF-8, and it is written in one format, Markdown or LaTeX (`main.md` or a `main.tex` that declares its class), with no Markdown file in a LaTeX manuscript; on a LaTeX manuscript, each gate not yet taught LaTeX says it read nothing, a note that fails at submission |
 | G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since, an input Git LFS or git-annex keeps judged by its pointer where it is not fetched; an input the data custodian keeps is not in git; no result quoted from synthetic data at submission, unless the paper is a demonstration; a warning where a lockfile pinning its packages has |
 | G2 | every number is classified, in the manuscript and in the replies to the reviewers, every declared value is quoted, every pointer to a table or figure placed by its binding names one the document places, and a p value, a share or an interval is quoted with what it belongs to; the level written beside an interval and the label beside a standard deviation or error are the ones emitted (warnings); a unit written after a binding is the one emitted; no bound count is printed below the data custodian's minimum |
 | G3 | numbers in a figure's output *and in its source* trace back to results, and a script that estimates, samples or draws at random while it plots says why (a warning) |
@@ -266,14 +267,16 @@ number in the file and the rule that classified it.
 | `transcribe` | build checklist profiles from those documents |
 | `checklist` | write the completion file for a checklist |
 | `sync-bib` | rewrite `references.bib` from Zotero |
+| `sync-sources` | copy each cited work's PDF or saved page from Zotero into `literature/sources/`, or Zotero's text of it where the file is not on this computer or is an EPUB, and list the works with no copy; `--from` takes the PDFs of a folder named by DOI instead, as a downloader such as auto-paper-harvester saves them |
 | `lookup` | look up each cited DOI and PMID once, and keep what the registries said in `literature/lookups/`; `--journals` asks the NLM Catalog and DOAJ about each shortlisted journal's ISSN |
+| `search` | ask PubMed, Europe PMC and OpenAlex for works a claim could cite, each with its identifiers, kind, retraction status, later version and open copy; it proposes, the author chooses, and nothing is written |
 | `style` | fetch the journal's citation style from the CSL style repository once, and keep it in `profiles/journals/styles/` for the offline build |
 | `methods` | check or record that the Methods were read against the code; `--explain` lists each claim beside the step that backs it |
 | `models` | print each fitted model as its card, with what G15 says of it |
 | `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` does the same for a design round, which reads the plan; `--suggestions` writes the edits a round's findings suggest into a Word document as tracked changes, for you to accept or refuse there and `import` |
 | `checker` | send a co-author one file of things to confirm, and record what they answered |
 | `import` | bring a co-author's Word edits back into the manuscript source |
-| `reworded` | check that an edit changed the wording and no binding, citation or typed number |
+| `reworded` | check that an edit changed the wording and no binding, citation or typed number, and warn where it made a sentence claim more, less or the opposite |
 | `respond` | open a revision round, or write the point-by-point response |
 | `submit` | assemble the submission pack, with a checklist of the journal's rules no gate checks |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |
@@ -319,9 +322,10 @@ should send you to them.
 | `submission-pack` | everything the journal asks for, and the covering letter |
 | `paper-audit` | a paper that was not written with this toolkit |
 
-Four hooks: one line on the project's state when a session starts, a refusal to edit files
-that are machine-written, a note on the numbers just saved in a manuscript file, and the
-submission check before a command that looks like a submission.
+Five hooks: one line on the project's state when a session starts, and again at the end of
+a turn that changed the manuscript or what it rests on; a refusal to edit files that are
+machine-written; a note on the numbers just saved in a manuscript file; and the submission
+check before a command that looks like a submission.
 
 ### Codex
 

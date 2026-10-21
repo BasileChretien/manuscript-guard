@@ -14,7 +14,10 @@ author. The submission guard refuses with that sentence and the session start sa
 
 **A hook must be fast.** `guard-write` and `after-edit` fire on every edit, so neither loads
 the full gate set: the first is a path check, the second classifies numbers in one file.
-Only `session-start` and the submission guard run the gates, and those fire rarely.
+Only `session-start`, the submission guard and `stop` run the gates. The first two fire
+rarely. The stop fires at the end of every turn, and runs them only where the turn changed a
+file it watches. The session start and the stop wait `CHECK_LIMIT` for them, and then say
+that the check did not finish.
 
 **A hook blocks only what is unambiguous.** Writing to a machine-written results file is
 always wrong. Prose that trips the AI-writing lint is not, so that is reported as context,
@@ -32,6 +35,7 @@ makes it themselves.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -377,12 +381,15 @@ def _project_root(payload: dict) -> Path | None:
     command sent from above a project that enters it, `cd paper && manuscript-guard submit`,
     finds none here. The submission guard then looks at what the command names
     (`_named_projects`); the session start says nothing.
-    """
-    from manuscript_guard.contracts import ContractError, find_root
 
+    The search is `contracts.find_root`'s, made here because importing the contracts loads
+    the project's schemas, about half a second, and the stop asks this at the end of every
+    turn in every folder. `tests/test_hooks.py` holds the two to one answer.
+    """
     try:
-        return find_root(Path(payload.get("cwd") or Path.cwd()))
-    except (ContractError, OSError):
+        here = Path(payload.get("cwd") or Path.cwd()).resolve()
+        return next((up for up in (here, *here.parents) if (up / "paper.yaml").exists()), None)
+    except (OSError, RuntimeError, ValueError):  # a loop of links, a NUL in the name
         return None
 
 
@@ -996,12 +1003,58 @@ def _submission_refusal(root: Path, *, named_from: Path | None = None) -> str | 
     )
 
 
+#: How long the session start and the stop wait for the gates. The agent tool stops a hook at
+#: the timeout hooks.json gives it, 60 s for both, and drops what it would have said. The
+#: 15 s left are for what comes before the gates (starting Python, the session start's notice,
+#: loading the project where its folders are not noted, noting the files) and for saying that
+#: the check did not finish. Noting the files has no limit of its own (DESIGN.md, Known gaps).
+CHECK_LIMIT = 45.0
+
+#: The gates a hook stopped waiting for. `main` ends the process without them.
+_LEFT_RUNNING: list = []
+
+
 def _status_line(payload: dict) -> str | None:
     """Where the project stands, or why that cannot be said. None outside a project."""
     root = _project_root(payload)
     if root is None:
         return None
+    return _status_in_time(root)
 
+
+def _status_in_time(root: Path) -> str | None:
+    """`_status_of(root)`, or, where the gates take longer than `CHECK_LIMIT`, a line that says
+    the check did not finish.
+
+    The gates run on a thread of their own, and are left running when the limit passes. Cut
+    off by the agent tool instead, the hook said nothing at all, and the author was not told
+    that nothing had been checked. A fault of the tool's own is silence, as it was.
+    """
+    import threading
+
+    said: list[str | None] = []
+
+    def check() -> None:
+        try:
+            said.append(_status_of(root))
+        except Exception:  # noqa: BLE001 - a fault of the tool's own costs the line, and no more
+            said.append(None)
+
+    worker = threading.Thread(target=check, name="manuscript-guard-check", daemon=True)
+    worker.start()
+    worker.join(CHECK_LIMIT)
+    if worker.is_alive():
+        _LEFT_RUNNING.append(worker)
+        return (
+            f"manuscript-guard: the check of {root.name} did not finish in {CHECK_LIMIT:g} s, "
+            "so where it stands is not known. Run `manuscript-guard check`."
+        )
+    return said[0] if said else None
+
+
+def _status_of(root: Path) -> str:
+    """The status line of the project at `root`: its stage, and how many findings fail and
+    warn, or which file of it cannot be used and why."""
     from manuscript_guard.cli import _run_gates
     from manuscript_guard.contracts import ContractError
     from manuscript_guard.policy import DESCRIPTIONS
@@ -1106,6 +1159,10 @@ def session_start(payload: dict) -> int:
         notice = None if source in QUIET_SOURCES else stale_cli_notice()
     except Exception:  # noqa: BLE001 - a hook must never break the session
         notice = None
+    # Before the gates, which may be cut off: the first stop compares with these. A fault here
+    # costs the first turn its line, and no more.
+    with contextlib.suppress(Exception):
+        _note_the_files(payload)
     try:
         status = _status_line(payload)
     except Exception:  # noqa: BLE001 - a fault of the tool's own costs the line, and no more
@@ -1124,11 +1181,238 @@ def session_start(payload: dict) -> int:
     return _emit(output)
 
 
+# ---------------------------------------------------------------------------- the stop
+#
+# At the end of a turn that changed what the gates read, the person is shown the line the
+# session start gives, beside whatever the agent says it has done. Whether the turn changed
+# anything is read from the files themselves, not from the agent tool's record of the turn:
+# that record names a file an edit wrote, and not one a shell command wrote, which is how the
+# analysis writes its results.
+
+#: What a turn has to change for the stop to say where the manuscript stands: the folders the
+#: author writes in and the analysis writes to, wherever `paths:` puts them, and the two files
+#: the stage and the authors are read from. A turn that writes only elsewhere, a review record
+#: or the plan, gets no line (Known gaps).
+WATCHED_FOLDERS = ("manuscript", "analysis", "results", "figures", "literature")
+WATCHED_FILES = ("paper.yaml", "authors.yaml")
+
+
+def _unattended() -> bool:
+    """Whether Claude Code was started as `claude -p`, where nobody reads what a hook shows.
+
+    Seen with Claude Code 2.1.303 on 2026-10-20, in two variables it gives a hook, neither of
+    them documented. `-p` sets `CLAUDE_CODE_SESSION_ATTENDED` to `0`, where the desktop app
+    sets `1`. It sets `CLAUDE_CODE_ENTRYPOINT` to `sdk-cli` too, but only where no Claude Code
+    above it has set that variable already: a `claude -p` started from a desktop session
+    keeps that session's `claude-desktop`.
+    """
+    return (
+        os.environ.get("CLAUDE_CODE_SESSION_ATTENDED") == "0"
+        or os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "sdk-cli"
+    )
+
+
+def _not_the_projects(name: str) -> bool:
+    """A hidden file or folder, or Python's cache of compiled code: written beside a project's
+    files by the tools that run them, and read by no gate."""
+    return name.startswith(".") or name == "__pycache__"
+
+
+def _watched_folders(root: Path, before: dict) -> list[Path]:
+    """The folders a turn is watched in, where `paths:` in paper.yaml puts them.
+
+    Taken from the last note where paper.yaml is as it was then: asking the project loads
+    its schemas, about half a second at the end of every turn. A paper.yaml that cannot be
+    read moves nothing, and the folders are looked for under their usual names: the turn
+    that left it so has changed a watched file in any case.
+    """
+    noted, paper = before.get("folders"), before.get("files", {}).get("paper.yaml")
+    try:
+        found = (root / "paper.yaml").stat()
+        if noted is not None and paper and paper[:2] == [found.st_size, found.st_mtime_ns]:
+            return [Path(folder) for folder in noted]
+    except OSError:
+        pass
+    from manuscript_guard.contracts import ContractError, load_project
+
+    try:
+        project, _report = load_project(root)
+        return [project.path(name) for name in WATCHED_FOLDERS]
+    except (ContractError, ValueError, OSError, TypeError):
+        return [root / name for name in WATCHED_FOLDERS]
+
+
+def _watched_files(root: Path, folders: list[Path]) -> list[Path]:
+    """Each file a turn is watched for a change to, the two named ones whether or not they
+    are there."""
+    files = [root / name for name in WATCHED_FILES]
+    for folder in folders:
+        for here, folders_in, names in os.walk(folder):
+            folders_in[:] = sorted(name for name in folders_in if not _not_the_projects(name))
+            files += [Path(here) / name for name in sorted(names) if not _not_the_projects(name)]
+    return files
+
+
+def _digest(path: Path) -> str | None:
+    """The SHA-256 of a file's bytes, or None where it cannot be read."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as file:
+            while chunk := file.read(1 << 20):
+                digest.update(chunk)
+    except OSError:
+        return None
+    return digest.hexdigest()
+
+
+def _snapshot(root: Path, before: dict) -> dict:
+    """The watched folders, and each watched file as its size, the time it was last written
+    and the digest of its bytes, under its path from the project's folder.
+
+    A file is read only where its size or time is not what `before` has: the digest noted
+    then is still its own. A file that cannot be read has no digest, and is compared by its
+    size and time alone.
+    """
+    import stat
+
+    folders = _watched_folders(root, before)
+    noted = before.get("files", {})
+    files: dict[str, list] = {}
+    for path in _watched_files(root, folders):
+        try:
+            found = path.stat()
+            key = os.path.relpath(path, root).replace("\\", "/")
+        except (OSError, ValueError):  # gone since it was listed, or on another drive
+            continue
+        if not stat.S_ISREG(found.st_mode):
+            continue
+        size, written = found.st_size, found.st_mtime_ns
+        old = noted.get(key)
+        same = old is not None and old[:2] == [size, written] and old[2] is not None
+        files[key] = [size, written, old[2] if same else _digest(path)]
+    return {"folders": [str(folder) for folder in folders], "files": files}
+
+
+def _differs(before: dict[str, list], now: dict[str, list]) -> bool:
+    """Whether a file was added, removed or changed: by its bytes where both digests are
+    known, and otherwise by its size and time."""
+    if before.keys() != now.keys():
+        return True
+    return any(
+        (old[2] != new[2]) if old[2] and new[2] else (old[:2] != new[:2])
+        for old, new in ((before[key], now[key]) for key in now)
+    )
+
+
+def _turn_file(root: Path, session: str) -> Path:
+    """Where the files of one project are noted for one session: outside the project, in the
+    folder for temporary files, so that nothing the author keeps is written by a hook."""
+    import hashlib
+    import tempfile
+
+    name = hashlib.sha256(f"{session}\n{root}".encode("utf-8", "replace")).hexdigest()[:32]
+    return Path(tempfile.gettempdir()) / "manuscript-guard" / "turns" / f"{name}.json"
+
+
+def _an_entry(entry: object) -> bool:
+    return (
+        isinstance(entry, list)
+        and len(entry) == 3
+        and all(isinstance(part, int) and not isinstance(part, bool) for part in entry[:2])
+        and (entry[2] is None or isinstance(entry[2], str))
+    )
+
+
+def _noted(file: Path) -> dict | None:
+    """The folders and files as they were last noted, or None where nothing usable was."""
+    try:
+        note = json.loads(file.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return None
+    if not isinstance(note, dict):
+        return None
+    folders, files = note.get("folders"), note.get("files")
+    if not isinstance(folders, list) or not all(isinstance(one, str) for one in folders):
+        return None
+    if not isinstance(files, dict) or not all(_an_entry(entry) for entry in files.values()):
+        return None
+    return {"folders": folders, "files": files}
+
+
+def _note(file: Path, note: dict) -> None:
+    """Keep the files as they are now. Written whole and then put in place, so that a hook
+    stopped halfway leaves the last note, not half of one."""
+    file.parent.mkdir(parents=True, exist_ok=True)
+    partial = file.with_name(f"{file.stem}.{os.getpid()}.part")
+    partial.write_text(json.dumps(note), encoding="utf-8")
+    os.replace(partial, file)
+
+
+def _session(payload: dict) -> str | None:
+    session = payload.get("session_id")
+    return session if isinstance(session, str) and session else None
+
+
+def _note_the_files(payload: dict) -> None:
+    """At the start of a session, note the watched files for its first stop to compare with.
+
+    Only where nothing is noted for this session yet. A session resumed, or compacted in the
+    middle of a turn, starts again under the same id, and its last note is still where the
+    turn began.
+    """
+    root = _project_root(payload)
+    session = _session(payload)
+    if _unattended() or root is None or session is None:
+        return
+    file = _turn_file(root, session)
+    if _noted(file) is None:
+        _note(file, _snapshot(root, {}))
+
+
+def _turn_changed(root: Path, payload: dict) -> bool:
+    """Whether a watched file was added, removed or changed since the session started or the
+    last turn ended, noting the files as they now are for the next turn.
+
+    With nothing noted, the session start having been cut off or having found no project at
+    the folder it was sent from, there is nothing to compare with: the files are noted, and
+    the turn is taken to have changed nothing.
+    """
+    session = _session(payload)
+    if session is None:
+        return False
+    file = _turn_file(root, session)
+    before = _noted(file)
+    now = _snapshot(root, before or {})
+    if now != before:
+        _note(file, now)
+    return before is not None and _differs(before["files"], now["files"])
+
+
+def stop(payload: dict) -> int:
+    """At the end of a turn that changed a watched file, the line the session start gives.
+
+    It is shown to the person (`systemMessage`) and given to nobody else: a turn that ends
+    with failing findings ends, as it did, and the agent is not sent back to work. Codex
+    shows the same answer as a warning, and refuses one with any other field. Under
+    `claude -p` nobody is there to read it, and nothing is done.
+    """
+    if _unattended():
+        return 0
+    root = _project_root(payload)
+    if root is None or not _turn_changed(root, payload):
+        return 0
+    status = _status_in_time(root)
+    return _emit({"systemMessage": status}) if status else 0
+
+
 HANDLERS = {
     "guard-write": guard_write,
     "after-edit": after_edit,
     "guard-submission": guard_submission,
     "session-start": session_start,
+    "stop": stop,
 }
 
 
@@ -1159,7 +1443,13 @@ def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     if not args or args[0] not in HANDLERS:
         return 0
-    return dispatch(args[0])
+    code = dispatch(args[0])
+    if any(worker.is_alive() for worker in _LEFT_RUNNING):
+        # The answer is out, and the gates past their limit are not waited for, nor left to
+        # Python's shutdown, which can stop on a thread still holding a stream.
+        sys.stdout.flush()
+        os._exit(code)
+    return code
 
 
 if __name__ == "__main__":

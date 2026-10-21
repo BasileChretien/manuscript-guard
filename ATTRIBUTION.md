@@ -118,9 +118,10 @@ a snapshot of one afternoon's reading, and none of them replaces the guideline's
 
 # Third-party data
 
-One file in the package is made from somebody else's work and **is** redistributed:
-`src/manuscript_guard/data/spelling_variants.tsv`, the list G14 reads to tell British
-spelling from American.
+Two files in the package are made from somebody else's work and **are** redistributed. The
+first is `src/manuscript_guard/data/spelling_variants.tsv`, the list G14 reads to tell
+British spelling from American. The second, `src/manuscript_guard/data/claim_strength.yaml`,
+is under [The claim-strength ladder](#the-claim-strength-ladder) at the end of this file.
 
 It is derived from **VarCon** (Variant Conversion Info) by Kevin Atkinson and Benjamin
 Titze, which is published with the SCOWL word lists at <http://wordlist.aspell.net/> and
@@ -204,3 +205,33 @@ HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABI
 TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
+
+## The claim-strength ladder
+
+`src/manuscript_guard/data/claim_strength.yaml` holds the words `manuscript-guard reworded`
+reads to tell whether an edit changed how strongly a sentence claims. It is adapted from the
+**Claim-Strength Contract** of [Awesome Research
+Skills](https://github.com/Yila-AI/awesome-research-skills) by the Yila-AI contributors, in
+`skills/science-research-writing/references/certainty-and-claim-strength.md`, read on
+2026-10-20 at commit `0609e85b6dbfdae8a48ba66c332d340265d7b3e5`. That repository is under the
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), whose text, as that
+repository ships it, is beside the data file in the package:
+`src/manuscript_guard/data/claim_strength_LICENSE.txt`. The repository has no NOTICE file.
+The document asks that the contract or its ladder be credited where it is reused or
+adapted, and this is that credit.
+
+Taken from it: the ladder's six rungs and their order, from "is consistent with" and "may
+suggest" through "is associated with", "predicts", "contributes to" and "affects" to
+"causes" and "demonstrates that"; and its certainty markers, read as hedges ("may",
+"might", "could", "appears", "suggests", which is on the ladder's first rung here),
+negations ("did not") and limits ("only", "within this sample", "under these
+conditions").
+
+Changed, on 2026-10-20: each rung is named, holds synonyms the contract does not list
+("correlated", "linked to", "increased", "reduced", "prevented" and others) and lists the
+inflections it is read in; the hedges, negations and limits are lists of their own, with
+words the contract does not name ("possibly", "seems", "no", "never", "non-significant",
+"in this sample"); and the rules for reading them are this project's (whole words, a
+capital only where a sentence opens, a word in a compound or a participle after an article
+not read). The contract's other parts, on null findings and on asking the author before a
+claim is moved, are not used; the file's own comments say how each word is read.

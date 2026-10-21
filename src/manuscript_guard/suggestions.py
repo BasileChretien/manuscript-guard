@@ -18,7 +18,9 @@ to go. An edit is dropped, and says why, unless every one of these holds:
   printed it. Pandoc's typesetting is read as what it is: a straight quote in `old` finds a
   curly one, `--` an en dash, a space a line break or a no-break space;
 - the edit is prose: `reworded`, comparing the paragraph before and after, finds nothing to
-  say of a binding, a citation or a typed number;
+  say of a binding, a citation or a typed number. What it says of how strongly a sentence
+  claims (`claims.py`) drops nothing: the edit is written, and its comment says so after
+  the finding, so that the author sees the move where they decide it;
 - written into the source where its words are (`write_in`, which is how `import` writes
   one accepted in Word), the paragraph reads as Word shows it with the edit accepted, and
   is still a paragraph of its own under its identifier. Only the edit's own words change:
@@ -36,7 +38,7 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 PER_READING = 10
@@ -106,6 +108,13 @@ class Placed:
     #: Where `old` is in its paragraph's source.
     start: int = 0
     end: int = 0
+    #: What `reworded` says the edit does to how strongly its sentence claims, if anything.
+    claim: str = ""
+
+    @property
+    def comment(self) -> str:
+        """The Word comment over the edit: its finding, and the move of a claim it makes."""
+        return f"{self.edit.comment} {self.claim}" if self.claim else self.edit.comment
 
 
 @dataclass
@@ -384,11 +393,12 @@ def write_in(
     of the printed ones, they
     are those. They lie outside every binding, citation and inline construct and across no
     line break (`_in_the_way`), and no two edits change the same words. Written, the
-    paragraph is a change of words to `reworded`, and it reads as Word shows it with the
+    paragraph is a change of words to `reworded`, a move of a claim aside (`CLAIM_CODES`,
+    which the edit's comment says instead), and it reads as Word shows it with the
     edits accepted. That the file still marks it as a paragraph of its own is asked apart,
     of the file (`_stays_marked`), and `import` asks it of every write it makes.
     """
-    from manuscript_guard.reworded import compare
+    from manuscript_guard.reworded import CLAIM_CODES, compare
     from manuscript_guard.roundtrip import _checked, _read, _reads_as, anchors_apart
 
     apart = anchors_apart(source)
@@ -440,8 +450,11 @@ def write_in(
         shown_text = shown_text[:a] + new + shown_text[b:]
         spans = _shifted(spans, b, len(new) - (b - a))
     report = compare(source, written + anchors)
-    if report.findings:
-        return f"it is more than a change of words: {report.findings[0].message}"
+    # A move of how strongly a sentence claims is said in the edit's comment, not a reason
+    # to drop it (Basile, 2026-10-20): a reviewer who asks for "associated" means the move.
+    facts = [found for found in report.findings if found.code not in CLAIM_CODES]
+    if facts:
+        return f"it is more than a change of words: {facts[0].message}"
     renderings = [shown_text[start:end] for start, end in spans]
     if not _reads_as(written, reading.protected, renderings, shown_text):
         return "written into the source, it would not read as Word shows it"
@@ -568,9 +581,25 @@ def _settled(context: _Context, placed: list[Placed]) -> list[Placed]:
         if why:
             out.append(_dropped(p, why))
             continue
+        p = replace(p, claim=_claim_moved(source, p))
         kept.setdefault(p.paragraph, []).append(p)
         out.append(p)
     return out
+
+
+def _claim_moved(source: str, placed: Placed) -> str:
+    """What the edit alone does to how strongly its paragraph's sentences claim, as its
+    comment adds it, or nothing. Basile chose on 2026-10-20 that such an edit be written
+    and say so, not dropped: a reviewer who asks for "associated" where the text says
+    "caused" means the move."""
+    from manuscript_guard.claims import moved
+
+    edited = source[: placed.start] + placed.edit.new.strip() + source[placed.end :]
+    said = [" ".join(found.message.split()) for found in moved(source, edited)]
+    if not said:
+        return ""
+    said = [one[0].upper() + one[1:] for one in said]
+    return "Note: " + "; ".join(said) + "."
 
 
 def _dropped(placed: Placed, why: str) -> Placed:
@@ -618,6 +647,7 @@ def _offered(placed: Placed, number: int) -> dict:
         "old": short_digest(placed.shown_old),
         "new": short_digest(placed.shown_new),
         "comment": short_digest(edit.comment),
+        "written": short_digest(placed.comment),
     }
 
 
@@ -702,7 +732,7 @@ def write_round(project, number: int, *, csl: Path | None, date: str) -> Outcome
         mine = [p for p in placed if not p.dropped and p.supplementary == supplementary]
         placements = [
             tracked.Placement(numbered[id(p)], p.paragraph, p.shown_old, p.shown_new,
-                              p.edit.author, date, p.edit.comment)  # fmt: skip
+                              p.edit.author, date, p.comment)  # fmt: skip
             for p in mine
         ]
         offered = [_offered(p, numbered[id(p)]) for p in mine]
@@ -759,7 +789,8 @@ def decisions(document: Path, offered: Sequence[dict]) -> tuple[list[Decision], 
         replies = []
         for comment in comments:
             ours = comment.author == entry["author"]
-            if ours and short_digest(comment.text) == entry["comment"]:
+            # The comment as Word holds it: the finding, and what the edit does to a claim.
+            if ours and short_digest(comment.text) == entry.get("written", entry["comment"]):
                 told.add((comment.author, comment.text))
                 for reply in tracked.replies_to(comment, comments, parents):
                     told.add((reply.author, reply.text))

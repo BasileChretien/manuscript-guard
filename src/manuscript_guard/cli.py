@@ -74,6 +74,7 @@ from manuscript_guard.gates import (
 )
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
 from manuscript_guard.gates.design_review import check_design_rounds
+from manuscript_guard.gates.formats import check_format, not_read_in_latex
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
 from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
@@ -90,6 +91,7 @@ from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
 from manuscript_guard.scaffold import init_project, rules_to_add
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import substitute
+from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
@@ -101,7 +103,9 @@ def _run_gates(
 
     Every gate always runs. What the stage changes is which findings *fail*: someone still
     writing the analysis is told about the unreviewed figures, but not stopped by them.
-    Nothing is skipped, and the caller reports what was deferred.
+    Nothing is skipped, and the caller reports what was deferred. The one exception is a
+    LaTeX manuscript: a check not yet taught LaTeX does not run, and its gate reports
+    `not-read-in-latex` instead, which fails at submission.
 
     Two things here used to be wrong, and both made the tool claim more than it checked.
 
@@ -133,6 +137,8 @@ def _run_gates(
     unreadable = _unreadable_sources(project)
     stopped: list[str] = []
     gate_reports: list[Report] = []
+    latex = manuscript_format(project.path("manuscript")) == LATEX
+    unread: list[str] = []
     for name, gate in (
         ("G11", lambda: check_review(project, submission=at_submission)),
         ("G1", lambda: check_freshness(project, results)),
@@ -162,6 +168,12 @@ def _run_gates(
         ("G15", lambda: check_models(project, results)),
         ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
     ):
+        if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
+            # A check that reads only Markdown would read nothing here and pass: it is not
+            # run, and its gate says so once.
+            if name not in unread:
+                unread.append(name)
+            continue
         report = _guarded(name, gate, unreadable)
         if report is None:
             # A gate run as several checks stopped once, and is named once.
@@ -171,8 +183,23 @@ def _run_gates(
             gate_reports.append(report)
 
     reports = [contract_report, load_report, _unreadable_report(project, unreadable, stopped)]
+    reports += [check_format(project), Report(tuple(not_read_in_latex(name) for name in unread))]
     report, deferred = apply_stage(merge_all(reports + gate_reports), chosen)
     return report, project, chosen, deferred
+
+
+#: The checks that read the manuscript only as Markdown, by the name each entry of
+#: `_run_gates` calls. On a LaTeX manuscript they are not run, and each of their gates reports
+#: `not-read-in-latex`. A check leaves this set in the step that teaches it LaTeX (DESIGN.md,
+#: "LaTeX manuscripts", Order of work).
+_NOT_READ_IN_LATEX = frozenset(
+    {
+        "check_numbers", "check_bound_units", "check_small_cells", "check_citations",
+        "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
+        "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
+        "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
+    }
+)  # fmt: skip
 
 
 def _unreadable_sources(project) -> dict[Path, Unreadable]:
@@ -184,7 +211,7 @@ def _unreadable_sources(project) -> dict[Path, Unreadable]:
     supplement.
     """
     found: dict[Path, Unreadable] = {}
-    for path in source_files(project.path("manuscript")):
+    for path in manuscript_files(project):
         try:
             read_text(path)
         except Unreadable as error:
@@ -2593,6 +2620,24 @@ def cmd_sync_bib(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sync_sources(args: argparse.Namespace) -> int:
+    """Copy each cited work's PDF, saved page or text from Zotero into literature/sources/, or
+    each PDF of a folder named by DOI with `--from`."""
+    from manuscript_guard.literature import copies, downloads
+    from manuscript_guard.zotero import ZoteroUnavailable
+
+    project, _ = load_project(args.path)
+    try:
+        offered = None if args.source is None else downloads.offer(project, args.source)
+        outcomes = copies.sync(project, dry_run=args.dry_run, offered=offered)
+    except (ZoteroUnavailable, copies.NothingToCopy, downloads.FolderUnreadable) as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    for line in copies.report(outcomes, dry_run=args.dry_run, offered=offered):
+        print(line)
+    return 0
+
+
 def cmd_lookup(args: argparse.Namespace) -> int:
     """Look up each cited reference's DOI and PMID, and write what came back."""
     from manuscript_guard.lookup import run as lookup
@@ -2640,6 +2685,78 @@ def cmd_lookup(args: argparse.Namespace) -> int:
         )
         return 1
     return 0
+
+
+#: The longest query sent: a search is for a topic, and a passage of the manuscript pasted
+#: in would leave the machine with it.
+MAX_QUERY = 300
+
+
+def _search_filters(args: argparse.Namespace):
+    """The filters as asked, or the reason they cannot be used."""
+    from manuscript_guard.lookup.search import LANGUAGES, MAX_LIMIT, TYPES, Filters
+
+    types = tuple(dict.fromkeys(t.strip() for given in args.type or [] for t in given.split(",")
+                                if t.strip()))  # fmt: skip
+    unknown = [t for t in types if t not in TYPES]
+    if unknown:
+        return f"no type {', '.join(map(repr, unknown))}; the types are {', '.join(TYPES)}"
+    language = args.language.strip().lower() if args.language else None
+    if language and language not in LANGUAGES:
+        return (f"no language {args.language!r}; give it in two letters, one of "
+                f"{', '.join(sorted(LANGUAGES))}")  # fmt: skip
+    if args.since is not None and not 1000 <= args.since <= 9999:
+        return f"--since takes a year, not {args.since}"
+    if not 1 <= args.limit <= MAX_LIMIT:
+        return f"--limit takes 1 to {MAX_LIMIT}, not {args.limit}"
+    return Filters(since=args.since, types=types, language=language, limit=args.limit)
+
+
+def cmd_search(args: argparse.Namespace) -> int:
+    """Ask open registries for works a claim could cite. It proposes; it writes nothing."""
+    import json
+
+    from manuscript_guard.contracts.project import find_root
+    from manuscript_guard.lookup import proposals
+    from manuscript_guard.lookup.run import Credentials
+
+    query = " ".join(args.query.split())
+    if not query:
+        print("manuscript-guard: nothing to search for: the query is empty", file=sys.stderr)
+        return 2
+    if len(query) > MAX_QUERY:
+        print(
+            f"manuscript-guard: a query of {len(query)} characters is not sent: write the "
+            f"topic in at most {MAX_QUERY}, not a passage of the manuscript",
+            file=sys.stderr,
+        )
+        return 2
+    filters = _search_filters(args)
+    if isinstance(filters, str):
+        print(f"manuscript-guard: {filters}", file=sys.stderr)
+        return 2
+    project = None
+    try:
+        find_root(args.root or Path.cwd())
+    except ContractError:
+        if args.root is not None:
+            raise
+    else:
+        project, _ = load_project(args.root or Path.cwd())
+    credentials = Credentials.from_environment(project)
+    if args.dry_run:
+        for name, request in proposals.planned(query, filters, credentials, proposals.Services()):
+            print(f"{proposals.NAMES[name]}: would ask {request.shown}")
+        print("then PubMed for what each PMID it finds is, OpenAlex about the works it did not "
+              "return, and Crossref about each preprint; nothing was sent")  # fmt: skip
+        return 0
+    result = proposals.run(query, filters, sort=args.sort, credentials=credentials)
+    said = (json.dumps(proposals.as_json(result), indent=2, ensure_ascii=False)
+            if args.json else proposals.render(result))  # fmt: skip
+    if any(secret in said for secret in credentials.secrets):
+        raise RuntimeError("the search's answer would have printed a key or the contact address")
+    print(said)
+    return 0 if proposals.answered(result) else 1
 
 
 def cmd_style(args: argparse.Namespace) -> int:
@@ -3653,9 +3770,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="check that an edit changed the wording and nothing else",
         description="Compares the manuscript with what it was and holds every binding, "
         "citation key and typed number to its place. One that is gone, new or changed "
-        "fails; the same ones in another order pass with a warning for each place. Run it "
-        "after a language edit, by a person, a service or a model, and before committing "
-        "it: the text before is the last commit's unless another is named.",
+        "fails; the same ones in another order pass with a warning for each place. A "
+        "sentence the edit made claim more, less or the opposite, by a hedge, a limit, a "
+        "negation or a word of the claim-strength ladder that came or went, passes with a "
+        "warning. Run it after a language edit, by a person, a service or a model, and "
+        "before committing it: the text before is the last commit's unless another is named.",
     )
     reworded.add_argument(
         "paths",
@@ -3716,6 +3835,25 @@ def build_parser() -> argparse.ArgumentParser:
     syncbib.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     syncbib.set_defaults(func=cmd_sync_bib)
 
+    syncsources = sub.add_parser(
+        "sync-sources",
+        help="copy each cited work's PDF or saved page from Zotero, or from a folder of PDFs "
+        "named by DOI",
+    )
+    syncsources.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    syncsources.add_argument(
+        "--dry-run", action="store_true", help="say what would be copied, and copy nothing"
+    )
+    syncsources.add_argument(
+        "--from",
+        dest="source",
+        type=Path,
+        metavar="FOLDER",
+        help="take each PDF of a folder named by DOI, as auto-paper-harvester saves them, "
+        "instead of asking Zotero",
+    )
+    syncsources.set_defaults(func=cmd_sync_sources)
+
     lookup = sub.add_parser(
         "lookup", help="look up each cited DOI and PMID, and keep what the registries said"
     )
@@ -3732,6 +3870,40 @@ def build_parser() -> argparse.ArgumentParser:
         help="ask the NLM Catalog and DOAJ about each journal of journals/shortlist.yaml instead",
     )
     lookup.set_defaults(func=cmd_lookup)
+
+    search = sub.add_parser(
+        "search",
+        help="ask PubMed, Europe PMC and OpenAlex for works a claim could cite; it proposes, "
+        "and writes nothing",
+    )
+    search.add_argument("query", help="the topic, in a few words; it is sent as written")
+    search.add_argument("--since", type=int, metavar="YEAR", help="works published from YEAR")
+    search.add_argument(
+        "--type",
+        action="append",
+        metavar="TYPE",
+        help="review, systematic-review, meta-analysis, guideline, rct, cohort or preprint; "
+        "several are joined by OR (repeat, or separate with commas)",
+    )
+    search.add_argument("--language", metavar="CODE", help="in two letters, e.g. en")
+    search.add_argument("--limit", type=int, default=10, help="how many to show (default 10)")
+    search.add_argument(
+        "--sort",
+        choices=("relevance", "newest", "cited"),
+        default="relevance",
+        help="the order: the registries' relevance (default), year, or citation count",
+    )
+    search.add_argument("--json", action="store_true", help="the candidates as JSON")
+    search.add_argument(
+        "--dry-run", action="store_true", help="say what would be asked, and send nothing"
+    )
+    search.add_argument(
+        "--root",
+        type=Path,
+        help="the paper project whose `lookup.contact` is sent; by default the one this "
+        "folder is in, if any",
+    )
+    search.set_defaults(func=cmd_search)
 
     style = sub.add_parser(
         "style",

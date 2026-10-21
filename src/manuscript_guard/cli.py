@@ -2012,7 +2012,12 @@ def _explained_refs(project, text: str) -> list[tuple[int, str, str, str, bool]]
     from manuscript_guard.crossref import Refused
     from manuscript_guard.gates.pointers import display_numbers
 
-    numbers = display_numbers(project)
+    try:
+        numbers = display_numbers(project)
+    except Unreadable:
+        # Another file of the manuscript cannot be read, so nothing can be counted; `check`
+        # names it. This file's numbers are still explained.
+        return []
     rows = []
     for placeholder in parse(text)[0]:
         if not placeholder.is_ref:

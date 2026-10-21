@@ -414,9 +414,14 @@ def gather(project: Project) -> Material:
         sent.append(Sent(label))
 
     parts.append("# The manuscript")
+    from manuscript_guard.contracts._schema import Unreadable
     from manuscript_guard.gates.pointers import display_numbers
 
-    numbers = display_numbers(project)
+    try:
+        numbers = display_numbers(project)
+    except Unreadable:
+        # A file that is not UTF-8 is refused below, by its name, as it was before refs.
+        numbers = None
     whole = hashlib.sha256()
     digests: dict[str, str] = {}
     blocks: dict[Path, tuple[str, str]] = {}

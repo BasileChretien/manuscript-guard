@@ -16,7 +16,7 @@ mg_quality_datetime <- paste0(
   "^([0-9]{4})-([0-9]{2})-([0-9]{2})[T ]([0-9]{2}):([0-9]{2})",
   "(?::([0-9]{2})(?:[.][0-9]+)?)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?$"
 )
-mg_quality_time <- "^([0-9]{2}):([0-9]{2})(?::([0-9]{2}))?$"
+mg_quality_time <- "^([0-9]{2}):([0-9]{2})(?::([0-9]{2})(?:[.][0-9]+)?)?$"
 
 # A variable's name as a result key holds it: in lower case, a dot an underscore.
 mg_slug <- function(name) gsub("[^a-z0-9_]", "_", tolower(name))
@@ -198,6 +198,11 @@ mg_bound <- function(entry, which) {
   } else {
     NA
   }
+  if (is.na(read) && kind == "datetime") {
+    # A bound written as a date is its midnight, as the loader reads it (round 1 of #389).
+    day <- mg_date_of(as.character(given))
+    if (!is.na(day)) read <- mg_sortable(paste0(day, "T00:00:00"))
+  }
   if (is.na(read)) {
     stop("data dictionary: ", entry$name, "'s range ", which, " ", given, " is not a ", kind,
          " value", call. = FALSE)
@@ -213,7 +218,8 @@ mg_applies <- function(entry, data, entries) {
   other <- condition$variable
   if (!(other %in% names(data))) {
     stop("check_data: ", entry$name, " applies only where ", other, " holds one of its ",
-         "codes, and the table has no column ", other, call. = FALSE)
+         "codes, and the table has no column ", other, ": add it to the table, from the ",
+         "one that holds it, before checking", call. = FALSE)
   }
   values <- data[[other]]
   unknown <- if (is.null(entries[[other]])) character() else mg_missing_codes(entries[[other]])
@@ -354,6 +360,16 @@ mg_refuse_clashes <- function(dictionary) {
   invisible(NULL)
 }
 
+# The words YAML 1.1 reads as true or false, as PyYAML (the loader `check` reads with) reads
+# them. The yaml package reads y, Y, n and N as true and false too; PyYAML keeps them as
+# text, so a code Y was "Y" to the Python emitter and "true" to this one (round 1 of #389).
+mg_yaml_truths <- c("yes", "Yes", "YES", "true", "True", "TRUE", "on", "On", "ON")
+mg_yaml_falsehoods <- c("no", "No", "NO", "false", "False", "FALSE", "off", "Off", "OFF")
+
+mg_yaml_truth <- function(text) {
+  if (text %in% mg_yaml_truths) TRUE else if (text %in% mg_yaml_falsehoods) FALSE else text
+}
+
 mg_read_dictionary <- function(path) {
   if (!requireNamespace("yaml", quietly = TRUE)) {
     stop("check_data reads the data dictionary with the yaml package: ",
@@ -363,7 +379,10 @@ mg_read_dictionary <- function(path) {
     stop("check_data: no data dictionary at ", path, "; write one first (the analysis-plan ",
          "skill has the outline)", call. = FALSE)
   }
-  dictionary <- yaml::read_yaml(path, fileEncoding = "UTF-8")
+  dictionary <- yaml::read_yaml(
+    path, fileEncoding = "UTF-8",
+    handlers = list("bool#yes" = mg_yaml_truth, "bool#no" = mg_yaml_truth)
+  )
   if (!identical(dictionary$schema, "manuscript-guard/data-dictionary/1") ||
       !is.list(dictionary$variables)) {
     stop("check_data: ", basename(path), " is not a data dictionary: it names the schema ",

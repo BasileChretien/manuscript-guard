@@ -72,7 +72,7 @@ _DATETIME = re.compile(
     r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?",
     re.ASCII,
 )
-_TIME = re.compile(r"(\d{2}):(\d{2})(?::(\d{2}))?", re.ASCII)
+_TIME = re.compile(r"(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?", re.ASCII)
 
 
 @dataclass(frozen=True)
@@ -207,12 +207,16 @@ _READ = {"date": date_of, "datetime": datetime_of, "time": time_of}
 
 
 def _bound(variable: Variable, which: str) -> object:
-    """A variable's range bound, read as its values are; refused where it cannot be."""
+    """A variable's range bound, read as its values are; refused where it cannot be. A
+    date and time bound written as a date is its midnight, as the loader reads it (round 1
+    of #389)."""
     given = variable.minimum if which == "min" else variable.maximum
     if given is None:
         return None
     kind = variable.type
     read = number_of(given) if kind in NUMERIC else _READ[kind](given) if kind in _READ else None
+    if read is None and kind == "datetime" and date_of(given) is not None:
+        read = f"{date_of(given)}T00:00:00"
     if read is None:
         raise ValueError(
             f"data dictionary: {variable.name}'s range {which} {given!r} is not a {kind} value"
@@ -317,7 +321,8 @@ def _applies(variable: Variable, table: Table, dictionary: Dictionary) -> list |
     if other not in table.names:
         raise ValueError(
             f"check_data: {variable.name} applies only where {other} holds one of "
-            f"{', '.join(condition.codes)}, and the table has no column {other}"
+            f"{', '.join(condition.codes)}, and the table has no column {other}: add it to "
+            "the table, from the one that holds it, before checking"
         )
     codes = frozenset(condition.codes)
     unknown = missing_codes(dictionary.variable(other))

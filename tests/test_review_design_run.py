@@ -153,6 +153,36 @@ def test_a_design_round_is_sent_the_data_checks_and_reads_them(planned: Path, ca
     assert "12 reports give no age." in text
 
 
+def _stale(root: Path) -> list[str]:
+    report = check_design_rounds(load_project(root)[0])
+    return [f.code for f in report.findings if f.code == "design-review-stale"]
+
+
+def test_counts_the_analysis_makes_later_leave_a_design_reading_current(
+    planned: Path, providers: Providers, capsys
+) -> None:
+    """Round 1 of #389: the analysis checks its data after the design round, and the plan
+    has not changed. The counts are none the round read, so its readings stay current."""
+    assert design_run(planned, "--yes") == 0
+    capsys.readouterr()
+    assert _stale(planned) == []
+    _feasibility_said(planned, "analysis", quality__rows=4000, quality__age__missing=12)
+    assert _stale(planned) == []
+
+
+def test_a_design_reading_of_counts_is_stale_once_they_change(
+    planned: Path, providers: Providers, capsys
+) -> None:
+    """A round that read the counts of the data checks is held to them: counted again, the
+    data are another plan to read."""
+    _feasibility_said(planned, "design", quality__rows=4000)
+    assert design_run(planned, "--yes") == 0
+    capsys.readouterr()
+    assert _stale(planned) == []
+    _feasibility_said(planned, "design", quality__rows=4001)
+    assert _stale(planned) and set(_stale(planned)) == {"design-review-stale"}
+
+
 def test_the_design_instructions_name_no_manuscript() -> None:
     """Round 1 of #316: three places still pointed the reader at a manuscript it is not
     sent."""

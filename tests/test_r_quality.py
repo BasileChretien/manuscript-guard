@@ -110,6 +110,8 @@ TEXTS = [
     "8:00",
     "24:00",
     "12:30:60",
+    "08:00:00.5",
+    "08:00.5",
     "R01",
     "\N{ARABIC-INDIC DIGIT ONE}",
     "\N{NO-BREAK SPACE}",
@@ -341,6 +343,59 @@ em$write()
         }
     assert written["in_r"] == written["in_python"]
     assert written["in_r"]["quality.age.out_of_range"] == (1, "<5", False)
+
+
+#: A dictionary whose codes are the letters a database writes for yes and no, unquoted, as
+#: an author writes them: PyYAML reads Y and N as text, and R's yaml package as true and
+#: false (round 1 of #389).
+_LETTERS = """\
+schema: manuscript-guard/data-dictionary/1
+variables:
+  - name: serious
+    label: Serious
+    definition: The report was classed as serious.
+    type: binary
+    values:
+      - {code: Y, label: "Yes"}
+      - {code: N, label: "No"}
+  - name: fatal
+    label: Fatal
+    definition: The outcome was death.
+    type: binary
+    values:
+      - {code: y, label: "Yes"}
+      - {code: n, label: "No"}
+    applies_if: {variable: serious, in: [Y]}
+"""
+
+
+def test_codes_yaml_reads_as_truth_values_in_r_are_read_as_python_reads_them(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "paper"
+    (root / "design").mkdir(parents=True)
+    (root / "design" / "data_dictionary.yaml").write_text(_LETTERS, encoding="utf-8")
+    table = {"serious": ["Y", "N", "Y", "x"], "fatal": ["n", "y", "", "y"]}
+    dictionary = quality.read_dictionary(root)
+    _rows, counts = quality.check(dictionary, table)
+    in_python = {count.key: list(count.rows) for count in counts}
+    given = tmp_path / "table.json"
+    given.write_text(json.dumps(table), encoding="utf-8")
+    body = f"""
+dictionary <- mg_read_dictionary("{(root / "design" / "data_dictionary.yaml").as_posix()}")
+table <- jsonlite::fromJSON("{given.as_posix()}")
+checked <- mg_check_table(dictionary, table)
+cat(jsonlite::toJSON(lapply(checked$found, function(flags) I(which(flags) - 1L))))
+"""
+    in_r = json.loads(run_r(tmp_path, body))
+    assert in_python == {
+        "serious.missing": [],
+        "serious.not_allowed": [3],
+        "fatal.missing": [2],
+        "fatal.not_allowed": [],
+        "fatal.not_applicable": [1, 3],
+    }
+    assert in_r == in_python
 
 
 def test_r_refuses_what_python_refuses(tmp_path: Path) -> None:

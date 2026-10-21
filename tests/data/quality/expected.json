@@ -28,6 +28,7 @@
     "onset.outside_period": [9],
     "received.missing": [],
     "received.wrong_type": [4],
+    "received.out_of_range": [0, 3, 5, 11, 12],
     "dose_time.missing": [9],
     "dose_time.wrong_type": [4, 11],
     "outcome_text.missing": [1],

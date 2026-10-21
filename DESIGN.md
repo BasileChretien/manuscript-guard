@@ -4015,7 +4015,9 @@ variable's `missing` codes), what a number is (a number, or a text in decimal no
 what a date is (a day of the calendar written `YYYY-MM-DD`, or a date), how a value is
 written as text to be compared with a code (a whole number as its digits, any other to
 fifteen significant digits, a truth value as "true" or "false"): each is written once, in
-`quality.py`, and the R emitter's `quality.R` follows it. `tests/data/quality` holds a
+`quality.py`, and the R emitter's `quality.R` follows it. R reads the dictionary as the
+loader does, too: the yaml package reads a plain `Y` or `n` as a truth value, where PyYAML
+keeps the letter, and is told to keep it (round 1 of #389). `tests/data/quality` holds a
 dictionary, a table that breaks every check at least once and the rows each count must
 find, and both emitters are held to it, reading the table as text and as their own reader
 types it; each way of reading a value is compared between the two languages text by text.
@@ -4041,7 +4043,10 @@ not read is G12's `dictionary-invalid`, and G16 says nothing of it.
 dictionary counts each planned variable's missing values and the duplicates, which is what
 the feasibility script counts. A result under `quality.` quiets `feasibility-not-run` as
 one under `feasibility.` does, and a design round reads and is sent both: the digest of
-what it read covers them, and the request lists them under their own heading.
+what it read covers them, and the request lists them under their own heading. A reading
+made before any data was checked stays current when the analysis checks its data later,
+since it read none of those counts: it is compared with the plan's digest with them and
+without them (round 1 of #389: each such reading was said to be of a changed plan).
 
 ## Stages: not every gate binds on day one
 
@@ -12082,6 +12087,19 @@ Open, recorded as each change landed:
 - **A table is checked once in a project.** A key has one owner, so the same table checked
   before and after cleaning, by one script or two, is `duplicate-key`. Check the table as
   read; what was dropped after is the script's to count.
+- **An identifier read as a number is read as one.** A whole number held as a double is
+  written to fifteen significant digits from 2 to the 53rd, so two identifiers of sixteen
+  digits or more that `read.csv`, or pandas with one blank in the column, reads as doubles
+  can be one key, and a pattern of digits fails them; pandas' int64 keeps their digits, and
+  the two languages then count otherwise. Read an identifier as text.
+- **The readers the script uses decide what the data hold before `check_data` sees them.**
+  pandas reads "NULL", "N/A" and "None" as missing by default, and `read.csv` reads a column
+  holding only "T" and "F" as truth values, so one CSV read by each gives each language other
+  counts. Read the columns the dictionary codes as text (`dtype=str`,
+  `colClasses = "character"`) where the two must agree.
+- **A condition on a variable of another table needs its column.** `applies_if` may name a
+  variable of another dataset, which the loader accepts; `check_data` then refuses the table
+  until the column is added to it from the table that holds it.
 - **A computed rule counts what the script says.** Nothing holds the rows the script hands
   over to what the rule `says`.
 - **One count bound satisfies `quality-not-reported`.** Whether the Methods say what was

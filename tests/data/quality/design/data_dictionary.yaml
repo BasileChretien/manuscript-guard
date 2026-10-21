@@ -67,6 +67,7 @@ variables:
     label: Received
     definition: When the report was received, to the minute.
     type: datetime
+    range: {min: "2016-02-04"}
   - name: dose_time
     label: Time of the dose
     definition: The time of day of the last dose before the reaction.

@@ -5013,11 +5013,11 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
+    "check_statement_sources",
     "check_numbers", "check_bound_units", "check_small_cells", "check_citations",
     "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
     "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
     "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
-    "check_statement_sources",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",

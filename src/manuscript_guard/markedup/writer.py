@@ -644,14 +644,23 @@ def _segments(
     for cut in cuts:
         was = old[next(i for i, end in enumerate(old_ends) if end >= cut)][0]
         now = new[next(i for i, end in enumerate(new_ends) if end >= cut)][0]
-        # Merged only where the old runs' properties are the same, all of them: the part's
-        # old properties are the first run's, and Reject All gives them back (round 4).
-        if out and out[-1][1] is now and _properties(out[-1][2]) == _properties(was):
+        # Merged only where the old runs look alike in one language: the part's old
+        # properties are the first run's, and Reject All gives them back (round 4).
+        if out and out[-1][1] is now and _given_back(out[-1][2]) == _given_back(was):
             out[-1] = (out[-1][0] + text[start:cut], now, out[-1][2])
         else:
             out.append((text[start:cut], now, was))
         start = cut
     return out
+
+
+def _given_back(run: ET.Element) -> tuple:
+    """What a reformatted word's old run gives back at Reject All that two runs may not
+    share: how it looks, and its language. Not the order of its properties, an empty
+    `w:rPr`, Word's proofing mark or its script hint, which made one word two Formatted
+    marks (the last round of #396)."""
+    language = run.find(f"{W}rPr/{W}lang")
+    return look(run), () if language is None else tuple(sorted(language.attrib.items()))
 
 
 class _Emitter:

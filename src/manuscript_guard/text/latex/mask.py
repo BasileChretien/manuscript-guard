@@ -26,6 +26,7 @@ from manuscript_guard.text.latex.commands import (
     ENVIRONMENTS,
     LISTINGS,
     MATHS,
+    PARAMETERS,
     RAW,
     REFUSED,
     REFUSED_ENVIRONMENTS,
@@ -149,15 +150,19 @@ _BRACED_PATH = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\{([^{}\n]*)\}")
 _REDEFINABLE = frozenset({"abstract"})
 _PACKAGES = re.compile(r"\s*(?:\[[^\]]{0,300}\])?\s*\{([^{}]{0,300})\}")
 _NAMESPACE = "(?:" + "|".join(NAMESPACES) + r")\."
-#: What follows a `\\mg`: its options, and its braces with what they hold, on its line.
-_BINDING = re.compile(r"[ \t]*(?:\[[^\]\n]*\])?[ \t]*\{(?P<inner>[^{}\n]*)\}")
+#: What TeX passes over before an argument: spaces, and one line break (round 1 of #400).
+_GAP = r"[ \t]*(?:\r?\n[ \t]*)?"
+#: What follows a `\\mg`: its options, and its braces with what they hold, on one line.
+_BINDING = re.compile(_GAP + r"(?:\[[^\]\n]*\])?" + _GAP + r"\{(?P<inner>[^{}\n]*)\}")
 #: What makes a command, or a Markdown binding, look meant for one.
-_LOOKS_BOUND = re.compile(r"[ \t]*(?:\[[^\]\n]*\])?[ \t]*\{[ \t]*" + _NAMESPACE)
+_LOOKS_BOUND = re.compile(_GAP + r"(?:\[[^\]\n]*\])?" + _GAP + r"\{[ \t]*" + _NAMESPACE)
 _MARKDOWN_BINDING = re.compile(r"\{\{[ \t]*" + _NAMESPACE)
 _KEYED = re.compile(r"[ \t]*" + _NAMESPACE)
 #: The word after a `\\mg` that no braces follow, shown with it: `\\mg results.x`.
 _BARE = re.compile(r"[ \t]*[^\s{}\\%]*")
-_MG_USE = re.compile(r"\\mg(?![A-Za-z@])")
+#: A `\\mg` that names a key, which a listing or a `\\verb` prints as typed. One that names
+#: none documents the command and is left alone (round 1 of #400).
+_MG_USE = re.compile(r"\\mg(?![A-Za-z@])" + _LOOKS_BOUND.pattern)
 _LISTING_OPTIONS = re.compile(r"[ \t]*\[([^\]\n]*)\]")
 _LANGUAGE = re.compile(r"language\s*=\s*\{?\s*(?:\[[^\]]*\])?\s*([A-Za-z][A-Za-z0-9+#]*)")
 _BOUND_IN_SIUNITX = ("a binding in a siunitx command is not read: siunitx parses its number, "
@@ -309,6 +314,8 @@ class _Reader:
         self.tables: list[tuple[int, int]] = []
         self.listings: list[Listing] = []
         self.siunitx = 0
+        #: The command a definition being read defines, until its body opens.
+        self.defining = ""
         self.heading_at = -1
         for name in environments:
             role = MATHS_READ if name in MATHS else self._role()
@@ -446,7 +453,9 @@ class _Reader:
         if role == BLANK or spec in "bc":
             chosen = BLANK
         elif spec == "d":
-            chosen = PROSE
+            # A body prints where it is used, but a LaTeX parameter's is a size.
+            chosen = BLANK if self.defining in PARAMETERS else PROSE
+            self.defining = ""
         elif role == PREAMBLE:
             chosen = PROSE if self._printed_from_preamble(self.command) else PREAMBLE
         else:
@@ -460,6 +469,10 @@ class _Reader:
             frame.origin = self.heading_at
         self.definitions += frame.definition
         self.stack.append(frame)
+        # A Markdown binding as a command's argument, `\\emph{{results.x}}` (round 1 of #400:
+        # only one opening a group of its own was seen).
+        if closer == "}" and _MARKDOWN_BINDING.match(self.text, at):
+            self.suspects.append((at, self._suspect_end(at)))
         self._blank(at, at + 1)
         self.pos = at + 1
         self.pending = ()
@@ -772,6 +785,7 @@ class _Reader:
         self._blank(start, name_end)
         self.pos = name_end
         if name == "let":
+            self.defining = ""
             return
         parameters = _PARAMETERS.match(self.text, name_end).end()
         if self.text[parameters : parameters + 1] != "{":
@@ -790,6 +804,7 @@ class _Reader:
         return name in PRINTED_IN_PREAMBLE and all(f.kind == "group" for f in self.stack)
 
     def _defines(self, name: str, at: int) -> None:
+        self.defining = name
         if name in _REDEFINABLE:
             return
         if name in COMMANDS or name in ("begin", "end", "verb", "def"):

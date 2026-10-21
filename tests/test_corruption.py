@@ -5217,6 +5217,9 @@ def test_every_binding_of_the_twin_when_inlined_is_caught(project: Path) -> None
         ("\\newcommand{\\cases}{4123 cases}", "unclassified-number"),
         ("The difference was significant ($p<0.05$, n = 4123).", "unclassified-number"),
         ("Grade 3 events numbered 4123.", "unclassified-number"),
+        # The units package's `\unit[value]{unit}` (round 1 of #400: blanked as siunitx's).
+        ("A dose of \\unit[4123]{mg} was given.", "unclassified-number"),
+        ("In brackets, \\qty[4123 days].", "unclassified-number"),
     ],
 )
 def test_a_number_typed_into_the_twin_fails_g2_where_it_stands(
@@ -5290,6 +5293,20 @@ def test_a_binding_the_twin_would_print_as_typed_is_refused_where_it_stands(
 def test_siunitx_s_milligram_in_the_twin_is_no_binding(project: Path) -> None:
     entry = _twin(project)
     _into_results(entry, "A dose of \\qty{5}{\\mg} was given.")
+    assert _twin_failures(project) == [], gate_report(project).render(project)
+
+
+def test_layout_in_the_twin_is_no_number_g2_reads(project: Path) -> None:
+    """A LaTeX parameter defined again, a font's size, columns and a table's spacing print no
+    number (round 1 of #400: each failed G2 once G2 read LaTeX)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\begin{document}", "\\renewcommand{\\arraystretch}{1.5}\n"
+                                  "\\renewcommand{\\baselinestretch}{1.15}\n\\begin{document}",
+                                  1), encoding="utf-8")  # fmt: skip
+    _into_results(entry, "{\\fontsize{9}{11}\\selectfont Small.}\n\\begin{multicols}{2}\nTwo."
+                  "\n\\end{multicols}\n\\begin{tabular}{l}\\toprule a \\\\ \\addlinespace[2pt] b"
+                  " \\\\ \\end{tabular}")  # fmt: skip
     assert _twin_failures(project) == [], gate_report(project).render(project)
 
 

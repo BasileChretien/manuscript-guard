@@ -1231,8 +1231,9 @@ The result is compiled and packed by the code above, and checked three times:
   runs it against the example's analysis, results, figures and fictional citekeys. A test holds
   the twin and the example to the same bindings and headings, and to equal G2 counts, so the
   twin has no `\thanks`; the citations join the comparison when the citation reader does.
-- **Corruption cases.** Each manuscript case in `tests/test_corruption.py` runs on the twin too,
-  with each `\mg` replaced by its value. Further cases:
+- **Corruption cases.** Each manuscript case in `tests/test_corruption.py` is to run on the twin
+  too, with each `\mg` replaced by its value. G2's run on it from step 4, and each gate's join
+  it as the gate moves; until then a gate's Markdown cases stand for it. Further cases:
   - a key mistyped, and a binding cut short;
   - a number in a `tabular`, a `\footnote`, a caption, a postnote, a `\newcommand` body and an
     input file;
@@ -1339,7 +1340,12 @@ The result is compiled and packed by the code above, and checked three times:
   and `\mg{results.key}` there is refused. The values file of the second half of step 4 must
   define `\mg` so that siunitx's stays its own inside its commands.
 - A `verbatim` names no language, so its numbers are said once to be unread, as an untagged
-  fenced block's are; an `lstlisting`'s `language=` is read.
+  fenced block's are, with the fenced block's hint. An `lstlisting`'s `language=` is read
+  where its options stand on the `\begin` line and hold no bracket: options run over lines,
+  a dialect, `language=[Sharp]C`, and `\lstset{language=R}` leave the language unread.
+- A command not in the table has its arguments read, by design, so layout the table lacks,
+  `\titlespacing` in the body, or a primitive with a size and no braces, `\vskip 6pt`, gives
+  an unclassified number now that G2 reads LaTeX. Each found goes into the table.
 - Past a refusal a file's bindings are found by their shape, in a comment too, so that a
   result quoted there is not said to be quoted nowhere.
 - A class or package that changes how a character is read, beyond those refused, is not seen.
@@ -1399,7 +1405,12 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    `\mg` in one is siunitx's milligram, and a binding there is refused, as is one in a
    listing or a `\verb`. Tests: the twin, `tests/test_latex_twin.py`, which binds the
    example's keys under the same headings and gets G2's counts and findings; G2's corruption
-   cases on it; `latex bindings`; `latex_bound()` with four `BROKEN` rules. `uncommented` waits
+   cases on it; `latex bindings`; `latex_bound()` with eight `BROKEN` rules. Round 1 found a
+   layout parameter defined again, `\renewcommand{\arraystretch}{1.5}`, a font's size and
+   columns failing G2 once it read LaTeX: the parameters' bodies are blanked (`PARAMETERS`),
+   and `\fontsize`, `multicols` and booktabs' `\addlinespace` are in the table. `\qty` and
+   `\unit` read what their brackets hold, since physics and the units package give those
+   names other meanings. `uncommented` waits
    for G7's quotations and G9, which read it. The second: `mgvalues.sty` and its escape table,
    `values` and its README row, `values-file-stale` and `values-file-missing`. The escape
    table's compile test needs LaTeX, so it skips on CI until step 9 installs TeX Live, and its

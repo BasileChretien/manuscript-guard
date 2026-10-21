@@ -457,16 +457,21 @@ def _listings(path: Path, source, classifier: Classifier) -> Report:
     from manuscript_guard.gates.figure_source import judge_code_numbers
 
     report = Report()
+    # The line breaks before each listing are counted on from the last, the listings being in
+    # the order they stand (round 1 of #400: each was counted from the top, twice).
+    counted, breaks = 0, 0
     for listing in source.reading.listings:
+        breaks += source.text.count("\n", counted, listing.start)
+        counted = listing.start
         report = report.merge(
             judge_code_numbers(
                 source.text[listing.start : listing.end],
                 listing.language,
                 path=path,
-                line_offset=source.text.count("\n", 0, listing.start),
+                line_offset=breaks,
                 gate=GATE,
                 classifier=classifier,
-                what=f"listing at line {source.text.count(chr(10), 0, listing.start) + 1}",
+                what=f"listing at line {breaks + 1}",
                 section=latex_views.chain(source, listing.start),
             )
         )

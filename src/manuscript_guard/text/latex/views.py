@@ -78,10 +78,14 @@ def bindings(source: Source) -> tuple[list[Placeholder], list[tuple[str, int, in
 def _uses(source: Source) -> list[tuple[int, int, str | None]]:
     """Each `\\mg` the reader read, and past a refusal each found by its shape."""
     reading = source.reading
-    uses = [(use.start, use.end, use.inner) for use in reading.bindings]
-    if reading.refusals:
-        uses += _by_shape(source.text, reading.refusals[0].offset)
-    return uses
+    if not reading.refusals:
+        return [(use.start, use.end, use.inner) for use in reading.bindings]
+    # A refusal may stand before what the scan read, as an environment left open does at
+    # its `\\begin`: only what the scan read before it is kept, and the rest is found by its
+    # shape once (round 1 of #400: a binding after it was counted twice).
+    refused = reading.refusals[0].offset
+    kept = [(use.start, use.end, use.inner) for use in reading.bindings if use.start < refused]
+    return kept + _by_shape(source.text, refused)
 
 
 def _by_shape(text: str, after: int) -> list[tuple[int, int, str | None]]:
@@ -100,9 +104,14 @@ def markdown_view(source: Source, placeholders: list[Placeholder], blank: str = 
     they read (`classify._printed`), and a binding is `{{namespace.key}}` padded inside its
     braces."""
     out = list(source.reading.masked.replace(NUL, blank))
+    text = source.text
     for placeholder in placeholders:
         width = placeholder.end - placeholder.start
-        written = "{{" + " " * (width - len(placeholder.ref) - 4) + placeholder.ref + "}}"
+        written = list("{{" + " " * (width - len(placeholder.ref) - 4) + placeholder.ref + "}}")
+        # A line break between `\\mg` and its brace stays where it is, in the padding.
+        for index in range(width):
+            if text[placeholder.start + index] in "\r\n":
+                written[index] = text[placeholder.start + index]
         out[placeholder.start : placeholder.end] = written
     return "".join(out)
 

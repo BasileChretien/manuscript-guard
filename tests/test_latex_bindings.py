@@ -42,6 +42,23 @@ def test_what_looks_meant_for_a_binding_is_malformed(typed: str) -> None:
     assert good == [] and [raw for raw, _at, _line in malformed] == [typed]
 
 
+def test_round_1_of_400_a_markdown_binding_as_an_argument_and_a_brace_on_the_next_line() -> None:
+    text = DOC + "Of \\emph{{results.n}} and \\mg\n  {results.m} reports.\n" + END
+    good, malformed = bindings(_source(text))
+    assert [p.ref for p in good] == ["results.m"]
+    assert [raw for raw, _at, _line in malformed] == ["{{results.n}}"]
+    assert read(DOC + "The command \\verb|\\mg| binds.\n" + END).refusals == ()
+
+
+def test_a_binding_after_a_refusal_raised_behind_it_is_counted_once() -> None:
+    """Round 1 of #400: an environment left open is refused at its `\\begin`, behind the
+    bindings the scan had read, which were counted again by their shape."""
+    text = DOC + "\\begin{figure}\nOf \\mg{results.n} reports.\n"
+    source = _source(text)
+    assert source.reading.refusals
+    assert [p.ref for p in bindings(source)[0]] == ["results.n"]
+
+
 def test_a_command_near_mg_with_no_key_after_it_is_left_alone() -> None:
     assert _near_binding("Mg") and _near_binding("m") and _near_binding("mgx")
     assert not _near_binding("mg") and not _near_binding("emph") and not _near_binding("xy")

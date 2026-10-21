@@ -91,6 +91,11 @@ COMMANDS = _specs(
         **dict.fromkeys(("setlength", "addtolength", "setcounter", "addtocounter",
                          "numberwithin"), "{b}{b}"),
         **dict.fromkeys(("vspace", "hspace"), "*{b}"),
+        # Layout that takes a size: its numbers are no claims (round 1 of #400, now that G2
+        # reads them).
+        "fontsize": "{b}{b}",
+        "addlinespace": "[b]",
+        **dict.fromkeys(("setstretch", "enlargethispage"), "*{b}"),
         "captionsetup": "[b]{b}",
         "color": "[b]{b}",
         "cmidrule": "[b](b){b}",
@@ -100,14 +105,18 @@ COMMANDS = _specs(
         "mg": "[b]{b}",
         # siunitx: its number read as prose, its options and units blanked. A binding in one
         # is refused, since siunitx parses what it holds, and `\\mg` in one is the milligram
-        # siunitx defines there (`mask.py`).
+        # siunitx defines there (`mask.py`). `\\qty` and `\\unit` are other packages' too,
+        # physics' brackets and units' `\\unit[250]{mg}`, so what their brackets hold is read
+        # (round 1 of #400: it was blanked, and 250 passed).
         **dict.fromkeys(("num", "numlist", "numproduct", "ang", "tablenum", "complexnum"),
                         "[b]{p}"),
         "numrange": "[b]{p}{p}",
-        **dict.fromkeys(("qty", "SI"), "[b]{p}[b]{b}"),
+        "SI": "[b]{p}[b]{b}",
+        "qty": "[p]{p}[b]{b}",
         **dict.fromkeys(("qtylist", "SIlist", "qtyproduct", "complexqty"), "[b]{p}{b}"),
         **dict.fromkeys(("qtyrange", "SIrange"), "[b]{p}{p}{b}"),
-        **dict.fromkeys(("unit", "si"), "[b]{b}"),
+        "si": "[b]{b}",
+        "unit": "[p]{b}",
         # Citations: the notes are read, the keys are not.
         **dict.fromkeys(
             ("cite", "citep", "citet", "citealt", "citealp", "citeauthor", "citeyear",
@@ -141,6 +150,7 @@ ENVIRONMENTS = _specs(
         **dict.fromkeys(("figure", "figure*", "table", "table*", "tablenotes", "enumerate"),
                         "[b]"),
         "minipage": "[b][b][b]{b}",
+        **dict.fromkeys(("multicols", "multicols*"), "{b}[p][b]"),
         "wrapfigure": "[b]{b}[b]{b}",
         "subfigure": "[b]{b}",
         "thebibliography": "{b}",
@@ -187,6 +197,13 @@ LISTINGS = RAW - {"comment"}
 #: Tables an author types: a number in one is `hand-authored-table`, as one in a Markdown
 #: table's row is. Maths' alignments separate cells too, and are no tables.
 TYPED_TABLES = frozenset({"tabular", "tabular*", "tabularx", "tabulary", "longtable"})
+
+#: LaTeX's own parameters an author sets by defining them again, whose body is a size and
+#: prints nothing: `\\renewcommand{\\arraystretch}{1.5}` (round 1 of #400: its 1.5 failed G2).
+PARAMETERS = frozenset(
+    {"arraystretch", "baselinestretch", "topfraction", "bottomfraction", "textfraction",
+     "floatpagefraction", "dbltopfraction", "dblfloatpagefraction"}
+)  # fmt: skip
 
 #: siunitx's commands, in which `\\mg` is its milligram and a binding is refused.
 SIUNITX = frozenset(

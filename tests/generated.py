@@ -481,14 +481,19 @@ def latex_planted(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
 
 
 #: Where a binding stands in LaTeX, and what it is there: each `{}` holds the key's last part,
-#: and the kind says whether it is a binding, something meant for one and none, or nothing.
-#: A binding in a comment, an `\\iffalse` block or the `comment` environment is nothing, and
-#: so is the milligram siunitx defines as `\\mg`, which holds no key.
+#: and the kind says whether it is a binding, one in a typed table, something meant for one
+#: and none, a word in a listing, or nothing. A binding in a comment, an `\\iffalse` block or
+#: the `comment` environment is nothing, and so is the milligram siunitx defines as `\\mg`,
+#: and a `\\mg` that names no key in a `\\verb`.
 LATEX_BINDING_PLACES = (
     ("prose \\mg{{results.{}}} ", "bound"),
     ("\\footnote{{in \\mg{{results.{}}}}} ", "bound"),
     ("\\caption{{Of \\mg{{results.{}}}}} ", "bound"),
-    ("\\begin{{tabular}}{{l}}\\mg{{results.{}}} \\\\\\end{{tabular}}\n", "bound"),
+    ("\\begin{{tabular}}{{l}}\\mg{{results.{}}} \\\\\\end{{tabular}}\n", "table"),
+    ("\\mg\n  {{results.{}}} ", "bound"),
+    ("\\begin{{lstlisting}}[language=R]\nx <- {}\n\\end{{lstlisting}}\n", "listing"),
+    ("\\verb|\\mg| ", "none"),
+    ("\\emph{{{{results.{}}}}} ", "malformed"),
     ("$x = \\mg{{results.{}}}$ ", "bound"),
     ("\\newcommand{{\\nn}}{{\\mg{{results.{}}}}} ", "bound"),
     ("\\mg[width=3cm]{{figure.{}}} ", "bound"),

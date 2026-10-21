@@ -112,6 +112,10 @@ BINDS_AT = {
     "figure-source-hardcoded-data": DRAFTING,
     "figure-source-unclassified-number": DRAFTING,
     "figure-script-ignores-results": DRAFTING,
+    # Alternative text is read as prose is: a number in it is a result or a convention, and
+    # a binding in it prints a value.
+    "figure-alt-number": DRAFTING,
+    "figure-alt-binding": DRAFTING,
     # A quoted source has to be a real source as soon as it is quoted.
     "quote-not-in-source": DRAFTING,
     "value-not-in-quote": DRAFTING,
@@ -135,6 +139,10 @@ BINDS_AT = {
     "figure-review-check-failed": INTERNAL_REVIEW,
     "figure-review-concerns": INTERNAL_REVIEW,
     "figure-review-finding": INTERNAL_REVIEW,
+    # A figure with no alternative text is a note while drafting and a warning from internal
+    # review (`gates/figure_alt.py` reads the stage); it fails only at submission, and only
+    # where the journal's profile requires one.
+    "figure-alt-missing": SUBMISSION,
     "journal-profile-missing": INTERNAL_REVIEW,
     # How many rows a model lost to missing values is for the finished draft to say.
     "model-rows-dropped": INTERNAL_REVIEW,

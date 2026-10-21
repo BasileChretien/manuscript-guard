@@ -63,6 +63,8 @@ from generated import (
     latex_texts,
     lines,
     mean_tables,
+    painted_pdfs,
+    painted_svgs,
     pdf_figures,
     planned_plans,
     quotations,
@@ -4039,6 +4041,42 @@ def test_an_alternative_text_is_the_pictures_description_as_it_was_written(
     assert _descriptions_pandoc_reads(markdown) == folded
 
 
+# ------------------------------------------------------------------ the colours a figure paints
+
+
+@holds(25, painted_svgs())
+def test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart(
+    drawn: tuple[str, set[str], set[str]],
+) -> None:
+    """Each mark's colour as it shows over white, however the figure sets it: an attribute,
+    a style, a class, a group's, `currentColor`, through `<use>`, under a group's opacity or
+    a fill-opacity, by name or as `rgb()`; and none for a mark hidden, painted nothing, or
+    defined and never used. A text's colour is read, and kept apart from the marks'."""
+    from manuscript_guard.gates.figure_svg import parse_svg
+
+    document, marks, texts = drawn
+    svg = parse_svg(document)
+    assert svg is not None
+    assert {paint.colour for paint in svg.paints if not paint.text} == marks, document
+    assert {paint.colour for paint in svg.paints if paint.text} == texts, document
+
+
+@holds(25, painted_pdfs())
+def test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart(
+    drawn: tuple[bytes, set[str], set[str]],
+) -> None:
+    """Each path filled or stroked in a colour set by `rg`, `g`, `k`, their stroking twins
+    or `scn` in a colour space, under a graphics state's opacity, inside `q` and `Q`, or by a
+    form drawn in its drawer's colour; a text's colour kept apart."""
+    from manuscript_guard.gates.figure_pdf import parse_pdf
+
+    data, marks, texts = drawn
+    figure = parse_pdf(data)
+    assert figure is not None
+    assert {paint.colour for paint in figure.paints if not paint.text} == marks, data
+    assert {paint.colour for paint in figure.paints if paint.text} == texts, data
+
+
 # ------------------------------------------------------- a quote its source nearly holds
 
 #: The words a quote is drawn from: none of them is a word of the filler around it, so the
@@ -6022,6 +6060,35 @@ def _an_alternative_text_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> Non
     patch.setattr(figure_alt, "as_markdown", lambda text: escaped.sub(r"\\\1", text))
 
 
+def _a_groups_opacity_is_not_carried_down(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_opacity", lambda value, otherwise: otherwise)
+
+
+def _an_svg_texts_colour_is_a_marks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    real = figure_svg._paint
+    patch.setattr(figure_svg, "_paint", lambda figure, state, which, *, text: real(
+        figure, state, which, text=False))  # fmt: skip
+
+
+def _cmyk_is_read_as_no_colour(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    real = figure_pdf._colour
+    patch.setattr(figure_pdf, "_colour", lambda operands: None if len(
+        [x for x in operands if isinstance(x, (int, float))]) == 4 else real(operands))  # fmt: skip
+
+
+def _a_graphics_states_opacity_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    patch.setattr(figure_pdf, "_opacities",
+                  lambda resources, name, objects, fill, stroke: (fill, stroke))  # fmt: skip
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -6088,6 +6155,22 @@ BROKEN = {
     "an alternative text keeps its line breaks": (
         _an_alternative_text_keeps_its_line_breaks,
         test_an_alternative_text_is_the_pictures_description_as_it_was_written,
+    ),
+    "a group's opacity is not carried down to what it holds": (
+        _a_groups_opacity_is_not_carried_down,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "an SVG text's colour is read as a mark's": (
+        _an_svg_texts_colour_is_a_marks,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a CMYK colour is read as no colour": (
+        _cmyk_is_read_as_no_colour,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a graphics state's opacity is not read": (
+        _a_graphics_states_opacity_is_not_read,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
     ),
     "a piece with no word of its own is left alone": (
         _a_wordless_piece_is_left_alone,

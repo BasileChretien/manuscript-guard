@@ -10,7 +10,11 @@ for:
 * the size of each text it shows: the font size it is set at (`Tf`), carried through the
   text matrix (`Tm`, `Td`) and every transform around it (`cm`, a form's `/Matrix`), as
   the height that takes on the page;
-* the width of each line it strokes (`w`), carried through the same transforms.
+* the width of each line it strokes (`w`), carried through the same transforms;
+* each colour it fills or strokes a path in, or shows text in (`rg`, `g`, `k` and their
+  stroking twins, `sc` and `scn` by how many numbers they give), laid over white at the
+  opacity its graphics state sets (`gs`, `/ca` and `/CA`), for the colour check
+  (`gates/figure_colours.py`). A pattern, a shading and an image are not read.
 
 A PDF's objects are read where they stand and inside object streams, and a stream is
 decoded where it is Flate-compressed, which is how plotting libraries write one. A stream
@@ -24,6 +28,8 @@ import re
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from manuscript_guard.colour import Paint, hex_of, over_white
 
 #: How deep a form may draw a form; a figure that goes deeper draws itself.
 DEPTH = 8
@@ -40,6 +46,10 @@ _STREAM = re.compile(rb"stream\r?\n")
 _STROKES = {b"S", b"s", b"B", b"B*", b"b", b"b*"}
 #: The operators that show text at the current font and size.
 _SHOWS = {b"Tj", b"TJ", b"'", b'"'}
+#: The operators that fill the current path.
+_FILLS = {b"f", b"F", b"f*", b"B", b"B*", b"b", b"b*"}
+#: The operators that set a colour, those that set the stroking one in capitals.
+_COLOURS = {b"rg", b"RG", b"g", b"G", b"k", b"K", b"sc", b"SC", b"scn", b"SCN"}
 
 
 @dataclass(frozen=True)
@@ -71,6 +81,8 @@ class PdfFigure:
     texts: list[tuple[str, float]] = field(default_factory=list)
     #: Each line stroked, its width in points.
     lines: list[float] = field(default_factory=list)
+    #: Each colour a path is filled or stroked in, or a text shown in, as drawn.
+    paints: list[Paint] = field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- objects
@@ -323,10 +335,48 @@ def _shown(operands: list) -> str:
     return text if text.isprintable() else ""
 
 
-#: The graphics state a stream starts with: the line width, the font size, and whether the
-#: font is a composite one, whose bytes are glyph numbers and not characters.
-State = tuple[float, float, bool]
-START: State = (1.0, 0.0, False)
+#: The graphics state a stream starts with: the line width, the font size, whether the
+#: font is a composite one, whose bytes are glyph numbers and not characters, the colours it
+#: fills and strokes in, black, and the opacity of each.
+Colour = tuple[float, float, float]
+State = tuple[float, float, bool, Colour, Colour, float, float]
+START: State = (1.0, 0.0, False, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 1.0, 1.0)
+
+
+def _colour(operands: list) -> Colour | None:
+    """The colour a colour operator sets, by how many numbers it gives: one a grey, three
+    red, green and blue, four cyan, magenta, yellow and black, taken to RGB as a printer's
+    ink is not, but near enough to compare. None for a pattern, named by its operand."""
+    if any(isinstance(x, Name) for x in operands):
+        return None
+    n = [float(x) for x in operands if isinstance(x, (int, float)) and not isinstance(x, bool)]
+    n = [min(1.0, max(0.0, x)) for x in n]
+    if len(n) == 1:
+        return (n[0], n[0], n[0])
+    if len(n) == 3:
+        return (n[0], n[1], n[2])
+    if len(n) == 4:
+        c, m, y, k = n
+        return ((1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k))
+    return None
+
+
+def _opacities(resources: dict, name: object, objects: dict, fill: float, stroke: float
+               ) -> tuple[float, float]:  # fmt: skip
+    """The fill and the stroke opacity a graphics state dictionary sets (`/ca`, `/CA`), the
+    ones before it where it sets none."""
+    states = _resolved(resources.get("ExtGState"), objects)
+    held = _resolved(states.get(name.name), objects) if isinstance(states, dict) and isinstance(
+        name, Name) else None  # fmt: skip
+    if not isinstance(held, dict):
+        return fill, stroke
+
+    def number(key: str, otherwise: float) -> float:
+        value = held.get(key)
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+        return min(1.0, max(0.0, float(value))) if ok else otherwise
+
+    return number("ca", fill), number("CA", stroke)
 
 
 def _composite(resources: dict, name: object, objects: dict[int, _Object]) -> bool:
@@ -349,19 +399,43 @@ def _draw(
     """What one content stream draws, with the transform and the graphics state it is drawn
     under: a form takes over the state of what draws it (round 1 of #303)."""
     stack: list[tuple[Matrix, State]] = []
-    width, size, composite = state
+    width, size, composite, fill, stroke, fill_alpha, stroke_alpha = state
     tm = tlm = IDENTITY
+
+    def paint(rgb: Colour, alpha: float, text: bool) -> None:
+        if alpha > 0:
+            figure.paints.append(Paint(hex_of(over_white(rgb, alpha)), text))
+
     for operands, op in _operations(data):
         if op == b"q":
-            stack.append((ctm, (width, size, composite)))
+            stack.append((ctm, (width, size, composite, fill, stroke, fill_alpha, stroke_alpha)))
         elif op == b"Q" and stack:
-            ctm, (width, size, composite) = stack.pop()
+            ctm, (width, size, composite, fill, stroke, fill_alpha, stroke_alpha) = stack.pop()
+        elif op in _COLOURS:
+            found = _colour(operands)
+            if found is not None and op.islower():
+                fill = found
+            elif found is not None:
+                stroke = found
+        elif op in (b"cs", b"CS"):
+            # A colour space set starts at its initial colour, black.
+            if op == b"cs":
+                fill = (0.0, 0.0, 0.0)
+            else:
+                stroke = (0.0, 0.0, 0.0)
+        elif op == b"gs" and operands:
+            fill_alpha, stroke_alpha = _opacities(resources, operands[-1], objects, fill_alpha,
+                                                  stroke_alpha)  # fmt: skip
         elif op == b"cm" and (n := _numbers(operands, 6)):
             ctm = _multiply((n[0], n[1], n[2], n[3], n[4], n[5]), ctm)
         elif op == b"w" and (n := _numbers(operands, 1)):
             width = n[0]
-        elif op in _STROKES:
-            figure.lines.append(width * _widened(ctm))
+        elif op in _STROKES or op in _FILLS:
+            if op in _FILLS:
+                paint(fill, fill_alpha, False)
+            if op in _STROKES:
+                figure.lines.append(width * _widened(ctm))
+                paint(stroke, stroke_alpha, False)
         elif op == b"BT":
             tm = tlm = IDENTITY
         elif op == b"Tf" and (n := _numbers(operands, 1)):
@@ -375,9 +449,10 @@ def _draw(
             # A composite font's bytes are glyph numbers: the text is not quoted.
             shown = "" if composite else _shown(operands)
             figure.texts.append((shown, abs(size) * _height(_multiply(tm, ctm))))
+            paint(fill, fill_alpha, True)
         elif op == b"Do" and operands and isinstance(operands[-1], Name) and depth < DEPTH:
             _form(operands[-1].name, resources, ctm, objects, figure, depth,
-                  (width, size, composite))  # fmt: skip
+                  (width, size, composite, fill, stroke, fill_alpha, stroke_alpha))  # fmt: skip
 
 
 def _form(

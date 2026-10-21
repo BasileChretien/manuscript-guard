@@ -15,6 +15,12 @@ to the printed page:
 * an element drawn through `<use>` is read where it is used, and nothing in `<defs>` is
   read where it is defined.
 
+Each colour it paints is read too, for the colour check (`gates/figure_colours.py`): a
+shape's fill and a line's stroke, as the element, its stylesheet or the elements around it
+set them, `currentColor` the `color` it inherits, laid over white at the opacity it is drawn
+at, its own and its groups'. A text's colour is kept apart, since text rarely tells one
+series from another. A gradient or a pattern is not read.
+
 A text whose anchor is outside the visible area, the `viewBox`, is cut off where it prints.
 A `<style>` element's rules are read as far as `gates/svg_style.py` says: a stroke svglite
 sets once for every line, and a size Illustrator sets through a class.
@@ -28,6 +34,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
+from manuscript_guard.colour import Paint, hex_of, over_white, parse
 from manuscript_guard.gates.svg_style import READ, Sheet, declarations
 
 SVG = "{http://www.w3.org/2000/svg}"
@@ -69,6 +76,8 @@ _TRANSFORM = re.compile(r"(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*
 _NUMBER = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
 #: The elements that draw a line where they have a stroke.
 _STROKED = {"path", "line", "polyline", "polygon", "rect", "circle", "ellipse"}
+#: The elements that fill where they have a fill: a line has no inside.
+_FILLED = _STROKED - {"line"}
 #: The elements whose content is drawn only where something refers to it.
 _NOT_DRAWN = {"defs", "clipPath", "mask", "marker", "pattern", "symbol", "metadata",
               "title", "desc", "style", "linearGradient", "radialGradient", "filter"}  # fmt: skip
@@ -98,6 +107,8 @@ class Svg:
     #: width carried a unit.
     width_pt: float | None
     width_unit: bool
+    #: Each colour a shape, a line or a text is painted in, once each, in the order drawn.
+    paints: tuple[Paint, ...] = ()
 
 
 def read_svg(path: Path) -> Svg | None:
@@ -112,13 +123,13 @@ def parse_svg(document: str) -> Svg | None:
     except ET.ParseError:
         return None
     figure = _Figure({node.get("id"): node for node in root.iter() if node.get("id")},
-                     Sheet(root))  # fmt: skip
+                     Sheet(root), [])  # fmt: skip
     texts: list[Mark] = []
     lines: list[Mark] = []
-    state = {"font": DEFAULT_FONT_UNITS, "stroke": "none", "stroke-width": 1.0}
-    _walk(root, IDENTITY, state, figure, texts, lines, 0)
+    _walk(root, IDENTITY, {**START, "font": DEFAULT_FONT_UNITS}, figure, texts, lines, 0)
     width, unit = _root_width(root)
-    return Svg(tuple(texts), tuple(lines), _view(root), width, unit)
+    paints = tuple(dict.fromkeys(figure.paints))
+    return Svg(tuple(texts), tuple(lines), _view(root), width, unit, paints)
 
 
 def _tag(node: ET.Element) -> str:
@@ -132,6 +143,16 @@ class _Figure:
 
     ids: dict
     sheet: Sheet
+    #: Each colour painted, in the order drawn, as the walk finds it.
+    paints: list
+
+
+#: What the root is drawn with: SVG's initial values, a fill of black and no stroke, and a
+#: text's size `DEFAULT_FONT_UNITS`, which `parse_svg` reads when it starts.
+START = {
+    "stroke": "none", "stroke-width": 1.0, "fill": "black", "color": "black",
+    "fill-opacity": 1.0, "stroke-opacity": 1.0, "opacity": 1.0,
+}  # fmt: skip
 
 
 def _style(node: ET.Element, sheet: Sheet) -> dict[str, str]:
@@ -246,23 +267,57 @@ def _walk(
         if node.text and node.text.strip():
             height = _height(matrix) * state["font"]
             texts.append(Mark(node.text.strip(), height, _apply(matrix, x, y)))
+            _paint(figure, state, "fill", text=True)
+    if tag in _FILLED:
+        _paint(figure, state, "fill", text=False)
     if tag in _STROKED and state["stroke"] not in ("none", "transparent", ""):
         width = state["stroke-width"] * _widened(matrix)
         if width > 0:
             lines.append(Mark("", width, _apply(matrix, 0.0, 0.0)))
+            _paint(figure, state, "stroke", text=False)
     for child in node:
         _walk(child, matrix, state, figure, texts, lines, depth)
 
 
 def _inherit(state: dict, said: dict[str, str]) -> dict:
-    """What an element draws with: its own size, stroke and width, else its parent's."""
+    """What an element draws with: its own size, stroke, width and colours, else its
+    parent's. Its `opacity` is not inherited and lays the whole element over what is under
+    it, so it is multiplied into its groups'."""
     width = _length(said["stroke-width"], state["font"]) if "stroke-width" in said else None
     return {
         **state,
         "font": _font_size(said, state["font"]),
         "stroke": said.get("stroke", state["stroke"]).strip().lower(),
         "stroke-width": state["stroke-width"] if width is None else width,
+        "fill": said.get("fill", state["fill"]).strip().lower(),
+        "color": said.get("color", state["color"]).strip().lower(),
+        "fill-opacity": _opacity(said.get("fill-opacity"), state["fill-opacity"]),
+        "stroke-opacity": _opacity(said.get("stroke-opacity"), state["stroke-opacity"]),
+        "opacity": state["opacity"] * _opacity(said.get("opacity"), 1.0),
     }
+
+
+def _opacity(value: str | None, otherwise: float) -> float:
+    """An opacity as SVG writes one, a number or a percentage, kept from 0 to 1."""
+    if value is None:
+        return otherwise
+    match = _LENGTH.match(value)
+    if match is None or match.group(2) not in ("", "%"):
+        return otherwise
+    number = float(match.group(1)) / (100 if match.group(2) == "%" else 1)
+    return min(1.0, max(0.0, number))
+
+
+def _paint(figure: _Figure, state: dict, which: str, *, text: bool) -> None:
+    """The colour `which`, the fill or the stroke, paints, where it paints one."""
+    written = state[which]
+    found = parse(state["color"] if written == "currentcolor" else written)
+    if found is None:
+        return
+    rgb, alpha = found
+    seen = alpha * state[f"{which}-opacity"] * state["opacity"]
+    if seen > 0:
+        figure.paints.append(Paint(hex_of(over_white(rgb, seen)), text))
 
 
 def _use(

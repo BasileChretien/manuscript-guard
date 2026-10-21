@@ -76,6 +76,7 @@ from manuscript_guard.gates import (
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.figure_alt import check_figure_alt
+from manuscript_guard.gates.figure_colours import check_figure_colours
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
 from manuscript_guard.gates.related import check_related
@@ -150,6 +151,7 @@ def _run_gates(
         ("G2", lambda: check_bound_units(project, results)),
         ("G3", lambda: check_figures(project, results)),
         ("G3", lambda: check_figure_alt(project, namespace, chosen)),
+        ("G3", lambda: check_figure_colours(project)),
         ("G10", lambda: check_figure_reviews(project, content_digest)),
         ("G7", lambda: check_citations(project, literature)),
         ("G7", lambda: check_literature_chain(project, literature)),

@@ -80,6 +80,8 @@ from generated import (
     lines,
     mean_tables,
     numbered_displays,
+    painted_pdfs,
+    painted_svgs,
     passage_files,
     pdf_figures,
     plan_pairs,
@@ -4583,6 +4585,44 @@ def test_an_alternative_text_is_the_pictures_description_as_it_was_written(
     assert _descriptions_pandoc_reads(markdown) == folded
 
 
+# ------------------------------------------------------------------ the colours a figure paints
+
+
+@holds(25, painted_svgs())
+def test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart(
+    drawn: tuple[str, set[str], set[str]],
+) -> None:
+    """Each mark's colour as it shows over white, however the figure sets it: an attribute,
+    a style, a class, a group's, `inherit`, `currentColor`, through `<use>`, under a group's
+    opacity or a fill-opacity, by name, as `rgb()` or `hsl()`; and none for a mark not
+    displayed, hidden, painted nothing, or defined and never used. A text's colour is read,
+    and kept apart from the marks', a text drawn as glyphs too (round 1 of #398)."""
+    from manuscript_guard.gates.figure_svg import parse_svg
+
+    document, marks, texts = drawn
+    svg = parse_svg(document)
+    assert svg is not None
+    assert {paint.colour for paint in svg.paints if not paint.text} == marks, document
+    assert {paint.colour for paint in svg.paints if paint.text} == texts, document
+
+
+@holds(25, painted_pdfs())
+def test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart(
+    drawn: tuple[bytes, set[str], set[str]],
+) -> None:
+    """Each path filled or stroked in a colour set by `rg`, `g`, `k`, their stroking twins,
+    or `sc` and `scn` in a colour space, under a graphics state's opacity, inside `q` and
+    `Q`, or by a form drawn in its drawer's colour; nothing for a pattern; a text's colour
+    kept apart."""
+    from manuscript_guard.gates.figure_pdf import parse_pdf
+
+    data, marks, texts = drawn
+    figure = parse_pdf(data)
+    assert figure is not None
+    assert {paint.colour for paint in figure.paints if not paint.text} == marks, data
+    assert {paint.colour for paint in figure.paints if paint.text} == texts, data
+
+
 # ------------------------------------------------------- a quote its source nearly holds
 
 #: The words a quote is drawn from: none of them is a word of the filler around it, so the
@@ -7332,6 +7372,66 @@ def _an_alternative_text_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> Non
     patch.setattr(figure_alt, "as_markdown", lambda text: escaped.sub(r"\\\1", text))
 
 
+def _a_groups_opacity_is_not_carried_down(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_opacity", lambda value, otherwise: otherwise)
+
+
+def _an_svg_texts_colour_is_a_marks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    real = figure_svg._paint
+    patch.setattr(figure_svg, "_paint", lambda figure, state, which, *, text: real(
+        figure, state, which, text=False))  # fmt: skip
+
+
+def _cmyk_is_read_as_no_colour(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    real = figure_pdf._colour
+    patch.setattr(figure_pdf, "_colour", lambda operands: None if len(
+        [x for x in operands if isinstance(x, (int, float))]) == 4 else real(operands))  # fmt: skip
+
+
+def _q_restores_no_colour(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    real = figure_pdf._operations
+    patch.setattr(figure_pdf, "_operations",
+                  lambda data: ((ops, op) for ops, op in real(data) if op != b"Q"))  # fmt: skip
+
+
+def _a_hidden_mark_is_painted(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    real = figure_svg._paint
+    patch.setattr(figure_svg, "_paint", lambda figure, state, which, *, text: real(
+        figure, {**state, "hidden": False}, which, text=text))  # fmt: skip
+
+
+def _glyphs_are_marks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_drawn_text", lambda node_id: False)
+
+
+def _a_colour_space_is_not_looked_up(patch: pytest.MonkeyPatch) -> None:
+    """A space named in the page's resources taken as unread, as R's pdf() names its ICC
+    profile `/sRGB`: every colour of such a figure is lost."""
+    from manuscript_guard.gates import figure_pdf
+
+    patch.setattr(figure_pdf, "_readable", lambda resources, name, objects: isinstance(
+        name, figure_pdf.Name) and name.name in figure_pdf._READ_SPACES)  # fmt: skip
+
+
+def _a_graphics_states_opacity_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    patch.setattr(figure_pdf, "_opacities",
+                  lambda resources, name, objects, fill, stroke: (fill, stroke))  # fmt: skip
+
+
 def _a_passage_is_matched_as_it_is_typed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(passages_module, "statement_words", lambda sentence: sentence)
 
@@ -7513,6 +7613,42 @@ BROKEN = {
     "an alternative text keeps its line breaks": (
         _an_alternative_text_keeps_its_line_breaks,
         test_an_alternative_text_is_the_pictures_description_as_it_was_written,
+    ),
+    "a group's opacity is not carried down to what it holds": (
+        _a_groups_opacity_is_not_carried_down,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "an SVG text's colour is read as a mark's": (
+        _an_svg_texts_colour_is_a_marks,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a CMYK colour is read as no colour": (
+        _cmyk_is_read_as_no_colour,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a graphics state's opacity is not read": (
+        _a_graphics_states_opacity_is_not_read,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a colour space the page's resources name is not looked up": (
+        _a_colour_space_is_not_looked_up,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "Q gives back no colour": (
+        _q_restores_no_colour,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a form paints in its own colour, not its drawer's": (
+        _a_form_draws_with_a_state_of_its_own,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a mark a hidden group hides is painted": (
+        _a_hidden_mark_is_painted,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a text drawn as glyphs is a mark": (
+        _glyphs_are_marks,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
     ),
     "a piece with no word of its own is left alone": (
         _a_wordless_piece_is_left_alone,

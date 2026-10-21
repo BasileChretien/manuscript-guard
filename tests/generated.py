@@ -1283,6 +1283,8 @@ def pdf_document(
     fonts: dict[str, bytes] | None = None,
     forms: dict[str, tuple[bytes, str]] | None = None,
     *,
+    gstates: dict[str, float] | None = None,
+    spaces: dict[str, bytes] | None = None,
     width: float = 216,
     compress: bool = True,
     packed: bool = False,
@@ -1290,7 +1292,9 @@ def pdf_document(
 ) -> bytes:
     """A PDF of one page that draws `content`, with `fonts` (a name and the font's own
     dictionary, which may refer to the objects after it as `{n}`) and `forms` (a name, and
-    the form's content and `/Matrix`). Its fonts are packed in an object stream where
+    the form's content and `/Matrix`) and `gstates` (a name, and the opacity its graphics
+    state sets, filling and stroking) and `spaces` (a name, and the colour space it names, as
+    written). Its fonts are packed in an object stream where
     `packed` is set, and its content in a stream for each line where `split` is. No
     cross-reference table: what reads it reads its objects."""
     fonts = fonts or {"F1": b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"}
@@ -1339,7 +1343,12 @@ def pdf_document(
     objects[2] = (b"<< /Type /Page /Parent 2 0 R /Contents " + contents
                   + b" /Resources << /Font << "
                   + b" ".join(font_refs) + b" >> /XObject << " + b" ".join(form_refs)
-                  + b" >> >> >>")  # fmt: skip
+                  + b" >> /ExtGState << " + b" ".join(
+                      b"/%s << /ca %g /CA %g >>" % (name.encode(), alpha, alpha)
+                      for name, alpha in (gstates or {}).items()
+                  ) + b" >> /ColorSpace << " + b" ".join(
+                      b"/%s %s" % (name.encode(), space) for name, space in (spaces or {}).items()
+                  ) + b" >> >> >>")  # fmt: skip
     out = b"%PDF-1.5\n"
     for number, body in enumerate(objects, 1):
         out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
@@ -1565,6 +1574,222 @@ def alt_texts(draw: st.DrawFn) -> str:
     spaces = draw(st.permutations([*ALT_SPACES, *extra]))
     joined = zip(spaces, pieces[1:], strict=True)
     return pieces[0] + "".join(space + piece for space, piece in joined)
+
+
+# ------------------------------------------------------------------- a figure's colours
+
+#: Colours a figure may paint in, as an SVG writes each of them.
+PAINT_COLOURS = ("#d62728", "#2ca02c", "#1f77b4", "#ff7f0e", "#e69f00", "#56b4e9",
+                 "#009e73", "#cc79a7", "#000000", "#777777")  # fmt: skip
+#: Colours a text may be painted in, none of them a mark's: a text's colour read as a
+#: mark's is then a colour the marks do not have, under every seed.
+TEXT_COLOURS = ("#3b0f70", "#8c2981", "#5a5a5a")
+#: Colours each painted by one kind of mark and by no other, so that a reading that loses
+#: or moves that kind's colour is seen under every seed: what a hidden mark is painted in,
+#: what a form draws in, what a colour set between `q` and `Q` is.
+HIDDEN, FORMED, BETWEEN = "#a0522d", "#ff1493", "#4b0082"
+#: Each way an SVG sets the colour a mark is painted in, and each way it paints none.
+PAINT_KINDS = ("attribute", "style", "class", "inherited", "current", "use", "opacity",
+               "fill-opacity", "named", "function", "text", "hidden", "none", "unused",
+               "inherit", "invisible", "glyphs", "hsl", "stroke-inherit", "cairo")  # fmt: skip
+#: `hsl()` as CSS writes it, and the colour it is.
+_HSL = {"hsl(0, 100%, 50%)": "#ff0000", "hsl(120, 100%, 25%)": "#008000",
+        "hsla(240, 100%, 50%, 1)": "#0000ff"}  # fmt: skip
+_NAMED_COLOURS = {"#ff0000": "red", "#008000": "green", "#0000ff": "blue",
+                  "#ffa500": "orange", "#800080": "purple"}  # fmt: skip
+
+
+def _blend(code: str, alpha: float) -> str:
+    """`code` laid over white at `alpha`, as a hex code, rounded as the reading rounds."""
+    channels = [int(code[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+    return "#" + "".join(f"{round((c * alpha + (1 - alpha)) * 255):02x}" for c in channels)
+
+
+@st.composite
+def painted_svgs(draw: st.DrawFn) -> tuple[str, set[str], set[str]]:
+    """An SVG with a mark painted in every way of `PAINT_KINDS`, each in a colour drawn at
+    random, in an order drawn; with the colours its marks are painted in, as they show over
+    white, and those its texts are."""
+    marks, texts = set(), set()
+    defs, body, rules = [], [], []
+    for number, kind in enumerate(draw(st.permutations(PAINT_KINDS))):
+        colour = draw(st.sampled_from(PAINT_COLOURS))
+        shape = f'd="M0 {number}L9 {number}"'
+        if kind == "attribute":
+            body.append(f'<path {shape} fill="none" stroke="{colour}"/>')
+            marks.add(colour)
+        elif kind == "style":
+            body.append(f'<path {shape} style="fill: {colour}; stroke: none"/>')
+            marks.add(colour)
+        elif kind == "class":
+            rules.append(f".k{number} {{ fill: {colour} }}")
+            body.append(f'<rect class="k{number}" fill="#123456" width="2" height="2"/>')
+            marks.add(colour)
+        elif kind == "inherited":
+            body.append(f'<g fill="{colour}"><g><circle r="2"/></g></g>')
+            marks.add(colour)
+        elif kind == "current":
+            body.append(f'<g color="{colour}"><path {shape} fill="none" '
+                        'stroke="currentColor"/></g>')  # fmt: skip
+            marks.add(colour)
+        elif kind == "use":
+            defs.append(f'<path id="m{number}" {shape} stroke="none"/>')
+            body.append(f'<use xlink:href="#m{number}" style="fill: {colour}"/>')
+            marks.add(colour)
+        elif kind == "opacity":
+            alpha = draw(st.sampled_from((0.25, 0.5, 0.8)))
+            body.append(f'<g opacity="{alpha}"><g opacity="0.5"><path {shape} fill="{colour}"/>'
+                        "</g></g>")  # fmt: skip
+            marks.add(_blend(colour, alpha * 0.5))
+        elif kind == "fill-opacity":
+            alpha = draw(st.sampled_from((0.3, 0.6)))
+            body.append(f'<g fill-opacity="{alpha * 100:g}%"><ellipse rx="2" ry="1" '
+                        f'fill="{colour}"/></g>')  # fmt: skip
+            marks.add(_blend(colour, alpha))
+        elif kind == "named":
+            code, name = draw(st.sampled_from(sorted(_NAMED_COLOURS.items())))
+            body.append(f'<polygon points="0,0 1,1 2,0" fill="{name.upper()}"/>')
+            marks.add(code)
+        elif kind == "function":
+            r, g, b = (int(colour[i : i + 2], 16) for i in (1, 3, 5))
+            body.append(f'<path {shape} fill="none" stroke="rgb({r}, {g}, {b})"/>')
+            marks.add(colour)
+        elif kind == "text":
+            colour = draw(st.sampled_from(TEXT_COLOURS))
+            body.append(f'<text x="1" y="1" fill="{colour}">t{number}</text>')
+            texts.add(colour)
+        elif kind == "hidden":
+            body.append(f'<g style="display: none"><path {shape} fill="{colour}"/></g>')
+        elif kind == "none":
+            body.append(f'<path {shape} fill="none" stroke="{colour}" stroke-width="0"/>')
+        elif kind == "unused":
+            defs.append(f'<path id="u{number}" {shape} fill="{colour}"/>')
+        elif kind == "inherit":
+            body.append(f'<g fill="{colour}"><rect fill="inherit" width="2" height="2"/></g>')
+            marks.add(colour)
+        elif kind == "invisible":
+            # Hidden in a hidden group; shown where it says so itself (round 1 of #398).
+            body.append(f'<g visibility="hidden"><path {shape} fill="{HIDDEN}"/>'
+                        f'<path {shape} fill="{colour}" visibility="visible"/></g>')  # fmt: skip
+            marks.add(colour)
+        elif kind == "glyphs":
+            # A text drawn as glyphs, as matplotlib draws one unless told otherwise.
+            colour = draw(st.sampled_from(TEXT_COLOURS))
+            defs.append(f'<path id="DejaVuSans-{number}" d="M0 0L1 1"/>')
+            body.append(f'<g id="text_{number}" style="fill: {colour}">'
+                        f'<use xlink:href="#DejaVuSans-{number}"/></g>')  # fmt: skip
+            texts.add(colour)
+        elif kind == "hsl":
+            written, code = draw(st.sampled_from(sorted(_HSL.items())))
+            body.append(f'<path {shape} fill="none" stroke="{written}"/>')
+            marks.add(code)
+        elif kind == "stroke-inherit":
+            body.append(f'<g stroke="{colour}"><path {shape} fill="none" stroke="inherit"/></g>')
+            marks.add(colour)
+        elif kind == "cairo":
+            # A text drawn as glyphs, as Cairo draws one for R's svg(), in either spelling.
+            colour = draw(st.sampled_from(TEXT_COLOURS))
+            glyph = draw(st.sampled_from((f"glyph0-{number}", f"glyph-0-{number}")))
+            defs.append(f'<symbol overflow="visible" id="{glyph}"><path d="M0 0L1 1"/></symbol>')
+            body.append(f'<g style="fill: {colour}"><use xlink:href="#{glyph}" x="1" y="1"/></g>')
+            texts.add(colour)
+    document = (
+        '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+        'width="100pt" height="100pt" viewBox="0 0 100 100">'
+        f"<style>{' '.join(rules)}</style><defs>{''.join(defs)}</defs>{''.join(body)}</svg>"
+    )
+    return document, marks, texts
+
+
+#: Each way a PDF sets the colour it fills or strokes in, or shows text in.
+PDF_PAINT_KINDS = ("rg", "RG", "g", "G", "k", "K", "scn", "SCN", "sc", "SC", "alpha",
+                   "restored", "text", "form", "pattern", "icc", "indexed")  # fmt: skip
+#: What a colour space named in the page's resources paints in, one only it paints in: as R's
+#: pdf() names an ICC profile's RGB `/sRGB`.
+PROFILED = "#00ced1"
+
+
+@st.composite
+def painted_pdfs(draw: st.DrawFn) -> tuple[bytes, set[str], set[str]]:
+    """A PDF that paints in every way of `PDF_PAINT_KINDS`, in an order drawn, each in a
+    colour drawn; with the colours it paints marks in, as they show over white, and those
+    it shows text in."""
+    marks, texts = set(), set()
+    ops, forms, states, spaces = [], {}, {}, {}
+    # The stroking colour as it stands between operations: what a Q goes back to.
+    stroking = "#000000"
+
+    def rgb(code: str) -> tuple[float, float, float]:
+        return tuple(round(int(code[i : i + 2], 16) / 255, 4) for i in (1, 3, 5))
+
+    def hexed(values: tuple[float, ...]) -> str:
+        return "#" + "".join(f"{round(v * 255):02x}" for v in values)
+
+    for number, kind in enumerate(draw(st.permutations(PDF_PAINT_KINDS))):
+        colour = rgb(draw(st.sampled_from(PAINT_COLOURS)))
+        r, g, b = colour
+        path = b"0 %d m 9 %d l" % (number, number)
+        if kind in ("rg", "RG"):
+            fill = kind == "rg"
+            ops.append(b"%g %g %g %s %s %s" % (r, g, b, kind.encode(), path,
+                                                b"f" if fill else b"S"))  # fmt: skip
+            painted = hexed(colour)
+        elif kind in ("g", "G"):
+            grey = round(draw(st.sampled_from((0.0, 0.3, 0.6))), 4)
+            ops.append(b"%g %s %s %s" % (grey, kind.encode(), path, b"f" if kind == "g" else b"S"))
+            painted = hexed((grey, grey, grey))
+        elif kind in ("k", "K"):
+            cmyk = draw(st.sampled_from(((0.0, 0.5, 1.0, 0.0), (1.0, 0.0, 0.0, 0.2))))
+            ops.append(b"%g %g %g %g %s %s %s" % (*cmyk, kind.encode(), path,
+                                                   b"f" if kind == "k" else b"S"))  # fmt: skip
+            c, m, y, k = cmyk
+            painted = hexed(((1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)))
+        elif kind in ("sc", "SC"):
+            # In a space of one number, a grey.
+            grey = round(draw(st.sampled_from((0.2, 0.8))), 4)
+            space, paints = (b"cs", b"f") if kind == "sc" else (b"CS", b"S")
+            ops.append(b"/DeviceGray %s %g %s %s %s" % (space, grey, kind.encode(), path,
+                                                       paints))  # fmt: skip
+            painted = hexed((grey, grey, grey))
+        elif kind in ("scn", "SCN"):
+            space, paints = (b"cs", b"f") if kind == "scn" else (b"CS", b"S")
+            ops.append(b"/DeviceRGB %s %g %g %g %s %s %s" % (space, r, g, b, kind.encode(), path,
+                                                            paints))  # fmt: skip
+            painted = hexed(colour)
+        elif kind == "alpha":
+            alpha = draw(st.sampled_from((0.25, 0.5)))
+            states[f"A{number}"] = alpha
+            ops.append(b"q /A%d gs %g %g %g rg %s f Q" % (number, r, g, b, path))
+            marks.add(hexed(tuple(v * alpha + (1 - alpha) for v in colour)))
+        elif kind == "restored":
+            # A colour set inside q and Q is gone after it: the stroke after is the one before.
+            ops.append(b"q %g %g %g RG Q %s S" % (*rgb(BETWEEN), path))
+            marks.add(stroking)
+        elif kind == "text":
+            r, g, b = colour = rgb(draw(st.sampled_from(TEXT_COLOURS)))
+            ops.append(b"q %g %g %g rg BT /F1 9 Tf 1 %d Td (t) Tj ET Q" % (r, g, b, number))
+            texts.add(hexed(colour))
+        elif kind == "form":
+            # A form draws in the colour of what draws it.
+            forms[f"X{number}"] = (b"%s f" % path, "1 0 0 1 0 0")
+            ops.append(b"q %g %g %g rg /X%d Do Q" % (*rgb(FORMED), number))
+            marks.add(hexed(rgb(FORMED)))
+        elif kind == "pattern":
+            # A pattern's colours are not read: it paints nothing that is said.
+            ops.append(b"q /Pattern cs /P0 scn %s f Q" % path)
+        elif kind == "icc":
+            spaces[f"CS{number}"] = b"[/ICCBased 999 0 R]"
+            ops.append(b"q /CS%d cs %g %g %g scn %s f Q" % (number, *rgb(PROFILED), path))
+            marks.add(hexed(rgb(PROFILED)))
+        elif kind == "indexed":
+            # An index into a table of colours is not read either.
+            spaces[f"IX{number}"] = b"[/Indexed /DeviceRGB 1 <ff000000ff00>]"
+            ops.append(b"q /IX%d cs 1 scn %s f Q" % (number, path))
+        if kind in ("rg", "RG", "g", "G", "k", "K", "scn", "SCN", "sc", "SC"):
+            marks.add(painted)
+            if kind.isupper():
+                stroking = painted
+    return pdf_document(b"\n".join(ops), forms=forms, gstates=states, spaces=spaces), marks, texts
 
 
 # -------------------------------------------------------------- the results a plan promises

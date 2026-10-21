@@ -751,7 +751,10 @@ with none is a note while drafting, a warning from internal review, and a failur
 submission where the journal's profile requires one (`figures.alt_text: required`); a text
 longer than the profile's `alt_text_max_chars`, counted as printed, warns. The check reads
 the stage itself, since the policy table gives a code one stage to fail from and this one
-warns before it fails.
+warns before it fails. A figure the supplement places is held to the same, and written
+into `supplementary.docx` as the paper's are into `manuscript.docx`; a rule under the
+profile's `figures.supplementary` replaces the main one for a figure only the supplement
+places, as every artwork rule of G4 does.
 
 The build writes it as the picture's description. Pandoc makes an image alone in its
 paragraph a figure and prints its description under it as a caption, so the image is placed
@@ -778,6 +781,77 @@ as G4 gives, and so does a text too long.
 
 Whether the text says what the figure shows is not checked by any gate. The figure review
 reads it under `readable-and-accessible`, and the figure-review skill says how to write one.
+
+## A figure's colours stay apart for every reader
+
+About one man in twelve and one woman in two hundred of European descent see colour with a
+deficiency, most of them red and green nearer than others do. A figure whose two series are
+told apart by colour alone can be one series to them, and to anyone reading it printed in
+grey. The figure review asked whether "any information depends on colour alone", a question
+a reviewer answers by eye, for one kind of vision, their own.
+
+So G3 reads each colour a figure the manuscript places paints its marks in, from the figure
+itself (`gates/figure_colours.py`, decided 2026-10-21): from its SVG, every fill and stroke
+as the element, its stylesheet or its groups set it, `currentColor` the `color` it inherits,
+laid over white at the opacity it is drawn at, its own and its groups' multiplied
+(`gates/figure_svg.py`); from its PDF, every path filled or stroked and every text shown,
+in the colour `rg`, `g`, `k`, their stroking twins or `sc` and `scn` set, at the opacity of
+its graphics state, `q` and `Q` saving and restoring them, a form drawing in its drawer's
+(`gates/figure_pdf.py`). A text's colour is kept apart and not compared: text rarely tells
+one series from another, and black text beside a dark mark confuses no data. A raster is
+not read: its colours blend at every edge of every mark, and guessing which are the marks'
+is a heuristic that would warn of colours nobody chose. A figure with no SVG or PDF is
+said to be unread (`figure-colours-unread`, a note).
+
+Each pair of the colours is taken through what each dichromacy makes of it, Machado,
+Oliveira and Fernandes's model at full severity (IEEE TVCG 2009; the matrices of their
+Table 1, applied to linear RGB as colorspacious and R's colorspace apply them), and through
+grey, the grey of the same relative luminance. Two colours are far enough apart where their
+CIEDE2000 difference is at least 10. No standard sets that number: about 2 is the least an
+observer sees between large patches side by side, a figure's lines and points need far more
+(Szafir 2018), and Adobe's Leonardo passes a simulated pair at 11. A pair at least 10 apart
+to normal vision and less than 10 after is said: `figure-colours-confused` for a deficiency,
+a warning and never a failure; `figure-greyscale-confused` for grey, a note, and a warning
+where the journal's profile says its figures print in grey (`figures.print: greyscale`) or
+the figure's guard file asks (`greyscale: true`). Basile chose both on 2026-10-21. A pair
+already less than 10 apart to normal vision is not said, since no deficiency made it so.
+
+**A figure that draws a continuous scale is not compared.** A colormap, or points coloured
+by a variable, has neighbours just over 10 apart, and grey, which keeps lightness alone, or a
+deficiency, which takes chroma away, brings them under it: every such figure warned (round 1
+of #398). Which of a figure's colours are a scale's shades and which a series' is not known
+from the colours, and each rule tried for it was wrong one way or the other: leaving a scale
+out took in a series near one of its shades (round 2: tab:red beside a heat map in reds, and
+tab:green with it, went unsaid); comparing a series with the shades compared two scales with
+each other, and two series near one scale's shades still went uncompared (the round on the
+fix). Basile chose to narrow the check to what it can decide (2026-10-21): a figure whose
+colours chain within 10 of one another, three or more, greys apart, and run through 10 of
+lightness or more, is said to draw a scale (`figure-colours-scale`, a note), and its colours
+are not compared; nor are a figure's of more
+than 300 colours (`figure-colours-many`), since finding a scale among them takes time in their
+square. Its review looks at it, and a scale and its series drawn as figures of their own have
+the series compared. The two conditions on a chain keep an ordinary figure compared: greys
+chain easily (a panel's background, its grid, a legend's frame) and are never confused with
+one another; and the light bands of several series, each laid over white at one opacity,
+chain by hue at one lightness, where a colormap runs through it (the round on the
+narrowing: tab:red, tab:orange and tab:olive at 0.1 are 6.6 and 7.1 apart).
+
+Where two series are told apart by more than colour, a line style or a label on each line,
+the figure's guard file says so under `allow_colours`, the pair (or one colour of it) and
+the reason, and the warning is a note that quotes it.
+
+A figure the supplement places is read and compared as the paper's are (Basile, 2026-10-21:
+the supplement is held to the main text's rules). A `print` under the profile's
+`figures.supplementary` replaces the main one for a figure only the supplement places, so a
+journal that prints the paper in grey and puts its supplement online in colour is said so.
+
+The implementation is the standard library's (`colour.py`): sRGB's transfer function and
+matrix, CIELAB under D65, CIEDE2000 as Sharma, Wu and Dalal write it out, and the three
+matrices. `tests/test_colour.py` holds CIEDE2000 to the 34 pairs Sharma, Wu and Dalal publish,
+in both orders, and the simulation to what colorspacious, which implements Machado's model on
+its own, makes of four colours. Okabe and Ito's eight have no pair any deficiency makes one,
+and matplotlib's default red and green, 72 apart, are under 5 apart with deuteranopia: the
+model says what the literature says of both.
 
 ## The journal's citation style is used by every build
 
@@ -8941,6 +9015,28 @@ Added by the adversarial review, verified and **not** fixed:
   the document's stamp, the custodian's minimum and the synthetic-data check, as the
   manuscript's are; G2's other readings of bindings do not see it, so a value quoted there
   alone is still one the manuscript does not quote.
+- **A figure's colours are read from its SVG or PDF, and compared all with all.** A raster
+  figure's are not, nor an image inside an SVG or a PDF (a heat map matplotlib embeds as one),
+  nor a gradient, a pattern, a shading, or a PDF colour in a separation, an indexed or a Lab
+  colour space. A figure that draws a continuous scale is not compared at all, its series
+  beside the scale included, and neither is one of more than 300 colours: both are said in a
+  note, and left to the figure's review. A scale drawn with neighbours more than 10 apart, or
+  through less than 10 of lightness (a colormap's narrow slice, a correlation map's pale
+  middle under fixed limits), is no scale to the check, and its shades are compared as
+  series; a rainbow colormap a deficiency scrambles is not said. The bands of one series at
+  three opacities or more chain through lightness and are taken for a scale, so such a
+  figure is not compared. A text drawn as glyphs is known for one where
+  matplotlib (`text_` groups) or Cairo (`glyph` symbols) draws it so, and is a mark where
+  another program does. A text's colour is left out, so data told apart only
+  by coloured labels is not checked. Every colour painted is compared with every other, the
+  background and the grid's among them: the check does not know which colours encode data, so
+  a series and a grid line made one by a deficiency are said, and `allow_colours` is how a
+  figure says that pair does not matter. A colour laid at an opacity is laid over white, not
+  over what is under it. A PDF's CMYK is taken to RGB without its profile, and any colour
+  space of three numbers is read as sRGB. The deficiencies are simulated at full severity
+  only, the dichromacies; the anomalous trichromacies, commoner and milder, are not, and
+  Machado's model is less sure of tritanopia than of the other two. The threshold of 10 is a
+  convention, not a standard. A LaTeX manuscript's figures are not read.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.

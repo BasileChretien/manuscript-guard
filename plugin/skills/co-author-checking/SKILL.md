@@ -83,7 +83,7 @@ What the toolkit finds on its own, with no file written by the project:
 | | What the person is asked |
 |---|---|
 | values quoted from the literature | does the quoted passage say this number |
-| sentences that cite something | does the cited source say what this sentence says |
+| sentences that cite something, each with the passage of the cited work `literature/passages.yaml` records for it | does the cited source say what this sentence says |
 | references | is the record right, and does the work exist |
 | authors | is this person's name, degrees, affiliation and role right |
 

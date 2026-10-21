@@ -206,3 +206,96 @@ def test_a_command_that_reads_nothing_exits_as_the_table_says(
     zero = COMMANDS[name]
     argv = [part.format(project=empty) for part in zero.argv]
     assert main(argv) == zero.exits, capsys.readouterr()
+
+
+# ---------------------------------------------------------------------------- LaTeX
+
+#: What each command does with a LaTeX manuscript (DESIGN.md, "LaTeX manuscripts", step 1),
+#: and how it is run to show it. A command that reads the manuscript only as Markdown read
+#: nothing of one and said it found nothing, "rendered 0 files" or "cites nothing", or read the
+#: `.tex` as Markdown: it refuses with a sentence and exits 2. One that reads it does so
+#: through the reader, `check` with `not-read-in-latex` for each check not taught LaTeX yet.
+#: `{tex}` is the project's `main.tex`. A command leaves "refuses" in the step that teaches it.
+LATEX = {
+    "approve": ("reads", ("approve", "{project}", "--as", "Nobody Listed")),
+    "audit": ("refuses", ("audit", "{tex}", "--against", "{project}/results")),
+    "bind": ("refuses", ("bind", "{project}")),
+    "build": ("refuses", ("build", "{project}")),
+    "check": ("reads", ("check", "{project}")),
+    "checker": ("refuses", ("checker", "build", "{project}")),
+    "checklist": ("no manuscript", ("checklist", "{project}")),
+    "explain": ("refuses", ("explain", "{tex}")),
+    "fetch": ("no manuscript", ("fetch", "STROBE")),
+    "hook": ("reads", ("hook", "session-start")),
+    "impact": ("refuses", ("impact", "{tex}")),
+    "import": ("refuses", ("import", "{project}/returned.docx", "{project}")),
+    "init": ("refuses", ("init", "{project}")),
+    "install-skills": ("no manuscript", ("install-skills",)),
+    "journal": ("no manuscript", ("journal",)),
+    "lookup": ("refuses", ("lookup", "{project}")),
+    "methods": ("refuses", ("methods", "{project}")),
+    "models": ("refuses", ("models", "{project}")),
+    "passages": ("refuses", ("passages", "{project}")),
+    "render": ("refuses", ("render", "{project}")),
+    "respond": ("refuses", ("respond", "{project}")),
+    "review": ("refuses", ("review", "{project}", "--run")),
+    "reworded": ("refuses", ("reworded", "{project}")),
+    "search": ("no manuscript", ("search", "hepatic injury")),
+    "sign": ("refuses", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G2/x/y")),
+    "stages": ("no manuscript", ("stages",)),
+    "style": ("no manuscript", ("style", "{project}")),
+    "submit": ("refuses", ("submit", "{project}")),
+    "sync-bib": ("refuses", ("sync-bib", "{project}")),
+    "sync-sources": ("refuses", ("sync-sources", "{project}")),
+    "transcribe": ("no manuscript", ("transcribe",)),
+    "verify": ("no manuscript", ("verify", "{project}")),
+}
+
+
+@pytest.fixture
+def latex(empty: Path) -> Path:
+    """The empty project with a LaTeX manuscript in it."""
+    (empty / "manuscript" / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    return empty
+
+
+def _parsed(argv: tuple[str, ...], root: Path):
+    tex = root / "manuscript" / "main.tex"
+    return build_parser().parse_args([part.format(project=root, tex=tex) for part in argv])
+
+
+def test_every_command_says_what_it_does_with_latex() -> None:
+    assert set(LATEX) == _subcommands()
+
+
+@pytest.mark.parametrize("name", sorted(n for n, (kind, _) in LATEX.items() if kind == "refuses"))
+def test_a_command_that_reads_only_markdown_refuses_a_latex_manuscript(
+    latex: Path, name: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _kind, argv = LATEX[name]
+    tex = latex / "manuscript" / "main.tex"
+    assert main([part.format(project=latex, tex=tex) for part in argv]) == 2
+    said = capsys.readouterr().err
+    assert "LaTeX" in said and said.count("\n") == 1, said
+    assert not (latex / "manuscript" / "main.md").exists()
+
+
+@pytest.mark.parametrize("name", sorted(n for n, (kind, _) in LATEX.items() if kind != "refuses"))
+def test_a_command_that_reads_latex_or_no_manuscript_is_not_refused(latex: Path, name: str) -> None:
+    _kind, argv = LATEX[name]
+    assert cli._refused_for_latex(_parsed(argv, latex)) is None
+
+
+def test_the_refusal_is_for_a_latex_manuscript_only(empty: Path) -> None:
+    """A Markdown manuscript, a review that only shows where it stands, and lookup's journals
+    are read as before."""
+    (empty / "manuscript" / "main.md").write_text("# Results\n", encoding="utf-8")
+    for argv in (("render", "{project}"), ("bind", "{project}"), ("init", "{project}")):
+        assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv
+    (empty / "manuscript" / "main.md").unlink()
+    (empty / "manuscript" / "main.tex").write_text("\\documentclass{article}\n", "utf-8")
+    for argv in (("review", "{project}"), ("lookup", "{project}", "--journals")):
+        assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv

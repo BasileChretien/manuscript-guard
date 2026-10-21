@@ -1789,6 +1789,77 @@ def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
     assert _unreported(project) == []
 
 
+# --------------------------------------- an earlier output of the same data, and this paper
+#
+# The example stands beside a copy of itself as the abstract it was first presented in. Each
+# defect is planted in the abstract's project as a different run would have left it, and the
+# submission check of the paper has to say so: a count that changed with nothing said, a
+# definition (a parameter of the analysis) that changed, and an overlap nobody disclosed.
+
+
+def _earlier_output(project: Path, *, set_to: tuple[str, int] | None = None, **entry) -> None:
+    """Copy the example as the earlier project, plant a value in it, declare it, copy it in."""
+    from manuscript_guard.literature.related import load_related, take
+
+    earlier = project.parent / "earlier"
+    shutil.copytree(project, earlier)
+    if set_to is not None:
+        key, value = set_to
+        fragment = earlier / "results" / "01_disproportionality.json"
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        document["values"][key].update(value=value, display=str(value))
+        fragment.write_bytes(json.dumps(document).encode("utf-8"))
+    declared = {"id": "abstract", "kind": "abstract", "title": "First results",
+                "shares": ["data"], "project": "../earlier", **entry}  # fmt: skip
+    record = {"schema": "manuscript-guard/related/1", "outputs": [declared]}
+    (project / "literature" / "related.yaml").write_bytes(yaml.safe_dump(record).encode())
+    loaded, _ = load_project(project)
+    take(loaded, load_related(loaded)[0].outputs[0])
+
+
+def _submitted(project: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.related import check_related
+
+    loaded, _ = load_project(project)
+    namespace, results, _, _ = load_namespace(loaded)
+    report = check_related(loaded, namespace, results, submission=True)
+    return [(f.code, f.severity) for f in report.findings]
+
+
+def test_an_earlier_output_with_the_same_numbers_passes(project: Path) -> None:
+    _earlier_output(project)
+    assert _submitted(project) == []
+
+
+@pytest.mark.parametrize("key", ["cohort.n_reports", "case.n_cases", "case.n_serious"])
+def test_a_count_changed_since_the_abstract_fails_at_submission(project: Path, key: str) -> None:
+    _earlier_output(project, set_to=(key, 3))
+    assert _submitted(project) == [("related-number-differs", "fail")]
+
+
+def test_a_count_printed_only_in_the_supplement_is_held_to_the_abstract(project: Path) -> None:
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    main_md.write_bytes(
+        text.replace("{{results.case.n_serious}} were flagged", "some were flagged").encode()
+    )
+    supplement = project / "manuscript" / "supplementary" / "s1.md"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_bytes(b"# eTable 1\n\n{{results.case.n_serious}} were serious.\n")
+    _earlier_output(project, set_to=("case.n_serious", 3))
+    assert _submitted(project) == [("related-number-differs", "fail")]
+
+
+def test_a_definition_changed_since_the_abstract_is_said_and_does_not_fail(project: Path) -> None:
+    _earlier_output(project, set_to=("param.signal.min_cases", 5))
+    assert _submitted(project) == [("related-method-differs", "warn")]
+
+
+def test_an_abstract_of_the_same_data_and_authors_not_disclosed_fails(project: Path) -> None:
+    _earlier_output(project, shares=["data", "authors"])
+    assert _submitted(project) == [("related-undisclosed", "fail")]
+
+
 # --------------------------------------------- a quotation in the prose and its source
 
 
@@ -5489,6 +5560,7 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
+    "check_related",
     "check_numbers", "check_bound_units", "check_small_cells", "check_citations",
     "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
     "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",

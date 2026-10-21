@@ -64,6 +64,7 @@ from generated import (
     alt_texts,
     bindings,
     claim_edits,
+    collection_plans,
     commented,
     generated,
     holds,
@@ -73,6 +74,7 @@ from generated import (
     latex_trees,
     lines,
     mean_tables,
+    numbered_displays,
     passage_files,
     pdf_figures,
     planned_plans,
@@ -1002,6 +1004,28 @@ def test_a_planned_result_is_read_from_its_own_item_and_nowhere_else(
     read = planned_results(plan)
     assert read is not None, plan
     assert [(found.key, found.group) for found in read] == listed, plan
+
+
+# ------------------------------------------------------------ the variables a plan names
+
+
+@holds(100, collection_plans())
+def test_a_variable_is_read_from_the_plan_outside_its_deviations_and_nowhere_else(
+    drawn: tuple[str, list[str], list[tuple[str, int]], list[tuple[str, int]], int],
+) -> None:
+    """Each variable the dictionary has, dotted or not, is read where the plan names it in
+    backticks, its subsections and a list headed "Planned results and amendments" included,
+    at its first mention; each name that reads as a variable's and that the dictionary lacks
+    is read the same way, one written in another case among them; and nothing is read from
+    the Deviations or the sections under them, from "Changes to the planned results", from
+    code, values, a fence or a comment. Of the text drawn after the plan, nothing is
+    compared: only that it changes nothing before it."""
+    from manuscript_guard.gates.collection import variables_named
+
+    plan, names, used, undefined, last = drawn
+    read_used, read_undefined = variables_named(plan, names)
+    assert [(n.name, n.line) for n in read_used if n.line <= last] == used, plan
+    assert [(n.name, n.line) for n in read_undefined if n.line <= last] == undefined, plan
 
 
 # ------------------------------------------------------------------------------ parameters
@@ -2879,6 +2903,25 @@ def test_a_pointer_names_what_the_document_carries_or_is_said(
         (at["kind"], bool(at["s"]), int(at["n"])) for at in named if at is not None
     }
     assert found == expected, (main, supplement, report.findings)
+
+
+@holds(100, numbered_displays())
+def test_a_ref_prints_the_number_its_display_has_or_is_said(
+    drawn: tuple[dict[str, str], dict[tuple[str, int], str], set[tuple[str, str, int]]],
+) -> None:
+    """Each ref and num binding prints the number the document gives its table or figure:
+    counted in the order the files print, which is not the order of their paths, and the
+    supplement's apart from the main text's. G2 says of the pointers exactly what was
+    planted, a ref to a key nothing places and a num after words that point at another kind
+    or at the other document, and nothing of the rest, which cite each display in order."""
+    files, prints, planted = drawn
+    said = READINGS["pointers"]()({"files": files})
+    printed = {(relative, start): shown for relative, start, shown in said["printed"]}
+    assert {at: shown for at, shown in printed.items() if shown is not None} == prints, files
+    assert sum(shown is None for shown in printed.values()) == 2, (files, printed)
+    findings = said["report"]["findings"]
+    found = {(f["code"], f["path"].split("manuscript/")[-1], f["line"]) for f in findings}
+    assert found == planted, (files, findings)
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -4885,6 +4928,133 @@ def test_a_cited_title_is_found_in_its_registered_form_and_not_in_another(
             assert held is not None and held < lookups.TITLE_HELD, (kind, cited, title, held)
 
 
+# ------------------------------------------------------------- a family name, as registered
+
+#: Family names a property draws: of letters a folding leaves alone.
+_FAMILIES = ("Naranjo", "Busto", "Sellers", "Greenblatt", "Okafor", "Lindqvist", "Tanaka",
+             "Moreau", "Kowalski", "Haddad", "Petrov", "Ndiaye")  # fmt: skip
+#: A vowel, how TeX accents it in a .bib, and the letter a registry prints.
+_ACCENTS = (("e", "{\\'e}", "\N{LATIN SMALL LETTER E WITH ACUTE}"),
+            ("a", "{\\`a}", "\N{LATIN SMALL LETTER A WITH GRAVE}"),
+            ("o", "{\\^o}", "\N{LATIN SMALL LETTER O WITH CIRCUMFLEX}"),
+            ("i", "{\\'i}", "\N{LATIN SMALL LETTER I WITH ACUTE}"))  # fmt: skip
+_PARTICLE_FORMS = ("van der", "de", "von", "da", "van")
+#: What G7 is to find one person in, and what it is to find another person in.
+_SAME_NAME = ("cased", "accented", "particle", "apostrophe", "umlaut", "umlaut without its dots",
+              "hyphen", "suffix", "among the given names")
+_OTHER_NAME = ("a letter off", "another name", "initials are no name")
+_GIVEN = ("George", "Anna", "Maria", "Jose", "Wei", "Amara")
+
+
+@st.composite
+def _renamed(draw: st.DrawFn) -> list[tuple[str, str, str]]:
+    """One family name drawn, written for each way a registry writes the same name and for
+    each way another person's differs: every kind in every example, so that a rule broken
+    for one kind fails whatever the seed."""
+    family, second = draw(st.lists(st.sampled_from(_FAMILIES), min_size=2, max_size=2,
+                                   unique=True))  # fmt: skip
+    vowels = [at for at, c in enumerate(family) if c in "aeio"]
+    at = draw(st.sampled_from(vowels))
+    plain, tex, printed = next(a for a in _ACCENTS if a[0] == family[at])
+    particle = draw(st.sampled_from(_PARTICLE_FORMS))
+    cut = draw(st.integers(1, len(family) - 1))
+    letter = draw(st.sampled_from([c for c in "zqxj" if c not in family.casefold()]))
+    case = draw(st.sampled_from((str.upper, str.lower, str.title)))
+    # Not before an "e": without its dots "Süe" is "Sue", which the folding takes for "Sü"
+    # transcribed, and reads as another name (DESIGN.md, Known gaps).
+    dot = draw(st.sampled_from([i for i in range(1, len(family)) if family[i] != "e"]))
+    umlaut = family[:dot] + "\N{LATIN SMALL LETTER U WITH DIAERESIS}" + family[dot:]
+    return [
+        ("cased", family, case(family)),
+        ("accented", family[:at] + tex + family[at + 1 :],
+         family[:at] + printed + family[at + 1 :]),
+        ("particle", f"{particle} {family}",
+         draw(st.sampled_from((family, f"{particle.title()} {family}")))),
+        ("apostrophe", f"O'{family}",
+         draw(st.sampled_from((f"O{family}", f"O\N{RIGHT SINGLE QUOTATION MARK}{family}")))),
+        ("umlaut", umlaut, family[:dot] + "ue" + family[dot:]),
+        ("umlaut without its dots", umlaut, family[:dot] + "u" + family[dot:]),
+        ("hyphen", f"{family}-{second}", draw(st.sampled_from((f"{family} {second}", second)))),
+        ("suffix", f"{family} Jr.", family),
+        # A double surname a registry splits, its first part among the given names:
+        # Crossref's given "George Davey", family "Smith", for an entry's "Davey, SG".
+        ("among the given names", family, second, f"{draw(st.sampled_from(_GIVEN))} {family}"),
+        ("a letter off", family, family[:cut] + letter + family[cut + 1 :]),
+        ("another name", family, second),
+        ("initials are no name", family, second,
+         f"{family[0]}. {draw(st.sampled_from(_GIVEN))[0]}."),
+    ]  # fmt: skip
+
+
+@holds(150, _renamed())
+def test_a_family_name_is_one_person_s_however_a_registry_writes_it(
+    drawn: list[tuple[str, ...]],
+) -> None:
+    """G7 holds a cited family name to a registry's by Basile's lenient folding (2026-10-20):
+    case, accents written in TeX or in Unicode, a particle, an apostrophe, ü for ue, one part
+    of a double name, a suffix and the first part of a double surname a registry filed among
+    the given names are one person's; a letter that differs, or another name, is another
+    person's."""
+    from manuscript_guard.gates import authors
+
+    for kind, cited, registered, *forenames in drawn:
+        said = authors.same(cited, registered, *forenames)
+        assert said is (kind in _SAME_NAME), (kind, cited, registered, forenames)
+
+
+# ------------------------------------------------------- a title a search found, each way
+
+#: What G7 is to take for the cited title among a search's works, and what it is not.
+_SAME_SEARCHED = ("subtitle left out", "flagged", "typeset", "subtitle cited",
+                  "subtitle the registry left out")  # fmt: skip
+_OTHER_SEARCHED = ("longer title", "other words")
+
+
+@st.composite
+def _searched_titles(draw: st.DrawFn) -> list[tuple[str, str, str]]:
+    """A cited title of drawn words, and for each kind a title a search could return: the
+    same title as a registry writes it, and another work's that a search finds because it
+    holds the words. Every kind in every example."""
+    words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=10))
+    cited = " ".join(words)
+    subtitle = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=6)))
+    before = draw(st.lists(st.sampled_from(FILLER), min_size=len(words),
+                           max_size=len(words) + 3))  # fmt: skip
+    other = list(words)
+    for at in draw(st.permutations(range(len(words))))[: len(words) * 15 // 85 + 1]:
+        other[at] = "zygote" if other[at] != "zygote" else "quorum"
+    separator = draw(st.sampled_from((": ", " - ", "? ", " \N{EM DASH} ")))
+    case = draw(st.sampled_from((str.upper, str.title)))
+    return [
+        ("subtitle left out", cited, f"{cited}{separator}{subtitle}"),
+        ("flagged", cited, f"RETRACTED: {cited}"),
+        ("typeset", cited, case(cited).replace(" ", ", ", 1)),
+        ("subtitle cited", f"{cited}: {subtitle}", f"{cited}: {subtitle}"),
+        # A guideline printed with its task force in its title, which the registry leaves out.
+        ("subtitle the registry left out", f"{cited}: {subtitle}", cited),
+        ("longer title", cited, " ".join(before) + " " + cited),
+        ("other words", cited, " ".join(other)),
+    ]
+
+
+@holds(150, _searched_titles())
+def test_a_searched_title_is_the_cited_one_only_each_way(
+    drawn: list[tuple[str, str, str]],
+) -> None:
+    """For a reference with no identifier, G7 takes a work a search found for the cited one
+    only where each title holds 85% of the other's words: the registered title's main part
+    only, so that a subtitle the entry left out costs nothing; and a longer title that holds
+    every cited word, which a search finds and an identifier never names, is another work."""
+    from manuscript_guard.gates import lookups, searched
+
+    for kind, cited, registered in drawn:
+        alike = searched.alike(cited, [registered])
+        if kind in _SAME_SEARCHED:
+            assert alike >= lookups.TITLE_HELD, (kind, cited, registered, alike)
+        else:
+            assert alike < lookups.TITLE_HELD, (kind, cited, registered, alike)
+
+
 # ------------------------------------------------------------- a figure that estimates itself
 
 _FIGURE_FILLER = {
@@ -5414,6 +5584,88 @@ def _a_title_is_compared_both_ways(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(lookups, "title_held", held)
 
 
+def _a_family_name_must_agree_whole(patch: pytest.MonkeyPatch) -> None:
+    """The strict option Basile did not take: particles and all."""
+    from manuscript_guard.gates import authors
+
+    def whole(a: str, b: str, given: str = "") -> bool:
+        return authors.name_words(a) == authors.name_words(b)
+
+    patch.setattr(authors, "same", whole)
+
+
+def _a_given_name_holds_no_part_of_a_family_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    same = authors.same
+    patch.setattr(authors, "same", lambda a, b, given="": same(a, b))
+
+
+def _an_accent_is_a_letter_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "name_words", lambda family: tuple(re.findall(
+        r"[^\W\d_]+", family.replace("{", "").replace("}", "").casefold())))  # fmt: skip
+
+
+def _ue_is_not_u_umlaut(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "_TRANSCRIPTIONS", ())
+
+
+def _an_apostrophe_parts_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "_APOSTROPHES", re.compile(r"(?!)"))
+
+
+def _a_name_a_letter_off_is_the_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    same = authors.same
+
+    def near(a: str, b: str, given: str = "") -> bool:
+        x, y = " ".join(authors.name_words(a)), " ".join(authors.name_words(b))
+        one_off = len(x) == len(y) and sum(i != j for i, j in zip(x, y, strict=True)) <= 1
+        return same(a, b, given) or one_off
+
+    patch.setattr(authors, "same", near)
+
+
+def _a_searched_title_is_held_one_way(patch: pytest.MonkeyPatch) -> None:
+    """The rule G7 holds an identifier's title to."""
+    from manuscript_guard.gates import lookups, searched
+
+    patch.setattr(searched, "alike", lambda cited, titles: max(
+        (lookups.title_held(cited, t) or 0.0 for t in titles), default=0.0))  # fmt: skip
+
+
+def _the_whole_registered_title_is_held_back(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import searched
+
+    patch.setattr(searched, "main_title", lambda title: searched._FLAG.sub("", title))
+
+
+def _a_cited_subtitle_counts_against_it(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood before the measurement of 2026-10-20 found two guidelines cited
+    with the task force the registries leave out."""
+    from manuscript_guard.gates import lookups, searched
+
+    def alike(cited: str, titles: list[str]) -> float:
+        best = 0.0
+        for title in titles:
+            there = lookups.title_held(cited, title)
+            back = [b for b in (lookups.title_held(searched._FLAG.sub("", title), cited),
+                                lookups.title_held(searched.main_title(title), cited))
+                    if b is not None]  # fmt: skip
+            if there is not None and back:
+                best = max(best, min(there, max(back)))
+        return best
+
+    patch.setattr(searched, "alike", alike)
+
+
 def _an_isbn_10_is_not_read_as_its_isbn_13(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import duplicates
 
@@ -5747,6 +5999,112 @@ def _the_planned_results_subsections_are_not_read(patch: pytest.MonkeyPatch) -> 
     patch.setattr(design, "subsections", lambda sections, index: [sections[index]])
 
 
+def _the_deviations_name_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "_deviations", lambda text: [])
+
+
+def _the_deviations_end_at_their_first_subsection(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    def own_text_only(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, headings[i + 1].start if i + 1 < len(headings) else len(text))
+                for i, h in enumerate(headings) if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", own_text_only)
+
+
+def _the_plan_s_title_may_be_its_deviations(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood before round 1: the title was a heading like any other."""
+    from manuscript_guard.gates import collection
+
+    def every_heading(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, next((later.start for later in headings[i + 1:]
+                                if later.level <= h.level), len(text)))
+                for i, h in enumerate(headings) if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", every_heading)
+
+
+def _the_deviations_run_to_the_next_section(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    def to_a_section(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, next((later.start for later in headings[i + 1:]
+                                if later.level <= 2), len(text)))
+                for i, h in enumerate(headings[1:], 1)
+                if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", to_a_section)
+
+
+def _any_heading_with_a_change_s_word_is_the_deviations(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "is_deviations",
+                  lambda title: bool(re.search(collection._DEVIATIONS, title)))  # fmt: skip
+
+
+def _a_heading_that_names_the_planned_results_is_never_the_deviations(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import collection
+    from manuscript_guard.gates.design import PLANNED
+
+    patch.setattr(collection, "is_deviations",
+                  lambda title: bool(re.search(collection._DEVIATIONS, title))
+                  and not re.search(PLANNED, title))  # fmt: skip
+
+
+def _code_in_brackets_is_a_variable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "VARIABLE", re.compile(r"[A-Za-z][A-Za-z0-9_():]*"))
+
+
+def _a_value_in_backticks_is_a_variable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "LITERALS", frozenset())
+
+
+def _a_dotted_name_is_never_a_variable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    reads_as = collection._reads_as
+    patch.setattr(collection, "_reads_as",
+                  lambda said, known: None if "." in said else reads_as(said, known))  # fmt: skip
+
+
+def _a_variable_is_matched_without_its_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    reads_as = collection._reads_as
+
+    def folded(said: str, known) -> str | None:
+        if said.casefold() in {name.casefold() for name in known}:
+            return "used"
+        return reads_as(said, known)
+
+    patch.setattr(collection, "_reads_as", folded)
+
+
+def _a_variable_is_said_at_its_last_mention(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "_first", lambda found, named: found.update({named.name: named}))
+
+
+def _fences_and_comments_name_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "mask", lambda text: text)
+
+
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
@@ -5754,7 +6112,10 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
 def _a_list_of_pointers_is_its_first(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import pointers
 
-    patch.setattr(pointers, "_numbers", lambda found: [(bool(found["s0"]), int(found["n0"]))])
+    patch.setattr(
+        pointers, "_numbers",
+        lambda found: [(bool(found["s0"]), int(found["n0"]), found.start("n0"))],
+    )  # fmt: skip
 
 
 def _the_supplement_s_tables_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
@@ -5765,7 +6126,9 @@ def _the_supplement_s_tables_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
     read = pointers.pointers_in
     patch.setattr(
         pointers, "pointers_in",
-        lambda text, path: [replace(p, supplementary=False) for p in read(text, path)],
+        lambda text, path, *numbers: [
+            replace(p, supplementary=False) for p in read(text, path, *numbers)
+        ],
     )
 
 
@@ -5788,10 +6151,42 @@ def _one_figure_more_is_counted_than_the_supplement_carries(patch: pytest.Monkey
 
     def one_more(text: str):
         found = placed(text)
-        figures = ("figure",) if "figure" in found.bound else ()
+        figures = (("figure", "f0"),) if any(k == "figure" for k, _ in found.bound) else ()
         return type(found)(found.bound + figures, found.by_hand)
 
     patch.setattr(pointers, "placed_in", one_more)
+
+
+def _a_bound_pointer_points_where_its_binding_does(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.crossref import Display
+    from manuscript_guard.gates import pointers
+
+    read = pointers.pointers_in
+
+    def as_named(text: str, path: Path, numbers=None):
+        found = []
+        for pointer in read(text, path, numbers):
+            named = numbers.display(pointer.binding) if numbers and pointer.binding else None
+            if isinstance(named, Display):
+                pointer = replace(pointer, kind=named.kind, supplementary=named.supplementary)
+            found.append(pointer)
+        return found
+
+    patch.setattr(pointers, "pointers_in", as_named)
+
+
+def _displays_are_numbered_in_the_order_of_their_paths(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "printed_order", lambda paths, supplementary: sorted(paths))
+
+
+def _the_supplement_s_displays_are_numbered_with_the_paper_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "is_supplementary", lambda root, path: False)
 
 
 def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
@@ -7298,6 +7693,42 @@ BROKEN = {
         _a_title_is_compared_both_ways,
         test_a_cited_title_is_found_in_its_registered_form_and_not_in_another,
     ),
+    "a family name must agree whole, particles and all": (
+        _a_family_name_must_agree_whole,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "an accent is a letter of its own": (
+        _an_accent_is_a_letter_of_its_own,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "ue is not u with a diaeresis": (
+        _ue_is_not_u_umlaut,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "an apostrophe parts a name": (
+        _an_apostrophe_parts_a_name,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "a name a letter off is the name": (
+        _a_name_a_letter_off_is_the_name,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "a given name holds no part of a family name": (
+        _a_given_name_holds_no_part_of_a_family_name,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "a searched title is held one way": (
+        _a_searched_title_is_held_one_way,
+        test_a_searched_title_is_the_cited_one_only_each_way,
+    ),
+    "the whole registered title is held back to the cited one": (
+        _the_whole_registered_title_is_held_back,
+        test_a_searched_title_is_the_cited_one_only_each_way,
+    ),
+    "a subtitle the registry left out counts against the cited title": (
+        _a_cited_subtitle_counts_against_it,
+        test_a_searched_title_is_the_cited_one_only_each_way,
+    ),
     "an ISBN-10 is not read as its ISBN-13": (
         _an_isbn_10_is_not_read_as_its_isbn_13,
         test_one_work_is_one_work_however_its_identifiers_are_written,
@@ -7522,6 +7953,29 @@ BROKEN = {
         _the_planned_results_subsections_are_not_read,
         test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
     ),
+    **{
+        f"in a plan, {said}": (
+            broken,
+            test_a_variable_is_read_from_the_plan_outside_its_deviations_and_nowhere_else,
+        )
+        for said, broken in (
+            ("the Deviations name variables", _the_deviations_name_variables),
+            ("the Deviations end at their first subsection",
+             _the_deviations_end_at_their_first_subsection),
+            ("the plan's title may be its Deviations", _the_plan_s_title_may_be_its_deviations),
+            ("the Deviations run to the next section", _the_deviations_run_to_the_next_section),
+            ("any heading with a change's word is the Deviations",
+             _any_heading_with_a_change_s_word_is_the_deviations),
+            ("a heading naming the planned results is never the Deviations",
+             _a_heading_that_names_the_planned_results_is_never_the_deviations),
+            ("code in brackets is a variable", _code_in_brackets_is_a_variable),
+            ("a value in backticks is a variable", _a_value_in_backticks_is_a_variable),
+            ("a dotted name is never a variable", _a_dotted_name_is_never_a_variable),
+            ("a variable is matched without its case", _a_variable_is_matched_without_its_case),
+            ("a variable is said at its last mention", _a_variable_is_said_at_its_last_mention),
+            ("fences and comments name variables", _fences_and_comments_name_variables),
+        )
+    },
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
@@ -7545,6 +7999,18 @@ BROKEN = {
     "a document's figures are counted one too many": (
         _one_figure_more_is_counted_than_the_supplement_carries,
         test_a_pointer_names_what_the_document_carries_or_is_said,
+    ),
+    "a bound pointer is read as pointing where its binding does": (
+        _a_bound_pointer_points_where_its_binding_does,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "tables and figures are numbered in the order of their files' paths": (
+        _displays_are_numbered_in_the_order_of_their_paths,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "the supplement's tables are numbered with the paper's": (
+        _the_supplement_s_displays_are_numbered_with_the_paper_s,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
     ),
     "the Methods are read by the name G9 had for them": (
         _the_methods_are_read_by_their_old_name,

@@ -94,7 +94,7 @@ from manuscript_guard.record import FIGURE_VERDICTS
 from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
 from manuscript_guard.scaffold import init_project, rules_to_add
 from manuscript_guard.text.masking import mask
-from manuscript_guard.text.placeholders import substitute
+from manuscript_guard.text.placeholders import parse, substitute
 from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
@@ -606,6 +606,38 @@ def _design_round(args: argparse.Namespace) -> int:
 
 
 
+def _bind_pointers(args: argparse.Namespace, project) -> int:
+    """`bind --pointers`: each typed pointer to a table or a figure, and the ref or num binding
+    that prints it as it reads now (`binding.typed_pointers`). A typed pointer is not a
+    defect, so finding some is no failure: the exit is 0 either way."""
+    from manuscript_guard.binding import SelectionError, apply, label, select, typed_pointers
+
+    items = typed_pointers(project)
+    if not items:
+        print("no typed pointer to a table or a figure that a binding could print as it reads.")
+        return 0
+    if args.apply:
+        try:
+            chosen = select(items, args.only, project.root)
+        except SelectionError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        applied, _rest = apply(chosen)
+        for item, binding in applied:
+            print(f"{label(item, project.root)}  {item.text!r} -> {binding}")
+        print(f"\nreplaced {len(applied)} typed pointer(s) with the binding that prints them.")
+        return 0
+    for item in items:
+        print(f"{label(item, project.root)}  {item.text!r} -> {{{{{item.certain}}}}}")
+        print(f"    {item.hint}")
+    print(
+        f"\n{len(items)} typed pointer(s) can be bound, each printing what it reads now. "
+        "`manuscript-guard bind --pointers --apply` replaces all of them; add "
+        "`--only FILE:LINE` for one line."
+    )
+    return 0
+
+
 def cmd_bind(args: argparse.Namespace) -> int:
     """Show every unbound number and what would give it a source.
 
@@ -621,6 +653,8 @@ def cmd_bind(args: argparse.Namespace) -> int:
         # "every number in the manuscript is accounted for" was said of no manuscript.
         print(f"manuscript-guard bind: {empty}", file=sys.stderr)
         return 2
+    if args.pointers:
+        return _bind_pointers(args, project)
     namespace, _results, _literature, _ = load_namespace(project)
     items = unbound(project, namespace)
 
@@ -2109,15 +2143,45 @@ def cmd_explain(args: argparse.Namespace) -> int:
         rule = verdict.rule or "-"
         if typed is not None:
             rule = f"{rule}, typed: write {typed.reference}"
-        rows.append((atom.line, atom.text, verdict.kind, rule, typed is not None))
+        failed = verdict.kind == UNCLASSIFIED or typed is not None
+        rows.append((atom.line, atom.text, verdict.kind, rule, failed))
+    rows += _explained_refs(project, text)
     if not rows:
         print("no numeric atoms outside masked regions")
         return 0
+    rows.sort(key=lambda row: row[0])
     width = max(len(r[1]) for r in rows)
-    for line, atom_text, kind, rule, typed in rows:
-        marker = "FAIL" if kind == UNCLASSIFIED or typed else "ok  "
+    for line, atom_text, kind, rule, failed in rows:
+        marker = "FAIL" if failed else "ok  "
         print(f"{marker} {line:>5}  {atom_text:<{width}}  {kind:<12} {rule}")
     return 0
+
+
+def _explained_refs(project, text: str) -> list[tuple[int, str, str, str, bool]]:
+    """A row for each ref and num binding of a file: what the build prints for it and from
+    which display, or why it prints nothing (G2 says the same)."""
+    from manuscript_guard.crossref import Refused
+    from manuscript_guard.gates.pointers import display_numbers
+
+    try:
+        numbers = display_numbers(project)
+    except Unreadable:
+        # Another file of the manuscript cannot be read, so nothing can be counted; `check`
+        # names it. This file's numbers are still explained.
+        return []
+    rows = []
+    for placeholder in parse(text)[0]:
+        if not placeholder.is_ref:
+            continue
+        display = numbers.display(placeholder)
+        if isinstance(display, Refused):
+            rows.append((placeholder.line, placeholder.raw, display.code, display.why, True))
+            continue
+        where = "the supplement" if display.supplementary else "the main text"
+        shown = f"{placeholder.raw} -> {numbers.printed(placeholder)}"
+        rule = f"numbered: {where}'s {display.kind} {display.number}, placed by {display.binding}"
+        rows.append((placeholder.line, shown, "pointer", rule, False))
+    return rows
 
 
 def cmd_models(args: argparse.Namespace) -> int:
@@ -2236,7 +2300,11 @@ def cmd_render(args: argparse.Namespace) -> int:
         print(load_report.render(project.root))
         return 2
 
+    from manuscript_guard.gates.pointers import display_numbers
+
+    # A ref prints the number its table or figure has, as the build prints it.
     rendered = {ref: value.display for ref, value in namespace.items()}
+    rendered |= display_numbers(project).bindings()
     out_dir = project.path("build") / "rendered"
     out_dir.mkdir(parents=True, exist_ok=True)
     manuscript_dir = project.path("manuscript")
@@ -2273,8 +2341,10 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
     )
     from manuscript_guard.build.assemble import Assembled
     from manuscript_guard.build.document import pandoc
+    from manuscript_guard.gates.pointers import display_numbers
 
     classifier = Classifier.load(project.extra_conventions, project.extra_terms)
+    numbers = display_numbers(project)
     counter = [0]
     marked: list[Assembled] = []
     marks = []
@@ -2288,6 +2358,7 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
             results=results,
             project=project,
             pandoc=pandoc(),
+            numbers=numbers,
         )
         marked.append(Assembled(path=item.path, text=text))
         marks.extend(found)
@@ -2788,7 +2859,8 @@ def cmd_lookup(args: argparse.Namespace) -> int:
     if args.dry_run:
         for one in due:
             ids = ", ".join(f"{k} {v}" for k, v in (("DOI", one.doi), ("PMID", one.pmid)) if v)
-            print(f"@{one.citekey}: would look up {ids} ({one.again})")
+            what = f"look up {ids}" if ids else "search PubMed, Crossref and OpenAlex for its title"
+            print(f"@{one.citekey}: would {what} ({one.again})")
         print(f"{len(due)} to look up, {len(planned) - len(due)} not; nothing was sent")
         return 0
     written = lookup.run(
@@ -3803,6 +3875,13 @@ def build_parser() -> argparse.ArgumentParser:
         "takes every unambiguous one, which means one wrong guess can only be avoided by "
         "declining all the right ones",
     )
+    bind.add_argument(
+        "--pointers",
+        action="store_true",
+        help="offer, for each typed pointer to a table or figure (\"Table 2\"), the "
+        "{{ref.table.<key>}} or {{num.table.<key>}} binding that prints it as it reads, so "
+        "that the build numbers it from then on",
+    )
     bind.set_defaults(func=cmd_bind)
 
     importer = sub.add_parser(
@@ -3998,7 +4077,9 @@ def build_parser() -> argparse.ArgumentParser:
     syncsources.set_defaults(func=cmd_sync_sources)
 
     lookup = sub.add_parser(
-        "lookup", help="look up each cited DOI and PMID, and keep what the registries said"
+        "lookup",
+        help="look up each cited DOI and PMID, search by its title for a reference with "
+        "neither, and keep what the registries said",
     )
     lookup.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     lookup.add_argument(

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://manuscript-guard.org/schemas/related-snapshot/1",
   "title": "manuscript-guard record of an earlier project's files, copied by `related --take`",
-  "description": "What `manuscript-guard related --take` copied from an earlier output's manuscript-guard project into literature/related/<id>/: its results, its plan as frozen and its data dictionary, each file by its path in the copy with the SHA-256 of what was written, and where it came from. G8 reads the copy and never the project, so that every machine gives the same answer, and says when a copied file no longer has its digest.",
+  "description": "What `manuscript-guard related --take` copied from an earlier output's manuscript-guard project into literature/related/<id>/: its results, its plan as frozen and its data dictionary, each file by its path in the copy with its digest as an analysis input's (line endings folded for .json, .yaml and .md), and where it came from. G8 reads the copy and never the project, so that every machine gives the same answer, and says when a copied file no longer has its digest.",
   "type": "object",
   "required": ["schema", "id", "project", "taken_on", "files"],
   "additionalProperties": false,

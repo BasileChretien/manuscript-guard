@@ -418,6 +418,9 @@ def test_files_a_system_leaves_in_a_copy_are_not_edits(project: Path, earlier: P
     assert _found(_check(project)) == []
     _take(project)
     assert (record.parent / "results" / ".DS_Store").is_file()
+    # A fragment is read whatever its name, so one added is an edit (round 2).
+    (record.parent / "results" / ".extra.json").write_bytes(b"{}")
+    assert _found(_check(project)) == [("related-snapshot-edited", FAIL)]
 
 
 def test_a_revision_or_a_value_typed_as_a_number_is_read_as_typed(project: Path) -> None:
@@ -432,7 +435,7 @@ def test_a_revision_or_a_value_typed_as_a_number_is_read_as_typed(project: Path)
         b"    title: An abstract\n"
         b"    shares: [data]\n"
         b"    project: ../earlier\n"
-        b"    revision: 4127830\n"
+        b"    revision: 1.10\n"
         b"    values:\n"
         b"      - here: ror.point\n"
         b"        value: 1.50\n"
@@ -441,7 +444,7 @@ def test_a_revision_or_a_value_typed_as_a_number_is_read_as_typed(project: Path)
     )
     loaded, _ = load_related(load_project(project)[0])
     (output,) = loaded.outputs
-    assert (output.revision, output.values[0].value) == ("4127830", "1.50")
+    assert (output.revision, output.values[0].value) == ("1.10", "1.50")
     found = [f for f in _check(project).findings if f.code != "related-not-taken"]
     assert [f.code for f in found] == ["related-number-differs"]
     assert "ror.point is 1.50 there" in found[0].message

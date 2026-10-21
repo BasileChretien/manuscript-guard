@@ -159,7 +159,7 @@ def _finding(related: Related, code: str, message: str, **rest) -> Finding:
 
 
 def _files(project: Project, related: Related, output: Output) -> Report:
-    """Its own files where an author of this paper wrote it, and the ones it names."""
+    """Its own files where it shares the data or the study with authors, and those it names."""
     findings = []
     literature = project.path("literature")
     for name in output.files:

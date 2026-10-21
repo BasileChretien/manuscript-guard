@@ -3810,10 +3810,10 @@ else, and was read as an edit on every machine but the author's (round 1 of #391
 whose name begins with a dot, the `.DS_Store` a system leaves, is neither copied nor counted,
 and the fragments' `.sha256` beside them are not copied, since nothing reads them there.
 `--take` writes over nothing it did not write. Until one of
-the three is there, an output that shares the data or the study with authors warns
-(`related-files-missing`); one of the same authors on other data (`shares: [authors]`) is
-listed for what other checks read of it and has nothing to compare (round 1 of #391), unless
-`files_unavailable` says why they cannot be had. A project named and never copied warns, and
+the three is there, or `files_unavailable` says why they cannot be had, an output that
+shares the data or the study with authors warns (`related-files-missing`); one of the same
+authors on other data (`shares: [authors]`) is listed for what other checks read of it and
+has nothing to compare (round 1 of #391). A project named and never copied warns, and
 fails at submission (`related-not-taken`): nothing was compared. A copy of another project or revision
 than the entry now names warns, and fails at submission (`related-taken-elsewhere`): it
 compared another output than the one named.
@@ -9396,6 +9396,8 @@ Open, recorded as each change landed:
   in the manuscript, as G13 finds a quoted change, so `manuscript_says: "2026"` or
   `disclosed_by: "abstract"` passes wherever those words are printed (round 1 of #391). A
   citation in the sentence is matched as the source writes it (`[@key]`), not as printed.
+  A value brought into an entry by a YAML merge key (`<<: *common`) is read as YAML reads it,
+  `1.50` as `1.5`, not as typed (round 2 of #391; contrived).
 - **A disclosure is a citation or a sentence, and the covering letter is not read.** An
   overlap counts as disclosed where the earlier output is cited anywhere in the manuscript
   or the declared sentence is printed anywhere: neither is checked to say that the two share

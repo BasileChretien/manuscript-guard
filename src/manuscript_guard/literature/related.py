@@ -434,5 +434,6 @@ def _git(source: Path, *args: str) -> bytes | None:
 
 
 def _visible(paths) -> list[Path]:
-    """The files a person put there, without those a system leaves (`.DS_Store`)."""
-    return sorted(path for path in paths if not path.name.startswith("."))
+    """The files a person put there, without those a system leaves (`.DS_Store`). A fragment
+    is read whatever its name, `.extra.json` included, so it is never left out."""
+    return sorted(p for p in paths if not p.name.startswith(".") or p.suffix == ".json")

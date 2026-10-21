@@ -14,13 +14,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.notation import UNITS
-from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.text.placeholders import parse
+from manuscript_guard.text.reader import bound_files
 
 GATE = "G2"
 
@@ -68,16 +67,30 @@ class Written:
     unit: str
 
 
-def units_after(text: str) -> list[Written]:
-    """The unit symbol written right after each results binding of `text`, where one is."""
+def units_after(text: str, typed: str | None = None) -> list[Written]:
+    """The unit symbol written right after each results binding of `text`, where one is.
+
+    `typed` is a LaTeX file as typed, where `text` is its Markdown view. A unit is read there
+    only where nothing but spaces stands between it and the binding and inside it no command
+    or maths: `\\mg{results.dose}~$\\mu$g` prints µg, and its view reads "g", since the reader
+    blanks `\\mu`. Such a unit is not compared."""
     found = []
     for placeholder in parse(text)[0]:
         if placeholder.namespace != "results":
             continue
         after = _UNIT.match(text, placeholder.end)
-        if after is not None:
-            found.append(Written(placeholder.key, placeholder.start, after["unit"]))
+        if after is None:
+            continue
+        if typed is not None and _BLANKED.search(typed, placeholder.end, after.end()):
+            continue
+        found.append(Written(placeholder.key, placeholder.start, after["unit"]))
     return found
+
+
+#: What the LaTeX reader blanks between a binding and a unit, or inside one, so that what
+#: the view reads there is not what LaTeX prints: a command other than a space's, maths, or
+#: a brace.
+_BLANKED = re.compile(r"\\(?!(?:thinspace|nobreakspace|enspace)(?![A-Za-z]))[A-Za-z@]+|[${}]")
 
 
 def same_unit(written: str, emitted: str) -> bool | None:
@@ -98,9 +111,9 @@ def _canonical(unit: str) -> str:
 def check_bound_units(project: Project, results: Results) -> Report:
     """A warning for each binding followed by a unit other than the one emitted."""
     report = Report()
-    for path in source_files(project.path("manuscript")):
-        text = read_text(path)
-        for written in units_after(text):
+    for bound in bound_files(project):
+        path, text = bound.path, bound.view
+        for written in units_after(text, bound.text if bound.latex else None):
             value = results.values.get(written.key)
             if value is None or not value.unit or same_unit(written.unit, value.unit) in (
                 True,

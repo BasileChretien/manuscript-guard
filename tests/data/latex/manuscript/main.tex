@@ -1,0 +1,135 @@
+\documentclass{article}
+\usepackage{mgvalues}
+\title{Reporting of hepatic injury with example-drug: a disproportionality analysis of a synthetic spontaneous reporting database}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\textbf{Background.} Drug-induced hepatic injury is a common reason for regulatory action.
+\textbf{Methods.} Disproportionality analysis of a synthetic spontaneous reporting database
+covering \mg{results.cohort.period_start} to \mg{results.cohort.period_end}, comparing
+reports of hepatic injury for example-drug against all other drugs.
+\textbf{Results.} Of \mg{results.cohort.n_reports} reports, \mg{results.case.n_cases} described
+hepatic injury with example-drug. The reporting odds ratio was \mg{results.ror.point}
+(95\% CI \mg{results.ror.ci_low} to \mg{results.ror.ci_high}).
+\textbf{Conclusions.} Reporting of hepatic injury is disproportionate for example-drug in these
+synthetic data. Disproportionality is not incidence and cannot establish risk.
+\end{abstract}
+
+\section{Introduction}
+
+Drug-induced hepatic injury remains among the commonest reasons for regulatory action on a
+marketed medicine. In a national cohort, the crude incidence was
+\mg{lit.background.reported_incidence} per 100\,000 person-years
+\cite{fictionalHepaticCohort2021}, and a disproportionality signal has been reported for the
+drug class as a whole (ROR \mg{lit.background.class_ror}) \cite{fictionalClassSignal2019}. The
+national agency estimated that \mg{lit.agency.withdrawn_estimate} patients had been exposed
+by the end of its last published review.
+
+Whether the signal extends to example-drug specifically has not been examined.
+
+\section{Methods}
+
+We analysed a synthetic spontaneous reporting database covering
+\mg{results.cohort.period_start} to \mg{results.cohort.period_end}, a period of
+\mg{results.cohort.n_years} years. Reports were included without restriction on age or sex.
+Each record carries a unique report identifier and the generator emits no duplicates, so no
+de-duplication step was applied; a real database would require one, and its absence here is
+a property of the synthetic data rather than a design choice.
+
+Hepatic injury is the single event term used by the data generator. Real work would need a
+case definition --- a MedDRA Standardised Query or an explicit preferred-term list --- and the
+choice of definition would change the counts. The terms actually used are published in
+Table~S1, emitted from the lists the analysis filtered on rather than retyped, which is what
+RECORD 6.1 asks for and what makes a case definition checkable.
+
+The reporting odds ratio was computed from a 2 x 2 table contrasting reports of hepatic
+injury with all other reported events, for example-drug against all other drugs in the
+database. Confidence intervals were derived from the standard error of the log odds ratio
+and are 95\% confidence intervals, two-sided at an alpha of \mg{results.param.alpha}; the
+main estimate is also given with its 90\% confidence interval, for comparison with
+signal-detection practice. \mg{method.ror} \mg{method.ci}
+
+A signal was defined by the classical criterion: at least
+\mg{results.param.signal.min_cases} cases together with a lower bound of the 95\% confidence
+interval of the reporting odds ratio above 1. No p-value threshold was used as a decision
+rule, which is not how a disproportionality analysis reaches its conclusion.
+\mg{method.signal}
+
+Adjusted for age group and sex, the two patient characteristics the database records for
+every report, the reporting odds ratio was also estimated by \mg{results.model.adjusted.kind}
+of hepatic injury on exposure to example-drug, with both characteristics entered as
+categories. The reporting year, which every report also carries, was not adjusted for:
+calendar time is a common adjustment in disproportionality analyses, but the data generator
+draws the year independently of the drug, so here it cannot confound the estimate. Its
+interval is the model's Wald interval for the exposure coefficient, at the same alpha. Table
+S2 describes the model as it was fitted. \mg{method.adjusted}
+
+The analysis was run in Python \mg{results.software.python} with statsmodels
+\mg{results.software.statsmodels}.
+
+Reporting follows the checklist declared in \texttt{paper.yaml}.
+
+% That checklist is a demonstration profile, not a published guideline, which is why no
+% guideline is named in the prose above. As in the example's main.md, the comment is the
+% twin's too, and its numbers, RECORD-PE and 2019, are read by no gate.
+
+\section{Results}
+
+The database contained \mg{results.cohort.n_reports} reports, of which
+\mg{results.cohort.n_drug_reports} named example-drug. Hepatic injury was reported in
+\mg{results.case.n_cases} of these; \mg{results.case.n_serious} were flagged as serious
+(\mg{results.case.pct_serious}\%). Baseline characteristics are shown in Table~1.
+
+\mg{table.baseline}
+
+Reporting of hepatic injury was disproportionate for example-drug, with a reporting odds
+ratio of \mg{results.ror.point} (95\% CI \mg{results.ror.ci_low} to
+\mg{results.ror.ci_high}; 90\% CI \mg{results.ror.ci90_low} to \mg{results.ror.ci90_high}). The
+signal criterion defined in the Methods was \mg{results.signal.verdict}. The estimate is shown
+in Figure~1, and the counts it was computed from in Table~2, so a reader
+can reconstruct it. Adjusted for age group and sex, the reporting odds ratio was
+\mg{results.ror_adjusted.point} (95\% CI \mg{results.ror_adjusted.ci_low} to
+\mg{results.ror_adjusted.ci_high}), given to three decimal places because to two it is the
+crude estimate: the data generator draws both characteristics independently of the drug.
+
+\mg{table.two_by_two}
+
+\mg{figure.forest}
+
+\section{Discussion}
+
+The reporting odds ratio observed here exceeds the class-level estimate of
+\mg{lit.background.class_ror} reported previously \cite{fictionalClassSignal2019}, although the
+two are not directly comparable: that analysis pooled the class and drew on a different
+reporting period.
+
+Disproportionality is not incidence, and nothing in these data supports a rate. The cohort
+incidence of \mg{lit.background.reported_incidence} per 100\,000 person-years
+\cite{fictionalHepaticCohort2021} is the only population-level figure available, and it
+predates the marketing of example-drug.
+
+Several limitations follow from the design. Spontaneous reports are subject to notoriety
+bias, and the denominator is unknown. Grade 3 and higher events cannot be distinguished
+from milder ones in these data. The exposure figure of
+\mg{lit.agency.withdrawn_estimate} patients rests on a printed agency report that is no
+longer publicly available, and is recorded as an author attestation rather than a stored
+source.
+
+\section{Data availability}
+
+The synthetic dataset, the code that generates it and the analysis that reads it are all in
+this repository. No real patient data were used, and no ethical approval was required.
+
+\section{Funding}
+
+This work received no funding.
+
+\section{Competing interests}
+
+None declared.
+
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}

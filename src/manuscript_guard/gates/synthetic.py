@@ -29,12 +29,17 @@ def is_demonstration(project: Project) -> bool:
 
 
 def quoted_refs(project: Project) -> set[str]:
-    """Every binding the manuscript's sources use, as `results.<key>` or `table.<key>`."""
+    """Every binding the manuscript's sources use, as `results.<key>` or `table.<key>`: a
+    LaTeX manuscript's `\\mg{results.key}` through its include tree, which passes over a file
+    it cannot read, as this does."""
     from manuscript_guard.gates.numbers import source_files
     from manuscript_guard.text.placeholders import parse
+    from manuscript_guard.text.reader import LATEX, bound_files, manuscript_format
 
     refs: set[str] = set()
     directory = project.path("manuscript")
+    if directory.is_dir() and manuscript_format(directory) == LATEX:
+        return {p.ref for bound in bound_files(project) for p in bound.placeholders}
     for path in source_files(directory) if directory.is_dir() else ():
         try:
             text = path.read_text(encoding="utf-8")

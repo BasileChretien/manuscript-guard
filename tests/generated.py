@@ -368,6 +368,114 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+# ------------------------------------------------------------------------------- LaTeX
+
+#: LaTeX as an author writes it, each piece whole: numbers as LaTeX writes them, the commands
+#: the reader knows and one it does not, citations, a binding, a label, listings, a comment,
+#: maths and a table. Whole, so that one drawn among others reads as it reads alone.
+_LATEX_WHOLE = (
+    "95\\% ", "$p<0.05$ ", "3--5 ", "Table~\\ref{t} ", "\\cite[p.~33]{smith2019} ",
+    "\\citep{a,b} ", "\\mg{results.ror.point} ", "\\label{sec:2} ", "\\verb|x=1| ",
+    "% note 12\n", "\\url{http://a.b/1%2} ", "\\footnote{seen 3} ", "\\emph{7 words} ",
+    "\\section{Results 2}\n", "\\unknown{4 days} ", "``quoted 6'' ", "$\\beta = 0.42$ ",
+    "\\begin{tabular}{lc}a & 7 \\\\ b & 8 \\\\\\end{tabular}\n", "\\iffalse 9 \\fi ",
+    "\\begin{verbatim}\nx <- 55\n\\end{verbatim}\n", "\\[ x = 1 \\] ", "10\\,000 ", "\n\n",
+)  # fmt: skip
+#: The signs of LaTeX bare, opened and closed by nobody: what a scanner mishandles.
+_LATEX_SIGNS = (
+    "\\", "%", "{", "}", "[", "]", "$", "$$", "&", "#", "^", "_", "~", "``", "''",
+    "\\begin{verbatim}", "\\end{equation}", "\\[", "\\]", "\\(", "\\)", "\\iffalse", "\\fi",
+    "\\input{", "\\verb", "\\begin{document}", "\\end{document}", "\\catcode", "\\def\\x",
+    "\\makeatletter", "\\ifx", "\n", "\r\n", " ", "12", "\\begin{comment}", "\\url{",
+)  # fmt: skip
+_PREAMBLE = "\\documentclass{article}\n\\begin{document}\n"
+
+
+def latex_texts() -> st.SearchStrategy[str]:
+    """A LaTeX file, drawn as `texts` draws a Markdown one: whole pieces among words, and the
+    bare signs once each. Some open with a preamble and `\\begin{document}`."""
+    pool = (*_spaced(FILLER) * 2, *_spaced(_NUMBERS), *_LATEX_WHOLE * 3, *_LATEX_SIGNS)
+    return st.tuples(
+        st.sampled_from(("", "", _PREAMBLE)), _in_a_row(pool, few=20, many=70)
+    ).map("".join)
+
+
+#: Where a number stands in LaTeX, and whether the reader reads it there: each `{}` holds a
+#: number, and its flag says whether it is read. A comment's line is followed by a line
+#: that is read, so that a comment that runs past its line is seen.
+LATEX_PLACES = (
+    ("prose {} ", (True,)),
+    ("\\emph{{{} words}} ", (True,)),
+    ("\\footnote{{seen {}}} ", (True,)),
+    ("\\caption{{Cases {}}} ", (True,)),
+    ("\\cite[p.~{}]{{smith2019}} ", (True,)),
+    ("$x = {}$ ", (True,)),
+    ("\\verb+{}+ ", (True,)),
+    ("\\section{{Part {}}}\n", (True,)),
+    ("\\unknown{{{} days}} ", (True,)),
+    ("\\newcommand{{\\cases}}{{{}}} ", (True,)),
+    ("95\\% then {} ", (True,)),
+    ("\\textbf{{a {{b}} {}}} ", (True,)),
+    ("% note {}\n{} ", (False, True)),
+    ("\\label{{s{}}} ", (False,)),
+    ("\\label{{a{{b}}{}}} ", (False,)),
+    ("\\cite{{key{}}} ", (False,)),
+    ("\\mg{{results.r{}}} ", (False,)),
+    ("\\url{{http://a.b/{}}} ", (False,)),
+    ("\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n", (False,)),
+    ("\\iffalse {} \\fi ", (False,)),
+    ("\\vspace{{{}pt}} ", (False,)),
+    # What round 1 of #380 found blanked though it prints.
+    ("\\iffalse {} \\else {} \\fi ", (False, True)),
+    ("\\begin{{align}}a &= b \\\\\n[{}] &= c\\end{{align}}\n", (True,)),
+    ("\\href{{http://a.b/{}}}{{text {}}} ", (False, True)),
+    ("\\begin{{tabular}}{{ll}}{} & \\multicolumn{{1}}{{c}}{{m {}}} \\\\\\end{{tabular}}\n",
+     (True, True)),
+    ("$x$${}$ ", (True,)),
+)  # fmt: skip
+#: Where a number stands in the preamble, before `\\begin{document}`.
+LATEX_PREAMBLE_PLACES = (
+    ("\\begin{{filecontents}}{{x.bib}}\nkept {}\n\\end{{filecontents}}\n", (False,)),
+    ("\\title{{T {}}}\n", (True,)),
+    ("\\newcommand{{\\ci}}[1][{}]{{#1 CI}}\n", (True,)),
+    ("\\usepackage[opt{}]{{x}}\n", (False,)),
+    ("\\author{{A {}}}\n", (False,)),
+)  # fmt: skip
+
+
+@st.composite
+def latex_planted(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
+    """A LaTeX document with a number in every place of `LATEX_PLACES`, in an order drawn,
+    among whole pieces; and where each number stands, and whether it is read there. Every
+    place is in every document, so that a rule broken for one kind is seen in each."""
+    filler = (*_spaced(FILLER), *_LATEX_WHOLE)
+    order = draw(st.permutations(range(len(LATEX_PLACES))))
+    between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
+                            max_size=len(order) + 1))  # fmt: skip
+    text, planted, count = "\\documentclass{article}\n", [], 0
+
+    def plant(template: str, flags: tuple[bool, ...]) -> None:
+        nonlocal text, count
+        pieces = [piece.replace("{{", "{").replace("}}", "}") for piece in template.split("{}")]
+        for piece, read in zip(pieces, flags, strict=False):
+            number = str(4101 + count)
+            count += 1
+            text += piece
+            planted.append((len(text), number, read))
+            text += number
+        text += pieces[-1]
+
+    for template, flags in LATEX_PREAMBLE_PLACES:
+        plant(template, flags)
+    text += "\\begin{document}\n"
+    for piece, index in zip(between, order, strict=False):
+        text += piece
+        plant(*LATEX_PLACES[index])
+    text += between[-1] + "\\end{document}\n"
+    plant("after {}\n", (False,))
+    return text, planted
+
+
 #: The headings of the parts of a paper, each written more than one way, and bindings to
 #: put under them: what G8 reads to find a number a summary gives and the paper does not.
 SUMMARIES = (
@@ -1805,6 +1913,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
     "prose quotations": texts(QUOTED),
     "mask": texts(TERMS),
+    "latex mask": latex_texts(),
+    "latex refusals": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),

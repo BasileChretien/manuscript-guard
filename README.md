@@ -134,7 +134,7 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G5 | every reporting-checklist item is addressed, or excluded with a reason, and a declared study design has one of its guidelines; a guideline its authors have replaced is pointed out |
 | G6 | model artefacts and unfilled placeholders, in the prose, the figures, the tables' captions and the cited references; AI phrasing; and unsupported appeals to authority |
 | G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote (with fewer than four words beside it, a warning); a quotation of four words or more in a sentence that cites a work is looked for in its stored source (a warning where it is not there, a note where no source can be read); each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there; from the records `lookup` keeps, no cited work is retracted and each DOI and PMID names the work cited, and no work is cited under two keys; a value the ledger says is a mean of whole numbers can be one of its n (a warning) |
-| G8 | one quantity is not emitted twice under two names, a family of p values says how it is corrected, a number the abstract or a conclusion gives is one the paper reports, and the arithmetic the analysis declares between its results holds: a sum, a difference, a ratio, an order, and each stage of a flow less its exclusions; a P printed after a t, F, chi-squared or z follows from it, an estimate stands inside its confidence interval and a ratio at its middle on the log scale, and an interval and its P agree about the null (warnings) |
+| G8 | one quantity is not emitted twice under two names, a family of p values says how it is corrected, a number the abstract or a conclusion gives is one the paper reports, and the arithmetic the analysis declares between its results holds: a sum, a difference, a ratio, an order, and each stage of a flow less its exclusions; a P printed after a t, F, chi-squared or z follows from it, an estimate stands inside its confidence interval and a ratio at its middle on the log scale, and an interval and its P agree about the null (warnings); a number an earlier output of the same data printed otherwise, with no reason the manuscript gives, and an overlap of data and authors not disclosed (warnings, failures at submission) |
 | G9 | the analysis has not changed since the Methods were last read against it, and, step by step, neither a marked step nor the text pointing at it has |
 | G10 | every figure has a current review by someone who looked at it |
 | G11 | a recorded panel has reviewed the manuscript, its major findings are answered, and no reading was changed after it was sealed |
@@ -268,6 +268,7 @@ number in the file and the rule that classified it.
 | `checklist` | write the completion file for a checklist |
 | `sync-bib` | rewrite `references.bib` from Zotero |
 | `sync-sources` | copy each cited work's PDF or saved page from Zotero into `literature/sources/`, or Zotero's text of it where the file is not on this computer or is an EPUB, and list the works with no copy; `--from` takes the PDFs of a folder named by DOI instead, as a downloader such as auto-paper-harvester saves them |
+| `related` | compare the paper with the earlier outputs of the same data in `literature/related.yaml`, value by value; `--take` copies an earlier project's results and plan in, at the revision the author names |
 | `lookup` | look up each cited DOI and PMID once, and keep what the registries said in `literature/lookups/`; `--journals` asks the NLM Catalog and DOAJ about each shortlisted journal's ISSN |
 | `search` | ask PubMed, Europe PMC and OpenAlex for works a claim could cite, each with its identifiers, kind, retraction status, later version and open copy; it proposes, the author chooses, and nothing is written |
 | `style` | fetch the journal's citation style from the CSL style repository once, and keep it in `profiles/journals/styles/` for the offline build |
@@ -301,7 +302,7 @@ claude plugin marketplace add BasileChretien/manuscript-guard
 claude plugin install manuscript-guard@manuscript-guard
 ```
 
-Fifteen skills. Start with `project-setup`; most of the others name the finding codes that
+Sixteen skills. Start with `project-setup`; most of the others name the finding codes that
 should send you to them.
 
 | Skill | For |
@@ -321,6 +322,7 @@ should send you to them.
 | `reviewer-response` | the point-by-point response to a journal, checked against the revision |
 | `submission-pack` | everything the journal asks for, and the covering letter |
 | `paper-audit` | a paper that was not written with this toolkit |
+| `related-outputs` | the earlier abstract, preprint or article on the same data: its numbers compared, its differences explained, the overlap disclosed |
 
 Five hooks: one line on the project's state when a session starts, and again at the end of
 a turn that changed the manuscript or what it rests on; a refusal to edit files that are
@@ -341,7 +343,7 @@ By Codex's documentation, it runs a hook only after you have trusted it, under `
 ### Gemini CLI, Mistral Vibe, Kimi Code CLI and other tools
 
 By their own documentation these read skills from a folder, and one command copies the
-fifteen there:
+sixteen there:
 
 ```bash
 manuscript-guard install-skills              # for you, in every project: ~/.agents/skills

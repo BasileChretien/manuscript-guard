@@ -147,7 +147,8 @@ Each finding names a code. The code says where to go:
 | Codes | Skill |
 |---|---|
 | `no-analysis-plan`, `plan-section-*`, `feasibility-not-run` | [analysis-plan](../analysis-plan/SKILL.md) |
-| `unclassified-number`, `unresolved-binding`, `unquoted-result`, `typed-parameter`, `parameter-unread`, `hand-authored-table`, G1 and G8 codes | [results-binding](../results-binding/SKILL.md) |
+| `unclassified-number`, `unresolved-binding`, `unquoted-result`, `typed-parameter`, `parameter-unread`, `hand-authored-table`, G1 codes, and G8 codes but `related-…` | [results-binding](../results-binding/SKILL.md) |
+| `related-…`: a number, a method or an overlap of an earlier output of the same data | [related-outputs](../related-outputs/SKILL.md) |
 | `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact`, `abbreviation-*`, `term-avoided`, `vocabulary-conflict`, `spelling-*`, `notation-*` | [manuscript-writing](../manuscript-writing/SKILL.md) |
 | `methods-drift`, `methods-never-reconciled`, `method-…`, G15 codes (`model-…`, `variable-…`, `typed-model-kind`; `model-binary-as-number`, `variable-not-binary` and `model-engine-unknown` are among them) | [methods-writer](../methods-writer/SKILL.md) |
 | `literature-source-missing`, `quote-not-in-source`, `value-not-in-quote`, `quote-too-short`, `quotation-not-in-source`, `quotation-unchecked` | [literature-verify](../literature-verify/SKILL.md) |

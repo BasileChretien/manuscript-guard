@@ -12,16 +12,20 @@ is held as prose's is: one that is a result, typed, is stale in waiting.
 
 * `figure-alt-missing`: a figure the manuscript places has no alternative text. A note while
   drafting, a warning from internal review, and a failure at submission where the journal's
-  profile says it requires one (`figures.alt_text: required`).
+  profile says it requires one (`figures.alt_text: required`); a note at every stage where
+  the profile applies its artwork rules from acceptance.
 * `figure-alt-long`: the text is longer than the journal takes (`alt_text_max_chars`), counted
   as the build prints it, with each binding's display. A note while drafting, then a warning.
 * `figure-alt-number`: a number in it is bound to nothing and is not a convention, a label or
-  a declared term, as G2 would say of it in prose.
+  a declared term, as G2 would say of it in prose; or it types a parameter, a software
+  version or a dictionary's release the analysis declares.
 * `figure-alt-binding`: a binding in it names a value nothing emits, or is a table, a figure
   or an anchor, which print no words.
 
-Whether the text says what the figure shows is not checked: that is the figure review's,
-and a person's (`readable-and-accessible`).
+The text is read as the build prints it, character for character, and not as Markdown: an
+HTML comment in it is printed, and its bindings and numbers are read like the rest. Whether
+the text says what the figure shows is not checked: that is the figure review's, and a
+person's (`readable-and-accessible`).
 """
 
 from __future__ import annotations
@@ -45,6 +49,13 @@ KEY = "alt"
 #: one: `*` as emphasis, `[` as a link, `@` as a citation, `$` as maths, `"` as a quotation
 #: mark it curls.
 _PUNCTUATION = re.compile(r"([!-/:-@\[-`{-~])")
+#: The white space folded to one space: ASCII's alone. A no-break space the author typed,
+#: "10 mg", is printed as typed.
+_SPACE = re.compile(r"[ \t\r\n\f\v]+")
+#: What stands for the `<` that opens a comment while the text is read, so that no comment
+#: is read in it: the build prints one as written. One character for one, so every offset
+#: holds, and a `<` that opens no comment, `p < 0.05`, is left as it is.
+_NOT_A_COMMENT = "\N{SINGLE LEFT-POINTING ANGLE QUOTATION MARK}"
 
 
 def sidecar_of(project: Project, name: str) -> Path:
@@ -60,10 +71,33 @@ def raw_alt(project: Project, name: str) -> str | None:
     return said if isinstance(said, str) and said.strip() else None
 
 
+def alt_texts(project: Project) -> list[tuple[str, Path, str]]:
+    """Each figure the manuscript places that has alternative text: its name, its sidecar
+    and the text as written. For the checks that read what the build prints from it."""
+    from manuscript_guard.gates.figure_files import _placed
+
+    found = []
+    for name, _supplementary in _placed(project):
+        raw = raw_alt(project, name)
+        if raw is not None:
+            found.append((name, sidecar_of(project, name), raw))
+    return found
+
+
+def literal(raw: str) -> str:
+    """`raw` as the checks read it: the `<` of each `<!` replaced by a character that opens
+    nothing, so that a comment's bindings and numbers are read, as the build prints them."""
+    return raw.replace("<!", _NOT_A_COMMENT + "!")
+
+
+def fold(text: str) -> str:
+    return _SPACE.sub(" ", text).strip(" \t\r\n\f\v")
+
+
 def printed_alt(raw: str, namespace: dict[str, Value]) -> str:
     """The text as the build prints it: each value binding its display, an anchor nothing,
-    anything else left as written, and its white space folded to single spaces."""
-    placeholders, _ = parse(raw)
+    anything else left as written, and its ASCII white space folded to single spaces."""
+    placeholders, _ = parse(literal(raw))
     out = raw
     for placeholder in sorted(placeholders, key=lambda p: p.start, reverse=True):
         if placeholder.is_anchor:
@@ -73,14 +107,14 @@ def printed_alt(raw: str, namespace: dict[str, Value]) -> str:
         else:
             continue
         out = out[: placeholder.start] + replacement + out[placeholder.end :]
-    return " ".join(out.split())
+    return fold(out)
 
 
 def as_markdown(text: str) -> str:
     """`text` written so that pandoc reads it back as exactly that text: every ASCII
     punctuation character escaped, and its white space folded to single spaces, since a
     picture's description is one line."""
-    return _PUNCTUATION.sub(r"\\\1", " ".join(text.split()))
+    return _PUNCTUATION.sub(r"\\\1", fold(text))
 
 
 def alt_markdown(project: Project, name: str, namespace: dict[str, Value]) -> str | None:
@@ -97,7 +131,9 @@ def check_figure_alt(project: Project, namespace: dict[str, Value], stage: str) 
     from manuscript_guard.policy import INTERNAL_REVIEW, SUBMISSION, stage_index
 
     rules = figure_rules(project)
-    early = stage_index(stage) < stage_index(INTERNAL_REVIEW)
+    # Where the journal applies its artwork rules once the paper is accepted, as G4 reads it.
+    early = (stage_index(stage) < stage_index(INTERNAL_REVIEW)
+             or rules.get("applies_from") == "acceptance")  # fmt: skip
     classifier = Classifier.load(project.extra_conventions, project.extra_terms)
     findings: list[Finding] = []
     placed = _placed(project)
@@ -112,7 +148,7 @@ def check_figure_alt(project: Project, namespace: dict[str, Value], stage: str) 
             findings.append(_missing(name, sidecar, severity, required))
             continue
         findings += _bindings(name, raw, sidecar, namespace)
-        findings += _numbers(name, raw, sidecar, classifier)
+        findings += _numbers(name, raw, sidecar, classifier, namespace)
         longest = held.get("alt_text_max_chars")
         printed = printed_alt(raw, namespace)
         if isinstance(longest, int) and not isinstance(longest, bool) and len(printed) > longest:
@@ -152,7 +188,7 @@ def _missing(name: str, sidecar: Path, severity: str, required: bool) -> Finding
 
 
 def _bindings(name: str, raw: str, sidecar: Path, namespace: dict[str, Value]) -> list[Finding]:
-    placeholders, malformed = parse(raw)
+    placeholders, malformed = parse(literal(raw))
     found = []
     for placeholder in placeholders:
         if placeholder.is_value and placeholder.ref in namespace:
@@ -179,21 +215,48 @@ def _binding(name: str, text: str, why: str, sidecar: Path) -> Finding:
     )
 
 
-def _numbers(name: str, raw: str, sidecar: Path, classifier: Classifier) -> list[Finding]:
-    """Each number typed into the text that G2 would not pass in prose. Bindings are taken
-    out by the mask before the numbers are looked for."""
-    return [
-        Finding(
-            gate=GATE,
-            code="figure-alt-number",
-            message=f"{atom.text!r} in the alternative text of figure {name!r} is bound to "
-            "nothing",
-            path=sidecar,
-            context=" ".join(raw.split())[:120],
-            hint="quote the result by binding, {{results.key}}, so the text cannot disagree "
-            "with the analysis; a number that is no result is declared in paper.yaml, as "
-            "prose's are",
+def _numbers(
+    name: str, raw: str, sidecar: Path, classifier: Classifier, namespace: dict[str, Value]
+) -> list[Finding]:
+    """Each number typed into the text that G2 would not pass in prose: one bound to nothing
+    that no rule accepts, and one that types a declared parameter, a software version or a
+    dictionary's release (`gates/numbers.py`). Bindings are taken out by the mask before the
+    numbers are looked for."""
+    from manuscript_guard.gates.numbers import chosen_rules, typed_choice, typed_releases
+
+    choices = [value for value in namespace.values() if value.role]
+    dictionaries = [value for value in choices if value.role == "dictionary"]
+    chosen = chosen_rules(classifier)
+    text = literal(raw)
+    releases = typed_releases(text, dictionaries)
+    context = fold(raw)[:120]
+    found = []
+    for atom in find_atoms(text, mask(text)):
+        release = next((value for start, end, value in releases
+                        if start <= atom.start < end), None)  # fmt: skip
+        verdict = classifier.classify(atom)
+        typed = release or (
+            None if verdict.kind == UNCLASSIFIED
+            else typed_choice(atom.text, verdict, choices, chosen)
         )
-        for atom in find_atoms(raw, mask(raw))
-        if classifier.classify(atom).kind == UNCLASSIFIED
-    ]
+        if typed is not None:
+            why = f"types {typed.key}, which the analysis declares"
+            hint = f"quote it by binding, {typed.reference}, so the text follows the analysis"
+        elif verdict.kind == UNCLASSIFIED:
+            why = "is bound to nothing"
+            hint = ("quote the result by binding, {{results.key}}, so the text cannot disagree "
+                    "with the analysis; a number that is no result is declared in paper.yaml, "
+                    "as prose's are")  # fmt: skip
+        else:
+            continue
+        found.append(
+            Finding(
+                gate=GATE,
+                code="figure-alt-number",
+                message=f"{atom.text!r} in the alternative text of figure {name!r} {why}",
+                path=sidecar,
+                context=context,
+                hint=hint,
+            )
+        )
+    return found

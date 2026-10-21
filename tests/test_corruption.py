@@ -1646,6 +1646,8 @@ def test_a_synthetic_run_nothing_quotes_is_not_said(project: Path) -> None:
         if other != main:
             other.write_text(re.sub(r"\{\{\s*(?:results|table)\.[^}]*\}\}", "[elided]",
                                     other.read_text(encoding="utf-8")), encoding="utf-8")
+    # The figure's alternative text quotes results too, which the build prints.
+    _alt(project, None)
     assert _synthetic_said(project) == []
 
 
@@ -5022,6 +5024,9 @@ _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations",
+    # It reads the figures a manuscript places by binding and their guard files, and runs on
+    # a LaTeX manuscript as G3's other check does (round 1 of #387).
+    "check_figure_alt",
 )  # fmt: skip
 
 
@@ -7511,6 +7516,9 @@ def test_the_examples_alternative_text_passes_at_every_stage(project: Path) -> N
         ("drafting", {"alt_text": "required"}, "info"),
         ("internal-review", {"alt_text": "required"}, "warn"),
         ("submission", {"alt_text": "required"}, "fail"),
+        # Round 1 of #387: where the journal applies its artwork rules from acceptance, G4
+        # notes what does not meet them, and so does this.
+        ("submission", {"alt_text": "required", "applies_from": "acceptance"}, "info"),
     ],
 )
 def test_a_figure_with_no_alternative_text_fails_only_where_the_journal_requires_one(
@@ -7591,6 +7599,67 @@ def test_alternative_text_longer_than_the_journal_takes_is_a_warning(project: Pa
         alt_text_max_chars=len(printed) - 1)  # fmt: skip
     assert _alt_said(project, "drafting") == [("figure-alt-long", "info")]
     assert _alt_said(project, "submission") == [("figure-alt-long", "warn")]
+
+
+def test_a_comment_in_the_alternative_text_is_read_as_it_is_printed(project: Path) -> None:
+    """Round 1 of #387: the build prints the text as written, an HTML comment and all, and
+    the checks read it as Markdown, which hides a comment: a number typed into one went out
+    with nothing said, and a binding in one was printed as written."""
+    from manuscript_guard.gates.figure_alt import printed_alt, raw_alt
+
+    _alt(project, "Odds ratio <!-- was {{results.ror.point}}, 3.84 -->.")
+    assert _alt_said(project) == [("figure-alt-number", "fail")]
+    loaded = load_project(project)[0]
+    assert printed_alt(raw_alt(loaded, "forest"), load_namespace(loaded)[0]) == (
+        "Odds ratio <!-- was 3.84, 3.84 -->."
+    )
+    _alt(project, "Odds ratio <!-- {{results.no_such_key}} -->.")
+    assert _alt_said(project) == [("figure-alt-binding", "fail")]
+
+
+def test_a_declared_parameter_typed_into_the_alternative_text_fails(project: Path) -> None:
+    """Round 1 of #387: G2 fails a threshold typed in the prose once the analysis declares
+    it, and the alternative text passed it as the convention it reads as."""
+    from manuscript_guard.cli import _run_gates
+
+    _alt(project, "The estimate, {{results.ror.point}}, is significant at p < 0.05.")
+    report, _project, _chosen, _deferred = _run_gates(project)
+    [found] = [f for f in report.findings if f.code.startswith("figure-alt-")]
+    assert (found.code, found.severity) == ("figure-alt-number", "fail")
+    assert "'0.05'" in found.message and "which the analysis declares" in found.message
+
+
+def test_a_count_bound_in_the_alternative_text_is_held_to_the_custodians_minimum(
+    project: Path,
+) -> None:
+    """Round 1 of #387: the build prints a count bound in the alternative text into the
+    picture and the pack, and G2 read the manuscript's bindings alone."""
+    _custodian(project, 5)
+    _value_has(project, "case.n_serious", value=3, display="3")
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8").replace(
+        "{{results.case.n_serious}}", "a few"), encoding="utf-8")  # fmt: skip
+    assert _small(project) == []
+    _alt(project, "Of the cases, {{results.case.n_serious}} were serious.")
+    assert _small(project) == [("results.case.n_serious", None)]
+
+
+def test_a_result_quoted_in_the_alternative_text_alone_is_quoted_from_synthetic_data(
+    project: Path,
+) -> None:
+    """Round 1 of #387: the build prints it, so a result from a synthetic run quoted there
+    is a number from synthetic data in the paper."""
+    import re
+
+    _not_a_demonstration(project)
+    for path in (project / "manuscript").rglob("*.md"):
+        path.write_text(re.sub(r"\{\{\s*(?:results|table)\.[^}]*\}\}", "[elided]",
+                               path.read_text(encoding="utf-8")), encoding="utf-8")  # fmt: skip
+    _alt(project, None)
+    assert _synthetic_said(project) == []
+    _alt(project, "Forest plot of the reporting odds ratio, {{results.ror.point}}.")
+    [(severity, _message)] = _synthetic_said(project)
+    assert severity == "warn"
 
 
 def test_a_journal_profile_with_an_alt_text_rule_out_of_shape_is_refused(project: Path) -> None:

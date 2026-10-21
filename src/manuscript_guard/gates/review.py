@@ -130,6 +130,21 @@ def document_digest(project: Project) -> str:
         if path.exists():
             digest.update(name.encode("utf-8"))
             digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii"))
+
+    # Each figure's alternative text, which the build writes into its picture from the
+    # figure's guard file (`gates/figure_alt.py`). Only where there is one, so a project
+    # without keeps the stamp it had. A manuscript file that cannot be read places no
+    # figure here: G0 says why.
+    from manuscript_guard.contracts import ContractError
+    from manuscript_guard.gates.figure_alt import alt_texts
+
+    try:
+        alts = alt_texts(project)
+    except ContractError:
+        alts = []
+    for name, _sidecar, raw in alts:
+        digest.update(f"alt:{name}".encode())
+        digest.update(hashlib.sha256(raw.encode("utf-8")).hexdigest().encode("ascii"))
     return digest.hexdigest()
 
 

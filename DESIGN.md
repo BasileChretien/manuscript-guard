@@ -675,6 +675,15 @@ well as by a bare image. `submit` writes every figure's text, as printed, into
 `alt-text.md`, and a double-blind build looks for the authors in each picture's
 description and title as it does in the text.
 
+Since the build prints it, the text is read as printed, not as Markdown: an HTML comment
+in it is printed and read like the rest (round 1 of #387), and only ASCII white space is
+folded, so a no-break space typed in it stays. It is held as the prose is in more than its
+numbers: a parameter or a release the analysis declares, typed into it, fails as G2 fails it;
+the document's stamp covers it, so editing it makes a built document stale; a count bound in
+it is held to the data custodian's minimum; and a result it quotes from a synthetic run is
+said. A journal that applies its artwork rules from acceptance gets a note for a missing one,
+as G4 gives.
+
 Whether the text says what the figure shows is not checked by any gate. The figure review
 reads it under `readable-and-accessible`, and the figure-review skill says how to write one.
 
@@ -7537,10 +7546,13 @@ Added by the adversarial review, verified and **not** fixed:
   it says what is drawn is the figure review's and a person's to read. It is read from the
   figure's guard file only: alternative text set in Word by a co-author, or in a PDF figure's
   own structure, is not read, and `import` does not bring Word's back into the guard file. A
-  LaTeX manuscript's build writes none, and G3 does not run this check on it (it reads the
-  Markdown bindings). The pack's `alt-text.md` names each figure by its key, not by the number
-  the document prints. A figure the manuscript places twice is held to the main text's rule
-  if either place is in the main text.
+  LaTeX manuscript's build writes none, and a figure placed otherwise than by
+  `{{figure.<key>}}` is not checked for one. The pack's `alt-text.md` names each figure by its
+  key, not by the number the document prints. A figure the manuscript places twice is held to
+  the main text's rule if either place is in the main text. The text's bindings are read by
+  the document's stamp, the custodian's minimum and the synthetic-data check, as the
+  manuscript's are; G2's other readings of bindings do not see it, so a value quoted there
+  alone is still one the manuscript does not quote.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.

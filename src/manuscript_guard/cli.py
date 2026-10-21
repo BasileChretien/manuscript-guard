@@ -200,7 +200,6 @@ _NOT_READ_IN_LATEX = frozenset(
         "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
         "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
         "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
-        "check_figure_alt",
     }
 )  # fmt: skip
 

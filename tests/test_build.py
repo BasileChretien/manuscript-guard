@@ -447,6 +447,14 @@ def test_alternative_text_is_written_as_typed_whatever_markup_it_holds(project: 
 
 
 @needs_pandoc
+def test_a_no_break_space_in_alternative_text_is_kept(project: Path) -> None:
+    """Round 1 of #387: the text was folded with `str.split`, which takes a no-break space
+    for white space, and "10 mg" went out with the line free to break between them."""
+    typed = "A dose of 10\N{NO-BREAK SPACE}mg and 95\N{NARROW NO-BREAK SPACE}%."
+    assert _pictures(_with_alt(project, typed)) == [typed]
+
+
+@needs_pandoc
 def test_a_figure_with_no_alternative_text_is_placed_as_before(project: Path) -> None:
     output = _with_alt(project, None)
     assert _pictures(output) == [""]

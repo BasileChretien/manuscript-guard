@@ -4026,16 +4026,17 @@ def test_an_alternative_text_is_the_pictures_description_as_it_was_written(
     written: list[str],
 ) -> None:
     """What the build writes for a figure's alternative text pandoc reads back as exactly
-    that text, its white space folded to single spaces: no mark in it read as markup, and
-    no line in it ending the paragraph. Several figures in one document, as a manuscript
-    places them."""
+    that text, its ASCII white space folded to single spaces: no mark in it read as markup,
+    no line in it ending the paragraph, and a no-break space kept (round 1 of #387). Several
+    figures in one document, as a manuscript places them."""
     from manuscript_guard.build.assemble import FIGURE_SPAN
     from manuscript_guard.gates.figure_alt import as_markdown
 
     markdown = "\n\n".join(
         f"[![{as_markdown(text)}](figures/f.png)]{{.{FIGURE_SPAN}}}" for text in written
     )
-    assert _descriptions_pandoc_reads(markdown) == [" ".join(text.split()) for text in written]
+    folded = [re.sub(r"[ \t\r\n\f\v]+", " ", text).strip(" \t\r\n\f\v") for text in written]
+    assert _descriptions_pandoc_reads(markdown) == folded
 
 
 # ------------------------------------------------------- a quote its source nearly holds

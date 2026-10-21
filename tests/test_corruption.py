@@ -3553,6 +3553,12 @@ def test_none_is_a_correction_with_its_reason(project: Path) -> None:
         "1,XXX reports",
         "[insert the date]{.mark}",
         "- Dose: fill in later\n- Route: oral",
+        # Each other construction of the filler rule, pinned before a journal template's
+        # instructions were read beside it.
+        "fill it in later.",
+        "replace this later.",
+        "Delete this section.",
+        "Add your affiliation here.",
     ],
 )
 def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None:
@@ -3578,11 +3584,134 @@ def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None
         "Terms were coded (system organ class/preferred term [SOC/PT]).",
         "Drugs that replace later\nlines of therapy were counted.",
         "Each case ended with discussion prompts.",
+        # Beside a journal template's instructions: a section the authors describe, a form
+        # a paper reproduces, a caption PLOS prints, a user interface, a declaration a paper
+        # printed (PMC8397635), a part of the text one author wrote.
+        "In this section, we describe the cohort.",
+        "In this section, you can see how the weights were chosen.",
+        'Respondents were asked: Please state "yes" or "no".',
+        "Click here for additional data file.",
+        "In the app, users click here to enter text.",
+        "This section is not applicable to our submission.",
+        "AB wrote the text for this section and CD the rest.",
+        "This is the sample size we needed.",
+        "The research highlights the role of the liver.",
+        # Round 1: a questionnaire a supplement reproduces, and a hard wrap before words a
+        # template opens a line with.
+        "In this section, please indicate how often you took each medicine.",
+        'If none, please state "not applicable".',
+        'Participants were told: please state "the first word that comes to mind".',
+        'Respondents could answer yes or no, or state "not applicable".',
+        "AB wrote the\ntext for this section and CD the rest.",
+        "We screened each title and\nabstract text. Two reviewers read each.",
     ],
 )
 def test_what_looks_like_a_placeholder_and_is_prose_passes(project: Path, prose: str) -> None:
     _with_paragraph(project, prose)
     assert _placeholders(_g6(project)) == []
+
+
+@pytest.mark.parametrize(
+    "instruction",
+    [
+        pytest.param(
+            "In this section you can acknowledge any support given which is not covered by"
+            " the author contribution or funding sections.",
+            id="mdpi-acknowledgements",
+        ),
+        pytest.param(
+            "In this section, you should add the Institutional Review Board Statement and"
+            " approval number, if relevant to your study.",
+            id="mdpi-review-board",
+        ),
+        pytest.param(
+            "In this section, please provide details regarding where data supporting"
+            " reported results can be found.",
+            id="mdpi-data",
+        ),
+        pytest.param(
+            'Please add: "This research received no external funding".', id="mdpi-funding"
+        ),
+        pytest.param(
+            "Please add \N{LEFT DOUBLE QUOTATION MARK}Informed consent was obtained from all"
+            " subjects involved in the study.\N{RIGHT DOUBLE QUOTATION MARK}",
+            id="mdpi-consent",
+        ),
+        pytest.param(
+            'Declare conflicts of interest or state "The authors declare no conflicts of'
+            ' interest."',
+            id="mdpi-conflicts",
+        ),
+        pytest.param("This section may be divided by subheadings.", id="mdpi-results"),
+        pytest.param(
+            "This section is not mandatory, but can be added to the manuscript if the"
+            " discussion is unusually long or complex.",
+            id="mdpi-conclusions",
+        ),
+        pytest.param(
+            "Authors should discuss the results and how they can be interpreted from the"
+            " perspective of previous studies and of the working hypotheses.",
+            id="mdpi-discussion",
+        ),
+        pytest.param(
+            "For research articles with several authors, a short paragraph specifying their"
+            " individual contributions must be provided.",
+            id="mdpi-contributions",
+        ),
+        pytest.param(
+            "Please turn to the CRediT taxonomy for the term explanation.", id="mdpi-credit"
+        ),
+        pytest.param("This is a figure. Schemes follow the same formatting.", id="mdpi-figure"),
+        pytest.param(
+            "This is a short text to acknowledge the contributions of specific colleagues,"
+            " institutions, or agencies that aided the efforts of the authors.",
+            id="frontiers-acknowledgements",
+        ),
+        pytest.param(
+            "Details of all funding sources should be provided, including grant numbers if"
+            " applicable.",
+            id="frontiers-funding",
+        ),
+        pytest.param("**Bold the figure title.** Panel A shows the cohort.", id="plos-caption"),
+        pytest.param("Text for this section.", id="bmc-section"),
+        pytest.param(
+            "Results.  Text for this section \N{HORIZONTAL ELLIPSIS}", id="bmc-two-spaces"
+        ),
+        pytest.param("Sample body text.", id="springer-body"),
+        pytest.param(
+            "If any of the sections are not relevant to your manuscript, please include the"
+            " heading and write 'Not applicable' for that section.",
+            id="springer-declarations",
+        ),
+        pytest.param("Section text. See Subsection 1.1.", id="elsevier-section"),
+        pytest.param("- Research highlight 1", id="elsevier-highlight"),
+        pytest.param("This is sample abstract text.", id="wiley-abstract"),
+        pytest.param("Age: Click or tap here to enter text. (in years)", id="word-prompt"),
+        pytest.param("In this section you can\nacknowledge any support given.", id="hard-wrapped"),
+    ],
+)
+def test_a_journal_templates_instruction_fails(project: Path, instruction: str) -> None:
+    """MDPI papers in the corpus of `tools/g6_baseline.py` were printed with "In this section
+    you can acknowledge any support given ...", and no rule read it: G6's instructions to the
+    writer were this project's own, "this section is a template", "delete this section"."""
+    _with_paragraph(project, instruction)
+    said = _placeholders(_g6(project))
+    assert [severity for severity, _ in said] == ["fail"], said
+    assert "journal template" in said[0][1], said
+
+
+def test_a_journal_templates_instruction_in_a_table_caption_fails(project: Path) -> None:
+    """MDPI's template captions its sample table with an instruction, which an analysis
+    may carry into the caption it writes."""
+    from dataclasses import replace
+
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(project_)
+    caption = "This is a table. Tables should be placed in the main text near to the first time"
+    baseline = replace(results.tables["baseline"], caption=caption + " they are cited.")
+    results = replace(results, tables={**results.tables, "baseline": baseline})
+    said = _placeholders(_g6(project, results))
+    assert len(said) == 1 and "the caption of table 'baseline'" in said[0][1], said
 
 
 def test_a_placeholder_drawn_in_a_figure_fails(project: Path) -> None:

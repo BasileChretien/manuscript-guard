@@ -8249,6 +8249,42 @@ Open, recorded as each change landed:
   carry is not in the record, and the record is as old as the day it was asked. Requests
   are paced at fixed intervals rather than by the limits each answer states in its
   headers.
+- **A registration is held to the record as it stood the day it was asked.**
+  ClinicalTrials.gov's API serves the record as it is now, not as it was registered: an
+  outcome changed in the registry before the paper was written is held as registered. Only
+  OSF gives its first version, and only OSF's is held to it; the EU PAS register says when a
+  record was last updated and not what it said before. A registration's own history, which
+  ClinicalTrials.gov's site shows, is for the co-authors and the panel to read (2026-10-21).
+- **A quote proves its words are the registry's, and no more.** Whether "hepatic injury" as
+  registered is the outcome the paper measures as hepatic injury is not compared, nor are the
+  population, the exposure and the analysis: free text cannot be compared past its words.
+  Where the registry gives its outcomes as one text (the EU PAS register, OSF, most copies by
+  hand), the role of a quote is not checked and a registered outcome nobody quotes is not
+  seen; G12 says so once for each such registration. A short quote is accepted as readily as
+  a long one, though it stands for one registered outcome only.
+- **The EU PAS register is read from its pages.** It has no API, so a change of the
+  catalogue's page layout makes every answer `unresolvable` until the reader is taught the new
+  one; it never makes a study pass. A number older than the 2024 scheme is found through the
+  catalogue's search, which a change of the search page would break the same way.
+- **A paper that calls an outcome primary is only seen through `paper.yaml`.** An outcome the
+  paper reports as its primary one and `paper.yaml` does not quote is not compared with the
+  registry: the plan's Planned results give keys, not roles. The quotes are the author's
+  statement of which result answers which registered outcome, and a co-author can hold them to
+  the Results.
+- **Which identifiers in the manuscript are this study's is the author's to say.** Where
+  `paper.yaml` lists no registration, every NCT, ISRCTN, EU PAS or PROSPERO number the
+  manuscript gives is one warning, since a review or a discussion names other studies'; an
+  OSF link is not looked for at all, since most name a project's data or code. Where it lists
+  one, the others are not reported. A LaTeX manuscript's `%` comments are read with the rest
+  of it, so an identifier given only in one counts as given; Markdown's HTML comments are
+  not read.
+- **The first results are dated by the plan's frozen copy.** A study analysed before the
+  project used manuscript-guard, or whose `design/plan.frozen.yaml` was written later than its
+  first results, is held to that later date, and a registration made in between is not seen
+  as late. The date is this machine's clock when the emitter first wrote results.
+- **PROSPERO is not asked.** Its records reach its own page through an API that wants a
+  header the page makes; a review registered there has a record copied by hand, which G12
+  notes as the copier's word and holds like any other.
 - **`search` orders by the registries' relevance, which knows nothing of the claim.** A work
   at the top can be off the point, or weak evidence for it; whether it supports the claim is
   the author's to judge with the work read. The kinds are the registries' indexing, which
@@ -12080,43 +12116,6 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
-
-- **A registration is held to the record as it stood the day it was asked.**
-  ClinicalTrials.gov's API serves the record as it is now, not as it was registered: an
-  outcome changed in the registry before the paper was written is held as registered. Only
-  OSF gives its first version, and only OSF's is held to it; the EU PAS register says when a
-  record was last updated and not what it said before. A registration's own history, which
-  ClinicalTrials.gov's site shows, is for the co-authors and the panel to read (2026-10-21).
-- **A quote proves its words are the registry's, and no more.** Whether "hepatic injury" as
-  registered is the outcome the paper measures as hepatic injury is not compared, nor are the
-  population, the exposure and the analysis: free text cannot be compared past its words.
-  Where the registry gives its outcomes as one text (the EU PAS register, OSF, most copies by
-  hand), the role of a quote is not checked and a registered outcome nobody quotes is not
-  seen; G12 says so once for each such registration. A short quote is accepted as readily as
-  a long one, though it stands for one registered outcome only.
-- **The EU PAS register is read from its pages.** It has no API, so a change of the
-  catalogue's page layout makes every answer `unresolvable` until the reader is taught the new
-  one; it never makes a study pass. A number older than the 2024 scheme is found through the
-  catalogue's search, which a change of the search page would break the same way.
-- **A paper that calls an outcome primary is only seen through `paper.yaml`.** An outcome the
-  paper reports as its primary one and `paper.yaml` does not quote is not compared with the
-  registry: the plan's Planned results give keys, not roles. The quotes are the author's
-  statement of which result answers which registered outcome, and a co-author can hold them to
-  the Results.
-- **Which identifiers in the manuscript are this study's is the author's to say.** Where
-  `paper.yaml` lists no registration, every NCT, ISRCTN, EU PAS or PROSPERO number the
-  manuscript gives is one warning, since a review or a discussion names other studies'; an
-  OSF link is not looked for at all, since most name a project's data or code. Where it lists
-  one, the others are not reported. A LaTeX manuscript's `%` comments are read with the rest
-  of it, so an identifier given only in one counts as given; Markdown's HTML comments are
-  not read.
-- **The first results are dated by the plan's frozen copy.** A study analysed before the
-  project used manuscript-guard, or whose `design/plan.frozen.yaml` was written later than its
-  first results, is held to that later date, and a registration made in between is not seen
-  as late. The date is this machine's clock when the emitter first wrote results.
-- **PROSPERO is not asked.** Its records reach its own page through an API that wants a
-  header the page makes; a review registered there has a record copied by hand, which G12
-  notes as the copier's word and holds like any other.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

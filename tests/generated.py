@@ -1546,8 +1546,10 @@ CLAIM_EDITS = {
 _SIMPLE = (
     "hedge gone", "hedge new", "limit gone", "limit new", "negation gone", "negation new",
 )  # fmt: skip
-#: What opens a line that opens a block: an item of a list, a heading, a quotation, a row.
-_BLOCK_OPENERS = ("- ", "* ", "+ ", "# ", "> ", "| ")
+#: What opens a line that opens a block: an item of a list, unordered or ordered, a heading,
+#: a quotation, a row, and a line that holds only a comment, which is blanked and so a
+#: blank line. "2)" is the ordered item no stop also cuts: "1." is one.
+_BLOCK_OPENERS = ("- ", "* ", "+ ", "1. ", "2) ", "# ", "> ", "| ", "<!-- a note -->\n")
 _PLAIN = tuple(word for word in FILLER if word != "the")
 
 
@@ -1670,15 +1672,17 @@ def claim_edits(draw: st.DrawFn) -> tuple[str, str, list[tuple[str, int]]]:
             after.append((f"{first}{gap}{now_}{gap}{last}", "", ""))
         elif did == "list item":
             # Lines that open blocks, with no stop at their ends: only the lines cut them.
-            was, now, told = pair(draw(st.sampled_from(_SIMPLE)))
-            mark = next(marks)
-            openers = [draw(st.sampled_from(_BLOCK_OPENERS)) for _ in range(3)]
-            top = openers[0] + written(stable(), next(marks), stop=False)
-            low = openers[2] + written(stable(), next(marks), stop=False)
-            item_was = openers[1] + written(was, mark, stop=False)
-            item_now = openers[1] + written(now, mark, stop=False)
-            before.append(f"{top}\n{item_was}\n{low}")
-            after.append((f"{top}\n{item_now}\n{low}", told, f"{top}\n"))
+            # One paragraph for each way a line opens one, the edited line opened so, since
+            # a rule broken for one of them is seen only there. The lines around it stand.
+            for opener in draw(st.permutations(_BLOCK_OPENERS)):
+                was, now, told = pair(draw(st.sampled_from(_SIMPLE)))
+                mark = next(marks)
+                top = "- " + written(stable(), next(marks), stop=False)
+                low = "- " + written(stable(), next(marks), stop=False)
+                item_was = opener + written(was, mark, stop=False)
+                item_now = opener + written(now, mark, stop=False)
+                before.append(f"{top}\n{item_was}\n{low}")
+                after.append((f"{top}\n{item_now}\n{low}", told, f"{top}\n{opener}"))
         else:
             was, now, told = pair(did)
             mark = next(marks)

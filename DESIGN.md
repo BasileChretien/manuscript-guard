@@ -10814,8 +10814,9 @@ Open, recorded as each change landed:
   - A sentence added or deleted whole is not read. A limitation dropped in a polish, "This
     may reflect confounding.", is told by nothing here, though its facts are held.
   - A sentence that stands twice in a text lines nothing up. Where it ends a stretch it is
-    set aside as unchanged; in the middle of one it is compared with what stands at its
-    place.
+    set aside as unchanged. In the middle of one it is compared with what stands at its
+    place where the stretch has as many sentences on each side, and read with the rest of
+    the stretch where it has not.
   - A stretch with as many sentences before as after is compared sentence by sentence in
     order, so a sentence deleted and another added in one stretch pair each sentence with
     its neighbour: "Kept. Use may be linked to harm. Age was associated with risk. Kept."

@@ -5442,6 +5442,12 @@ def _a_line_that_opens_a_block_opens_no_sentence(patch: pytest.MonkeyPatch) -> N
     patch.setattr(claims_module, "_BLOCK", re.compile("(?!)"))
 
 
+def _block_opens_no_sentence_at(patch: pytest.MonkeyPatch, kind: str, read_as: str) -> None:
+    pattern = claims_module._BLOCK.pattern
+    assert kind in pattern, pattern
+    patch.setattr(claims_module, "_BLOCK", re.compile(pattern.replace(kind, read_as)))
+
+
 def _the_front_matter_is_read_as_one_line(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(claims_module, "front_matter_end", lambda text: 0)
 
@@ -6729,6 +6735,14 @@ BROKEN = {
     ),
     "a line that opens a block opens no sentence whose claim is read": (
         _a_line_that_opens_a_block_opens_no_sentence,
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "an ordered item of a list opens no sentence whose claim is read": (
+        partial(_block_opens_no_sentence_at, kind=r"|\d+[.)][ \t]", read_as=""),
+        test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
+    ),
+    "a line of blanked text is no blank line between claims": (
+        partial(_block_opens_no_sentence_at, kind=r"[ \t\x00]", read_as=r"[ \t]"),
         test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
     ),
     "the front matter is read for a claim as one line": (

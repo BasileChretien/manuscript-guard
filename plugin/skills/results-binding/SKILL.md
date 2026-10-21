@@ -32,6 +32,8 @@ em.correction("secondary", "holm")                     # how the family is corre
 em.value("table2x2.a", a, quoted=False)                # published but not quoted in the text
 alpha = em.parameter("alpha", 0.05)                    # param.alpha: a choice, handed back to use
 em.software("statsmodels")                             # software.statsmodels, as imported
+em.dataset("vigibase", "data/vb.csv", extracted="2024-03-01",  # dataset.vigibase.extracted,
+           covers=(None, "2023-12-31"), fingerprint="3f9a1c2b7e4d5a60")  # .covers_to
 em.variable("age_group", "categorical", label="age group", reference="18-44")
 em.model("adjusted", fit, name="Adjusted model")       # model.adjusted.*, table.model_adjusted
 em.write()                                             # results/<script stem>.json + .sha256
@@ -49,6 +51,8 @@ em$value("model.p", 0.012, digits = 3, of = "model.or.point", family = "secondar
 em$correction("secondary", "holm")
 alpha <- em$parameter("alpha", 0.05)
 em$software("survival")
+em$dataset("vigibase", "data/vb.csv", extracted = "2024-03-01",
+           covers = c(NA, "2023-12-31"), fingerprint = "3f9a1c2b7e4d5a60")
 em$write()
 ```
 
@@ -68,6 +72,12 @@ What the emitter holds you to:
   quotes from that run, and fails at submission. Only a worked example or a teaching paper
   sets `demonstration: true` in `paper.yaml`, which the title page then states; never set it
   to get a paper past the check.
+- The data are named by what identifies them, with `em.dataset()`: the date they were
+  extracted, the period they cover, the source's version where it has one, all ISO dates
+  printed in the paper's English. `fingerprint` pins the date to the file; the first run
+  without it is refused and prints the pin, and a new extract under the old pin is refused,
+  so the date changes with the data. A date as a string value is held to its display: an
+  ISO date may be printed "1 March 2024", "March 2024" or "2024", never another date.
 - Units are not rendered. Write `{{results.case.pct_serious}}%` in the text.
 - NumPy integers are refused; pass `int(x)`. Years and study periods are numbers like any
   other: emit them.
@@ -255,7 +265,10 @@ checked like any other.
 | `threshold-undeclared` | a warning: a threshold typed in the Methods that no declared parameter has. Declare it if the code applies it; if the code applies another value, the Methods are wrong |
 | `unplaced-table` | an emitted table is never placed with `{{table.key}}` |
 | `hand-authored-table` | emit the table |
-| `script-newer`, `input-changed` | re-run the script that wrote the results |
+| `script-newer`, `input-changed` | re-run the script that wrote the results; where the input is a dataset's, with the date of the new extraction and its pin |
+| `dataset-pin-mismatch`, `dataset-read-differs` | the results were computed from other data than the extraction the dataset dates: re-run the scripts that read the old data, through the emitter |
+| `data-date-not-declared` | a warning: a date of the data typed into the script as a string. Declare the data with `em.dataset()` and bind `{{results.dataset.<name>.extracted}}`; a date the study chose is `em.parameter()` |
+| `dataset-date-english` | a warning: the dataset's date was printed in the English paper.yaml declared when the analysis ran; run it again |
 | `input-missing` | restore the input, or stop declaring it, then re-run |
 | `input-not-fetched` | a warning: the input is a Git LFS or git-annex pointer that cannot be compared with the results (an MD5 key, an LFS extension, or results written before the emitter recorded `raw_sha256`). Fetch it to check it, or re-run where it is fetched |
 | `results-edited`, `no-digest` | re-run through the emitter; never edit the fragment |

@@ -1,0 +1,26 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 9
+reviewer: pharmacoepidemiologist
+reviewed_by: Claude Code
+reviewed_on: '2026-10-21'
+manuscript_sha256: 4c8bab6f9c65576eee1e69eb9c792589d9fa49689e566f287bd6a0a1c3f30951
+file_sha256:
+  main.md: e51f0b13d7189ff9991422529bbfe362666f8908e96e06a9aae7fe44ff2288ed
+  supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
+verdict: pass
+summary: The Methods now say when the data were made and what years they were made to cover,
+  bound from what the analysis declares with the data and pins to the file, beside the years
+  the reports actually run over. The two periods agree here because the generator draws within
+  its own years; a reader can see which is the source's coverage and which is the sample's.
+  Nothing from the earlier rounds is reopened.
+findings:
+- id: r9-pe-01
+  severity: comment
+  where: Methods, first paragraph
+  finding: The data were generated rather than extracted, and the generator has no version.
+    A reader copying the example for VigiBase, FAERS or a national database should give the
+    date of their own extract and the release the custodian names, where it names one; the
+    analysis then pins that date to the file, and the sentence prints it.
+reading_sha256: 7512f965a380633a7a28e2c7485acda5116c7c68a33a5b0ead56b9303a2772e1

@@ -971,6 +971,15 @@ LABELLED = (
 )  # fmt: skip
 
 
+#: The bindings of dates, as `data_dates_namespace` in tests/readings.py declares them, and
+#: the words a sentence dates the data with: what the reading of a typed date compares.
+DATED = (
+    "{{results.old.extracted}}", "{{results.old.label}}", "{{results.dataset.vb.extracted}}",
+    "{{results.param.start}}", "{{results.cohort.first_year}}", "{{results.n}}", "extracted",
+    "downloaded", "covering", "up to", "until", "retrieved", "snapshot", "<!-- extracted -->",
+)  # fmt: skip
+
+
 #: What names a dataset, one of each kind the data statement rule knows; links to storage
 #: that is neither persistent nor archived, one of each kind; and links to a fixed version of
 #: a repository, which are neither. What the data statement reading must tell apart.
@@ -1808,6 +1817,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "interval order": intervals(),
     "quoted whole": texts(WHOLE),
     "labels": texts(LABELLED),
+    "data dates": texts(DATED),
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),

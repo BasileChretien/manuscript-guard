@@ -32,6 +32,7 @@ from manuscript_guard.emit import write_digest
 from manuscript_guard.findings import merge_all
 from manuscript_guard.gates import (
     check_consistency,
+    check_datasets,
     check_figures,
     check_freshness,
     check_models,
@@ -48,6 +49,7 @@ def gate_report(root: Path):
             contract_report,
             load_report,
             check_freshness(project, results),
+            check_datasets(project, results),
             check_numbers(project, namespace, results, literature),
             check_figures(project, results),
             check_consistency(results),
@@ -16830,6 +16832,100 @@ def test_a_typed_dictionary_release_fails_and_only_beside_its_name(
     found = [f for f in gate_report(project).failures if f.code == "typed-dictionary-release"]
     assert [f.message.split(" is ")[0] for f in found] == typed
     assert all("{{results.dictionary." in f.hint for f in found)
+
+
+# ----------------------------------------------------- the data the paper analysed, named
+
+
+def test_the_example_names_its_data_by_their_date_and_its_file(project: Path) -> None:
+    """The example declares its data with `dataset()`: its date and the years it covers are
+    values the Methods bind, and the fragment pins them to the file."""
+    namespace, results, *_ = load_namespace(load_project(project)[0])
+    assert namespace["results.dataset.reports.extracted"].display == "3 August 2026"
+    assert namespace["results.dataset.reports.covers_to"].role == "dataset"
+    (fragment,) = results.fragments
+    assert fragment.datasets["reports"]["inputs"] == ["data/reports.csv"]
+    assert fragment.datasets["reports"]["observed"]["count"] == 4000
+
+
+def test_a_typed_extraction_date_fails(project: Path) -> None:
+    _replace_once(main_md(project), "{{results.dataset.reports.extracted}}", "3 August 2026")
+    report = gate_report(project)
+    assert "unclassified-number" in codes(report)
+    assert "unquoted-result" in codes(report)
+
+
+def test_a_date_typed_into_the_script_is_warned_where_the_methods_date_the_data(
+    project: Path,
+) -> None:
+    """The way out G2's hint offered before `dataset()`: a string emitted with its display,
+    typed into the script and tied to nothing."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["data.extracted"] = {"value": "2026-08-03", "display": "3 August 2026"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\nThe data were downloaded on "
+                    "{{results.data.extracted}}.\n", encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+    assert [f.code for f in report.findings if f.code.startswith("data-date")] == [
+        "data-date-not-declared"
+    ]
+
+
+def test_a_period_printed_as_another_than_the_one_declared_fails(project: Path) -> None:
+    """The fragment's display says the data cover to 2023, its value to 2024: read with the
+    emitter's rule, from either language or by hand."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["dataset.reports.covers_to"]["display"] = "2023"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    report = gate_report(project)
+    assert "no-display" in codes(report)
+    assert "unresolved-binding" in codes(report)
+
+
+def test_the_data_made_again_make_the_date_stale(project: Path) -> None:
+    """New data at the path: G1 names the date it makes stale, and the analysis run again
+    with the old date is refused."""
+    data = project / "data" / "reports.csv"
+    data.write_text(data.read_text(encoding="utf-8") + "R99999,2024,example-drug,rash,N,F,75+\n",
+                    encoding="utf-8", newline="")  # fmt: skip
+    found = [f for f in gate_report(project).failures if f.code == "input-changed"]
+    assert any("dataset.reports.extracted dates the data as they were" in f.message
+               for f in found)  # fmt: skip
+    import subprocess
+    import sys
+
+    out = subprocess.run([sys.executable, str(_analysis(project))], capture_output=True,
+                         text=True, cwd=project)  # fmt: skip
+    assert out.returncode != 0
+    assert "is not the data pinned as extracted on 2026-08-03" in out.stderr
+
+
+def test_a_dataset_pinned_to_other_data_fails(project: Path) -> None:
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["datasets"]["reports"]["fingerprint"] = "0123456789abcdef"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert "dataset-pin-mismatch" in codes(gate_report(project))
+
+
+def test_a_report_dated_outside_the_years_covered_is_refused(project: Path) -> None:
+    _replace_once(_analysis(project), 'covers=("2015", "2024")', 'covers=("2016", "2024")')
+    import subprocess
+    import sys
+
+    out = subprocess.run([sys.executable, str(_analysis(project))], capture_output=True,
+                         text=True, cwd=project)  # fmt: skip
+    assert out.returncode != 0
+    assert "dates lie outside the period the data are declared to cover (2016 to 2024)" in (
+        out.stderr
+    )
 
 
 def test_a_parameter_declared_and_never_read_fails(project: Path) -> None:

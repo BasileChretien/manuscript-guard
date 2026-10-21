@@ -1,0 +1,16 @@
+schema: manuscript-guard/panel/1
+round: 9
+opened_on: 2026-10-21
+manuscript_sha256: 4c8bab6f9c65576eee1e69eb9c792589d9fa49689e566f287bd6a0a1c3f30951
+blinded: false
+rationale: 'A revision round for one sentence. The Methods now say when the data were made and
+  what years they were made to cover, values the analysis declares with the data and pins to
+  the file, beside the years the reports run over. The remit that reads the design and its data
+  reads it, with the earlier rounds in front of it.'
+reviewers:
+- id: pharmacoepidemiologist
+  role: Pharmacoepidemiologist
+  remit: Whether the design can answer the question asked. Case and exposure definitions,
+    denominators, the difference between disproportionate reporting and risk, and
+    the biases specific to spontaneous reporting.
+  why: The Methods now date the data and state the period they cover.

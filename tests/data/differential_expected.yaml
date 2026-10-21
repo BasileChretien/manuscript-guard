@@ -43,8 +43,9 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G8 counts the relations and flows the analysis declared, `relations_checked`, which
-      is 0 in a project that declares none
+      G1 counts the datasets the results name, `datasets_checked`, which is 0 in a project
+      that names none; and the hint for an unbound number beside a month's name says that the
+      date of the data is declared with `dataset()` and a date the study chose is a parameter
   - reading: numbers
     why: >-
       a step, a panel or a box takes a number up to 20 and an item up to 99, so a count

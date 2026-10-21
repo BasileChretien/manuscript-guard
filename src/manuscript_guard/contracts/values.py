@@ -11,6 +11,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from manuscript_guard.dates import display_problem, parse_iso
+
 RESULTS = "results"
 LITERATURE = "literature"
 ATTESTED = "attested"
@@ -151,6 +153,10 @@ def check_string_value(key: str, value: str, *, label: bool) -> None:
         return
     if _LABELLIKE.match(value):
         return
+    # A date written as ISO 8601, which its display is held to (`_check_display_matches`).
+    # Refused here, the call G2's own hint for a typed date proposed raised.
+    if parse_iso(value) is not None:
+        return
 
     from manuscript_guard.classify import UNCLASSIFIED, Classifier
     from manuscript_guard.text.masking import mask
@@ -247,9 +253,16 @@ def _check_display_matches(key: str, value: object, display: str) -> None:
     because the binding resolved and the number in prose was not a literal. `display` fixes
     *where* a number is formatted; this fixes that the formatting is of that number.
 
-    Only numbers are checked. A string value is its own display, and a label like
-    "2015-2024" is a value rather than a rounding of one.
+    Numbers are checked, and dates. A string value that is an ISO date is printed as that
+    date or a coarser statement of it (`dates.display_problem`): nothing compared the two,
+    and "2015-01-01" went out as "1 January 2016". Any other string value is its own
+    display, and a label like "2015-2024" is a value rather than a rounding of one.
     """
+    if isinstance(value, str):
+        problem = display_problem(value, display)
+        if problem is not None:
+            raise DisplayError(f"{key}: {problem}")
+        return
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return
 

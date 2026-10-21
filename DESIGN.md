@@ -5071,10 +5071,12 @@ first pull request as Basile chose:
   by sentence for "on request" and "from the corresponding author", and for "publicly",
   "openly" or "freely" available and their like, each unless a negation stands in the eight
   words before it in its clause ("are not publicly available", "cannot be made publicly
-  available", "no patient-level data are publicly available"). A clause ends at a semicolon,
-  a colon, or "but", "whereas", "although" or "though"; not at a comma, a bracket or a dash,
-  which as often set an aside between a denial and what it denies, "are not, however,
-  publicly available" (round 1 of #384). A sentence is said of the sources it names; one that names none and speaks of
+  available", "no patient-level data are publicly available"; "at no cost" denies nothing).
+  A clause ends at a semicolon, a colon, "but", "whereas", "although" or "though", or a comma
+  before "and", "or", "so", "which" or "while" ("generated no new data, and the archive is
+  publicly available", round 2 of #384); not at a comma alone, a bracket or a dash, which as
+  often set an aside between a denial and what it denies, "are not, however, publicly
+  available" (round 1). A sentence is said of the sources it names; one that names none and speaks of
   data is said of every chosen source, where all are reached one way. A statement that says
   an open source is openly available is taken to ask for something else, the analysis files
   or the code, when it also says "on request". Read wherever a source is chosen, with or
@@ -10000,12 +10002,13 @@ Open, recorded as each change landed:
   not list is not found, and a name that is also a common word ("Sentinel") is found in any
   sentence that uses the word. The statement is read for "on request" and "from the
   corresponding author", and for "publicly", "openly" or "freely" available and their
-  like, each denied by a "not", "cannot", "never", "neither", "nor", "no", "none" or
-  "without" in the eight words before it in its clause; another way of saying either is not
-  read, nor a denial further off. Since a comma ends no clause, a denial in the clause before
-  one silences a phrase after it: "the records cannot be shared individually, and summaries
-  are publicly available" is read as denied, and so is "data with no identifiers are publicly
-  available". A sentence is said of the sources it names, or, naming none and speaking of
+  like, each denied by a "not", "cannot", "never", "neither", "nor", "no" (but not "no
+  cost", "no charge" or "no fee"), "none" or "without" in the eight words before it in its
+  clause; another way of saying either is not read, nor a denial further off. Since a comma
+  ends a clause only before "and", "or", "so", "which" or "while", a denial before any other
+  comma silences a phrase after it ("the records cannot be shared individually, in summary
+  they are publicly available" is read as denied), and so does a "no" that denies something
+  else: "data with no identifiers are publicly available". A sentence is said of the sources it names, or, naming none and speaking of
   data, of every chosen source where all are reached one way; so "The code used to analyse
   the data is available on request" is read as said of an open source, and warns, and a
   sentence of the statement about summary data or analysis files that names no source warns

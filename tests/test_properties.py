@@ -824,6 +824,8 @@ def test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it(
             assert differs(f"ENCD data {denial} {openly}.") == set(), (denial, openly)
         denied_before = f"ENCD data cannot be shared, but are {openly} in summary."
         assert differs(denied_before) == {("encd", "publicly")}, openly
+        denied_before = f"No data were drawn, and ENCD is {openly}."
+        assert differs(denied_before) == {("encd", "publicly")}, openly
 
 
 # ------------------------------------------------------------- what the plan's deviations say

@@ -152,15 +152,23 @@ def check_statement_sources(project: Project) -> Report:
 
 
 def _holding(project: Project, heading: str | None):
-    """The main-text file that holds the statement's heading: the first, of several."""
-    from manuscript_guard.gates.data_statement import statement_text
+    """The main-text file that holds the statement's heading: of several that match, the
+    outermost, and the first of those, as `statement_text` chooses (round 2 of #384)."""
+    from manuscript_guard.gates.data_statement import HEADING
     from manuscript_guard.gates.numbers import source_files
     from manuscript_guard.text.masking import without_front_matter
+    from manuscript_guard.text.sections import scannable, split_sections
 
+    wanted = re.compile(heading or HEADING, re.IGNORECASE)
     files = source_files(project.path("manuscript"), main_text_only=True)
+    best: tuple[int, Any] | None = None
     for file in files:
-        if statement_text(without_front_matter(read_text(file)), heading) is not None:
-            return file
+        sections = split_sections(scannable(without_front_matter(read_text(file))))
+        levels = [s.level for s in sections if s.title and wanted.search(s.title)]
+        if levels and (best is None or min(levels) < best[0]):
+            best = (min(levels), file)
+    if best is not None:
+        return best[1]
     return files[0] if files else project.path("manuscript") / "main.md"
 
 
@@ -379,7 +387,7 @@ def _custodian(project: Project, picked: list[dict[str, Any]], path, stage: str)
 #: sources" among them (round 1 of #384), "Data", "Source of data", "Setting and data".
 PLAN_DATA = re.compile(
     r"\bpopulation|participants|\bdata\s+sources?\b|\bsources?\s+of\s+(?:the\s+)?data\b"
-    r"|^\W*(?:the\s+)?data\W*$|\bsetting\s+and\s+data\b|\bdata\s+and\s+setting\b",
+    r"|^[\W\d]*(?:the\s+)?data\W*$|\bsetting\s+and\s+data\b|\bdata\s+and\s+setting\b",
     re.IGNORECASE,
 )
 

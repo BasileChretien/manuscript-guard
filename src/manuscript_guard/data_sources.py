@@ -64,13 +64,19 @@ OPENLY = re.compile(
 #: available", "cannot be made publicly available", "neither ... nor publicly available",
 #: "no patient-level data are publicly available".
 NEGATION = re.compile(
-    r"\b(?:not|cannot|never|neither|nor|no|none|unable|without)\b|n't\b", re.IGNORECASE
+    r"\b(?:not|cannot|never|neither|nor|none|unable|without)\b|n't\b"
+    r"|\bno\b(?![\s-]+(?:cost|charge|fee)s?\b)",  # "at no cost" denies nothing
+    re.IGNORECASE,
 )
-#: Where a clause starts, for the negation before a phrase: a semicolon or a colon, or a word
-#: that turns from one clause to the next ("cannot be shared, but are available on request").
-#: Not a comma, a bracket or a dash, which as often set an aside between a denial and what it
-#: denies: "are not, however, publicly available" (round 1 of #384).
-CLAUSE = re.compile(r"[;:]|\b(?:but|whereas|although|though)\b", re.IGNORECASE)
+#: Where a clause starts, for the negation before a phrase: a semicolon or a colon, a word
+#: that turns from one clause to the next ("cannot be shared, but are available on request"),
+#: or a comma before one that joins another ("generated no new data, and the archive is
+#: publicly available", round 2 of #384). Not a comma alone, a bracket or a dash, which as
+#: often set an aside between a denial and what it denies: "are not, however, publicly
+#: available" (round 1).
+CLAUSE = re.compile(
+    r"[;:]|\b(?:but|whereas|although|though)\b|,\s*(?:and|or|so|which|while)\b", re.IGNORECASE
+)
 #: How many words before a phrase a negation can stand and still be its own: enough for an
 #: aside of a few words between them.
 NEGATION_WORDS = 8

@@ -239,6 +239,12 @@ def test_a_statement_is_read_sentence_by_sentence() -> None:
         ("The data are not yet publicly available.", OPENLY, False),
         ("No patient-level ENCD data are publicly available.", OPENLY, False),
         ("None of the ENCD data are publicly available.", OPENLY, False),
+        # A comma and "and" or "which" start a clause of their own (round 2 of #384), and "no
+        # cost" denies nothing.
+        ("This study generated no new data, and the ORA is publicly available.", OPENLY, True),
+        ("The ENCD holds the claims, which are not publicly available.", OPENLY, False),
+        ("The data are available at no cost on reasonable request.", ON_REQUEST, True),
+        ("The ORA files are no-cost and publicly available.", OPENLY, True),
         # Far before the phrase, a negation is not its own.
         ("Not one of the files that we drew from the archive is publicly available.", OPENLY,
          True),
@@ -270,6 +276,10 @@ def _sources(*routes: str) -> list[dict[str, Any]]:
          ("open-download",), []),
         # A sentence about the code alone is about no data.
         ("The code is available on request.", ("open-download",), []),
+        # Nor is one about the code that speaks of the data, where the source is said open
+        # after a clause that denies something else (round 2 of #384).
+        ("This study generated no new data, and Source A is publicly available. The code used "
+         "to analyse the data is available on request.", ("open-download",), []),
         # Each sentence of its own source.
         ("Source A is publicly available. Source B data are available on request.",
          ("open-download", "application"), []),

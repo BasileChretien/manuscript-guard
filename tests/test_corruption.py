@@ -7217,7 +7217,8 @@ def test_a_plan_s_data_sources_section_is_read_as_its_population_is(project: Pat
     set_statement(project, "The Open Reports Archive is publicly available.")
     plan = project / "design" / "plan.md"
     text = plan.read_bytes().decode("utf-8")
-    for heading in ("## Data sources", "## Data", "## Source of data", "## Setting and data"):
+    for heading in ("## Data sources", "## Data", "## Source of data", "## Setting and data",
+                    "## 3. Data", "## 2.1 Data sources"):
         moved = text.replace("## Exposure\n", f"{heading}\n\nThe ORA, 2015 to 2025.\n\n"
                                               "## Exposure\n")  # fmt: skip
         plan.write_bytes(moved.encode())
@@ -7294,6 +7295,10 @@ def test_a_finding_of_the_statement_is_placed_in_the_file_that_holds_it(project:
     back.write_bytes(b"# Data availability\n\nThe data are publicly available from the agency.\n")
     [found] = check_statement_sources(load_project(project)[0]).findings
     assert found.code == "data-statement-source-unnamed" and found.path == back
+    # Of two matching headings, the outermost is the statement, as G4 reads it (round 2).
+    main.write_bytes(main.read_bytes() + b"\n### Data sharing between sites\n\nBy file.\n")
+    [found] = check_statement_sources(load_project(project)[0]).findings
+    assert found.path == back
 
 
 def test_a_statement_that_says_otherwise_than_the_route_is_said(project: Path) -> None:

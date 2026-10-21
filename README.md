@@ -268,7 +268,6 @@ number in the file and the rule that classified it.
 | `checklist` | write the completion file for a checklist |
 | `sync-bib` | rewrite `references.bib` from Zotero |
 | `sync-sources` | copy each cited work's PDF or saved page from Zotero into `literature/sources/`, or Zotero's text of it where the file is not on this computer or is an EPUB, and list the works with no copy; `--from` takes the PDFs of a folder named by DOI instead, as a downloader such as auto-paper-harvester saves them |
-| `related` | compare the paper with the earlier outputs of the same data in `literature/related.yaml`, value by value; `--take` copies an earlier project's results and plan in, at the revision the author names |
 | `lookup` | look up each cited DOI and PMID once, and keep what the registries said in `literature/lookups/`; `--journals` asks the NLM Catalog and DOAJ about each shortlisted journal's ISSN |
 | `search` | ask PubMed, Europe PMC and OpenAlex for works a claim could cite, each with its identifiers, kind, retraction status, later version and open copy; it proposes, the author chooses, and nothing is written |
 | `style` | fetch the journal's citation style from the CSL style repository once, and keep it in `profiles/journals/styles/` for the offline build |
@@ -281,6 +280,7 @@ number in the file and the rule that classified it.
 | `respond` | open a revision round, or write the point-by-point response |
 | `submit` | assemble the submission pack, with a checklist of the journal's rules no gate checks |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |
+| `related` | compare the paper with the earlier outputs of the same data in `literature/related.yaml`, value by value; `--take` copies an earlier project's results and plan in, at the revision the author names |
 | `install-skills` | copy the skills to a folder an agent tool reads; `--verify` checks the copy, `--remove` takes it away |
 
 Each takes `--help`. `verify` is a separate command because it executes your analysis, which
@@ -318,11 +318,11 @@ should send you to them.
 | `reporting-checklist` | STROBE, CONSORT, PRISMA and the rest, retrieved rather than remembered |
 | `review-panel` | an internal review panel, recorded and answered |
 | `co-author-checking` | the question no gate can ask, put to a person who can answer it |
+| `related-outputs` | the earlier abstract, preprint or article on the same data: its numbers compared, its differences explained, the overlap disclosed |
 | `word-roundtrip` | a co-author's Word edits, back into the source |
 | `reviewer-response` | the point-by-point response to a journal, checked against the revision |
 | `submission-pack` | everything the journal asks for, and the covering letter |
 | `paper-audit` | a paper that was not written with this toolkit |
-| `related-outputs` | the earlier abstract, preprint or article on the same data: its numbers compared, its differences explained, the overlap disclosed |
 
 Five hooks: one line on the project's state when a session starts, and again at the end of
 a turn that changed the manuscript or what it rests on; a refusal to edit files that are

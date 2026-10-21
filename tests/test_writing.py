@@ -335,6 +335,7 @@ SAID_TO_ONE = [
     ("The sentence has been amended accordingly.", "text-edited"),
     ("A paragraph has been added to the Limitations.", "text-edited"),
     ("This has now been addressed in the Discussion.", "text-edited"),
+    ("This has been clarified in the text of the manuscript.", "text-edited"),
     ("This limitation has now been acknowledged in the revised manuscript.", "text-edited"),
     ("The definition is on page 4, lines 120\N{EN DASH}125.", "lines-cited"),
     ("See lines 245-250 of the revised manuscript.", "lines-cited"),
@@ -497,6 +498,7 @@ NOT_SAID_TO_ANYONE = [
     "All authors contributed to the writing and revision of this version of the manuscript.",
     "All authors approved the content of this version of the manuscript.",
     "A new section has been added to the text of the SmPC.",
+    "We thank the guest editor for bringing this collection together.",
 ]  # fmt: skip
 
 
@@ -514,6 +516,13 @@ def test_words_to_the_reviewers_are_found_once(sentence: str, rule: str) -> None
 @pytest.mark.parametrize("sentence", NOT_SAID_TO_ANYONE)
 def test_what_reads_like_words_to_the_reviewers_and_is_prose_passes(sentence: str) -> None:
     assert _residue(sentence) == []
+
+
+def test_a_contribution_s_words_before_an_earlier_version_hide_it() -> None:
+    """A limit (Known gaps): the words a contribution puts between its verb and the noun
+    exempt a residue that has them, since "approved the content of this version of the
+    manuscript" has them too."""
+    assert _residue("We revised the content of our original manuscript to add a year.") == []
 
 
 def test_which_residue_fails_at_submission_is_marked() -> None:

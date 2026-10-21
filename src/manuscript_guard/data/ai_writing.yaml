@@ -211,7 +211,8 @@ residue:
           |pointed\s+out|raised\s+(?:a|an|the|this|that)|wondered|questioned\s+(?:whether|why|the|our))\b
         |(?:thank(?:s|ing)?|grateful|indebted)\s+(?:to\s+)?{{one}}\s+for\s+(?:(?:this|that)\s+(?:\w+\s+)?
           (?:comment|suggestion|point|question|remark|observation|query|concern)\b
-          |(?:raising|pointing\s+out|bringing(?:\s+up)?|highlighting|noting)\s+(?:this|that|it)\b
+          |(?:raising|pointing\s+out|bringing\s+up|highlighting|noting)\s+(?:this|that|it)\b
+          |bringing\s+(?:this|that|it)\s+to\s+(?:our|my)\s+attention\b
           |pointing\s+(?:this|that|it)\s+out\b)
         |(?:thank(?:s|ing)?|grateful|indebted)\s+(?:to\s+)?{{numbered}}\s+for\b
       )
@@ -231,7 +232,8 @@ residue:
         |{{one}}['’]s\s+(?:\w+\s+)?{{speech}}\b
         |thank(?:s|ing)?\s+(?:to\s+)?{{many}}\s+for\s+(?:(?:this|that)\s+(?:\w+\s+)?
           (?:comment|suggestion|point|question|remark|observation|query|concern)\b
-          |(?:raising|pointing\s+out|bringing(?:\s+up)?|highlighting|noting)\s+(?:this|that|it)\b
+          |(?:raising|pointing\s+out|bringing\s+up|highlighting|noting)\s+(?:this|that|it)\b
+          |bringing\s+(?:this|that|it)\s+to\s+(?:our|my)\s+attention\b
           |pointing\s+(?:this|that|it)\s+out\b)
       )
     why: An answer to the reviewers, unless the paper is about peer review
@@ -316,15 +318,15 @@ residue:
         |we\s+have\s+(?:(?:{{adverb}})\s+)?(?:{{edited}}|extended|restructured|reorgani[sz]ed|condensed
           |streamlined|simplified|inserted)\s+(?:(?:{{det}})\s+){0,2}(?:{{part}})\s+accordingly\b
         |(?:this|these|the\s+(?:{{part}}))\s+(?:has|have)\s+(?:now\s+|also\s+)?been\s+(?:{{edited}})\s+
-          (?:accordingly|throughout|in\s+(?:the|this|our)\s+(?:revised\s+)?(?:{{section}}|text(?!\s+of\b)))\b
+          (?:accordingly|throughout|in\s+(?:the|this|our)\s+(?:revised\s+)?(?:{{section}}|text(?!\s+of\s+(?!(?:the|this|our)\s+(?:revised\s+)?manuscript\b))))\b
         |(?:this|these)\s+(?:(?:points?|issues?|aspects?|limitations?|statements?|concerns?)\s+)?(?:has|have)
           \s+now\s+been\s+(?:{{edited}}|included|incorporated|specified|mentioned|discussed|acknowledged
           |addressed|stated|explained|emphasi[sz]ed)\s+(?:in|into|to)\s+(?:the|this|our)\s+(?:revised\s+)?
-          (?:{{section}}|text(?!\s+of\b))\b
+          (?:{{section}}|text(?!\s+of\s+(?!(?:the|this|our)\s+(?:revised\s+)?manuscript\b)))\b
         |(?:a|an|one|two|the|new|further|additional|brief|short)\s+(?:\w+\s+)?(?:sentences?|paragraphs?
           |statements?|clarifications?|explanations?|notes?|sections?|subsections?|passages?|caveats?)
           \s+(?:has|have)\s+(?:now\s+|also\s+)?been\s+(?:added|inserted|included)\s+(?:to|in|into)\s+
-          (?:the|this|our)\s+(?:revised\s+)?(?:{{section}}|text(?!\s+of\b))\b
+          (?:the|this|our)\s+(?:revised\s+)?(?:{{section}}|text(?!\s+of\s+(?!(?:the|this|our)\s+(?:revised\s+)?manuscript\b)))\b
       )
     why: A change to this manuscript's text described to whoever asked for it
   - id: text-edited-unnamed

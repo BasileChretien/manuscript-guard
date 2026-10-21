@@ -9908,18 +9908,20 @@ Open, recorded as each change landed:
   excluded", and a systematic review on "as suggested by the second reviewer". The
   contributions are known by a verb of writing followed only by the words a contribution
   puts before "manuscript", "draft", "version" or "submission", so "we revised the
-  original submission to add" is not read; the acknowledgements by their thanks to the end
+  original submission to add" and "we revised the content of our original manuscript" are
+  not read; the acknowledgements by their thanks to the end
   of the sentence, so a residue later in a sentence of thanks is not read by the rules of
   an earlier version; and "acknowledge" is no thanks, since a limitation opens on it, so
   "We acknowledge the comments of two anonymous referees on our original submission" fails
   at submission (round 2 of #377). "The revised manuscript" warns in a statement of
   contributions that does not say who approved it. A change to the text fails only where it
-  names a section by its capitalised name, the manuscript or its text (not "the text of"
-  the SmPC), says "accordingly", or is a rephrasing; "we have revised the discussion of
+  names a section by its capitalised name, the manuscript or its text (not "the text of
+  the SmPC", but "the text of the manuscript"), says "accordingly", or is a rephrasing; "we have revised the discussion of
   renal dosing", in lower case, only warns, and "This has now been clarified" warns only
   at the end of its clause, so "This has now been clarified in the response" passes. A
-  change is marked only in a colour, bold or tracked changes within two words, so "marked
-  with an asterisk" passes. Lines in brackets, "(lines 245-250)", only warn,
+  change is marked only where it is highlighted, underlined, coloured or tracked, or shown
+  in a colour, bold, italics or tracked changes within two words, so "marked with an
+  asterisk" passes. Lines in brackets, "(lines 245-250)", only warn,
   since a program's listing is pointed at so. "In response to the editor's invitation"
   passes, and so would an answer to the editor that names an invitation, a call or a note.
 - **G6's thresholds are measured on people only, in one field.** Each rate's threshold is

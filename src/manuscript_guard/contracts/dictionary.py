@@ -219,12 +219,15 @@ def _invalid(path: Path, problems: list[tuple[str, int | None]]) -> Report:
 _INT = "tag:yaml.org,2002:int"
 _FLOAT = "tag:yaml.org,2002:float"
 _BOOL = "tag:yaml.org,2002:bool"
-#: A number YAML reads as the number it looks like. An integer with a plus sign is not one:
-#: a code `+1` would be "1".
+#: A number YAML reads as the number it looks like.
 _AS_WRITTEN = {
-    _INT: re.compile(r"-?(?:0|[1-9][0-9]*)"),
+    _INT: re.compile(r"[-+]?(?:0|[1-9][0-9]*)"),
     _FLOAT: re.compile(r"[-+]?[0-9]*\.[0-9]*(?:[eE][-+]?[0-9]+)?"),
 }
+#: The keys whose value is a code, compared as text, where a sign YAML drops is a misreading
+#: too: a code `+1` would be "1", and `-0` "0". A bound `+3` is the number 3 (round 2 of #382).
+_CODES = frozenset({"code", "item", "in"})
+_CODE_AS_WRITTEN = re.compile(r"0|-?[1-9][0-9]*")
 #: The keys whose value is true or false, where `yes` means what it says.
 _YES_OR_NO = frozenset({"required", "within_study_period", "computed"})
 
@@ -245,7 +248,9 @@ def _misread(root: yaml.Node | None) -> list[tuple[str, int | None]]:
             continue
         text = node.value
         line = node.start_mark.line + 1
-        if node.tag in _AS_WRITTEN and not _AS_WRITTEN[node.tag].fullmatch(text):
+        written = _CODE_AS_WRITTEN if key in _CODES and node.tag == _INT else \
+            _AS_WRITTEN.get(node.tag)  # fmt: skip
+        if written is not None and not written.fullmatch(text):
             read = yaml.safe_load(text)
             found.append((f"{text} is read by YAML as the number {read!r}; write it in "
                           f"quotes, '{text}', where it is a code, a time or an identifier, "
@@ -550,7 +555,8 @@ def _value_faults(variable: Variable) -> list[str]:
 
 
 def _zoned(reader):
-    """`fromisoformat` as Python 3.11 has it: 3.10 refuses a zone written `Z`."""
+    """`fromisoformat` reading a zone written `Z`, which Python 3.10's refuses. Other forms
+    3.11 reads and 3.10 does not, `20200101`, are refused on 3.10 alone."""
     return lambda bound: reader(bound[:-1] + "+00:00" if bound.endswith("Z") else bound)
 
 

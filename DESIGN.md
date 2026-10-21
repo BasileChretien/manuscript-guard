@@ -7231,8 +7231,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   whole ones. A datetime's bounds are compared only where both or neither carry a time zone.
   What YAML reads as another value is found only where it is written plain; a value YAML
   reads as written but the author meant otherwise, `1.5` for the item "1.50", is not. A
-  rule's `order` takes dates and datetimes as one family, so its reader compares a date
-  with a datetime by the date, and it refuses an order between two times (round 1 of #382).
+  rule's `order` takes dates and datetimes as one family, so the data checks that read it
+  have to compare a date with a datetime by the date, and it refuses an order between two
+  times (round 1 of #382). A bound in the basic ISO form, `20200101`, or with a fraction of
+  a second, reads on Python 3.11 and later and is refused on 3.10 (round 2 of #382).
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the

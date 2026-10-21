@@ -466,11 +466,20 @@ def test_a_number_where_text_is_due_is_told_to_be_quoted(tmp_path: Path) -> None
     assert "write it in quotes" in message
 
 
-def test_a_plus_sign_is_a_misreading(tmp_path: Path) -> None:
+@pytest.mark.parametrize("written", ["+1", "-0"])
+def test_a_sign_yaml_drops_from_a_code_is_a_misreading(tmp_path: Path, written: str) -> None:
     """`+1` is the number 1 to YAML, and a code "+1" would never be matched."""
     [message] = refused(tmp_path, edited("{code: 9, label: not reported}",
-                                         "{code: +1, label: not reported}"))  # fmt: skip
-    assert message.startswith("+1 is read by YAML as the number 1")
+                                         f"{{code: {written}, label: not reported}}"))  # fmt: skip
+    assert message.startswith(f"{written} is read by YAML as the number")
+
+
+def test_a_bound_with_a_sign_reads(tmp_path: Path) -> None:
+    """Round 2 of #382: `+3` was refused as a bound, where it is the number 3."""
+    write(tmp_path, edited("range: {min: 0, max: 200}", "range: {min: -3, max: +3}"))
+    dictionary, report = load_dictionary(tmp_path)
+    assert report.findings == ()
+    assert dictionary.variable("alt_ratio").maximum == 3
 
 
 def test_a_zone_written_z_reads_on_every_python(tmp_path: Path) -> None:

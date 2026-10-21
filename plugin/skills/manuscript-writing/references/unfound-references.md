@@ -1,5 +1,8 @@
 # A cited reference that G7 cannot find
 
+Part of the manuscript-writing skill, read when G7 reports a reference with no DOI or PMID
+that `lookup` searched for by its title.
+
 `lookup` searches PubMed, Crossref and OpenAlex by its title for a reference with no DOI and
 no PMID, and G7 reads the answer:
 

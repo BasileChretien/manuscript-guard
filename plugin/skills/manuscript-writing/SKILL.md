@@ -124,7 +124,8 @@ says something else, or one that does not exist, and the author's name goes on i
    its title where it has no DOI and no PMID, and G7 says whether one has it and whether the
    cited people wrote it. [references/unfound-references.md](references/unfound-references.md)
    says what to do with each finding. Never add a DOI, a PMID or authors you did not read
-   from a registry's record of the work.
+   from a registry's record of the work. A real work no registry indexes is the author's to
+   declare under `lookup.not_indexed` in `paper.yaml`: never write that entry yourself.
 
 ## Words to the reviewers stay in the letter
 

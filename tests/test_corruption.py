@@ -3954,19 +3954,6 @@ def test_a_word_mismatch_fails_from_the_internal_review(project: Path) -> None:
     assert "pointer-word-mismatch" in codes(reviewing)
 
 
-@pytest.mark.parametrize(
-    ("change", "ref", "why"),
-    [
-        # a figure sent as a file: where the bound one falls among the two is not known
-        (None, "{{ref.figure.forest}}", "sends 1 of the main text's figures as files"),
-        # a table placed by hand beside the bound ones
-        (("{{table.baseline}}", "{{table.baseline}}\n\n| A | B |\n|:--|--:|\n| x | y |"),
-         "{{ref.table.two_by_two}}", "also places a table by hand"),
-        # one table placed twice has two numbers
-        (("{{table.two_by_two}}", "{{table.two_by_two}}\n\n{{table.baseline}}"),
-         "{{ref.table.baseline}}", "placed 2 times"),
-    ],
-)  # fmt: skip
 def _assembled_all(root: Path) -> dict[str, str]:
     from manuscript_guard.build.assemble import assemble
 
@@ -4020,6 +4007,55 @@ def test_bind_pointers_offers_nothing_that_would_print_otherwise(project: Path) 
     assert offered == sorted(["Table 1", "Table S1", "Table S2", "Table\nS2"]), offered
 
 
+def test_a_ref_in_the_response_to_the_reviewers_reads_as_printed(project: Path) -> None:
+    """Round 1 of #378: the response round read the manuscript with its values filled in and
+    its refs as written. A sentence quoted as the paper prints it, "Table 2", was absent from
+    it; the copy kept as submitted held `{{ref.`; a ref in a reply printed as written."""
+    from manuscript_guard.build.submission import response_letter
+
+    _in_the_discussion(project, "The counts are given again in {{ref.table.two_by_two}}.")
+    _round_with(project, [_point(
+        response="We now say so, in {{ref.table.baseline}}.",
+        changed=[{"kind": "text", "quote": "The counts are in Table 2.",
+                  "section": "Discussion"}],
+    )])  # fmt: skip
+    submitted = (project / "revision" / "round-1" / "submitted").rglob("*.md")
+    kept = "".join(path.read_text(encoding="utf-8") for path in submitted)
+    assert "given again in Table 2." in kept and "{{ref." not in kept
+    # Now "The counts are in {{ref.table.two_by_two}}.", which prints as quoted.
+    _rewrite(project, ("given again in {{ref.table.two_by_two}}", "in {{ref.table.two_by_two}}"))
+    assert _said(_g13(project), "quoted-text-absent") == []
+    letter = response_letter(load_project(project)[0])
+    assert "We now say so, in Table 1." in letter and "{{" not in letter
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_ref_in_the_abstract_is_printed_in_the_pack(project: Path) -> None:
+    from manuscript_guard.build.submission import assemble_pack
+
+    _rewrite(project, ("The reporting odds ratio was", "In {{ref.figure.forest}}, the reporting "
+                       "odds ratio was"))  # fmt: skip
+    projekt, _ = load_project(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+    text = (assemble_pack(projekt, document).directory / "abstract.txt").read_text("utf-8")
+    assert "In Figure 1, the reporting odds ratio was" in text and "{{" not in text
+
+
+@pytest.mark.parametrize(
+    ("change", "ref", "why"),
+    [
+        # a figure sent as a file: where the bound one falls among the two is not known
+        (None, "{{ref.figure.forest}}", "sends 1 of the main text's figures as files"),
+        # a table placed by hand beside the bound ones
+        (("{{table.baseline}}", "{{table.baseline}}\n\n| A | B |\n|:--|--:|\n| x | y |"),
+         "{{ref.table.two_by_two}}", "also places a table by hand"),
+        # one table placed twice has two numbers
+        (("{{table.two_by_two}}", "{{table.two_by_two}}\n\n{{table.baseline}}"),
+         "{{ref.table.baseline}}", "placed 2 times"),
+    ],
+)  # fmt: skip
 def test_a_ref_the_count_cannot_number_is_refused_from_the_start(
     project: Path, change: tuple[str, str] | None, ref: str, why: str
 ) -> None:

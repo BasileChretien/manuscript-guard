@@ -467,7 +467,10 @@ A ref to a key nothing places, or one that names no kind (`{{ref.baseline}}`), i
 stands, so the main text's tables are cited in order and each one cited
 (`cited-out-of-order`, `display-not-cited`) with refs and typed pointers mixed; it is never
 `pointer-to-nothing`. The build, the annotated copy (green, labelled with the key and the
-display it was counted from) and the text a review panel is sent print the same number.
+display it was counted from), `render`, the text a review panel is sent, the response to the
+reviewers, the copy of the manuscript a revision round keeps as submitted and the abstract
+for the journal's portal print the same number (`revision.displays`); the response round
+looked for a quoted sentence in text that still read `{{ref.` until round 1 of #378.
 `explain` lists each ref with what it prints and from which display.
 
 In Word, the number a ref prints is a binding like any other: the marked build bookmarks it,
@@ -8009,7 +8012,17 @@ Open, recorded as each change landed:
   and the pointer is typed, as before refs; so is a ref to a key placed twice (Basile's
   choice, 2026-10-20). A form G2 does not read as a pointer cannot be printed: a journal
   that letters its appendix tables "Table A1", or writes "Exhibit 2", has its pointers typed
-  (`pointer-form-unread`).
+  (`pointer-form-unread`). So does JAMA's own form, "eTable 1 in Supplement 1": G2 reads "in
+  the Supplement" after a pointer and not "in Supplement 1" (round 1 of #378).
+- **`bind --pointers` offers what G2 reads as a pointer, and some of that is not one.**
+  "Table 3 of Smith et al." is offered as the paper's own Table 3, and "in Tables 1, 2
+  patients were excluded" offers the 2. Either prints as typed when it is applied, and
+  prints another number once the tables move. The list is printed before `--apply`, and
+  `--only FILE:LINE` takes the ones meant (round 1 of #378).
+- **A ref counts no word.** The word count masks every binding, so "Table 2" typed counts two
+  words and `{{ref.table.a}}` none, as a value bound counts none where it typed counted one.
+  A paper binding its pointers near the limit is counted a few words short (round 1 of
+  #378).
 - **A range between two nums covers what the build numbers between them.** "Tables
   {{num.table.a}}-{{num.table.c}}", written when a and c were Tables 1 and 3, cites Tables 1
   to 5 once two tables are placed between them, and nothing says the range grew. Each end is

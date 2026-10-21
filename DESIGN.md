@@ -4051,6 +4051,108 @@ carries them.
 
 It is a warning: a new rule starts as one, until what it says of real papers is known.
 
+## An earlier output of the same data is held to this paper
+
+Several papers come out of one database extraction or one cohort: a conference abstract, a
+preprint, a protocol paper, the article, a second article on another outcome. A cohort of
+1,204 in the abstract and 1,187 in the article, with nothing said, is a number nobody can
+account for, and an article that does not say the abstract exists is an undeclared
+overlapping publication, which ICMJE asks authors to declare and journals treat as
+misconduct. Nothing compared this paper with anything outside it.
+
+`literature/related.yaml` names each earlier output, what it is, and what this paper shares
+with it (`data`, `study`, `authors`), as the author says it (Basile, 2026-10-21, the seven
+answers below all his). G8 reads it; without it G8 says nothing new, and no count is added,
+so a project that keeps none reads as before.
+
+**The earlier work's own files, where an author of this paper made it.** A comparison read
+from a PDF is a comparison of what was printed, rounded, with the reader's eye between. Where
+an author of this paper is an author of the earlier output, the skill asks for that work's
+files: its manuscript-guard project, at the revision the output was made from, or, with no
+project, its analysis outputs copied in. The path is the author's answer and is never
+looked for. `manuscript-guard related --take <id>` copies the project's results fragments,
+its frozen plan, its plan and its data dictionary, as git holds them at that revision (or as
+they stand, with HEAD recorded and whether they differ from it), into
+`literature/related/<id>/`, with a record of each file's digest. `check` reads the copy and
+never the project, so CI and a co-author's machine, where the earlier project is not, give
+the author's answer: the lookup's pattern of asking once and keeping what came back. A
+copied file whose digest changed, or a file added beside them, fails from drafting
+(`related-snapshot-edited`), as an edited lookup record does: a result edited in the copy
+compares an invented number. Each digest is taken as an analysis's input's is
+(`input_digest`), its line endings folded for `.json`, `.yaml` and `.md`: a plan saved with
+CRLF and committed under the `eol=lf` that `init` writes is checked out with LF everywhere
+else, and was read as an edit on every machine but the author's (round 1 of #391). A file
+whose name begins with a dot, the `.DS_Store` a system leaves, is neither copied nor counted,
+and the fragments' `.sha256` beside them are not copied, since nothing reads them there.
+`--take` writes over nothing it did not write. Until one of
+the three is there, or `files_unavailable` says why they cannot be had, an output that
+shares the data or the study with authors warns (`related-files-missing`); one of the same
+authors on other data (`shares: [authors]`) is listed for what other checks read of it and
+has nothing to compare (round 1 of #391). A project named and never copied warns, and
+fails at submission (`related-not-taken`): nothing was compared. A copy of another project or revision
+than the entry now names warns, and fails at submission (`related-taken-elsewhere`): it
+compared another output than the one named.
+
+**Numbers: every key both emit, and the pairs the author declares.** Through a copy, each
+results key that both projects emit and both papers print (`quoted`) is compared. A key
+renamed since is paired (`earlier: n_cases`, `here: cohort.n`); keys that share a name and
+not a meaning are set apart by pattern with a reason (`not_compared: ror.*`). Comparing only
+declared pairs would be quieter, and would never show the difference the author did not
+think of. Two values are the same where they print alike, or where both are numbers equal to
+nine significant digits, as `verify` holds a re-run: "2.3" and "2.31" of one estimate are
+one value printed to other places. A pair naming a key one side does not emit compares
+nothing, and warns and fails at submission (`related-pair-unmatched`).
+
+From a published text, or from outputs copied in, the author records each value as the
+ledger does: as the earlier output prints it, with the sentence that states it and the
+stored copy under `literature/` it is quoted from. The sentence is held to the copy and the
+value to the sentence by the ledger's own functions (`related-quote-not-in-source`,
+`related-value-not-in-quote`, `related-source-missing`, failing from drafting as the
+ledger's do). The printed value is compared with this paper's as a number, to within half a
+unit of the coarser of the two printings, where both read as one (grouped by commas or
+spaces, a middle dot for the point, a sign, a percent sign, and no zero before the point
+in a style that drops it, ".45"), and as text otherwise. A value YAML would read as a number,
+`1.50` or `0.00005`, is read as typed, and so is a revision that is a short commit of
+digits: read as numbers, `1.50` was `1.5`, which its quote's "1.50" does not state (round 1).
+
+**A difference is explained when the manuscript says why.** The pair or the value records
+the reason (`because`) and the manuscript's sentence that tells the reader
+(`manuscript_says`), and the sentence is looked for as G13 looks for a quoted change: in
+the manuscript with its bindings filled in, without comments, emphasis or line breaks, and
+with a binding in the sentence filled in too. A reason the reader is never given explains
+nothing to the reader. Explained, it is a note (`related-number-explained`); with a reason
+and no sentence found, `related-reason-not-in-text`; with neither, `related-number-differs`.
+Both warn and fail at submission. No new reading of text is made: the rule is G13's
+`as_quoted` and `rendered_manuscript`, held by the generated inputs already ("as quoted").
+
+**A choice of the analysis that changed is a change of method.** A value the analysis
+declared as a parameter or a coding dictionary's release, or a label (a period, a verdict
+in words), that differs is `related-method-differs`: a warning at every stage, a note with
+a reason (`related-method-explained`), and never a failure, since a method may rightly
+change between two papers and the review panel, not a gate, weighs whether it was said and
+justified. A software version is not compared: every later paper runs later software.
+
+**An overlap of data or study with authors is disclosed.** It is disclosed where the
+manuscript cites the earlier output (its citekey, in a citation a reader sees, comments left
+out), or where `disclosed_by` gives the manuscript's sentence that says so, found as above,
+for an abstract a journal does not want cited. Undisclosed, it warns and fails at submission
+(`related-undisclosed`). No file holds the covering letter, so `submit` lists the outputs to
+declare there.
+
+**The supplement is held as the main text is** (Basile, 2026-10-21): cohort counts and
+definitions often stand in an eTable or the eMethods. On this paper's side, values are
+compared by results key wherever they are printed, so a count bound only in
+`manuscript/supplementary/` is compared like any other, and a sentence that explains a
+difference or discloses the overlap, or a citation of the earlier output, counts in the
+supplement as in the main text: G8 reads the manuscript's files as every gate that reads prose
+does. On the earlier output's side, a copy holds every result its project emitted, those its
+supplement printed among them, and a value read from its text may be quoted from its
+supplement stored beside it (`sources/<citekey>-supplement.pdf`).
+
+`manuscript-guard related` prints every value compared, both printings and what came of it,
+and `--json` the same with the findings: what the author and a panel read, beside what
+`check` decides.
+
 ## The design gate warns and never blocks
 
 Writing down what you intended before you did it is the strongest single thing available for
@@ -9822,6 +9924,42 @@ Open, recorded as each change landed:
   an encoding the XML parser cannot read. Each used to crash the reader that met it, the
   import or the audit, on the body, the comments, the styles or the font parts; a part that
   could not be decompressed crashed the import on the build's record as well.
+- **An earlier output is compared value by value, and never as prose.** G8 compares results
+  keys and recorded values. Two Methods sections that define the case, the exposure, the
+  outcome, the exclusions or the model in other words are not compared: the frozen plans are
+  copied in for that, and are not yet read by any gate; until they are, the skill gives the
+  panel an earlier-outputs remit read with both texts side by side. Nor are tables, model
+  cards or the data dictionary compared, though the copy holds them. A count printed only in
+  a table of either paper is compared with nothing. A value printed by only one of the two
+  papers (`quoted: false` on one side) is not compared, though it may show the data
+  changed.
+- **What a comparison read from a PDF cannot see.** A published value is read as printed: an
+  estimate rounded to one place is the same as any value within half a unit of it, so a
+  change smaller than the earlier rounding is not seen. A printed value that is not one
+  number ("2.3 (1.9 to 2.8)") is compared as text. A percentage there against a proportion
+  here (`12.5%` and `0.125`) is reported as a difference. Whether two printed numbers are
+  of the same quantity is the author's pairing, never checked; a pair of two different
+  quantities that happen to be equal passes. Which earlier outputs exist is the author's
+  word: an abstract nobody records is compared with nothing and its overlap is not asked
+  about.
+- **The copy holds the earlier project's results as they were, unprinted ones included.**
+  `related --take` copies every results fragment, so values the earlier paper did not print,
+  and counts its custodian may forbid outside the team, are committed with this paper. The
+  review panel's route B sends nothing under `literature/`; a public repository publishes
+  the copy. Which values a project may copy is not yet decided here.
+- **A sentence that explains or discloses is looked for as text, not as a sentence.**
+  `manuscript_says` and `disclosed_by` are found where their words stand together anywhere
+  in the manuscript, as G13 finds a quoted change, so `manuscript_says: "2026"` or
+  `disclosed_by: "abstract"` passes wherever those words are printed (round 1 of #391). A
+  citation in the sentence is matched as the source writes it (`[@key]`), not as printed.
+  A value brought into an entry by a YAML merge key (`<<: *common`) is read as YAML reads it,
+  `1.50` as `1.5`, not as typed (round 2 of #391; contrived).
+- **A disclosure is a citation or a sentence, and the covering letter is not read.** An
+  overlap counts as disclosed where the earlier output is cited anywhere in the manuscript
+  or the declared sentence is printed anywhere: neither is checked to say that the two share
+  data, and a citation in the Introduction to the abstract as a finding passes. The covering
+  letter is in no file, so what it declares is not checked; `submit` only lists what to put
+  there.
 - **A table cell styled as a heading ends a reference list.** A cell never starts one,
   since "References" there is a column header, but a heading-styled cell after the list's
   heading ends it, as it would anywhere: Word lists such a cell as a heading in its

@@ -128,6 +128,12 @@ BINDS_AT = {
     "lookup-record-edited": DRAFTING,
     # What a registry said is not the author's to edit, as a lookup's is not.
     "registration-record-edited": DRAFTING,
+    # An earlier output's numbers are compared as they were copied or quoted: a copy edited
+    # by hand, or a quote not in its source, compares an invented number.
+    "related-snapshot-edited": DRAFTING,
+    "related-source-missing": DRAFTING,
+    "related-quote-not-in-source": DRAFTING,
+    "related-value-not-in-quote": DRAFTING,
     # -- internal review --------------------------------------------------------
     # The draft is finished; now it is held to the journal's rules and read properly.
     "figure-unreviewed": INTERNAL_REVIEW,

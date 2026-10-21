@@ -80,6 +80,7 @@ from manuscript_guard.gates.figure_alt import check_figure_alt
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
 from manuscript_guard.gates.registration import check_registration
+from manuscript_guard.gates.related import check_related
 from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
 from manuscript_guard.policy import (
@@ -172,6 +173,7 @@ def _run_gates(
         ("G8", lambda: check_reported(project, results)),
         ("G8", lambda: check_relations(results)),
         ("G8", lambda: check_recomputed(project, namespace, results)),
+        ("G8", lambda: check_related(project, namespace, results, submission=at_submission)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
         ("G14", lambda: check_language(project)),
         ("G15", lambda: check_models(project, results)),
@@ -204,6 +206,7 @@ def _run_gates(
 #: "LaTeX manuscripts", Order of work).
 _NOT_READ_IN_LATEX = frozenset(
     {
+        "check_related",
         "check_numbers", "check_bound_units", "check_small_cells", "check_citations",
         "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
         "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
@@ -2561,7 +2564,24 @@ def cmd_submit(args: argparse.Namespace) -> int:
         print()
         print(approvals.render(project.root))
     print("\nStill to write by hand: the covering letter. No file in the project holds it.")
+    _declare_in_letter(project)
     return 0
+
+
+def _declare_in_letter(project) -> None:
+    """The earlier outputs the covering letter has to declare: G8 sees whether the manuscript
+    cites them, and no file holds the letter."""
+    from manuscript_guard.literature.related import load_related
+
+    try:
+        related, _ = load_related(project)
+    except ContractError:
+        return
+    overlapping = [o for o in related.outputs if o.overlaps] if related else []
+    if overlapping:
+        print("Declare in it the earlier outputs this paper overlaps with (ICMJE):")
+        for output in overlapping:
+            print(f"  {output.kind}: {output.citekey or output.title}")
 
 
 def cmd_approve(args: argparse.Namespace) -> int:
@@ -2660,6 +2680,84 @@ def cmd_sync_sources(args: argparse.Namespace) -> int:
     for line in copies.report(outcomes, dry_run=args.dry_run, offered=offered):
         print(line)
     return 0
+
+
+def cmd_related(args: argparse.Namespace) -> int:
+    """Copy an earlier output's project in, or list how this paper compares with each."""
+    import json
+
+    from manuscript_guard.gates.related import compare_related
+    from manuscript_guard.literature.related import TakeError, load_related, read_snapshot, take
+
+    project, _ = load_project(args.path)
+    related, report = load_related(project)
+    if related is None:
+        if report.findings:
+            print(report.render(project.root), file=sys.stderr)
+            return 2
+        print("manuscript-guard: there is no literature/related.yaml; the related-outputs "
+              "skill says how to write one", file=sys.stderr)  # fmt: skip
+        return 2
+    if args.take is not None:
+        return _take(project, related, args.take, take, TakeError)
+    namespace, results, _literature, _loaded = load_namespace(project)
+    found, rows = compare_related(project, namespace, results)
+    if args.json:
+        print(json.dumps({
+            "outputs": [
+                {"id": o.id, "kind": o.kind, "citekey": o.citekey, "title": o.title,
+                 "shares": list(o.shares),
+                 "copy": getattr(read_snapshot(project, o.id)[0], "manifest", None),
+                 "compared": [vars(r) for r in rows if r.output == o.id]}
+                for o in related.outputs
+            ],
+            "findings": [f.as_dict() for f in found.findings],
+        }, indent=2, ensure_ascii=False))  # fmt: skip
+        return 0
+    for output in related.outputs:
+        print(f"{output.name}, {output.kind}, shares {' and '.join(output.shares)}")
+        copy = read_snapshot(project, output.id)[0]
+        if copy is not None:
+            m = copy.manifest
+            at = f" at {m['revision']}" if m.get("revision") else ""
+            commit = f" (commit {m['commit'][:12]})" if m.get("commit") else ""
+            print(f"  copy of {m['project']}{at}{commit}, taken {m['taken_on']}")
+        for row in (r for r in rows if r.output == output.id):
+            named = row.earlier if row.earlier == row.here else f"{row.earlier} = {row.here}"
+            print(f"  {named}: {row.then} there, {row.now} here: {row.state}")
+    print()
+    print(found.render(project.root))
+    return 0
+
+
+def _take(project, related, wanted: list[str], take, failed) -> int:
+    """Copy each named output's project in; all those that name one where none is named."""
+    known = {output.id: output for output in related.outputs}
+    unknown = [name for name in wanted if name not in known]
+    if unknown:
+        print(f"manuscript-guard: no earlier output is named {', '.join(unknown)} in "
+              "literature/related.yaml", file=sys.stderr)  # fmt: skip
+        return 2
+    chosen = [known[name] for name in wanted] or [o for o in related.outputs if o.project]
+    if not chosen:
+        print("manuscript-guard: no earlier output names its project (`project:`), so there "
+              "is nothing to copy", file=sys.stderr)  # fmt: skip
+        return 2
+    code = 0
+    for output in chosen:
+        try:
+            record = take(project, output)
+        except failed as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            code = 2
+            continue
+        try:
+            into = record.parent.relative_to(project.root).as_posix()
+        except ValueError:  # `paths:` can put the literature folder outside the project
+            into = str(record.parent)
+        at = f" at {output.revision}" if output.revision else ""
+        print(f"{output.id}: copied {output.project}{at} into {into}/")
+    return code
 
 
 def cmd_lookup(args: argparse.Namespace) -> int:
@@ -3950,6 +4048,22 @@ def build_parser() -> argparse.ArgumentParser:
         "paper.yaml lists instead, and keep the answers in design/registrations/",
     )
     lookup.set_defaults(func=cmd_lookup)
+
+    related = sub.add_parser(
+        "related",
+        help="compare the paper with the earlier outputs of the same data in "
+        "literature/related.yaml, or copy an earlier project in",
+    )
+    related.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    related.add_argument(
+        "--take",
+        nargs="*",
+        metavar="ID",
+        help="copy the results and plan of each named output's project, at its revision, into "
+        "literature/related/<id>/ (all that name a project, where none is given)",
+    )
+    related.add_argument("--json", action="store_true", help="the comparison as JSON")
+    related.set_defaults(func=cmd_related)
 
     search = sub.add_parser(
         "search",

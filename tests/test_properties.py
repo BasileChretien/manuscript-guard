@@ -52,6 +52,9 @@ from generated import (
     LOWERED,
     NOTATED,
     PLACEHOLDERS,
+    PROOF_CORRECTIONS,
+    PROOF_EDIT,
+    PROOF_TYPOGRAPHY,
     RESIDUE,
     RESIDUE_LOOKALIKES,
     SOURCE_GAPS,
@@ -82,6 +85,7 @@ from generated import (
     plan_pairs,
     planned_plans,
     printings,
+    proofs,
     quotations,
     revisions,
     share_tables,
@@ -4771,6 +4775,131 @@ def _what_differs_is_looked_for_at_the_ends_only(patch: pytest.MonkeyPatch) -> N
     patch.setattr(placement, "_within", lambda *drawn: None)
 
 
+# ------------------------------------------------------------------- a publisher's proof
+
+
+def _compared(drawn: dict[str, Any]):
+    """What `proof` says of a proof drawn by `proofs`."""
+    from manuscript_guard.proof import reading as proof_reading
+    from manuscript_guard.proof.compare import compare
+    from manuscript_guard.proof.sent import PARAGRAPH, Part, Sent
+
+    parts = tuple(Part(PARAGRAPH, text, label) for label, text in drawn["parts"])
+    read = proof_reading._paged("the text as saved", drawn["pages"])
+    return compare(Sent(Path("manuscript.docx"), parts, (), None), read)
+
+
+@holds(60, proofs(planted=False))
+def test_a_proof_that_prints_what_was_sent_reads_as_it(drawn: dict[str, Any]) -> None:
+    """However the proof wraps and pages the parts, with its running heads, its page
+    numbers, its line numbers or none, and words broken at a line's end, it prints what was
+    sent: nothing to correct, nothing shown."""
+    result = _compared(drawn)
+    assert result.changes == ()
+    assert result.found == result.total
+
+
+@holds(60, proofs())
+def test_each_change_a_typesetter_makes_is_reported_once_where_it_is(
+    drawn: dict[str, Any],
+) -> None:
+    """One of every change of `PROOF_CORRECTIONS` is a correction of its part, and the part
+    the proof leaves out is reported missing, each once and nothing else; the same value set
+    otherwise is typography and the word changed a copy-edit, each in its part. A change is
+    said to be on the page its line is on, and on that line where the proof numbers them."""
+    from manuscript_guard.proof.compare import ADDED, COPY_EDIT, CORRECTION, MOVED
+    from manuscript_guard.proof.tokens import TYPOGRAPHY as SET_OTHERWISE
+
+    result = _compared(drawn)
+    planted = drawn["planted"]
+    wanted = {(what, planted[what][0]) for _s, _p, what in PROOF_CORRECTIONS}
+    wanted.add(("missing", planted["missing"][0]))
+    found = [(c.what, c.part) for c in result.changes if c.kind == CORRECTION]
+    assert sorted(found) == sorted(wanted)
+    edits = [(c.part, c.sent, c.printed) for c in result.changes if c.kind == COPY_EDIT]
+    assert edits == [(planted["copy-edit"][0], *PROOF_EDIT)]
+    shown = sorted(c.part for c in result.changes if c.kind == SET_OTHERWISE)
+    assert shown == sorted(planted[f"typography {printed}"][0] for _s, printed in
+                           PROOF_TYPOGRAPHY)  # fmt: skip
+    assert not [c for c in result.changes if c.kind in (ADDED, MOVED)]
+    for change in result.changes:
+        if change.kind != CORRECTION or change.what == "missing":
+            continue
+        printed = planted[change.what][1].split()[-1]
+        number, (page, line) = next((n, at) for n, at in drawn["lines"].items()
+                                    if printed in at[1].replace("\N{NO-BREAK SPACE}", " "))
+        assert change.page == page, (change, page)
+        assert change.line == (number if drawn["numbered"] else None), (change, number)
+
+
+def _a_decimal_comma_is_the_same_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+    from manuscript_guard.proof import tokens
+
+    def compared(sent, printed):
+        verdict, note = tokens.compare_numbers(sent, printed)
+        return (tokens.TYPOGRAPHY, "") if verdict == tokens.DECIMAL_MARK else (verdict, note)
+
+    patch.setattr(module, "compare_numbers", compared)
+
+
+def _a_sign_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+    from manuscript_guard.proof import tokens
+
+    def compared(sent, printed):
+        verdict, note = tokens.compare_numbers(sent, printed)
+        return (tokens.SAME, "") if verdict == tokens.SIGN else (verdict, note)
+
+    patch.setattr(module, "compare_numbers", compared)
+
+
+def _a_unit_is_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    patch.setattr(module, "is_unit", lambda raw: raw in "%<>=")
+
+
+def _running_heads_are_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import reading
+
+    patch.setattr(reading, "_without_running_lines", lambda pages, taken: pages)
+
+
+def _a_stretch_is_not_slid_to_a_part(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import align
+
+    patch.setattr(align, "slid", lambda ops, a, b, starts: ops)
+
+
+def _a_word_broken_at_a_line_end_stays_two(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+    from manuscript_guard.proof.tokens import prepared, tokens
+
+    def unjoined(reading, sent):
+        return [t for at, line in enumerate(reading.lines)
+                for t in tokens(prepared(line.text), at)]  # fmt: skip
+
+    patch.setattr(module, "proof_tokens", unjoined)
+
+
+def _a_compound_broken_at_a_line_end_loses_its_hyphen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    real = module.proof_tokens
+
+    def joined(reading, sent):
+        return real(reading, [t for t in sent if t.key != "-"])
+
+    patch.setattr(module, "proof_tokens", joined)
+
+
+def _a_number_split_in_two_is_two(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    patch.setattr(module, "_regrouped", lambda ops, a, b: ops)
+
+
 # ------------------------------------------------------------- a unit written after a binding
 
 #: What may follow a binding, with the unit read there, or None where none is: a gap of each
@@ -7604,6 +7733,38 @@ BROKEN = {
     "a footnote marker on a row's label is not seen": (
         _a_footnote_marker_is_not_seen,
         test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a proof's decimal comma is the same number": (
+        _a_decimal_comma_is_the_same_number,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a proof's sign is not read": (
+        _a_sign_is_not_read,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a unit beside a number in a proof is a word": (
+        _a_unit_is_a_word,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a stretch the proof leaves out is not slid to a part's start": (
+        _a_stretch_is_not_slid_to_a_part,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a number a proof splits in two is two": (
+        _a_number_split_in_two_is_two,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a proof's running heads are kept": (
+        _running_heads_are_kept,
+        test_a_proof_that_prints_what_was_sent_reads_as_it,
+    ),
+    "a word a proof breaks at a line's end stays two": (
+        _a_word_broken_at_a_line_end_stays_two,
+        test_a_proof_that_prints_what_was_sent_reads_as_it,
+    ),
+    "a compound a proof breaks at a line's end loses its hyphen": (
+        _a_compound_broken_at_a_line_end_loses_its_hyphen,
+        test_a_proof_that_prints_what_was_sent_reads_as_it,
     ),
     "a column header's n is not read as its denominator": (
         _a_header_names_no_denominator,

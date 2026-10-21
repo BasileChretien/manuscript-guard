@@ -8114,6 +8114,135 @@ The file is a page, the answers are JSON, the record is a CSV. No model, no prov
 tool appears anywhere in the path, and none is needed to run a round. That is deliberate: a
 co-author's reading is the one part of this toolkit that must not depend on anyone's subscription.
 
+## The publisher's proof is held to what was sent
+
+Every guarantee here stops at the document the author sends. The journal then has it typeset,
+by people and programs that can change a digit, set a decimal comma, drop a minus, swap two
+cells, renumber a reference or lose an affiliation, and sends back a proof that the author
+reads by eye, usually within two days. `manuscript-guard proof <proof> [path]` reads the
+proof's text and holds it to the document sent, and lists what the author has to ask the
+production office to correct. It sends nothing. Basile chose each of the four points below on
+2026-10-21, of the options put to him.
+
+**What it is compared with.** The paper in the submission pack, `build/submission/`, or the
+document named with `--against` (`proof.sent`). The pack's copy is what the journal was sent,
+and its manifest says so: the report says whether the manifest lists the file with these
+bytes, for which round; whether every author's approval is of the build it came from, by the
+stamp the document carries; and whether the source has changed since, in which case a
+correction may already be in the source. What changed after the pack is not compared, so a
+revision's accepted changes are kept out the same way: rebuild and pack the version the journal
+accepted, and the proof is held to that. `--supplementary` compares a supplement typeset as a
+document of its own with the pack's supplement.
+
+The document is read as the build reads it when it writes its record of what each block
+printed (`docxtext.blocks`, "The build records what each paragraph printed"), from the
+document itself rather than from the record. The record is that reading, made on the machine
+that built the document; the document is what was sent, and reading it gives the same blocks
+anywhere. Each block is a part. A table is its cells, each a part with its row's label and its
+column's header, read as `audit` reads a table (`text.docx.read_docx_text`). A figure's picture
+and a displayed equation are not compared, and the report says so.
+
+**Reading the proof** (`proof.reading`). A PDF is read by `pdftotext` where it is installed, in
+two orders: the order of the page's layout, which poppler and Xpdf each work out their own way,
+and the order the PDF draws its text in (`-raw`). Neither is right for every proof. On a proof
+written by `tests/proof_pdf.py`, Xpdf 4.00's layout order read two columns with a narrow gutter
+a line of each in turn, and poppler 24.04's gave the margin's line numbers as a column of their
+own and joined a compound broken at its own hyphen ("example-" and "drug" became
+"exampledrug"); the drawing order of both, and pypdf's, kept the columns. So both orders are
+read, and the comparison keeps the one that lines up most of what was sent, less what it adds
+that was not sent: a reading with the line numbers among the words finds every word and adds a
+number between each line. Without `pdftotext`, pypdf reads the drawing order. A proof sent as
+JATS XML or HTML is read by pattern, one line to a paragraph, cell or heading, and not parsed,
+so an entity it declares is not expanded and nothing it names is fetched; an author's JATS
+name, in `<contrib>`, is turned given name first, as a title page prints it, and a
+reference's is left as its style prints it, "Smith A". A proof saved as text is read with its pages parted by
+form feeds, as `pdftotext` writes them. A proof with no text, a scan, is refused (exit 2).
+
+What every page repeats is taken out first, from the top and the bottom of each page (its first
+and last four lines, a fifth of a short page and two lines at least): a line that, its digits
+aside, stands once on half the pages or more, on the same side of each, the top for a head and
+the bottom for a foot, its numbers alike on every page but for one, the page's own (a running
+head or foot: a table's rows share a shape and stand many to a page, and differ in many
+numbers); and a number alone on its line that counts up with the pages on most of them (the
+page number). Read anywhere on the page, a line of a generated proof's text that happened to
+stand on half the pages, "reports records.", was taken for a running head, and the end of
+each paragraph it closed was reported as words the proof left out; read on either side, a line
+two paragraphs shared stood at the top of one page and the foot of the next, and was taken out
+of both. A proof's line numbers are judged over the whole proof: they
+count up by one, five or ten nearly always, stand on enough of its lines, and start each page
+at one or on from the page before, so a column of years is none and a first page of four
+lines is no exception. They are kept where they stand at the start of a line, so that a
+correction names its line, and dropped where a reader gives them as a column.
+
+**Comparing** (`proof.tokens`, `proof.align`, `proof.compare`). Both texts are read in Unicode's
+compatibility form, so that a ligature is its letters and a thin space a space, and cut into
+numbers, words and marks. A number is read with its sign where a sign can stand, as `audit`
+reads one, and with its decimal mark. They are lined up with every number standing for any
+number, so that a number changed in place lines up with the number it was. difflib's matcher is
+exact and quadratic: an article of eleven thousand tokens took eleven seconds, three times that
+took ninety. So runs of keys found once on each side are anchors, the longest chain of them in
+order on both sides is kept, and only the gaps between, once small, go to difflib, as a
+patience diff does. Where no run stands once on each side, a table of numbers alone or a
+passage the paper repeats, runs that stand as often on each side, up to eight times, are paired
+first with first. Two readings that line up as many tokens are not alike to the author, so two
+rules choose between them. A stretch printed and not sent, or sent and not printed, is slid
+along the tokens alike on both sides of it to start where a part starts, where it can: a
+paragraph left out of the proof would otherwise take the full stop of the one before it. And a
+part left out next to a part the proof changed is left out whole, where that lines up as many
+(`align.whole_parts`): the words two paragraphs end with were lined up with the second's end,
+and the paragraph left out read as part of a copy-edit of the first, which is a correction
+not counted. A run the chain leaves out and the proof prints elsewhere, a table set where the
+page had room or a statement the journal's template moves, is found there and compared there.
+
+Each difference is then one of these:
+
+- **A correction** (exit 1, and the list `--out` writes): a number's digits, sign or decimal
+  mark changed, or a number gone or come within a part; a unit, a percent or degree sign or a
+  comparator changed beside a number (a unit's case is kept, so "mM" is not "mm"; the two
+  spellings of a litre and of a microgram are one); any change inside a citation
+  (brackets, parentheses that hold a year, a short number set against a word as a superscript
+  is) or an entry of the reference list; a part the proof does not print at all, or a
+  paragraph, a caption or a reference of six tokens or more none of which it prints in place,
+  whatever stands there instead; on the title page, an author's name (with its affiliation
+  marks set against it, "Example1,2", it is the name), the authors' order, an affiliation, an
+  ORCID iD or the corresponding author's e-mail address. A correction of a number names the binding that printed it and the line of
+  the source, or says it was typed (`proof.origin`); a cell names its table's binding. Two
+  corrections that trade what they print are said to be swapped.
+- **Typography**, shown and not counted: the same number set otherwise, grouped ("19 950"), a
+  true minus or a minus set as a hyphen or a dash, a leading zero dropped (".001"), a middle
+  dot for the point; a name printed with its initials.
+- **A copy-edit**, shown for the author to accept or query: any other change of words.
+- **Moved**, shown: a paragraph or heading set elsewhere. A table's cells and a caption move
+  as floats do, and are not shown.
+- **Added**, shown: text the proof prints between parts that was not sent. The title page's
+  lines, once found to be the title page, are not.
+
+The title page is not in the document sent: the pack writes it from `authors.yaml`. So it is
+held to `authors.yaml` (`proof.front`), anywhere in the proof's text: each name letter for
+letter, accents kept, case and the shape of quotation marks aside; each affiliation; each ORCID
+iD, where the proof prints any; and the corresponding author's address.
+
+**The report** is on the screen, in the proof's order: the corrections with the page and the
+line number the proof prints, the copy-edits, then what was shown and what was not compared.
+`--out <file>` writes the corrections as a numbered list to paste into the reply to the
+production office, and `--json` writes everything. Nothing is written without `--out`, and
+nothing is sent. A proof that reads as less than 30% of the document is not compared (exit 2):
+it is another paper's, or its text could not be read in order, and a report of every part
+missing would say nothing.
+
+`tests/test_proof.py` plants each kind of change in a proof of a few parts, and runs the
+command on proofs of the example's own pack typeset as two-column PDFs with running heads.
+The PDFs are written by `tests/proof_pdf.py`, in Helvetica with a map from each code to its
+character as a typesetter's fonts carry one, and read by pypdf, pinned in the development
+dependencies, and by each `pdftotext` on the machine. `tests/test_properties.py` holds the
+comparison over proofs `tests/generated.py` draws (`proofs`): the parts' words, their order,
+the width the proof wraps to, the length of its pages and whether it numbers its lines, with a
+long word and a compound broken at a line's end. A proof of the parts as sent reads as them;
+one with one of every change of `PROOF_CORRECTIONS`, every setting of `PROOF_TYPOGRAPHY`, a
+word copy-edited and a part left out, each in a part of its own, reports each once, in its
+part, on its page and its line. Eight rules broken in place each fail one of the two, under a
+dozen seeds. The two rules above that choose between readings were found by them.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -13517,6 +13646,82 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
+- **A proof is compared as far as its text can be read, and no further.** `proof` reads what
+  `pdftotext` or pypdf gives. A figure's picture, the text inside a figure, an equation and
+  emphasis (an italic P, a gene's name) are not read; a figure is held to its caption alone. A
+  proof whose columns neither reader puts in order is either refused, under 30% found, or
+  reported with parts moved and missing that are not. A superscript loses its raise: a
+  citation number set against a word is told from a number by its shape (three digits at most,
+  set against a letter or a stop), so a change in "ICD10" or "H2O" is called a citation's, and
+  "10" with a raised minus and "3", an exponent, is read as "10-3" and shown as typography. A
+  minus left at the end of a line, apart from its number, is reported as the sign lost. A
+  range's dash a reader spaces on one side only, "0.71 –0.89", reads as a minus,
+  and the bound is reported as a sign changed (round 1 of #397).
+- **The document's footnotes are not compared.** The document is read as `docxtext.blocks`
+  reads its body, so a note's text is not among the parts, and the proof's notes are shown as
+  added text.
+- **What a page repeats is found by rule.** A line at the top or bottom of the page that stands
+  there once on half the pages or more, its numbers alike but one, is taken out: a table's
+  header repeated at the top of half the pages of a short proof is taken out with the running
+  heads, and its cells are then reported missing, and so is a line of the text that happens to
+  stand there as often. A running head a reader puts in the middle of the page is shown as
+  added. A proof of one page has none taken out, and its running head and number are shown as
+  added. A proof's line numbers are read only at the start of a line, counting from one or on
+  from the page before, by one, five or ten, and on five lines at least; given as a column by
+  poppler's layout order they are dropped and the correction is named by its page. A proof
+  with no line numbers names each correction by its page and a quotation.
+- **Numbers stand for any number in the alignment.** A number dropped beside another, "12 15"
+  printed "15", may be read as the first changed and the second dropped. Both are corrections,
+  and the quotation shows which; but the binding named is the first's. A decimal comma before
+  exactly three digits reads as grouping, so "3.845" printed "3,845" is a correction of the
+  number and not of its decimal mark.
+- **The title page is held to `authors.yaml` by its words, not its layout.** Which superscript
+  ties an author to an affiliation, and which author is marked as the corresponding one, are not
+  read. An ORCID iD is compared only where the proof prints one as text: shown as a linked icon,
+  none is. An affiliation the journal rewords, a country moved or a department dropped, is
+  reported as printed otherwise, a correction the author may find is not one. A name printed
+  in capitals is found; a particle the journal sets otherwise ("van der" for "Van der") is
+  found, case aside, but one it drops is reported.
+- **A supplement is compared in its own run.** The supplement is held to the same rules as the
+  paper: `proof --supplementary` compares a supplement the journal typesets as a document of
+  its own with the pack's `supplementary.docx`, part by part and cell by cell, and names the
+  bindings of `manuscript/supplementary/`. Its proof is not held to the title page, which is
+  the paper's. A proof that holds the paper and its supplement in one file is compared with
+  one of them at a time: the other's text is shown as added, and its changes go unseen until
+  the same file is compared again with `--supplementary` (or without it). Where a journal
+  typesets the supplement as it was sent, a PDF made from the .docx, the comparison holds it
+  like any proof.
+- **A citation is compared as the document printed it.** The build prints citations in the
+  journal's style where `manuscript-guard style` keeps it, and the proof is then held to the
+  same style. A pack built in another style, author-year where the journal numbers its
+  references, or "and" where it sets "&", has every citation and every reference entry
+  reported as a correction; the report does not tell a style apart from a fault. Build the
+  pack in the journal's style, and compare again.
+- **A case change and a style's synonym are not seen.** Words are compared case aside, so a
+  heading set in capitals is no change, and neither is a name whose case changed in the body.
+  Of units, only a litre's and a microgram's two spellings are read as one: "hours" printed "h"
+  beside a number is a correction. A unit of time spelt out is a word, so "12 weeks" printed
+  "12 months" is a copy-edit, shown and not counted: taken for units, the AMA's "12 wk" for
+  "12 weeks" was a correction (round 2 of #397).
+- **What a proof adds between two parts is shown, not counted, in a table too.** Every cell is
+  a part, so a value the proof adds between two cells, or a row it prints twice, is added
+  text. Counted as a correction, "Table 1 (continued)" over a table broken across a page, and a
+  header row set again, were corrections of a proof that prints what was sent (round 2 of
+  #397); the two cannot be told apart from a row repeated by their text alone.
+- **The alignment chooses between readings within limits.** A part left out next to a part
+  changed is left out whole only where the stretch is 400 tokens or fewer: a paragraph of about
+  330 words or more left out beside one that ends in its last words reads as a copy-edit of
+  that one. A run the proof sets elsewhere is found by runs of four keys it shares there: a
+  short paragraph moved with a word changed every four tokens or fewer reads as missing, and
+  its text as added (round 2 of #397).
+- **Affiliation marks are read as digits and signs.** "Example1,2", "Example1-3,*" and a
+  dagger are the name; marks set as letters, "Examplea,b", are not, and the name is reported
+  as printed otherwise. Letters are not taken for marks because "Paula" would then be "Paul".
+- **A source is named as it stands now.** The binding a correction names is the one in the
+  source paragraph now whose value prints the number sent; where the source has changed since
+  the pack the report says so, and the binding may be another. A table's binding is named by
+  the order of `{{table.…}}` in the source, which a table the build printed otherwise than in
+  that order would put out of step.
 - **A supplement's Methods are what their headings say.** G9 reads, in a file of the
   supplement, a section whose heading holds "methods", and G2 and G15 the names of
   `classify.SUPPLEMENT_METHODS`; under either, only the sections whose own titles name a

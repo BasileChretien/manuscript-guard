@@ -127,6 +127,8 @@ COMMANDS = {
     "stages": Zero("nothing: it prints the stages", why="it reads the policy table only"),
     "style": Zero("the citation style the journal's profile names", exits=2,
                   argv=("style", "{project}")),
+    "proof": Zero("the proof given, against the document in the submission pack", exits=2,
+                  argv=("proof", "{project}/paper.yaml", "{project}")),
     "submit": Zero("every gate at the submission stage, then the build", exits=1,
                    argv=("submit", "{project}")),
     "sync-bib": Zero("the citations in the manuscript", exits=2, argv=("sync-bib", "{project}")),

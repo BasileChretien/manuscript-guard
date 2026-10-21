@@ -181,3 +181,19 @@ def test_g4_says_it_does_not_read_a_latex_legend_only_where_a_figure_is_placed(
     path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     report = check_journal(load_project(project)[0])
     assert not [f for f in report.findings if f.code == "not-read-in-latex"], report.findings
+
+
+def test_the_printed_view_of_files_given_without_those_they_input_reads_what_it_has() -> None:
+    """A file input that is not among the files given prints nothing, where it raised
+    `RuntimeError` (round 1 of step 7: `Methods.TEX` was left out by a filter on `.tex`)."""
+    from manuscript_guard.text.latex.printed import printed_view
+    from manuscript_guard.text.latex.structure import read_tree
+
+    files = {"main.tex": "\\documentclass{article}\n\\begin{document}\nOne.\n"
+                         "\\input{Methods.TEX}\nTwo.\n\\end{document}\n",
+             "Methods.TEX": "Inside.\n"}  # fmt: skip
+    sources = read_tree(files).sources
+    assert [source.path for source in sources] == ["main.tex", "Methods.TEX"]
+    alone = printed_view([sources[0]])
+    assert "One." in alone and "Two." in alone and "Inside." not in alone
+    assert "Inside." in printed_view(list(sources))

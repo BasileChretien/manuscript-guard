@@ -48,7 +48,13 @@ def printed_view(sources: list[Source]) -> str:
     queue = iter(sources)
 
     def written(source: Source) -> str:
-        return _printed(source, shallowest, lambda: written(next(queue)))
+        return _printed(source, shallowest, following)
+
+    def following() -> str:
+        """The next file, the one the include tree read where this `\\input` ends; none
+        where the list given holds no more (round 1 of step 7)."""
+        source = next(queue, None)
+        return "" if source is None else written(source)
 
     return "\n\n".join(written(source) for source in queue)
 

@@ -78,9 +78,10 @@ def main_text(project: Project) -> str:
         from manuscript_guard.text.latex.printed import printed_view
         from manuscript_guard.text.latex.structure import read_document
 
+        # The author's packages are no text; a file input is, `Methods.TEX` as `methods.tex`.
         document = read_document(folder, supplementary=False)
-        return printed_view([source for source in document.sources
-                             if not source.loose and source.path.endswith(".tex")])  # fmt: skip
+        return printed_view([source for source in document.sources if not source.loose
+                             and not source.path.lower().endswith(".sty")])  # fmt: skip
     sources = source_files(folder, main_text_only=True)
     return "\n\n".join(without_front_matter(read_text(p)) for p in sources)
 

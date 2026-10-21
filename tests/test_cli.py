@@ -1129,6 +1129,22 @@ def test_explain_shows_the_rule_behind_each_number(project: Path, capsys) -> Non
     assert "rate-denominator" in out or "confidence-level" in out
 
 
+def test_explain_shows_what_a_ref_prints_and_why_one_prints_nothing(
+    project: Path, capsys
+) -> None:
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    refs = "shown in {{ref.table.baseline}} and {{ref.table.gone}}."
+    path.write_text(text.replace("shown in Table 1.", refs, 1), encoding="utf-8")
+    assert run("explain", str(path)) == 0
+    lines = capsys.readouterr().out.splitlines()
+    bound = next(line for line in lines if "{{ref.table.baseline}}" in line)
+    assert bound.startswith("ok") and "-> Table 1 " in bound, bound
+    assert "the main text's table 1, placed by {{table.baseline}}" in bound, bound
+    gone = next(line for line in lines if "{{ref.table.gone}}" in line)
+    assert gone.startswith("FAIL") and "unresolved-binding" in gone, gone
+
+
 def test_methods_reports_and_reconciles(project: Path, capsys) -> None:
     assert run("methods", str(project)) == 0
     (project / "analysis" / "01_disproportionality.py").write_text("# changed\n", encoding="utf-8")

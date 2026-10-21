@@ -48,11 +48,17 @@ expected:
       date of the data is declared with `dataset()` and a date the study chose is a parameter
   - reading: numbers
     why: >-
-      a step, a panel or a box takes a number up to 20 and an item up to 99, so a count
-      after one of them is unbound; a list after a plural pointer, "Tables 1 and 2", is read
-      whole
+      a supplement's name of the Methods, "Supplementary methods", "eMethods 1. Data
+      source", "S1 Methods" or "Appendix 1: Methods", is a place the Methods are, so a
+      Methods-only convention under one, "p < 0.05", is the convention it is there and no
+      longer a number nothing classifies; the inputs now hold such headings
   - reading: reported tests
     why: >-
       a P above 1, "P = 4.1 x 10^5", is not judged; a number with a middle dot or a comma
       for its point is not read, nor a P cut off before one; and Dunnett's and
       Games-Howell's procedures stand a test down as the other named adjustments do
+  - reading: pointers
+    why: >-
+      G2 holds a caption beside a table or a figure to that display, so a typed caption or a
+      ref opening one that names another display is caption-names-another; the inputs now
+      place captions, and two tables one after the other with a caption between them

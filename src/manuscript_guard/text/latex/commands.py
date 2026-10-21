@@ -4,6 +4,9 @@ An argument is written as its delimiters around one letter:
 
 - `*` a star, taken where it follows;
 - `[p]` an optional argument read as prose, `[b]` one blanked;
+- `[o]` one that is an option list, `key=value`, and blanked, or that holds no `=` and is
+  read as prose: a name two packages give, siunitx's `\\qty[round-precision=1]` and the
+  units package's `\\unit[250]{mg}` (round 2 of #400);
 - `(b)` an optional argument in parentheses, blanked (booktabs' `\\cmidrule(lr)`);
 - `{p}` a mandatory argument read as prose, `{b}` one blanked;
 - `{r}` one blanked and read raw, with `%` and `#` as characters (a URL);
@@ -18,7 +21,7 @@ from __future__ import annotations
 
 import re
 
-_ITEM = re.compile(r"\*|\[[pb]\]|\(b\)|\{[pbrdc]\}")
+_ITEM = re.compile(r"\*|\[[pbo]\]|\(b\)|\{[pbrdc]\}")
 
 
 def _specs(table: dict[str, str]) -> dict[str, tuple[str, ...]]:
@@ -91,6 +94,11 @@ COMMANDS = _specs(
         **dict.fromkeys(("setlength", "addtolength", "setcounter", "addtocounter",
                          "numberwithin"), "{b}{b}"),
         **dict.fromkeys(("vspace", "hspace"), "*{b}"),
+        # Layout that takes a size: its numbers are no claims (round 1 of #400, now that G2
+        # reads them).
+        "fontsize": "{b}{b}",
+        "addlinespace": "[b]",
+        **dict.fromkeys(("setstretch", "enlargethispage"), "*{b}"),
         "captionsetup": "[b]{b}",
         "color": "[b]{b}",
         "cmidrule": "[b](b){b}",
@@ -98,6 +106,21 @@ COMMANDS = _specs(
         "\\": "*[b]",
         # A binding: the value it prints is the results', not the author's.
         "mg": "[b]{b}",
+        # siunitx: its number read as prose, its options and units blanked. A binding in one
+        # is refused, since siunitx parses what it holds, and `\\mg` in one is the milligram
+        # siunitx defines there (`mask.py`). `\\qty` and `\\unit` are other packages' too,
+        # physics' brackets and units' `\\unit[250]{mg}`, so what their brackets hold is read
+        # where it is no option list (round 1 of #400: it was blanked, and 250 passed; round
+        # 2: read whole, siunitx's `round-precision=1` failed G2).
+        **dict.fromkeys(("num", "numlist", "numproduct", "ang", "tablenum", "complexnum"),
+                        "[b]{p}"),
+        "numrange": "[b]{p}{p}",
+        "SI": "[b]{p}[b]{b}",
+        "qty": "[o]{p}[b]{b}",
+        **dict.fromkeys(("qtylist", "SIlist", "qtyproduct", "complexqty"), "[b]{p}{b}"),
+        **dict.fromkeys(("qtyrange", "SIrange"), "[b]{p}{p}{b}"),
+        "si": "[b]{b}",
+        "unit": "[o]{b}",
         # Citations: the notes are read, the keys are not.
         **dict.fromkeys(
             ("cite", "citep", "citet", "citealt", "citealp", "citeauthor", "citeyear",
@@ -131,6 +154,7 @@ ENVIRONMENTS = _specs(
         **dict.fromkeys(("figure", "figure*", "table", "table*", "tablenotes", "enumerate"),
                         "[b]"),
         "minipage": "[b][b][b]{b}",
+        **dict.fromkeys(("multicols", "multicols*"), "{b}[p][b]"),
         "wrapfigure": "[b]{b}[b]{b}",
         "subfigure": "[b]{b}",
         "thebibliography": "{b}",
@@ -171,6 +195,25 @@ AMSMATH = frozenset(
 #: Environments read to their `\\end` as characters and blanked whole: a listing, read by G2's
 #: code check as a fenced block is, and a comment.
 RAW = frozenset({"verbatim", "verbatim*", "Verbatim", "lstlisting", "comment"})
+#: The listings among them, which print what they hold as typed.
+LISTINGS = RAW - {"comment"}
+
+#: Tables an author types: a number in one is `hand-authored-table`, as one in a Markdown
+#: table's row is. Maths' alignments separate cells too, and are no tables.
+TYPED_TABLES = frozenset({"tabular", "tabular*", "tabularx", "tabulary", "longtable"})
+
+#: LaTeX's own parameters an author sets by defining them again, whose body is a size and
+#: prints nothing: `\\renewcommand{\\arraystretch}{1.5}` (round 1 of #400: its 1.5 failed G2).
+PARAMETERS = frozenset(
+    {"arraystretch", "baselinestretch", "topfraction", "bottomfraction", "textfraction",
+     "floatpagefraction", "dbltopfraction", "dblfloatpagefraction"}
+)  # fmt: skip
+
+#: siunitx's commands, in which `\\mg` is its milligram and a binding is refused.
+SIUNITX = frozenset(
+    {"num", "numlist", "numproduct", "ang", "tablenum", "complexnum", "numrange", "qty", "SI",
+     "qtylist", "SIlist", "qtyproduct", "complexqty", "qtyrange", "SIrange", "unit", "si"}
+)  # fmt: skip
 
 #: Why a command is refused, by the command. Past a refusal the rest of the file is read as
 #: prose, so that nothing the reader did not understand is hidden.

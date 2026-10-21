@@ -480,7 +480,7 @@ def _one(
             call.model, call.body, key=key, transport=transport, sleep=pause
         )
         text = reply.text
-        parsed = parse_reply(reply.text)
+        parsed = parse_reply(reply.text, design=plan.design)
         path = file_reading(project, plan, call, reply, parsed, today, keys)
     except CallFailed as exc:
         why, text = str(exc), exc.text

@@ -1089,6 +1089,126 @@ def test_an_attester_named_in_a_codex_patch_is_refused(project: Path, capsys) ->
     assert "Bo Example" in reason(result) and "makes it themselves" in reason(result)
 
 
+def _passages(project: Path) -> Path:
+    return project / "literature" / "passages.yaml"
+
+
+#: The example's passage, judged by a person.
+_JUDGED = (
+    '    locator: "Abstract, Results"\n'
+    "    support: supports\n"
+    '    judged_by: "Ada Example"\n'
+    "    judged_on: 2026-10-20\n"
+)
+
+
+def _judge(project: Path) -> Path:
+    """The example's passages.yaml with its one passage judged, written as the person did."""
+    path = _passages(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace('    locator: "Abstract, Results"\n', _JUDGED), "utf-8")
+    return path
+
+
+def test_judging_a_passage_is_put_to_the_person(in_claude_code: Path, capsys) -> None:
+    """Basile, 2026-10-20: an agent may draft a passage; only a person judges it."""
+    path = _passages(in_claude_code)
+    content = path.read_text(encoding="utf-8").replace(
+        '    locator: "Abstract, Results"\n', _JUDGED.replace("Ada Example", "Bo Example")
+    )
+    result = run("guard-write", _writes(in_claude_code, file_path=str(path), content=content),
+                 capsys)  # fmt: skip
+    assert decision(result) == "ask"
+    assert "Bo Example" in reason(result) and "supports its sentence" in reason(result)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "asked"),
+    [
+        # The words a standing judgement is of: the passage, the sentence, the work.
+        ('"A signal was detected for the class as a whole"', '"A signal was detected"', True),
+        ("drug\n      class as a whole", "drug\n      class in part", True),
+        ("citekey: fictionalClassSignal2019", "citekey: fictionalHepaticCohort2021", True),
+        # The judgement itself, or who made it, or when.
+        ("support: supports", "support: partly", True),
+        ("judged_on: 2026-10-20", "judged_on: 2026-10-21", True),
+        # What the judgement is not of: where the passage stands, a note, a comment.
+        ('locator: "Abstract, Results"', 'locator: "Abstract, Results section"', False),
+        ("    judged_on: 2026-10-20\n", "    judged_on: 2026-10-20\n    note: checked twice\n",
+         False),
+        ("# For a sentence", "# Each passage: for a sentence", False),
+    ],
+)  # fmt: skip
+def test_an_edit_under_a_standing_judgement_is_put_to_the_person(
+    in_claude_code: Path, old: str, new: str, asked: bool, capsys
+) -> None:
+    path = _judge(in_claude_code)
+    assert old in path.read_text(encoding="utf-8")
+    payload = _writes(in_claude_code, "Edit", file_path=str(path), old_string=old, new_string=new)
+    assert decision(run("guard-write", payload, capsys)) == ("ask" if asked else None)
+
+
+def test_taking_a_judgement_away_is_put_to_the_person(in_claude_code: Path, capsys) -> None:
+    """Round 1 of #374: only a judgement added or changed was asked about, so an agent could
+    clear `passage-does-not-support` by deleting the person's judgement."""
+    path = _judge(in_claude_code)
+    judged = _JUDGED.replace('    locator: "Abstract, Results"\n', "")
+    assert judged in path.read_text(encoding="utf-8")
+    payload = _writes(in_claude_code, "Edit", file_path=str(path), old_string=judged,
+                      new_string="")  # fmt: skip
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == "ask"
+    assert "Ada Example" in reason(result)
+
+
+def test_a_patch_drafting_a_passage_beside_a_commented_judgement_is_not_put_to_anyone(
+    project: Path, capsys
+) -> None:
+    """Round 1 of #374: the example shows the judgement's fields in a comment, and a patch to
+    its file was refused in Codex as though a judgement were there."""
+    assert '# judged_by: "A Person"' in _passages(project).read_text(encoding="utf-8")
+    patch = patch_of(
+        "*** Update File: literature/passages.yaml",
+        "@@",
+        '-    locator: "Abstract, Results"',
+        '+    locator: "Abstract, Results section"',
+    )
+    assert run("guard-write", codex_edit(project, patch), capsys) is None
+
+
+def test_drafting_a_passage_nobody_has_judged_is_the_agents_to_do(
+    in_claude_code: Path, capsys
+) -> None:
+    path = str(_passages(in_claude_code))
+    old, new = '"A signal was detected for the class as a whole"', '"A signal was detected"'
+    payload = _writes(in_claude_code, "Edit", file_path=path, old_string=old, new_string=new)
+    assert run("guard-write", payload, capsys) is None
+
+
+def test_a_patch_to_a_file_that_holds_a_judgement_is_refused_in_codex(
+    project: Path, capsys
+) -> None:
+    """A patch holds only the lines it changes, so which entry a line is of is not known: one
+    to a file with a judgement is put to the person, and Codex cannot ask."""
+    _judge(project)
+    patch = patch_of(
+        "*** Update File: literature/passages.yaml",
+        "@@",
+        '-    locator: "Abstract, Results"',
+        '+    locator: "Abstract"',
+    )
+    result = run("guard-write", codex_edit(project, patch), capsys)
+    assert decision(result) == "deny"
+    assert "supports its sentence" in reason(result)
+
+
+def test_a_file_named_passages_elsewhere_holds_no_judgement(in_claude_code: Path, capsys) -> None:
+    other = in_claude_code / "notes" / "passages.yaml"
+    other.parent.mkdir()
+    payload = _writes(in_claude_code, file_path=str(other), content="judged_by: Bo\n")
+    assert run("guard-write", payload, capsys) is None
+
+
 def test_a_file_named_attested_elsewhere_is_no_attestation(in_claude_code: Path, capsys) -> None:
     other = in_claude_code / "notes" / "attested.yaml"
     other.parent.mkdir()

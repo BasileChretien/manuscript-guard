@@ -116,6 +116,9 @@ BINDS_AT = {
     "value-not-in-quote": DRAFTING,
     "literature-source-missing": DRAFTING,
     "attestation-not-human": DRAFTING,
+    # So does a passage recorded as a cited work's words, and only a person judges one.
+    "passage-not-in-source": DRAFTING,
+    "judgement-not-human": DRAFTING,
     "citation-unresolved": DRAFTING,
     # Model artefacts are never acceptable in text anyone will read.
     "model-artefact": DRAFTING,
@@ -183,6 +186,9 @@ BINDS_AT = {
     "lookup-record-misfiled": INTERNAL_REVIEW,
     # One work cited under two keys is printed twice in the reference list.
     "reference-duplicate": INTERNAL_REVIEW,
+    # A sentence a person judged the cited work does not support: a draft may hold one while
+    # it is reworded, and a draft others read may not (Basile, 2026-10-20).
+    "passage-does-not-support": INTERNAL_REVIEW,
     # -- submission -------------------------------------------------------------
     # The panel's verdict is the last thing to bind, because a panel reviews a draft
     # that is otherwise finished.

@@ -278,6 +278,7 @@ def test_a_comment_with_no_words_is_filed_and_reported(project: Path, tmp_path: 
         {"on": "Whether the signal extends", "text": ""},
         {"on": "Whether the signal", "author": "Ben Second", "text": "What do you mean?",
          "reply_to": 0},
+        {"on": "Whether the signal", "author": "Ann Coauthor", "text": "", "reply_to": 0},
         {"on": "Drug-induced hepatic injury", "author": "Ben Second", "text": ""},
     ])  # fmt: skip
     code, said = run("import", str(returned), str(project), "--apply")
@@ -285,7 +286,8 @@ def test_a_comment_with_no_words_is_filed_and_reported(project: Path, tmp_path: 
     assert "(no words" in said
     filed = by_commenter(project)
     assert [(f["finding"], [r["text"] for r in f.get("replies", [])]) for f in
-            filed["Ann Coauthor"]] == [("", ["What do you mean?"])]  # fmt: skip
+            filed["Ann Coauthor"]] == [("", ["What do you mean?", ""])]  # fmt: skip
+    assert "  reply from Ann Coauthor (2026-10-19), quoted:\n    (no words" in said
     assert [f["finding"] for f in filed["Ben Second"]] == [""]
     code, said = run("check", str(project))
     assert code == 0, said

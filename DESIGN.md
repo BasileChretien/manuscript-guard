@@ -12622,7 +12622,12 @@ Open, recorded as each change landed:
     where the import of its edits would first have asked the build.
   - *Two comments by one person, word for word, in a document that keeps no paragraph
     ids and had its dates removed (Word's "remove personal information")* share a key,
-    and the second, added in a later copy, is taken for the first (round 1 of #375).
+    and the second, added in a later copy, is taken for the first (round 1 of #375). Two
+    comments that are each a picture alone are word for word the same (round 2).
+  - *A panel's comment with a symbol inserted in it is filed as a co-author's* (round 2
+    of #375): `threads_of` reads its text with the font reading of `docxtext`, which
+    reads `w:sym`, and `suggestions.decisions` reads `w:t` alone, so their digests
+    differ. As before #375.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

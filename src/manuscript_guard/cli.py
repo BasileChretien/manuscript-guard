@@ -1011,7 +1011,9 @@ def cmd_import(args: argparse.Namespace) -> int:
         _report_comments(threads)
         if threads:
             print(f"\nThe comments are not filed: each is filed with the document it was made "
-                  f"in, and there is no telling which one {edited.name} is.")  # fmt: skip
+                  f"in, and there is no telling which one {edited.name} is. Import the "
+                  f"document the co-author was sent, edited in place, and they are filed "
+                  f"with it.")  # fmt: skip
         return 1
     try:
         # Its record is the one written for the document it is, the paper or the supplement:
@@ -1384,7 +1386,7 @@ def _report_comments(comments) -> None:
         for reply in getattr(comment, "replies", ()):
             by = printable(f"{reply.by} ({reply.date})").replace("\n", " ")
             print(f"  reply from {by}, quoted:")
-            print(quoted(reply.text))
+            print(quoted(reply.text) if reply.text else f"    {NO_WORDS}")
 
 
 def _threads(project, edited: Path, vouched: dict[str, str], offered) -> list | None:

@@ -20,6 +20,7 @@ through this one, which is the third thing the reviews did.
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import json
 import math
@@ -81,10 +82,12 @@ from generated import (
     planned_plans,
     printings,
     quotations,
+    revisions,
     share_tables,
     signs,
     sources,
     suggestion_paragraphs,
+    supplements,
     texts,
     typed,
     vector_figures,
@@ -93,7 +96,7 @@ from generated import (
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.database import InMemoryExampleDatabase
-from readings import MAIN, PAPER, PEOPLE, READINGS, Unavailable, answer
+from readings import MAIN, PAPER, PEOPLE, READINGS, Unavailable, answer, plain_of
 
 from manuscript_guard import claims as claims_module
 from manuscript_guard import reworded as reworded_module
@@ -127,6 +130,10 @@ from manuscript_guard.gates.vocabulary import (
 from manuscript_guard.literature import passages as passages_module
 from manuscript_guard.literature import sources as literature_sources
 from manuscript_guard.literature.sources import contains, normalise, states_value
+from manuscript_guard.markedup import align as markedup_align
+from manuscript_guard.markedup import atoms as markedup_atoms
+from manuscript_guard.markedup import package as markedup_package
+from manuscript_guard.markedup import writer as markedup_writer
 from manuscript_guard.reworded import (
     BINDING,
     CITATION,
@@ -2123,6 +2130,32 @@ def test_the_methods_named_as_such_are_read_before_a_heading_that_only_holds_the
         assert read is not None and "Coriander" in read and "Basil" not in read, (text, read)
 
 
+@holds(40, supplements())
+def test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them(
+    drawn: tuple[str, list[tuple[int, bool, bool]]],
+) -> None:
+    """G9 read the main text's Methods alone, and G2 and G15 knew no supplement's name for
+    them: a parameter the supplement's Methods stated was reported absent, a threshold typed
+    under "eMethods 1" was a number nothing classified, and a model's kind typed there was
+    never read. Each section of a file of the supplement is the Methods to each gate exactly
+    where it should be: G9 reads every section whose heading holds "methods" and stands
+    under no Results, and each one under it that names a method, each once; G2's threshold
+    holds and G15 reads a model named only under a supplement's name of the Methods, or a
+    name of a method under one, under no Results. A table under "Supplementary methods" is
+    none of theirs (round 1 of #395)."""
+    text, sections = drawn
+    read = methods_gate.supplement_methods_in(text) or ""
+    assert read.count("Coriander") == sum(g9 for _at, g9, _held in sections), (text, read)
+    assert "Basil" not in read, (text, read)
+    numbers = READINGS["numbers"]()({"text": text})
+    held = [atom["rule"] == "significance-threshold" for atom in numbers if atom["text"] == "0.05"]
+    assert held == [held for _at, _g9, held in sections], text
+    starts = [at for at, _g9, _held in sections]
+    named = [bisect.bisect_right(starts, start) - 1 for start, _end, _kind in
+             models_gate.named_in_methods(text)]  # fmt: skip
+    assert named == [index for index, (_at, _g9, held) in enumerate(sections) if held], text
+
+
 # ------------------------------------------- a number a summary gives and the paper does not
 
 #: What a paper calls its Results, and what it may call a section that is not them.
@@ -4017,6 +4050,47 @@ def test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands(
     report = compare(before, after, MAIN)
     assert [(one.code, one.line) for one in report.findings] == expected, report.findings
     assert report.ok
+
+
+# ------------------------------------------------------------------- the marked-up copy
+
+#: What shows a change in a line of `readings.shown`.
+_CHANGE_MARKS = ("[-", "{+", "~", "\N{PILCROW SIGN}", "style ", "row+ ", "row- ")
+
+
+@holds(20, revisions())
+def test_a_marked_up_copy_shows_each_change_where_it_was_made_and_reads_as_both_documents(
+    drawn: tuple[dict[str, list], list[tuple[str, str]]],
+) -> None:
+    """With every change accepted the copy reads as the revision, and with every one
+    rejected as the document sent, by a reading of its XML that owes nothing to the
+    package's (`readings.read_plainly`): the words, how they look, the table's rows, the
+    figure and the note. And each change shows where it was made, as what it is: a word
+    reworded and a number re-run as the one deleted and the other inserted, a word set in
+    italics as a change of formatting, a paragraph made a heading as one of style, a cell
+    re-run in its cell, a row added as a row, a picture replaced as one paragraph deleted
+    and another inserted, a list item deleted, a paragraph inserted, a paragraph moved as
+    the same words deleted and inserted; and two paragraphs left alone show nothing."""
+    given_, expected = drawn
+    found = answer(READINGS["marked up"](), given_)
+    assert "raised" not in found, found
+    told = found["answer"]
+    assert told["accepted"] == plain_of(given_["after"]), told
+    assert told["rejected"] == plain_of(given_["before"]), told
+    lines = told["shown"]
+    for word, holds_ in expected:
+        mine = [line for line in lines if word in line]
+        assert mine, (word, lines)
+        if holds_ == "unchanged":
+            assert not [line for line in mine if any(m in line for m in _CHANGE_MARKS)], lines
+        elif holds_ == "moved":
+            gone = {line[len("\N{PILCROW SIGN}- [-") : -2] for line in lines
+                    if line.startswith("\N{PILCROW SIGN}- [-") and line.endswith("-]")}
+            came = {line[len("\N{PILCROW SIGN}+ {+") : -2] for line in lines
+                    if line.startswith("\N{PILCROW SIGN}+ {+") and line.endswith("+}")}  # fmt: skip
+            assert gone & came, lines
+        else:
+            assert any(holds_ in line for line in mine), (word, holds_, lines)
 
 
 # ------------------------------------------------------------ the words beside a quoted value
@@ -6251,6 +6325,71 @@ def _the_methods_name_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(journal, "methods_sections", as_typed)
 
 
+def _no_supplement_names_the_methods(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    patch.setattr(classify, "SUPPLEMENT_METHODS", re.compile(r"(?!)"))
+
+
+def _a_supplement_s_name_with_words_after_it_is_no_methods(patch: pytest.MonkeyPatch) -> None:
+    # The name and its number alone: "eMethods 1. Data source" is not the Methods.
+    from manuscript_guard import classify
+
+    was = classify.SUPPLEMENT_METHODS.pattern
+    pattern = was.replace(r"(?:[^\w\n][^\n]*)?$", r"\s*$")
+    assert pattern != was
+    patch.setattr(classify, "SUPPLEMENT_METHODS", re.compile(pattern, re.IGNORECASE))
+
+
+def _only_the_first_of_a_supplement_s_methods_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(methods_gate, "supplement_methods_in", methods_gate.methods_in)
+
+
+def _a_section_under_one_read_is_read_again(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.sections import split_sections
+
+    def every(text: str, abstract_title: str | None = None) -> str | None:
+        found = methods_gate.methods_sections(split_sections(text), abstract_title)
+        return "\n\n".join(section.enclosed for section in found) or None
+
+    patch.setattr(methods_gate, "supplement_methods_in", every)
+
+
+def _a_supplement_s_name_holds_every_section_under_it(patch: pytest.MonkeyPatch) -> None:
+    # As first written in #395: under "Supplementary methods", a table was the Methods.
+    from manuscript_guard import classify
+
+    def any_title(section) -> bool:
+        return any(
+            classify.names_supplement_methods(title)
+            for title in section
+            if not isinstance(title, classify.Unprinted)
+        )
+
+    patch.setattr(classify, "_opened_by_the_supplement", any_title)
+
+
+def _g9_reads_all_under_a_supplement_s_methods(patch: pytest.MonkeyPatch) -> None:
+    # As first written in #395: each section found, with everything under it, once.
+    from manuscript_guard.text.sections import split_sections
+
+    def enclosed(text: str, abstract_title: str | None = None) -> str | None:
+        sections = split_sections(text)
+        found = {id(section) for section in methods_gate.methods_sections(sections, abstract_title)}
+        read: list[str] = []
+        under: int | None = None
+        for section in sections:
+            if under is not None and section.level > under:
+                continue
+            under = None
+            if id(section) in found:
+                read.append(section.enclosed)
+                under = section.level
+        return "\n\n".join(read) if read else None
+
+    patch.setattr(methods_gate, "supplement_methods_in", enclosed)
+
+
 def _the_abstract_s_methods_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
     _methods_found_without_the_paper_s_structure(patch, "below")
 
@@ -6421,6 +6560,42 @@ def _inline_code_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
 
 def _a_comment_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(claims_module, "mask", lambda text: text)
+
+
+def _a_deleted_stretch_is_left_out(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer._Emitter, "deleted", lambda self, atoms: None)
+
+
+def _deleted_text_is_written_as_text_kept(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer, "deleted_text", lambda element: element)
+
+
+def _how_a_word_looks_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_atoms, "look", lambda run: "")
+
+
+def _a_row_is_not_tracked_as_a_row(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer, "_row_change", lambda row, change: None)
+
+
+def _a_note_is_kept_as_the_revision_has_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer.Writer, "_note_merged", lambda self, old, new: None)
+
+
+def _a_table_is_never_merged_cell_by_cell(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer, "_shape", lambda table: None)
+
+
+def _a_deleted_picture_points_where_it_pointed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_package.Carried, "_relationship", lambda self, rid, part: rid)
+
+
+def _a_style_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer, "_properties_key", lambda paragraph, package: ())
+
+
+def _nothing_is_alike_enough_to_be_edited(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_align, "alike", lambda a, b: 0.0)
 
 
 def _the_texts_are_lined_up_by_place_alone(patch: pytest.MonkeyPatch) -> None:
@@ -8079,6 +8254,30 @@ BROKEN = {
         _the_methods_name_is_read_as_typed,
         test_the_methods_named_as_such_are_read_before_a_heading_that_only_holds_the_word,
     ),
+    "no supplement's name of the Methods is a place the Methods are": (
+        _no_supplement_names_the_methods,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a supplement's name of the Methods with words after it is not one": (
+        _a_supplement_s_name_with_words_after_it_is_no_methods,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "only the first of a supplement's Methods is read": (
+        _only_the_first_of_a_supplement_s_methods_is_read,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a section of a supplement's Methods under one read is read again": (
+        _a_section_under_one_read_is_read_again,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a supplement's name of the Methods holds every section under it": (
+        _a_supplement_s_name_holds_every_section_under_it,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "G9 reads everything under a supplement's Methods heading": (
+        _g9_reads_all_under_a_supplement_s_methods,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
     "a number's sign is no part of it": (
         _a_sign_is_no_part_of_its_number,
         test_a_rewording_passes_and_what_else_an_edit_did_is_found_where_it_stands,
@@ -8126,6 +8325,23 @@ BROKEN = {
         _a_comment_is_read_as_prose,
         test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
     ),
+    **{
+        what: (
+            breaking,
+            test_a_marked_up_copy_shows_each_change_where_it_was_made_and_reads_as_both_documents,
+        )
+        for what, breaking in (
+            ("a deleted stretch of a paragraph is left out", _a_deleted_stretch_is_left_out),
+            ("deleted text is written as text kept", _deleted_text_is_written_as_text_kept),
+            ("how a word looks is not compared", _how_a_word_looks_is_not_compared),
+            ("a row added is not tracked as a row", _a_row_is_not_tracked_as_a_row),
+            ("a note is kept as the revision has it", _a_note_is_kept_as_the_revision_has_it),
+            ("a table is never merged cell by cell", _a_table_is_never_merged_cell_by_cell),
+            ("a deleted picture points where it did", _a_deleted_picture_points_where_it_pointed),
+            ("a paragraph's style is not compared", _a_style_is_not_compared),
+            ("no paragraph is alike enough to be edited", _nothing_is_alike_enough_to_be_edited),
+        )
+    },
     "the sentences of two texts are lined up by place alone": (
         _the_texts_are_lined_up_by_place_alone,
         test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,

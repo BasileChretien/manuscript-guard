@@ -35,6 +35,7 @@ the check: the pack is the version you send anywhere.
 | `checklist-*.yaml`, `checklist-*.md` — or `scale-*.yaml` and `scale-*.md` where the project adopted an appraisal scale rather than a reporting checklist | the completed reporting checklists, as data and as a table to read |
 | `abstract.txt` | the abstract as plain text, every number filled in, for the submission system's abstract box; not written for an abstract that cites or holds a footnote, a table or a figure |
 | `response-to-reviewers.md` | the point-by-point response, when a revision round has been opened |
+| `manuscript-marked-up.docx`, `supplementary-marked-up.docx` | at a revision: the revision with every change since the document the round kept shown as tracked changes (`-highlighted` with `submit --highlight`); left out, with the reason, where the round kept no document |
 | `figures/` | the `.png`, `.pdf`, `.tif`, `.tiff` and `.eps` files in `figures/`; an `.svg` is not copied |
 | `MANIFEST.yaml` | every file with its sha256; the version of manuscript-guard that checked it, the commit and whether the tree differed from it, when the journal profile and the checklists were read, and every review finding left as it was, with the reason and who decided |
 

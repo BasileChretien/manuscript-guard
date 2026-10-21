@@ -2990,6 +2990,58 @@ take numbered headings and
 through under its results. They read fewer headings than G4 counts, and a Methods they miss
 makes them report a number, not pass one.
 
+**The supplement's Methods are read with the paper's.** Every gate read
+`manuscript/supplementary/`, and G9 read the Methods of the main text alone, because G4's
+required section is the main text's. A parameter of the lock that eMethods stated was
+reported absent, and in a paper whose Methods are all in its supplement, as a research
+letter's often are, the lock's parameters were compared with no text: a wrong one was told
+only as `methods-not-found`. Since 2026-10-21 (Basile's choice) G9 keeps one ledger. It reads
+the main text's Methods as before, then, in each file of the supplement, every section that
+the main text's Methods would be found as: a heading holding "methods", "Supplementary
+methods", "eMethods 1. Data source", "S1 Methods" or "Appendix 1: Methods", with no Results
+heading over it. Every one and not the first, since a supplement numbers its Methods and puts
+its tables between them. Of each it reads its own text and that of each section under it
+that names a method too ("Statistical analysis", "eMethods 2"), and not everything under it,
+as it reads the main text's Methods. A supplement often has "Supplementary methods" over all
+of it, as the example's has: its tables, a paragraph of results, its reporting statement. As
+first written, the whole of such a file was the Methods, and a P the paragraph reported
+passed G2 as a threshold chosen in advance, which main failed as unbound (round 1 of #395;
+Basile then chose the narrower reading for G2, G15 and G9 alike). A parameter of the lock
+is stated where either states it. The rest of the supplement is not read for one: an eTable
+holds numbers of every kind, and a parameter matched in one would be no check. G4's required
+Methods are still the main text's. The anchors were read in every file already, so a claim
+in the supplement was held to its step, and a step pointed at from there was one some text
+describes. The supplement's paragraphs that point at no step are now listed by
+`methods --explain` with the main text's, where G2 reads them as the Methods.
+
+G2 and G15 found the Methods by names of their own (`classify.METHODS_SECTIONS`), none of
+them a supplement's. Under "eMethods 1" a threshold typed as a convention was a number
+nothing classified, with the wrong advice, and the kind of the fitted model typed there was
+never read. `classify.SUPPLEMENT_METHODS` holds the supplement's names: "Supplementary",
+"Supplemental" or "Online methods", "eMethods" and "S1 Methods", each with a number or the
+title of its part after it, and "Methods" under the label of an appendix or a supplement
+("Appendix 1: Methods", "Appendix S1. Supplementary methods", "Supplement 1. eMethods 2").
+`is_methods` takes them where one opens the run of headings, innermost outwards, that each
+name a method: under "eMethods 1", or "Supplementary methods" over "Statistical analysis",
+and not under "Supplementary methods" over "Table S2. The adjusted model". The main text's
+names hold everything under them, as they always have. G9's paragraphs that point at no step
+are found under the same headings. A name G9 reads and these do not, "Supplementary methods
+and results" or "Detailed methods", is read as the main text's "Methods and results" is. No supplement's name puts a heading first
+among the main text's Methods: in a main text with "Laboratory methods" and then
+"Supplementary methods", the first is still the one read.
+
+**A lock read against the main text alone stays valid, and is said of.** The lock holds no
+digest of the Methods: the analysis files' digests, the parameters, and each pair's words and
+its code's digest. Reading the supplement makes no lock wrong and needs no migration. But a
+lock written when G9 read the main text's Methods alone may vouch for eMethods nobody read
+against the code. `methods --reconcile` now writes `manuscript-guard/methods-lock/2`. A lock
+of `/1`, or of no schema or an empty one, that records the files, in a project whose
+supplement has Methods,
+is said of once, `methods-supplement-unreconciled`, a warning at every stage that names the
+supplement's files, and its files and pairs are held as before. `methods --reconcile <step>`
+leaves the files and their schema as they were, since nobody read the files again. A lock of
+pairs alone claims no reading of the files and is written `/2`.
+
 The abstract is found the same way for G4's limit and its headings, G14's regions and the
 word count: "Abstract" or "Structured abstract", numbered or not, or the title the
 journal's profile gives it (`structure.abstract_title: Summary` for The Lancet). With a
@@ -3461,8 +3513,9 @@ warning.
 - A step no text points at is a warning.
 - A line of nothing but anchors inside a paragraph is a warning at every stage,
   `method-anchor-line`: the document ends the paragraph there.
-- A Methods paragraph that points at no step is counted, and listed by
-  `manuscript-guard methods --explain`, not reported as a finding. A paragraph on ethics
+- A Methods paragraph that points at no step, in the main text's Methods or the
+  supplement's, is counted, and listed by `manuscript-guard methods --explain`, not reported
+  as a finding. A paragraph on ethics
   approval or on the data source has no step to point at, and a warning nobody can clear is
   one that gets ignored.
 
@@ -6639,6 +6692,141 @@ name; a gate with one of its finding codes; a place in the source files, `main.m
 which the journal never sees; the marker `[AUTHOR: ...]` that the `reviewer-response` skill
 writes where the author still has to supply something; and the template's own text in a
 `comment`. Each warns during the revision and fails at submission, as the rest of G13.
+
+## The marked-up copy shows every change since the document sent
+
+At resubmission a journal asks for the revised manuscript twice: clean, and with every change
+since the last submission shown, as Word's tracked changes or highlighted. Made by hand, with
+Word's Compare on two files the author has to find, it shows whatever those two files
+differ by, and nobody checks that they are the two the journal and the revision hold. Basile
+asked for it on 2026-10-21 and chose the four terms that day from the recommendations put to
+him: the document the round kept as the one sent, an exact comparison of printed text, tracked
+changes with highlights on request, and an option of `build` that `submit` uses too.
+
+**What is compared.** The document the journal received against the revision as it is just
+built, both as a reader sees them, block by block and word by word (`markedup`). A number the
+analysis printed anew is a change like a word typed: the comparison is of what the two
+documents print, never of the source, so a re-run shows where it changed the text, a table's
+cells or the abstract, with nothing typed. A citation of a live build is a field, compared
+by what it cites (`citationfields`) and by the words it shows: a document sent after Zotero
+refreshed its fields, against a revision just built whose fields wait for a refresh, shows
+every citation changed. Compared by what it cites alone, the copy took the revision's words
+for both, read rejected as neither, and the check refused it (round 1 of #396). A citation of
+an offline build is its printed words, so a reference added shows in the text and in the list,
+and the numbers of a numeric style move as they do.
+
+**The supplement is held to the paper's rules** (Basile, 2026-10-21). It is built as its own
+document, and so it is kept by the round as its own document, compared by the same rules and
+marked up as its own copy, `build/marked-up/supplementary.docx`: a re-run shows in it as in
+the paper. `--since-supplement` names the supplement sent where the round kept none, and
+where neither gives one the build says that the supplement is not marked up, and why.
+`submit` packs it as `supplementary-marked-up.docx`.
+
+**Which document was sent.** `respond --open` keeps it, beside the rendered text it already
+kept, in `revision/round-<n>/submitted/`: the submission pack's document where that was built
+from the manuscript as it stands, and otherwise the one in `build/` that was, the paper and
+its supplement each. A document built from anything else is not what the journal received
+by the round's own measure (open the round before revising), and none is kept: the command
+says so, and where to put the file. `build --marked-up --since <file>` names the paper's for
+a round that kept none. Not rebuilt from the round's rendered text, which every round has:
+built with today's bibliography and figures, a reference corrected or a figure drawn again
+since would not show as changed.
+
+**How the two are lined up** (`markedup.align`). Blocks identical in print, their style and
+numbering included, are paired first, as many of them as can be in order: a longest common
+subsequence, found exactly (`align.common`, Hirschberg's division, after the ends the two
+share). `difflib`, tried first, keeps the longest run it meets: on a generated revision in CI
+it kept a moved paragraph in place and marked the six blocks it had passed as moved (round 1
+of #396). What lies between two such pairs is paired
+only where alike: two paragraphs that share more than half their words in order are one
+paragraph edited, a table with a table of as many columns, a row with a row that shares a
+cell, and in a cell its paragraphs in order whatever they say ("426" edited to "430"). What
+is left was deleted or inserted, and a paragraph moved is one of each. Within a paragraph the
+atoms are lined up the same way (`markedup.atoms`): a word, with the stops and commas inside
+it, so that "3.84" and "41,200" are one; a space; a mark; a tab; a picture; a note's
+reference; and, whole, a field, a link or an equation. An equation is compared by its
+structure: each element of it, the values of its own properties and its text, its runs' Word
+formatting left out, so that `x^2` made `x_2`, or an accent or a root taken off, is a change
+(round 1 of #396: compared by its letters, it was none, and the check, which reads no inline
+maths, passed the copy). A short unchanged stretch between two
+changes is taken into them, as diff-match-patch's clean-up does, where it holds no word or is
+shorter than the change on each side; two numbers apart stay two changes.
+
+**What is written** (`markedup.writer`). The copy is the revision's document with the changes
+in it, every one by the author "Revision", which names nobody, dated the day it is made. Text
+kept is the revision's runs. Text deleted is the sent document's runs, with their formatting,
+in `w:del`, and what it points at is carried into the copy's package under names of its own:
+a picture, the numbering of its list (a copy, so that a deleted item joins none of the
+revision's lists), a style the revision lacks, a footnote. A link deleted is written as its
+words. A word whose formatting alone changed keeps the revision's and records the old in
+`w:rPrChange`; a paragraph whose style or numbering changed records the old in `w:pPrChange`,
+a list's numbering compared by what it draws, since two builds number their lists in their
+own order. A table of the same columns is merged row by row and cell by cell, a row added or
+removed tracked as a row; a table of other columns, or whose cells span or merge, is replaced
+whole, with an empty paragraph tracked as deleted between the two, because Word runs two
+tables that touch into one. A footnote is merged word by word in its own part.
+
+**Every copy is checked before it is kept** (`markedup.verify`). With every change accepted
+it must read as the revision, and with every one rejected as the document sent, block by
+block as `docxtext` reads any document, roles, tables and figures included, with each
+footnote's text in the order the body refers to them. Rejecting is accepting the inverse
+(every insertion read as a deletion, every deletion as an insertion, every change of
+formatting the other way round), and accepting runs a paragraph whose mark was deleted into
+the one after it, as Word does. A copy that does not read so raises, and nothing is written:
+a copy that hid a change, or showed one never made, would be worse than none.
+
+**Word 16, as seen over COM on 2026-10-21.** Copies were opened in Word of two pandoc
+documents holding a re-run, a reworded sentence, a moved paragraph, a list item deleted, a
+cell re-run and a row added, a footnote reworded, one added and one removed, a figure
+replaced, a reference added, a heading made text and text made a heading, a link's address
+changed, an inline and a display equation changed, a paragraph deleted before a table, a
+table of other columns, a word made italic, and the document's last paragraphs deleted; and
+of the example, after its analysis was run again with another seed (74 revisions). Each
+opened without a repair. Accept All and Reject All, run on every story range as the button
+does (the document's `Revisions` holds the main text only, and a footnote's change stayed),
+left each reading as the revision and as the document sent, by the same reading the check
+uses; the first copy and Word's two are in `tests/data/word/`. Word rewrote an equation
+deleted whole as one deletion inside each of its runs, and read both.
+
+One thing Word cannot do is take away a story's last paragraph mark. Given a document whose
+last paragraph was deleted with its mark tracked as deleted, Accept All never returned, and
+Word had to be stopped. So the last paragraph of a story the writer merges, the document's,
+a cell's or a note's, keeps its mark untracked whatever became of it, and only its words are
+tracked: the
+paragraph is left empty where they go, and an empty paragraph reads as nothing
+(`writer._last_mark_kept`).
+
+**The highlighted copy** (`--highlight`), for a journal that asks for highlights: the tracked
+copy, once checked, with what was inserted highlighted yellow, what was deleted struck
+through, a change of formatting or style highlighted, and nothing tracked. A picture takes
+neither a highlight nor a strike, so the paragraph it stands in is shaded: yellow where it is
+new, red (`FFC7CE`) where it was taken out, and the old picture is kept. Round 1 of #396 found
+the old one left out and the new one unmarked, so that a figure drawn again by a re-run
+showed no change.
+
+**What is written back, and what is not.** A part the writer read and did not change is
+written back byte for byte; one it changed is written with every namespace it declared
+declared again on its root. ElementTree declares only the namespaces an element uses, and a
+part saved by Word, such as the styles of a journal's template, names others in
+`mc:Ignorable`, which Word takes for a corrupt document where they are not declared (round 1
+of #396). A part is compared by its tree, in ElementTree's names, which carry no prefix:
+compared by ElementTree's writing of it, a part left alone read as changed once other
+prefixes had been registered (round 2). And `build --marked-up` takes away the marked-up
+copies an earlier run left in `build/marked-up/`, known by their property, before it checks
+anything, so that a run that stops at the gates or fails leaves none of an older source to be
+sent; a copy named with `--since` is refused before that, since it is the very file a run
+would take away (round 2).
+
+**The copy is never the manuscript.** It carries a property saying what it is and which
+document it was compared with (`manuscript-guard-marked-up`: its form, the SHA-256 of the
+document sent, the round), and none of the build's stamps, so nothing reads it as a build:
+`import`, `respond --from` and `submit --document` refuse it by name, and `check` does not
+hold it to the source, since it is written to `build/marked-up/` and not to `build/`. A blind
+review's check reads it as it reads the document, deleted text included: a sentence that
+named an author, taken out since, is in the copy, and the build says not to send it. `submit`
+at a revision packs it beside the manuscript, `manuscript-marked-up.docx` (or
+`-highlighted`), listed in the manifest with the rest; where no document sent is known, the
+pack is assembled without it and says why.
 
 ## Round five, and what it says about the last two days
 
@@ -11396,6 +11584,59 @@ Open, recorded as each change landed:
   PDF or an email still means typing the points in, which is where a point quietly becomes
   the easier point next to it. So does a document that has lost its build stamp: it is
   refused, `--force` included, because there is no baseline to force past.
+- **The marked-up copy compares what the two documents print, and shows a change only as
+  the writer knows to write it.** See "The marked-up copy shows every change since the
+  document sent". What that leaves:
+  - *A moved paragraph is a deletion and an insertion*, not Word's move, and which of two
+    paragraphs that changed places is shown moved is the one the longest common subsequence
+    does not keep: of two of the same length, the first the division meets.
+  - *The longest common subsequence costs time in the product of the lengths* of what is left
+    once the ends the two share are taken off: a revision that changed the first block and
+    the last of a long paper compares all of it, in a few seconds for a thousand blocks.
+  - *Paragraphs alike only by half their words or fewer* are one deleted and one inserted,
+    not one edited, however close their places; a paragraph rewritten past half its words
+    reads as replaced. A run of changed blocks is paired in time that grows with the
+    product of its lengths on the two sides: hundreds of paragraphs rewritten at once are
+    slow to mark up.
+  - *The last paragraph of a story keeps its mark* (see above), so Accept All leaves an
+    empty paragraph at the end where the last one was deleted, and Reject All where it
+    was inserted. A note inserted or deleted whole is tracked whole, its last mark too,
+    which Word 16 accepted and rejected.
+  - *A table whose columns changed, or whose cells span or merge*, is replaced whole; and
+    the empty paragraph between the old and the new is left by Reject All after the old
+    table, which the check, reading text, does not tell.
+  - *How a word looks is its run's properties less its language, proofing, Word's script
+    hint and revision ids.* A document sent after Word saved it, with properties Word adds
+    of its own, can show a change of formatting nobody made.
+  - *A citation of a live build is compared by what it cites and the words it shows*, so
+    a document sent after Zotero refreshed it shows every citation changed against a fresh
+    live build, and its reference list, a field across paragraphs, deleted whole beside the
+    build's placeholder. The build says so where the two documents made their citations
+    differently (`CITED_PROPERTY`), not where both are live and one was refreshed; building
+    both offline avoids it.
+  - *Formatting inside a whole is the revision's*: a link, a field or an equation the same in
+    both is written as the revision has it, so a link's words made bold show no change; a
+    table's properties and a picture's size are not compared either.
+  - *A footnote or a list the revision's document has no part for* cannot be carried: a
+    deleted one is refused where the revision has no `footnotes.xml` or `numbering.xml`.
+    Pandoc writes both.
+  - *Headers, footers, comments, endnotes and text boxes are the revision's*, not compared.
+    A deleted part that points at anything but a picture (a chart, an embedded object, an
+    endnote) is refused, and the copy is not made.
+  - *A deleted link is its words*, without its address; an inline equation is compared and
+    tracked whole, and the check, which reads text, does not read its text, only a display
+    equation's (Word 16 accepted and rejected both as written, above).
+  - *A round opened once revising had begun keeps no copy*, of the paper or the supplement,
+    by the round's own rule: `--since` and `--since-supplement` name them, and `submit`
+    reads only the round's.
+  - *In the highlighted copy* a picture is marked by shading the paragraph it stands in, so a
+    picture inline in a paragraph of text shades the text with it, and a paragraph that holds
+    both the picture taken out and the one put in, a picture redrawn in a table's cell or
+    inline in text, takes one shading, the new one's: the two cannot be told apart there
+    (round 2 of #396). A change of formatting or style is highlighted as new text is, and
+    the highlighted copy is made from a checked tracked one but not checked itself.
+  - *Word itself is not asked*: CI has no Word, and the three copies above are the evidence
+    that Word reads the copy as the check does.
 - **A paragraph identifier is positional, so `import --apply` can re-point it.** The index
   is the paragraph's position in the file, and applying a reorder moves text between slots,
   so a `where:` anchor recorded before the reorder afterwards names different text. G13 no
@@ -13020,6 +13261,28 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
+- **A supplement's Methods are what their headings say.** G9 reads, in a file of the
+  supplement, a section whose heading holds "methods", and G2 and G15 the names of
+  `classify.SUPPLEMENT_METHODS`; under either, only the sections whose own titles name a
+  method too. Methods headed otherwise, "eAppendix 1. Data source" or "Supplementary text",
+  are no Methods to G9, and the lock's parameters are not compared with them. G2 and G15
+  read "Statistical analysis" anywhere, by the main text's names, with everything under it,
+  and G9 reads it, with everything under it, only under a heading it reads: under
+  "Supplementary methods > Table S2" it is G2's and G15's and not G9's. "Detailed methods"
+  and "Additional methods" are G9's and not G2's or G15's. Under "eMethods 1", a section
+  titled "Record linkage" is no Methods to any of the three: G2 reports a number there that
+  it would pass in the Methods, and G15 and G9 read nothing there. The example's
+  "Supplementary methods" heads its tables, a paragraph of results and its reporting
+  statement, and no text of its own nor a section that names a method, so the example's
+  supplement has no Methods. `methods-supplement-unreconciled`
+  says of a lock written before 2026-10-21 only where the supplement has Methods when `check`
+  runs: eMethods added after a lock was written are no more noticed than a paragraph added to
+  the main text's Methods, which only an anchor holds to the code. Under one of the main
+  text's names in the supplement, "Methods" or "Supplementary materials and methods" over
+  an eTable, everything is the Methods to all three, as G2 holds it: a number in that table
+  then states a locked parameter of the same value, and `methods-parameter-absent` is not
+  said (fix-only round of #395). G9 reads the printed headings, so a line pandoc prints as
+  text that names the Results ends G2's Methods there and not G9's.
 - **A supporting passage is in its work, and is not held to what its sentence says.** G7
   finds the words in the stored source; whether they say what the sentence says is the
   judgement it leaves to people, the author's in `passages.yaml` and the co-authors' in the

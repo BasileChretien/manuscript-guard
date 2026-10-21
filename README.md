@@ -270,6 +270,7 @@ number in the file and the rule that classified it.
 | `values` | write a LaTeX manuscript's values file, `mgvalues.sty`, so that the `.tex` compiles with the results' numbers in it |
 | `stages` | what each stage means and what binds at it |
 | `dictionary` | write the data dictionary out for whoever builds the form: REDCap's data dictionary (`--redcap`), one row per variable (`--csv`), or the form's outline in Markdown (`--outline`) |
+| `palettes` | list the palettes shipped (MetBrewer, MoMAColors, NatParksPalettes, PNWColors, wesanderson, Okabe-Ito, ColorBrewer, viridis, cividis, Crameri's), with how many colours of each stay apart for readers with a colour-vision deficiency, or show one with its licence |
 | `journal` | list journal profiles, start one from the annotated template, or read a journal's page again against the stored one (`--reread`) |
 | `fetch` | download a reporting guideline's own checklist document |
 | `transcribe` | build checklist profiles from those documents |
@@ -325,6 +326,7 @@ should send you to them.
 | `methods-writer` | Methods that describe the code that was actually run |
 | `literature-verify` | a number from a paper, with its verbatim quote and stored source |
 | `figure-review` | looking at a rendered figure and recording what was seen |
+| `figure-design` | a figure's look and palette, chosen with the author, readable by every reader |
 | `journal-profile` | choosing a journal with the author, and encoding its rules |
 | `reporting-checklist` | STROBE, CONSORT, PRISMA and the rest, retrieved rather than remembered |
 | `review-panel` | an internal review panel, recorded and answered |

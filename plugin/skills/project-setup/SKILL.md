@@ -157,7 +157,8 @@ Each finding names a code. The code says where to go:
 | `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact`, `revision-residue`, `abbreviation-*`, `term-avoided`, `vocabulary-conflict`, `spelling-*`, `notation-*`, `recycled-*`, `earlier-output-not-compared` | [manuscript-writing](../manuscript-writing/SKILL.md) |
 | `methods-drift`, `methods-never-reconciled`, `methods-supplement-unreconciled`, `method-…`, G15 codes (`model-…`, `variable-…`, `typed-model-kind`; `model-binary-as-number`, `variable-not-binary` and `model-engine-unknown` are among them) | [methods-writer](../methods-writer/SKILL.md) |
 | `literature-source-missing`, `quote-not-in-source`, `value-not-in-quote`, `quote-too-short`, `quotation-not-in-source`, `quotation-unchecked`, `passage-not-in-source`, `passage-unchecked`, `passage-too-short`, `passage-stale`, `statements-without-passage`, `judgement-not-human`, `passage-does-not-support`, `passage-partly-supports` | [literature-verify](../literature-verify/SKILL.md) |
-| `figure-unreviewed`, `figure-review-stale` | [figure-review](../figure-review/SKILL.md) |
+| `figure-unreviewed`, `figure-review-stale`, `figure-alt-*` | [figure-review](../figure-review/SKILL.md) |
+| `figure-colours-*`, `figure-greyscale-confused`, choosing a figure's look or palette | [figure-design](../figure-design/SKILL.md) |
 | `journal-profile-missing`, `over-journal-limit`, `missing-required-*` | [journal-profile](../journal-profile/SKILL.md) |
 | `checklist-*` | [reporting-checklist](../reporting-checklist/SKILL.md) |
 | `related-…`: a number, a method or an overlap of an earlier output of the same data | [related-outputs](../related-outputs/SKILL.md) |

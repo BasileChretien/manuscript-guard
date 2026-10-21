@@ -470,6 +470,20 @@ def _planned_results() -> Reading:
     return read
 
 
+@reading("plan variables")
+def _plan_variables() -> Reading:
+    from manuscript_guard.gates.collection import variables_named
+
+    def read(given: dict[str, Any]) -> Any:
+        """The dictionary's variables the plan names and the names it gives that the
+        dictionary lacks, each with the line of its first mention."""
+        used, undefined = variables_named(given["plan"], given["names"])
+        return {"used": [[n.name, n.line] for n in used],
+                "undefined": [[n.name, n.line] for n in undefined]}  # fmt: skip
+
+    return read
+
+
 @reading("interval order")
 def _interval_order() -> Reading:
     from manuscript_guard.contracts.values import RESULTS, Value
@@ -878,6 +892,21 @@ def _placeholders() -> Reading:
     return placeholders
 
 
+@reading("residue")
+def _residue() -> Reading:
+    from manuscript_guard.gates.writing import load_rules, residue_in
+
+    def residue(text: str) -> list[list[Any]]:
+        """What G6's residue rules find in a text: each rule, whether it fails at
+        submission, where, and what it matched."""
+        return [
+            [rule["id"], bool(rule.get("self_reference")), match.start(), match.group(0)]
+            for rule, match in residue_in(load_rules(), text)
+        ]
+
+    return residue
+
+
 @reading("vector figure")
 def _vector_figure() -> Reading:
     """The texts and lines of an SVG figure as G4 reads them: each text's height and each
@@ -938,6 +967,28 @@ def _suggested_edit() -> Reading:
         }
 
     return placed
+
+
+@reading("suggestion written")
+def _suggestion_written() -> Reading:
+    """A suggestion accepted in Word, written into its paragraph's source where its words
+    are, as `import` writes it before it merges anything else the author changed there; or
+    why it is not."""
+    from manuscript_guard.suggestions import Words, write_in
+
+    def written(given: dict[str, Any]) -> dict[str, Any]:
+        tokens = [tuple(token) for token in given["tokens"]]
+        result = write_in(given["source"], given["printed"], tokens,
+                          [Words(given["old"], given["new"])])  # fmt: skip
+        if isinstance(result, str):
+            return {"refused": result}
+        return {
+            "source": result.source,
+            "shown": result.shown,
+            "tokens": [list(token) for token in result.tokens or ()],
+        }
+
+    return written
 
 
 # -------------------------------------------------------------------- a whole project

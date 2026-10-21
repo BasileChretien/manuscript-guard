@@ -227,7 +227,7 @@ LATEX = {
     "explain": ("refuses", ("explain", "{tex}")),
     "fetch": ("no manuscript", ("fetch", "STROBE")),
     "hook": ("reads", ("hook", "session-start")),
-    "impact": ("refuses", ("impact", "{tex}")),
+    "impact": ("refuses", ("impact", "{project}/paper.yaml")),
     "import": ("refuses", ("import", "{project}/returned.docx", "{project}")),
     "init": ("refuses", ("init", "{project}")),
     "install-skills": ("no manuscript", ("install-skills",)),
@@ -241,7 +241,7 @@ LATEX = {
     "review": ("refuses", ("review", "{project}", "--run")),
     "reworded": ("refuses", ("reworded", "{project}")),
     "search": ("no manuscript", ("search", "hepatic injury")),
-    "sign": ("refuses", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G2/x/y")),
+    "sign": ("refuses", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
     "stages": ("no manuscript", ("stages",)),
     "style": ("no manuscript", ("style", "{project}")),
     "submit": ("refuses", ("submit", "{project}")),
@@ -269,6 +269,9 @@ def _parsed(argv: tuple[str, ...], root: Path):
 
 def test_every_command_says_what_it_does_with_latex() -> None:
     assert set(LATEX) == _subcommands()
+    # The table says what the code does: the refusing ones are those the guard holds.
+    refusing = {name for name, (kind, _argv) in LATEX.items() if kind == "refuses"}
+    assert refusing == set(cli._MARKDOWN_COMMANDS) | {"audit"}
 
 
 @pytest.mark.parametrize("name", sorted(n for n, (kind, _) in LATEX.items() if kind == "refuses"))
@@ -295,7 +298,19 @@ def test_the_refusal_is_for_a_latex_manuscript_only(empty: Path) -> None:
     (empty / "manuscript" / "main.md").write_text("# Results\n", encoding="utf-8")
     for argv in (("render", "{project}"), ("bind", "{project}"), ("init", "{project}")):
         assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv
+    # A header pandoc includes, named `main.tex` and declaring no class, beside it, and a
+    # `.tex` named to `impact`, which follows the records of any file (round 1 of #404).
+    (empty / "manuscript" / "main.tex").write_text("\\usepackage{booktabs}\n", "utf-8")
+    for argv in (("render", "{project}"), ("impact", "{tex}")):
+        assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv
     (empty / "manuscript" / "main.md").unlink()
     (empty / "manuscript" / "main.tex").write_text("\\documentclass{article}\n", "utf-8")
-    for argv in (("review", "{project}"), ("lookup", "{project}", "--journals")):
+    for argv in (
+        ("review", "{project}"), ("lookup", "{project}", "--journals"),
+        # A design round reads the plan; a design override is no G15 finding; answers sent
+        # out are read back (round 1 of #404).
+        ("review", "{project}", "--design", "--run"),
+        ("sign", "{project}", "--as", "A", "--finding", "G12/design-override/1/x"),
+        ("checker", "status", "{project}"), ("checker", "import", "{project}"),
+    ):  # fmt: skip
         assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv

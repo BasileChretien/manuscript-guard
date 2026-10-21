@@ -4135,14 +4135,22 @@ def _always(_args: argparse.Namespace) -> bool:
 #: step that teaches it LaTeX.
 _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     **dict.fromkeys(
-        ("bind", "build", "checker", "explain", "impact", "import", "init", "methods",
-         "models", "passages", "render", "respond", "reworded", "sign", "submit", "sync-bib",
-         "sync-sources"),
+        ("bind", "build", "explain", "impact", "import", "init", "methods", "models",
+         "passages", "render", "respond", "reworded", "submit", "sync-bib", "sync-sources"),
         _always,
     ),
     "lookup": lambda args: not args.journals,
-    "review": lambda args: bool(args.run or args.dry_run or args.suggestions),
+    # A design round reads the plan, not the manuscript (round 1 of #404).
+    "review": lambda args: bool((args.run or args.dry_run) and not args.design
+                                or args.suggestions),
+    # Its items drawn from the manuscript; answers already sent out are read back.
+    "checker": lambda args: args.verb == "build",
+    # G15's findings come from the manuscript; a design round's overrides do not.
+    "sign": lambda args: args.finding.startswith("G15/"),
 }  # fmt: skip
+#: The commands refused a `.tex` named whatever the project's format, since they read the
+#: file given as Markdown; `impact` follows the records of any file, a header's included.
+_READ_AS_MARKDOWN = frozenset({"explain", "reworded"})
 
 
 def _refused_for_latex(args: argparse.Namespace) -> str | None:
@@ -4160,7 +4168,7 @@ def _refused_for_latex(args: argparse.Namespace) -> str | None:
     if reads is None or not reads(args):
         return None
     typed = [path for path in named if path.suffix.lower() == ".tex"]
-    if typed:
+    if typed and command in _READ_AS_MARKDOWN:
         return (f"{command} does not read LaTeX yet: {typed[0]} is a LaTeX file; "
                 "`manuscript-guard check` says what is read of a LaTeX manuscript")  # fmt: skip
     start = getattr(args, "path", None) or (named[0] if named else Path.cwd())

@@ -942,9 +942,10 @@ finding, `not-read-in-latex`, naming the gate. That finding fails from `submissi
 it is shown as a note, as any finding not yet due is. Each pull request then ships on its own,
 and a half-taught `check` cannot pass a submission. `tests/test_reads_nothing.py` gets a row
 for each such gate. The commands not yet moved refuse a LaTeX project with a sentence and exit
-2: every command that reads the manuscript only as Markdown, `explain`, `bind`, `audit`,
-`reworded`, `checker` and the panel's prompt among them (step 1, `_MARKDOWN_COMMANDS`). A
-hook stops nothing, and the hooks are taught in step 12.
+2: every command that reads the manuscript only as Markdown, `explain`, `bind`, `reworded`,
+`checker build` and the panel's prompt among them (step 1, `_MARKDOWN_COMMANDS`), and `audit`
+given a `.tex`, which it holds apart since it reads no project. A hook stops nothing, and the
+hooks are taught in step 12.
 
 ### What the LaTeX reader reads
 
@@ -1352,8 +1353,12 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    `_MARKDOWN_COMMANDS` whose invocation reads the manuscript, where the project's manuscript
    or a file it is given is LaTeX: a sentence, and exit 2. They had read nothing and said so
    as of an empty manuscript, "rendered 0 files", "cites nothing", or read the `.tex` as
-   Markdown, and `init` wrote a `main.md` beside `main.tex`, two formats. `review` is refused
-   only with `--run`, `--dry-run` or `--suggestions`, `lookup` but with `--journals`. Tests:
+   Markdown, and `init` wrote a `main.md` beside `main.tex`, two formats. Some are refused in
+   part: `review` with `--run` or `--dry-run`, but for a design round, which reads the plan,
+   and with `--suggestions`; `lookup` but with `--journals`; `checker build`, whose items are
+   drawn from the manuscript, and not `checker import` of answers sent out; `sign` of a G15
+   finding, and not of a design round's override. A `.tex` named is refused by `explain` and
+   `reworded`, which read the file they are given, whatever the project's format. Tests:
    the differential unchanged, and in `test_reads_nothing.py` a table, `LATEX`, of what each
    command does with a LaTeX manuscript, each refusing one run on one.
 2. The scanner and `mask`, built: `commands.py` and `mask.py`, which scans as it reads, so

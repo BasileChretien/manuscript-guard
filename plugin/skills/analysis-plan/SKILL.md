@@ -113,6 +113,14 @@ emitted (`planned-result-missing`) or was emitted with `quoted=False`
 (`planned-result-unquoted`). If a planned result will not be reported, say so under
 Deviations, naming its key; that stands the warning down and is the record a reader needs.
 
+## What will be collected
+
+Where the data do not exist yet, the plan is followed by a second decision: exactly what
+will be collected. The [data-dictionary](../data-dictionary/SKILL.md) skill writes it in
+`design/data_dictionary.yaml`, one entry per variable, and G12 holds the two together. So
+name each variable in the plan in backticks, as the dictionary names it: "adjusted for
+`age` and `sex`". Write code as code, `glm()`, so that it is not taken for a variable.
+
 ## Dating it
 
 The gate cannot tell when the plan was written, and nothing in the toolkit can. Only a

@@ -190,7 +190,7 @@
     "lookup": {
       "type": "object",
       "additionalProperties": false,
-      "description": "How `manuscript-guard lookup` asks the registries for each cited reference's DOI and PMID. Keys are never written here: NCBI's is read from NCBI_API_KEY and OpenAlex's from OPENALEX_API_KEY.",
+      "description": "How `manuscript-guard lookup` asks the registries for each cited reference's DOI and PMID, or searches them for one with neither. Keys are never written here: NCBI's is read from NCBI_API_KEY and OpenAlex's from OPENALEX_API_KEY.",
       "properties": {
         "contact": {
           "type": "string",
@@ -206,6 +206,12 @@
         "cited_as_retracted": {
           "type": "object",
           "description": "References the paper cites knowing they are retracted, or that are themselves a retraction notice, each with the reason: a paper that discusses the retracted work, or cites the notice. G7 then notes them rather than failing.",
+          "propertyNames": { "minLength": 1 },
+          "additionalProperties": { "type": "string", "pattern": "\\S" }
+        },
+        "not_indexed": {
+          "type": "object",
+          "description": "References with no DOI and no PMID that are real and in no registry, each with the reason: an internal report, a regional journal, a work cited by a translated title. `lookup` does not search for them, and G7 notes them rather than saying no registry has them (`reference-not-found`).",
           "propertyNames": { "minLength": 1 },
           "additionalProperties": { "type": "string", "pattern": "\\S" }
         }

@@ -9,6 +9,7 @@ correctly is the person's to say, and nothing here pretends to check it.
 
 from __future__ import annotations
 
+import re
 import runpy
 import shutil
 import zipfile
@@ -383,6 +384,68 @@ def test_an_anchors_own_line_prints_as_an_empty_line_wherever_it_is_printed(
         gap = printed[printed.index("two counts.") + 11 : printed.index("Its standard")]
         assert gap.replace(" ", "").replace("\t", "") == "\n\n", (door, gap)
         assert "{{method" not in printed, door
+
+
+def test_a_ref_prints_its_number_wherever_it_is_printed(project: Path) -> None:
+    """The build, the annotated copy, `render` and a panel's prompt print the same number
+    for a ref, counted once, as G2 counts."""
+    from manuscript_guard.annotate import annotate
+    from manuscript_guard.build.assemble import assemble
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.pointers import display_numbers
+    from manuscript_guard.panel.prompt import _as_read
+
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8").replace(
+        "in Table 2, so", "in {{ref.table.two_by_two}} (Tables {{num.table.baseline}} and "
+        "{{num.table.two_by_two}}), so", 1
+    )
+    path.write_text(text, encoding="utf-8")
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _loaded = load_namespace(projekt)
+    numbers = display_numbers(projekt)
+    built = next(item.text for item in assemble(projekt, namespace, results)[0]
+                 if item.path.name == "main.md")  # fmt: skip
+    assert main(["render", str(project)]) == 0
+    doors = {
+        "build": built,
+        "annotated": annotate(text, namespace, Classifier.load(), counter=[0],
+                              numbers=numbers)[0],  # fmt: skip
+        "render": (project / "build" / "rendered" / "main.md").read_text(encoding="utf-8"),
+        "prompt": _as_read(text, namespace, results, numbers)[0],
+    }
+    for door, printed in doors.items():
+        # The text without the marks of the annotated copy and the build's identifiers:
+        # `[[Table 2](#mg-n36)]{custom-style="mg-traced"}`, `[]{#mg-p-main-3}`.
+        flat = re.sub(r"(?<=\])\([^)]*\)|\{[^}]*\}|[\[\]]", "", printed)
+        assert "in Table 2 (Tables 1 and 2), so" in " ".join(flat.split()), (door, printed)
+        assert "{{ref." not in printed and "{{num." not in printed, door
+
+
+def test_a_table_s_caption_is_numbered_wherever_the_table_is_printed(project: Path) -> None:
+    """The build, the annotated copy and a panel's prompt print the table's number before
+    its emitted caption, counted once."""
+    from manuscript_guard.annotate import annotate
+    from manuscript_guard.build.assemble import assemble
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.pointers import display_numbers
+    from manuscript_guard.panel.prompt import _as_read
+
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _loaded = load_namespace(projekt)
+    numbers = display_numbers(projekt)
+    built = next(item.text for item in assemble(projekt, namespace, results)[0]
+                 if item.path.name == "main.md")  # fmt: skip
+    doors = {
+        "build": built,
+        "annotated": annotate(text, namespace, Classifier.load(), counter=[0],
+                              results=results, numbers=numbers)[0],  # fmt: skip
+        "prompt": _as_read(text, namespace, results, numbers)[0],
+    }
+    for door, printed in doors.items():
+        assert ": Table 1. Reports by drug group." in printed, door
+        assert ": Table 2. Contingency table underlying" in printed, door
 
 
 def _blocks_read(markdown: str) -> list:

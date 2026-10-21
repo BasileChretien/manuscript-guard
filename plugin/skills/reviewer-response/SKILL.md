@@ -33,6 +33,12 @@ stands now. That record is the baseline every claimed revision is checked agains
 the round after revising and the baseline is the revised text, so nothing you changed can
 be confirmed.
 
+It also keeps the document the journal received, in `revision/round-<N>/submitted/`: the
+submission pack's `manuscript.docx` (and `supplementary.docx`) where it was built from the
+manuscript as it stands, otherwise the one in `build/`. That is what the marked-up copy is
+compared with at resubmission. Where it says none was kept, ask the author for the file they
+sent and put it at `revision/round-<N>/submitted/manuscript.docx`.
+
 If revising has already started, the baseline has to come from the version that was sent.
 Check out the submitted commit somewhere (a `git worktree` works) and run
 `manuscript-guard review --files` there. It prints one digest per manuscript file. Paste
@@ -202,6 +208,12 @@ the journal's form or the author's letter template.
 
 ## 5. The rest of the resubmission
 
+- **The answer goes in the letter, not in the paper.** "As requested by Reviewer 2, we
+  added", "in the original submission", "we have now clarified" and "page 4, lines 120-125"
+  are the letter's words. Left in the manuscript, G6 reports them as `revision-residue`:
+  those that answer one reviewer or point at this manuscript fail at submission. In the
+  paper, say what it now reports; the [manuscript-writing](../manuscript-writing/SKILL.md)
+  skill has the rest. G6 never reads the round file or the letter.
 - **The internal review panel goes stale.** Revising changes files the panel read, and
   `review-stale` fails at submission. Each reviewer whose files changed has to read them
   again and have the record updated, as the
@@ -212,7 +224,14 @@ the journal's form or the author's letter template.
   can therefore be refused because of another gate. The refusal shows the first eight
   failures; `manuscript-guard check --stage submission` lists them all without being
   intercepted.
-- `manuscript-guard submit` puts the letter in the pack.
+- `manuscript-guard submit` puts the letter in the pack, and the marked-up copy beside the
+  manuscript: the revision with every change since the document kept in the round shown as
+  Word tracked changes, re-run numbers included. `manuscript-guard build --marked-up` writes
+  the same copy to `build/marked-up/` to read first; `--highlight` gives highlights instead,
+  for a journal that asks for them, and `--since <file>` names the document sent where the
+  round kept none (`--since-supplement <file>` the supplement). The supplement is marked up
+  beside the paper, by the same rules. Never send the marked-up copy as the manuscript:
+  `submit --document` refuses it.
 - A second round: `respond --open` again, before touching anything. Earlier rounds stay
   checked against the current manuscript, so a round-1 claim can start failing later.
 

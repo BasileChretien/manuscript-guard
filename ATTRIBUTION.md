@@ -116,12 +116,56 @@ reason about it again.
 If you fork this and decide otherwise, confirm the current terms first — the notes above are
 a snapshot of one afternoon's reading, and none of them replaces the guideline's own words.
 
+# Rules adapted from other projects
+
+## Writing Guard: the residue of a revision
+
+The `residue` rules of `src/manuscript_guard/data/ai_writing.yaml`, which G6 reads for words
+written to the reviewers or to a model and left in the manuscript, take their idea and part
+of their lists from the `process_residue` rules of [Writing
+Guard](https://github.com/xmutfyh/dsh-plugin-writing-guard) (`src/rules.ts`, read on
+2026-10-20 on its `master` branch). Taken from it: that the words of a reply to the
+reviewers are an error in the paper and none in the letter; "as requested", "as suggested
+by" and "in response to" the reviewer; "we have (now) updated, modified, corrected,
+clarified, expanded, rewritten, replaced or revised"; "the previous, original or earlier
+version, manuscript, draft or submission"; and that "revised" in a name, the Revised
+Cardiac Risk Index, is no residue. None of its patterns is copied: each was written again
+and narrowed against 399 papers by people (DESIGN.md). Its "to address the concern" and its
+defensive purpose, "to avoid confusion", were not taken, since papers by people write them
+as prose.
+
+Writing Guard is under the MIT licence:
+
+```text
+MIT License
+
+Copyright (c) 2026 dsh-plugin-writing-guard contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 # Third-party data
 
 Two files in the package are made from somebody else's work and **are** redistributed. The
 first is `src/manuscript_guard/data/spelling_variants.tsv`, the list G14 reads to tell
 British spelling from American. The second, `src/manuscript_guard/data/claim_strength.yaml`,
-is under [The claim-strength ladder](#the-claim-strength-ladder) at the end of this file.
+is under [The claim-strength ladder](#the-claim-strength-ladder) below.
 
 It is derived from **VarCon** (Variant Conversion Info) by Kevin Atkinson and Benjamin
 Titze, which is published with the SCOWL word lists at <http://wordlist.aspell.net/> and
@@ -235,3 +279,30 @@ words the contract does not name ("possibly", "seems", "no", "never", "non-signi
 capital only where a sentence opens, a word in a compound or a participle after an article
 not read). The contract's other parts, on null findings and on asking the author before a
 claim is moved, are not used; the file's own comments say how each word is read.
+
+# Ideas from other projects
+
+No code of the projects below is in this repository; what is taken is a design, a rule or a
+fact they found first. Each is credited where it is used, and here.
+
+**paper-preflight** (<https://github.com/amos689/paper-preflight>, MIT, read at commit
+`287e407311bbce7f12196a3889318d2f4e4aa65f` of 2026-10-16) checks a manuscript's references
+before submission, with no language model in its verdicts, and measures its false alarms on
+held-out real papers. From its `docs/adr/0002-verdicts-and-abstention.md`,
+`docs/adr/0003-identifier-first-routing.md`, rules REF003 and REF010 to REF016 and
+`docs/false-positives.md`, `lookup` and G7 took, on 2026-10-20 (DESIGN.md, "A reference is
+looked up once, and the answer is kept"):
+
+- that a search's candidate is accepted by rules on the title, the first author and the
+  year, never by the registry's relevance score;
+- that "not found" needs every source asked to have answered, an outage never counting as a
+  negative, and is not said of grey literature, of very old or very new works, or of a
+  title in another script;
+- that Crossref's `query.bibliographic` ranks fabricated posted-content copies of famous
+  papers first once authors' names are in the query, and the prefix they are under,
+  10.65215, which G7 never takes for a work;
+- that OpenAlex's records can carry another work's details, so that it may find a work and
+  never fails one;
+- an author list of which none is on the record as an error and one that differs in part as
+  a warning (REF010, REF011), which Basile chose on 2026-10-20;
+- the folding of a surname: its last word, apostrophes dropped, ü and ue read as one.

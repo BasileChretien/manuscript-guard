@@ -29,6 +29,15 @@ conventions:
 terms:
   - example-drug-2
 
+# A reference with no DOI and no PMID is searched for by its title (`manuscript-guard
+# lookup`), and G7 fails one no registry has. This example's two references are invented,
+# as literature/references.bib says, so they are declared here, each with the reason, and
+# G7 notes them instead. A real paper lists here only real works no registry indexes.
+lookup:
+  not_indexed:
+    fictionalHepaticCohort2021: invented for this worked example; no registry has it
+    fictionalClassSignal2019: invented for this worked example; no registry has it
+
 # Abbreviations this paper leaves undefined on purpose. Each `CI` here follows the level it
 # belongs to ("95% CI"), which this paper takes its readers to know. Anything else G14 finds
 # used and not defined is reported as a warning.

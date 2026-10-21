@@ -970,7 +970,7 @@ NUL. Two additions keep the length:
 | the letters, digits and signs in maths, in subscripts and superscripts too, as Markdown's `mask` keeps them in `$x_1 = 10^{-8}$` | maths' commands, braces and delimiters |
 | `\verb` and `\texttt`, read as a code span is | `verbatim`, `Verbatim`, `lstlisting`, read by G2's code check as fenced blocks are |
 | table cells | a `tabular`'s column specification, `\multicolumn`'s first two arguments, rules |
-| the arguments, optional ones too, of a command not in the table | comments (an unescaped `%` to the end of the line, the `comment` environment, a plain `\iffalse` … `\fi` block), the layout commands `text/tex.py` knows, everything after `\end{document}`, bindings whole |
+| the arguments, optional ones too, of a command not in the table | comments (an unescaped `%` to the end of the line, the `comment` environment, a plain `\iffalse` block to its `\fi`, or to its `\else`, whose branch is read), the layout commands `text/tex.py` knows, everything after `\end{document}`, bindings whole |
 
 **Maths** is hidden from `words`, so G14 and G15 never read it as words. Its digits and signs
 stay in `mask`, as they do in `$...$` in Markdown today, because blanking `$\beta = 0.42$` would
@@ -1044,7 +1044,8 @@ Refused:
 - anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
   `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
   active;
-- in the body, any conditional but a plain `\iffalse` block.
+- in the body, any conditional but a plain `\iffalse` block and `\ifthenelse`, a command whose
+  branches are its arguments and are both read.
 
 **Characters.**
 - `--` and `---` stay as typed, as in Markdown.

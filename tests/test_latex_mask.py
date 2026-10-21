@@ -197,6 +197,29 @@ def test_the_reader_is_linear_in_the_file(assert_linear, unit: str) -> None:
                   f"the LaTeX reader on {unit!r}")  # fmt: skip
 
 
+def test_what_round_two_found_is_read_as_latex_reads_it() -> None:
+    """Round 2 of #380: a preamble refusal keeps its place; a minipage's width in a definition
+    is blanked; the kernel's `\\\\` takes a length after a space; `\\\\else` is no `\\else`."""
+    preamble = "\\documentclass{article}\n\\makeatletter\\expandafter\n"
+    refused = read(preamble + "\\begin{document}x\\end{document}").refusals
+    assert [r.message.split(" is ")[0] for r in refused] == ["\\expandafter"]
+    defined = (
+        "\\documentclass{article}\n\\newenvironment{half}{\\begin{minipage}{0.45\\linewidth}}"
+        "{\\end{minipage}}\n\\begin{document}x\\end{document}"
+    )
+    assert "0.45" not in mask(defined) and read(defined).refusals == ()
+    assert "2pt" not in mask("\\begin{tabular}{l}a \\\\ [2pt]\\end{tabular}", body=True)
+    escaped = mask("\\iffalse A\\\\else B \\else C\\fi", body=True)
+    assert "B" not in escaped and "C" in escaped
+
+
+def test_the_reader_is_linear_in_conditionals_on_a_commented_line(assert_linear) -> None:
+    """Round 2 of #380: on a commented line each conditional read the line again."""
+    assert_linear(lambda count: "\\iffalse %" + "\\fi" * count + "\n\\fi",
+                  lambda text: read(text, body=True), 2000,
+                  "the LaTeX reader on conditionals in a comment")  # fmt: skip
+
+
 def test_the_reader_is_linear_in_braces_and_cells(assert_linear) -> None:
     """Round 1 of #380: each `&` walked every open brace to find whether it was in a table."""
     assert_linear(lambda count: "{" * count + "&" * count, lambda text: read(text, body=True),

@@ -7,7 +7,8 @@ escaped character is that character at the backslash's place, with a NUL after i
 `95\\%` reads as `95%`.
 
 One pass, linear in the file, under TeX's default category codes. The preamble is blanked but
-for `\\title` and `\\thanks`; maths keeps what it holds but its commands, braces and delimiters,
+for `\\title`, `\\thanks`, and a definition's body and default argument, which print where it
+is used; maths keeps what it holds but its commands, braces and delimiters,
 as Markdown's `mask` keeps `$...$`; a comment, a listing, a label, a key and a binding are
 blanked; a command not in `commands.py` has its name blanked and its arguments read. What the
 reader cannot read exactly is refused (`Refusal`), and past the first refusal the rest of the
@@ -93,16 +94,25 @@ def mask(text: str, *, body: bool | None = None) -> str:
 
 def read(text: str, *, body: bool | None = None) -> Reading:
     """The masked text and the first refusal. With `body` None, a file with a
-    `\\begin{document}` opens in the preamble and one without in the body; a file read to its
-    end or to a refusal without reaching a `\\begin{document}`, whose only one is in a comment
-    say, is read again as body, so that none of it is hidden as preamble (round 1 of #380:
-    one refused before it was not)."""
-    opens_in_body = _DOCUMENT.search(text) is None if body is None else body
+    `\\begin{document}` outside a comment opens in the preamble, and one without opens in the
+    body, so that none of it is hidden as preamble (round 1 of #380). One read to its end
+    without reaching its `\\begin{document}`, which stood in a listing say, is read again as
+    body; one refused in its preamble keeps that refusal (round 2)."""
+    opens_in_body = not _has_document(text) if body is None else body
     reader = _Reader(text, opens_in_body)
     reading = reader.run()
-    if body is None and not reader.body:
+    if body is None and not reader.body and reader.refused is None:
         return _Reader(text, True).run()
     return reading
+
+
+def _has_document(text: str) -> bool:
+    """Whether a `\\begin{document}` stands outside a comment."""
+    for match in _DOCUMENT.finditer(text):
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        if not _opens_comment(text, line_start, match.start()):
+            return True
+    return False
 
 
 def _verb_delimiter(text: str, at: int) -> str:
@@ -210,10 +220,12 @@ class _Reader:
 
     def _argument(self) -> bool:
         """Take the next argument the last command expects where it stands. False where
-        there is none, and the text is read on as it comes. `\\\\` takes its star and its
-        length only where they follow it at once, as amsmath's does: a `[0.5, 1.2]` opening
-        the next row prints (round 1 of #380)."""
-        at = self.pos if self.command == "\\" else self._after_space(self.pos)
+        there is none, and the text is read on as it comes. In maths, `\\\\` takes its star
+        and its length only where they follow it at once, as amsmath's does: a `[0.5, 1.2]`
+        opening the next row prints (round 1 of #380). Elsewhere it skips spaces before them,
+        as the kernel's does, and `\\\\ [2pt]` in a table is a length (round 2)."""
+        amsmath = self.command == "\\" and self._role() == MATHS_READ
+        at = self.pos if amsmath else self._after_space(self.pos)
         here = self.text[at : at + 1]
         while self.pending:
             spec = self.pending[0]
@@ -425,7 +437,8 @@ class _Reader:
         elif symbol in "([" and self._role() == PROSE:
             self.stack.append(_Frame("maths", MATHS_READ, at, "\\" + {"(": ")", "[": "]"}[symbol]))
             self._blank(at, at + 2)
-        elif symbol in ")]" and self.stack and self.stack[-1].closer == "\\" + symbol:
+        elif (symbol in ")]" and self.stack and self.stack[-1].kind == "maths"
+              and self.stack[-1].closer == "\\" + symbol):  # fmt: skip
             self._close(at, 2)
         elif symbol in ")]" and self._reads():
             self._refuse("tex-unbalanced", at, f"\\{symbol} closes no maths that is open")
@@ -485,9 +498,13 @@ class _Reader:
                 scanned, comment = newline + 1, False
             if not comment:
                 comment = _opens_comment(self.text, scanned, start)
-                scanned = start
+            scanned = start
+            # `\\else` is a line break and a word, not `\else` (round 2 of #380).
+            before = start - 1
+            while before >= 0 and self.text[before] == "\\":
+                before -= 1
             word = match.group(0)[1:]
-            if comment or word in NOT_CONDITIONALS:
+            if comment or word in NOT_CONDITIONALS or (start - 1 - before) % 2:
                 continue
             if word == "else":
                 if depth == 1:
@@ -547,7 +564,10 @@ class _Reader:
         if self.definitions:
             # In a definition's body an environment is text to be expanded at each use, not
             # one that opens here (round 1 of #380: `\newenvironment{tight}{\begin{itemize}}
-            # {\end{itemize}}` was refused).
+            # {\end{itemize}}` was refused). Its arguments are still taken: a minipage's width
+            # is no number of the paper's (round 2).
+            if which == "begin":
+                self.command, self.pending = "begin", ENVIRONMENTS.get(name, ())
             return
         if which == "end":
             self._end(name, at)

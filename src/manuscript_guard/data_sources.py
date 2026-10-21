@@ -60,26 +60,19 @@ OPENLY = re.compile(
     re.IGNORECASE,
 )
 
-#: A word that turns what follows it in its clause into its opposite: "are not publicly
-#: available", "cannot be made publicly available", "neither ... nor publicly available",
-#: "no patient-level data are publicly available".
+#: A word that may turn a phrase after it into its opposite: "are not publicly available",
+#: "cannot be made publicly available", "neither ... nor publicly available", "no
+#: patient-level data are publicly available", "none of the claims, prescriptions, and
+#: records are publicly available".
 NEGATION = re.compile(
-    r"\b(?:not|cannot|never|neither|nor|none|unable|without)\b|n't\b"
-    r"|\bno\b(?![\s-]+(?:cost|charge|fee)s?\b)",  # "at no cost" denies nothing
+    r"\b(?:not|cannot|never|neither|nor|no|none|unable|without)\b|n't\b", re.IGNORECASE
+)
+#: What says "free" with a "no" in it, and denies nothing: "at no cost", "for no fee",
+#: "no-cost".
+FREE = re.compile(
+    r"\b(?:at|for|with)\s+no\s+(?:extra\s+|additional\s+)?(?:cost|charge|fee)s?\b|\bno-cost\b",
     re.IGNORECASE,
 )
-#: Where a clause starts, for the negation before a phrase: a semicolon or a colon, a word
-#: that turns from one clause to the next ("cannot be shared, but are available on request"),
-#: or a comma before one that joins another ("generated no new data, and the archive is
-#: publicly available", round 2 of #384). Not a comma alone, a bracket or a dash, which as
-#: often set an aside between a denial and what it denies: "are not, however, publicly
-#: available" (round 1).
-CLAUSE = re.compile(
-    r"[;:]|\b(?:but|whereas|although|though)\b|,\s*(?:and|or|so|which|while)\b", re.IGNORECASE
-)
-#: How many words before a phrase a negation can stand and still be its own: enough for an
-#: aside of a few words between them.
-NEGATION_WORDS = 8
 
 #: What a sentence that names no source is about, for it to be said of the data.
 DATA_WORD = re.compile(r"\bdata(?:sets?|bases?)?\b", re.IGNORECASE)
@@ -135,14 +128,23 @@ def sentences(text: str) -> list[str]:
 
 
 def says(sentence: str, phrase: re.Pattern[str]) -> bool:
-    """Whether the sentence says the phrase, and not its opposite: a negation in the same
-    clause, a few words before it, turns "publicly available" into "not publicly available"."""
-    for found in phrase.finditer(sentence):
-        before = sentence[: found.start()]
-        clause = CLAUSE.split(before)[-1]
-        if NEGATION.search(" ".join(clause.split()[-NEGATION_WORDS:])) is None:
-            return True
-    return False
+    """Whether the sentence says the phrase with no denial anywhere before it in the sentence.
+
+    Read strictly, because it is what a warning rests on. Three rounds of review of #384 each
+    found a denial a clause or a window of words cut off ("are not, however, publicly
+    available", "None of the claims, prescriptions, and records are publicly available"), and
+    each was a warning given wrongly. Read this way a denial of something else silences the
+    phrase too: a warning missed, never one given wrongly (Known gaps)."""
+    found = phrase.search(sentence)
+    if found is None:
+        return False
+    return NEGATION.search(FREE.sub(" ", sentence[: found.start()])) is None
+
+
+def mentions(sentence: str, phrase: re.Pattern[str]) -> bool:
+    """Whether the sentence holds the phrase at all, denied or not: read leniently, because
+    it is what excuses a warning."""
+    return phrase.search(sentence) is not None
 
 
 def route_differs(statement: str, sources: list[dict[str, Any]]) -> list[tuple[str, str]]:
@@ -150,8 +152,9 @@ def route_differs(statement: str, sources: list[dict[str, Any]]) -> list[tuple[s
     what it says: `on request` of a source anyone may download, `publicly` of one somebody
     decides on. A sentence is said of the sources it names, or, naming none, of every chosen
     source where they are all reached one way and the sentence speaks of data. A statement
-    that also says the open source is openly available is taken to ask for something else,
-    the analysis files or the code, when it says "on request"."""
+    that also speaks of the open source as openly available, even after a denial of
+    something else, is taken to ask for something else, the analysis files or the code, when
+    it says "on request"."""
     open_said: set[str] = set()
     request_said: set[str] = set()
     public_said: set[str] = set()
@@ -159,9 +162,9 @@ def route_differs(statement: str, sources: list[dict[str, Any]]) -> list[tuple[s
         about = _about(sentence, sources)
         if not about:
             continue
-        ids = {source["id"] for source in about}
+        if mentions(sentence, OPENLY):
+            open_said |= {source["id"] for source in about}
         if says(sentence, OPENLY):
-            open_said |= ids
             public_said |= {s["id"] for s in about if route(s) in RESTRICTED_ROUTES}
         if says(sentence, ON_REQUEST):
             request_said |= {s["id"] for s in about if route(s) in OPEN_ROUTES}
@@ -188,6 +191,7 @@ def _about(sentence: str, sources: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 __all__ = [
     "ACCESS_FIELDS",
+    "FREE",
     "MESSAGES",
     "NEGATION",
     "ON_REQUEST",
@@ -200,6 +204,7 @@ __all__ = [
     "candidates_by_id",
     "chosen",
     "named",
+    "mentions",
     "names",
     "page_path",
     "record_path",

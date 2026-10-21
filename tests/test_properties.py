@@ -798,7 +798,8 @@ def test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it(
     """Whatever paragraphs come before and after, a sentence that names a source and says the
     data are asked for warns of the source anyone may download and not of the one a committee
     decides on; one that says anyone may have them warns of the second and not the first,
-    unless its clause denies it, and a denial in a clause before does not."""
+    unless a denial comes before it in its sentence, however far; and the open source said
+    open after a denial of something else still excuses an "on request" elsewhere."""
     from generated import ASKED_FOR, DENIALS, OPENLY_HAD
     from readings import DATA_SOURCES
 
@@ -822,10 +823,13 @@ def test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it(
         assert differs(f"ORA data are {openly}.") == set(), openly
         for denial in DENIALS:
             assert differs(f"ENCD data {denial} {openly}.") == set(), (denial, openly)
-        denied_before = f"ENCD data cannot be shared, but are {openly} in summary."
-        assert differs(denied_before) == {("encd", "publicly")}, openly
-        denied_before = f"No data were drawn, and ENCD is {openly}."
-        assert differs(denied_before) == {("encd", "publicly")}, openly
+        far = f"None of the ENCD claims, prescriptions, and hospital records are {openly}."
+        assert differs(far) == set(), openly
+        # Said open after a denial of something else, the open archive excuses an "on
+        # request" of its derived data all the same (round 2 of #384).
+        excused = (f"No new data were drawn, and the ORA is {openly}. "
+                   f"Data derived from the ORA are {ASKED_FOR[0]}.")  # fmt: skip
+        assert ("ora", "on request") not in differs(excused), openly
 
 
 # ------------------------------------------------------------- what the plan's deviations say
@@ -5122,10 +5126,22 @@ def _a_denial_is_not_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(data_sources, "NEGATION", re.compile(r"(?!)"))
 
 
-def _a_denial_reaches_past_its_clause(patch: pytest.MonkeyPatch) -> None:
+def _a_denial_is_read_only_beside_its_phrase(patch: pytest.MonkeyPatch) -> None:
+    """In the two words before the phrase, as a window of words read it."""
     from manuscript_guard import data_sources
 
-    patch.setattr(data_sources, "CLAUSE", re.compile(r"(?!)"))
+    def near(sentence: str, phrase: re.Pattern[str]) -> bool:
+        found = phrase.search(sentence)
+        before = " ".join(sentence[: found.start()].split()[-2:]) if found else ""
+        return found is not None and data_sources.NEGATION.search(before) is None
+
+    patch.setattr(data_sources, "says", near)
+
+
+def _an_open_source_said_after_a_denial_excuses_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import data_sources
+
+    patch.setattr(data_sources, "mentions", data_sources.says)
 
 
 def _one_way_of_asking_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -6665,8 +6681,12 @@ BROKEN = {
         _a_denial_is_not_read,
         test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it,
     ),
-    "a denial reaches past its clause": (
-        _a_denial_reaches_past_its_clause,
+    "a denial is read only beside its phrase": (
+        _a_denial_is_read_only_beside_its_phrase,
+        test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it,
+    ),
+    "an open source said open after a denial excuses nothing": (
+        _an_open_source_said_after_a_denial_excuses_nothing,
         test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it,
     ),
     "asking the corresponding author is not asking": (

@@ -5069,17 +5069,19 @@ first pull request as Basile chose:
   request where anyone may download them, nor that they are publicly available where
   somebody decides access (`data-statement-route-differs`). The statement is read sentence
   by sentence for "on request" and "from the corresponding author", and for "publicly",
-  "openly" or "freely" available and their like, each unless a negation stands in the eight
-  words before it in its clause ("are not publicly available", "cannot be made publicly
-  available", "no patient-level data are publicly available"; "at no cost" denies nothing).
-  A clause ends at a semicolon, a colon, "but", "whereas", "although" or "though", or a comma
-  before "and", "or", "so", "which" or "while" ("generated no new data, and the archive is
-  publicly available", round 2 of #384); not at a comma alone, a bracket or a dash, which as
-  often set an aside between a denial and what it denies, "are not, however, publicly
-  available" (round 1). A sentence is said of the sources it names; one that names none and speaks of
-  data is said of every chosen source, where all are reached one way. A statement that says
-  an open source is openly available is taken to ask for something else, the analysis files
-  or the code, when it also says "on request". Read wherever a source is chosen, with or
+  "openly" or "freely" available and their like. A warning rests on a strict reading: the
+  phrase, with no denial anywhere before it in its sentence ("not", "cannot", "never",
+  "neither", "nor", "no", "none", "without", "-n't"; "at no cost" and "no-cost" deny
+  nothing). Three rounds of review each found a denial that a clause boundary or a window of
+  words cut off, "are not, however, publicly available" (round 1), "generated no new data,
+  and the archive is publicly available" (round 2), "None of the claims, prescriptions, and
+  records are publicly available" (round 3), and each was a warning given wrongly; read
+  strictly, a denial of something else silences the phrase too, a warning missed and never
+  one given wrongly. A sentence is said of the sources it names; one that names none and
+  speaks of data is said of every chosen source, where all are reached one way. A statement
+  that speaks of an open source as openly available at all, denied or not, is taken to ask
+  for something else, the analysis files or the code, when it also says "on request": that
+  reading is lenient, because it excuses a warning. Read wherever a source is chosen, with or
   without a journal profile's data policy, and not in a LaTeX manuscript until G4 reads one.
 
 All of it but the custodian rule is a warning, as the shortlist's are: what a record says is
@@ -10002,13 +10004,13 @@ Open, recorded as each change landed:
   not list is not found, and a name that is also a common word ("Sentinel") is found in any
   sentence that uses the word. The statement is read for "on request" and "from the
   corresponding author", and for "publicly", "openly" or "freely" available and their
-  like, each denied by a "not", "cannot", "never", "neither", "nor", "no" (but not "no
-  cost", "no charge" or "no fee"), "none" or "without" in the eight words before it in its
-  clause; another way of saying either is not read, nor a denial further off. Since a comma
-  ends a clause only before "and", "or", "so", "which" or "while", a denial before any other
-  comma silences a phrase after it ("the records cannot be shared individually, in summary
-  they are publicly available" is read as denied), and so does a "no" that denies something
-  else: "data with no identifiers are publicly available". A sentence is said of the sources it names, or, naming none and speaking of
+  like, and a warning is given only where no "not", "cannot", "never", "neither", "nor",
+  "no", "none", "without" or "-n't" stands anywhere before the phrase in its sentence ("at
+  no cost", "for no fee" and "no-cost" aside); another way of saying either is not read.
+  So a denial of something else silences the phrase: "The data cannot be shared, but
+  summaries are publicly available" beside a claims database, "This study generated no new
+  data, and the archive is available on request" beside an open archive, and "No cost or
+  claims data are publicly available" all say nothing, where the first two should warn. A sentence is said of the sources it names, or, naming none and speaking of
   data, of every chosen source where all are reached one way; so "The code used to analyse
   the data is available on request" is read as said of an open source, and warns, and a
   sentence of the statement about summary data or analysis files that names no source warns

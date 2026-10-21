@@ -273,10 +273,10 @@ CHANGED = {
         "    elif MOVED in ways:\n",
         "reworded",
     ),
-    "a denial read in the two words before a phrase": (
+    "a denial before a phrase not read": (
         "data_sources.py",
-        "NEGATION_WORDS = 8\n",
-        "NEGATION_WORDS = 2\n",
+        "    return NEGATION.search(FREE.sub(\" \", sentence[: found.start()])) is None\n",
+        "    return True\n",
         "data sources statement",
     ),
     "a finding that points at another file": (

@@ -21,6 +21,7 @@ from manuscript_guard.contracts._schema import validate
 from manuscript_guard.data_sources import (
     ON_REQUEST,
     OPENLY,
+    mentions,
     named,
     route_differs,
     says,
@@ -228,30 +229,48 @@ def test_a_statement_is_read_sentence_by_sentence() -> None:
         ("The data cannot be made publicly available.", OPENLY, False),
         ("The data aren't publicly available.", OPENLY, False),
         ("Neither the data nor the code are publicly available.", OPENLY, False),
-        # A negation in another clause is that clause's.
-        ("The data cannot be shared, but summaries are publicly available.", OPENLY, True),
-        ("The data are not ours to share; they are available on request.", ON_REQUEST, True),
-        # A denial with an aside between it and the phrase is still its own (round 1 of #384).
+        # A denial behind an aside (round 1 of #384), in a list or before a second predicate
+        # (round 3), or anywhere else before the phrase in its sentence, denies it.
         ("The ENCD data are not, however, publicly available.", OPENLY, False),
         ("The ENCD data cannot, under the agreement, be made publicly available.", OPENLY,
          False),
         ("The data are not (for privacy reasons) publicly available.", OPENLY, False),
+        ("The ENCD data are not, so far, publicly available.", OPENLY, False),
         ("The data are not yet publicly available.", OPENLY, False),
         ("No patient-level ENCD data are publicly available.", OPENLY, False),
         ("None of the ENCD data are publicly available.", OPENLY, False),
-        # A comma and "and" or "which" start a clause of their own (round 2 of #384), and "no
-        # cost" denies nothing.
-        ("This study generated no new data, and the ORA is publicly available.", OPENLY, True),
+        ("None of the ENCD claims, prescriptions, and hospital records are publicly "
+         "available.", OPENLY, False),
+        ("No patient-level, linked, or identifiable ENCD data are publicly available.", OPENLY,
+         False),
+        ("The ENCD data cannot be shared with third parties, or made publicly available.",
+         OPENLY, False),
         ("The ENCD holds the claims, which are not publicly available.", OPENLY, False),
+        ("No cost or claims data from ENCD are publicly available.", OPENLY, False),
+        ("Not one of the files that we drew from the archive is publicly available.", OPENLY,
+         False),
+        # So a denial of something else silences the phrase too: a warning missed, never one
+        # given wrongly (Known gaps).
+        ("The data cannot be shared, but summaries are publicly available.", OPENLY, False),
+        ("This study generated no new data, and the ORA is publicly available.", OPENLY, False),
+        # "At no cost" and "no-cost" deny nothing.
         ("The data are available at no cost on reasonable request.", ON_REQUEST, True),
         ("The ORA files are no-cost and publicly available.", OPENLY, True),
-        # Far before the phrase, a negation is not its own.
-        ("Not one of the files that we drew from the archive is publicly available.", OPENLY,
-         True),
+        ("The data are available for no fee on request.", ON_REQUEST, True),
     ],
 )  # fmt: skip
-def test_a_phrase_is_said_unless_its_clause_denies_it(sentence: str, phrase, said: bool) -> None:
+def test_a_phrase_is_said_unless_a_denial_comes_before_it_in_its_sentence(
+    sentence: str, phrase, said: bool
+) -> None:
     assert says(sentence, phrase) is said
+
+
+def test_a_phrase_is_mentioned_whatever_comes_before_it() -> None:
+    """What excuses an open source's "on request" is that the statement speaks of it as open
+    at all: read leniently, so that the excuse is never lost to a denial of something else."""
+    assert mentions("This study generated no new data, and the ORA is publicly available.",
+                    OPENLY)  # fmt: skip
+    assert not mentions("The data are available on request.", OPENLY)
 
 
 def _sources(*routes: str) -> list[dict[str, Any]]:

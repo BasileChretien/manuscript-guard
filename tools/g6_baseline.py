@@ -266,7 +266,9 @@ def measure_one(candidate: dict, xml: bytes, markdown: str | None) -> dict:
     if words < MIN_WORDS:
         return {"status": "too-short", "words": words}
     texts = [(Path(f"{candidate['pmcid']}.md"), body)]
-    report, _totals = judge_texts(texts)
+    # As at submission, the strictest stage: a residue of a revision that answers one
+    # reviewer fails only there, and a paper by people should not (round 1 of #377).
+    report, _totals = judge_texts(texts, submission=True)
     fired = Counter(f.message.split(":", 1)[0] for f in report.findings
                     if f.code == "ai-phrasing")  # fmt: skip
     return {

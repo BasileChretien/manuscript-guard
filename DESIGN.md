@@ -266,7 +266,7 @@ All deterministic, all runnable in CI without Claude.
 | G3 | Figures | a number in a figure's output or in its source is not traceable to results |
 | G4 | Journal profile | word counts, structure, reference style, required statements |
 | G5 | Reporting checklist | a checklist item is unaddressed |
-| G6 | AI-writing lint | banned constructions and cadence tells |
+| G6 | AI-writing lint | banned constructions and cadence tells; words to the reviewers left in the paper |
 | G7 | Citation integrity | unpinned or unresolvable citation key; literature claim with no stored source |
 | G8 | Cross-artifact consistency | a quantity differs between abstract, results, table and figure |
 | G9 | Methods drift | analysis code changed since the Methods text was last reconciled; per step, a step or the text pointing at it changed since the pair was read |
@@ -2188,6 +2188,77 @@ instruction to whoever fills the text in ("the user should add"). Each is a warn
 "not widely available" or "not widely reported", which a paper says of a drug or an adverse
 event.
 
+**Words written to the reviewers and left in the paper are the residue of a revision**
+(`revision-residue`, 2026-10-20). "As requested by Reviewer 2, we added", "in the previous
+version of this manuscript", "we have now clarified", "page 4, lines 120-125", "the revised
+text is highlighted in yellow", "see the response letter"; and a model's words to its user,
+"as you requested", "I have shortened the abstract", "Below is the revised Discussion".
+They belong in the response to the reviewers, and the paper's reader never saw the review.
+The idea and part of the lists are Writing Guard's `process_residue` rules
+(ATTRIBUTION.md). The rules read the manuscript and its supplement only, in the prose the
+phrase rules read, so a comment, a listing or a citation holds none, and one paragraph at
+a time. They never read `revision/` nor the letter `respond` writes from it: that is where
+these words belong, and G13 lets a reply say them.
+
+A residue is reported wherever it stands, as an artefact is, and not counted by rate: one
+is enough to be read by the journal. Basile chose on 2026-10-20 between two kinds. A rule
+that answers one reviewer or the editor, or points at this manuscript, its earlier version,
+its lines, its marked changes or its letter, or holds a model's words to its user, warns
+while the paper is written and revised and fails at submission, as G13 and G11 do: the
+residue harms nobody until the journal reads it. The rest warn at every stage: the
+reviewers together or one not named ("in response to the reviewers' comments"), a
+manuscript's earlier version not said to be this one's ("the revised manuscript"), tracked
+changes, lines in brackets, a response letter not said to be the authors', and a change to
+a text that names no part of this manuscript ("we have revised the section on renal
+dosing", "This has now been clarified."). A paper about peer review writes those of the
+manuscripts it studied, and a guideline's update or a label's history writes the last of
+itself; neither must be stopped.
+
+What the rules leave alone was found by running them over the 399 papers of the G6 corpus
+and over the commonest ways a pharmacology or epidemiology paper writes the same words, and
+each is a passing case in `tests/test_writing.py`:
+- "revised" in a name, "the Revised Cardiac Risk Index", "the 1987 ACR revised criteria",
+  "the Clinical Interview Schedule-Revised", "10th revision";
+- the contributions, "drafted the initial manuscript", "revised the original manuscript",
+  "provided final approval of this version of the manuscript", read as a verb of writing
+  followed only by the words a contribution puts before the noun, so that "We revised the
+  Methods because our original submission pooled the cohorts" is still read;
+- the acknowledgements, "comments on an earlier version of this manuscript", "two
+  anonymous reviewers for their helpful comments", "grateful to Dr. Sampaio for their
+  critical review in the original manuscript", read from the thanks to the end of the
+  sentence, the stop of a title or an initial ending none; "We acknowledge that" opens a
+  limitation as often, and is no thanks; a thanks to one referee fails only for "this" or
+  "that", "for raising this point", "for bringing this to our attention", or where the
+  reviewer has a number, which a printed acknowledgement never gives, and not where it
+  names what it is for, "for pointing out an error in the variance estimator";
+- what a study writes of its own instrument: a Delphi panel's "our initial draft
+  comprised 45 items", "the revised wording is shown in Table 3", "new sentences were
+  written by two authors", "we have adapted the wording of the items";
+- a label's history, "This has now been included in the SmPC", since a change that names
+  no part of this manuscript warns only at the end of its clause;
+- a journal's notices, "the publisher, the editors and the reviewers", "the handling
+  editor declared a shared affiliation", and an invitation, "at the invitation of the
+  editor";
+- a systematic review's readers, "Reviewer 1 and Reviewer 2 independently extracted the
+  data", "resolved by a third reviewer", "discrepancies noted by the second reviewer": a
+  reviewer is one reviewer only with "the" or a number, and answered only with a request,
+  a reply or a suggestion;
+- and prose: "To address this concern, we used an active comparator", which 38 of the 399
+  papers write in some form and Writing Guard takes; "To avoid confusion"; "the original
+  submission of the dossier to the agency"; "we now report"; "(LINE 1)", a retrotransposon.
+
+Read as at submission, the 399 papers gave no failure, and two warnings: "(LINE 1)", which
+the rule for lines in brackets no longer takes, and "as suggested by one of the reviewers
+of our paper", words to a reviewer that reached print. `tools/g6_baseline.py` judges as at
+submission since round 1 of #377, and its measurement of the 384 papers it uses, taken
+again then, records that one warning and no failure; the held-out check is unchanged, 98.9%
+of the held-out papers with two warnings or fewer. Europe PMC listed 25 open-access
+research articles for the phrase "as suggested by the reviewer", and the text of their XML
+held it in 21: 17 only in the peer-review reports published with them, four in the article
+itself, each as a reply to a reviewer ("as suggested by the reviewer earlier, triglycerides
+and heart rate"). A sample chosen for the phrase says nothing of how common it is, only
+that the residue reaches print.
+
 **How often it warns on papers written by people** is measured, and the rate thresholds
 come from that measurement (item 54). `tools/g6_baseline.py` drew 400 open-access research
 articles under CC BY from Europe PMC, published from 2010 to October 2022, before chat
@@ -3580,15 +3651,19 @@ binding, citation, code, link, footnote or other inline construct; and the parag
 and after it gives `reworded.compare` nothing to say of a binding, a citation or a typed
 number. An edit that changes "2 x 2" to "3 x 2" is a finding, not a tracked change.
 
-**What is accepted comes back as written, or is not offered.** `import` merges an accepted
-edit as it merges any rewording from Word, and that merge rebuilds the edited stretch
-between two tokens from Word's text, which holds no markup. So each edit is put through the
-same merge before it is written (`roundtrip.align`, with the paragraph as Word would return
-it and the token extents of the marked build), and it is dropped unless the result is the
-source with `old` replaced by `new`, line wrapping aside. An edit beside emphasis in its
-stretch would flatten the emphasis on import, and is dropped here instead. Two edits of the
-same words are both dropped; one whose paragraph would not come back with the edits before
-it accepted too is dropped. Each dropped edit is listed with its reason and stays a finding.
+**What is accepted is written where its words were, or is not offered.** `import` merges a
+rewording from Word by rebuilding each edited stretch between two values or citations from
+Word's text, which holds no markup: emphasis, code or a link in that stretch is flattened,
+or the paragraph refused. An accepted suggestion is not merged so. Its words are known, from
+the sealed record, and so is where they were found, so `import` writes the new words there
+and touches nothing else (`suggestions.write_in`); see "An accepted suggestion is written,
+then the rest is merged" below. `review --suggestions` offers an edit only where that write
+holds: written into the source, the paragraph reads as Word shows it with the edit accepted
+(`roundtrip._reads_as`, the reading the merge holds its own result to), and the file still
+marks it as a paragraph of its own under its identifier (`_stays_marked`, by `tag`'s own
+reading of blocks). Two edits of the same words are both dropped; one that would not hold
+with the edits before it in its paragraph written too is dropped. Each dropped edit is listed
+with its reason and stays a finding.
 
 **The document is the build, with the changes in it.** `review --suggestions --round N` builds
 the document offline, as `build --offline` does, into `build/suggestions/round-N.docx` (and
@@ -3640,6 +3715,54 @@ last and changes nothing else in the file):
   to the author, with the reason.
 
 The answers are outside the seal, so the reading stays sealed.
+
+## An accepted suggestion is written, then the rest is merged
+
+The first version offered an edit only where `import`'s merge would bring it back exactly,
+and that merge rebuilds an edited stretch from Word's text. So an edit in a stretch that
+also held emphasis, code or a link was dropped: in a Results paragraph with an italic *P*,
+or an Introduction paragraph with no value in it and *E. coli* anywhere, that was every
+edit. Basile chose on 2026-10-20, from the options put to him, how an accepted suggestion
+and the author's own edits in the same paragraph come back together, and that an edit
+inside emphasis is offered.
+
+**The suggestion first, exactly.** For each paragraph holding a suggestion the author
+accepted (its bookmark `mg-s-<n>` holds the new words, `tracked.decided`), `import` takes the
+words from the sealed record, held to the document's digests of the new words and the
+comment, as the answer to the finding is. It finds the old words once in the paragraph's
+source and once in what the build printed, and the printed ones are the ones the document
+recorded a digest of. They lie outside every binding, citation and inline construct, and
+across no hard line break, which writing them would delete. The new words go into the
+source there, and into the printed text, and each value's place in that is moved along by
+the difference. Written, the paragraph has to be a change of words to `reworded` and read as
+Word shows it. Emphasis beside the words stays as the source has it, and emphasis around
+them goes round the new words: Word gives an insertion the formatting of the run it
+replaces, so the author saw them so when accepting.
+
+**Then the rest, by the usual rules.** Whatever else the author changed in that paragraph is
+merged by `roundtrip.align` against the source and the printed text with the suggestions
+already in them (`merge.plan_import`, `accepted`). A stretch the author left alone is kept
+from that source, markup and all, as for any rewording; a stretch the author edited is
+rebuilt from Word's text, as for any rewording. So the suggestion never costs markup, and the
+author's own edits cost what they cost on main. Where the author changed nothing else, the
+merge gives back the written source exactly. Every check `import` makes of a merge is made of
+this one too, the identifier test of `_identified` among them.
+
+**Where the words cannot be written, the paragraph is refused.** Old words no longer found
+once (the source changed since the document was made, imported with `--force`), printed
+words that are not the document's (the record's old words changed and sealed again), a
+record that is gone, values and citations with no place (the marked build could not be
+read), or a write that would not read as Word shows it: the whole paragraph is
+refused, with the reason, and the finding stays open. Merging it from Word's text instead
+would be the merge this design exists to avoid, and could flatten the markup the edit was
+offered beside. A suggestion refused in Word, or whose bookmark holds other words, writes
+nothing: Word's text there is merged as the author's own, and the finding is left to them as
+before.
+
+Considered and not built: refusing any paragraph that holds an accepted suggestion and
+anything else changed, so that nothing is ever composed. It costs the author's other edits
+in that paragraph, which would have to be made again in the .md, and it protects nothing the
+composed merge does not: what the author's edit flattens there, it flattens on main.
 
 ## A panel read by several providers
 
@@ -10519,6 +10642,34 @@ Open, recorded as each change landed:
   frozen until it is put right; one saved in UTF-16 with no byte-order mark decodes as
   UTF-8 where its text is ASCII, so G12 does not say it is not UTF-8, and the
   `plan-not-frozen` hint, that the emitter keeps it on the next write, is not true of it.
+- **The residue of a revision is found by its words, in English, in the manuscript's prose
+  only.** A reply worded otherwise passes: "Reviewer 2 was right that", "we agree with the
+  reviewer", "this point is now made". Writing Guard's list in Chinese was not taken. A
+  residue in a figure, a table's caption or a cited entry is not read, nor one in a
+  comment, which is never printed. The rules that fail at submission leave no way to keep
+  the sentence, so a paper that means to answer a reviewer in print rewords it. "The
+  reviewer" with a request is taken for the journal's, so a chart review whose own reader
+  is "the reviewer" fails on "following the reviewer's recommendation, the case was
+  excluded", and a systematic review on "as suggested by the second reviewer". The
+  contributions are known by a verb of writing followed only by the words a contribution
+  puts before "manuscript", "draft", "version" or "submission", so "we revised the
+  original submission to add" and "we revised the content of our original manuscript" are
+  not read; the acknowledgements by their thanks to the end
+  of the sentence, so a residue later in a sentence of thanks is not read by the rules of
+  an earlier version; and "acknowledge" is no thanks, since a limitation opens on it, so
+  "We acknowledge the comments of two anonymous referees on our original submission" fails
+  at submission (round 2 of #377). "The revised manuscript" warns in a statement of
+  contributions that does not say who approved it. A change to the text fails only where it
+  names a section by its capitalised name, the manuscript or its text (not "the text of
+  the SmPC", but "the text of the manuscript", and not "the text of the main manuscript"),
+  says "accordingly", or is a rephrasing; "we have revised the discussion of
+  renal dosing", in lower case, only warns, and "This has now been clarified" warns only
+  at the end of its clause, so "This has now been clarified in the response" passes. A
+  change is marked only where it is highlighted, underlined, coloured or tracked, or shown
+  in a colour, bold, italics, underlined, highlighted or tracked changes within two words,
+  so "marked with an asterisk" passes. Lines in brackets, "(lines 245-250)", only warn,
+  since a program's listing is pointed at so. "In response to the editor's invitation"
+  passes, and so would an answer to the editor that names an invitation, a call or a note.
 - **G6's thresholds are measured on people only, in one field.** Each rate's threshold is
   the 99th percentile of 291 biomedical research articles of 2010 to 2022 (see "The
   AI-writing lint measures rate, not presence"), so about one paper by people in a hundred
@@ -12542,25 +12693,43 @@ Open, recorded as each change landed:
   work's stored files once for the passages and once for the quotations in the prose, so a
   PDF goes through `pdftotext` twice a `check`.
 
-- **A suggested edit is placed only where nothing else is in its way.** `review
-  --suggestions` writes an edit only where its words are found once and its acceptance
-  comes back into the source exactly (see "A reading may suggest the wording"). What that
-  leaves out:
-  - *Words beside markup.* An accepted edit is merged by `import`, which rebuilds the
-    edited stretch between two tokens from Word's text, so an edit in a stretch that also
-    holds emphasis, code or a link is dropped rather than offered. In a Results paragraph
-    with an italic *P* that is most of the paragraph. Writing the accepted words into the
-    source directly, at the range the edit was found at, would keep the markup; it would
-    also be a second way of merging Word's text beside `import`'s, and was not built.
+- **A suggested edit is placed only where it can be written exactly.** `review
+  --suggestions` writes an edit only where its words are found once and, written into the
+  source where they are, the paragraph reads as Word shows it (see "An accepted suggestion
+  is written, then the rest is merged"). What that leaves out:
+  - *Words across markup.* Words that cross the edge of emphasis, as "P value" quoting
+    `*P* value`, or lie inside code, a link's text, a span, struck-through, raised or
+    lowered text, or run across a hard line break, take no edit: written, they would change
+    the markup, which an edit does not. The reader is sent the text as printed and cannot
+    see where the markup is.
+  - *The author's own edit beside an accepted suggestion.* The suggestion is written
+    exactly, and an edit of the author's in the same stretch between two values or
+    citations is then merged from Word's text, as any rewording is: the emphasis or code in
+    that stretch is flattened, the suggestion's included
+    (`test_an_accepted_edit_and_the_author_s_own_edit_in_its_paragraph_both_come_back`).
+    A paragraph with no value or citation is one stretch. That is main's merge, unchanged;
+    only the suggestion's own write is exact.
+  - *A write that cannot be made refuses the paragraph.* At import, an accepted
+    suggestion whose words cannot be written exactly has its whole paragraph refused, the
+    author's other edits there with it, since merging it from Word's text could flatten the
+    markup it was offered beside. A source changed since the document was made (imported
+    with `--force`), a record changed or gone since, a mix of three or more edits accepted
+    in Word that was not tried (below), and a marked build `import` could not read, which
+    leaves no value or citation placed, each reach it. The last refuses such a paragraph on
+    main too, as unaligned.
+  - *The write is held to this package's reading of Markdown.* "Reads as Word shows it" is
+    `roundtrip._reads_as`, which the merge holds its own result to; where that reading and
+    pandoc's disagree, written words could print otherwise than Word showed them. New words
+    that make the paragraph a list item or a heading are caught by `tag`'s own reading of
+    blocks (`_stays_marked`), which `_reads_as` does not see.
   - *A heading, a caption, a list item, a quotation or a table cell* carries no identifier
     and so takes no edit, as `import` brings back none of them.
   - *Several edits in one paragraph* are tried alone and each with the ones before it
-    accepted. With three or more, a mix accepted in Word that was not tried could come
-    back otherwise; `import` then refuses or merges that paragraph by its own rules, and
-    the findings stay open where it refuses.
+    written. With three or more, a mix accepted in Word that was not tried is written by
+    `import` only if it holds; otherwise the paragraph is refused and the findings stay open.
   - *The inserted words are shown as typed*, a straight apostrophe in a paragraph pandoc
-    curled, because the merge keeps Word's quotes and the source should get what the reader
-    wrote. The next build prints them curled.
+    curled: the source gets what the reader wrote, and Word shows the same words. The next
+    build prints them curled.
   - *The source as it stands.* Edits are placed in the manuscript when the command runs;
     a reading of an earlier version has its edits placed where its words still stand once,
     and dropped where they do not.
@@ -12664,6 +12833,14 @@ Open, recorded as each change landed:
 
 Closed since, and why each mattered (an open gap goes above this line):
 
+- **A suggested edit beside emphasis, code or a link was not offered.** `import` merged an
+  accepted suggestion as any rewording, rebuilding its stretch from Word's text, so an edit
+  in a stretch that also held markup was dropped by `review --suggestions` rather than
+  flattened at import. In a paragraph with an italic *P*, or one with no value and *E. coli*
+  anywhere, that was every edit. An accepted suggestion is now written into the source where
+  its words were, and only the rest of the paragraph is merged (Basile, 2026-10-20; "An
+  accepted suggestion is written, then the rest is merged"). An edit inside emphasis is
+  offered too, and the new words keep it.
 - **The header's title was read by line, and the warning of two titles was wrong on any
   header but the plainest.** Nobody saw the warning until #165. Shown, it took what stands
   after the first `title:` in the block, at any depth and on that line alone, less every

@@ -178,7 +178,9 @@ def repository(root: Path) -> bool | None:
         return None
     if done.returncode == 0:
         return True
-    return False if "not a git repository" in done.stderr.lower() else None
+    # Only git's word for none: "not a git repository: <gitdir>" is a `.git` file whose
+    # repository has gone, a moved checkout or a pruned worktree (the last fix round of #388).
+    return False if "not a git repository (or any" in done.stderr.lower() else None
 
 
 def tracked_files(root: Path) -> set[str] | None:
@@ -443,7 +445,7 @@ def _held_to_the_withheld(project: Project, inputs: list[Input]) -> list[Input]:
             and (found := _identity(project.root / i.path))}  # fmt: skip
     return [
         replace(i, included=False, why="the same file as an input that is withheld")
-        if i.included and i.why != RESULTS_INPUT and _identity(project.root / i.path) in kept
+        if i.included and _identity(project.root / i.path) in kept
         else i
         for i in inputs
     ]
@@ -514,9 +516,10 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
                                  in_git=tracked is not None)
     entries.sort(key=lambda entry: entry.path)
     signables: list[Signable] = []
-    withheld_results = frozenset(i.path for i in inputs if not i.included
-                                 and any(i.path == f.path.relative_to(project.root).as_posix()
-                                         for f in results.fragments))  # fmt: skip
+    produced = {_key(f.path.relative_to(project.root).as_posix()):
+                f.path.relative_to(project.root).as_posix() for f in results.fragments}  # fmt: skip
+    withheld_results = frozenset(produced[_key(i.path)] for i in inputs
+                                 if not i.included and _key(i.path) in produced)  # fmt: skip
     small, settled = settled_small_counts(project, results, withheld_results)
     if small is not None:
         signables.append(small)

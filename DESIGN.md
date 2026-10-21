@@ -12323,8 +12323,9 @@ Open, recorded as each change landed:
   from a small count shows it in the package as it does in the paper. A table cell is read for
   a count only where it states one in a shape `count_in_cell` knows: "3", "3/412", "3 (0.7%)",
   "3/412 [0.7%]", "3 (<1%)", "3 (0.7%)*", "3ᵃ"; "3 of 412", "3 (0.7% to 1.2%)", a count
-  with thousands separators, a footnote mark other than `*†‡§¶`, ᵃ to ᵉ and the superscript
-  digits, and a cell in the first column, which names the rows, are not. A decimal comma
+  with thousands separators, a footnote mark other than `*†‡§¶`, ᵃ to ᵉ, the superscript
+  digits and Markdown's `^…^`, and a cell in the first column, which names the rows, are not;
+  a power written "10³" or "10^3^" is read as the count 10. A decimal comma
   cannot be told from a list: "4 (2,7)", a median and two whole numbers, is read as the count
   4 and its share 2.7, and "2 (2020)" as 2 and a share; "1 (<0.001)", an estimate and its P, is
   read as the count 1. These, and a reference ratio typed as a bare "1", are read as counts,

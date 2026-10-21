@@ -751,6 +751,15 @@ def test_a_repository_git_cannot_answer_for_is_refused(
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_a_worktree_whose_repository_is_gone_is_refused(project: Path) -> None:
+    """The last fix round: git says "not a git repository: <gitdir>" of a `.git` file whose
+    gitdir is gone, a moved checkout or a pruned worktree, and that was read as none."""
+    ready(project)
+    (project / ".git").write_text(f"gitdir: {project.parent / 'gone'}\n", encoding="utf-8")
+    assert "package-git-unanswered" in refused(project)
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 def test_a_git_folder_git_says_is_no_repository_refuses_nothing(project: Path) -> None:
     """The fix round: a `.git` above the project that git does not take for a repository, as
     beyond a mount or a ceiling, refused an ordinary project."""

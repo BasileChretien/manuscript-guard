@@ -756,17 +756,9 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
                 len(files), root / source.path, whole.view, _hide(whole.words, outside),
                 _hide(whole.untitled, outside).replace(NUL, " "), whole.regions,
                 breaks=whole.breaks, stretch=(start, end), typed=source.text,
-                unread=tuple(span for span in whole.unread
-                             if start <= span[0] < end and _read_at(whole.regions, span[0])),
+                unread=tuple(span for span in whole.unread if start <= span[0] < end),
             ))  # fmt: skip
     return files
-
-
-def _read_at(regions: list[_Region], offset: int) -> bool:
-    """Whether G14 reads the text at `offset`: not in a reference list, whose accented names
-    are no words it skips (round 1 of step 7)."""
-    starts = [region.start for region in regions]
-    return regions[bisect_right(starts, offset) - 1].scope is not None
 
 
 @dataclass(frozen=True)
@@ -791,13 +783,19 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
     seen = words(source)
     titles = [(heading.start, max(heading.end, heading.start))
               for heading in source.reading.headings]  # fmt: skip
+    regions = _latex_regions(source, supplementary=supplementary, abstract_title=abstract_title)
+    # A word in a reference list is none G14 skips: it reads no word there, and a typed
+    # list's accented names were said unread (round 1 of step 7).
+    starts = [region.start for region in regions]
+    unread = tuple(span for span in seen.unread
+                   if regions[bisect_right(starts, span[0]) - 1].scope is not None)  # fmt: skip
     return _LatexFile(
         view=markdown_view(source, bindings(source)[0]),
         words=seen.text,
         untitled=_hide(seen.text, titles),
-        regions=_latex_regions(source, supplementary=supplementary, abstract_title=abstract_title),
+        regions=regions,
         breaks=[index for index, char in enumerate(source.text) if char == "\n"],
-        unread=seen.unread,
+        unread=unread,
     )
 
 
@@ -806,8 +804,9 @@ def _stretches(sources) -> Iterator[tuple[Source, int, int]]:
     a file up to an `\\input` it holds, the file input there, then the rest of it. `sources`
     are in the include tree's order, each file before the files it inputs; the author's
     packages, which no `\\input` reads, come last."""
-    # A file input is text whatever the case of its suffix, `Methods.TEX` as `methods.tex`
-    # (round 1 of step 7).
+    # A file input is text whatever the case of its suffix: `Methods.TEX`, which the file
+    # list holds where the file system's names are not case-sensitive, is read as
+    # `methods.tex` is (round 1 of step 7).
     texts = [source for source in sources if not _package(source)]
     queue = iter(texts)
 

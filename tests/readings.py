@@ -153,6 +153,22 @@ def _latex_refusals() -> Reading:
     return lambda text: [[r.code, r.offset] for r in read(text).refusals]
 
 
+@reading("latex sections")
+def _latex_sections() -> Reading:
+    # `Heading` came with the headings, so that a base without them has no such reading.
+    from manuscript_guard.text.latex.mask import Heading, read  # noqa: F401
+
+    def sections(text: str) -> dict[str, Any]:
+        reading = read(text)
+        return {
+            "headings": [[h.start, h.level, h.title] for h in reading.headings],
+            "abstracts": [list(span) for span in reading.abstracts],
+            "inputs": [[i.offset, i.path, i.body, list(i.environments)] for i in reading.inputs],
+        }
+
+    return sections
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden
@@ -657,6 +673,32 @@ def _prose_quotations() -> Reading:
     return quotations
 
 
+@reading("passages")
+def _passages() -> Reading:
+    """The sentences each entry of a `passages.yaml` belongs to, with the line of each one's
+    paragraph, and why an entry belongs to none: what G7 holds a supporting passage to, and
+    what the co-author checker shows it beside. No source is stored, so none is read."""
+    from manuscript_guard.checking.produce import cited_sentences, citing_document
+    from manuscript_guard.literature.passages import Passage, survey
+
+    nowhere = Path(__file__).resolve().parent / "no stored sources"
+
+    def passages(given: dict[str, Any]) -> list[list[Any]]:
+        sentences = cited_sentences([citing_document(MAIN, given["text"])])
+        entries = tuple(
+            Passage(number, entry["sentence"], entry["citekey"], entry["passage"],
+                    entry["locator"])
+            for number, entry in enumerate(given["entries"], start=1)
+        )  # fmt: skip
+        found = survey(nowhere, sentences, entries)
+        return [
+            [[[cited.line, cited.text] for cited in one.sentences], one.stale]
+            for one in found.passages
+        ]
+
+    return passages
+
+
 @reading("checker sentences")
 def _checker_sentences() -> Reading:
     """How a co-author's items are cut out of a manuscript: the sentences of each paragraph.
@@ -841,6 +883,21 @@ def _quote_placement() -> Reading:
         if placement is None:
             return None
         return [placement.found, list(placement.lines), said(placement)]
+
+    return placed
+
+
+@reading("suggested edit")
+def _suggested_edit() -> Reading:
+    """Where a reviewer's suggested edit is found in a text, as typed or as pandoc printed
+    it, and whether its words are words: what `review --suggestions` places an edit by."""
+    from manuscript_guard.suggestions import found_in, refused_words
+
+    def placed(given: dict[str, str]) -> dict[str, Any]:
+        return {
+            "found": [list(span) for span in found_in(given["text"], given["old"])],
+            "refused": refused_words(given["old"], given["new"]),
+        }
 
     return placed
 

@@ -453,6 +453,20 @@ def test_a_variable_or_an_outcome_entered_by_another_expression_is_said(
     assert "exposed:sex (numerical)" in finding.message
 
 
+def test_a_heading_twice_is_said_by_check_and_a_reason_for_it_explains_nothing(
+    project: Path, earlier: Path
+) -> None:
+    doubled = "## Notes\n\n### Definition\n\nA.\n\n### Definition\n\nB.\n\n## Outcome\n\n"
+    _plan(earlier, "## Outcome\n\n", doubled)
+    plan = project / "design" / "plan.md"
+    plan.write_bytes(plan.read_bytes().replace(b"## Outcome\n\n", doubled.encode()))
+    why = [{"plan_section": "Definition", "because": "x"}]
+    _declare(project, _entry(project="../earlier", methods=why))
+    _take(project)
+    assert _found(_check(project)) == [("related-section-ambiguous", INFO),
+                                       ("related-pair-unmatched", WARN)]  # fmt: skip
+
+
 def test_a_reason_for_a_model_or_section_neither_has_is_said(
     project: Path, earlier: Path
 ) -> None:

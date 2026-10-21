@@ -156,6 +156,10 @@ why:
         because: sex is now recorded for every report
 ```
 
+A heading that stands twice in either plan is not compared, and `check` says so
+(`related-section-ambiguous`): give each section a heading of its own words, and name it once
+in `plan_section`.
+
 `check` compares words and cards, never what two Methods sections mean. Give the review
 panel an earlier-outputs remit (the review-panel skill): "whether each difference from the
 earlier outputs on the same data is a change of method that the paper states and

@@ -9760,7 +9760,12 @@ Open, recorded as each change landed:
   change to a model already explained is explained by the old reason. A heading that stands
   twice in a plan is not compared at all, though one of the two may have changed. A heading
   that opens with a number of one or two digits loses it, so `12 months` and `24 months` are
-  one heading, and both are then left uncompared as standing twice (round 2 of #402).
+  one heading: in one plan both stand twice, and across the two they are compared as one
+  section (round 2 of #402). A plan with a second top-level heading keeps its title as a
+  section, as G12 reads it: with an appendix in both, the words under the title (a version,
+  a date) are compared, and a title the Deviations rule matches ("amendment 2") leaves the
+  whole plan out. The generator draws only titled plans; the untitled one is held by a unit
+  test (the second post-budget round).
 - **What a comparison read from a PDF cannot see.** A published value is read as printed: an
   estimate rounded to one place is the same as any value within half a unit of it, so a
   change smaller than the earlier rounding is not seen. A printed value that is not one

@@ -739,6 +739,10 @@ def _judges(path: Path, payload: dict) -> str | None:
         if not any(_JUDGED_BY.search(text) for text in before):
             return None
         names = "a judgement it touches or keeps"
+    elif (unread := _unread(_JUDGED_BY, after, before[0])) is not None:
+        if not unread:
+            return None
+        names = unread
     else:
         judged = _judgements(after) ^ _judgements(before[0])
         if not judged:
@@ -756,13 +760,40 @@ def _judges(path: Path, payload: dict) -> str | None:
 _JUDGED_BY = re.compile(r"""(?m)^(?![ \t]*#).*?\bjudged_by["']?[ \t]*:""")
 
 
+def _unread(named_by: re.Pattern[str], *texts: str) -> str | None:
+    """Where a text before or after an edit is one YAML cannot read, who the texts name by
+    `named_by`, or "" where they name nobody: the edit is put to them, since what a decision
+    or a judgement there is of cannot be told (round 2 of #386). None where both can be read."""
+    import yaml
+
+    def unreadable(text: str) -> bool:
+        try:
+            yaml.safe_load(text)
+        except Exception:  # noqa: BLE001 - `2026-02-30` is a ValueError, not a YAML error
+            return True
+        return False
+
+    if not any(unreadable(text) for text in texts):
+        return None
+    found = [(text, match) for text in texts for match in named_by.finditer(text)]
+    return ", ".join(dict.fromkeys(
+        _named_after(text, match, "a person named in a text YAML cannot read")
+        for text, match in found
+    ))  # fmt: skip
+
+
 def _named_after(text: str, match: re.Match[str], otherwise: str) -> str:
     """Who a `judged_by:` or `decided_by:` that `match` found names, read off the rest of its
     line, for a text YAML cannot read: the person is told it is their name (round 1 of
-    #386). Up to a comma, a closing brace or a comment, and without quotes."""
-    rest = text[match.end():].split("\n", 1)[0]
-    name = re.split(r"[,}]|\s#", rest, maxsplit=1)[0].strip().strip("\"'").strip()
-    return name or otherwise
+    #386). A quoted scalar is read whole, a plain one up to a comma, a closing brace or a
+    comment; anything else, a block scalar or an anchor, is `otherwise` (round 2)."""
+    rest = text[match.end():].split("\n", 1)[0].strip()
+    quoted = re.match(r"""(["'])(.*?)\1""", rest)
+    if quoted:
+        return quoted[2].strip() or otherwise
+    if rest[:1] in ("", ">", "|", "&", "*", "!", "[", "{"):
+        return otherwise
+    return re.split(r"[,}]|\s#", rest, maxsplit=1)[0].strip() or otherwise
 
 
 def _judgements(text: str) -> set[tuple]:
@@ -812,6 +843,10 @@ def _decides(path: Path, payload: dict) -> str | None:
         if not any(_DECIDED_BY.search(text) for text in before):
             return None
         names = "a decision it touches or keeps"
+    elif (unread := _unread(_DECIDED_BY, after, before[0])) is not None:
+        if not unread:
+            return None
+        names = unread
     else:
         now, then = _decisions(after), _decisions(before[0])
         decided = (now - then) + (then - now)

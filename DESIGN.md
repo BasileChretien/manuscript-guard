@@ -3982,10 +3982,11 @@ decided and when. A model's name may not sign it (`similar-decision-not-human`, 
 G7 reads `attested_by` with), failing from the analysis stage on. The plugin's write guard
 puts to the person an agent's edit after which the decided methods are not the ones the file
 held before, word for word in their study, field, label, passage and decision, and as many:
-a decision recorded, changed or taken away, or the method under one changed. A text YAML
-cannot read, a date that is not one among them, is taken to hold a decision wherever it
-names a decider (round 1 of #386: `2026-02-30` raised past the guard, and #374's judgements
-with it). An appraisal changed beside it is the
+a decision recorded, changed or taken away, or the method under one changed. Where the file
+before an edit or after it is a text YAML cannot read, a date that is not one among them,
+what a decision there is of cannot be told, and the edit is put to the person wherever
+either text names a decider, named where the line gives a plain or quoted name (rounds 1 and
+2 of #386: `2026-02-30` raised past the guard, and #374's judgements with it). An appraisal changed beside it is the
 agent's to make. A Codex patch to a review that holds a decision outside a comment is put to
 the person, and refused where the tool cannot ask, as for a passage's judgement.
 

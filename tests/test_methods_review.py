@@ -594,6 +594,52 @@ def test_a_decision_on_a_day_yaml_cannot_read_is_still_put_to_the_person(
     assert decision(result) == "ask" and "Ada Example" in reason(result)
 
 
+@pytest.mark.parametrize(
+    ("record", "held", "old", "new"),
+    [
+        ("design/methods_review.yaml", _UNDATED, "choice: adapt", "choice: adopt"),
+        ("design/methods_review.yaml", _UNDATED, "2026-02-30", "2026-02-31"),
+        ("literature/passages.yaml", '    judged_by: "Ada Example"\n    judged_on: 2026-02-30\n'
+         '    support: supports\n', "support: supports", "support: partly"),
+    ],
+)  # fmt: skip
+def test_an_edit_of_a_record_yaml_cannot_read_is_put_to_the_person(
+    in_claude_code: Path, record: str, held: str, old: str, new: str, capsys
+) -> None:
+    """Round 2 of #386: a decision in a file already unreadable was known by where its
+    decider stood and who it was, so an edit beside them was not asked about."""
+    path = in_claude_code / record
+    text = path.read_text(encoding="utf-8")
+    if record.endswith("passages.yaml"):
+        text = text.replace('    locator: "Abstract, Results"\n',
+                            '    locator: "Abstract, Results"\n' + held)  # fmt: skip
+    else:
+        text = text.replace("        # The decision is the author's", held + "        #", 1)
+    path.write_text(text, encoding="utf-8")
+    payload = _writes(in_claude_code, "Edit", file_path=str(path), old_string=old, new_string=new)
+    assert decision(run("guard-write", payload, capsys)) == "ask"
+
+
+@pytest.mark.parametrize(
+    ("line", "named"),
+    [
+        ('decided_by: "Example, Ada"\n', "Example, Ada"),
+        ("decided_by: 'Ada Example'  # who\n", "Ada Example"),
+        ("{decided_by: Bo, decided_on: 2026-02-30}\n", "Bo"),
+        ("decided_by: >-\n  Ada Example\n", "nobody named"),
+        ("decided_by: &who Ada\n", "nobody named"),
+        ("decided_by:\n", "nobody named"),
+    ],
+)
+def test_the_person_named_in_a_record_yaml_cannot_read_is_its_scalar(
+    line: str, named: str
+) -> None:
+    """Round 2 of #386: the name was the line's rest up to a comma, quoted or not."""
+    from manuscript_guard.hooks import _DECIDED_BY, _named_after
+
+    assert _named_after(line, _DECIDED_BY.search(line), "nobody named") == named
+
+
 def test_a_label_changed_under_a_decision_is_put_to_the_person(
     in_claude_code: Path, capsys
 ) -> None:

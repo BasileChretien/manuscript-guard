@@ -77,6 +77,7 @@ from manuscript_guard.gates.custodian import check_restricted_inputs, check_smal
 from manuscript_guard.gates.data_sources import check_data_sources, check_statement_sources
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.figure_alt import check_figure_alt
+from manuscript_guard.gates.figure_colours import check_figure_colours
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
 from manuscript_guard.gates.related import check_related
@@ -151,6 +152,7 @@ def _run_gates(
         ("G2", lambda: check_bound_units(project, results)),
         ("G3", lambda: check_figures(project, results)),
         ("G3", lambda: check_figure_alt(project, namespace, chosen)),
+        ("G3", lambda: check_figure_colours(project)),
         ("G10", lambda: check_figure_reviews(project, content_digest)),
         ("G7", lambda: check_citations(project, literature)),
         ("G7", lambda: check_literature_chain(project, literature)),
@@ -2425,6 +2427,33 @@ def cmd_reworded(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_proof(args: argparse.Namespace) -> int:
+    """Compare the publisher's proof with the document sent, and list the corrections.
+
+    Exit 1 where the proof needs a correction, 0 where it needs none, and 2 where there is
+    nothing to compare: no proof that can be read, no document sent, or a proof that reads
+    as too little of it. Nothing is sent, and nothing is written but `--out`."""
+    from manuscript_guard.proof import NotSent, NotThisProof, UnreadableProof, check_proof
+    from manuscript_guard.proof.report import as_json, markdown, render
+
+    if not args.proof.is_file():
+        print(f"manuscript-guard proof: {args.proof} does not exist", file=sys.stderr)
+        return 2
+    project, _ = load_project(args.path)
+    try:
+        report = check_proof(project, args.proof, against=args.against,
+                             supplementary=args.supplementary)  # fmt: skip
+    except (NotSent, UnreadableProof, NotThisProof) as exc:
+        print(f"manuscript-guard proof: {exc}", file=sys.stderr)
+        return 2
+    print(as_json(report) if args.json else render(report, project.root))
+    if args.out is not None:
+        args.out.write_text(markdown(report), encoding="utf-8", newline="\n")
+        if not args.json:
+            print(f"\nThe corrections are written to {args.out}, to paste into your reply.")
+    return 1 if report.corrections else 0
+
+
 def cmd_render(args: argparse.Namespace) -> int:
     """Substitute bindings into build/, without producing a document yet."""
     project, _ = load_project(args.path)
@@ -3293,6 +3322,51 @@ def cmd_search(args: argparse.Namespace) -> int:
         raise RuntimeError("the search's answer would have printed a key or the contact address")
     print(said)
     return 0 if proposals.answered(result) else 1
+
+
+def cmd_dictionary(args: argparse.Namespace) -> int:
+    """Write the data dictionary out for whoever builds the form: REDCap's data dictionary,
+    a plain CSV, or the form's outline. Each is written only where the dictionary reads and
+    the shape can hold it; nothing is written on a refusal."""
+    import os
+
+    from manuscript_guard.contracts.dictionary import DICTIONARY, load_dictionary
+    from manuscript_guard.dictionary_export import ExportRefused, outline, plain_csv, redcap
+
+    wanted = [(target, make) for target, make in
+              ((args.redcap, redcap), (args.csv, plain_csv), (args.outline, outline))
+              if target is not None]  # fmt: skip
+    if not wanted:
+        print("say what to write: --redcap, --csv or --outline", file=sys.stderr)
+        return 2
+    # One file under two spellings, out.csv and OUT.csv on Windows, is one file (round 2).
+    if len({os.path.normcase(target.resolve()) for target, _make in wanted}) < len(wanted):
+        print("each of --redcap, --csv and --outline needs a file of its own", file=sys.stderr)
+        return 2
+    project, _ = load_project(args.path)
+    dictionary, report = load_dictionary(project)
+    if dictionary is None:
+        if report.ok:
+            print(f"there is no {DICTIONARY.as_posix()} to write out", file=sys.stderr)
+            return 2
+        print(report.render(project.root))
+        return 1
+    try:
+        written = [(target, make(dictionary)) for target, make in wanted]
+    except ExportRefused as refused:
+        print(f"nothing written: {refused}", file=sys.stderr)
+        return 1
+    for target, made in written:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(made.text.encode("utf-8"))
+        except OSError as exc:
+            print(f"cannot write {target}: {exc.strerror or exc}", file=sys.stderr)
+            return 1
+        print(f"wrote {target}")
+        for said in made.left_out:
+            print(f"  left out {said}")
+    return 0
 
 
 def cmd_style(args: argparse.Namespace) -> int:
@@ -4289,6 +4363,33 @@ def build_parser() -> argparse.ArgumentParser:
     explain.add_argument("file", type=Path)
     explain.set_defaults(func=cmd_explain)
 
+    proof = sub.add_parser(
+        "proof",
+        help="compare the publisher's proof with the document sent, and list the corrections",
+        description="Reads the typeset proof (PDF, JATS XML, HTML or text) and holds it to "
+        "the document in the submission pack, part by part and table cell by cell, and its "
+        "title page to authors.yaml. A changed number, sign, decimal mark, unit, citation, "
+        "reference, name, affiliation, ORCID iD or e-mail address, or a part the proof "
+        "leaves out, is a correction; a copy-editor's change of words is shown for you to "
+        "accept or query. Nothing is sent.",
+    )
+    proof.add_argument("proof", type=Path, help="the proof: .pdf, .xml, .html or .txt")
+    proof.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    proof.add_argument(
+        "--against", type=Path, metavar="DOCX",
+        help="the document to compare with, where it is not the submission pack's",
+    )  # fmt: skip
+    proof.add_argument(
+        "--supplementary", action="store_true",
+        help="the proof is of the supplement, typeset as its own document",
+    )  # fmt: skip
+    proof.add_argument(
+        "--out", type=Path, metavar="FILE",
+        help="also write the corrections as a numbered list, to paste into the reply",
+    )  # fmt: skip
+    proof.add_argument("--json", action="store_true", help="the report as JSON")
+    proof.set_defaults(func=cmd_proof)
+
     impact = sub.add_parser(
         "impact",
         help="list what depends on a file: results, sentences, figures, Methods, readings "
@@ -4506,6 +4607,17 @@ def build_parser() -> argparse.ArgumentParser:
         "folder is in, if any",
     )
     search.set_defaults(func=cmd_search)
+
+    dictionary = sub.add_parser(
+        "dictionary",
+        help="write the data dictionary out: REDCap's data dictionary, a plain CSV or the "
+        "form's outline",
+    )
+    dictionary.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    dictionary.add_argument("--redcap", type=Path, help="REDCap's data dictionary, as CSV")
+    dictionary.add_argument("--csv", type=Path, help="one row per variable, as CSV")
+    dictionary.add_argument("--outline", type=Path, help="the form's outline, as Markdown")
+    dictionary.set_defaults(func=cmd_dictionary)
 
     style = sub.add_parser(
         "style",

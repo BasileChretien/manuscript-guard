@@ -27,6 +27,8 @@ renv/staging/
 # explicitly for the same reason as above.
 example/build/
 *.docx
+# Documents Word itself saved, which the tests read as Word writes them.
+!tests/data/word/*.docx
 *.pdf
 !profiles/**/*.pdf
 

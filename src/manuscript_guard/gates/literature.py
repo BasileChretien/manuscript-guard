@@ -60,7 +60,8 @@ GATE = "G7"
 # list is a guard against the careless case, not the determined one, and it should not
 # insult people to do that job.
 _MODEL_NAME = re.compile(
-    r"\b(claude|gpt|chatgpt|o[1-4]\b|gemini|llama|mistral|copilot|"
+    # The agent tools the plugin runs in, and the models they run (round 1 of #374).
+    r"\b(claude|gpt|chatgpt|o[1-4]\b|gemini|llama|mistral|copilot|codex|sonnet|opus|haiku|"
     r"anthropic|openai|deepseek|qwen|grok|llm)\b"
     # Standalone words only: "an AI", "a bot", "assistant". Never as part of a name.
     r"|(?<![\w-])(?:bot|assistant|artificial\s+intelligence)(?![\w-])"

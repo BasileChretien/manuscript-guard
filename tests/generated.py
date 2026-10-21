@@ -201,7 +201,11 @@ def numbered_displays(
 
     Some displays have a caption beside them, typed or opened by their ref: under a figure,
     above or under a table. Two are planted wrong in every example, naming another display
-    of the main text: one under a figure and one above a table.
+    of the main text: one under a figure and one above a table. A table outside `main.md` may
+    go uncited where it is placed, so that it stands straight under the block before it, and
+    `supplementary/S2.md` ends in every example with two tables placed one after the other
+    with a caption between them, which names one of them (round 1 of #381: it was held to
+    both).
 
     Returns each file's text by its path under `manuscript/`; what each ref and num binding
     prints, by its file and the offset it starts at; and the findings the planted pointers
@@ -216,7 +220,7 @@ def numbered_displays(
         (True, "table"): draw(st.integers(1, 2)),
         (True, "figure"): draw(st.integers(0, 2)),
     }
-    keys = iter(draw(st.permutations([f"k{index}" for index in range(12)])))
+    keys = iter(draw(st.permutations([f"k{index}" for index in range(16)])))
     placed: dict[str, list[tuple[str, str]]] = {
         file: [] for files in DISPLAY_FILES.values() for file in files
     }
@@ -226,11 +230,16 @@ def numbered_displays(
             spread = not supplementary and kind == "table" and index < 2
             file = files[index] if spread else draw(st.sampled_from(files))
             placed[file].append((kind, next(keys)))
+    #: The two tables `supplementary/S2.md` ends with, one straight after the other.
+    pair = (next(keys), next(keys))
+    last = DISPLAY_FILES[True][-1]
     numbers: dict[tuple[str, str], tuple[bool, int]] = {}
     seen: dict[tuple[bool, str], int] = {}
     for supplementary, files in DISPLAY_FILES.items():
         for file in files:
             placed[file] = draw(st.permutations(placed[file]))
+            if file == last:
+                placed[file] += [("table", key) for key in pair]
             for kind, key in placed[file]:
                 number = seen[supplementary, kind] = seen.get((supplementary, kind), 0) + 1
                 numbers[kind, key] = (supplementary, number)
@@ -286,14 +295,22 @@ def numbered_displays(
         for file in files:
             parts: list[tuple[str, str | None, str | None]] = [("# Results\n\n", None, None)]
             for kind, key in placed[file]:
-                how = draw(st.sampled_from(("ref", "num")))
+                if key in pair:
+                    continue
+                # The main text's tables are all cited again at the end of `main.md`, which
+                # prints first, so one placed elsewhere need not be cited where it stands.
+                # The table whose caption is planted wrong is, so that only one table stands
+                # beside that caption.
+                uncited = kind == "table" and file != "main.md" and (kind, key) not in wrong
+                how = draw(st.sampled_from(("ref", "num", "none") if uncited else ("ref", "num")))
                 lead = f"{words().capitalize()} in "
                 if how == "ref":
                     parts.append((lead, f"{{{{ref.{kind}.{key}}}}}", whole(kind, key)))
-                else:
+                elif how == "num":
                     word = draw(st.sampled_from(_NUM_WORDS[supplementary, kind]))
                     parts.append((f"{lead}{word} ", f"{{{{num.{kind}.{key}}}}}", alone(kind, key)))
-                parts.append((".\n\n", None, None))
+                if how != "none":
+                    parts.append((".\n\n", None, None))
                 if kind == "table":
                     caption(file, kind, key, parts, "above")
                 parts.append((f"{{{{{kind}.{key}}}}}\n\n", None, None))
@@ -323,8 +340,14 @@ def numbered_displays(
                     printing = (lead, binding, printed)
                     parts.append(printing if printed else (lead + binding, None, None))
                     parts.append((".\n\n", None, None))
+            if file == last:
+                # Under the first table and above the second, naming one of them.
+                named = whole("table", draw(st.sampled_from(pair)))
+                first, second = (f"{{{{table.{key}}}}}" for key in pair)
+                parts.append((f"{first}\n\n{named}. {words()}\n\n{second}\n", None, None))
             write(file, parts)
     return texts, prints, planted
+
 
 #: Spaces a manuscript holds that are not the space bar's.
 SPACES = (

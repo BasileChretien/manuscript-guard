@@ -4096,6 +4096,64 @@ def test_a_caption_beside_a_display_that_names_another_is_said(
     assert bool(found) == said, _ref_findings(project)
 
 
+@pytest.mark.parametrize(
+    "between",
+    [
+        # each caption above its table
+        "**Table 1.** Characteristics\n\n{{table.baseline}}\n\n**Table 2.** Counts\n\n"
+        "{{table.two_by_two}}",
+        # each caption under its table
+        "{{table.baseline}}\n\nTable 1. Characteristics.\n\n{{table.two_by_two}}\n\n"
+        "Table 2. Counts.",
+    ],
+)
+def test_a_caption_between_two_tables_is_held_to_the_one_it_names(
+    project: Path, between: str
+) -> None:
+    """Round 1 of #381: a caption between two tables was held to both, so the second's
+    caption above it was said to caption the first."""
+    _rewrite(project, ("\n{{table.two_by_two}}\n", "\n"), ("{{table.baseline}}", between))
+    assert [s for s in _ref_findings(project) if s[0] == "caption-names-another"] == []
+
+
+@pytest.mark.parametrize(
+    "typed",
+    ["**Table 2.** Counts\n\n{{table.two_by_two}}", "## Table 2. Counts\n\n{{table.two_by_two}}",
+     "{{table.two_by_two}}\n\nTable 2. Counts.", "{{ref.table.two_by_two}}. Counts\n\n"
+     "{{table.two_by_two}}"],
+)  # fmt: skip
+def test_a_table_captioned_where_it_stands_gets_no_second_number(
+    project: Path, typed: str
+) -> None:
+    """Round 1 of #381: a caption typed beside a table and the build's numbered caption
+    printed "Table 2" twice."""
+    _rewrite(project, ("{{table.two_by_two}}", typed))
+    printed = _assembled_raw(project)["main.md"]
+    assert "\n: Contingency table underlying" in printed, printed
+    assert ": Table 1. Reports by drug group." in printed
+
+
+@pytest.mark.parametrize(
+    ("caption", "said"),
+    [
+        ("Table 1 Reports by drug group.", False),
+        ("**Table 1.** Reports by drug group.", False),
+        ("Table 1 \N{EN DASH} reports by drug group.", False),
+        ("Table 3 Reports by drug group.", True),
+        ("Figure 2. Reports by drug group.", True),
+    ],
+)
+def test_an_emitted_caption_numbered_any_way_is_printed_once_and_held(
+    project: Path, caption: str, said: bool
+) -> None:
+    """Round 1 of #381: a number with no stop after it, or in bold, got a second one; and a
+    table's caption that opens with a figure's number got none, and was not held."""
+    _emit_caption(project, "baseline", caption)
+    assert f"\n: {caption}\n" in _assembled_raw(project)["main.md"] + "\n"
+    found = [s for s in _ref_findings(project) if s[0] == "caption-names-another"]
+    assert bool(found) == said, found
+
+
 def test_a_wrong_caption_fails_from_the_internal_review(project: Path) -> None:
     from manuscript_guard.cli import _run_gates
 

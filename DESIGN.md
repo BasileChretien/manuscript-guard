@@ -494,16 +494,19 @@ know the number, which depends on where the text places the table. A figure's ca
 paragraph the author writes under it, and opens with `{{ref.figure.forest}}.`, which prints
 "Figure 1." and is styled as a caption by the build as a typed "Figure 1." always was.
 
-A caption the analysis numbered already, "Table 2. Baseline ...", is printed as it is: adding
-the number again would print "Table 2. Table 2.", in every paper that numbered its own
-captions before. G2 holds such a number to the table's, and so it holds a caption typed
-beside a display: the block directly under a figure placed by its binding, or directly
-above or under a table, when it opens with a pointer that cites nothing there (a caption, or
-a heading set straight above the table). One that names another display than the one it
+A caption the analysis numbered already, "Table 2. Baseline ...", "Table 2 Baseline" or
+"**Table 2.** Baseline", is printed as it is: adding the number again would print "Table 2.
+Table 2.", in every paper that numbered its own captions before. So is the emitted caption
+of a table a caption is typed beside, as a paragraph or a heading set straight above it,
+which was how a paper numbered its tables before refs: the typed caption prints the number
+(round 1 of #381 found both printed twice). G2 holds an emitted caption's number to the
+table's, and so it holds a caption typed beside a display: the block directly under a
+figure placed by its binding, or directly above or under a table, when it opens with a
+pointer that cites nothing there (a caption, or a heading). One that names no display it
 stands beside, typed or printed by a ref, is `caption-names-another`, failing from the
-internal review as the other pointer findings do. A heading with prose between it and the
-table, as the example's supplement writes "## Table S1. Code lists", captions nothing and is
-not held.
+internal review as the other pointer findings do; a block between two tables is the caption
+of whichever it names. A heading with prose between it and the table, as the example's
+supplement writes "## Table S1. Code lists", captions nothing and is not held.
 
 ## The corruption harness
 

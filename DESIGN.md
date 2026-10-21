@@ -4006,8 +4006,12 @@ not read as a name, `glm()` or `stats::glm`; a result's key has a dot; nine valu
 `TRUE`, `FALSE`, `None`, `True`, `False`, `NaN` and `Inf`, are not read; nor is what
 masking hides, a fence or a comment. A heading that names both the planned results and a
 change is the Deviations where the change comes first, as the list is read. The plan's
-title is never its Deviations: "Statistical analysis plan (amendment 2)" heads the plan
-(round 1), and it is the title where the heading after it is deeper. In the other direction, an entry is needed where the plan names it, where
+title is not its Deviations: "Statistical analysis plan (amendment 2)" heads the plan
+(round 1). The title is a first heading at level 1 with a deeper one after it, whatever
+follows, so an appendix at its level leaves it a title; a first heading at level 2 is a
+section, so a plan with no title that opens with "## Amendment history" is not read there
+(round 2; Basile chose the level, 2026-10-21). In the other direction, an entry is needed
+where the plan names it, where
 a variable the plan needs is derived from it or asked under it (`applies_if`), again and
 again, where it names a reporting-checklist item, or where it gives a reason, and so are the
 inputs and the condition of an entry kept for an item or a reason (round 1); any other is
@@ -7292,7 +7296,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   `NA_real_` or a code written `M`. A heading with "deviation" in it is the Deviations, as G12
   reads the plan, so a subsection "Standard deviation of `bmi_kg`" is not read (round 1).
   A derivation cycle is said once for each group of variables derived from one another,
-  not once for every cycle in it. The Deviations are left out whole, so a variable named
+  not once for every cycle in it. A plan written in `#` sections with no title, opening
+  with `# Amendment history` over a `## Version 2` that names a dropped variable, takes the
+  history for a title and reads it, so the dropped variable is not said to be unused (round
+  2; `test_a_history_at_the_title_s_level_is_read_as_a_title`). A title followed by a
+  heading at its own level is the Deviations of its text up to that heading, where it
+  names an amendment. The Deviations are left out whole, so a variable named
   only there is unused even where the change kept it. That an entry is needed is all that
   is checked: not that the plan uses it as its type says, that the analysis's own
   `variable()` declarations agree with the dictionary, or that an instrument's `citation` is

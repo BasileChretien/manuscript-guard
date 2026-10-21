@@ -188,6 +188,27 @@ def test_a_title_that_names_an_amendment_heads_the_plan_and_not_its_deviations()
     assert [n.name for n in used] == ["age"] and [n.name for n in undefined] == ["notes"]
 
 
+def test_a_plan_with_no_title_that_opens_with_its_amendments_does_not_read_them() -> None:
+    """Round 2: a first heading at any level with a deeper one after it was the title, so a
+    plan opening with its amendment history read it. Only a level-1 heading is a title
+    (Basile, 2026-10-21)."""
+    used, _undefined = variables_named(
+        "## Amendment history\n\n### Version 2\n\n`smoking` dropped.\n\n## Analysis\n\n`age`\n",
+        ["age", "smoking"],
+    )
+    assert [n.name for n in used] == ["age"]
+
+
+def test_a_history_at_the_title_s_level_is_read_as_a_title() -> None:
+    """The one shape the level-1 rule misreads, written in Known gaps: a plan in `#`
+    sections that opens with its amendment history."""
+    used, _undefined = variables_named(
+        "# Amendment history\n\n## Version 2\n\n`smoking` dropped.\n\n# Objectives\n\n`age`\n",
+        ["age", "smoking"],
+    )
+    assert [n.name for n in used] == ["smoking", "age"]
+
+
 def test_what_the_deviations_name_is_not_read(tmp_path: Path) -> None:
     plan = edited(PLAN, "None so far.", "We dropped `smoking`.\n\n### Later\n\nAnd `alcohol`.")
     entries = ENTRIES + ("  - {name: smoking, label: Smoking, definition: Smokes now., "

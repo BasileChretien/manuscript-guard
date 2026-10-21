@@ -98,11 +98,13 @@ def _first(found: dict[str, Named], named: Named) -> None:
 def _deviations(text: str) -> list[tuple[int, int]]:
     """Where each Deviations section is, from its heading to the next heading at its level
     or above. The plan's title is none: "Statistical analysis plan (amendment 2)" encloses
-    the plan rather than heading its Deviations (round 1). The title is the first heading
-    where the next is deeper, whatever comes later: an appendix at the title's level after
-    the plan does not make the title the Deviations of everything before it."""
+    the plan rather than heading its Deviations (round 1). The title is a first heading at
+    level 1 with a deeper one after it, whatever comes later: an appendix at the title's
+    level does not make the title the Deviations of everything before it. A first heading at
+    level 2 is a section, so a plan with no title that opens with "## Amendment history" is
+    not read there (round 2; Basile chose the level, 2026-10-21)."""
     headings = find_headings(text)
-    titled = len(headings) > 1 and headings[1].level > headings[0].level
+    titled = len(headings) > 1 and headings[0].level == 1 and headings[1].level > 1
     found = []
     for index, heading in enumerate(headings):
         if (titled and index == 0) or not is_deviations(heading.title):

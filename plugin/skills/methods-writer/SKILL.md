@@ -240,9 +240,30 @@ parameters:
   estimator: "reporting odds ratio"
 ```
 
-Each is checked against the Methods text. It is a small check — presence, not correctness —
-but the significance threshold and the software version are exactly what a reviewer queries
-and exactly what gets left behind when an analysis is redone.
+Each is checked against the Methods text, the main text's and the supplement's. It is a small
+check — presence, not correctness — but the significance threshold and the software version
+are exactly what a reviewer queries and exactly what gets left behind when an analysis is
+redone.
+
+## Methods in the supplement
+
+Supplementary Methods are held to the code as the main text's are. Name them so, in a file
+under `manuscript/supplementary/`: "Supplementary methods", "eMethods 1. Data source", "S1
+Methods", "Appendix 1: Methods". The text under such a heading is read with the Methods, and
+so is a section under it whose own title names a method too ("Statistical analysis",
+"eMethods 2"). A table or a paragraph of results under it, "Table S2. The adjusted model", is
+not, as the results under the main text's Results are not. A parameter in `methods.lock` is
+found stated in the supplement's Methods, and G2 lets a pre-set threshold through there as it
+does in the Methods, fails a declared parameter typed instead of bound, and G15 reads a
+model's kind typed there. `methods --explain` lists their paragraphs that point at no step.
+An anchor points at its step wherever it stands. A section called only "eAppendix 2" is not
+the Methods, and nothing in it is compared with the code. "Detailed methods" is read for the
+lock's parameters and not by G2, G15 or `methods --explain`: use one of the names above.
+
+A lock written before G9 read the supplement was read against the main text's Methods only.
+Where the supplement has Methods, `check` warns once (`methods-supplement-unreconciled`).
+Read the supplement's Methods against the code, then run `manuscript-guard methods
+--reconcile`. As everywhere in this skill, do not run it only to clear the warning.
 
 ## What this cannot do
 

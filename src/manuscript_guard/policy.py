@@ -189,6 +189,8 @@ BINDS_AT = {
     # "Figures {{num.table.a}}". The binding's number is right; the words go stale as the
     # display moves, as a typed pointer does.
     "pointer-word-mismatch": INTERNAL_REVIEW,
+    # A caption beside a table or a figure, typed or emitted, that names another one.
+    "caption-names-another": INTERNAL_REVIEW,
     "cited-out-of-order": INTERNAL_REVIEW,
     "display-not-cited": INTERNAL_REVIEW,
     # A reference list is printed for others to read from the finished draft on. While
@@ -239,6 +241,10 @@ BINDS_AT = {
     # A sealed reading whose words changed: a major finding softened or deleted binds
     # nothing any more, so this binds where the major findings do.
     "reading-altered": SUBMISSION,
+    # A co-author's comment from Word, filed by `import`: answered before the paper goes
+    # anywhere, whatever its severity, and its record held to what was filed.
+    "comment-unanswered": SUBMISSION,
+    "comments-altered": SUBMISSION,
 }
 
 

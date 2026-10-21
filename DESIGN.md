@@ -485,6 +485,32 @@ the binding prints what is typed, character for character: "Table S1" under "Tab
 not write ("Tables 1-3") is not offered. With `--apply` the example's every pointer is bound
 and its build prints what it printed before.
 
+### A caption carries its display's number
+
+Basile's third choice of 2026-10-20: the build prints an emitted table's caption after the
+table's number, "Table 2. Reports by drug group.", from the same count and in the journal's
+form, and a table that emits no caption gets its number alone as one. The analysis cannot
+know the number, which depends on where the text places the table. A figure's caption is a
+paragraph the author writes under it, and opens with `{{ref.figure.forest}}.`, which prints
+"Figure 1." and is styled as a caption by the build as a typed "Figure 1." always was.
+
+A caption the analysis numbered already, "Table 2. Baseline ...", "Table 2 Baseline" or
+"**Table 2.** Baseline", is printed as it is: adding the number again would print "Table 2.
+Table 2.", in every paper that numbered its own captions before. So is the emitted caption
+of a table that has a caption typed beside it, as a paragraph or a heading set straight
+above it, which was how a paper numbered its tables before refs: the typed caption prints
+the number (round 1 of #381 found both printed twice). A caption between two tables is the
+caption of the one it names, and the other keeps its number (round 2). A typed caption's
+number is set off by a stop, a colon, the end of its bold or a dash between spaces: "Table 2
+shows the counts." above a table is a sentence. G2 holds an emitted caption's number to the
+table's, and so it holds a caption typed beside a display: the block directly under a
+figure placed by its binding, or directly above or under a table, when it opens with a
+pointer that cites nothing there (a caption, or a heading). One that names no display it
+stands beside, typed or printed by a ref, is `caption-names-another`, failing from the
+internal review as the other pointer findings do; a block between two tables is the caption
+of whichever it names. A heading with prose between it and the table, as the example's
+supplement writes "## Table S1. Code lists", captions nothing and is not held.
+
 ## The corruption harness
 
 The claim "no stale number" is worth exactly as much as the evidence that the gate catches
@@ -959,8 +985,9 @@ duplicated key, where both keep the last.
 
 Status: designed 2026-10-20. Built: the first half of step 1, the format, the reader's file
 list, `two-formats`, `other-format-file` and `not-read-in-latex`; step 2, the scanner and
-its mask; and step 3, the include tree and its refusals under BUILD. No gate reads the
-manuscript's prose through them yet. Where the design depends on
+its mask; step 3, the include tree and its refusals under BUILD; and the first half of step
+4, the bindings, G2 but for its pointers to tables and figures, the custodian's counts and
+G1's synthetic inputs, held to the example by its LaTeX twin. Where the design depends on
 what LaTeX does, the pull request that relies on it checks the statement against TeX Live and
 MiKTeX and records the measurement. On the author's machine, 2026-10-20: MiKTeX 24.4 and
 latexmk 4.88, with pdfLaTeX, LuaLaTeX, XeLaTeX, BibTeX and Biber on PATH.
@@ -1342,8 +1369,10 @@ The result is compiled and packed by the code above, and checked three times:
   runs it against the example's analysis, results, figures and fictional citekeys. A test holds
   the twin and the example to the same bindings and headings, and to equal G2 counts, so the
   twin has no `\thanks`; the citations join the comparison when the citation reader does.
-- **Corruption cases.** Each manuscript case in `tests/test_corruption.py` runs on the twin too,
-  with each `\mg` replaced by its value. Further cases:
+- **Corruption cases.** Each manuscript case in `tests/test_corruption.py` is to run on the twin
+  too, with each `\mg` replaced by its value. G2's cases run on it from step 4, and each other
+  gate's join them as the gate moves; until then a gate's Markdown cases stand for it. Further
+  cases:
   - a key mistyped, and a binding cut short;
   - a number in a `tabular`, a `\footnote`, a caption, a postnote, a `\newcommand` body and an
     input file;
@@ -1436,6 +1465,33 @@ The result is compiled and packed by the code above, and checked three times:
 - In the preamble, `\g@addto@macro\abstract{…}` or `\pretocmd\abstract{…}` reads the group
   after `\abstract` as an abstract, and so is one in the branch of a conditional that is not
   taken, both read there (round 3 of #385).
+- G2 does not read a LaTeX manuscript's pointers to tables and figures: "Table~2" passes as
+  a cross-reference, as in Markdown, and is not held to the tables placed. It says so
+  (`not-read-in-latex`), which fails at submission. LaTeX numbers its floats itself, and a
+  `\ref` to a label nobody defined is the compile's to refuse (step 9).
+- A number typed as a LaTeX heading's or list item's numbering, `\section*{2.1 Methods}`, is
+  a number like any other: LaTeX numbers them, so the rules that pass Markdown's typed
+  numbering hold nowhere in a `.tex`.
+- A unit after a LaTeX binding is compared only where nothing but spaces stands between them
+  and inside it no command or maths: `\mg{results.dose}~$\mu$g`, `\textmu g` and siunitx's
+  `\si{\micro\gram}` are not compared with the unit emitted.
+- `\mg` is also siunitx's milligram, inside its commands. There it is not read as a binding,
+  and `\mg{results.key}` there is refused. The values file of the second half of step 4 must
+  define `\mg` so that siunitx's stays its own inside its commands.
+- A `verbatim` names no language, so its numbers are said once to be unread, as an untagged
+  fenced block's are, with the fenced block's hint. An `lstlisting`'s `language=` is read
+  where its options stand on the `\begin` line and hold no bracket: options run over lines,
+  a dialect, `language=[Sharp]C`, and `\lstset{language=R}` leave the language unread.
+- A command not in the table has its arguments read, by design, so layout the table lacks,
+  `\titlespacing` in the body, or a primitive with a size and no braces, `\vskip 6pt`, gives
+  an unclassified number now that G2 reads LaTeX. Each found goes into the table. A
+  definition whose body follows a comment, `\renewcommand{\arraystretch}%` with `{1.5}` on
+  the next line, has its body read as a group, so a parameter's size there is a number too.
+- physics' `\qty[a = b]` holds an `=`, so it is taken for siunitx's option list and blanked
+  (round 2 of #400). A siunitx key with no `=`, `\qty[sticky-per]`, is taken for a value and
+  read as prose words; it holds no number (round 3).
+- Past a refusal a file's bindings are found by their shape, in a comment too, so that a
+  result quoted there is not said to be quoted nowhere.
 - A class or package that changes how a character is read, beyond those refused, is not seen.
 - A package not in the refused list that prints a table or text from a data file is not seen:
   what it prints is read by no gate.
@@ -1481,11 +1537,29 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    reads. `build/latex_check.py` puts each refusal under BUILD at its file and line, and
    warns of a file nothing inputs. Tests: `tests/test_latex_structure.py`, the corruption
    cases, `latex sections`, and `latex_trees()` with two `BROKEN` rules.
-4. Bindings and G2. `bindings`, `uncommented`, `table_at`, `mgvalues.sty` and its escape
-   table, `values` and its README row, `values-file-stale`; G2 and the custodian's counts
-   moved, and G1's synthetic-input check. Tests: the twin, G2's corruption cases on it,
-   `latex bindings`. The escape table's compile test needs LaTeX, so it skips on CI until step
-   9 installs TeX Live, and its first measurement is recorded in the pull request.
+4. Bindings and G2, in two pull requests. The first, built: the scanner records each `\mg`,
+   what looks meant for one, the tables an author types and the listings; `views.py` gives
+   the bindings as `Placeholder` records, the heading chain as a `Chain`, `in_table` (the
+   design's `table_at`), and the file as Markdown writes it, at the same offsets, where
+   sentences, labels and units are read; the classifier's rules read it with the reader's
+   NUL taken out and no heading or list numbering. G2 reads every file of both documents
+   through them, its pointers to tables and figures apart, which it says it does not read;
+   the bound units, the custodian's counts and G1's synthetic inputs read `bound_files`.
+   siunitx's commands are in the table: their number is prose and their units are blanked,
+   `\mg` in one is siunitx's milligram, and a binding there is refused, as is one in a
+   listing or a `\verb`. Tests: the twin, `tests/test_latex_twin.py`, which binds the
+   example's keys under the same headings and gets G2's counts and findings; G2's corruption
+   cases on it; `latex bindings`; `latex_bound()` with eight `BROKEN` rules. Round 1 found a
+   layout parameter defined again, `\renewcommand{\arraystretch}{1.5}`, a font's size and
+   columns failing G2 once it read LaTeX: the parameters' bodies are blanked (`PARAMETERS`),
+   and `\fontsize`, `multicols`, booktabs' `\addlinespace`, `\setstretch` and
+   `\enlargethispage` are in the table. `\qty` and `\unit` read what their brackets hold
+   where it is no option list, since physics and the units package give those names other
+   meanings (`[o]`, round 2). `uncommented` waits
+   for G7's quotations and G9, which read it. The second: `mgvalues.sty` and its escape table,
+   `values` and its README row, `values-file-stale` and `values-file-missing`. The escape
+   table's compile test needs LaTeX, so it skips on CI until step 9 installs TeX Live, and its
+   first measurement is recorded in the pull request.
 5. Citations and G7. `cite.py`; G7, `lookup` and G6's citation positions moved; the twin's
    comparison with the example takes in the citations. Tests: `latex citations`, G7's cases on
    the twin.
@@ -2990,6 +3064,58 @@ take numbered headings and
 through under its results. They read fewer headings than G4 counts, and a Methods they miss
 makes them report a number, not pass one.
 
+**The supplement's Methods are read with the paper's.** Every gate read
+`manuscript/supplementary/`, and G9 read the Methods of the main text alone, because G4's
+required section is the main text's. A parameter of the lock that eMethods stated was
+reported absent, and in a paper whose Methods are all in its supplement, as a research
+letter's often are, the lock's parameters were compared with no text: a wrong one was told
+only as `methods-not-found`. Since 2026-10-21 (Basile's choice) G9 keeps one ledger. It reads
+the main text's Methods as before, then, in each file of the supplement, every section that
+the main text's Methods would be found as: a heading holding "methods", "Supplementary
+methods", "eMethods 1. Data source", "S1 Methods" or "Appendix 1: Methods", with no Results
+heading over it. Every one and not the first, since a supplement numbers its Methods and puts
+its tables between them. Of each it reads its own text and that of each section under it
+that names a method too ("Statistical analysis", "eMethods 2"), and not everything under it,
+as it reads the main text's Methods. A supplement often has "Supplementary methods" over all
+of it, as the example's has: its tables, a paragraph of results, its reporting statement. As
+first written, the whole of such a file was the Methods, and a P the paragraph reported
+passed G2 as a threshold chosen in advance, which main failed as unbound (round 1 of #395;
+Basile then chose the narrower reading for G2, G15 and G9 alike). A parameter of the lock
+is stated where either states it. The rest of the supplement is not read for one: an eTable
+holds numbers of every kind, and a parameter matched in one would be no check. G4's required
+Methods are still the main text's. The anchors were read in every file already, so a claim
+in the supplement was held to its step, and a step pointed at from there was one some text
+describes. The supplement's paragraphs that point at no step are now listed by
+`methods --explain` with the main text's, where G2 reads them as the Methods.
+
+G2 and G15 found the Methods by names of their own (`classify.METHODS_SECTIONS`), none of
+them a supplement's. Under "eMethods 1" a threshold typed as a convention was a number
+nothing classified, with the wrong advice, and the kind of the fitted model typed there was
+never read. `classify.SUPPLEMENT_METHODS` holds the supplement's names: "Supplementary",
+"Supplemental" or "Online methods", "eMethods" and "S1 Methods", each with a number or the
+title of its part after it, and "Methods" under the label of an appendix or a supplement
+("Appendix 1: Methods", "Appendix S1. Supplementary methods", "Supplement 1. eMethods 2").
+`is_methods` takes them where one opens the run of headings, innermost outwards, that each
+name a method: under "eMethods 1", or "Supplementary methods" over "Statistical analysis",
+and not under "Supplementary methods" over "Table S2. The adjusted model". The main text's
+names hold everything under them, as they always have. G9's paragraphs that point at no step
+are found under the same headings. A name G9 reads and these do not, "Supplementary methods
+and results" or "Detailed methods", is read as the main text's "Methods and results" is. No supplement's name puts a heading first
+among the main text's Methods: in a main text with "Laboratory methods" and then
+"Supplementary methods", the first is still the one read.
+
+**A lock read against the main text alone stays valid, and is said of.** The lock holds no
+digest of the Methods: the analysis files' digests, the parameters, and each pair's words and
+its code's digest. Reading the supplement makes no lock wrong and needs no migration. But a
+lock written when G9 read the main text's Methods alone may vouch for eMethods nobody read
+against the code. `methods --reconcile` now writes `manuscript-guard/methods-lock/2`. A lock
+of `/1`, or of no schema or an empty one, that records the files, in a project whose
+supplement has Methods,
+is said of once, `methods-supplement-unreconciled`, a warning at every stage that names the
+supplement's files, and its files and pairs are held as before. `methods --reconcile <step>`
+leaves the files and their schema as they were, since nobody read the files again. A lock of
+pairs alone claims no reading of the files and is written `/2`.
+
 The abstract is found the same way for G4's limit and its headings, G14's regions and the
 word count: "Abstract" or "Structured abstract", numbered or not, or the title the
 journal's profile gives it (`structure.abstract_title: Summary` for The Lancet). With a
@@ -3461,8 +3587,9 @@ warning.
 - A step no text points at is a warning.
 - A line of nothing but anchors inside a paragraph is a warning at every stage,
   `method-anchor-line`: the document ends the paragraph there.
-- A Methods paragraph that points at no step is counted, and listed by
-  `manuscript-guard methods --explain`, not reported as a finding. A paragraph on ethics
+- A Methods paragraph that points at no step, in the main text's Methods or the
+  supplement's, is counted, and listed by `manuscript-guard methods --explain`, not reported
+  as a finding. A paragraph on ethics
   approval or on the data source has no step to point at, and a warning nobody can clear is
   one that gets ignored.
 
@@ -5271,7 +5398,8 @@ and that what it says never goes into a shell command; `tests/test_plugin.py` ho
 five to it. The tool's own output sets such text apart as well: `import` prints a Word
 comment after "comment from <author> (<date>), quoted:", each line behind `> `, cut at 200
 characters, with every control character and bidirectional control shown as `?`; a
-no-break space is shown as it is. Before 2026-10-15 it
+no-break space is shown as it is. The comment it files is stored as written and shown the
+same way in G11's report. Before 2026-10-15 it
 printed the comment on the same line as the tool's words, and a comment that read like an
 instruction read like the tool's.
 
@@ -6701,6 +6829,141 @@ which the journal never sees; the marker `[AUTHOR: ...]` that the `reviewer-resp
 writes where the author still has to supply something; and the template's own text in a
 `comment`. Each warns during the revision and fails at submission, as the rest of G13.
 
+## The marked-up copy shows every change since the document sent
+
+At resubmission a journal asks for the revised manuscript twice: clean, and with every change
+since the last submission shown, as Word's tracked changes or highlighted. Made by hand, with
+Word's Compare on two files the author has to find, it shows whatever those two files
+differ by, and nobody checks that they are the two the journal and the revision hold. Basile
+asked for it on 2026-10-21 and chose the four terms that day from the recommendations put to
+him: the document the round kept as the one sent, an exact comparison of printed text, tracked
+changes with highlights on request, and an option of `build` that `submit` uses too.
+
+**What is compared.** The document the journal received against the revision as it is just
+built, both as a reader sees them, block by block and word by word (`markedup`). A number the
+analysis printed anew is a change like a word typed: the comparison is of what the two
+documents print, never of the source, so a re-run shows where it changed the text, a table's
+cells or the abstract, with nothing typed. A citation of a live build is a field, compared
+by what it cites (`citationfields`) and by the words it shows: a document sent after Zotero
+refreshed its fields, against a revision just built whose fields wait for a refresh, shows
+every citation changed. Compared by what it cites alone, the copy took the revision's words
+for both, read rejected as neither, and the check refused it (round 1 of #396). A citation of
+an offline build is its printed words, so a reference added shows in the text and in the list,
+and the numbers of a numeric style move as they do.
+
+**The supplement is held to the paper's rules** (Basile, 2026-10-21). It is built as its own
+document, and so it is kept by the round as its own document, compared by the same rules and
+marked up as its own copy, `build/marked-up/supplementary.docx`: a re-run shows in it as in
+the paper. `--since-supplement` names the supplement sent where the round kept none, and
+where neither gives one the build says that the supplement is not marked up, and why.
+`submit` packs it as `supplementary-marked-up.docx`.
+
+**Which document was sent.** `respond --open` keeps it, beside the rendered text it already
+kept, in `revision/round-<n>/submitted/`: the submission pack's document where that was built
+from the manuscript as it stands, and otherwise the one in `build/` that was, the paper and
+its supplement each. A document built from anything else is not what the journal received
+by the round's own measure (open the round before revising), and none is kept: the command
+says so, and where to put the file. `build --marked-up --since <file>` names the paper's for
+a round that kept none. Not rebuilt from the round's rendered text, which every round has:
+built with today's bibliography and figures, a reference corrected or a figure drawn again
+since would not show as changed.
+
+**How the two are lined up** (`markedup.align`). Blocks identical in print, their style and
+numbering included, are paired first, as many of them as can be in order: a longest common
+subsequence, found exactly (`align.common`, Hirschberg's division, after the ends the two
+share). `difflib`, tried first, keeps the longest run it meets: on a generated revision in CI
+it kept a moved paragraph in place and marked the six blocks it had passed as moved (round 1
+of #396). What lies between two such pairs is paired
+only where alike: two paragraphs that share more than half their words in order are one
+paragraph edited, a table with a table of as many columns, a row with a row that shares a
+cell, and in a cell its paragraphs in order whatever they say ("426" edited to "430"). What
+is left was deleted or inserted, and a paragraph moved is one of each. Within a paragraph the
+atoms are lined up the same way (`markedup.atoms`): a word, with the stops and commas inside
+it, so that "3.84" and "41,200" are one; a space; a mark; a tab; a picture; a note's
+reference; and, whole, a field, a link or an equation. An equation is compared by its
+structure: each element of it, the values of its own properties and its text, its runs' Word
+formatting left out, so that `x^2` made `x_2`, or an accent or a root taken off, is a change
+(round 1 of #396: compared by its letters, it was none, and the check, which reads no inline
+maths, passed the copy). A short unchanged stretch between two
+changes is taken into them, as diff-match-patch's clean-up does, where it holds no word or is
+shorter than the change on each side; two numbers apart stay two changes.
+
+**What is written** (`markedup.writer`). The copy is the revision's document with the changes
+in it, every one by the author "Revision", which names nobody, dated the day it is made. Text
+kept is the revision's runs. Text deleted is the sent document's runs, with their formatting,
+in `w:del`, and what it points at is carried into the copy's package under names of its own:
+a picture, the numbering of its list (a copy, so that a deleted item joins none of the
+revision's lists), a style the revision lacks, a footnote. A link deleted is written as its
+words. A word whose formatting alone changed keeps the revision's and records the old in
+`w:rPrChange`; a paragraph whose style or numbering changed records the old in `w:pPrChange`,
+a list's numbering compared by what it draws, since two builds number their lists in their
+own order. A table of the same columns is merged row by row and cell by cell, a row added or
+removed tracked as a row; a table of other columns, or whose cells span or merge, is replaced
+whole, with an empty paragraph tracked as deleted between the two, because Word runs two
+tables that touch into one. A footnote is merged word by word in its own part.
+
+**Every copy is checked before it is kept** (`markedup.verify`). With every change accepted
+it must read as the revision, and with every one rejected as the document sent, block by
+block as `docxtext` reads any document, roles, tables and figures included, with each
+footnote's text in the order the body refers to them. Rejecting is accepting the inverse
+(every insertion read as a deletion, every deletion as an insertion, every change of
+formatting the other way round), and accepting runs a paragraph whose mark was deleted into
+the one after it, as Word does. A copy that does not read so raises, and nothing is written:
+a copy that hid a change, or showed one never made, would be worse than none.
+
+**Word 16, as seen over COM on 2026-10-21.** Copies were opened in Word of two pandoc
+documents holding a re-run, a reworded sentence, a moved paragraph, a list item deleted, a
+cell re-run and a row added, a footnote reworded, one added and one removed, a figure
+replaced, a reference added, a heading made text and text made a heading, a link's address
+changed, an inline and a display equation changed, a paragraph deleted before a table, a
+table of other columns, a word made italic, and the document's last paragraphs deleted; and
+of the example, after its analysis was run again with another seed (74 revisions). Each
+opened without a repair. Accept All and Reject All, run on every story range as the button
+does (the document's `Revisions` holds the main text only, and a footnote's change stayed),
+left each reading as the revision and as the document sent, by the same reading the check
+uses; the first copy and Word's two are in `tests/data/word/`. Word rewrote an equation
+deleted whole as one deletion inside each of its runs, and read both.
+
+One thing Word cannot do is take away a story's last paragraph mark. Given a document whose
+last paragraph was deleted with its mark tracked as deleted, Accept All never returned, and
+Word had to be stopped. So the last paragraph of a story the writer merges, the document's,
+a cell's or a note's, keeps its mark untracked whatever became of it, and only its words are
+tracked: the
+paragraph is left empty where they go, and an empty paragraph reads as nothing
+(`writer._last_mark_kept`).
+
+**The highlighted copy** (`--highlight`), for a journal that asks for highlights: the tracked
+copy, once checked, with what was inserted highlighted yellow, what was deleted struck
+through, a change of formatting or style highlighted, and nothing tracked. A picture takes
+neither a highlight nor a strike, so the paragraph it stands in is shaded: yellow where it is
+new, red (`FFC7CE`) where it was taken out, and the old picture is kept. Round 1 of #396 found
+the old one left out and the new one unmarked, so that a figure drawn again by a re-run
+showed no change.
+
+**What is written back, and what is not.** A part the writer read and did not change is
+written back byte for byte; one it changed is written with every namespace it declared
+declared again on its root. ElementTree declares only the namespaces an element uses, and a
+part saved by Word, such as the styles of a journal's template, names others in
+`mc:Ignorable`, which Word takes for a corrupt document where they are not declared (round 1
+of #396). A part is compared by its tree, in ElementTree's names, which carry no prefix:
+compared by ElementTree's writing of it, a part left alone read as changed once other
+prefixes had been registered (round 2). And `build --marked-up` takes away the marked-up
+copies an earlier run left in `build/marked-up/`, known by their property, before it checks
+anything, so that a run that stops at the gates or fails leaves none of an older source to be
+sent; a copy named with `--since` is refused before that, since it is the very file a run
+would take away (round 2).
+
+**The copy is never the manuscript.** It carries a property saying what it is and which
+document it was compared with (`manuscript-guard-marked-up`: its form, the SHA-256 of the
+document sent, the round), and none of the build's stamps, so nothing reads it as a build:
+`import`, `respond --from` and `submit --document` refuse it by name, and `check` does not
+hold it to the source, since it is written to `build/marked-up/` and not to `build/`. A blind
+review's check reads it as it reads the document, deleted text included: a sentence that
+named an author, taken out since, is in the copy, and the build says not to send it. `submit`
+at a revision packs it beside the manuscript, `manuscript-marked-up.docx` (or
+`-highlighted`), listed in the manifest with the rest; where no document sent is known, the
+pack is assembled without it and says why.
+
 ## Round five, and what it says about the last two days
 
 Four reviewers, all able to run their reproductions this time. The revision cycle and the
@@ -7133,6 +7396,78 @@ rewritten past most of its words beside a block of its own kind deleted in the s
 (see Known gaps); four write nothing where main writes a block's text over a deleted
 paragraph; and 111 read as on main. Under the first version of this change, ten of the 23
 failed.
+
+## A co-author's comment is filed, and answered
+
+`import` used to print each Word comment and keep nothing. The skill said "Recording them is
+the reader's job", and a comment nobody transcribed was lost to every check: G11 counted the
+findings of panel readings, and a co-author's "this contradicts Table 2" in the margin of a
+returned document was in no record at all. The idea of keeping it came from PairTeX, a
+review layer for LaTeX projects that records each human comment as a structured,
+commit-stamped file an agent then applies. Its HTML surface does not fit a toolkit whose
+co-authors use Word; its record does.
+
+So `import --apply` files each comment as a finding (`filed_comments`), and the dry run says
+where each would go. The author decided four things on 2026-10-20:
+
+- **A record kind of its own**, `review/comments/<document>-<build>/<commenter>.yaml`
+  (`comments.schema.json`), outside every panel round. A comment is about a place in one
+  build; a reading answers a remit, is about the manuscript as it stands, goes stale with it,
+  and counts toward a round. Filed into a round, a co-author's notes would have left the
+  round incomplete until the co-author had a remit, and stale at the first `import --apply`,
+  which changes the manuscript.
+- **Every unanswered comment binds at submission, whatever its severity**
+  (`comment-unanswered`, `gates/comments.py`): a warning while the paper is written, a
+  failure in `check --submission`. One line of `resolution` or `overridden` answers it.
+- **A comment is filed as `comment`**, and its severity is the author's to change.
+- **A thread resolved in Word is filed open**, marked `resolved_in_word`. Word records that
+  it was resolved and neither who did it nor why, and either side can click it.
+
+A finding holds the comment word for word, or nothing for a comment that is a picture
+alone, which is filed too. It holds its date, and the replies to it, which Word keeps
+as comments of their own tied to it by `w15:paraIdParent` in `commentsExtended.xml`. It holds
+the words the comment's range covers and the kind of block the range starts in. Where the
+import vouches for the paragraph's identifier, as it must before it merges an edit there and
+as `respond --open` must before it anchors a point, it holds the identifier the paragraph
+has now and a digest of its source. G11 finds the paragraph by that text, as G13 finds a
+reviewer's, and says when the manuscript no longer holds it: "[the paragraph has changed
+since]". That is said, and answers nothing.
+
+**A comment is known again by the id Word keeps through a save.** Word renumbers `w:id`
+each time it saves: in Word 16 on 2026-10-20, a comment added above four others moved each
+of their ids, while their `w16cid:durableId` and `w14:paraId` stayed. Keyed on `w:id`, a copy
+saved again would have filed every comment a second time. Where Word wrote no durable id the
+key is the paragraph id, and where there is neither, the author, date and words. A later
+copy adds what is new: a comment, a reply, Word's Resolve.
+
+**A comment is filed when the edits are not.** The rewording of the paragraph it is on may
+be refused, and so may the whole document: built from another manuscript and imported
+without `--force`, or numbered by other rules. The second was the common way to lose a
+comment, since the author re-sends a fresh build and the old copy's comments went nowhere;
+they were not even printed. Such a comment has an identifier only where its paragraph still
+reads as it did at the build, and is marked `unmatched` where it does not. It is not filed
+where the identifiers cannot say whether the document is the paper or its supplement: it is
+printed, and the import says it is not filed.
+
+**The record is sealed**, `words_sha256`, over what the commenter wrote: the commenter, the
+document and its build, each finding's words, place and replies, and the list of findings.
+Severity and the answers are the author's and stay out of it. A comment reworded into one
+that needs nothing, deleted, or moved to another paragraph or person is `comments-altered`,
+and `import` adds nothing to that record, since adding would seal the change. `import` writes
+a record again when it adds to it, keeping every value; it will not write over a record that
+holds a YAML comment, which that would drop, found as a `#` outside every scalar of the
+file's own composing.
+
+Not filed: a review panel's own comments in a document of its suggested edits, and the
+replies to them, which are that panel's findings and their answers (#367); and a journal
+reviewer's comment already a point of a revision round, word for word under the reviewer id
+`respond --open --from` gives it, which G13 holds to its answer.
+
+The records are internal. No build reads `review/`, and the submission manifest lists only
+the panel's overrides (`gates.review.overrides`); a test builds a pack with a comment filed
+and looks for the commenter's name and words in every file of it. The words are stored as
+written, and shown through `text.shown.printable`, in `import`'s output and in G11's report
+alike.
 
 ## A fence is a line pandoc reads as one
 
@@ -9011,10 +9346,35 @@ Open, recorded as each change landed:
   to 5 once two tables are placed between them, and nothing says the range grew. Each end is
   right; what the dash takes in is not held to anything. A range written with two refs reads
   as two pointers and is held like them.
-- **The build numbers no caption.** `{{ref.figure.forest}}` opening a figure's caption prints
-  its number, and a caption typed as "Figure 2." under the first figure is checked only for
-  pointing at a figure the document has, not for being the caption of that one. An emitted
-  table's caption prints with no number at all.
+- **A ref in a reply to the reviewers is not held.** A reply's value binding that names
+  nothing is `unresolved-binding`; a ref there that the count cannot number (its figures
+  sent as files) passes, and `response-to-reviewers.md` prints it as written. Where an
+  abstract is left out of the pack for such a ref, the reason given names the formatting the
+  build does, not a pointer with no number; `check` refuses that ref in the manuscript
+  (round 2 of #378).
+- **A caption typed "Table 2 Counts" reads as a sentence.** With nothing but a space after
+  its number, as Springer sets a caption, a paragraph above a table cannot be told from "Table
+  2 shows the counts.", so it is no caption: the build numbers the emitted caption as well,
+  and the number prints twice. Typed with a stop, a colon, its bold closed after the number
+  or a dash between spaces, or as a heading, it is a caption (round 2 of #381). So is not a
+  caption bolded whole ("**Table 2 Counts**"), nor one set off by `--`, `---` or a dash with
+  no spaces ("Table 2—Counts"): each prints the number twice. And the set-offs are read in
+  any paragraph: one opening "**Table 2** shows the counts." or "Table 3 - the sensitivity
+  analysis - confirms" is taken for a caption, cites nothing, and can make a table
+  `display-not-cited` or change the order of first citation (the round after the budget of
+  #381). Two tables placed in one block with no blank line between are
+  read as the last of them by the caption check, and an emitted caption that opens with a
+  pointer's word and digits that are no number of it ("Table 12-month outcomes") is taken
+  for numbered: printed without the build's number, and `caption-names-another` says so.
+- **A caption's number is written one way.** The build prints "Table 2. " before an emitted
+  caption, a stop and a space, whatever the journal sets there ("Table 2:", the label in
+  bold). Where the count cannot number a table (placed twice, or its kind also placed by
+  hand or sent as files in that document) its caption prints with no number, and a caption
+  beside it is not held. A figure's caption in a form other than "Figure 1." ("Fig. 1.",
+  "eFigure 1.") is held by G2 and set in the body font, since the build styles only the
+  paragraph under a figure that opens "Figure" and its number. A caption is held only where
+  it stands next to its display: one typed two paragraphs above its table names whatever it
+  names.
 - **A ref G2 does not see is still printed.** G2 reads the text as the build prints it less
   its fenced listings, comments and front matter. A ref inside a listing is printed by the
   build, which refuses one it cannot number, and is no citation to G2: a table cited only in
@@ -11443,6 +11803,59 @@ Open, recorded as each change landed:
   PDF or an email still means typing the points in, which is where a point quietly becomes
   the easier point next to it. So does a document that has lost its build stamp: it is
   refused, `--force` included, because there is no baseline to force past.
+- **The marked-up copy compares what the two documents print, and shows a change only as
+  the writer knows to write it.** See "The marked-up copy shows every change since the
+  document sent". What that leaves:
+  - *A moved paragraph is a deletion and an insertion*, not Word's move, and which of two
+    paragraphs that changed places is shown moved is the one the longest common subsequence
+    does not keep: of two of the same length, the first the division meets.
+  - *The longest common subsequence costs time in the product of the lengths* of what is left
+    once the ends the two share are taken off: a revision that changed the first block and
+    the last of a long paper compares all of it, in a few seconds for a thousand blocks.
+  - *Paragraphs alike only by half their words or fewer* are one deleted and one inserted,
+    not one edited, however close their places; a paragraph rewritten past half its words
+    reads as replaced. A run of changed blocks is paired in time that grows with the
+    product of its lengths on the two sides: hundreds of paragraphs rewritten at once are
+    slow to mark up.
+  - *The last paragraph of a story keeps its mark* (see above), so Accept All leaves an
+    empty paragraph at the end where the last one was deleted, and Reject All where it
+    was inserted. A note inserted or deleted whole is tracked whole, its last mark too,
+    which Word 16 accepted and rejected.
+  - *A table whose columns changed, or whose cells span or merge*, is replaced whole; and
+    the empty paragraph between the old and the new is left by Reject All after the old
+    table, which the check, reading text, does not tell.
+  - *How a word looks is its run's properties less its language, proofing, Word's script
+    hint and revision ids.* A document sent after Word saved it, with properties Word adds
+    of its own, can show a change of formatting nobody made.
+  - *A citation of a live build is compared by what it cites and the words it shows*, so
+    a document sent after Zotero refreshed it shows every citation changed against a fresh
+    live build, and its reference list, a field across paragraphs, deleted whole beside the
+    build's placeholder. The build says so where the two documents made their citations
+    differently (`CITED_PROPERTY`), not where both are live and one was refreshed; building
+    both offline avoids it.
+  - *Formatting inside a whole is the revision's*: a link, a field or an equation the same in
+    both is written as the revision has it, so a link's words made bold show no change; a
+    table's properties and a picture's size are not compared either.
+  - *A footnote or a list the revision's document has no part for* cannot be carried: a
+    deleted one is refused where the revision has no `footnotes.xml` or `numbering.xml`.
+    Pandoc writes both.
+  - *Headers, footers, comments, endnotes and text boxes are the revision's*, not compared.
+    A deleted part that points at anything but a picture (a chart, an embedded object, an
+    endnote) is refused, and the copy is not made.
+  - *A deleted link is its words*, without its address; an inline equation is compared and
+    tracked whole, and the check, which reads text, does not read its text, only a display
+    equation's (Word 16 accepted and rejected both as written, above).
+  - *A round opened once revising had begun keeps no copy*, of the paper or the supplement,
+    by the round's own rule: `--since` and `--since-supplement` name them, and `submit`
+    reads only the round's.
+  - *In the highlighted copy* a picture is marked by shading the paragraph it stands in, so a
+    picture inline in a paragraph of text shades the text with it, and a paragraph that holds
+    both the picture taken out and the one put in, a picture redrawn in a table's cell or
+    inline in text, takes one shading, the new one's: the two cannot be told apart there
+    (round 2 of #396). A change of formatting or style is highlighted as new text is, and
+    the highlighted copy is made from a checked tracked one but not checked itself.
+  - *Word itself is not asked*: CI has no Word, and the three copies above are the evidence
+    that Word reads the copy as the check does.
 - **A paragraph identifier is positional, so `import --apply` can re-point it.** The index
   is the paragraph's position in the file, and applying a reorder moves text between slots,
   so a `where:` anchor recorded before the reorder afterwards names different text. G13 no
@@ -13067,6 +13480,28 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
+- **A supplement's Methods are what their headings say.** G9 reads, in a file of the
+  supplement, a section whose heading holds "methods", and G2 and G15 the names of
+  `classify.SUPPLEMENT_METHODS`; under either, only the sections whose own titles name a
+  method too. Methods headed otherwise, "eAppendix 1. Data source" or "Supplementary text",
+  are no Methods to G9, and the lock's parameters are not compared with them. G2 and G15
+  read "Statistical analysis" anywhere, by the main text's names, with everything under it,
+  and G9 reads it, with everything under it, only under a heading it reads: under
+  "Supplementary methods > Table S2" it is G2's and G15's and not G9's. "Detailed methods"
+  and "Additional methods" are G9's and not G2's or G15's. Under "eMethods 1", a section
+  titled "Record linkage" is no Methods to any of the three: G2 reports a number there that
+  it would pass in the Methods, and G15 and G9 read nothing there. The example's
+  "Supplementary methods" heads its tables, a paragraph of results and its reporting
+  statement, and no text of its own nor a section that names a method, so the example's
+  supplement has no Methods. `methods-supplement-unreconciled`
+  says of a lock written before 2026-10-21 only where the supplement has Methods when `check`
+  runs: eMethods added after a lock was written are no more noticed than a paragraph added to
+  the main text's Methods, which only an anchor holds to the code. Under one of the main
+  text's names in the supplement, "Methods" or "Supplementary materials and methods" over
+  an eTable, everything is the Methods to all three, as G2 holds it: a number in that table
+  then states a locked parameter of the same value, and `methods-parameter-absent` is not
+  said (fix-only round of #395). G9 reads the printed headings, so a line pandoc prints as
+  text that names the Results ends G2's Methods there and not G9's.
 - **A supporting passage is in its work, and is not held to what its sentence says.** G7
   finds the words in the stored source; whether they say what the sentence says is the
   judgement it leaves to people, the author's in `passages.yaml` and the co-authors' in the
@@ -13173,9 +13608,6 @@ Open, recorded as each change landed:
   - *An edit dropped when the document was made goes unmentioned.* A finding with one edit
     written and accepted and another dropped is resolved by the first, and its resolution
     does not say the second was never offered.
-  - *A reply in Word with no author is listed again as a co-author's comment*, since the
-    import's comment reader names such a comment "an unnamed reviewer" and the reader of
-    replies does not. Said twice, answered once.
   - *The refusal of undecided suggestions rests on the document's list of them.* A tool that
     dropped the `manuscript-guard-suggestions-*` properties and kept the source stamp would
     have every panel change read as accepted. The `mg-s-` bookmarks would still be there to
@@ -13206,7 +13638,53 @@ Open, recorded as each change landed:
   thrown away; and an edit to be dropped in a supplement paragraph has the supplement built,
   then deleted. Both come out right.
 
+- **What filing a co-author's comments does not do.** Each is non-blocking under the bar,
+  and none is reached by a document Word 16 saves from a build:
+  - *A comment saved by a Word that writes no durable id, then by one that does, is filed
+    twice*: its key goes from `para:` to `durable:`. Word 2010 and 2013, and other editors,
+    write no `commentsIds.xml`.
+  - *A comment edited in Word after it was filed keeps the words first filed*; `import` says
+    it reads differently. A reply edited since is filed as a further reply, beside the first.
+  - *Only a paragraph's comment is said to be stale.* A heading's or a caption's has no
+    digest of its source to look for.
+  - *A commenter is a label.* Two names with the same letters and digits share a record,
+    under the first; two people with one name share it too.
+  - *The words a comment was made on are read as `w:t` text*, without the font reading of
+    `docxtext`, so a Symbol-font character among them is kept as its code. They are a quote
+    to find the place by, and nothing compares them.
+  - *A comment whose range starts outside every paragraph of the body*, in a footnote for
+    one, is filed as made on `text`, with no identifier and no words it was made on: only
+    `word/document.xml` is read for ranges.
+  - *Writing a record again keeps its values, not its layout*: quoting and line breaks are
+    the tool's.
+  - *A record deleted whole is not noticed* (round 1 of #375). The seal covers what is in
+    a record, and nothing outside it says what was filed; git does. Importing the
+    document again files it anew.
+  - *A finding's identifier and its paragraph's digest are those of the import that filed
+    it* (round 1 of #375). A comment on a paragraph whose rewording the same `--apply`
+    merges is said at once to be on a paragraph changed since, which it is; and after a
+    move that `--apply` makes, its identifier, which is a position, can name the
+    neighbour. G11 finds the paragraph by its text, never by the identifier.
+  - *A document refused whole vouches for a value paragraph it may never have carried*
+    (round 1 of #375): with no build to compare with, its comment there is anchored
+    where the import of its edits would first have asked the build.
+  - *Two comments by one person, word for word, in a document that keeps no paragraph
+    ids and had its dates removed (Word's "remove personal information")* share a key,
+    and the second, added in a later copy, is taken for the first (round 1 of #375). Two
+    comments that are each a picture alone are word for word the same (round 2).
+  - *A panel's comment with a symbol inserted in it is filed as a co-author's* (round 2
+    of #375): `threads_of` reads its text with the font reading of `docxtext`, which
+    reads `w:sym`, and `suggestions.decisions` reads `w:t` alone, so their digests
+    differ. As before #375.
+
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A reply in Word with no author was listed again as a co-author's comment** (round 1 of
+  #367), since the import's comment reader named such a comment "an unnamed reviewer" and
+  the reader of replies did not. Said twice, it would now have been filed as a comment to
+  answer. The import reads threads now (`filed_comments.threads_of`), and leaves out a
+  panel's comment, and the replies in its thread, by its author and the digest of its words
+  as Word holds them, which is how `suggestions.decisions` knows it.
 
 - **A suggested edit beside emphasis, code or a link was not offered.** `import` merged an
   accepted suggestion as any rewording, rebuilding its stretch from Word's text, so an edit

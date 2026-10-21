@@ -301,7 +301,12 @@ def _as_read(text: str, namespace: dict, results, numbers=None) -> tuple[str, in
             replacement = ""
         elif placeholder.namespace == "table":
             table = results.tables.get(placeholder.key)
-            replacement = render_table(table) if table is not None else None
+            label = None
+            if table is not None and numbers is not None:
+                from manuscript_guard.gates.pointers import caption_label
+
+                label = caption_label(numbers, placeholder.key, table.caption)
+            replacement = render_table(table, label) if table is not None else None
         elif placeholder.namespace == "figure":
             replacement = f"[figure {placeholder.key}: the image is not sent]"
         elif placeholder.is_ref and numbers is not None:

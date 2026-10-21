@@ -1846,10 +1846,12 @@ def printings(draw: st.DrawFn) -> list[dict[str, Any]]:
 
 #: What an edit of a plan's section may be: none, its lines re-wrapped, a word put in
 #: emphasis, a comment added, its case changed, a word added, a word added under a heading
-#: now numbered, and a section the plan keeps of itself (its Deviations) changed. The two
-#: with a word added are sections that read otherwise.
+#: now numbered, a section the plan keeps of itself (its Deviations) changed, and one
+#: heading under two parents with a word added under the second. The three with a word
+#: added are sections that read otherwise. This plan also ends in an appendix, a second
+#: top-level heading, which the earlier one does not have.
 SECTION_EDITS = ("as it is", "rewrapped", "emphasis", "comment", "case", "numbered",
-                 "word added", "own section")  # fmt: skip
+                 "word added", "own section", "one heading twice")  # fmt: skip
 TOPICS = ("Exposure", "Outcome", "Population", "Comparator", "Case definition",
           "Exclusions", "Model", "Study period")  # fmt: skip
 
@@ -1861,9 +1863,19 @@ def plan_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[str]]:
     kinds = draw(st.permutations(SECTION_EDITS))
     then, now, changed = ["# Analysis plan", ""], ["# Analysis plan", ""], []
     for at, kind in enumerate(kinds):
-        title = f"{draw(st.sampled_from(TOPICS))} {TAGS[at]}"
+        tag = TAGS[at % len(TAGS)] + "x" * (at // len(TAGS))
+        title = f"{draw(st.sampled_from(TOPICS))} {tag}"
         if kind == "own section":
-            title = f"Deviations {TAGS[at]}"
+            title = f"Deviations {tag}"
+        if kind == "one heading twice":
+            # The second Definition differs, the first does not: matched by its own words
+            # alone, the second would be taken for the first.
+            words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12)))
+            for parent, after in ((f"Exposure {tag}", words), (f"Outcome {tag}", words + " more")):
+                then += [f"## {parent}", "", "### Definition", "", words, ""]
+                now += [f"## {parent}", "", "### Definition", "", after, ""]
+            changed.append(f"Outcome {tag} / Definition")
+            continue
         words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12))
         body = " ".join(words)
         heading, edited = title, body
@@ -1886,8 +1898,9 @@ def plan_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[str]]:
         if kind == "own section":
             # What the Deviations hold is theirs too, under a heading of its own that names
             # no deviation ("Amendment" would be left out by its own name).
-            then += [f"### Second reading {TAGS[at]}", "", body, ""]
-            now += [f"### Second reading {TAGS[at]}", "", f"{body} later", ""]
+            then += [f"### Second reading {tag}", "", body, ""]
+            now += [f"### Second reading {tag}", "", f"{body} later", ""]
+    now += ["# Appendix", "", "Notes kept apart from the plan.", ""]
     return {"then": "\n".join(then), "now": "\n".join(now)}, changed
 
 

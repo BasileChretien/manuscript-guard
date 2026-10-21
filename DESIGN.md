@@ -4142,9 +4142,10 @@ one heading is compared word by word: the earlier plan as it stood when its firs
 were written (the copy's `plan.frozen.yaml`, or its `plan.md` where it kept none), this
 paper's plan as it stands, each read as G12 reads a plan (its line endings made `\n`, a
 byte-order mark left out, and one not in UTF-8 read with what cannot be decoded replaced,
-not refused). A heading is matched with the headings above it, so a `### Definition` under
-the Exposure is not the one under the Outcome, each without its number ("2." or "2.1", not
-"2019"), emphasis or case; words without comments, emphasis or line breaks and in either case,
+not refused). A heading is matched with the headings above it, the plan's title left out (its first
+heading, where the next is deeper), so a `### Definition` under the Exposure is not the one
+under the Outcome, each without its number ("2.", "2.1" or "2", not "2019"), emphasis or
+case; words without comments, emphasis or line breaks and in either case,
 as G13 reads a quotation (`as_quoted`); and the plans' Deviations and Planned results, which
 are each paper's own, are not compared, nor anything under them. A section that reads
 otherwise is said with a few words of each side from where they part. Each is
@@ -9755,7 +9756,10 @@ Open, recorded as each change landed:
   `-` here differs, and a heading given an attribute (`{#id}`) is another heading. A reason
   under `methods:` answers for its model or section, not for one difference, so a later
   change to a model already explained is explained by the old reason. Two sections with one
-  heading under one parent are one: the first is compared (round 1 of #402).
+  heading under one parent are one: the first is compared (round 1 of #402). A `/` in a
+  heading reads as a level, so `Exposure/outcome` and `Exposure` over `outcome` are one key,
+  and a heading that opens with a number of one or two digits loses it, so `12 months` and
+  `24 months` are one heading (round 2).
 - **What a comparison read from a PDF cannot see.** A published value is read as printed: an
   estimate rounded to one place is the same as any value within half a unit of it, so a
   change smaller than the earlier rounding is not seen. A printed value that is not one

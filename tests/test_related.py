@@ -489,7 +489,15 @@ def test_a_heading_is_matched_with_the_headings_above_it() -> None:
     now = then.replace("An event.", "A serious event.")
     assert [found[0] for found in sections_compared(then, now)] == ["Outcome / Definition"]
     assert folded_title("2.1 Definition") == folded_title("Definition")
+    assert folded_title("2 Exposure") == folded_title("3 Exposure")
     assert folded_title("2019 cohort") != folded_title("2020 cohort")
+
+
+def test_a_plan_with_an_appendix_is_matched_without_its_title() -> None:
+    """Round 2 of #402: a second top-level heading kept the title in one plan's paths."""
+    then = "# Analysis plan\n\n## Exposure\n\nA.\n"
+    now = "# Analysis plan\n\n## Exposure\n\nB.\n\n# Appendix\n\nx\n"
+    assert [found[0] for found in sections_compared(then, now)] == ["Exposure"]
 
 
 def test_the_listing_shows_a_method_changed(project: Path, earlier: Path, capsys) -> None:

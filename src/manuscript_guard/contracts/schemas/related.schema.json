@@ -96,7 +96,7 @@
               },
               "plan_section": {
                 "$ref": "#/$defs/text",
-                "description": "A heading both plans have, as either writes it."
+                "description": "A section both plans have, by its headings from the outermost under the plan's title, parted by `/`: `Exposure`, or `Outcome / Case definition` for a subsection."
               },
               "because": { "$ref": "#/$defs/text" }
             },

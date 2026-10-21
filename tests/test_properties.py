@@ -6175,6 +6175,17 @@ def _the_deviations_are_compared(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(related_methods_gate, "_OWN", ())
 
 
+def _the_title_is_left_out_only_over_everything(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates.design import _plan_sections
+
+    patch.setattr(related_methods_gate, "_sections", _plan_sections)
+
+
+def _a_heading_is_matched_by_its_own_words(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate.folded_title
+    patch.setattr(related_methods_gate, "section_key", lambda written: real(written.split("/")[-1]))
+
+
 def _what_the_deviations_hold_is_compared(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(related_methods_gate, "subsections", lambda sections, index: [sections[index]])
 
@@ -6788,6 +6799,14 @@ BROKEN = {
     ),
     "the plans' own Deviations are compared": (
         _the_deviations_are_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "a plan's title is left out only where every heading is under it": (
+        _the_title_is_left_out_only_over_everything,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "a heading is matched by its own words, not with those above it": (
+        _a_heading_is_matched_by_its_own_words,
         test_a_section_of_two_plans_differs_only_where_its_words_do,
     ),
     "what the plans' Deviations hold is compared": (

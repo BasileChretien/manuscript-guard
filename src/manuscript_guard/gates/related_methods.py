@@ -13,17 +13,18 @@ from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured
 from manuscript_guard.contracts.models import Model
-from manuscript_guard.gates.design import PLANNED, REQUIRED, _plan_sections, _read_plan
+from manuscript_guard.gates.design import PLANNED, REQUIRED, _read_plan
 from manuscript_guard.gates.revision import as_quoted
-from manuscript_guard.text.sections import subsections
+from manuscript_guard.text.sections import Section, split_sections, subsections
 
 #: The plan's sections that belong to one paper and are not its methods, with all they hold:
 #: what it changed from its own plan, and the results it promised.
 _OWN = tuple(re.compile(rule) for rule in (dict((n, r) for n, r, _p in REQUIRED)["deviations"],
                                            PLANNED))  # fmt: skip
-#: A heading's number, "2." or "2.1", which names no section. A number with no point after
-#: it is a word of the heading: "2019 cohort" is not "2020 cohort" (round 1 of #402).
-_NUMBERED = re.compile(r"^\s*(?:\d+(?:\.\d+)*\.|\d+(?:\.\d+)+)\s+")
+#: A heading's number, "2.", "2.1" or "2", which names no section. A longer number with no
+#: point after it is a word of the heading: "2019 cohort" is not "2020 cohort" (rounds 1
+#: and 2 of #402).
+_NUMBERED = re.compile(r"^\s*(?:\d+(?:\.\d+)*\.|\d+(?:\.\d+)+|\d{1,2})\s+")
 #: How many words of each side a finding shows from where the two part.
 SHOWN = 8
 
@@ -145,7 +146,7 @@ def _by_title(text: str) -> dict[str, tuple[str, list[str]]]:
     above it: a `### Definition` under the Exposure is not the one under the Outcome. The
     plan's own Deviations and Planned results are left out with everything under them."""
     found: dict[str, tuple[str, list[str]]] = {}
-    sections = _plan_sections(text)
+    sections = _sections(text)
     left_out: set[int] = set()
     above: list[tuple[int, str]] = []
     for index, section in enumerate(sections):
@@ -163,6 +164,17 @@ def _by_title(text: str) -> dict[str, tuple[str, list[str]]]:
         written = " / ".join(written for _level, written in above)
         found.setdefault(section_key(written), (written, _words(section.body)))
     return found
+
+
+def _sections(text: str) -> list[Section]:
+    """The plan's sections without its title: the first heading, where the one after it is
+    deeper or there is none. G12's reading keeps the title of a plan with a second top-level
+    heading (an appendix), and then every path began with it in one plan and not in the
+    other, and no section of the two was compared (round 2 of #402)."""
+    sections = [section for section in split_sections(text) if section.level > 0]
+    if sections and (len(sections) == 1 or sections[0].level < sections[1].level):
+        return sections[1:]
+    return sections
 
 
 def _words(text: str) -> list[str]:

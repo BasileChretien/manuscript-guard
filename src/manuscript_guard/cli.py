@@ -158,7 +158,7 @@ def _run_gates(
         ("G4", lambda: check_journal(project)),
         ("G4", lambda: check_shortlist(project)),
         ("G8r", lambda: check_reporting(project)),
-        ("G6", lambda: check_writing(project, results)),
+        ("G6", lambda: check_writing(project, results, submission=at_submission)),
         ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project, results, chosen).merge(
             check_design_rounds(project, submission=at_submission))),
@@ -1187,6 +1187,13 @@ def cmd_import(args: argparse.Namespace) -> int:
         )
         for block in returned
     ]
+    # The words of each suggestion accepted in Word, which are written where they were
+    # found rather than merged from Word's text: see `merge.plan_import`.
+    accepted = None
+    if decided:
+        from manuscript_guard.suggestions import accepted_words
+
+        accepted = accepted_words(project, decided, named=now_named)
     plan = plan_import(
         known,
         sent,
@@ -1201,6 +1208,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         same_text={now_named(was): now for was, now in numbered.same_text.items()},
         stale=stale,
         printed=printed,
+        accepted=accepted,
     )
     if inserted:
         # Only the paragraphs compared, `known`, which goes by the names they have now: one

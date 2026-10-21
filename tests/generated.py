@@ -1382,6 +1382,84 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
     return plan, [*listed, (secondary, False)]
 
 
+# ------------------------------------------------------------ the variables a plan names
+
+#: Names a dictionary gives its variables, a dotted one and one with capitals among them,
+#: and names it does not give.
+DEFINED = ("age", "sex", "bmi_kg", "visit2", "smoker", "dose_mg", "Sex_at_birth", "x1")
+UNDEFINED = ("weight", "eGFR", "height_cm", "alt", "site_id", "n_prior")
+#: Headings of a plan's Deviations section, as G12 reads them.
+_DEVIATION_TITLES = ("Deviations from the plan", "Changes to the plan", "Protocol amendments")
+#: Code and values in backticks, which are not variables.
+_NOT_VARIABLES = ("glm()", "stats::glm", "lme4::glmer()", "NA", "TRUE", "results.dose")
+
+
+@st.composite
+def collection_plans(
+    draw: st.DrawFn,
+) -> tuple[str, list[str], list[tuple[str, int]], list[tuple[str, int]], int]:
+    """A plan that names variables in backticks in each way a plan holds one, the names the
+    dictionary has, the dictionary's variables the plan names and the names it gives that the
+    dictionary lacks, each at the line of its first mention, and the plan's last line before
+    the drawn text that ends it.
+
+    Each example holds one section of every kind, in an order drawn each time: a variable the
+    dictionary has; one with a dot in its name; a name it lacks; a Deviations section, under a
+    heading drawn among its names, naming one of each with a subsection under it naming
+    another; code and values; a Planned results item naming a variable after its key; a fence
+    and a comment holding names; a variable named in a subsection; a variable written in
+    another case; a list headed "Planned results and amendments", which is not the
+    Deviations; a section headed "Changes to the planned results", which is; a section
+    naming again a variable and a name named elsewhere; and a Deviations subsection of
+    another section, followed by a subsection that is read. All under a title that names an
+    amendment, which heads the plan and not its Deviations."""
+    words = st.lists(st.sampled_from(FILLER), min_size=1, max_size=5).map(" ".join)
+    defined = draw(st.permutations(DEFINED))
+    undefined = draw(st.permutations(UNDEFINED))
+    dotted = "BEN.SEX"
+    cased = defined[6][0].swapcase() + defined[6][1:]
+    deviation = draw(st.sampled_from(_DEVIATION_TITLES))
+    # Each section: its text, then the names it uses and the names it lacks, as written.
+    kinds = [
+        (f"## Analysis\n\n{draw(words)} `{defined[0]}` {draw(words)}.\n", [defined[0]], []),
+        (f"## Population\n\n{draw(words)} `{dotted}` {draw(words)}.\n", [dotted], []),
+        (f"## Exposure\n\n{draw(words)} `{undefined[0]}` {draw(words)}.\n", [], [undefined[0]]),
+        (f"## {deviation}\n\n{draw(words)} `{defined[1]}` and `{undefined[1]}`.\n\n"
+         f"### Later\n\n`{defined[2]}` {draw(words)}.\n", [], []),
+        (f"## Outcome\n\n{draw(words)} " + " ".join(f"`{code}`" for code in _NOT_VARIABLES)
+         + f" {draw(words)}.\n", [], []),
+        (f"## Planned results\n\n- `ror.point`: {draw(words)} `{defined[3]}`\n", [defined[3]],
+         []),
+        (f"## Sensitivity analyses\n\n```r\nfit(`{undefined[2]}`)\n```\n\n"
+         f"<!-- `{undefined[3]}` -->\n", [], []),
+        (f"## Covariates\n\n{draw(words)}.\n\n### Adjustment\n\n`{defined[4]}` {draw(words)}.\n",
+         [defined[4]], []),
+        (f"## Outcome measures\n\n`{cased}` {draw(words)}.\n", [], [cased]),
+        (f"## Planned results and amendments\n\n- `ror.n`: `{defined[5]}`\n", [defined[5]], []),
+        (f"## Changes to the planned results\n\n`{undefined[4]}` {draw(words)}.\n", [], []),
+        (f"## Repeated\n\n`{defined[0]}` and `{undefined[0]}` {draw(words)}.\n",
+         [defined[0]], [undefined[0]]),
+        (f"## Exposure details\n\n{draw(words)}.\n\n### {deviation}\n\n`{undefined[5]}` "
+         f"{draw(words)}.\n\n### Timing\n\n`{defined[7]}` {draw(words)}.\n", [defined[7]], []),
+    ]  # fmt: skip
+    order = draw(st.permutations(range(len(kinds))))
+    # A title that names an amendment encloses the plan, and is not its Deviations.
+    plan = f"# Statistical analysis plan (amendment {draw(st.integers(1, 9))})\n\n"
+    first: dict[str, dict[str, int]] = {"used": {}, "undefined": {}}
+    for index in order:
+        text, used, lacked = kinds[index]
+        for kind, names in (("used", used), ("undefined", lacked)):
+            for name in names:
+                line = plan.count("\n") + text[: text.index(f"`{name}`")].count("\n") + 1
+                first[kind].setdefault(name, line)
+        plan += text + "\n"
+    last = plan.count("\n")
+    plan += f"## Notes\n\n{draw(texts())}\n"
+    ordered = {kind: sorted(found.items(), key=lambda pair: pair[1])
+               for kind, found in first.items()}  # fmt: skip
+    return plan, [*defined, dotted], ordered["used"], ordered["undefined"], last
+
+
 #: What can stand in a stored source between two words of a quote taken from it: line
 #: numbers, figures, a column's or a header's words, a hyphen at the end of a line, a symbol.
 INTERRUPTIONS = (
@@ -1436,6 +1514,136 @@ def suggested_edits(draw: st.DrawFn) -> dict[str, str]:
         old = draw(st.sampled_from(tuple(typed for typed, _printed in EDIT_WORDS) + FILLER))
     new = draw(st.sampled_from((*FILLER[:6], "*held*", "two\nlines", "{{results.x}}", " ")))
     return {"text": text, "old": old, "new": new}
+
+
+#: Words of a paragraph a suggestion is written into, each used once so that a run of them
+#: is found once: letters only, so that none is a number to `reworded`, and none a word of
+#: the link's address.
+PARAGRAPH_WORDS = (
+    "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india",
+    "juliet", "kilo", "lima", "mike", "november", "oscar", "papa", "quebec", "romeo",
+    "sierra", "tango", "uniform", "victor", "whiskey", "xray", "yankee", "zulu", "amber",
+    "basil", "cedar", "dune", "ember", "fern", "grove", "heath", "iris", "jade", "kelp",
+    "larch", "moss", "nettle",
+)  # fmt: skip
+#: Each kind of stretch a paragraph's words stand in: how it is typed around them, and
+#: whether a suggestion is written inside it. Emphasis is prose with marks around it, and
+#: Word shows the new words in it; "lines" is prose with a hard line break between each two
+#: words, which a suggestion is written beside and not across. Code and a link's text Word
+#: shows without their markup, and a comment not at all: it also holds a copy of the
+#: paragraph's first word, which prints once.
+STRETCHES = {
+    "plain": ("", "", True),
+    "em": ("*", "*", True),
+    "strong": ("**", "**", True),
+    "under": ("_", "_", True),
+    "lines": ("", "", True),
+    "code": ("`", "`", False),
+    "link": ("[", "](https://example.invalid/page)", False),
+    "comment": ("<!-- ", " -->", False),
+}
+#: What each value of the analysis prints, in the order the values stand, and what each
+#: citation prints.
+RENDERED = ("12", "345", "6.7", "89", "1,234")
+CITED = ("(Doe 2019)", "(Roe 2020)", "(Poe 2021)", "(Moe 2022)")
+#: What a hard line break is typed as, and what lies between a stretch's other words.
+HARD_BREAK = "  \n"
+#: The words written in place of a run: shorter, longer, and two with a double space
+#: between them, which Word shows as one.
+WRITTEN_WORDS = ("plainly", "the revised wording here", "kept  apart", "so")
+
+
+@st.composite
+def suggestion_paragraphs(draw: st.DrawFn) -> dict[str, Any]:
+    """A paragraph holding every kind of stretch a suggestion can be written beside or
+    inside, in an order drawn each time: words alone, in each kind of emphasis, across hard
+    line breaks, in code, in a link's text and in a comment, with values of the analysis and
+    citations between them. Each kind is there at least once. The paragraph opens with words,
+    so that no comment opens it as a block, and ends with a value and words after it, so
+    that some words always stand before a value. As its stretches and the spaces between
+    them, for `laid_out` to type and print."""
+    tokens = ("binding", "cite")
+    kinds = [*STRETCHES, *tokens]
+    kinds += draw(st.lists(st.sampled_from([*STRETCHES, *tokens]), max_size=3))
+    # At most five values and four citations, which `RENDERED` and `CITED` print, and
+    # thirteen stretches of words, which forty words fill.
+    kinds = ["plain", *draw(st.permutations(kinds)), "binding", "plain"]
+    words = iter(draw(st.permutations(PARAGRAPH_WORDS)))
+    stretches = []
+    for kind in kinds:
+        # Across a line break needs two words; every other kind takes one to three.
+        count = 0 if kind in tokens else draw(st.integers(2 if kind == "lines" else 1, 3))
+        stretches.append([kind, [next(words) for _ in range(count)]])
+    space = st.sampled_from((" ", "\n"))
+    return {
+        "stretches": stretches,
+        "between": draw(st.lists(space, min_size=len(kinds) - 1, max_size=len(kinds) - 1)),
+        "inside": draw(st.lists(space, min_size=3 * len(kinds), max_size=3 * len(kinds))),
+    }
+
+
+def laid_out(paragraph: dict[str, Any]) -> tuple[str, str, list, list, list]:
+    """A `suggestion_paragraphs` paragraph as typed in the source and as Word shows it:
+    `(source, printed, words, tokens, renderings)`. Each word is `(word, kind, its stretch's
+    place, (start, end) in the source, (start, end) in what Word shows or None, how many
+    values and citations stand before it)`, and `tokens` is where each value and citation
+    prints. Word shows a line break as a space, emphasis, code and a link by their text, and
+    a comment not at all."""
+    source, printed = "", ""
+    words, tokens, renderings = [], [], []
+    inside = iter(paragraph["inside"])
+    first = paragraph["stretches"][0][1][0]
+    values = citations = 0
+    for index, (kind, stretch) in enumerate(paragraph["stretches"]):
+        shows = kind != "comment"
+        if index:
+            # A space before a comment: at the start of a line it opens an HTML block.
+            source += paragraph["between"][index - 1] if shows else " "
+            printed += " " if shows else ""
+        if kind in ("binding", "cite"):
+            if kind == "binding":
+                rendering = RENDERED[values]
+                source += "{{results.value_" + "abcde"[values] + "}}"
+                values += 1
+            else:
+                rendering = CITED[citations]
+                source += "[@key_" + "abcd"[citations] + "]"
+                citations += 1
+            tokens.append((len(printed), len(printed) + len(rendering)))
+            renderings.append(rendering)
+            printed += rendering
+            continue
+        opening, closing, prose = STRETCHES[kind]
+        source += opening
+        for at, word in enumerate(stretch):
+            if at:
+                # A soft line break inside code or a link's text is left out: what it does
+                # there is not what this generator is about.
+                source += HARD_BREAK if kind == "lines" else next(inside) if prose else " "
+                printed += " " if shows else ""
+            typed = (len(source), len(source) + len(word))
+            shown = (len(printed), len(printed) + len(word)) if shows else None
+            words.append((word, kind, index, typed, shown, len(tokens)))
+            source += word
+            printed += word if shows else ""
+        source += f" {first}{closing}" if kind == "comment" else closing
+    return source, printed, words, tokens, renderings
+
+
+@st.composite
+def suggestion_writes(draw: st.DrawFn) -> dict[str, Any]:
+    """One run of a `suggestion_paragraphs` paragraph's words to write over, which may cross
+    from one stretch into the next, and words to write, some of them markup."""
+    source, printed, words, tokens, _renderings = laid_out(draw(suggestion_paragraphs()))
+    first = draw(st.integers(0, len(words) - 1))
+    run = words[first : first + draw(st.integers(1, 2))]
+    return {
+        "source": source,
+        "printed": printed,
+        "tokens": [list(token) for token in tokens],
+        "old": " ".join(word for word, *_rest in run),
+        "new": draw(st.sampled_from((*WRITTEN_WORDS, "*held*", "two\nlines"))),
+    }
 
 
 # ---------------------------------------------------------------------------- spellings
@@ -1509,6 +1717,56 @@ LOOKALIKES = (
     "47,XXX", "XXX syndrome", "[repository](https://example.org)",
     "[Add-on therapy in epilepsy]", "replace later lines", "replace later\nlines",
     "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]",
+)  # fmt: skip
+
+#: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
+#: G6 that finds it and the words it finds: one of each rule, a phrase cut by a hard wrap,
+#: and the plural beside the singular. And what reads like them and is prose: a name, the
+#: contributions, the acknowledgements with a title's stop in them, a regulatory dossier, a
+#: retrotransposon, an invitation, and a phrase cut by a blank line. What the residue
+#: reading must tell apart.
+RESIDUE = (
+    ("As requested by Reviewer 2, we added a table.", "reviewer-answered",
+     "As requested by Reviewer 2"),
+    ("In reply to the\nreviewer, we added a table.", "reviewer-answered",
+     "In reply to the reviewer"),
+    ("In response to the reviewers' comments, a table was added.", "reviewers-answered",
+     "In response to the reviewers"),
+    ("Done. As requested, we added the dates.", "as-requested", "As requested,"),
+    ("In our original submission, the cohort was larger.", "earlier-version",
+     "our original submission"),
+    ("The revised manuscript reports the median.", "earlier-version-unnamed",
+     "The revised manuscript"),
+    ("We have now clarified the exposure.", "we-have-now", "We have now clarified"),
+    ("We have expanded the Discussion.", "text-edited", "We have expanded the Discussion"),
+    ("These points have now been discussed.", "text-edited-unnamed",
+     "These points have now been discussed"),
+    ("It is on page 4, lines 120-125.", "lines-cited", "page 4, lines 120"),
+    ("It was moved (lines 120-125).", "lines-cited-alone", "(lines 120-125)"),
+    ("The revised text is highlighted in yellow.", "changes-marked",
+     "The revised text is highlighted"),
+    # After a stop, since "in" before either is the stricter rule's.
+    ("Done. Tracked changes were accepted.", "tracked-changes", "Tracked changes"),
+    ("See the response letter.", "response-letter", "See the response letter"),
+    ("Done. The response letter lists them.", "response-letter-unnamed", "response letter"),
+    ("I have shortened the abstract.", "model-addressed", "I have shortened the abstract"),
+)  # fmt: skip
+RESIDUE_LOOKALIKES = (
+    "Risk was scored with the Revised Cardiac Risk Index.",
+    "All authors approved the revised manuscript.",
+    "The authors are grateful to Dr. Simon and Dr. Sampaio for their critical review in the "
+    "original manuscript.",
+    "The original submission of the dossier to the agency was rejected.",
+    "Methylation of the element (LINE 1) was stable.",
+    "It was written in response to the editor's invitation.",
+    "To address this concern, we used an active comparator.",
+    "Reviewer 1 and Reviewer 2 independently extracted the data.",
+    "as suggested by\n\nReviewer 2 independently, a heading and a paragraph.",
+    # Round 1 of #377: a thanks that names what it is for, a label's history, a Delphi
+    # panel's draft.
+    "We thank the referee for pointing out an error in the estimator.",
+    "This has now been included in the SmPC.",
+    "Our initial draft comprised 45 items.",
 )  # fmt: skip
 
 
@@ -2383,6 +2641,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "labels": texts(LABELLED),
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
+    "plan variables": collection_plans().map(lambda drawn: {"plan": drawn[0],
+                                                            "names": drawn[1]}),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),
     "vector figure": vector_figures().map(lambda drawn: drawn[0]),
     # As text, a byte a character, so that the bytes pass to a reader as they are.
@@ -2392,6 +2652,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "quote placement": nearly_quoted(),
     "suggested edit": suggested_edits(),
+    "suggestion written": suggestion_writes(),
     "spelling": st.fixed_dictionaries(
         {
             "text": texts(SPELT),
@@ -2406,6 +2667,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "placeholders": texts(
         tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
     ),
+    "residue": texts(tuple(written for written, _rule, _found in RESIDUE) + RESIDUE_LOOKALIKES),
     "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),

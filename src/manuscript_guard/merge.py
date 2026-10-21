@@ -1634,6 +1634,7 @@ def plan_import(
     same_text: dict[str, str] | None = None,
     stale: bool = False,
     printed: Sequence[Block] | None = None,
+    accepted: dict | None = None,
 ) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph.
 
@@ -1687,6 +1688,17 @@ def plan_import(
     block is told by where its bookmark sits there and by what stood beside its paragraph
     (`_off_as_sent`). Without it, for a document built before the record or imported away
     from it, the rules above stand.
+
+    `accepted` names the paragraphs holding a review panel's suggestion the author accepted
+    in Word, each with the words of those suggestions (`suggestions.Words`), or why they
+    cannot be known. A rewording of one is merged in two steps. The accepted words are
+    written into the source where their old words are (`suggestions.write_in`), which keeps
+    the emphasis, code or link beside them that a merge from Word's text would flatten.
+    Then whatever else came back changed in that paragraph is merged by the rules above,
+    against the source and the printed text with the suggestions in them. Where the words
+    cannot be written exactly, the paragraph is refused and nothing of it is merged: the
+    usual merge would rebuild the suggestion's stretch from Word's text and lose what it was
+    offered beside.
     """
     # Only the identifiers in `known`. The import leaves out one that no longer names the
     # paragraph it named when the document was built, and its block is then neither
@@ -1925,7 +1937,15 @@ def plan_import(
         else:
             # The anchors that end the paragraph print nothing, and go back where they were.
             bare, anchors = apart
-            aligned = align(bare, was, now, extents.get(name), abbreviations)
+            words = (accepted or {}).get(name)
+            if words:
+                written = _write_accepted(source, was, extents.get(name), words)
+                if isinstance(written, str):
+                    refused.append(Refusal(name, now, (_ACCEPTED.format(why=written),)))
+                    continue
+                aligned = align(written.bare, written.shown, now, written.tokens, abbreviations)
+            else:
+                aligned = align(bare, was, now, extents.get(name), abbreviations)
             if aligned.rebuilt == bare:
                 # Only pandoc's typesetting was undone in Word - a no-break space it put after
                 # "e.g." taken out again - and the next build puts it back. Nothing to merge.
@@ -2026,6 +2046,23 @@ def plan_import(
     return _identified(known, plan, {name: texts[name] for name in merged})
 
 
+def _write_accepted(source: str, printed: str, tokens, words):
+    """The paragraph with the suggestions accepted in Word written into it
+    (`suggestions.write_in`), or why it cannot be: `words` is that reason already where the
+    words themselves are not known."""
+    if isinstance(words, str):
+        return words
+    from manuscript_guard.suggestions import write_in
+
+    return write_in(source, printed, tokens, words)
+
+
+_ACCEPTED = (
+    "it holds a suggestion accepted in Word that cannot be written into the source where "
+    "its words were: {why}. Merged from Word's text instead, it could lose the markup beside "
+    "it, so nothing of the paragraph is merged. Make the edit in the .md, and answer its "
+    "finding in its record."
+)
 _SPLIT = (
     "it came back with a new paragraph beside it: split in two in Word, new text written "
     "next to it, or a heading, list item or quotation beside it reworded. Merging a split "

@@ -943,7 +943,7 @@ it is shown as a note, as any finding not yet due is. Each pull request then shi
 and a half-taught `check` cannot pass a submission. `tests/test_reads_nothing.py` gets a row
 for each such gate. The commands not yet moved refuse a LaTeX project with a sentence and exit
 2: every command that reads the manuscript only as Markdown, `explain`, `bind`, `reworded`,
-`checker build` and the panel's prompt among them (step 1, `_MARKDOWN_COMMANDS`), and `audit`
+`checker` and the panel's prompt among them (step 1, `_MARKDOWN_COMMANDS`), and `audit`
 given a `.tex`, which it holds apart since it reads no project. A hook stops nothing, and the
 hooks are taught in step 12.
 
@@ -1298,6 +1298,9 @@ The result is compiled and packed by the code above, and checked three times:
   `.tex` is saved (round 2 of #370), until step 12 teaches the hooks.
 - `audit` is not tied to a project: given a folder of `.tex` it says it found nothing to
   audit, and only a `.tex` named is refused.
+- On a LaTeX project, `sign` of an id that stands nowhere lists G15's ids among those that
+  stand, though `sign` refuses them there; and `review --suggestions --design`, a misuse, is
+  told LaTeX is not read rather than that `--suggestions` stands alone (round 2 of #404).
 - An author's macro is not expanded where it is used, so a word its body prints there is in no
   sentence that G6 or G14 reads; its body is read once, at the definition.
 - An `\input` records the environments open around it, not the command whose argument it is
@@ -1355,9 +1358,10 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    as of an empty manuscript, "rendered 0 files", "cites nothing", or read the `.tex` as
    Markdown, and `init` wrote a `main.md` beside `main.tex`, two formats. Some are refused in
    part: `review` with `--run` or `--dry-run`, but for a design round, which reads the plan,
-   and with `--suggestions`; `lookup` but with `--journals`; `checker build`, whose items are
-   drawn from the manuscript, and not `checker import` of answers sent out; `sign` of a G15
-   finding, and not of a design round's override. A `.tex` named is refused by `explain` and
+   and with `--suggestions`; `lookup` but with `--journals`; `sign` of a G15 finding, and not
+   of a design round's override. `checker` is refused whole: every verb draws its items from
+   the manuscript, and `import` and `status` match answers against them (round 2 of #404).
+   A `.tex` named is refused by `explain` and
    `reworded`, which read the file they are given, whatever the project's format. Tests:
    the differential unchanged, and in `test_reads_nothing.py` a table, `LATEX`, of what each
    command does with a LaTeX manuscript, each refusing one run on one.

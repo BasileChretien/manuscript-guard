@@ -4134,17 +4134,18 @@ def _always(_args: argparse.Namespace) -> bool:
 #: files", "cites nothing", or read the `.tex` as Markdown. A command leaves this table in the
 #: step that teaches it LaTeX.
 _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
+    # `checker` draws its items from the manuscript for every verb, `import` and `status`
+    # too, which match answers against them (round 2 of #404).
     **dict.fromkeys(
-        ("bind", "build", "explain", "impact", "import", "init", "methods", "models",
-         "passages", "render", "respond", "reworded", "submit", "sync-bib", "sync-sources"),
+        ("bind", "build", "checker", "explain", "impact", "import", "init", "methods",
+         "models", "passages", "render", "respond", "reworded", "submit", "sync-bib",
+         "sync-sources"),
         _always,
     ),
     "lookup": lambda args: not args.journals,
     # A design round reads the plan, not the manuscript (round 1 of #404).
     "review": lambda args: bool((args.run or args.dry_run) and not args.design
                                 or args.suggestions),
-    # Its items drawn from the manuscript; answers already sent out are read back.
-    "checker": lambda args: args.verb == "build",
     # G15's findings come from the manuscript; a design round's overrides do not.
     "sign": lambda args: args.finding.startswith("G15/"),
 }  # fmt: skip

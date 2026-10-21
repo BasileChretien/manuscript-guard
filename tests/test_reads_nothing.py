@@ -307,10 +307,9 @@ def test_the_refusal_is_for_a_latex_manuscript_only(empty: Path) -> None:
     (empty / "manuscript" / "main.tex").write_text("\\documentclass{article}\n", "utf-8")
     for argv in (
         ("review", "{project}"), ("lookup", "{project}", "--journals"),
-        # A design round reads the plan; a design override is no G15 finding; answers sent
-        # out are read back (round 1 of #404).
+        # A design round reads the plan, and a design override is no G15 finding (round 1 of
+        # #404).
         ("review", "{project}", "--design", "--run"),
         ("sign", "{project}", "--as", "A", "--finding", "G12/design-override/1/x"),
-        ("checker", "status", "{project}"), ("checker", "import", "{project}"),
     ):  # fmt: skip
         assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv

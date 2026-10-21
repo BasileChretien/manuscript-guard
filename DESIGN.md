@@ -5069,9 +5069,12 @@ first pull request as Basile chose:
   request where anyone may download them, nor that they are publicly available where
   somebody decides access (`data-statement-route-differs`). The statement is read sentence
   by sentence for "on request" and "from the corresponding author", and for "publicly",
-  "openly" or "freely" available and their like, each unless a negation stands in the six
+  "openly" or "freely" available and their like, each unless a negation stands in the eight
   words before it in its clause ("are not publicly available", "cannot be made publicly
-  available"). A sentence is said of the sources it names; one that names none and speaks of
+  available", "no patient-level data are publicly available"). A clause ends at a semicolon,
+  a colon, or "but", "whereas", "although" or "though"; not at a comma, a bracket or a dash,
+  which as often set an aside between a denial and what it denies, "are not, however,
+  publicly available" (round 1 of #384). A sentence is said of the sources it names; one that names none and speaks of
   data is said of every chosen source, where all are reached one way. A statement that says
   an open source is openly available is taken to ask for something else, the analysis files
   or the code, when it also says "on request". Read wherever a source is chosen, with or
@@ -9997,17 +10000,28 @@ Open, recorded as each change landed:
   not list is not found, and a name that is also a common word ("Sentinel") is found in any
   sentence that uses the word. The statement is read for "on request" and "from the
   corresponding author", and for "publicly", "openly" or "freely" available and their
-  like, each denied by a "not", "cannot", "never", "neither", "nor" or "without" in the six
-  words before it in its clause; another way of saying either is not read, nor a denial
-  further off. A sentence is said of the sources it names, or, naming none and speaking of
+  like, each denied by a "not", "cannot", "never", "neither", "nor", "no", "none" or
+  "without" in the eight words before it in its clause; another way of saying either is not
+  read, nor a denial further off. Since a comma ends no clause, a denial in the clause before
+  one silences a phrase after it: "the records cannot be shared individually, and summaries
+  are publicly available" is read as denied, and so is "data with no identifiers are publicly
+  available". A sentence is said of the sources it names, or, naming none and speaking of
   data, of every chosen source where all are reached one way; so "The code used to analyse
   the data is available on request" is read as said of an open source, and warns, and a
   sentence of the statement about summary data or analysis files that names no source warns
-  too. A statement that says an open source is openly available anywhere is taken to ask for
-  something else when it says "on request". Sentences are split at a stop and a space before
+  too, "Aggregated data underlying the figures are publicly available" beside a claims
+  database (round 1 of #384). A statement that says an open source is openly available
+  anywhere is taken to ask for something else when it says "on request", even in the same
+  sentence: "Summaries of the ORA are publicly available; ORA data are available on request"
+  says nothing. Sentences are split at a stop and a space before
   anything but a small letter, so an abbreviation followed by a capital ends one. A custodian
   rule is held to `paper.yaml` only for the sources chosen, by the largest minimum among
-  them; a rule of a source not chosen is not read.
+  them; a rule of a source not chosen is not read. YAML reads a bare `yes`, `no`, `on` or
+  `off` as true or false: the record dates its history with `date:`, not `on:`, and takes a
+  variable's `provided` and a source's `redistribution` either way, but any other field of
+  text answered with a bare `no` breaks the schema, and the record is set aside with a
+  warning (round 1 of #384). The journal shortlist's history is dated with `on:` and breaks
+  in the same way, on `main`.
 - **A placeholder is found by its kind, and only in the text the gate reads.** In the
   manuscript TODO and TBD count in any case, as they always did, so a Spanish "todo" quoted
   in the prose is one. A slot in brackets in a form the rules do not name, "[Name of the

@@ -231,6 +231,14 @@ def test_a_statement_is_read_sentence_by_sentence() -> None:
         # A negation in another clause is that clause's.
         ("The data cannot be shared, but summaries are publicly available.", OPENLY, True),
         ("The data are not ours to share; they are available on request.", ON_REQUEST, True),
+        # A denial with an aside between it and the phrase is still its own (round 1 of #384).
+        ("The ENCD data are not, however, publicly available.", OPENLY, False),
+        ("The ENCD data cannot, under the agreement, be made publicly available.", OPENLY,
+         False),
+        ("The data are not (for privacy reasons) publicly available.", OPENLY, False),
+        ("The data are not yet publicly available.", OPENLY, False),
+        ("No patient-level ENCD data are publicly available.", OPENLY, False),
+        ("None of the ENCD data are publicly available.", OPENLY, False),
         # Far before the phrase, a negation is not its own.
         ("Not one of the files that we drew from the archive is publicly available.", OPENLY,
          True),

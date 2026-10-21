@@ -61,16 +61,19 @@ OPENLY = re.compile(
 )
 
 #: A word that turns what follows it in its clause into its opposite: "are not publicly
-#: available", "cannot be made publicly available", "neither ... nor publicly available".
+#: available", "cannot be made publicly available", "neither ... nor publicly available",
+#: "no patient-level data are publicly available".
 NEGATION = re.compile(
-    r"\b(?:not|cannot|never|neither|nor|no\s+longer|unable|without)\b|n't\b", re.IGNORECASE
+    r"\b(?:not|cannot|never|neither|nor|no|none|unable|without)\b|n't\b", re.IGNORECASE
 )
-#: Where a clause starts, for the negation before a phrase: a mark that parts clauses, or a
-#: word that turns from one to the next ("are not shared, but are available on request").
-CLAUSE = re.compile(r"[,;:()–—]|\b(?:but|however|although|whereas|though|yet)\b",
-                    re.IGNORECASE)  # fmt: skip
-#: How many words before a phrase a negation can stand and still be its own.
-NEGATION_WORDS = 6
+#: Where a clause starts, for the negation before a phrase: a semicolon or a colon, or a word
+#: that turns from one clause to the next ("cannot be shared, but are available on request").
+#: Not a comma, a bracket or a dash, which as often set an aside between a denial and what it
+#: denies: "are not, however, publicly available" (round 1 of #384).
+CLAUSE = re.compile(r"[;:]|\b(?:but|whereas|although|though)\b", re.IGNORECASE)
+#: How many words before a phrase a negation can stand and still be its own: enough for an
+#: aside of a few words between them.
+NEGATION_WORDS = 8
 
 #: What a sentence that names no source is about, for it to be said of the data.
 DATA_WORD = re.compile(r"\bdata(?:sets?|bases?)?\b", re.IGNORECASE)

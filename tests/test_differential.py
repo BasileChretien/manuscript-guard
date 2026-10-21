@@ -275,7 +275,7 @@ CHANGED = {
     ),
     "a denial read in the two words before a phrase": (
         "data_sources.py",
-        "NEGATION_WORDS = 6\n",
+        "NEGATION_WORDS = 8\n",
         "NEGATION_WORDS = 2\n",
         "data sources statement",
     ),

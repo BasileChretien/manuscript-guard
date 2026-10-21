@@ -7051,7 +7051,7 @@ def test_a_source_the_record_names_and_does_not_consider_is_said(project: Path) 
         elif where == "rejected":
             document["decision"]["rejected"] = [{"source": "faers", "why": "too slow"}]
         elif where == "history":
-            document["history"] = [{"source": "faers", "event": "applied", "on": "2026-10-22"}]
+            document["history"] = [{"source": "faers", "event": "applied", "date": "2026-10-22"}]
         else:
             document["decision"]["chosen"] = ["ora", "faers"]
         assert _sources_said(project, document) == [("data-source-unknown", "warn")], where
@@ -7119,9 +7119,19 @@ def test_a_quote_not_on_its_stored_page_is_said(project: Path) -> None:
 
 
 def test_a_page_not_stored_is_said_once_and_its_quotes_are_not_checked(project: Path) -> None:
+    from manuscript_guard.gates.data_sources import check_data_sources
+
     _named_everywhere(project)
     said = _sources_said(project, pages=False)
     assert said == [("data-source-page-not-stored", "warn")] * 2
+    loaded, _ = load_project(project)
+    messages = [f.message for f in check_data_sources(loaded, "drafting").findings]
+    assert all("is not stored" in message for message in messages), messages
+    # A page saved in a code page is read by nothing, and said so; the gate goes on.
+    _sources_said(project)
+    (project / "design" / "data_sources" / "pages" / "ora-access.txt").write_bytes(b"caf\xe9")
+    [found] = check_data_sources(loaded, "drafting").findings
+    assert found.code == "data-source-page-not-stored" and "cannot be read: " in found.message
 
 
 def test_a_chosen_source_reached_nobody_knows_how_is_said(project: Path) -> None:
@@ -7199,6 +7209,59 @@ def test_a_plan_that_does_not_name_the_chosen_source_is_said(project: Path) -> N
     assert _sources_said(project) == []
 
 
+def test_a_plan_s_data_sources_section_is_read_as_its_population_is(project: Path) -> None:
+    """Round 1 of #384: G12's own pattern for the population section leaves out "Data
+    sources", STROBE's heading, so a plan that named the source there was said not to."""
+    from test_data_sources import set_statement
+
+    set_statement(project, "The Open Reports Archive is publicly available.")
+    plan = project / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    for heading in ("## Data sources", "## Data", "## Source of data", "## Setting and data"):
+        moved = text.replace("## Exposure\n", f"{heading}\n\nThe ORA, 2015 to 2025.\n\n"
+                                              "## Exposure\n")  # fmt: skip
+        plan.write_bytes(moved.encode())
+        assert _sources_said(project) == [], heading
+
+
+def test_a_record_written_as_yaml_is_written_by_hand_is_read(project: Path) -> None:
+    """Round 1 of #384: YAML 1.1 reads `on`, `yes` and `no` as true and false, so a history
+    entry dated with `on:`, or a variable `provided: yes`, failed the schema, the record was
+    put aside, and the custodian rule it held was never asked of paper.yaml."""
+    from test_data_sources import PAGES, record
+
+    from manuscript_guard.cli import _run_gates
+
+    _named_everywhere(project, "ENCD")
+    document = record()
+    document["decision"]["chosen"] = ["encd"]
+    text = yaml.safe_dump(document, sort_keys=False)
+    text = text.replace("provided: 'yes'", "provided: yes").replace("provided: partly",
+                                                                    "provided: no")  # fmt: skip
+    text += "history:\n- {source: encd, event: applied, date: 2026-11-02}\n"
+    text += "- {source: encd, event: approved, date: 2026-12-01}\n"
+    path = project / "design" / "data_sources.yaml"
+    path.write_bytes(text.encode("utf-8"))
+    pages = project / "design" / "data_sources" / "pages"
+    pages.mkdir(parents=True, exist_ok=True)
+    for name, page in PAGES.items():
+        (pages / name).write_bytes(page.encode("utf-8"))
+    assert "provided: yes" in text and "provided: no" in text
+    loaded, _ = load_project(project)
+    from manuscript_guard.gates.data_sources import check_data_sources
+
+    said = [(f.code, f.severity) for f in check_data_sources(loaded, "internal-review").findings]
+    assert said == [("custodian-rule-undeclared", "fail")] * 2, said
+    report, _project, _stage, _deferred = _run_gates(project, stage="internal-review")
+    assert "custodian-rule-undeclared" in {f.code for f in report.failures}
+    # A redistribution answered "no" is an answer, not a broken record.
+    path.write_bytes(text.replace("  terms:\n    minimum_cell_count: 11",
+                                  "  terms:\n    redistribution: no\n    minimum_cell_count: 11")
+                     .encode("utf-8"))  # fmt: skip
+    said = {f.code for f in check_data_sources(loaded, "internal-review").findings}
+    assert "data-sources-schema" not in said and "custodian-rule-undeclared" in said
+
+
 def test_a_statement_that_does_not_name_the_chosen_source_is_said(project: Path) -> None:
     from test_data_sources import name_in_plan, set_statement
 
@@ -7211,6 +7274,26 @@ def test_a_statement_that_does_not_name_the_chosen_source_is_said(project: Path)
                     b"  type = {dataset},\n  doi = {10.5555/ora.2026},\n  year = {2026}\n}\n")
     set_statement(project, "The data are publicly available [@ora2026].")
     assert _sources_said(project) == []
+
+
+def test_a_finding_of_the_statement_is_placed_in_the_file_that_holds_it(project: Path) -> None:
+    """Round 1 of #384: the main text is several files read as one, and every finding was
+    placed in main.md."""
+    from test_data_sources import name_in_plan
+
+    from manuscript_guard.gates.data_sources import check_statement_sources
+
+    name_in_plan(project, "All reports in the Open Reports Archive.")
+    _sources_said(project)
+    main = project / "manuscript" / "main.md"
+    text = main.read_bytes().decode("utf-8")
+    start = text.index("# Data availability\n")
+    end = text.index("\n# ", start + 1)
+    main.write_bytes((text[:start] + text[end + 1 :]).encode("utf-8"))
+    back = project / "manuscript" / "z-back.md"
+    back.write_bytes(b"# Data availability\n\nThe data are publicly available from the agency.\n")
+    [found] = check_statement_sources(load_project(project)[0]).findings
+    assert found.code == "data-statement-source-unnamed" and found.path == back
 
 
 def test_a_statement_that_says_otherwise_than_the_route_is_said(project: Path) -> None:

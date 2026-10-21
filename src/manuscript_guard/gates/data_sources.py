@@ -129,7 +129,7 @@ def check_statement_sources(project: Project) -> Report:
     if statement is None:
         return Report()  # the required statement's own check says it is missing
     printed = f"{statement}\n{cited_in(statement, project)}"
-    path = project.path("manuscript") / "main.md"
+    path = _holding(project, heading)
     findings = [
         Finding(
             STATEMENT_GATE,
@@ -149,6 +149,19 @@ def check_statement_sources(project: Project) -> Report:
         source = by_id[source_id]
         findings.append(_route_finding(source, said, path, statement))
     return Report(tuple(findings))
+
+
+def _holding(project: Project, heading: str | None):
+    """The main-text file that holds the statement's heading: the first, of several."""
+    from manuscript_guard.gates.data_statement import statement_text
+    from manuscript_guard.gates.numbers import source_files
+    from manuscript_guard.text.masking import without_front_matter
+
+    files = source_files(project.path("manuscript"), main_text_only=True)
+    for file in files:
+        if statement_text(without_front_matter(read_text(file)), heading) is not None:
+            return file
+    return files[0] if files else project.path("manuscript") / "main.md"
 
 
 #: What the statement said, as a finding says it, and what to do about it.
@@ -298,12 +311,13 @@ def _quotes(project: Project, candidate: dict[str, Any], path) -> Report:
 
 def _page_text(project: Project, page: str, candidate, path, findings: list[Finding]) -> str | None:
     stored = page_path(project, page)
-    try:
-        return read_text(stored)
-    except FileNotFoundError:
+    if not stored.is_file():
         reason = "is not stored"
-    except (ContractError, OSError) as exc:
-        reason = f"cannot be read ({exc})"
+    else:
+        try:
+            return read_text(stored)
+        except ContractError as exc:  # `read_text` says what stopped it, an OSError among them
+            reason = f"cannot be read: {getattr(exc, 'reason', exc)}"
     findings.append(
         _warn(
             "data-source-page-not-stored",
@@ -360,21 +374,30 @@ def _custodian(project: Project, picked: list[dict[str, Any]], path, stage: str)
     return Report(tuple(findings))
 
 
+#: The headings of the plan where the source is said: G12's population section, and the
+#: headings G12 does not count for it but a plan names its data under, STROBE's "Data
+#: sources" among them (round 1 of #384), "Data", "Source of data", "Setting and data".
+PLAN_DATA = re.compile(
+    r"\bpopulation|participants|\bdata\s+sources?\b|\bsources?\s+of\s+(?:the\s+)?data\b"
+    r"|^\W*(?:the\s+)?data\W*$|\bsetting\s+and\s+data\b|\bdata\s+and\s+setting\b",
+    re.IGNORECASE,
+)
+
+
 def _plan(project: Project, picked: list[dict[str, Any]]) -> Report:
     """The plan's Population or Data source section names each chosen source."""
-    from manuscript_guard.gates.design import REQUIRED, _plan_sections, _read_plan, plan_path
+    from manuscript_guard.gates.design import _plan_sections, _read_plan, plan_path
     from manuscript_guard.text.sections import subsections
 
     plan = plan_path(project)
     if not plan.is_file() or not picked:
         return Report()
     text, _unreadable = _read_plan(plan)
-    pattern = dict((name, rule) for name, rule, _purpose in REQUIRED)["population"]
     sections = _plan_sections(text)
     said = [
         "\n".join(part.body for part in subsections(sections, index))
         for index, section in enumerate(sections)
-        if re.search(pattern, section.title)
+        if PLAN_DATA.search(section.title)
     ]
     if not said:
         return Report()  # plan-section-missing says so

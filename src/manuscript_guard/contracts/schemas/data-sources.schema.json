@@ -55,7 +55,7 @@
       "additionalProperties": false,
       "properties": {
         "name": { "$ref": "#/$defs/text", "description": "As design/data_dictionary.yaml names it, where the project keeps one." },
-        "provided": { "enum": ["yes", "partly", "no", "unknown"] },
+        "provided": { "enum": ["yes", "partly", "no", "unknown", true, false], "description": "yes, partly, no or unknown; YAML reads a bare yes or no as true or false, and either is taken as written." },
         "note": { "$ref": "#/$defs/text" }
       }
     },
@@ -143,7 +143,7 @@
             "additionalProperties": false,
             "properties": {
               "licence": { "$ref": "#/$defs/text" },
-              "redistribution": { "$ref": "#/$defs/text" },
+              "redistribution": { "oneOf": [{ "$ref": "#/$defs/text" }, { "type": "boolean" }], "description": "What the terms say of passing the data on; a bare yes or no is read as true or false." },
               "minimum_cell_count": { "type": "integer", "minimum": 2, "description": "The smallest count the custodian allows to be published." },
               "restricts_sending": { "type": "boolean", "description": "The custodian forbids sending the data, or results drawn from them, to anyone they have not agreed to, a model provider among them." },
               "citation": { "$ref": "#/$defs/text" }
@@ -210,12 +210,12 @@
       "description": "What came of each request for access, newest last: applied, approved, refused, data received.",
       "items": {
         "type": "object",
-        "required": ["source", "event", "on"],
+        "required": ["source", "event", "date"],
         "additionalProperties": false,
         "properties": {
           "source": { "$ref": "#/$defs/id" },
           "event": { "$ref": "#/$defs/text" },
-          "on": { "$ref": "#/$defs/date" }
+          "date": { "$ref": "#/$defs/date", "description": "Not `on`, which YAML reads as true." }
         }
       }
     }

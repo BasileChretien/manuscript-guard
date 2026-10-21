@@ -110,8 +110,8 @@ candidates:
       period: 2004 to the last quarter
       variables:
         - {name: age, provided: partly, note: missing in a third of reports}
-    access: {route: open-download, cost: free, delay: none}
-    terms: {licence: ..., minimum_cell_count: 5, restricts_sending: false}
+    access: {route: open-download, cost: free}   # each field here needs a claim below
+    terms: {licence: CC BY 4.0}
     claims:
       - about: [route, cost]
         claim: anyone may download the quarterly files, free
@@ -119,13 +119,22 @@ candidates:
         source_url: https://...
         read_on: 2026-10-21
         page: era-access.txt           # stored in design/data_sources/pages/
+      - about: licence
+        claim: CC BY 4.0
+        quote: "..."
+        source_url: https://...
+        read_on: 2026-10-21
+        page: era-access.txt
     risk: reporter-entered ages, often missing
 ranking:
   - {source: example-archive, why: ...}
 decision: {chosen: [example-archive], decided_by: A. Author, decided_on: 2026-10-21}
 history:                               # what came of each request for access
-  - {source: ..., event: application submitted, on: 2026-11-02}
+  - {source: ..., event: application submitted, date: 2026-11-02}
 ```
+
+A minimum cell count or `restricts_sending: true` under a chosen source's `terms:` is copied
+into `paper.yaml`'s `custodian:` as well (section 6).
 
 `route` is one of `open-download` (anyone may download), `registration` (a free account,
 then a download), `application` (a committee or the custodian decides), `data-use-agreement`

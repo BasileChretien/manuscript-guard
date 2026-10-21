@@ -13,11 +13,14 @@ import os
 import re
 import shutil
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from manuscript_guard import palettes
+from manuscript_guard.colour import DEFICIENCIES
+from manuscript_guard.palettes import _most
 
 REPO = Path(__file__).resolve().parent.parent
 DATA = REPO / "src" / "manuscript_guard" / "data"
@@ -211,6 +214,32 @@ def test_a_collections_own_quirk_is_kept() -> None:
     assert len(palettes.colours("met/Tsimshian", 1)) == 2
 
 
+def test_a_safe_palette_keeps_apart_the_very_colours_asked_for() -> None:
+    """Round 2 of #406: `--safe --colours n` asked how many colours stay apart at most, and
+    so listed PuOr for seven classes: ten of its colours stay apart for every reader, and
+    its scheme of seven does not."""
+    assert palettes.palette("brewer/PuOr").distinct["cvd"] == 10
+    assert _most([palettes.colours("brewer/PuOr", 7)], DEFICIENCIES) < 7
+    seven = {p.name for p in palettes.chosen(kind="diverging", colours=7, safe=True)}
+    assert "brewer/PuOr" not in seven
+    assert "brewer/PuOr" in {p.name for p in palettes.chosen(kind="diverging", colours=10,
+                                                             safe=True)}  # fmt: skip
+    for kind in ("qualitative", "sequential", "diverging"):
+        for found in palettes.chosen(kind=kind, colours=7, safe=True):
+            if not found.continuous:
+                codes = palettes.colours(found.name, 7)
+                assert _most([codes], DEFICIENCIES) == len(codes), found.name
+
+
+def test_a_lightness_that_runs_no_way_is_said_without_a_deficiency() -> None:
+    """Round 2 of #406: "neither runs one way nor turns once, but not for each deficiency"
+    says nothing a reader can use."""
+    found = replace(palettes.palette("okabe-ito"), lightness="neither", lightness_kept=False)
+    said = "\n".join(palettes.describe(found, []))
+    assert "its lightness neither runs one way nor turns once" in said
+    assert "for each deficiency" not in said
+
+
 def test_safe_palettes_are_those_every_reader_can_read_for_that_use() -> None:
     qualitative = palettes.chosen(kind="qualitative", colours=4, safe=True)
     assert all((p.distinct["cvd"] or 0) >= 4 for p in qualitative if not p.continuous)
@@ -323,6 +352,8 @@ def test_r_gives_the_colours_python_gives(tmp_path: Path) -> None:
         '  out$legend <- calc_element("legend.text", theme)$size\n'
         '  out$line <- calc_element("axis.line.x", theme + theme(axis.line = element_line()))'
         '$linewidth * .pt * 72 / 96\n'
+        '  boxed <- mg_theme(root, base = theme_bw)\n'
+        '  out$border <- calc_element("panel.border", boxed)$linewidth * .pt * 72 / 96\n'
         '}\n'
         'cat(jsonlite::toJSON(out, auto_unbox = TRUE))\n',
         encoding="utf-8",
@@ -348,3 +379,5 @@ def test_r_gives_the_colours_python_gives(tmp_path: Path) -> None:
         # at the width asked, not three quarters of it.
         assert said["axis"] == 8 and said["legend"] == 8
         assert abs(said["line"] - 0.75) < 1e-6
+        # Round 2: a panel's border is a line too, which theme_bw drew at its own width.
+        assert abs(said["border"] - 0.75) < 1e-6

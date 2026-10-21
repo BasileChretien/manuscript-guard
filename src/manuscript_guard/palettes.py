@@ -272,21 +272,26 @@ def _subset(entry: dict, n: int) -> list[str]:
     return entry["colours"][:n]
 
 
+def _apart(codes: list[str], seen: tuple[str, ...]) -> bool:
+    """Whether every two of `codes` are at least the threshold apart to normal vision and as
+    each of `seen` makes them."""
+    rgbs = [parse(code)[0] for code in codes]
+    ways = [lambda rgb: rgb, *[lambda rgb, way=way: simulate(rgb, way) for way in seen]]
+    return all(
+        difference(way(rgbs[i]), way(rgbs[j])) >= THRESHOLD
+        for way in ways
+        for i in range(len(rgbs))
+        for j in range(i + 1, len(rgbs))
+    )
+
+
 def _most(subsets: list[list[str]], seen: tuple[str, ...]) -> int:
     """The largest n whose colours are all at least the threshold apart to normal vision and
-    as each of `seen` makes them; 1 where no two are."""
+    as each of `seen` makes them; 1 where no two are. A smaller n may not be: ColorBrewer's
+    scheme of seven is no part of its scheme of ten."""
     best = 1
     for codes in subsets:
-        if len(codes) < 2:
-            continue
-        rgbs = [parse(code)[0] for code in codes]
-        ways = [lambda rgb: rgb, *[lambda rgb, way=way: simulate(rgb, way) for way in seen]]
-        if all(
-            difference(way(rgbs[i]), way(rgbs[j])) >= THRESHOLD
-            for way in ways
-            for i in range(len(rgbs))
-            for j in range(i + 1, len(rgbs))
-        ):
+        if len(codes) >= 2 and _apart(codes, seen):
             best = max(best, len(codes))
     return best
 
@@ -398,13 +403,15 @@ def _of_kind(found: Palette, kind: str) -> bool:
 
 
 def readable(found: Palette, kind: str | None = None, colours: int | None = None) -> bool:
-    """Whether every reader can read the palette for this use: as a set of colours, that
-    `colours` of them (`SAFE_AT` where not given) stay apart for each deficiency; as an
-    ordered or a diverging scale, or a continuous map, that its lightness runs one way or
-    turns once, and still does for each deficiency, and, where a number of classes is
-    given and the palette is no continuous map, that so many of its colours stay apart for
-    each deficiency as well (round 1 of #406: Blues was offered for five classes, of which
-    no two stay apart with tritanopia)."""
+    """Whether every reader can read the palette for this use: as a set of colours, that the
+    `colours` of them it gives for that many (`SAFE_AT` where not given) stay apart for each
+    deficiency; as an ordered or a diverging scale, or a continuous map, that its lightness
+    runs one way or turns once, and still does for each deficiency, and, where a number of
+    classes is given and the palette is no continuous map, that the colours it gives for
+    that many stay apart for each deficiency as well (round 1 of #406: Blues was offered for
+    five classes, of which no two stay apart with tritanopia). Those very colours are
+    tested, and not how many stay apart at most (round 2: ten of PuOr's do, and its seven
+    do not)."""
     as_scale = found.continuous or kind in ("sequential", "diverging") or (
         kind is None and found.kind in ("sequential", "diverging"))  # fmt: skip
     if as_scale:
@@ -413,8 +420,8 @@ def readable(found: Palette, kind: str | None = None, colours: int | None = None
         ordered = found.lightness in wanted and found.lightness_kept
         if not ordered or found.continuous or not colours:
             return ordered
-    cvd = found.distinct.get("cvd")
-    return cvd is not None and cvd >= (colours or SAFE_AT)
+    n = colours or SAFE_AT
+    return n <= len(found.colours) and _apart(_discrete(found, n), DEFICIENCIES)
 
 
 def row(found: Palette) -> dict:
@@ -446,24 +453,26 @@ def table(rows: list[Palette], colours: int | None = None) -> list[str]:
     return lines
 
 
+def _lightness_said(found: Palette) -> str:
+    # Whether a deficiency keeps a lightness that orders nothing is no use to a reader.
+    if found.lightness not in ("monotone", "diverging"):
+        return "its lightness neither runs one way nor turns once"
+    runs = "runs one way" if found.lightness == "monotone" else "turns once"
+    kept = "and" if found.lightness_kept else "but not"
+    return f"its lightness {runs}, {kept} for each deficiency"
+
+
 def describe(found: Palette, codes: list[str]) -> list[str]:
     """One palette: its colours, what the check says of it, what its collection claims, its
     licence, and how to use it from Python and from R."""
     about = collections()[found.collection]
     shown = ", ".join(codes) if len(codes) <= 16 else ", ".join(codes[:8]) + f", ... ({len(codes)})"
     if found.continuous:
-        runs = {"monotone": "runs one way", "diverging": "turns once"}.get(
-            found.lightness, "neither runs one way nor turns once")  # fmt: skip
-        kept = "and" if found.lightness_kept else "but not"
-        verdict = f"a continuous map; its lightness {runs}, {kept} for each deficiency"
+        verdict = f"a continuous map; {_lightness_said(found)}"
     else:
-        runs = {"monotone": "runs one way", "diverging": "turns once"}.get(
-            found.lightness, "neither runs one way nor turns once")  # fmt: skip
-        kept = "and" if found.lightness_kept else "but not"
         verdict = (f"{found.distinct['normal']} of its colours stay apart to normal vision, "
                    f"{found.distinct['cvd']} for every colour-vision deficiency, "
-                   f"{found.distinct['greyscale']} in grey; its lightness {runs}, {kept} for "
-                   "each deficiency")  # fmt: skip
+                   f"{found.distinct['greyscale']} in grey; {_lightness_said(found)}")
     claims = {True: "calls it colour-blind friendly", False: "does not call it colour-blind "
               "friendly", None: "says nothing of colour-vision deficiency"}[found.claims_cvd]
     return [

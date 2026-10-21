@@ -790,7 +790,9 @@ anything. MetBrewer calls Archambault colour-blind friendly; three of its colour
 apart for every reader. Both are shown, and the skill says both.
 
 **Taking n colours** follows each collection's own rule, so a palette here gives what its
-own package gives: ColorBrewer's scheme of n; MetBrewer's, MoMAColors', NatParksPalettes' and
+own package gives: ColorBrewer's scheme of n, and for fewer than its smallest scheme of
+three, n evenly spaced along that one, its two ends for two, where `scale_colour_brewer`
+takes the first two, one arm and the middle of a diverging scheme; MetBrewer's, MoMAColors', NatParksPalettes' and
 PNWColors' colours whose rank in the palette's order is at most n, in the palette's
 sequence (`met.brewer`'s `palette[[1]][which(palette[[2]] %in% c(1:n))]`); otherwise the first
 n; and n evenly spaced along a continuous map. More than a set has is refused, and `ramp`

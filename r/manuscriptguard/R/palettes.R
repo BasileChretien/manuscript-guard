@@ -39,7 +39,9 @@ mg_palettes <- function() {
 #' Of a set of colours, the `n` its collection gives for that many: ColorBrewer's own scheme
 #' of `n`, or the colours whose rank in the collection's order is at most `n`, in the
 #' palette's sequence, as MetBrewer, MoMAColors, NatParksPalettes and PNWColors give them,
-#' or the first `n`. More than it has is refused: ask for `type = "continuous"`, which
+#' or the first `n`. Fewer than ColorBrewer's smallest scheme of three are evenly spaced
+#' along it, its two ends for two, where `scale_colour_brewer` takes the first two (one arm
+#' and the middle of a diverging scheme). More than it has is refused: ask for `type = "continuous"`, which
 #' interpolates, and whose colours are no longer as far apart. Of a continuous map, `n`
 #' evenly spaced along it. The same colours as Python's `manuscript_guard.palettes.colours`.
 #'
@@ -92,7 +94,8 @@ scale_fill_mg <- function(name, discrete = TRUE, reverse = FALSE, ...) {
 #' with every text at a size no smaller, its axis, legend and strip text among them (the
 #' themes draw those at 0.8 of the base): 7 pt where the journal's least is lower, a size
 #' many artwork guides give for a figure's text at print size, or `size` where it is given.
-#' Lines are drawn no thinner than the journal's least, or 0.5 pt.
+#' Lines, and the borders of panels and boxes, are drawn at the journal's thinnest line,
+#' or 0.5 pt where it gives none or a thinner one.
 #'
 #' @param root The project, found upwards from the working directory where NULL.
 #' @param base A ggplot2 theme function, `ggplot2::theme_classic` by default.
@@ -106,9 +109,11 @@ mg_theme <- function(root = NULL, base = ggplot2::theme_classic, size = NULL) {
   line <- max(0.5, if (is.null(rules$min_line_pt)) 0 else rules$min_line_pt)
   text <- ggplot2::element_text(size = size)
   # ggplot2's linewidth is in millimetres, drawn at .pt line widths of 1/96 inch each.
+  width <- line * 96 / 72 / ggplot2::.pt
   base(base_size = size) +
     ggplot2::theme(
-      line = ggplot2::element_line(linewidth = line * 96 / 72 / ggplot2::.pt),
+      line = ggplot2::element_line(linewidth = width),
+      rect = ggplot2::element_rect(linewidth = width),
       axis.text = text, legend.text = text, legend.title = text, strip.text = text,
       plot.title = text, plot.subtitle = text, plot.caption = text
     )

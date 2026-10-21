@@ -58,7 +58,8 @@ ggplot2::ggsave("figures/km.pdf", p, width = size[["width"]], height = size[["he
 
 ```bash
 manuscript-guard palettes --kind qualitative --colours 4 --safe   # four colours every reader tells apart
-manuscript-guard palettes --kind sequential --safe
+manuscript-guard palettes --kind sequential --safe                # a continuous scale
+manuscript-guard palettes --kind sequential --colours 5 --safe    # a scale of five classes
 manuscript-guard palettes --collection MetBrewer                  # the artists' palettes, with what the check says
 manuscript-guard palettes --show met/Hiroshige --colours 5        # its colours, and how to use it
 ```
@@ -66,7 +67,10 @@ manuscript-guard palettes --show met/Hiroshige --colours 5        # its colours,
 Every palette there is held to the rule `check` holds a figure to: for a set of colours, how
 many of them stay at least 10 apart (CIEDE2000) for a reader with protanopia, deuteranopia
 or tritanopia (`cvd`) and in grey; for a map, whether its lightness runs one way, or turns
-once for a diverging one, and still does for each deficiency. Beside it is what the
+once for a diverging one, and still does for each deficiency. For a scale binned into
+classes, give their number: a scheme whose lightness runs one way can still have two
+classes a deficiency makes one, and `--safe` then holds those very colours apart as well.
+Beside it is what the
 collection itself claims, where it claims anything: MetBrewer, MoMAColors and
 NatParksPalettes mark some palettes colour-blind friendly by their own reading, which is
 looser than this check, so the two can disagree. Say both.

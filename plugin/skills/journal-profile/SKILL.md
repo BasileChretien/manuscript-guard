@@ -1,6 +1,6 @@
 ---
 name: journal-profile
-description: Choose a target journal with the author, then read that journal's instructions for authors and fill the annotated profile template with its limits, required sections and required statements. Use when choosing where to submit, when check reports journal-profile-missing, journal-profile-stale, data-statement-forbidden, data-identifier-missing, data-link-temporary or data-doi-uncited, or before submitting to a different journal.
+description: Choose a target journal with the author, then read that journal's instructions for authors and fill the annotated profile template with its limits, required sections and required statements. Use when choosing where to submit, when check reports journal-profile-missing, journal-profile-stale, data-statement-forbidden, data-identifier-missing, data-link-temporary, data-doi-uncited or pointer-form-unread, or before submitting to a different journal.
 ---
 
 # Turning author guidelines into something a build can check
@@ -197,6 +197,10 @@ required_statements:
     pattern: '(?im)^#+\s*data availability'
     why: "Required in every research article."
 
+pointers:                       # how it writes "Table 2", only where the page says;
+  figure: "Fig. {n}"            # default Table {n}, Figure {n}, Table S{n}, Figure S{n}
+  supplementary_table: "eTable {n}"
+
 references:
   style_name: Vancouver
   numbered: true
@@ -254,6 +258,14 @@ block out, and G4 reads nothing under the heading. G4 then fails a forbidden phr
 (`data-statement-forbidden`) and a missing identifier (`data-identifier-missing`) from internal
 review, and warns on a shared-drive or bare code-host link (`data-link-temporary`) and on a
 dataset DOI the reference list does not cite (`data-doi-uncited`).
+
+`pointers` is how the journal writes a pointer to a table or a figure, where its page says:
+"Fig. {n}", "eTable {n}", "Supplementary Table {n}", `{n}` standing for the number, with its
+quote under `pointers.<kind>`. `{{ref.table.<key>}}` prints this form, so changing journals
+renames every mention. Leave out what the page does not say; the defaults are Table {n},
+Figure {n}, Table S{n} and Figure S{n}. A form G2 does not read back as a pointer to that
+kind of that document, "Tab. {n}" or "Table A{n}", is `pointer-form-unread`, and refs cannot
+print in it.
 
 `notes` is where everything the build cannot check goes — cover letter contents, suggested
 reviewers, portal quirks. It is not a dumping ground; it is the list you will otherwise

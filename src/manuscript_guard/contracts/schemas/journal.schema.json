@@ -6,6 +6,13 @@
   "type": "object",
   "required": ["schema", "name", "source_url", "retrieved_on"],
   "additionalProperties": false,
+  "$defs": {
+    "pointer_form": {
+      "type": "string",
+      "pattern": "^[^{}]*\\{n\\}[^{}]*$",
+      "description": "The pointer with {n}, once, where its number goes: \"Table {n}\", \"Fig. {n}\", \"eTable {n}\", \"Table S{n}\"."
+    }
+  },
   "properties": {
     "schema": { "const": "manuscript-guard/journal/1" },
     "name": { "type": "string", "minLength": 1 },
@@ -28,7 +35,7 @@
     },
     "quotes": {
       "type": "object",
-      "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, text_recycling, reporting_guidelines. G4 holds each to the stored page, and a limit's number to its quote.",
+      "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, text_recycling, reporting_guidelines, pointers.<kind>. G4 holds each to the stored page, and a limit's number to its quote.",
       "propertyNames": { "type": "string", "minLength": 1 },
       "additionalProperties": { "type": "string", "minLength": 1 }
     },
@@ -360,6 +367,17 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Checklists the journal requires. Feeds the reporting gate."
+    },
+    "pointers": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How the journal writes a pointer to a table or a figure, {n} standing for its number: {{ref.table.<key>}} prints it in this form, and {{num.table.<key>}} the word of it holding the number. Where a kind is not given: Table {n}, Figure {n}, Table S{n}, Figure S{n}. G2 refuses a form it does not read back as a pointer to that kind of that document.",
+      "properties": {
+        "table": { "$ref": "#/$defs/pointer_form" },
+        "figure": { "$ref": "#/$defs/pointer_form" },
+        "supplementary_table": { "$ref": "#/$defs/pointer_form" },
+        "supplementary_figure": { "$ref": "#/$defs/pointer_form" }
+      }
     },
     "notes": {
       "type": "array",

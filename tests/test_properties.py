@@ -686,8 +686,8 @@ def _a_line_break_before_a_bindings_brace_makes_it_malformed(patch: pytest.Monke
 @holds(100, latex_displays())
 def test_a_display_written_for_latex_holds_no_bare_special_and_no_ligature(display: str) -> None:
     """Each of TeX's specials in a display is written escaped, but the no-break space, which is
-    written as a tie; and no two characters are written that TeX joins into a third, `--`
-    above all, which before a minus sign made an em dash of both (step 4b)."""
+    written as a tie; and no dash TeX joins from two characters is written, `--`, which before
+    a minus sign made an em dash of both, from two hyphens too (step 4b)."""
     written = latex_values.escaped(display, "results.x")
     bare = re.sub(r"\\(?:[A-Za-z]+(?:\{[^{}]*\})?|[#$%&_{},])|\{\}", "", written)
     assert sorted(set(bare) & set("\\{}$&#%_^")) == [], (display, written)

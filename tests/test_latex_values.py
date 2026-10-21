@@ -30,8 +30,10 @@ def _value(display: str) -> Value:
         ("<0.001", r"\ensuremath{<}0.001"),
         ("\N{MINUS SIGN}0.42", r"\ensuremath{-}0.42"),
         ("3.84 (2.10\N{EN DASH}7.02)", r"3.84 (2.10\textendash{}7.02)"),
-        # A dash before a minus sign keeps the sign (round 1 of step 4b).
+        # A dash before a minus sign keeps the sign (round 1 of step 4b), and two hyphens
+        # are no dash (round 2).
         ("-0.80\N{EN DASH}-0.12", r"-0.80\textendash{}-0.12"),
+        ("-0.80--0.12", r"-0.80-{}-0.12"),
         ("1\N{THIN SPACE}234", r"1\,234"),
         ("\N{GREEK SMALL LETTER BETA} = 0.3", r"\ensuremath{\beta} = 0.3"),
         ("A_B & C#1 {x} ~ ^ $ \\", r"A\_B \& C\#1 \{x\} \textasciitilde{} \textasciicircum{} "
@@ -93,7 +95,7 @@ _PDFTOTEXT = shutil.which("pdftotext")
 _PRINTED = (
     "12.5%", "<0.001", ">5", "a|b", "\N{MINUS SIGN}0.42", "\N{PLUS-MINUS SIGN}2",
     "3\N{MULTIPLICATION SIGN}4", "2.10\N{EN DASH}7.02", "A_B", "C#1", "x&y",
-    "-0.80\N{EN DASH}-0.12", "a\N{EM DASH}-b",
+    "-0.80\N{EN DASH}-0.12", "a\N{EM DASH}-b", "-0.80--0.12",
 )  # fmt: skip
 #: What pdftotext reads otherwise, measured under MiKTeX 24.4 (2026-10-21), and why: OT1 draws
 #: `\\_` as a rule, which holds no character, and T1's dash has no Unicode in the font's map.
@@ -200,10 +202,11 @@ def test_a_value_it_cannot_print_is_said_only_where_a_document_binds_it(
 
 def test_a_row_that_opens_with_a_bracket_is_read_as_a_cell() -> None:
     """After a row's `\\\\`, `[ref]` would be read as its argument (round 1 of step 4b)."""
-    table = Table("t", ("Group", "n"), (("A", "1"), ("[ref]", "2"), ("*", "3")), "", (),
-                  True, Path("r.json"))  # fmt: skip
+    table = Table("t", ("Group", "n"), (("A", "1"), ("[ref]", "2"), ("*", "3"), (" [a]", "4")),
+                  "", (), True, Path("r.json"))  # fmt: skip
     written = tabular(table, "table.t")
     assert "{}[ref] & 2" in written and "{}* & 3" in written and "{}A" not in written
+    assert "{} [a] & 4" in written
 
 
 def test_a_values_file_loaded_from_an_input_preamble_is_missed_when_missing(

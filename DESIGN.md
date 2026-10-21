@@ -1258,9 +1258,12 @@ from a stale file shows the old number.
   spaces, and Greek letters, the mathematical ones also with `\ensuremath`. A `$...$` would
   close the maths that a binding stands in, as in `$p = \mg{results.p}$`.
 
-A value holding any other character outside Latin-1 is refused
-(`value-not-printable`), not guessed at. The pull request that builds the table compiles each
-entry under OT1 and T1 and compares the printed text with the value.
+A value holding any other character outside Latin-1 is refused, not guessed at: it is left
+out of the file, so `\mg` prints `??` for it and LaTeX warns, and G1 says so
+(`value-not-printable`) where a document binds it; one nothing binds stops nothing. A dash is
+written as a command, and two hyphens apart, so that no dash TeX joins from them takes a
+minus sign after it. The pull request that builds the table compiles each entry under OT1
+and T1 and compares the printed text with the value.
 
 **The submission copy** replaces each binding with what the file defines for it and removes
 `\usepackage{mgvalues}`, so it needs no macro file.

@@ -94,8 +94,11 @@ class NotPrintable(ValueError):
 def escaped(text: str, ref: str) -> str:
     """`text` as LaTeX prints it under pdfLaTeX, or `NotPrintable`."""
     out = []
-    for character in text:
-        if character in _SPECIALS:
+    for index, character in enumerate(text):
+        if character == "-" and text[index + 1 : index + 2] == "-":
+            # Two hyphens are TeX's en dash, and a sign after them lost (round 2 of step 4b).
+            out.append("-{}")
+        elif character in _SPECIALS:
             out.append(_SPECIALS[character])
         elif character in _MATHS or character in _GREEK:
             out.append(r"\ensuremath{" + (_MATHS | _GREEK)[character] + "}")
@@ -120,7 +123,7 @@ def tabular(table: Table, ref: str) -> str:
         written = [escaped(cell, ref) for cell in cells]
         # A row after `\\\\` that opens with `[` or `*` would be read as its argument
         # (round 1 of step 4b).
-        if written and written[0][:1] in ("[", "*"):
+        if written and written[0].lstrip()[:1] in ("[", "*"):
             written[0] = "{}" + written[0]
         return " & ".join(written) + r" \\"
 

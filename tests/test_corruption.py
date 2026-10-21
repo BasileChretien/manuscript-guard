@@ -5965,7 +5965,8 @@ def test_g1_holds_the_twins_values_file_to_the_results(
         namespace, results, _literature, _rest = load_namespace(projekt)
         return [f.code for f in latex_values.check_values(projekt, namespace, results).findings]
 
-    assert codes() == ["values-file-missing"]
+    # The paper's and the supplement's, each loading it.
+    assert codes() == ["values-file-missing", "values-file-missing"]
     assert main(["values", str(project)]) == 0
     assert codes() == []
     written = entry.parent / "mgvalues.sty"

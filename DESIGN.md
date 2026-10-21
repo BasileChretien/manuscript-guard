@@ -3925,6 +3925,52 @@ none of them is declared; the reporting-checklist skill shows the table, and a t
 the two to one another. A project that names no design is asked for the seven, as before.
 What the sections say is the author's and the panel's to judge, never a gate's.
 
+## The data dictionary is one contract with three readers
+
+A plan that sets out an analysis of data that do not exist yet (a survey, a chart review, a
+cohort, a trial, an extraction form) has a second thing to settle before the data do:
+exactly what will be collected. `design/data_dictionary.yaml` says it, one entry for each
+variable: its name as the data will hold it, its label, a definition precise enough that
+two people recording it from the same source record the same value, its type, its unit, its
+codes or its range, the codes that mean missing, whether it is required and where it
+applies, the form and the visit it belongs to, who records it and from what, the variables
+it is derived from and how, the validated instrument and item it records, the standard
+definition it follows (MedDRA, CTCAE, ICD-10), the reporting-checklist items that need it,
+and, where nothing in the plan needs it, the reason it is collected. The same file describes
+data that already exist: a dataset in several tables names them (`datasets`), and a name may
+hold capitals or dots, since an existing dataset's columns do.
+
+Three readers take it as it is written. G12 holds it to the plan. The data-quality checks
+hold the collected data to it: its `study_period`, `pattern`, `within_study_period` and
+`rules` (an order between dates, a set of variables unique per row, or a rule the author's
+script tests) are for them, and were agreed with that work so that the schema changes once.
+And the export gives it to whoever builds the form. One loader serves all three,
+`contracts/dictionary.py`, and what it accepts is what all three trust.
+
+**A dictionary that does not read fails, at every stage.** G12 warns and never blocks, but
+a malformed contract is not a plan with a gap in it: a data check that read a variable's
+codes from the wrong list, or an export that wrote them, would be worse than none. The
+schema says the shape; the loader says what a schema cannot, each as `dictionary-invalid`
+at its line: a name or an id given twice, a reference to a form, a list of codes, an
+instrument, a dataset or a variable that is not there, codes on a type that has none, a
+binary variable without two, a code given twice or as both a value and a missing code, a
+range on a type that has none or a bound its type cannot read, a pattern that does not
+compile, a condition on a variable with no codes. It is said once, by G12; the other readers
+are handed nothing and say nothing of the file's shape. A gap in the plan is not a fault of
+the file: a categorical variable whose codes are not decided yet, or a derived variable whose
+inputs are not in the dictionary, reads, and is G12's to warn of. A project with no
+dictionary is not asked for one.
+
+**A value is compared as text, so YAML may not read it first.** `1` and `"1"` are one code.
+PyYAML reads some plain values as something else before any check sees them: `010` as the
+number 8, `8:30` as 510, `1_000` as 1000, an unquoted `No` or `off` as false. A code `010`
+read as 8 would never match the data's "010", and `label: No` would fail the schema with
+"False is not of type 'string'". Each is refused at its line with the words to write
+instead, in quotes, and the schema's own finding on that line is left out as the same
+fault said less usefully. A code written `1.0` is refused too: JSON Schema takes it for an
+integer, and as text it is "1.0". A number written as it reads, `200.0` or `-0.5`, is left
+alone.
+
 ## Stages: not every gate binds on day one
 
 The first version of `check` ran all twelve gates unconditionally, which meant that someone
@@ -7174,6 +7220,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   "Planned results and amendments", or a list nested under the Deviations heading, is
   read as the list and as the Deviations, so its items stand down their own keys' warnings
   (rounds 2 and 3 of #351; telling the two apart made other plans warned of).
+- **A data dictionary says one condition, and reads its range by its type alone.**
+  `applies_if` names one coded variable and the codes under which the variable is recorded;
+  a variable asked where two conditions hold, or where a number passes a threshold, cannot be
+  said, and is written without the condition. A `count`'s bounds are held to be numbers, not
+  whole ones. A datetime's bounds are compared only where both or neither carry a time zone.
+  What YAML reads as another value is found only where it is written plain; a value YAML
+  reads as written but the author meant otherwise, `1.5` for the item "1.50", is not.
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the

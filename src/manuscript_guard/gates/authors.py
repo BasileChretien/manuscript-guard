@@ -51,7 +51,7 @@ _UMLAUTS = str.maketrans({"\N{LATIN SMALL LETTER A WITH DIAERESIS}": "ae",
                           "\N{LATIN SMALL LETTER U WITH DIAERESIS}": "ue"})  # fmt: skip
 _TEX_UMLAUT = re.compile(r'\\"\s*([aouAOU])')
 #: Letters NFKD leaves whole, written as the TeX of a .bib writes them (`{\o}` is "o").
-_LETTERS = str.maketrans({"\N{LATIN SMALL LETTER O WITH STROKE}": "o",
+LETTERS = str.maketrans({"\N{LATIN SMALL LETTER O WITH STROKE}": "o",
                           "\N{LATIN SMALL LETTER AE}": "ae",
                           "\N{LATIN SMALL LIGATURE OE}": "oe",
                           "\N{LATIN SMALL LETTER D WITH STROKE}": "d",
@@ -69,7 +69,7 @@ def name_words(family: str) -> tuple[str, ...]:
     text = lookups._MATHS.sub("", lookups._SIGN.sub("", lookups._COMMAND.sub(lookups._untex, text)))
     text = unicodedata.normalize("NFKC", text).casefold().translate(_UMLAUTS)
     text = unicodedata.normalize("NFKD", text)
-    text = "".join(c for c in text if not unicodedata.combining(c)).translate(_LETTERS)
+    text = "".join(c for c in text if not unicodedata.combining(c)).translate(LETTERS)
     words = re.findall(r"[^\W\d_]+", _APOSTROPHES.sub("", text))
     while len(words) > 1 and words[-1] in SUFFIXES:
         words.pop()
@@ -237,4 +237,4 @@ def judged(
     return [lookups._finding("reference-authors-differ", message, path, _HINT, WARN)]
 
 
-__all__ = ["PARTICLES", "Compared", "compare", "judged", "name_words", "same", "shown"]
+__all__ = ["LETTERS", "PARTICLES", "Compared", "compare", "judged", "name_words", "same", "shown"]

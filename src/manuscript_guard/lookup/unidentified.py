@@ -41,6 +41,7 @@ from urllib.parse import urlsplit
 
 from manuscript_guard.gates import lookups as g7
 from manuscript_guard.gates import searched
+from manuscript_guard.gates.authors import LETTERS
 from manuscript_guard.literature import names
 from manuscript_guard.literature.names import Authors
 from manuscript_guard.lookup import search, sources
@@ -74,7 +75,9 @@ class Query:
         """The first author's family name as PubMed's author field takes it: accents and
         case folded, or "" where it cannot be written in plain letters."""
         family = searched.first_family(self.cited)
-        folded = unicodedata.normalize("NFKD", plain(family).casefold())
+        # "Jørgensen" is "jorgensen": NFKD keeps ø, æ and ł whole (the measurement of
+        # 2026-10-21 lost a first author's search to it).
+        folded = unicodedata.normalize("NFKD", plain(family).casefold()).translate(LETTERS)
         folded = " ".join("".join(c for c in folded if not unicodedata.combining(c)).split())
         return folded if folded.isascii() and re.fullmatch(r"[a-z' -]+", folded) else ""
 
@@ -192,8 +195,12 @@ def pubmed(q: Query, ask: Ask, where: Where) -> dict[str, Any]:
 
 
 def crossref_text(q: Query) -> str:
+    """The whole title's words, the first author's family name and the year: Crossref
+    ranks by all of them, and a long title cut to PubMed's twelve words lost the Lancet's
+    NOR-SWITCH trial among abstracts of the same words (the measurement of 2026-10-21)."""
     family = plain(searched.first_family(q.cited))
-    return " ".join(p for p in (" ".join(q.words), family, str(q.year or "")) if p)
+    words = " ".join(re.findall(r"[^\W_]+", plain(g7._TAGS.sub("", q.title))))
+    return " ".join(p for p in (words, family, str(q.year or "")) if p)
 
 
 def crossref(q: Query, ask: Ask, where: Where) -> dict[str, Any]:

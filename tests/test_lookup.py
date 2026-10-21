@@ -664,6 +664,25 @@ def test_pubmed_is_asked_by_the_first_author_only_where_the_title_found_no_work(
     assert first and not any("[1au]" in term for term in first), "the title found it"
 
 
+def test_a_word_pubmed_does_not_index_is_never_searched_for() -> None:
+    """PubMed indexes no stopword, and one ANDed into a title search empties it: "nor" in
+    "(NOR-SWITCH)" lost the Lancet's trial in the measurement of 2026-10-21. A family name
+    with a letter NFKD keeps whole is folded as TeX writes it."""
+    from manuscript_guard.gates.searched import search_words
+    from manuscript_guard.literature.names import Authors, Name
+    from manuscript_guard.lookup import unidentified
+
+    title = ("Switching from originator infliximab to biosimilar CT-P13 compared with "
+             "maintained treatment (NOR-SWITCH): as found in a 52-week trial")  # fmt: skip
+    first = Authors((Name(family="J\N{LATIN SMALL LETTER O WITH STROKE}rgensen"),))
+    q = unidentified.Query(title, tuple(search_words(title)), first, 2017)
+    terms = unidentified.pubmed_terms(q)
+    assert "nor[ti]" not in terms[0] and "found[ti]" not in terms[0], terms[0]
+    assert terms[1].startswith("jorgensen[1au] AND 2016:2018[dp]"), terms[1]
+    # Crossref ranks by the whole title, and gets all of it.
+    assert "trial" in unidentified.crossref_text(q)
+
+
 def test_crossref_s_search_keeps_to_the_cited_years(searched: Path) -> None:
     """Fabricated copies of a famous paper, posted years later, rank first once the authors
     are in the query (five under 10.65215 for "Attention is all you need", 2026-10-20)."""

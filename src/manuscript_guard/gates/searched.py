@@ -73,12 +73,26 @@ NOTICE_WORDS = frozenset({
     "comments", "commentary", "reply", "response", "re", "letter", "editorial", "notice",
     "expression", "addendum", "withdrawal", "withdrawn",
 })  # fmt: skip
-#: Words a search leaves out: they find nothing the title's other words do not.
+#: Words a search leaves out: PubMed's stopwords, which it does not index, so that one of
+#: them ANDed into a title search empties it ("nor" in "(NOR-SWITCH)" lost the Lancet's
+#: trial in the measurement of 2026-10-21; the list is that of PubMed's help page, read the
+#: same day), and a few more that find nothing the title's other words do not.
 STOPWORDS = frozenset({
-    "a", "an", "the", "of", "in", "on", "for", "and", "or", "with", "to", "by", "at", "from",
-    "as", "is", "are", "be", "was", "were", "its", "it", "this", "that", "these", "those",
-    "not", "no", "than", "into", "between", "after", "before", "during", "among", "versus",
-    "vs", "via", "do", "does", "can", "how", "what", "why", "who", "which", "when",
+    "a", "about", "again", "all", "almost", "also", "although", "always", "among", "an",
+    "and", "another", "any", "are", "as", "at", "be", "because", "been", "before", "being",
+    "between", "both", "but", "by", "can", "could", "did", "do", "does", "done", "due",
+    "during", "each", "either", "enough", "especially", "etc", "for", "found", "from",
+    "further", "had", "has", "have", "having", "here", "how", "however", "i", "if", "in",
+    "into", "is", "it", "its", "itself", "just", "kg", "km", "made", "mainly", "make",
+    "may", "mg", "might", "ml", "mm", "most", "mostly", "must", "nearly", "neither", "no",
+    "nor", "obtained", "of", "often", "on", "our", "overall", "perhaps", "pmid", "quite",
+    "rather", "really", "regarding", "seem", "seen", "several", "should", "show",
+    "showed", "shown", "shows", "significantly", "since", "so", "some", "such", "than",
+    "that", "the", "their", "theirs", "them", "then", "there", "therefore", "these",
+    "they", "this", "those", "through", "thus", "to", "upon",
+    "various", "very", "was", "we", "were", "what", "when", "which", "while", "with",
+    "within", "without", "would",
+    "or", "not", "after", "versus", "vs", "via", "why", "who",
 })  # fmt: skip
 MIN_SEARCH_WORDS = 3
 MAX_SEARCH_WORDS = 12

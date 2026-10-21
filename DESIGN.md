@@ -8536,7 +8536,10 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   the user's folder to Python. An input's path is collapsed as text inside the project
   (round 1 of #409): `data/linked/../x.csv`, where `data/linked` is a link, is recorded as
   `data/x.csv`, while on Linux and macOS the file read and digested is the one beside the
-  link's target. On Windows a path is recorded in the case it was written in, so one file
+  link's target. Python expands `~name` as well as `~`, so a project folder named `~raw`
+  is read elsewhere, and R records a path when it is added and digests the file at
+  `write()`, so a `setwd()` between the two may digest another file of that name (round 2
+  of #409). On Windows a path is recorded in the case it was written in, so one file
   spelt in two cases is two inputs, and a path in another case than the disk's names no
   file in a clone on Linux. A `.txt` input is digested as its bytes, so a copy checked out
   with CRLF line ends reads as changed.

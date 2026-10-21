@@ -1539,8 +1539,8 @@ class Emitter:
         stated = declare(name, extracted=extracted, covers=covers, version=version,
                          dates=dates)  # fmt: skip
         pin = pin_of(name, fingerprint, whole, accepted, what, stated.extracted.iso)
-        for rel, _full in files:
-            self.add_input(rel, restricted=restricted, synthetic=synthetic)
+        for _rel, full in files:
+            self.add_input(full, restricted=restricted, synthetic=synthetic)
         english = self._english()
         for part, value, display in stated.values(english):
             key = f"dataset.{slug(name)}.{part}"

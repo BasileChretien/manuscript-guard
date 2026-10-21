@@ -182,6 +182,12 @@ def test_a_bound_is_written_with_every_digit_it_has(tmp_path: Path) -> None:
         == ("0.1234567", "1234567.5")  # fmt: skip
 
 
+def test_a_small_bound_is_written_in_positional_notation(tmp_path: Path) -> None:
+    text = ENTRIES.replace("range: {min: 30, max: 250.5}", "range: {min: 0.00001, max: 250.5}")
+    fields = {f["Variable / Field Name"]: f for f in rows(redcap(dictionary(tmp_path, text)).text)}
+    assert fields["weight"]["Text Validation Min"] == "0.00001"
+
+
 def test_a_bound_is_written_in_the_form_redcap_s_validation_reads(tmp_path: Path) -> None:
     text = ENTRIES.replace("min: '2026-01-01T08:00:00'", "min: '2026-01-01'")
     text = text.replace("min: '06:00'", "min: '06:00:00'")

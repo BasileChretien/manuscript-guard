@@ -209,6 +209,12 @@ def test_a_history_at_the_title_s_level_is_read_as_a_title() -> None:
     assert [n.name for n in used] == ["smoking", "age"]
 
 
+def test_a_level_2_title_naming_an_amendment_is_read_as_the_deviations() -> None:
+    """The other side of the level Basile chose, written in Known gaps (round 3 of #393)."""
+    found = variables_named("## SAP (amendment 2)\n\n### Analysis\n\n`age` `weight`\n", ["age"])
+    assert found == ([], [])
+
+
 def test_what_the_deviations_name_is_not_read(tmp_path: Path) -> None:
     plan = edited(PLAN, "None so far.", "We dropped `smoking`.\n\n### Later\n\nAnd `alcohol`.")
     entries = ENTRIES + ("  - {name: smoking, label: Smoking, definition: Smokes now., "

@@ -2889,6 +2889,8 @@ def cmd_dictionary(args: argparse.Namespace) -> int:
     """Write the data dictionary out for whoever builds the form: REDCap's data dictionary,
     a plain CSV, or the form's outline. Each is written only where the dictionary reads and
     the shape can hold it; nothing is written on a refusal."""
+    import os
+
     from manuscript_guard.contracts.dictionary import DICTIONARY, load_dictionary
     from manuscript_guard.dictionary_export import ExportRefused, outline, plain_csv, redcap
 
@@ -2898,7 +2900,8 @@ def cmd_dictionary(args: argparse.Namespace) -> int:
     if not wanted:
         print("say what to write: --redcap, --csv or --outline", file=sys.stderr)
         return 2
-    if len({target.resolve() for target, _make in wanted}) < len(wanted):
+    # One file under two spellings, out.csv and OUT.csv on Windows, is one file (round 2).
+    if len({os.path.normcase(target.resolve()) for target, _make in wanted}) < len(wanted):
         print("each of --redcap, --csv and --outline needs a file of its own", file=sys.stderr)
         return 2
     project, _ = load_project(args.path)

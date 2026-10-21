@@ -7811,7 +7811,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   not once for every cycle in it. A plan written in `#` sections with no title, opening
   with `# Amendment history` over a `## Version 2` that names a dropped variable, takes the
   history for a title and reads it, so the dropped variable is not said to be unused (round
-  2; `test_a_history_at_the_title_s_level_is_read_as_a_title`). A title followed by a
+  2; `test_a_history_at_the_title_s_level_is_read_as_a_title`). The other side of the level
+  chosen: a title at level 2, or a setext title over `---`, that names an amendment is the
+  Deviations of the plan, and nothing under it is read
+  (`test_a_level_2_title_naming_an_amendment_is_read_as_the_deviations`). The generated
+  plans all have a level-1 title, so only these tests hold the rule for a plan with none
+  (round 3 of #393). A title followed by a
   heading at its own level is the Deviations of its text up to that heading, where it
   names an amendment. The Deviations are left out whole, so a variable named
   only there is unused even where the change kept it. That an entry is needed is all that
@@ -7828,9 +7833,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   advises against and accepts, is written as it is. A code with a comma, a bar, a quotation
   mark or a space, or a label with a bar or a line break, is refused, since it would not
   read back from REDCap's choices (round 1); a code REDCap refuses for another reason,
-  `N/A`, is written, and REDCap's import says so. A bound with seconds is written to the
-  minute, which widens it by under a minute, and a `count`'s bound is written as given,
-  `0.5` included. A name REDCap reserves for itself, or `<form>_complete`, which it makes,
+  `N/A`, is written, and REDCap's import says so. A bound with seconds is truncated to the
+  minute, and one with a time zone is written without it; a `count`'s bound is written as
+  given, `0.5` included. A failure to write the second or third file leaves the first
+  written (round 2). A name REDCap reserves for itself, or `<form>_complete`, which it makes,
   is not refused, and a definition holding an action tag, `@HIDDEN`, acts as one in the
   field annotation. The REDCap file has not been imported
   into a REDCap server by these tests: its columns, types, validations, choices and

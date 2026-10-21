@@ -25,6 +25,7 @@ import io
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, time
+from decimal import Decimal
 
 from manuscript_guard.contracts.dictionary import CODED, Code, Dictionary, Variable
 
@@ -115,7 +116,8 @@ def _bound(variable: Variable, bound: object) -> str:
         read = _TIMES[variable.type][0](text[:-1] + "+00:00" if text.endswith("Z") else text)
         return read.strftime(_TIMES[variable.type][1])
     if isinstance(bound, float):
-        return str(int(bound)) if bound.is_integer() else repr(bound)
+        # In positional notation: 0.00001, not repr's 1e-05 (round 2).
+        return str(int(bound)) if bound.is_integer() else format(Decimal(repr(bound)), "f")
     return str(bound)
 
 

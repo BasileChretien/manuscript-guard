@@ -6237,6 +6237,25 @@ def _the_supplement_s_displays_are_numbered_with_the_paper_s(patch: pytest.Monke
     patch.setattr(pointers, "is_supplementary", lambda root, path: False)
 
 
+def _a_caption_is_not_held_to_its_display(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.findings import Report
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_captions", lambda *given: Report())
+
+
+def _a_table_s_caption_is_read_only_under_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_BESIDE", {pointers.FIGURE: (1,), pointers.TABLE: (1,)})
+
+
+def _a_caption_between_two_tables_is_held_to_both(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_NAMES_ONE", all)
+
+
 def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import section_names
 
@@ -8147,6 +8166,18 @@ BROKEN = {
     ),
     "the supplement's tables are numbered with the paper's": (
         _the_supplement_s_displays_are_numbered_with_the_paper_s,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "a caption is not held to the display it stands beside": (
+        _a_caption_is_not_held_to_its_display,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "a table's caption is read only under it": (
+        _a_table_s_caption_is_read_only_under_it,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "a caption between two tables is held to both": (
+        _a_caption_between_two_tables_is_held_to_both,
         test_a_ref_prints_the_number_its_display_has_or_is_said,
     ),
     "the Methods are read by the name G9 had for them": (

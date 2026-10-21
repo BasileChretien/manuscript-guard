@@ -485,6 +485,32 @@ the binding prints what is typed, character for character: "Table S1" under "Tab
 not write ("Tables 1-3") is not offered. With `--apply` the example's every pointer is bound
 and its build prints what it printed before.
 
+### A caption carries its display's number
+
+Basile's third choice of 2026-10-20: the build prints an emitted table's caption after the
+table's number, "Table 2. Reports by drug group.", from the same count and in the journal's
+form, and a table that emits no caption gets its number alone as one. The analysis cannot
+know the number, which depends on where the text places the table. A figure's caption is a
+paragraph the author writes under it, and opens with `{{ref.figure.forest}}.`, which prints
+"Figure 1." and is styled as a caption by the build as a typed "Figure 1." always was.
+
+A caption the analysis numbered already, "Table 2. Baseline ...", "Table 2 Baseline" or
+"**Table 2.** Baseline", is printed as it is: adding the number again would print "Table 2.
+Table 2.", in every paper that numbered its own captions before. So is the emitted caption
+of a table that has a caption typed beside it, as a paragraph or a heading set straight
+above it, which was how a paper numbered its tables before refs: the typed caption prints
+the number (round 1 of #381 found both printed twice). A caption between two tables is the
+caption of the one it names, and the other keeps its number (round 2). A typed caption's
+number is set off by a stop, a colon, the end of its bold or a dash between spaces: "Table 2
+shows the counts." above a table is a sentence. G2 holds an emitted caption's number to the
+table's, and so it holds a caption typed beside a display: the block directly under a
+figure placed by its binding, or directly above or under a table, when it opens with a
+pointer that cites nothing there (a caption, or a heading). One that names no display it
+stands beside, typed or printed by a ref, is `caption-names-another`, failing from the
+internal review as the other pointer findings do; a block between two tables is the caption
+of whichever it names. A heading with prose between it and the table, as the example's
+supplement writes "## Table S1. Code lists", captions nothing and is not held.
+
 ## The corruption harness
 
 The claim "no stale number" is worth exactly as much as the evidence that the gate catches
@@ -9112,10 +9138,35 @@ Open, recorded as each change landed:
   to 5 once two tables are placed between them, and nothing says the range grew. Each end is
   right; what the dash takes in is not held to anything. A range written with two refs reads
   as two pointers and is held like them.
-- **The build numbers no caption.** `{{ref.figure.forest}}` opening a figure's caption prints
-  its number, and a caption typed as "Figure 2." under the first figure is checked only for
-  pointing at a figure the document has, not for being the caption of that one. An emitted
-  table's caption prints with no number at all.
+- **A ref in a reply to the reviewers is not held.** A reply's value binding that names
+  nothing is `unresolved-binding`; a ref there that the count cannot number (its figures
+  sent as files) passes, and `response-to-reviewers.md` prints it as written. Where an
+  abstract is left out of the pack for such a ref, the reason given names the formatting the
+  build does, not a pointer with no number; `check` refuses that ref in the manuscript
+  (round 2 of #378).
+- **A caption typed "Table 2 Counts" reads as a sentence.** With nothing but a space after
+  its number, as Springer sets a caption, a paragraph above a table cannot be told from "Table
+  2 shows the counts.", so it is no caption: the build numbers the emitted caption as well,
+  and the number prints twice. Typed with a stop, a colon, its bold closed after the number
+  or a dash between spaces, or as a heading, it is a caption (round 2 of #381). So is not a
+  caption bolded whole ("**Table 2 Counts**"), nor one set off by `--`, `---` or a dash with
+  no spaces ("Table 2—Counts"): each prints the number twice. And the set-offs are read in
+  any paragraph: one opening "**Table 2** shows the counts." or "Table 3 - the sensitivity
+  analysis - confirms" is taken for a caption, cites nothing, and can make a table
+  `display-not-cited` or change the order of first citation (the round after the budget of
+  #381). Two tables placed in one block with no blank line between are
+  read as the last of them by the caption check, and an emitted caption that opens with a
+  pointer's word and digits that are no number of it ("Table 12-month outcomes") is taken
+  for numbered: printed without the build's number, and `caption-names-another` says so.
+- **A caption's number is written one way.** The build prints "Table 2. " before an emitted
+  caption, a stop and a space, whatever the journal sets there ("Table 2:", the label in
+  bold). Where the count cannot number a table (placed twice, or its kind also placed by
+  hand or sent as files in that document) its caption prints with no number, and a caption
+  beside it is not held. A figure's caption in a form other than "Figure 1." ("Fig. 1.",
+  "eFigure 1.") is held by G2 and set in the body font, since the build styles only the
+  paragraph under a figure that opens "Figure" and its number. A caption is held only where
+  it stands next to its display: one typed two paragraphs above its table names whatever it
+  names.
 - **A ref G2 does not see is still printed.** G2 reads the text as the build prints it less
   its fenced listings, comments and front matter. A ref inside a listing is printed by the
   build, which refuses one it cannot number, and is no citation to G2: a table cited only in

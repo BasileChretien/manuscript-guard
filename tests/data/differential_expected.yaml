@@ -60,3 +60,8 @@ expected:
       a P above 1, "P = 4.1 x 10^5", is not judged; a number with a middle dot or a comma
       for its point is not read, nor a P cut off before one; and Dunnett's and
       Games-Howell's procedures stand a test down as the other named adjustments do
+  - reading: pointers
+    why: >-
+      G2 holds a caption beside a table or a figure to that display, so a typed caption or a
+      ref opening one that names another display is caption-names-another; the inputs now
+      place captions, and two tables one after the other with a caption between them

@@ -3994,6 +3994,7 @@ def test_a_table_cited_nowhere_is_said(project: Path) -> None:
 _REF_CODES = (
     "pointer-to-nothing", "cited-out-of-order", "display-not-cited", "unresolved-binding",
     "ref-number-unknown", "pointer-word-mismatch", "pointer-form-unread",
+    "caption-names-another",
 )  # fmt: skip
 
 
@@ -4231,6 +4232,186 @@ def test_bind_pointers_offers_nothing_that_would_print_otherwise(project: Path) 
     _declare(project, "displays: {figures_as_files: 1}")
     offered = sorted(item.text for item in typed_pointers(load_project(project)[0]))
     assert offered == sorted(["Table 1", "Table S1", "Table S2", "Table\nS2"]), offered
+
+
+# ---------------------------------------------------------------------- captions numbered
+# The build prints an emitted table's caption after the table's number, "Table 2. ...", and
+# G2 refuses a caption beside a display that names another (Basile's choice, 2026-10-20).
+
+
+def _assembled_raw(root: Path) -> dict[str, str]:
+    from manuscript_guard.build.assemble import assemble
+
+    project, _ = load_project(root)
+    namespace, results, _literature, _ = load_namespace(project)
+    assembled, report = assemble(project, namespace, results)
+    assert report.ok, report.findings
+    return {item.path.name: item.text for item in assembled}
+
+
+def _emit_caption(root: Path, key: str, caption: str | None) -> None:
+    """The example's analysis as if it had emitted this caption for table `key`."""
+    fragment = root / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    if caption is None:
+        document["tables"][key].pop("caption", None)
+    else:
+        document["tables"][key]["caption"] = caption
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def test_the_build_numbers_an_emitted_table_caption(project: Path) -> None:
+    printed = _assembled_raw(project)
+    assert ": Table 1. Reports by drug group." in printed["main.md"]
+    assert ": Table 2. Contingency table underlying" in printed["main.md"]
+    assert ": Table S1. Terms used to identify" in printed["S1_code_lists.md"]
+    assert ": Table S2. Adjusted model." in printed["S1_code_lists.md"]
+    _journal_forms(project, '{supplementary_table: "eTable {n}"}')
+    assert ": eTable 1. Terms used to identify" in _assembled_raw(project)["S1_code_lists.md"]
+    _emit_caption(project, "baseline", None)
+    assert "\n: Table 1\n" in _assembled_raw(project)["main.md"] + "\n"
+
+
+@pytest.mark.parametrize(
+    ("caption", "said"),
+    [
+        ("Table 1. Reports by drug group.", False),
+        ("Table 3. Reports by drug group.", True),
+        ("Table S1: Reports by drug group.", True),
+    ],
+)
+def test_an_emitted_caption_that_numbers_itself_is_printed_once_and_held(
+    project: Path, caption: str, said: bool
+) -> None:
+    """A caption the analysis numbered already is printed as it is, not "Table 1. Table 1.",
+    and G2 holds its number to the table's."""
+    _emit_caption(project, "baseline", caption)
+    assert f"\n: {caption}\n" in _assembled_raw(project)["main.md"] + "\n"
+    found = [s for s in _ref_findings(project) if s[0] == "caption-names-another"]
+    assert bool(found) == said, found
+
+
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        # typed above a table, naming another
+        (("{{table.two_by_two}}", "**Table 1.** Counts\n\n{{table.two_by_two}}"), True),
+        # typed above it, naming it
+        (("{{table.two_by_two}}", "**Table 2.** Counts\n\n{{table.two_by_two}}"), False),
+        # typed below a table
+        (("{{table.two_by_two}}", "{{table.two_by_two}}\n\nTable 1: counts by group."), True),
+        # under a figure
+        (("{{figure.forest}}", "{{figure.forest}}\n\nFigure 2. The estimate."), True),
+        (("{{figure.forest}}", "{{figure.forest}}\n\nFigure 1. The estimate."), False),
+        # a ref in the caption, to another figure or to this one
+        (("{{figure.forest}}", "{{figure.forest}}\n\n{{ref.figure.forest}}. The estimate."),
+         False),
+        # a heading straight above a table
+        (("{{table.baseline}}", "## Table 2. Characteristics\n\n{{table.baseline}}"), True),
+        # prose between a heading and its table: no caption of it
+        (("{{table.baseline}}", "## Table 2. Characteristics\n\nAs below.\n\n{{table.baseline}}"),
+         False),
+    ],
+)  # fmt: skip
+def test_a_caption_beside_a_display_that_names_another_is_said(
+    project: Path, change: tuple[str, str], said: bool
+) -> None:
+    _rewrite(project, change)
+    found = [s for s in _ref_findings(project) if s[0] == "caption-names-another"]
+    assert bool(found) == said, _ref_findings(project)
+
+
+@pytest.mark.parametrize(
+    "between",
+    [
+        # each caption above its table
+        "**Table 1.** Characteristics\n\n{{table.baseline}}\n\n**Table 2.** Counts\n\n"
+        "{{table.two_by_two}}",
+        # each caption under its table
+        "{{table.baseline}}\n\nTable 1. Characteristics.\n\n{{table.two_by_two}}\n\n"
+        "Table 2. Counts.",
+    ],
+)
+def test_a_caption_between_two_tables_is_held_to_the_one_it_names(
+    project: Path, between: str
+) -> None:
+    """Round 1 of #381: a caption between two tables was held to both, so the second's
+    caption above it was said to caption the first."""
+    _rewrite(project, ("\n{{table.two_by_two}}\n", "\n"), ("{{table.baseline}}", between))
+    assert [s for s in _ref_findings(project) if s[0] == "caption-names-another"] == []
+
+
+@pytest.mark.parametrize(
+    ("between", "numbered"),
+    [
+        ("{{table.baseline}}\n\nTable 2. Counts.\n\n{{table.two_by_two}}",
+         ": Table 1. Reports by drug group."),
+        ("{{table.baseline}}\n\nTable 1. Characteristics.\n\n{{table.two_by_two}}",
+         ": Table 2. Contingency table underlying"),
+    ],
+)  # fmt: skip
+def test_a_caption_between_two_tables_leaves_the_other_its_number(
+    project: Path, between: str, numbered: str
+) -> None:
+    """Round 2 of #381: the caption of one of two tables placed one after the other took the
+    number off the other's emitted caption too, and nothing said so."""
+    _rewrite(project, ("\n{{table.two_by_two}}\n", "\n"), ("{{table.baseline}}", between))
+    assert numbered in _assembled_raw(project)["main.md"]
+    assert [s for s in _ref_findings(project) if s[0] == "caption-names-another"] == []
+
+
+@pytest.mark.parametrize(
+    "typed",
+    ["**Table 2.** Counts\n\n{{table.two_by_two}}", "## Table 2. Counts\n\n{{table.two_by_two}}",
+     "{{table.two_by_two}}\n\nTable 2. Counts.", "{{ref.table.two_by_two}}. Counts\n\n"
+     "{{table.two_by_two}}",
+     # round 2 of #381: set off by bold or a dash, and no stop
+     "**Table 2** Counts\n\n{{table.two_by_two}}",
+     "Table 2 \N{EN DASH} Counts\n\n{{table.two_by_two}}"],
+)  # fmt: skip
+def test_a_table_captioned_where_it_stands_gets_no_second_number(
+    project: Path, typed: str
+) -> None:
+    """Round 1 of #381: a caption typed beside a table and the build's numbered caption
+    printed "Table 2" twice."""
+    _rewrite(project, ("{{table.two_by_two}}", typed))
+    printed = _assembled_raw(project)["main.md"]
+    assert "\n: Contingency table underlying" in printed, printed
+    assert ": Table 1. Reports by drug group." in printed
+
+
+@pytest.mark.parametrize(
+    ("caption", "said"),
+    [
+        ("Table 1 Reports by drug group.", False),
+        ("**Table 1.** Reports by drug group.", False),
+        ("Table 1 \N{EN DASH} reports by drug group.", False),
+        ("Table 3 Reports by drug group.", True),
+        ("Figure 2. Reports by drug group.", True),
+    ],
+)
+def test_an_emitted_caption_numbered_any_way_is_printed_once_and_held(
+    project: Path, caption: str, said: bool
+) -> None:
+    """Round 1 of #381: a number with no stop after it, or in bold, got a second one; and a
+    table's caption that opens with a figure's number got none, and was not held."""
+    _emit_caption(project, "baseline", caption)
+    assert f"\n: {caption}\n" in _assembled_raw(project)["main.md"] + "\n"
+    found = [s for s in _ref_findings(project) if s[0] == "caption-names-another"]
+    assert bool(found) == said, found
+
+
+def test_a_wrong_caption_fails_from_the_internal_review(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    _rewrite(project, ("{{figure.forest}}", "{{figure.forest}}\n\nFigure 2. The estimate."))
+    drafting, *_ = _run_gates(project, stage="drafting")
+    assert [f.severity for f in drafting.findings if f.code == "caption-names-another"] == [
+        "info"
+    ]
+    reviewing, *_ = _run_gates(project, stage="internal-review")
+    assert "caption-names-another" in codes(reviewing)
 
 
 def test_a_ref_in_the_response_to_the_reviewers_reads_as_printed(project: Path) -> None:

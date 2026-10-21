@@ -1317,6 +1317,13 @@ The result is compiled and packed by the code above, and checked three times:
   the compile finds it missing (step 9) (rounds 1 and 2 of #385).
 - After `\renewcommand{\abstract}` or `\let\abstract\relax`, `\abstract{…}` still opens a
   section titled Abstract, though LaTeX prints what the author defined (round 2 of #385).
+- The Abstract an abstract opens stays in force to the next heading of its level, so text
+  between `\end{abstract}` and the first `\section` stands under Abstract, in the preamble's
+  case as in the body's. No gate reads LaTeX's headings yet; the counts, G4 and G5 close it
+  where the abstract ends (`Reading.abstracts`) when they move (round 3 of #385).
+- In the preamble, `\g@addto@macro\abstract{…}` or `\pretocmd\abstract{…}` reads the group
+  after `\abstract` as an abstract, and so is one in the branch of a conditional that is not
+  taken, both read there (round 3 of #385).
 - A class or package that changes how a character is read, beyond those refused, is not seen.
 - A package not in the refused list that prints a table or text from a data file is not seen:
   what it prints is read by no gate.

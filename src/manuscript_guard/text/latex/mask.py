@@ -376,12 +376,12 @@ class _Reader:
         elif spec == "d":
             chosen = PROSE
         elif role == PREAMBLE:
-            chosen = PROSE if self.command in PRINTED_IN_PREAMBLE else PREAMBLE
+            chosen = PROSE if self._printed_from_preamble(self.command) else PREAMBLE
         else:
             chosen = _note_role(spec)
         frame = _Frame(kind, chosen, at, closer, self.pending[1:], self.command, spec == "d")
         heads = self.command in LEVELS or self.command == "abstract"
-        if kind == "arg" and spec == "p" and heads and not self.definitions:
+        if kind == "arg" and spec == "p" and heads and not self.definitions and chosen == PROSE:
             frame.heading = LEVELS.get(self.command, 1)
             frame.origin = self.heading_at
         self.definitions += frame.definition
@@ -672,6 +672,14 @@ class _Reader:
         self.command = name
         self._open("arg", "d", parameters, "}")
 
+    def _printed_from_preamble(self, name: str) -> bool:
+        """Whether what `name` takes is printed though it stands in the preamble: the title
+        and a definition's default anywhere there, an abstract only outside any environment
+        or argument (round 3 of #385: one in `filecontents` was read, and nothing prints it)."""
+        if name != "abstract":
+            return name in PRINTED_IN_PREAMBLE
+        return name in PRINTED_IN_PREAMBLE and all(f.kind == "group" for f in self.stack)
+
     def _defines(self, name: str, at: int) -> None:
         if name in _REDEFINABLE:
             return
@@ -710,13 +718,13 @@ class _Reader:
             self.pos = closing.end()
         else:
             role = self._role()
-            if role == PREAMBLE and name in PRINTED_IN_PREAMBLE:
+            if role == PREAMBLE and self._printed_from_preamble(name):
                 role = PROSE
             maths = name in MATHS and role in (PROSE, MATHS_READ)
             self.stack.append(_Frame("env", MATHS_READ if maths else role, at, name,
                                      table=name in TABLES))  # fmt: skip
             self.environments.append(name)
-            if name == "abstract":
+            if name == "abstract" and role == PROSE:
                 self.headings.append(Heading(at, 1, "Abstract"))
             self.command, self.pending = "begin", ENVIRONMENTS.get(name, ())
 
@@ -737,7 +745,7 @@ class _Reader:
         self.stack.pop()
         self.environments.pop()
         self.pending = ()
-        if name == "abstract":
+        if name == "abstract" and top.role == PROSE:
             self.abstracts.append((top.start, self.pos))
 
 

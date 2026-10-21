@@ -131,6 +131,10 @@ def test_an_abstract_in_the_preamble_is_read_under_abstract_and_naming_it_is_no_
                 "\\newcommand{\\summary}{\\abstract{12}}\n\\let\\abstract\\relax\n"
                 "\\begin{document}\n\\begin{abstract}12\\end{abstract}\n" + END)  # fmt: skip
     assert read(restyled).refusals == ()
+    # Round 3: one a `filecontents` holds is written to a file, and printed by nothing.
+    kept = ("\\documentclass{article}\n\\begin{filecontents}{a.tex}\n" + abstract
+            + "\n\\end{filecontents}\n\\begin{document}\nx\n" + END)  # fmt: skip
+    assert "12" not in read(kept).masked and read(kept).headings == ()
 
 
 def test_a_bare_name_input_from_the_preamble_is_the_distributions() -> None:

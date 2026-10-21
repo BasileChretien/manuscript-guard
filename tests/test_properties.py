@@ -57,6 +57,7 @@ from generated import (
     TERMS,
     TYPOGRAPHY,
     UNCLAIMED,
+    alt_texts,
     bindings,
     claim_edits,
     commented,
@@ -4168,6 +4169,58 @@ def _a_font_s_first_number_is_its_size(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(figure_svg, "_FONT_SIZE", re.compile(pattern, re.IGNORECASE))
 
 
+# ------------------------------------------------------------- a figure's alternative text
+
+
+def _descriptions_pandoc_reads(markdown: str) -> list[str]:
+    """The description of the one image in each paragraph pandoc reads in `markdown`, its
+    words as pandoc reads them, a space between two, and any other inline by its name; a
+    paragraph that is not one span holding one image by what it is."""
+    pandoc = shutil.which("pandoc")
+    if pandoc is None:
+        pytest.skip("pandoc is not installed, and the description is the one it reads")
+    read = subprocess.run(
+        [pandoc, "-f", "markdown", "-t", "json"],
+        input=markdown.encode("utf-8"),
+        capture_output=True,
+        check=True,
+        timeout=120,
+    )
+
+    def said(inline: dict) -> str:
+        kind = inline["t"]
+        return inline["c"] if kind == "Str" else " " if kind == "Space" else f"<{kind}>"
+
+    found = []
+    for block in json.loads(read.stdout)["blocks"]:
+        inlines = block["c"] if block["t"] == "Para" else []
+        if len(inlines) == 1 and inlines[0]["t"] == "Span":
+            inlines = inlines[0]["c"][1]
+        if len(inlines) == 1 and inlines[0]["t"] == "Image":
+            found.append("".join(said(inline) for inline in inlines[0]["c"][1]))
+        else:
+            found.append(f"<{block['t']} of {[inline['t'] for inline in inlines]}>")
+    return found
+
+
+@holds(12, st.lists(alt_texts(), min_size=1, max_size=4))
+def test_an_alternative_text_is_the_pictures_description_as_it_was_written(
+    written: list[str],
+) -> None:
+    """What the build writes for a figure's alternative text pandoc reads back as exactly
+    that text, its ASCII white space folded to single spaces: no mark in it read as markup,
+    no line in it ending the paragraph, and a no-break space kept (round 1 of #387). Several
+    figures in one document, as a manuscript places them."""
+    from manuscript_guard.build.assemble import FIGURE_SPAN
+    from manuscript_guard.gates.figure_alt import as_markdown
+
+    markdown = "\n\n".join(
+        f"[![{as_markdown(text)}](figures/f.png)]{{.{FIGURE_SPAN}}}" for text in written
+    )
+    folded = [re.sub(r"[ \t\r\n\f\v]+", " ", text).strip(" \t\r\n\f\v") for text in written]
+    assert _descriptions_pandoc_reads(markdown) == folded
+
+
 # ------------------------------------------------------- a quote its source nearly holds
 
 #: The words a quote is drawn from: none of them is a word of the filler around it, so the
@@ -6196,6 +6249,21 @@ def _each_anchors_line_is_its_own_run(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_runs", lambda numbers: [(number, number) for number in numbers])
 
 
+def _an_alternative_text_escapes_only_its_brackets(patch: pytest.MonkeyPatch) -> None:
+    """Escaped only where a mark would end the description: emphasis, a citation, maths and
+    raw HTML in it are read as markup."""
+    from manuscript_guard.gates import figure_alt
+
+    patch.setattr(figure_alt, "_PUNCTUATION", re.compile(r"([\[\]\\])"))
+
+
+def _an_alternative_text_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_alt
+
+    escaped = figure_alt._PUNCTUATION
+    patch.setattr(figure_alt, "as_markdown", lambda text: escaped.sub(r"\\\1", text))
+
+
 def _a_passage_is_matched_as_it_is_typed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(passages_module, "statement_words", lambda sentence: sentence)
 
@@ -6337,6 +6405,14 @@ BROKEN = {
     "in LaTeX, a command the table lacks hides its arguments": (
         _an_unknown_command_hides_its_arguments,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "an alternative text escapes only its brackets": (
+        _an_alternative_text_escapes_only_its_brackets,
+        test_an_alternative_text_is_the_pictures_description_as_it_was_written,
+    ),
+    "an alternative text keeps its line breaks": (
+        _an_alternative_text_keeps_its_line_breaks,
+        test_an_alternative_text_is_the_pictures_description_as_it_was_written,
     ),
     "a piece with no word of its own is left alone": (
         _a_wordless_piece_is_left_alone,
